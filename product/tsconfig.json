@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "target": "ES2024",
+        "useDefineForClassFields": true,
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "allowJs": false,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "isolatedModules": true,
+        "skipLibCheck": true,
+        "lib": ["ES2024", "DOM"],
+        "types": ["vite/client", "vitest/globals"]
+    },
+    "include": ["resources/js/**/*.ts", "resources/js/**/*.vue"]
+}

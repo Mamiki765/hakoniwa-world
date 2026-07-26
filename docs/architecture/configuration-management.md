@@ -56,7 +56,7 @@ MVP migrationは、Worldからversionを参照でき、配置用の`territory_in
 
 ### 経済と人口
 
-- initial_funds、initial_food、initial_resources。
+- initial_funds、initial_resources（MVPはwheat、fish、monster_meatの国家別残高）。
 - production_rates、maintenance_costs。
 - food_consumption_per_population。
 - population_growth_curve。

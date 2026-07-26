@@ -115,7 +115,19 @@ available amountはamount minus reserved_amountとして扱う。予約は命令
 
 ## MVP縦切りで必要か
 
-生産、消費、資金・食料balance、追加resourceは最初のMVP縦切りへ実装しない。terrain・facility等のcatalogと同様にresource typeをstable keyで後から追加でき、資源種ごとの固定columnだけへ閉じない境界を維持する。
+MVPでは固定`nations.food`を採用せず、`resource_definitions`と`nation_resources`を実装する。food categoryのbaselineは`wheat`（小麦、栄養1、初期100）、`fish`（魚、栄養1、初期0）、`monster_meat`（肉、暫定栄養2、初期0）である。monster meatの値はrulesetで変更できる。moneyは今回に限り`nations.money`のままとする。
+
+生産・消費・ledgerは未実装である。将来の第一候補は、food categoryの利用可能種類へ必要栄養量を均等配分し、不足分を残りへ再配分し、全種類を消費しても不足する場合だけ食料不足とする方式である。農場は抽象foodではなく`wheat`を生産する。実装前に整数単位、丸め、transaction lock、event記録を決定する。
+
+## 将来の施設生産と売却
+
+食料以外も個別資源として扱う。Farmは`wheat`、Fishing facilityは`fish`、Factoryは`industrial_goods`等、Mineは`ore`、`iron_ore`、`coal`、`rare_ore`等を生産候補とする。これらの追加定義と生産処理はMVPに含めない。
+
+`resource_definitions`はkey、display name、category、unit、nullable nutrition、storable、tradable、ruleset価格参照key、metadataを表現する。販売価格はdefinitionへ固定せず、Worldが参照するruleset versionから解決する。将来のfacility production outputはfacility definition、resource definition、amount、required labor、production conditions、ruleset versionを通常table/catalogで表し、施設classへ固定収入を書き込まない。
+
+後続の売却policy候補は`sell_all`、`stockpile_all`、`keep_target_amount`、`sell_percentage`、`sell_surplus`、`priority_by_resource`である。food categoryは備蓄、工業品・鉱物は旧作互換の初期値として全量自動売却を第一候補とする。生産量とruleset基準価格を別々に調整し、国内売却または政府買い取りによって旧作相当の最低収益を保証できる境界を残す。
+
+生産phase、売却phase、市場、加工recipe、施設別生産物、価格変動は後続PRまで実装しない。Nationへ`factory_income`等の施設別固定収入列も追加しない。
 
 ## 後回しにできるもの
 

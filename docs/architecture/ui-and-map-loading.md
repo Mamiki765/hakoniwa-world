@@ -120,3 +120,9 @@ MVP縦切りにはturn処理がないため、turn完了通知とWebSocketを実
 - provider login・link後のredirect UX。
 - 未発見領域と非公開属性のAPI契約。
 - CanvasまたはDOMの採否とアクセシビリティ最低要件。
+
+## MVP実装記録（2026-07-26）
+
+MVPはVue 3のDOM/CSS rendererを採用し、API client、map state、axial/odd-q projection、renderer componentを分離した。Capital周辺9 chunksだけを初期取得し、zoom、drag/pointer pan、セル選択、六方向keyboard移動、loading/error/empty chunkを扱う。
+
+選択セルはq/r、terrain、facility、owner、populationを通常HTML textでも表示し、owner ID/名称を併記して色だけに依存しない。生成済み地上情報は公開し、霧は実装しない。Canvas置換、低zoom集約、WebSocketは計測後の後続PRとする。

@@ -100,27 +100,27 @@
 
 ### AUTH-01 Discord用OAuth adapter
 
-- Status: Open
+- Status: Decided
 - Required before: 認証実装前
-- Laravel Socialiteを境界として使うか、Discord対応にどの追加adapterを採るかを、保守状況、対応Laravel版、必要scope、provider user ID取得方法で比較する。
+- Decision: Laravel Socialite 5.29.0とSocialiteProviders/Discord 4.2.0を使用する。Discordは`identify`、Googleは`openid profile`だけを要求し、tokenとemailは保存しない。
 
 ### AUTH-02 SPAのsession認証
 
-- Status: Open
+- Status: Decided
 - Required before: 認証実装前
-- Sanctumを使うか、Laravel sessionだけを使うかを決める。OAuth callback、session fixation対策、CSRF、state検証を同じ判断に含める。
+- Decision: 同一originのLaravel sessionを使用する。OAuth state、CSRF、callback後のsession regenerationを必須とし、MVPではSanctumを追加しない。
 
 ### AUTH-03 VueとLaravelの配信origin
 
-- Status: Open
+- Status: Decided
 - Required before: Laravel初期構築前
-- 同一origin配信か分離originかを決め、cookie属性、CORS、CSRF、callback URL、開発環境の構成を確定する。
+- Decision: production buildしたVueをLaravelの`public/`から同一origin配信する。
 
 ### AUTH-04 ログイン・連携後のredirect UX
 
-- Status: Open
+- Status: Decided
 - Required before: UI実装前
-- 初回ログイン、既存Userログイン、2つ目のprovider連携成功、連携競合、取消の戻り先と表示を決める。
+- Decision: 成功・連携競合・失敗をquery status付きでトップへ戻し、Vueが結果を案内する。login/linkの意図はsessionへ別保存する。
 
 ### AUTH-05 provider障害時の復旧
 
@@ -156,21 +156,21 @@
 
 ### B-01 初期Capital人口
 
-- Status: Open
+- Status: Decided
 - Required before: 国家作成実装前
-- 地図上の最低1単位は確定済み。作成時の初期値と1単位の表示上の実人口換算を決める。
+- Decision: MVPのCapital人口は1,000、最低人口は1。表示換算はturn・人口処理実装前に決める。
 
 ### B-06 初期Territoryへ含められる地形
 
-- Status: Open
+- Status: Decided
 - Required before: 国家作成実装前
-- distance 2以内の水域・建設不能地形を所有させるか、除外時に19セル未満を許すか、生成済み範囲外へはみ出す候補を失格または拡張対象にするかを決める。
+- Decision: MVPでは生成した初期島のdistance 2以内の陸地19セルだけを所有させる。distance 2外の生成陸地は中立のまま残す。
 
 ### B-18 登録候補地点の評価
 
-- Status: Open
+- Status: Decided
 - Required before: 国家作成実装前
-- Capitalを配置できる地形、最低限の発展可能セル数、距離12、他国Territoryとの非重複を必須条件とし、同点候補のscoreと決定的seedを決める。
+- Decision: 中心からdistance 5以内の91セルが全て生成済みの海・無所有・施設なしであること、Capital間距離12以上を必須とする。既存Capitalから最も遠い候補を優先し、q、r昇順で安定tie-breakする。
 
 ### B-08 初期保護
 
@@ -182,27 +182,27 @@
 
 ### C-01 地図描画方式
 
-- Status: Open
+- Status: Decided
 - Required before: UI実装前
-- Canvas 2Dを第一候補とし、DOM prototypeとの性能、hit test、アクセシビリティを比較する。
+- Decision: MVPはDOM/CSS rendererを採用する。API、map state、projection、rendererを分離し、計測後にCanvasへ交換できる境界を維持する。
 
 ### C-03 霧・未発見領域
 
-- Status: Open
+- Status: Decided
 - Required before: マップAPI実装前
-- MVPで非公開にする属性と、`generated`、`outside_generated_bounds`、`hidden`を区別する応答契約を決める。未採用の将来情報をDTOへ出さない。
+- Decision: MVPに霧はなく、生成済み地上セルのterrain、facility、owner、populationは公開する。OAuth・内部metadataは公開しない。
 
 ### C-07 国際化
 
-- Status: Open
+- Status: Decided
 - Required before: UI実装前
-- 初期表示言語を日本語だけにする場合も、message keyとUTF-8をどこまで採用するか決める。
+- Decision: MVP UIは日本語、全新規source・DB text・APIはUTF-8とする。本格的なmessage catalogはMVP後。
 
 ### C-08 アクセシビリティ
 
-- Status: Open
+- Status: Decided
 - Required before: UI実装前
-- hexの六方向keyboard移動、選択セルのテキスト表現、色以外の所有表示の最低要件を決める。
+- Decision: 六方向keyboard移動、選択セルの通常HTML text、所有国名とID表示を最低要件とする。
 
 ## ターン処理実装前まで保留する事項
 
@@ -405,6 +405,7 @@
 - Status: Deferred
 - Required before: MVP後
 - catalog、balance data、型付きhandlerを追加できる境界を維持する。MVPの資源を固定カラムだけに閉じ込めない。
+- MVP baselineとして`wheat`、`fish`、`monster_meat`のfood category定義と国家残高だけを実装する。生産・消費・ledger・追加資源はDeferredのままとする。
 
 ### E-04 Modifier
 

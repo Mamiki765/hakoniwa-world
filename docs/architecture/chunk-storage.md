@@ -170,3 +170,9 @@ checksumはディスク破損検知よりも、投影キャッシュの同一性
 - chunk versionとETagの一致。
 - 1万、10万、100万セルでのviewport取得とターン対象抽出。
 - バックアップから指定turnまでの復旧時間。
+
+## MVP実装記録（2026-07-26）
+
+`map_cells`をセル正本とし、signed axial `q`,`r`、`chunk_q`,`chunk_r`、`local_q`,`local_r`を通常列で保存する。`(map_space_id,q,r)`を一意、`(map_space_id,chunk_q,chunk_r)`をindex化した。chunk sizeは16で、負座標は数学的floor division/moduloを共通serviceで求める。
+
+初期60×60範囲は16 chunksとなる。APIは指定chunkだけを最大256セル返し、map全体をJSON blobや1 responseへまとめない。`map_chunks.version`と各cellのversion/updated_atを後続のcache・競合検出境界とする。
