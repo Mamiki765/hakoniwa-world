@@ -29,7 +29,7 @@ final class PublicWorldService
         ];
     }
 
-    /** @return Collection<int, array<string, mixed>> */
+    /** @return Collection<int, non-empty-array<string, mixed>> */
     public function rankings(World $world): Collection
     {
         return $this->rankedNations($world)->values()->map(
@@ -68,7 +68,7 @@ final class PublicWorldService
         ];
     }
 
-    /** @return Collection<int, array<string, mixed>> */
+    /** @return Collection<int, array{id: int, type: string, message: string, metadata: array{nation_id: int, nation_name: string}, occurred_at: string}> */
     public function recentEvents(World $world, int $limit = 12): Collection
     {
         return DB::table('audit_events')
