@@ -13,8 +13,8 @@ class AssetController extends Controller
         abort_if($path === null, 404);
 
         return response()->file($path, [
-            'Content-Type' => 'image/gif',
-            'Cache-Control' => 'public, max-age=86400',
+            'Content-Type' => $assets->contentTypeForFilename($filename),
+            'Cache-Control' => 'public, max-age=31536000, immutable',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }

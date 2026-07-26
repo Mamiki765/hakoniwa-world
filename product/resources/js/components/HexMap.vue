@@ -1,28 +1,62 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { axialToPixel } from '../map/projection';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { axialToStaggeredPixel, TILE_SIZE } from '../map/projection';
 import type { MapCell } from '../types';
+import CellDetails from './CellDetails.vue';
+import CommandQueuePanel from './CommandQueuePanel.vue';
 
 const props = defineProps<{
     cells: MapCell[];
     selected: MapCell | null;
     capital: { q: number; r: number };
+    nationId: number;
+    mapSpaceId: number;
     loading: boolean;
     error: string | null;
     emptyChunks: string[];
 }>();
 const emit = defineEmits<{ select: [cell: MapCell]; move: [direction: number] }>();
 
-const zoom = ref(0.78);
+const zoom = ref(1);
 const pan = ref({ x: 430, y: 270 });
 const dragging = ref(false);
 const pointer = ref({ x: 0, y: 0 });
-const cellSize = 26;
+const viewport = ref<HTMLElement | null>(null);
+const viewportSize = ref({ width: 900, height: 600 });
+let resizeObserver: ResizeObserver | null = null;
 
 const positioned = computed(() => props.cells.map((cell) => {
-    const pixel = axialToPixel({ q: cell.q - props.capital.q, r: cell.r - props.capital.r }, cellSize);
+    const pixel = axialToStaggeredPixel({ q: cell.q - props.capital.q, r: cell.r - props.capital.r });
     return { cell, x: pixel.x, y: pixel.y };
 }));
+
+// Keep the browser DOM bounded even when the API supplies many chunks.
+const visiblePositioned = computed(() => positioned.value.filter((item) => {
+    const screenX = pan.value.x + item.x * zoom.value;
+    const screenY = pan.value.y + item.y * zoom.value;
+    const padding = TILE_SIZE * 2;
+
+    return screenX >= -padding && screenX <= viewportSize.value.width + padding
+        && screenY >= -padding && screenY <= viewportSize.value.height + padding;
+}));
+
+onMounted(() => {
+    if (viewport.value === null) return;
+    const updateSize = (): void => {
+        if (viewport.value !== null) {
+            const width = viewport.value.clientWidth;
+            const height = viewport.value.clientHeight;
+            if (width > 0 && height > 0) viewportSize.value = { width, height };
+        }
+    };
+    updateSize();
+    if ('ResizeObserver' in window) {
+        resizeObserver = new ResizeObserver(updateSize);
+        resizeObserver.observe(viewport.value);
+    }
+});
+
+onBeforeUnmount(() => resizeObserver?.disconnect());
 
 function beginPan(event: PointerEvent): void {
     dragging.value = true;
@@ -55,13 +89,15 @@ function keydown(event: KeyboardEvent): void {
 <template>
     <section class="map-layout" aria-label="世界地図">
         <div class="map-toolbar">
-            <button type="button" @click="zoom = Math.min(1.5, zoom + 0.1)">拡大</button>
-            <button type="button" @click="zoom = Math.max(0.35, zoom - 0.1)">縮小</button>
+            <button type="button" @click="zoom = Math.min(2, zoom + 0.1)">拡大</button>
+            <button type="button" @click="zoom = Math.max(0.4, zoom - 0.1)">縮小</button>
             <span>{{ Math.round(zoom * 100) }}%</span>
+            <span>表示 {{ visiblePositioned.length }}/{{ cells.length }}セル</span>
             <span v-if="loading" role="status">読み込み中…</span>
             <span v-if="error" class="error" role="alert">{{ error }}</span>
         </div>
         <div
+            ref="viewport"
             class="map-viewport"
             tabindex="0"
             aria-label="六方向移動は矢印キーとPageUp・PageDownを使用します"
@@ -73,35 +109,29 @@ function keydown(event: KeyboardEvent): void {
         >
             <div class="map-plane" :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }">
                 <button
-                    v-for="item in positioned"
+                    v-for="item in visiblePositioned"
                     :key="`${item.cell.q}:${item.cell.r}`"
-                    class="hex-cell"
+                    class="map-cell"
                     :class="[`terrain-${item.cell.terrain}`, { selected: selected?.q === item.cell.q && selected?.r === item.cell.r, owned: item.cell.owner_nation_id !== null, capital: item.cell.facility === 'capital' }]"
                     :style="{ left: `${item.x}px`, top: `${item.y}px` }"
-                    :aria-label="`${item.cell.q},${item.cell.r} ${item.cell.asset.fallback_label} 所有:${item.cell.owner_name ?? 'なし'}`"
+                    :aria-label="item.cell.aria_label"
                     type="button"
                     @pointerdown.stop
                     @click="emit('select', item.cell)"
                 >
                     <img v-if="item.cell.asset.available && item.cell.asset.url" :src="item.cell.asset.url" alt="" @error="($event.currentTarget as HTMLImageElement).hidden = true">
+                    <template v-for="overlay in item.cell.overlays" :key="overlay.key">
+                        <img v-if="overlay.available && overlay.url" class="tile-overlay" :src="overlay.url" alt="">
+                    </template>
                     <span class="tile-label">{{ item.cell.facility === 'capital' ? '首' : item.cell.asset.fallback_label.slice(0, 1) }}</span>
                     <small v-if="item.cell.owner_nation_id !== null">N{{ item.cell.owner_nation_id }}</small>
                 </button>
             </div>
         </div>
-        <aside class="cell-details" aria-live="polite">
-            <h3>選択セル</h3>
-            <template v-if="selected">
-                <dl>
-                    <dt>座標</dt><dd>q={{ selected.q }}, r={{ selected.r }}</dd>
-                    <dt>地形</dt><dd>{{ selected.terrain }}</dd>
-                    <dt>施設</dt><dd>{{ selected.facility ?? 'なし' }}</dd>
-                    <dt>所有</dt><dd>{{ selected.owner_name ?? '中立' }}<span v-if="selected.owner_nation_id">（N{{ selected.owner_nation_id }}）</span></dd>
-                    <dt>人口</dt><dd>{{ selected.population.toLocaleString() }}</dd>
-                </dl>
-            </template>
-            <p v-else>セルを選択してください。</p>
+        <aside class="cell-details">
+            <CellDetails :cell="selected" />
             <p v-if="emptyChunks.length">未生成／空chunk: {{ emptyChunks.join(', ') }}</p>
+            <CommandQueuePanel :nation-id="nationId" :map-space-id="mapSpaceId" :selected="selected" />
         </aside>
     </section>
 </template>

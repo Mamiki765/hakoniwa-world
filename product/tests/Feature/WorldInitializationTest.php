@@ -35,7 +35,7 @@ class WorldInitializationTest extends TestCase
         $this->assertSame(0, MapCell::query()->where('population', '>', 0)->count());
         $this->assertSame(0, Nation::query()->count());
         $this->assertSame(0, NationCapital::query()->count());
-        $this->assertSame(['fish', 'monster_meat', 'wheat'], ResourceDefinition::query()->orderBy('key')->pluck('key')->all());
+        $this->assertSame(['fish', 'industrial_goods', 'minerals', 'monster_meat', 'wheat'], ResourceDefinition::query()->orderBy('key')->pluck('key')->all());
         $this->assertSame(2.0, ResourceDefinition::query()->where('key', 'monster_meat')->value('nutrition_per_unit'));
         $this->assertTrue(Schema::hasColumns('resource_definitions', [
             'unit', 'nutrition_per_unit', 'storable', 'tradable', 'sale_price_key', 'metadata',

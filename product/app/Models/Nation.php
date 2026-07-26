@@ -38,4 +38,16 @@ class Nation extends Model
     {
         return $this->hasMany(NationResource::class);
     }
+
+    /** @return HasOne<NationCommandQueue, $this> */
+    public function commandQueue(): HasOne
+    {
+        return $this->hasOne(NationCommandQueue::class);
+    }
+
+    /** @return HasMany<NationResourceSalePolicy, $this> */
+    public function salePolicies(): HasMany
+    {
+        return $this->hasMany(NationResourceSalePolicy::class);
+    }
 }

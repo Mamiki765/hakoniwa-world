@@ -10,19 +10,8 @@ export interface CurrentUser {
     providers: UserIdentity[];
 }
 
-export interface World {
-    id: number;
-    key: string;
-    name: string;
-    turn: number;
-}
-
-export interface MapSpace {
-    id: number;
-    world_id: number;
-    key: string;
-    name: string;
-}
+export interface World { id: number; key: string; name: string; turn: number }
+export interface MapSpace { id: number; world_id: number; key: string; name: string }
 
 export interface Nation {
     id: number;
@@ -53,17 +42,31 @@ export interface AssetDescriptor {
     fallback_style: string;
 }
 
+export interface MapCellDetail {
+    key: string;
+    label: string;
+    value: number | string;
+    unit: string | null;
+    formatted: string;
+    visibility: 'public' | 'owner';
+}
+
 export interface MapCell {
     q: number;
     r: number;
     terrain: string;
+    terrain_name: string;
     facility: string | null;
+    facility_name: string | null;
+    display_name: string;
     owner_nation_id: number | null;
     owner_name: string | null;
-    population: number;
+    details: MapCellDetail[];
     asset: AssetDescriptor;
-    version: number;
-    updated_at: string;
+    overlays: AssetDescriptor[];
+    aria_label: string;
+    version: number | string;
+    updated_at: string | null;
 }
 
 export interface MapChunk {
@@ -72,7 +75,55 @@ export interface MapChunk {
     chunk_q: number;
     chunk_r: number;
     chunk_size: number;
-    version: number;
+    version: number | string;
     state: 'generated' | 'empty';
     cells: MapCell[];
+}
+
+export interface CommandDefinition {
+    key: string;
+    name: string;
+    description: string;
+    cost_money: number;
+    execution_phase: string;
+    initial_facility_capacity: null | {
+        facility_key: string;
+        facility_scale: number;
+        capacity_people: number;
+        scale_unit_people: number;
+        initial_scale: number;
+        scale_increment: number;
+        maximum_scale: number;
+        formatted: string;
+    };
+    available: boolean;
+    unavailable_reason: string | null;
+}
+
+export interface CommandQueueItem {
+    id: number;
+    command_key: string;
+    command_name: string;
+    queue_position: number;
+    target_q: number;
+    target_r: number;
+    parameters: Record<string, unknown>;
+    status: string;
+    queued_at: string | null;
+}
+
+export interface CommandQueue {
+    version: number;
+    limit: number;
+    items: CommandQueueItem[];
+}
+
+export interface SalePolicy {
+    resource_id: number;
+    resource_key: string;
+    resource_name: string;
+    amount: number;
+    policy: 'sell_all' | 'stockpile' | 'keep_amount';
+    keep_amount: number | null;
+    version: number;
 }

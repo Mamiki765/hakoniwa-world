@@ -63,19 +63,20 @@ DOM imageをセルごとに並べる方式は初期規模では可能だが、�
 
 ## 座標と操作
 
-DB、API、ゲームルールの正本はADR-0003のsigned axial q、rである。Vueはpointy-top odd-q vertical offsetを表示専用に使い、奇数列を下へ半セルずらす。
+DB、API、ゲームルールの正本はADR-0003のsigned axial q、rである。Vueは旧作の32px正方形tileに合わせ、偶数行を右へ16pxずらすstaggered row projectionを表示専用に使う。
 
-- parity = floorMod(q, 2)
-- column = q
-- row = r + (q - floorMod(q, 2)) / 2
-- q = column
-- r = row - (column - floorMod(column, 2)) / 2
+- row = r
+- column = q + floorDiv(r + 1, 2)
+- screenX = column * 32 + (floorMod(row, 2) === 0 ? 16 : 0)
+- screenY = row * 32
+- q = column - floorDiv(row + 1, 2)
+- r = row
 
 column、row、pixel位置、配列indexはAPIへ送らない。クリック位置は共通変換moduleでaxial q、rへ戻してからcommand targetへ設定する。UI上でx、yという呼称を使う場合は、axial q、rの表示名かpixel座標かを明記し、offset座標を曖昧にx、yと呼ばない。
 
 parity、floorDiv、floorModはJavaScriptの剰余や切捨て除算へ直接依存させない。PHP側とTypeScript側で同じ正負座標fixtureを共有し、往復変換、6方向の隣接、距離、チャンク境界を一致させる。
 
-次の命令作成flowはコマンド実装前の将来契約であり、MVP縦切りでは画面・store・APIを実装しない。
+Roadmap PR2では次の命令作成flowの1から4とqueue編集UIを実装する。5の実行結果はturn runnerまで延期する。
 
 1. セルを選択し、可能な命令候補を表示する。
 2. 対象、費用見積り、予定turn、公開範囲を確認する。
@@ -114,7 +115,7 @@ MVP縦切りにはturn処理がないため、turn完了通知とWebSocketを実
 - CanvasとDOMの性能・操作性。
 - 原GIFのpixel scaling、補間無効化、high-DPI表示。
 - chunk sizeとprefetch量。
-- odd-q投影の負座標、往復変換、pixel境界のcontract test。
+- staggered row投影の負座標、往復変換、pixel境界のcontract test。
 - 霧・未発見領域を導入するか。
 - モバイルでのパンとセル選択の競合。
 - provider login・link後のredirect UX。
@@ -123,6 +124,6 @@ MVP縦切りにはturn処理がないため、turn完了通知とWebSocketを実
 
 ## MVP実装記録（2026-07-26）
 
-MVPはVue 3のDOM/CSS rendererを採用し、API client、map state、axial/odd-q projection、renderer componentを分離した。Capital周辺9 chunksだけを初期取得し、zoom、drag/pointer pan、セル選択、六方向keyboard移動、loading/error/empty chunkを扱う。
+MVPはVue 3のDOM/CSS rendererを採用し、Roadmap PR2でaxial/staggered projectionへ更新した。Capital周辺9 chunksだけを初期取得し、zoom、drag/pointer pan、セル選択、六方向keyboard移動、loading/error/empty chunkを扱う。viewport外cellはpan/zoom後の画面位置で除外し、不要なDOM nodeを生成しない。
 
-選択セルはq/r、terrain、facility、owner、populationを通常HTML textでも表示し、owner ID/名称を併記して色だけに依存しない。生成済み地上情報は公開し、霧は実装しない。Canvas置換、低zoom集約、WebSocketは計測後の後続PRとする。
+選択セルはq/r、公開terrain、公開facility、ownerとserverのdetail descriptorを通常HTML textでも表示する。居住人口、森林量、施設規模、基地経験値を別の意味として扱い、0人口を全cellへ表示しない。基地の非所有者向け表現とARIAはserverで森へ置換する。Canvas置換、低zoom集約、WebSocketは計測後の後続PRとする。

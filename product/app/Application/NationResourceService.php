@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Models\Nation;
 use App\Models\NationResource;
+use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
 use DomainException;
 
@@ -26,6 +27,16 @@ final class NationResourceService
                 'resource_definition_id' => $definition->id,
                 'amount' => $amount,
             ]);
+
+            if ($definition->tradable) {
+                NationResourceSalePolicy::query()->create([
+                    'nation_id' => $nation->id,
+                    'resource_definition_id' => $definition->id,
+                    'policy' => config('hakoniwa.ruleset.default_sale_policy', 'stockpile'),
+                    'keep_amount' => null,
+                    'version' => 1,
+                ]);
+            }
         }
     }
 

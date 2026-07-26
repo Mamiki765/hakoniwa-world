@@ -60,7 +60,7 @@
 ### A-09 rulesetのMVP境界
 
 - Status: Decided
-- Decision: 各Worldは不変の`ruleset_version_id`を参照する。MVPでは配置・初期領土に必要な最小キーだけを版管理し、turn、command、災害等のschemaは先行実装しない。
+- Decision: 各Worldは不変の`ruleset_version_id`を参照する。初期MVPは配置・初期領土だけを版管理し、Roadmap PR2のdata-preserving migrationで既存worldを新しい`roadmap-pr2-v1`へ明示的に移してcommand・施設・生産定義を追加する。既存ruleset rowを上書きしない。
 - Decision record: `docs/architecture/configuration-management.md`、`docs/architecture/target-architecture.md`
 - `chunk_size = 16`と座標方式は既存worldの互換性に関わるarchitecture invariantであり、通常のバランス設定として変更しない。
 
@@ -174,9 +174,9 @@
 
 ### B-08 初期保護
 
-- Status: Open
-- Required before: コマンド実装前
-- MVP縦切りには攻撃もturnもないため登録を妨げない。期間、対象行為、解除条件はコマンド・戦闘導入前に決める。
+- Status: Deferred
+- Required before: 攻撃command実装前
+- Roadmap PR2の7 commandは自国cellだけを対象とする国内commandで、初期保護の対象外とする。保護期間、敵対行為、解除条件は攻撃・占領command導入前に決め、今回のqueueへ暗黙の保護期間を追加しない。
 
 ## マップAPI・UI実装前に決める事項
 
@@ -190,7 +190,7 @@
 
 - Status: Decided
 - Required before: マップAPI実装前
-- Decision: MVPに霧はなく、生成済み地上セルのterrain、facility、owner、populationは公開する。OAuth・内部metadataは公開しない。
+- Decision: MVPに霧はないが、`visibility_policy=disguised`のfacilityはserver presenterが公開表現へ置換する。ミサイル基地は所有国だけに実体を返し、その他のviewerへは通常の他国森林と同じterrain=forest、facility=null、数量なしを返す。OAuth・内部metadata・秘密stateは公開しない。
 
 ### C-07 国際化
 
@@ -246,15 +246,17 @@
 
 ### A-08 コマンド件数・順序・予約
 
-- Status: Open
+- Status: Decided
 - Required before: コマンド実装前
-- 最大件数、queue順序、失敗時の扱い、数量指定、予約、繰り返しを決める。通常テーブルとして追加できる境界だけMVPで維持する。
+- Decision: 旧作と同じ上限20件、1始まりの明示positionとし、追加・全件並べ替え・取消後の左詰めをtransactionで行う。header versionによるoptimistic concurrencyとrequest keyによる重複防止を使う。登録時に資金・資源を予約せず、turn runnerが実行時に再検証する。数量・繰返しは未実装で、versioned parameters境界だけ維持する。
+- Decision record: `docs/architecture/roadmap-pr2-systems.md`
 
 ### CMD-01 箱庭諸島2＋コマンドの採否
 
-- Status: Open
+- Status: Decided
 - Required before: コマンド実装前
-- 各コマンドを継承、変更、廃止、新規設計のどれにするか、挙動を文書とテストへ抽出して決める。
+- Decision: PR2では旧作sourceで確認した整地、地ならし、埋め立て、掘削、農場建設、工場建設、採掘場建設を別々のversioned definitionとして採用する。費用と施設scaleは旧作値を維持し、実行、副作用、乱数処理はturn runnerへ延期する。
+- Decision record: `docs/architecture/roadmap-pr2-systems.md`
 
 ### B-16 settlement_seed
 
@@ -402,10 +404,10 @@
 
 ### E-03 追加資源
 
-- Status: Deferred
-- Required before: MVP後
-- catalog、balance data、型付きhandlerを追加できる境界を維持する。MVPの資源を固定カラムだけに閉じ込めない。
-- MVP baselineとして`wheat`、`fish`、`monster_meat`のfood category定義と国家残高だけを実装する。生産・消費・ledger・追加資源はDeferredのままとする。
+- Status: Decided
+- Required before: Roadmap PR2
+- catalogとbalance行を使い、`industrial_goods`と`minerals`を追加する。Nation固定columnは追加しない。農場・工場・採掘場のproduction definitionと売却方針だけを実装し、生産・消費・ledger・自動売却はturn runnerまでDeferredとする。
+- Decision record: `docs/architecture/roadmap-pr2-systems.md`
 
 ### E-04 Modifier
 

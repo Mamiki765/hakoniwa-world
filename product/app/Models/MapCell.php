@@ -20,6 +20,10 @@ use Illuminate\Support\Carbon;
  * @property int|null $facility_definition_id
  * @property int|null $owner_nation_id
  * @property int $population
+ * @property int|null $terrain_quantity
+ * @property int|null $facility_scale
+ * @property int|null $facility_experience
+ * @property string|null $facility_operational_state
  * @property string $state
  * @property int $version
  * @property Carbon|null $updated_at
@@ -31,8 +35,18 @@ class MapCell extends Model
 {
     protected $fillable = [
         'map_space_id', 'map_chunk_id', 'q', 'r', 'chunk_q', 'chunk_r', 'local_q', 'local_r',
-        'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population', 'state', 'version',
+        'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population', 'terrain_quantity',
+        'facility_scale', 'facility_experience', 'facility_operational_state', 'state', 'version',
     ];
+
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'population' => 'integer', 'terrain_quantity' => 'integer', 'facility_scale' => 'integer',
+            'facility_experience' => 'integer', 'version' => 'integer',
+        ];
+    }
 
     /** @return BelongsTo<TerrainDefinition, $this> */
     public function terrain(): BelongsTo

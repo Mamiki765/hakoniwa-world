@@ -15,7 +15,7 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\World;
-use App\Services\AssetManifestResolver;
+use App\Services\MapCellPresenter;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,34 +39,32 @@ class ApiController extends Controller
         return MapSpaceResource::collection($world->mapSpaces()->orderBy('id')->get());
     }
 
-    public function chunk(MapSpace $mapSpace, int $chunkQ, int $chunkR, AssetManifestResolver $assets): MapChunkResource
+    public function chunk(Request $request, MapSpace $mapSpace, int $chunkQ, int $chunkR, MapCellPresenter $presenter): MapChunkResource
     {
+        $viewerNationId = NationMembership::query()
+            ->where('user_id', $request->user()->id)
+            ->where('world_id', $mapSpace->world_id)
+            ->value('nation_id');
+        $rulesetVersionId = (int) $mapSpace->world()->value('ruleset_version_id');
         $chunk = $mapSpace->chunks()->where('chunk_q', $chunkQ)->where('chunk_r', $chunkR)->first();
         $cells = MapCell::query()
             ->where('map_space_id', $mapSpace->id)->where('chunk_q', $chunkQ)->where('chunk_r', $chunkR)
             ->with(['terrain', 'facility', 'ownerNation:id,name'])->orderBy('r')->orderBy('q')->get();
 
+        $presentedCells = $cells->map(fn (MapCell $cell): array => $presenter->present(
+            $cell,
+            $viewerNationId === null ? null : (int) $viewerNationId,
+            $rulesetVersionId,
+        ))->values();
+        $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
+
         return new MapChunkResource([
             'world_id' => $mapSpace->world_id, 'map_space_id' => $mapSpace->id,
             'chunk_q' => $chunkQ, 'chunk_r' => $chunkR,
             'chunk_size' => config('hakoniwa.ruleset.chunk_size'),
-            'version' => $chunk === null ? 0 : $chunk->version,
+            'version' => $chunk === null ? 'empty' : $representationVersion,
             'state' => $chunk === null ? 'empty' : 'generated',
-            'cells' => $cells->map(function (MapCell $cell) use ($assets): array {
-                $definition = $cell->facility ?? $cell->terrain;
-
-                return [
-                    'q' => $cell->q, 'r' => $cell->r,
-                    'terrain' => $cell->terrain->key,
-                    'facility' => $cell->facility?->key,
-                    'owner_nation_id' => $cell->owner_nation_id,
-                    'owner_name' => $cell->ownerNation?->name,
-                    'population' => $cell->population,
-                    'asset' => $assets->resolve($definition->asset_key, $definition->name),
-                    'version' => $cell->version,
-                    'updated_at' => $cell->updated_at?->toIso8601String(),
-                ];
-            })->values(),
+            'cells' => $presentedCells,
         ]);
     }
 
