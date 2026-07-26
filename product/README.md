@@ -13,7 +13,7 @@ Laravel API、OAuth callback、Vue 3 UI、世界・島生成、command queue、�
 - `app/Services/MapCellPresenter.php`: viewer別の公開cell表現
 - `config/hakoniwa.php`: versioned rulesetのcommand・施設・生産定義
 
-外部tileは`HAKONIWA_TILE_ASSET_PATH`のread-only directoryへ置き、`HAKONIWA_TILE_ASSET_BASE_URL`から配信します。Gitやimageへ画像を含めず、欠落時はCSS fallbackを使います。
+外部tileはroot `.env`で指定した`HAKONIWA_TILE_ASSET_PATH`のread-only directoryへ置き、`HAKONIWA_TILE_ASSET_BASE_URL`から配信します。root `compose.yml`は新変数をcontainerへ転送します。旧`HAKONIWA_ORIGINAL_ASSET_*`は既存deploy向けfallbackだけに使用します。Gitやimageへ画像を含めず、欠落時はCSS fallbackを使います。
 
 ホストで依存関係を用意して検証する場合:
 

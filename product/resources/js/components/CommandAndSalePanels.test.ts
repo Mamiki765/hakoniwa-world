@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CommandQueue, MapCell } from '../types';
+import type { CommandDefinition, CommandQueue, MapCell } from '../types';
 import CommandQueuePanel from './CommandQueuePanel.vue';
 import SalePolicyPanel from './SalePolicyPanel.vue';
 
@@ -15,6 +15,27 @@ const item = (id: number, position: number) => ({
     id, command_key: id === 1 ? 'land_clear' : 'build_farm', command_name: id === 1 ? '整地' : '農場建設',
     queue_position: position, target_q: -4, target_r: 7, parameters: {}, status: 'queued', queued_at: null,
 });
+
+const commandDefinition = (key: string, name: string): CommandDefinition => ({
+    key, name, description: `${name}の説明`, cost_money: 5, execution_phase: 'terrain',
+    initial_facility_capacity: null, available: true, unavailable_reason: null,
+});
+
+const jsonResponse = (data: unknown, status = 200) => new Response(JSON.stringify({ data }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void } {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+
+    return { promise, resolve, reject };
+}
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -77,6 +98,113 @@ describe('command queue panel', () => {
         const cancellation = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE');
         expect(String(cancellation?.[0])).toContain('/command-queue/2');
         expect(JSON.parse(String(cancellation?.[1]?.body))).toEqual({ expected_version: 4 });
+    });
+
+    it('ignores a successful stale refresh and mutates with the latest cell and queue version', async () => {
+        const definitionA = deferred<Response>();
+        const queueA = deferred<Response>();
+        const definitionB = deferred<Response>();
+        const queueB = deferred<Response>();
+        let queueGets = 0;
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+            const path = String(input);
+            if (init?.method === 'POST') {
+                return Promise.resolve(jsonResponse({
+                    queue: { version: 10, limit: 20, items: [item(20, 1)] },
+                    message: 'Bを予約しました。',
+                }, 201));
+            }
+            if (path.includes('command-definitions')) {
+                return path.includes('target_q=-4') ? definitionA.promise : definitionB.promise;
+            }
+
+            queueGets++;
+            return queueGets === 1 ? queueA.promise : queueB.promise;
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        const selectedB = { ...selected, q: 8, r: 9, aria_label: 'q 8 r 9 平地 所有 操作国' };
+        await wrapper.setProps({ selected: selectedB });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+        definitionB.resolve(jsonResponse([commandDefinition('build_factory', 'Bの工場建設')]));
+        queueB.resolve(jsonResponse({ version: 9, limit: 20, items: [item(20, 1)] }));
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('Bの工場建設');
+        expect(wrapper.text()).not.toContain('Aの整地');
+        expect(wrapper.text()).toContain('予約 1/20');
+
+        definitionA.resolve(jsonResponse([commandDefinition('land_clear', 'Aの整地')]));
+        queueA.resolve(jsonResponse({ version: 2, limit: 20, items: [] }));
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('Bの工場建設');
+        expect(wrapper.text()).not.toContain('Aの整地');
+        expect(wrapper.text()).toContain('予約 1/20');
+        await wrapper.find('.command-grid button').trigger('click');
+        await flushPromises();
+
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        const body = JSON.parse(String(post?.[1]?.body)) as Record<string, unknown>;
+        expect(body).toMatchObject({ command_key: 'build_factory', target_q: 8, target_r: 9, expected_version: 9 });
+        expect(wrapper.text()).not.toContain('A stale');
+    });
+
+    it('keeps the latest refresh busy and hides AbortError from the superseded refresh', async () => {
+        const definitionB = deferred<Response>();
+        const queueB = deferred<Response>();
+        let queueGets = 0;
+        const abortingResponse = (signal: AbortSignal | null | undefined) => new Promise<Response>((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(new DOMException('A request aborted', 'AbortError')), { once: true });
+        });
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+            if (String(input).includes('command-definitions')) {
+                return String(input).includes('target_q=-4') ? abortingResponse(init?.signal) : definitionB.promise;
+            }
+            queueGets++;
+            return queueGets === 1 ? abortingResponse(init?.signal) : queueB.promise;
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        await wrapper.setProps({ selected: { ...selected, q: 8, r: 9 } });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+        await flushPromises();
+
+        expect(wrapper.find('.command-panel').attributes('aria-busy')).toBe('true');
+        expect(wrapper.text()).not.toContain('A request aborted');
+        definitionB.resolve(jsonResponse([commandDefinition('build_mine', 'Bの採掘場建設')]));
+        queueB.resolve(jsonResponse({ version: 11, limit: 20, items: [] }));
+        await flushPromises();
+
+        expect(wrapper.find('.command-panel').attributes('aria-busy')).toBe('false');
+        expect(wrapper.text()).toContain('Bの採掘場建設');
+        expect(wrapper.text()).not.toContain('A request aborted');
+    });
+
+    it('does not show AbortError and aborts the active refresh when unmounted', async () => {
+        const activeSignals: AbortSignal[] = [];
+        const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+            const signal = init?.signal;
+            if (signal !== null && signal !== undefined) activeSignals.push(signal);
+
+            return new Promise<Response>((_resolve, reject) => {
+                signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')), { once: true });
+            });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        wrapper.unmount();
+        await flushPromises();
+
+        expect(activeSignals).toHaveLength(2);
+        expect(activeSignals.every((signal) => signal.aborted)).toBe(true);
+        expect(document.body.textContent).not.toContain('request aborted');
     });
 });
 

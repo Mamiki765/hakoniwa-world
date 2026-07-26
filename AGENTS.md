@@ -49,17 +49,11 @@ All newly created source code, documentation, database text, APIs, and user inpu
 
 ## Current phase
 
-Do not implement the game yet.
+Game implementation under `product/` has been explicitly approved by the repository owner.
 
-The current phase is limited to:
+The shared-world MVP is being implemented through roadmap-scoped pull requests. The current approval includes the game state, commands, turn processing, economic loop, and the supporting API, UI, persistence, tests, documentation, and operations needed by those roadmap slices.
 
-1. arranging the workspace
-2. recording provenance and licensing information
-3. inspecting both references separately
-4. documenting requirements and architecture
-5. listing unresolved design questions
-
-Wait for explicit approval before implementing files under `product/`.
+Keep each implementation within its approved roadmap scope. Do not implement a `Deferred` item early without separate explicit approval. The design gates in `docs/open-questions.md` remain in force: when an `Open` item reaches its `Required before` gate, report the options and obtain a decision instead of deciding it implicitly or implementing around it.
 
 ## Design gates
 

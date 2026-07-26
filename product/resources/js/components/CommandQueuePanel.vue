@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { CommandDefinition, CommandQueue, MapCell } from '../types';
 
@@ -11,9 +11,14 @@ const props = defineProps<{
 
 const definitions = ref<CommandDefinition[]>([]);
 const queue = ref<CommandQueue>({ version: 1, limit: 20, items: [] });
-const busy = ref(false);
+const refreshing = ref(false);
+const mutating = ref(false);
+const busy = computed(() => refreshing.value || mutating.value);
 const message = ref('');
-const basePath = () => `/api/v1/nations/${props.nationId}/map-spaces/${props.mapSpaceId}`;
+let refreshGeneration = 0;
+let activeRefreshController: AbortController | null = null;
+
+const basePath = (nationId = props.nationId, mapSpaceId = props.mapSpaceId) => `/api/v1/nations/${nationId}/map-spaces/${mapSpaceId}`;
 
 watch(
     () => [props.selected?.q, props.selected?.r, props.nationId, props.mapSpaceId],
@@ -22,47 +27,68 @@ watch(
 );
 
 async function refresh(): Promise<void> {
-    busy.value = true;
+    const generation = ++refreshGeneration;
+    activeRefreshController?.abort();
+    const controller = new AbortController();
+    activeRefreshController = controller;
+    const selected = props.selected === null ? null : { q: props.selected.q, r: props.selected.r };
+    const path = basePath(props.nationId, props.mapSpaceId);
+    const target = selected === null ? '' : `?target_q=${selected.q}&target_r=${selected.r}`;
+
+    refreshing.value = true;
     message.value = '';
-    const target = props.selected === null ? '' : `?target_q=${props.selected.q}&target_r=${props.selected.r}`;
 
     try {
-        [definitions.value, queue.value] = await Promise.all([
-            api<CommandDefinition[]>(`${basePath()}/command-definitions${target}`),
-            api<CommandQueue>(`${basePath()}/command-queue`),
+        const [nextDefinitions, nextQueue] = await Promise.all([
+            api<CommandDefinition[]>(`${path}/command-definitions${target}`, { signal: controller.signal }),
+            api<CommandQueue>(`${path}/command-queue`, { signal: controller.signal }),
         ]);
+
+        if (generation !== refreshGeneration) return;
+        definitions.value = nextDefinitions;
+        queue.value = nextQueue;
     } catch (error) {
+        if (generation !== refreshGeneration || isAbortError(error)) return;
         message.value = error instanceof Error ? error.message : 'コマンド情報を取得できませんでした。';
     } finally {
-        busy.value = false;
+        if (generation === refreshGeneration) {
+            if (activeRefreshController === controller) activeRefreshController = null;
+            refreshing.value = false;
+        }
     }
 }
 
 async function addCommand(definition: CommandDefinition): Promise<void> {
     if (props.selected === null || !definition.available) return;
-    busy.value = true;
+    const generation = refreshGeneration;
+    const selected = { q: props.selected.q, r: props.selected.r };
+    const path = basePath(props.nationId, props.mapSpaceId);
+    const expectedVersion = queue.value.version;
+    mutating.value = true;
 
     try {
-        const result = await api<{ queue: CommandQueue; message: string }>(`${basePath()}/command-queue`, {
+        const result = await api<{ queue: CommandQueue; message: string }>(`${path}/command-queue`, {
             method: 'POST',
             body: JSON.stringify({
                 command_key: definition.key,
-                target_q: props.selected.q,
-                target_r: props.selected.r,
+                target_q: selected.q,
+                target_r: selected.r,
                 request_key: crypto.randomUUID(),
-                expected_version: queue.value.version,
+                expected_version: expectedVersion,
                 parameters: {},
             }),
         });
+        if (generation !== refreshGeneration) return;
         queue.value = result.queue;
         message.value = result.message;
     } catch (error) {
+        if (generation !== refreshGeneration || isAbortError(error)) return;
         message.value = error instanceof ApiError && error.status === 409
             ? 'キューが更新されています。再読み込みしました。'
             : error instanceof Error ? error.message : 'コマンドを追加できませんでした。';
         if (error instanceof ApiError && error.status === 409) await refresh();
     } finally {
-        busy.value = false;
+        mutating.value = false;
     }
 }
 
@@ -83,21 +109,35 @@ async function cancel(itemId: number): Promise<void> {
 }
 
 async function mutateQueue(method: 'PUT' | 'DELETE', path: string, body: object): Promise<void> {
-    busy.value = true;
+    const generation = refreshGeneration;
+    mutating.value = true;
     message.value = '';
     try {
-        queue.value = await api<CommandQueue>(path, { method, body: JSON.stringify(body) });
+        const nextQueue = await api<CommandQueue>(path, { method, body: JSON.stringify(body) });
+        if (generation !== refreshGeneration) return;
+        queue.value = nextQueue;
     } catch (error) {
+        if (generation !== refreshGeneration || isAbortError(error)) return;
         message.value = error instanceof Error ? error.message : 'キューを更新できませんでした。';
         if (error instanceof ApiError && error.status === 409) await refresh();
     } finally {
-        busy.value = false;
+        mutating.value = false;
     }
 }
+
+function isAbortError(error: unknown): boolean {
+    return error instanceof Error && error.name === 'AbortError';
+}
+
+onBeforeUnmount(() => {
+    refreshGeneration++;
+    activeRefreshController?.abort();
+    activeRefreshController = null;
+});
 </script>
 
 <template>
-    <section class="command-panel" aria-label="開発コマンド">
+    <section class="command-panel" aria-label="開発コマンド" :aria-busy="busy">
         <h3>開発コマンド</h3>
         <p class="queue-notice">commandはqueueへ登録されただけで、まだ実行されていません。登録時点では資金・地形・施設は変化しません。</p>
         <p v-if="message" class="compact-message" role="status">{{ message }}</p>
