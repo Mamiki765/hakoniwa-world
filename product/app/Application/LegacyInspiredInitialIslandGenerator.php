@@ -117,7 +117,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         $mountain->facility_experience = null;
         $mountain->facility_operational_state = null;
 
-        $base = $this->cell($cells, $placementCells[$cursor]);
+        $base = $this->cell($cells, $placementCells[$cursor++]);
         $base->terrain_definition_id = $terrainIds['plain'];
         $base->terrain->key = 'plain';
         $base->facility_definition_id = $facilityIds['missile_base'];
@@ -126,6 +126,16 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         $base->facility_scale = null;
         $base->facility_experience = $rules['facility_definitions']['missile_base']['initial_experience'];
         $base->facility_operational_state = 'operational';
+
+        $starterPlain = $this->cell($cells, $placementCells[$cursor]);
+        $starterPlain->terrain_definition_id = $terrainIds['plain'];
+        $starterPlain->terrain->key = 'plain';
+        $starterPlain->facility_definition_id = null;
+        $starterPlain->population = 0;
+        $starterPlain->terrain_quantity = null;
+        $starterPlain->facility_scale = null;
+        $starterPlain->facility_experience = null;
+        $starterPlain->facility_operational_state = null;
 
         $capitalCell = $this->cell($cells, $center);
         $capitalCell->terrain_definition_id = $terrainIds['plain'];

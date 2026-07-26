@@ -45,6 +45,11 @@ class NationCreationTest extends TestCase
         $this->assertSame(1, $this->facilityCount('missile_base'));
         $this->assertSame(1, $this->facilityCount('capital'));
         $this->assertSame(19, MapCell::query()->where('owner_nation_id', $nation->id)->count());
+        $this->assertGreaterThanOrEqual(1, MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->count());
         $this->assertSame('sea', MapCell::query()->where('x', 20)->where('y', 20)->firstOrFail()->terrain()->value('key'));
     }
 

@@ -110,7 +110,10 @@ class RoadmapPr2StateTest extends TestCase
         $this->assertSame(5, $missileRules->launchCapacity($definition, 200));
 
         $ownerResponse = $this->actingAs($owner)->getJson($this->chunkUrl($mapSpace, $base));
-        $ownerResponse->assertOk()->assertHeader('Cache-Control', 'private, no-store, max-age=0')->assertHeader('Vary', 'Cookie');
+        $ownerResponse->assertOk()->assertHeader('Vary', 'Cookie');
+        $cacheControl = explode(', ', (string) $ownerResponse->headers->get('Cache-Control'));
+        sort($cacheControl);
+        $this->assertSame(['max-age=0', 'no-store', 'private'], $cacheControl);
         $ownerCell = $this->cellFromResponse($ownerResponse->json('data.cells'), $base);
         $ownerDetails = collect($ownerCell['details'])->keyBy('key');
         $this->assertSame('missile_base', $ownerCell['facility']);
