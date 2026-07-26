@@ -1,0 +1,27 @@
+# Local third-party reference implementations and assets
+/_references/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!product/.env.example
+*.key
+*.pem
+*.crt
+
+# Temporary output created while inspecting legacy references
+/tmp/reference-analysis/
+/var/reference-build/
+
+# Original archives and redistributable-restricted assets
+*.gif
+*.tar
+*.tgz
+*.tar.gz
+*.zip
+hakogif.zip
+
+# Installed dependencies
+node_modules/
+vendor/
