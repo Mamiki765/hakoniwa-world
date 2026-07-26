@@ -16,7 +16,7 @@ services:
       retries: 20
       start_period: 10s
     volumes:
-      - hakoniwa_postgres_data:/var/lib/postgresql/data
+      - hakoniwa_postgres_data:/var/lib/postgresql
       - ./product/docker/postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - hakoniwa
