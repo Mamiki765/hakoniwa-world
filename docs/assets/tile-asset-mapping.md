@@ -9,13 +9,13 @@
 ```json
 {
   "id": "facility.farm",
-  "asset_key": "hakoniwa_original.facility.farm"
+  "asset_key": "tile.farm"
 }
 ```
 
 ```json
 {
-  "hakoniwa_original.facility.farm": "land7.gif"
+  "tile.farm": "land7.gif"
 }
 ```
 
@@ -94,17 +94,17 @@
 
 ## 実行時配置
 
-候補のコンテナ内読取先は次とする。Docker設計時までは確定値ではない。
+Roadmap PR2で採用したコンテナ内読取先は次とする。
 
 ```text
-/srv/hakoniwa-assets/original
+/srv/hakoniwa-assets/tiles
 ```
 
 設定候補：
 
 ```text
-HAKONIWA_ORIGINAL_ASSET_PATH=/srv/hakoniwa-assets/original
-HAKONIWA_ORIGINAL_ASSET_BASE_URL=/assets/hakoniwa-original
+HAKONIWA_TILE_ASSET_PATH=/srv/hakoniwa-assets/tiles
+HAKONIWA_TILE_ASSET_BASE_URL=/assets/hakoniwa-tiles
 ```
 
 ホスト側はGit外の保有ディレクトリを指定し、コンテナへread-only bind mountする。Composeへ反映する段階では概念上、次の契約にする。
@@ -112,19 +112,20 @@ HAKONIWA_ORIGINAL_ASSET_BASE_URL=/assets/hakoniwa-original
 ```yaml
 volumes:
   - type: bind
-    source: ${HAKONIWA_ORIGINAL_ASSET_HOST_PATH}
-    target: /srv/hakoniwa-assets/original
+    source: ${HAKONIWA_TILE_ASSET_HOST_PATH}
+    target: /srv/hakoniwa-assets/tiles
     read_only: true
 ```
 
-現行のComposeは今回は変更しない。Windowsの開発ホスト、Linux本番ホストともホスト絶対パスは環境変数またはGit外のoverrideで与え、リポジトリへ個人パスを書かない。
+Windowsの開発ホスト、Linux本番ホストともホスト絶対パスはGit外のCompose overrideで与え、リポジトリへ個人パスを書かない。旧`HAKONIWA_ORIGINAL_ASSET_*`は移行互換のfallbackとして読めるが、新規設定は`HAKONIWA_TILE_ASSET_*`を使う。
 
 ### 配信方式の要件
 
 - web serverのaliasまたはアプリの制限付きasset endpointを候補とし、Docker設計時に選ぶ。
-- URLは`HAKONIWA_ORIGINAL_ASSET_BASE_URL`とマニフェストbasenameから生成する。filesystem pathをAPIへ返さない。
+- URLは`HAKONIWA_TILE_ASSET_BASE_URL`とマニフェストbasenameから生成する。filesystem pathをAPIへ返さない。
 - 許可された58ファイル以外を列挙・取得できないようにする。
-- `Content-Type: image/gif`、nosniff、適切なCSP、cache方針を設定する。
+- GIF、PNG、WebPの実画像MIME、nosniff、適切なCSP、cache方針を設定する。
+- URLへ`?v=<mtime>-<size>`を付ける。同名ファイルを置換するとURLが変わり、image rebuild、DB更新、frontend buildなしでbrowser reload時に取得し直せる。
 - 原名・原形式のまま配信し、build時の最適化、sprite化、再encodeはしない。
 - DBのJSON、APIレスポンス、manifestへbase64を保存しない。
 

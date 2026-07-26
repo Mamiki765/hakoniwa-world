@@ -1,6 +1,6 @@
 # Hakoniwa World product
 
-Laravel API、OAuth callback、Vue 3 UI、世界・島生成domain serviceを含むMVPアプリケーションです。repository rootの `compose.yml` から本番相当imageをbuildします。
+Laravel API、OAuth callback、Vue 3 UI、世界・島生成、command queue、施設stateを含むアプリケーションです。repository rootの `compose.yml` から本番相当imageをbuildします。
 
 主要な入口:
 
@@ -9,6 +9,11 @@ Laravel API、OAuth callback、Vue 3 UI、世界・島生成domain serviceを含
 - `resources/js/app.ts`: Vue entrypoint
 - `app/Application`: 世界生成、国家作成、配置、資源初期化
 - `app/Domain/Hex`: signed axial座標とchunk計算
+- `app/Application/CommandQueueService.php`: 未実行commandの予約・並べ替え・取消
+- `app/Services/MapCellPresenter.php`: viewer別の公開cell表現
+- `config/hakoniwa.php`: versioned rulesetのcommand・施設・生産定義
+
+外部tileは`HAKONIWA_TILE_ASSET_PATH`のread-only directoryへ置き、`HAKONIWA_TILE_ASSET_BASE_URL`から配信します。Gitやimageへ画像を含めず、欠落時はCSS fallbackを使います。
 
 ホストで依存関係を用意して検証する場合:
 

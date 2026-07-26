@@ -35,21 +35,19 @@ distance = (abs(dq) + abs(dr) + abs(ds)) / 2
 
 ## UI Projection
 
-Vue等で矩形状に描画するときだけ、pointy-top odd-q vertical offsetを使う。奇数列を下へ半セルずらす。offsetのcolumn、rowは表示投影であり、API request、command payload、DBには保存しない。
+Vue等で矩形状に描画するときだけ、旧作の32px正方形tileに合わせたstaggered row projectionを使う。偶数行を右へ16pxずらす。offsetのcolumn、row、pixel位置は表示投影であり、API request、command payload、DBには保存しない。
 
-parityは言語の剰余演算へ直接依存せず、floorMod(q, 2)で求める。
+axialから表示offsetへの変換:
 
-axialからodd-q表示への変換:
+- row = r
+- column = q + floorDiv(r + 1, 2)
 
-- column = q
-- row = r + (q - floorMod(q, 2)) / 2
+表示offsetからaxialへの逆変換:
 
-odd-q表示からaxialへの逆変換:
+- q = column - floorDiv(row + 1, 2)
+- r = row
 
-- q = column
-- r = row - (column - floorMod(column, 2)) / 2
-
-この式は標準的なodd-q変換と一致する。floorModを使うことで、負の奇数列でもparityは1となる。
+pixel位置は`x = column * 32 + (floorMod(row, 2) == 0 ? 16 : 0)`、`y = row * 32`とする。floorDivとfloorModを使うことで負の行でも配置が反転しない。
 
 ### 変換テスト例
 
@@ -57,11 +55,11 @@ odd-q表示からaxialへの逆変換:
 |---:|---:|---:|---:|---:|---:|
 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 1 | 0 | 1 | 0 | 1 | 0 |
-| 2 | 0 | 2 | 1 | 2 | 0 |
-| -1 | 0 | -1 | -1 | -1 | 0 |
-| -2 | 0 | -2 | -1 | -2 | 0 |
-| -1 | 1 | -1 | 0 | -1 | 1 |
-| 3 | -2 | 3 | -1 | 3 | -2 |
+| 2 | 0 | 2 | 0 | 2 | 0 |
+| -1 | 0 | -1 | 0 | -1 | 0 |
+| -2 | 0 | -2 | 0 | -2 | 0 |
+| -1 | 1 | 0 | 1 | -1 | 1 |
+| 3 | -2 | 2 | -2 | 3 | -2 |
 
 PHP側とTypeScript側は同じ表をcontract testとして共有する。画面上でx、yという表示名を使う場合でも、それがaxial q、rの別名かpixel座標かをUI文言で明示し、offset座標をx、yと呼ばない。
 
@@ -96,7 +94,7 @@ MVPの地上map_spaceは`size = 16`を採用する。これはDB、API、cache k
 
 初期60×60はq=-30..29、r=-30..29を採用する。q=0..59、r=0..59案は原点が初期範囲の隅となり、登録探索、運用表示、四方向拡張の説明に偏りが出るため採用しない。
 
-60は偶数なので完全な点対称にはならず、範囲の中心は(-0.5, -0.5)である。それでも原点を含み、正負方向をほぼ均等に持つ。登録地点探索は原点固定ではなく、現行生成境界、既存首都距離、候補scoreを使うため不利益はない。UIは絶対q、rをodd-qへ投影するため、負の初期境界を特別扱いしない。
+60は偶数なので完全な点対称にはならず、範囲の中心は(-0.5, -0.5)である。それでも原点を含み、正負方向をほぼ均等に持つ。登録地点探索は原点固定ではなく、現行生成境界、既存首都距離、候補scoreを使うため不利益はない。UIは絶対q、rをstaggered rowへ投影するため、負の初期境界を特別扱いしない。
 
 論理上の地上map_spaceには固定座標上限を設けない。初期生成範囲と、座標型の論理範囲は別概念である。
 
@@ -115,7 +113,7 @@ MVPの地上map_spaceは`size = 16`を採用する。これはDB、API、cache k
 - chunkCoordinate(chunkSize)
 - localCoordinate(chunkSize)
 
-領土、ミサイル、災害、怪獣、登録、UIが独自の隣接・距離・odd-q・チャンク式を持つことを禁止する。PHPとTypeScriptに同等実装を持つ場合も、同じfixtureとproperty testで一致を検証する。
+領土、ミサイル、災害、怪獣、登録、UIが独自の隣接・距離・表示投影・チャンク式を持つことを禁止する。PHPとTypeScriptに同等実装を持つ場合も、同じfixtureとproperty testで一致を検証する。
 
 ## Rejected
 
@@ -141,7 +139,7 @@ map_chunksのversion、checksum、更新turnはキャッシュ無効化、変更
 ## 影響
 
 - DBとAPIの座標名はq、r、chunk_q、chunk_r、local_q、local_rになる。
-- UIは受信したq、rをodd-qへ投影し、表示投影をserverへ送らない。
+- UIは受信したq、rをstaggered rowへ投影し、表示投影をserverへ送らない。
 - 初期生成・登録・攻撃・災害・領土はHexCoordinateを共有する。
 - 負座標とチャンク境界のcontract testが実装前提になる。
 - 既存設計文書のx、y正本案は本ADRで置き換える。
