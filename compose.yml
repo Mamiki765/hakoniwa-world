@@ -1,0 +1,73 @@
+name: hakoniwa-world
+
+services:
+  hakoniwa-postgres:
+    image: postgres:18.4-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${HAKONIWA_POSTGRES_DB:-hakoniwa}
+      POSTGRES_USER: ${HAKONIWA_POSTGRES_USER:-hakoniwa}
+      POSTGRES_PASSWORD: ${HAKONIWA_POSTGRES_PASSWORD:?Set HAKONIWA_POSTGRES_PASSWORD in the root .env file}
+      TZ: ${TZ:-Asia/Tokyo}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - hakoniwa_postgres_data:/var/lib/postgresql/data
+      - ./product/docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - hakoniwa
+
+  hakoniwa-web:
+    build:
+      context: ./product
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      hakoniwa-postgres:
+        condition: service_healthy
+    environment:
+      APP_NAME: ${APP_NAME:-Hakoniwa World}
+      APP_ENV: ${APP_ENV:-local}
+      APP_KEY: ${APP_KEY:?Generate APP_KEY and set it in the root .env file}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://127.0.0.1:8080}
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: pgsql
+      DB_HOST: hakoniwa-postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${HAKONIWA_POSTGRES_DB:-hakoniwa}
+      DB_USERNAME: ${HAKONIWA_POSTGRES_USER:-hakoniwa}
+      DB_PASSWORD: ${HAKONIWA_POSTGRES_PASSWORD:?Set HAKONIWA_POSTGRES_PASSWORD in the root .env file}
+      SESSION_DRIVER: database
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-http://127.0.0.1:8080/auth/discord/callback}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://127.0.0.1:8080/auth/google/callback}
+      HAKONIWA_ORIGINAL_ASSET_BASE_URL: ${HAKONIWA_ORIGINAL_ASSET_BASE_URL:-/assets/hakoniwa-original}
+      HAKONIWA_ORIGINAL_ASSET_PATH: ${HAKONIWA_ORIGINAL_ASSET_PATH:-/srv/hakoniwa-assets/original}
+      TZ: ${TZ:-Asia/Tokyo}
+    ports:
+      - "127.0.0.1:${HAKONIWA_WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1/up"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - hakoniwa
+
+volumes:
+  hakoniwa_postgres_data:
+    name: hakoniwa_postgres_data
+
+networks:
+  hakoniwa:
+    name: hakoniwa

@@ -4,7 +4,7 @@
 
 本番候補サーバーには複数の既存serviceが稼働している。箱庭を将来追加するときの分離原則だけを公開可能な形で記録し、実際のCompose、credential、host path、既存serviceの内部設定は本repositoryへ収録しない。
 
-本書は将来構成の前提であり、現在のMVP実装や本番Compose変更を承認するものではない。
+本書は将来の本番統合前提を示す。repository単体のMVP Composeは実装済みだが、既存本番Composeの変更は承認しない。
 
 ## 既存環境との境界
 
@@ -39,4 +39,4 @@ Web request内でturnを直接実行しない。Mariachang等への通知連携�
 
 ## 統合時期
 
-実際のCompose統合、reverse proxy設定、network名、volume、secret、backup、monitoringはMVP完成後に別の設計判断と運用者承認を経て行う。現段階ではservice、container、Compose定義を作成・変更しない。
+repository rootにはローカル検証用`compose.yml`を置き、`127.0.0.1:8080`だけへbindする。実際の本番Compose統合、reverse proxy設定、network名、host volume、secret、継続backup、monitoringは別の設計判断と運用者承認を経て行う。既存OCI Composeは今回変更していない。

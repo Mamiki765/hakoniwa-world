@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.git
+.github
+node_modules
+vendor
+public/build
+storage/logs/*
+*.gif
+*.tar
+*.tgz
+*.zip

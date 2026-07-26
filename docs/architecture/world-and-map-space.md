@@ -129,3 +129,9 @@ APIは配列添字やoffset座標から正本座標を推測させず、各セ�
 - Status: Open / Required before: マップAPI実装前 — 未発見領域と非公開属性の応答契約。
 - Status: Open / Required before: 国家作成実装前 — 初期Territoryへ水域・建設不能地形を含めるか。
 - Status: Deferred / Required before: MVP後 — 領海、地下・地上間移動、宇宙のcoordinate system。
+
+## MVP実装記録（2026-07-26）
+
+`php artisan hakoniwa:world:init`はWorldとsurface MapSpaceをtransaction内で冪等作成し、`q=-30..29`、`r=-30..29`の3,600セルを全て`sea`、owner/facilityなし、population 0で生成する。generator ID、version、seedと完了状態は`world_generation_runs`へ記録する。世界初期化はNation、Capital、Islandを作らない。
+
+新しい範囲も先に海として生成し、その後の国家登録が`InitialIslandGenerator`を呼ぶ境界を維持する。本格的な自動拡張方向・最大量は未決定のままMVP後へ送る。

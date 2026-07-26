@@ -142,4 +142,8 @@ Laravel
 5. ゲーム要素: 地形、施設、収支、災害、攻撃、国境。
 6. 将来拡張: 資源、研究、熟練度、item、地下・宇宙。
 
-各段階の開始には別途承認が必要であり、本Phaseでは文書化までとする。
+## MVP実装記録（2026-07-26）
+
+最初の縦切りは`product/`へ実装した。PHP 8.5.8、Laravel 13.22.0、Vue 3.5.40、TypeScript 6.0.2、Node.js 24.18.0 LTS、PostgreSQL 18.4を採用する。productionはmulti-stage buildでVueをcompileし、Apache + PHPの単一`hakoniwa-web` serviceから同一origin配信する。document rootは`public/`であり、`artisan serve`は使用しない。
+
+MVPのapplication service境界は`OceanWorldGenerator`、`CapitalPlacementService`、`InitialIslandGenerator`、`NationCreationService`、`NationResourceService`、`AssetManifestResolver`である。command、turn、worker、schedulerは追加していない。同じapplication imageを別commandで起動できるため、後続PRでworker/scheduler serviceを追加できる。

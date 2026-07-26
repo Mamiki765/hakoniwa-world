@@ -205,3 +205,9 @@ package選定にかかわらず、次を必須とする。
 - User merge。
 - identity解除UI。
 - password、passkey、追加provider。
+
+## MVP実装記録（2026-07-26）
+
+Laravel Socialite 5.29.0とSocialiteProviders/Discord 4.2.0を採用した。Discordは`identify`、Googleは`openid profile`だけを要求する。OAuth stateを有効のまま使用し、callback後にsession IDを再生成する。VueとLaravelは同一originで、Laravel sessionとCSRFを用いる。
+
+`users`はゲーム内User、`auth_identities`は外部identityであり、`(provider, provider_user_id)`と`(user_id, provider)`を一意にする。tokenとprovider emailは保存しない。loginとlinkの意図はsessionで分け、linkはログイン済みUserにだけ許可する。別々に作成済みのUser mergeとidentity解除はMVP外である。

@@ -175,3 +175,9 @@ dormant_frozen、dormant_contestable、sunken_archivedでは自動発展を停�
 - Status: Open / Required before: ターン処理実装前 — settlement_seedの発生率、最小村規模、頻度。
 - Status: Open / Required before: コマンド実装前 — 緊急農場のcooldown、自己撤去確認期間、昇格・消滅・代償。
 - Status: Deferred / Required before: MVP後 — sunken_archivedからの再入植条件。
+
+## MVP実装記録（2026-07-26）
+
+Capitalは原作にない新施設`hakoniwa_new.capital`であり、原作GIFを流用せずCSS placeholderを表示する。中心セルは必ずNation所有、population 1,000、最低人口ruleset値1とし、`nation_capitals`から座標を安定取得する。
+
+初期TerritoryはCapitalからdistance 2以内の生成陸地19セルだけである。島の成長範囲はdistance 4、配置予約範囲はdistance 5であり、Territoryと同一視しない。distance 2外に生成された陸地は中立のまま残せる。
