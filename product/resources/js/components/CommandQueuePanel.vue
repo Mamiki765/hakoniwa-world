@@ -21,7 +21,7 @@ let activeRefreshController: AbortController | null = null;
 const basePath = (nationId = props.nationId, mapSpaceId = props.mapSpaceId) => `/api/v1/nations/${nationId}/map-spaces/${mapSpaceId}`;
 
 watch(
-    () => [props.selected?.q, props.selected?.r, props.nationId, props.mapSpaceId],
+    () => [props.selected?.x, props.selected?.y, props.nationId, props.mapSpaceId],
     () => void refresh(),
     { immediate: true },
 );
@@ -31,9 +31,9 @@ async function refresh(): Promise<void> {
     activeRefreshController?.abort();
     const controller = new AbortController();
     activeRefreshController = controller;
-    const selected = props.selected === null ? null : { q: props.selected.q, r: props.selected.r };
+    const selected = props.selected === null ? null : { x: props.selected.x, y: props.selected.y };
     const path = basePath(props.nationId, props.mapSpaceId);
-    const target = selected === null ? '' : `?target_q=${selected.q}&target_r=${selected.r}`;
+    const target = selected === null ? '' : `?target_x=${selected.x}&target_y=${selected.y}`;
 
     refreshing.value = true;
     message.value = '';
@@ -61,7 +61,7 @@ async function refresh(): Promise<void> {
 async function addCommand(definition: CommandDefinition): Promise<void> {
     if (props.selected === null || !definition.available) return;
     const generation = refreshGeneration;
-    const selected = { q: props.selected.q, r: props.selected.r };
+    const selected = { x: props.selected.x, y: props.selected.y };
     const path = basePath(props.nationId, props.mapSpaceId);
     const expectedVersion = queue.value.version;
     mutating.value = true;
@@ -71,8 +71,8 @@ async function addCommand(definition: CommandDefinition): Promise<void> {
             method: 'POST',
             body: JSON.stringify({
                 command_key: definition.key,
-                target_q: selected.q,
-                target_r: selected.r,
+                target_x: selected.x,
+                target_y: selected.y,
                 request_key: crypto.randomUUID(),
                 expected_version: expectedVersion,
                 parameters: {},
@@ -158,7 +158,7 @@ onBeforeUnmount(() => {
         <h4>予約 {{ queue.items.length }}/{{ queue.limit }}</h4>
         <ol class="queue-list">
             <li v-for="(item, index) in queue.items" :key="item.id">
-                <span>{{ item.command_name }}（{{ item.target_q }}, {{ item.target_r }}）</span>
+                <span>{{ item.command_name }}（{{ item.target_x }}, {{ item.target_y }}）</span>
                 <span class="queue-actions">
                     <button type="button" :disabled="busy || index === 0" aria-label="上へ" @click="move(item.id, -1)">↑</button>
                     <button type="button" :disabled="busy || index === queue.items.length - 1" aria-label="下へ" @click="move(item.id, 1)">↓</button>

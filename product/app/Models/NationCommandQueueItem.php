@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class NationCommandQueueItem extends Model
 {
     protected $fillable = [
-        'nation_command_queue_id', 'command_definition_id', 'queue_position', 'target_q', 'target_r',
+        'nation_command_queue_id', 'command_definition_id', 'queue_position', 'target_x', 'target_y',
         'parameters', 'status', 'queued_by_membership_id', 'request_key', 'queued_at', 'cancelled_at',
         'execution_started_at', 'execution_completed_at', 'execution_failed_at', 'failure_code', 'failure_metadata',
     ];
@@ -29,7 +29,7 @@ class NationCommandQueueItem extends Model
     protected function casts(): array
     {
         return [
-            'queue_position' => 'integer', 'target_q' => 'integer', 'target_r' => 'integer',
+            'queue_position' => 'integer', 'target_x' => 'integer', 'target_y' => 'integer',
             'parameters' => 'array', 'failure_metadata' => 'array', 'queued_at' => 'immutable_datetime',
             'cancelled_at' => 'immutable_datetime', 'execution_started_at' => 'immutable_datetime',
             'execution_completed_at' => 'immutable_datetime', 'execution_failed_at' => 'immutable_datetime',

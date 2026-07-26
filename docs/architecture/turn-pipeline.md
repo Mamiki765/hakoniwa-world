@@ -45,7 +45,7 @@ Schedulerは、next_turn_atを過ぎた稼働中worldごとにturn jobを投入�
 
 commandはqueued、accepted、executed、failed、cancelled、expiredを持つ。登録時検証とターン時検証を分ける。登録後に所有権や資金が変わるため、ターン時の再検証が正本となる。
 
-各commandはclient_request_idまたは同等の冪等キー、nation_id、scheduled_turn、type、target map_space/q/r、payload version、priorityを持つ。表示用odd-q座標をcommandへ保存しない。実行結果は構造化理由コードを記録し、表示文へ直接結合しない。
+各commandはclient_request_idまたは同等の冪等キー、nation_id、scheduled_turn、type、target map_space/x/y、payload version、priorityを持つ。pixel座標をcommandへ保存しない。実行結果は構造化理由コードを記録し、表示文へ直接結合しない。
 
 1国家1ターンに何件実行するか、順序変更・繰返し・予約を許すかはconfiguration-management.mdとcommands仕様で確定する。
 
@@ -81,7 +81,7 @@ UTCのlast_active_atに基づく30日、180日、365日の遷移は、Scheduler�
 - dormant_contestableも経済・人口・災害を凍結するが、首都以外の領土だけを専用占領処理の対象にできる。
 - sunken_archivedは現在地図上のセルを持たず、ターン対象外にする。
 
-dormant_frozenまたはdormant_contestable内の既存怪獣に対する明示的な討伐ミサイルだけを例外とする。実行時にtarget q、rの怪獣identityを検証し、誤差後に怪獣がいなければ無被害の失敗とする。地形、施設、人口、所有権へdamageを適用しない。
+dormant_frozenまたはdormant_contestable内の既存怪獣に対する明示的な討伐ミサイルだけを例外とする。実行時にtarget x、yの怪獣identityを検証し、誤差後に怪獣がいなければ無被害の失敗とする。地形、施設、人口、所有権へdamageを適用しない。
 
 365日沈没または明示的放棄は、領土量が小さければ単一transaction、大きければ冪等なlifecycle transition operationとchunk checkpointで処理する。全地図cleanup完了後にsunken_archivedを確定し、user、nation、event、統計、領土履歴は物理deleteしない。
 

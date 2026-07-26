@@ -2,7 +2,7 @@
 
 ## 状態
 
-MVPではサーバーによる自動配置を採用する。利用者の座標直接指定と3候補提示UIはMVP後の改善候補とする。初期Territoryの暫定ruleset値はCapitalからaxial distance 2以内、Capital間最低距離は12である。
+MVPではサーバーによる自動配置を採用する。利用者の座標直接指定と3候補提示UIはMVP後の改善候補とする。初期Territoryの暫定ruleset値はCapitalからx/y grid distance 2以内、Capital間最低距離は12である。
 
 ## 目的
 
@@ -11,7 +11,7 @@ MVPではサーバーによる自動配置を採用する。利用者の座標�
 ## 前提
 
 - 利用者は認証済みの内部Userを持つが、同じWorldにNationをまだ持たない。
-- 地上map_spaceはq=-30..29、r=-30..29の60×60で開始し、既存のsigned axial q、rを変えずにmin_q、max_q、min_r、max_rを拡張できる。
+- 地上map_spaceはx=0..59、y=0..59の60×60で開始し、既存のx、yを変えずにmin_x、max_x、min_y、max_yを拡張できる。
 - Nation、Capital、初期Territoryは全て作成されるか、全て作成されない。
 - 登録中にターンが開始しても半端な国家を読ませない。
 - Nationのownerは内部`user_id`で表し、Discord ID、Google ID、メールアドレスを使わない。
@@ -61,7 +61,7 @@ MVPは、chunkごとの登録可能セル数から候補を絞り、複数候補
 
 ## 初期領土と地形
 
-初期TerritoryのMVP既定値は、Capital cellとCapitalからaxial distance 2以内の最大19セル相当とする。`territory_initial_radius = 2`としてruleset versionへ置き、確定balance値とは扱わない。他国Territoryと重ねず、別の新規Nationの初期Territoryとも重ねない。
+初期TerritoryのMVP既定値は、Capital cellとCapitalからx/y grid distance 2以内の最大19セル相当とする。`territory_initial_radius = 2`としてruleset versionへ置き、確定balance値とは扱わない。他国Territoryと重ねず、別の新規Nationの初期Territoryとも重ねない。
 
 すべてを同一地形へ上書きせず、生成済み地形を基礎にする。水域や建設不能地形をTerritoryへ含めるか、範囲外へはみ出す候補を失格またはWorld拡張対象にするか、最低限の発展可能セル数は国家作成実装前に決める。
 
@@ -90,13 +90,13 @@ MVP縦切りでは生産・消費や追加resourceを実装しない。将来の
 - 直近の拡張方向を避けて均等化。
 - seed付き同点抽選。
 
-どの規則も既存座標を変えない。min_q、max_q、min_r、max_rの必要な境界だけをチャンク単位で広げ、既存セルのq、rは更新しない。候補探索、地形生成、所有権確定は同じaxial座標を使い、表示用odd-qを入力にしない。
+どの規則も既存座標を変えない。min_x、max_x、min_y、max_yの必要な境界だけをチャンク単位で広げ、既存セルのx、yは更新しない。候補探索、地形生成、所有権確定は同じcanonical x/yを使い、pixel座標を入力にしない。
 
 ## 初期範囲と探索中心
 
-q=0..59、r=0..59案は原点を初期範囲の隅に置くため採用しない。q=-30..29、r=-30..29なら原点を含み、正負方向をほぼ均等に確保できる。60が偶数なので中心は(-0.5, -0.5)だが、登録地点は原点に近い順ではなく、既存首都距離、登録可能セル数、地形、将来余白をscoreして選ぶため不公平を生じさせない。
+x=0..59、y=0..59を採用する。初期worldは論理的な長方形で、全rowが同じ60セルを持つ。登録地点は原点に近い順ではなく、既存首都距離、登録可能セル数、地形、将来余白をscoreして選ぶ。
 
-UIは首都のq、rをodd-qへ投影して中心表示するので、負座標による登録操作上の特別処理は不要である。
+UIは首都と各cellのabsolute x/yをpixelへ投影し、その差で中心表示する。首都相対yのparityは使わない。
 
 ## 同時実行とターン境界
 
@@ -140,5 +140,5 @@ sunken_archivedの国家は旧領土・旧首都を地図へ巻き戻さない�
 
 国家作成はWorld row lockとworld単位のPostgreSQL transaction advisory lockで直列化する。要求予約、候補選定、Nation、初期資源、島、Capital、Territory、Membership、audit eventを1 transactionに含め、例外時は全てrollbackする。
 
-候補は中心からdistance 5以内の91セルが生成済みの海・無所有・施設なしで、他Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、q/rで安定tie-breakする。現在は先頭候補を使用するが、serviceの結果を上位3候補へ拡張できる。初期範囲に候補がない場合の自動拡張はMVP外である。
+候補は中心からdistance 5以内の91セルが生成済みの海・無所有・施設なしで、他Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、y/xで安定tie-breakする。現在は先頭候補を使用するが、serviceの結果を上位3候補へ拡張できる。初期範囲に候補がない場合の自動拡張はMVP外である。
 - Status: Deferred / Required before: MVP後 — 放棄Territory再利用、World運用上限と新World作成、sunken_archivedからの再入植。

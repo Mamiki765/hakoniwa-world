@@ -3,12 +3,12 @@
 return [
     'ruleset' => [
         'key' => 'roadmap-pr2-v1',
-        'version' => 2,
+        'version' => 3,
         'chunk_size' => 16,
-        'initial_q_min' => -30,
-        'initial_q_max' => 29,
-        'initial_r_min' => -30,
-        'initial_r_max' => 29,
+        'initial_x_min' => 0,
+        'initial_x_max' => 59,
+        'initial_y_min' => 0,
+        'initial_y_max' => 59,
         'minimum_capital_distance' => 12,
         'capital_initial_population' => 1000,
         'capital_minimum_population' => 1,
@@ -110,12 +110,12 @@ return [
         'map_space_key' => 'surface',
         'map_space_name' => '地上',
         'generator_id' => 'ocean-world',
-        'generator_version' => '1',
-        'seed' => 'hakoniwa-mvp-ocean-v1',
+        'generator_version' => '3',
+        'seed' => 'hakoniwa-staggered-xy-v3',
     ],
     'initial_island' => [
         'generator_id' => 'legacy-inspired-initial-island',
-        'generator_version' => '1',
+        'generator_version' => '2',
     ],
     'assets' => [
         'base_url' => env('HAKONIWA_TILE_ASSET_BASE_URL', env('HAKONIWA_ORIGINAL_ASSET_BASE_URL', '/assets/hakoniwa-tiles')),

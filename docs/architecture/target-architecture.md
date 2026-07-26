@@ -20,7 +20,7 @@ MVP縦切りの基盤設計を確定した文書。ゲーム実装を開始す�
 | 境界 | 主な責務 | 主なデータ |
 |---|---|---|
 | Identity and Access | ユーザー、外部認証identity、権限 | users、auth_identities、roles |
-| World and Map | 世界、map space、axial座標、チャンク、セル | worlds、map_spaces、map_chunks、map_cells |
+| World and Map | 世界、map space、staggered x/y座標、チャンク、セル | worlds、map_spaces、map_chunks、map_cells |
 | Nation and Territory | 国家、首都、領土、国境影響、休眠状態 | nations、nation_capitals、cell_ownership、nation_state_transitions |
 | Turn and Commands | 命令キュー、ターン実行、フェーズ、乱数 | commands、turn_runs、phase_runs |
 | Rules and Catalog | 地形、施設、資源、災害、費用、ruleset | rulesets、catalog entries、rule values |
@@ -57,7 +57,7 @@ Vueを採用する場合も、Vueコンポーネントはルール計算を持�
 - user_id、world_id、map_space_id、nation_id、turn_run_idは不変の代理キーとする。
 - Userは認証account、NationはWorld内のゲーム主体として分離する。Discord ID、Google ID、メールアドレス、ranking順位をUserまたはNationの内部IDとして使わない。
 - 外部認証主体は`auth_identities`へ置き、`(provider, provider_user_id)`を一意にする。providerのメールアドレス一致だけではUserを自動統合しない。
-- map cellの正本座標はsigned axial q、rとし、UI用odd-q offsetを保存しない。
+- map cellの正本座標はstaggered square-tile x、yとし、pixel座標や距離用の一時cube成分を保存しない。
 - セルの座標、所有者、地形、施設、資源残量など、検索・制約・ロック対象は通常列にする。
 - JSONまたはJSONBは、地形固有パラメータなど可変で疎な属性に限定する。
 - rulesetは版を持ち、各Worldは不変の`ruleset_version_id`を参照する。turn導入後は各turn_runも使用版を記録する。

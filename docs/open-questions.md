@@ -33,7 +33,7 @@
 - Status: Decided
 - Decision: `chunk_size = 16`
 - Decision record: `docs/architecture/chunk-storage.md`、`docs/decisions/ADR-0003-hex-coordinate-system.md`
-- q、rをそれぞれ16単位で区切る。負座標では数学的な`floorDiv`と`floorMod`を使う。
+- x、yをそれぞれ16単位で区切る。負座標では数学的な`floorDiv`と`floorMod`を使う。
 - PHP、TypeScript、SQL固有の整数除算・剰余へ直接依存しない。
 
 ### A-03 DB製品
@@ -53,7 +53,7 @@
 ### A-05 初期領土と首都間距離
 
 - Status: Decided
-- Decision: 構造はruleset値とし、MVP既定値は初期領土がCapitalからaxial distance 2以内、首都間最低距離が12。
+- Decision: 構造はruleset値とし、MVP既定値は初期領土がCapitalからx/y grid distance 2以内、首都間最低距離が12。
 - Decision record: `docs/architecture/capital-and-territory.md`、`docs/architecture/registration-and-world-expansion.md`
 - これは確定バランスではない。既存worldが参照するruleset versionを変えずに値を上書きせず、新しい版で見直す。
 
@@ -77,7 +77,7 @@
 ### A-11 初期生成範囲
 
 - Status: Decided
-- Decision: 地上の初期生成範囲は`q = -30..29`、`r = -30..29`の3,600セル。
+- Decision: 地上の初期生成範囲は`x = 0..59`、`y = 0..59`の3,600セル。各yに60セルを持つ。
 - Decision record: `docs/architecture/world-and-map-space.md`、`docs/decisions/ADR-0003-hex-coordinate-system.md`
 - 論理上の固定上限ではない。拡張時も既存セルの座標を移動しない。
 
@@ -92,7 +92,7 @@
 - Status: Decided
 - Decision: MVPは可読なJSONを使い、chunk単位で取得する。
 - Decision record: `docs/architecture/ui-and-map-loading.md`
-- compact array、binary、独自圧縮はMVP後へ延期する。APIとDBはabsolute axial `q`、`r`を使い、offset座標はUI投影だけに使う。
+- compact array、binary、独自圧縮はMVP後へ延期する。APIとDBはcanonical x/yを使い、各chunk responseもabsolute x/yを返す。
 
 ## 認証実装前に決める事項
 
@@ -170,7 +170,7 @@
 
 - Status: Decided
 - Required before: 国家作成実装前
-- Decision: 中心からdistance 5以内の91セルが全て生成済みの海・無所有・施設なしであること、Capital間距離12以上を必須とする。既存Capitalから最も遠い候補を優先し、q、r昇順で安定tie-breakする。
+- Decision: 中心からdistance 5以内の91セルが全て生成済みの海・無所有・施設なしであること、Capital間距離12以上を必須とする。既存Capitalから最も遠い候補を優先し、y、x昇順で安定tie-breakする。
 
 ### B-08 初期保護
 

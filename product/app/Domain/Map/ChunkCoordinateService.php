@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domain\Hex;
+namespace App\Domain\Map;
 
 use InvalidArgumentException;
 
@@ -29,14 +29,14 @@ final class ChunkCoordinateService
         return $value - $this->floorDiv($value) * $this->size;
     }
 
-    /** @return array{chunk_q: int, chunk_r: int, local_q: int, local_r: int} */
-    public function locate(int $q, int $r): array
+    /** @return array{chunk_x: int, chunk_y: int, local_x: int, local_y: int} */
+    public function locate(int $x, int $y): array
     {
         return [
-            'chunk_q' => $this->floorDiv($q),
-            'chunk_r' => $this->floorDiv($r),
-            'local_q' => $this->floorMod($q),
-            'local_r' => $this->floorMod($r),
+            'chunk_x' => $this->floorDiv($x),
+            'chunk_y' => $this->floorDiv($y),
+            'local_x' => $this->floorMod($x),
+            'local_y' => $this->floorMod($y),
         ];
     }
 }

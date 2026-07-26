@@ -12,16 +12,27 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $key
  * @property string $name
  * @property string $coordinate_system
- * @property int $min_q
- * @property int $max_q
- * @property int $min_r
- * @property int $max_r
+ * @property int $min_x
+ * @property int $max_x
+ * @property int $min_y
+ * @property int $max_y
  */
 class MapSpace extends Model
 {
     protected $fillable = [
-        'world_id', 'key', 'name', 'coordinate_system', 'min_q', 'max_q', 'min_r', 'max_r',
+        'world_id', 'key', 'name', 'coordinate_system', 'min_x', 'max_x', 'min_y', 'max_y',
     ];
+
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'min_x' => 'integer',
+            'max_x' => 'integer',
+            'min_y' => 'integer',
+            'max_y' => 'integer',
+        ];
+    }
 
     /** @return BelongsTo<World, $this> */
     public function world(): BelongsTo

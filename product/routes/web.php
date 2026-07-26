@@ -21,8 +21,8 @@ Route::prefix('api/v1')->middleware('auth')->group(function (): void {
     Route::get('/me', [ApiController::class, 'me']);
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/map-spaces', [ApiController::class, 'mapSpaces']);
-    Route::get('/map-spaces/{mapSpace}/chunks/{chunkQ}/{chunkR}', [ApiController::class, 'chunk'])
-        ->where(['chunkQ' => '-?\d+', 'chunkR' => '-?\d+']);
+    Route::get('/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}', [ApiController::class, 'chunk'])
+        ->where(['chunkX' => '-?\d+', 'chunkY' => '-?\d+']);
     Route::post('/nations', [ApiController::class, 'createNation']);
     Route::get('/nations/{nation}', [ApiController::class, 'nation']);
     Route::get('/me/nation', [ApiController::class, 'myNation']);

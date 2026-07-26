@@ -16,7 +16,7 @@ class MapSpaceResource extends JsonResource
             'id' => $this->id, 'world_id' => $this->world_id,
             'key' => $this->key, 'name' => $this->name,
             'coordinate_system' => $this->coordinate_system,
-            'bounds' => ['min_q' => $this->min_q, 'max_q' => $this->max_q, 'min_r' => $this->min_r, 'max_r' => $this->max_r],
+            'bounds' => ['min_x' => $this->min_x, 'max_x' => $this->max_x, 'min_y' => $this->min_y, 'max_y' => $this->max_y],
         ];
     }
 }

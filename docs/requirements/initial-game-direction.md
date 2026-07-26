@@ -45,9 +45,9 @@ turn、command queue、生産・消費、災害、missile、怪獣、国境侵�
 ## 共通世界
 
 - 地上は全プレイヤー共通マップとする。
-- 初期生成範囲はsigned axial q=-30..29、r=-30..29の60×60とする。
-- 地上はpointy-top hexとし、DB、API、ゲームルールはq、rを正本にする。
-- UIだけpointy-top odd-q vertical offsetへ投影し、offset座標を保存しない。
+- 初期生成範囲はcanonical x=0..59、y=0..59の60×60とする。
+- 地上はstaggered square-tile gridとし、DB、API、ゲームルールはx、yを正本にする。
+- 偶数absolute yのrowを16px右へずらし、各rowは60セルを持つ。
 - 世界座標は固定上限に依存させない。
 - 世界全体を1つの巨大JSONとして保存しない。
 - マップはチャンク単位で保存、取得、更新する。
@@ -63,7 +63,7 @@ turn、command queue、生産・消費、災害、missile、怪獣、国境侵�
 
 - 国家作成時に1つ自動生成する。
 - 国家登録地点はserverが空き地点から自動配置し、座標直接指定と3候補提示UIはMVP後とする。
-- 初期Territoryはrulesetの暫定既定値としてCapitalからaxial distance 2以内、最大19セル相当とする。
+- 初期Territoryはrulesetの暫定既定値としてCapitalからx/y grid distance 2以内、最大19セル相当とする。
 - Capital間最低距離はrulesetの暫定既定値として12とする。
 - 初期TerritoryとCapital間距離は確定balance値ではなく、新しいruleset versionで変更可能にする。
 - 初期Territoryは他国と重ねず、Capital周囲に最低限の発展可能地を求める。
@@ -94,8 +94,8 @@ turn、command queue、生産・消費、災害、missile、怪獣、国境侵�
 - 必要に応じて縦または横へ拡張する。
 - 既存座標を移動しない。
 - 同時登録で同じ場所を割り当てない。
-- min_q、max_q、min_r、max_rをチャンク境界単位で必要な方向だけ広げる。
-- q、r、chunk_q、chunk_rは負数を許可し、floorDivとfloorModを使う。
+- min_x、max_x、min_y、max_yをチャンク境界単位で必要な方向だけ広げる。
+- x、y、chunk_x、chunk_yの将来拡張では負数も扱えるfloorDivとfloorModを使う。
 
 ## 国家の休眠
 

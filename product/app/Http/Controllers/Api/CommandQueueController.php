@@ -30,11 +30,11 @@ final class CommandQueueController extends Controller
         try {
             $service->queueFor($request->user(), $nation, $mapSpace);
             $cell = null;
-            if ($request->has(['target_q', 'target_r'])) {
+            if ($request->has(['target_x', 'target_y'])) {
                 $cell = MapCell::query()
                     ->where('map_space_id', $mapSpace->id)
-                    ->where('q', $request->integer('target_q'))
-                    ->where('r', $request->integer('target_r'))
+                    ->where('x', $request->integer('target_x'))
+                    ->where('y', $request->integer('target_y'))
                     ->with(['terrain', 'facility'])
                     ->first();
             }
@@ -95,8 +95,8 @@ final class CommandQueueController extends Controller
     {
         $validated = $request->validate([
             'command_key' => ['required', 'string', 'max:64'],
-            'target_q' => ['required', 'integer'],
-            'target_r' => ['required', 'integer'],
+            'target_x' => ['required', 'integer'],
+            'target_y' => ['required', 'integer'],
             'request_key' => ['required', 'uuid'],
             'expected_version' => ['required', 'integer', 'min:1'],
             'parameters' => ['sometimes', 'array'],
@@ -105,7 +105,7 @@ final class CommandQueueController extends Controller
         try {
             $result = $service->add(
                 $request->user(), $nation, $mapSpace,
-                $validated['command_key'], $validated['target_q'], $validated['target_r'],
+                $validated['command_key'], $validated['target_x'], $validated['target_y'],
                 $validated['request_key'], $validated['expected_version'], $validated['parameters'] ?? [],
             );
 
@@ -162,8 +162,8 @@ final class CommandQueueController extends Controller
                 'command_key' => $item->definition->key,
                 'command_name' => $item->definition->name,
                 'queue_position' => $item->queue_position,
-                'target_q' => $item->target_q,
-                'target_r' => $item->target_r,
+                'target_x' => $item->target_x,
+                'target_y' => $item->target_y,
                 'parameters' => $item->parameters,
                 'status' => $item->status,
                 'queued_at' => $item->queued_at?->toIso8601String(),

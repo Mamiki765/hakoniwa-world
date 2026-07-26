@@ -2,7 +2,7 @@
 
 namespace App\Application;
 
-use App\Domain\Hex\ChunkCoordinateService;
+use App\Domain\Map\ChunkCoordinateService;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapSpace;
@@ -11,6 +11,7 @@ use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\World;
+use DomainException;
 use Illuminate\Support\Facades\DB;
 
 class OceanWorldGenerator
@@ -24,7 +25,7 @@ class OceanWorldGenerator
             $worldConfig = config('hakoniwa.world');
             $now = now();
 
-            $ruleset = RulesetVersion::query()->firstOrCreate(
+            $ruleset = RulesetVersion::query()->updateOrCreate(
                 ['key' => $rules['key']],
                 ['version' => $rules['version'], 'settings' => $rules, 'is_active' => true],
             );
@@ -34,14 +35,17 @@ class OceanWorldGenerator
                 ['name' => $worldConfig['name'], 'ruleset_version_id' => $ruleset->id, 'current_turn' => 0],
             );
             $world = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+            if ($world->ruleset_version_id !== $ruleset->id) {
+                $world->update(['ruleset_version_id' => $ruleset->id]);
+            }
 
             $mapSpace = MapSpace::query()->firstOrCreate(
                 ['world_id' => $world->id, 'key' => $worldConfig['map_space_key']],
                 [
                     'name' => $worldConfig['map_space_name'],
-                    'coordinate_system' => 'pointy_top_axial',
-                    'min_q' => $rules['initial_q_min'], 'max_q' => $rules['initial_q_max'],
-                    'min_r' => $rules['initial_r_min'], 'max_r' => $rules['initial_r_max'],
+                    'coordinate_system' => 'staggered_square_offset',
+                    'min_x' => $rules['initial_x_min'], 'max_x' => $rules['initial_x_max'],
+                    'min_y' => $rules['initial_y_min'], 'max_y' => $rules['initial_y_max'],
                 ],
             );
 
@@ -59,16 +63,23 @@ class OceanWorldGenerator
                 return $world;
             }
 
+            if ($mapSpace->cells()->exists()) {
+                throw new DomainException(
+                    "World {$world->key} contains data from an older coordinate system. "
+                    ."Run hakoniwa:world:reset --world={$world->key} --confirm=RESET-{$world->key}.",
+                );
+            }
+
             $seaId = TerrainDefinition::query()->where('key', 'sea')->valueOrFail('id');
             $chunkRows = [];
 
-            for ($q = $rules['initial_q_min']; $q <= $rules['initial_q_max']; $q++) {
-                for ($r = $rules['initial_r_min']; $r <= $rules['initial_r_max']; $r++) {
-                    $location = $this->chunks->locate($q, $r);
-                    $key = $location['chunk_q'].':'.$location['chunk_r'];
+            for ($y = $rules['initial_y_min']; $y <= $rules['initial_y_max']; $y++) {
+                for ($x = $rules['initial_x_min']; $x <= $rules['initial_x_max']; $x++) {
+                    $location = $this->chunks->locate($x, $y);
+                    $key = $location['chunk_x'].':'.$location['chunk_y'];
                     $chunkRows[$key] = [
                         'map_space_id' => $mapSpace->id,
-                        'chunk_q' => $location['chunk_q'], 'chunk_r' => $location['chunk_r'],
+                        'chunk_x' => $location['chunk_x'], 'chunk_y' => $location['chunk_y'],
                         'version' => 1, 'generated_at' => $now,
                         'generator_id' => $worldConfig['generator_id'],
                         'generator_version' => $worldConfig['generator_version'],
@@ -80,19 +91,19 @@ class OceanWorldGenerator
 
             DB::table('map_chunks')->insertOrIgnore(array_values($chunkRows));
             $chunkIds = DB::table('map_chunks')->where('map_space_id', $mapSpace->id)
-                ->get(['id', 'chunk_q', 'chunk_r'])
-                ->keyBy(fn (object $row): string => $row->chunk_q.':'.$row->chunk_r);
+                ->get(['id', 'chunk_x', 'chunk_y'])
+                ->keyBy(fn (object $row): string => $row->chunk_x.':'.$row->chunk_y);
 
             $batch = [];
             $inserted = 0;
 
-            for ($q = $rules['initial_q_min']; $q <= $rules['initial_q_max']; $q++) {
-                for ($r = $rules['initial_r_min']; $r <= $rules['initial_r_max']; $r++) {
-                    $location = $this->chunks->locate($q, $r);
-                    $chunk = $chunkIds[$location['chunk_q'].':'.$location['chunk_r']];
+            for ($y = $rules['initial_y_min']; $y <= $rules['initial_y_max']; $y++) {
+                for ($x = $rules['initial_x_min']; $x <= $rules['initial_x_max']; $x++) {
+                    $location = $this->chunks->locate($x, $y);
+                    $chunk = $chunkIds[$location['chunk_x'].':'.$location['chunk_y']];
                     $batch[] = [
                         'map_space_id' => $mapSpace->id, 'map_chunk_id' => $chunk->id,
-                        'q' => $q, 'r' => $r,
+                        'x' => $x, 'y' => $y,
                         ...$location,
                         'terrain_definition_id' => $seaId,
                         'facility_definition_id' => null, 'owner_nation_id' => null,

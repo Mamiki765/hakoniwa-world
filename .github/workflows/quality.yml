@@ -1,0 +1,73 @@
+name: Quality
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.4-bookworm
+        env:
+          POSTGRES_DB: hakoniwa_test
+          POSTGRES_USER: hakoniwa
+          POSTGRES_PASSWORD: test-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hakoniwa -d hakoniwa_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: pgsql
+      DB_DATABASE: hakoniwa_test
+      DB_USERNAME: hakoniwa
+      DB_PASSWORD: test-only-password
+    defaults:
+      run:
+        working-directory: product
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          extensions: intl, pdo_pgsql
+          coverage: none
+          tools: composer:v2
+      - name: Map the Compose test hostname to the service container
+        run: echo "127.0.0.1 hakoniwa-postgres" | sudo tee -a /etc/hosts
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Check PHP formatting
+        run: vendor/bin/pint --test
+      - name: Run PHP static analysis
+        run: vendor/bin/phpstan analyse --memory-limit=1G
+      - name: Run isolated PostgreSQL tests
+        run: php vendor/bin/phpunit --colors=never
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: product
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: product/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build

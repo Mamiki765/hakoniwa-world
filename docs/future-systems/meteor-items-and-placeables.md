@@ -51,7 +51,7 @@ state候補はgrounded、inventory、placed、damaged、consumed、lost、captur
 
 ### item locations
 
-groundまたはplaced時のmap_space_id、signed axial q、r、placement_slot、claim_stateを持つ。inventory時はnation inventory relationを持ち、同時にcoordinateを有効にしない。UI用odd-q座標は保存しない。
+groundまたはplaced時のmap_space_id、canonical x、y、placement_slot、claim_stateを持つ。inventory時はnation inventory relationを持ち、同時にcoordinateを有効にしない。pixel座標は保存しない。
 
 ### item transitions
 

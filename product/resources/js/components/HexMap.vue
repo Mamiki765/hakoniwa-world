@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { axialToStaggeredPixel, TILE_SIZE } from '../map/projection';
+import { gridToPixel, TILE_SIZE } from '../map/projection';
 import type { MapCell } from '../types';
 import CellDetails from './CellDetails.vue';
 import CommandQueuePanel from './CommandQueuePanel.vue';
@@ -8,7 +8,7 @@ import CommandQueuePanel from './CommandQueuePanel.vue';
 const props = defineProps<{
     cells: MapCell[];
     selected: MapCell | null;
-    capital: { q: number; r: number };
+    capital: { x: number; y: number };
     nationId: number;
     mapSpaceId: number;
     loading: boolean;
@@ -26,8 +26,9 @@ const viewportSize = ref({ width: 900, height: 600 });
 let resizeObserver: ResizeObserver | null = null;
 
 const positioned = computed(() => props.cells.map((cell) => {
-    const pixel = axialToStaggeredPixel({ q: cell.q - props.capital.q, r: cell.r - props.capital.r });
-    return { cell, x: pixel.x, y: pixel.y };
+    const pixel = gridToPixel(cell);
+    const capitalPixel = gridToPixel(props.capital);
+    return { cell, x: pixel.x - capitalPixel.x, y: pixel.y - capitalPixel.y };
 }));
 
 // Keep the browser DOM bounded even when the API supplies many chunks.
@@ -110,9 +111,9 @@ function keydown(event: KeyboardEvent): void {
             <div class="map-plane" :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }">
                 <button
                     v-for="item in visiblePositioned"
-                    :key="`${item.cell.q}:${item.cell.r}`"
+                    :key="`${item.cell.x}:${item.cell.y}`"
                     class="map-cell"
-                    :class="[`terrain-${item.cell.terrain}`, { selected: selected?.q === item.cell.q && selected?.r === item.cell.r, owned: item.cell.owner_nation_id !== null, capital: item.cell.facility === 'capital' }]"
+                    :class="[`terrain-${item.cell.terrain}`, { selected: selected?.x === item.cell.x && selected?.y === item.cell.y, owned: item.cell.owner_nation_id !== null, capital: item.cell.facility === 'capital' }]"
                     :style="{ left: `${item.x}px`, top: `${item.y}px` }"
                     :aria-label="item.cell.aria_label"
                     type="button"

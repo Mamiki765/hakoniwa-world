@@ -48,7 +48,7 @@ final class NationCreationService
 
             $center = $this->placement->choose($mapSpace);
             DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
-                'reserved_q' => $center->q, 'reserved_r' => $center->r, 'updated_at' => now(),
+                'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
             ]);
 
             $nation = Nation::query()->create([
@@ -69,7 +69,7 @@ final class NationCreationService
             DB::table('audit_events')->insert([
                 'actor_user_id' => $user->id, 'event_type' => 'nation.created',
                 'subject_type' => Nation::class, 'subject_id' => $nation->id,
-                'metadata' => json_encode(['world_id' => $world->id, 'q' => $center->q, 'r' => $center->r], JSON_THROW_ON_ERROR),
+                'metadata' => json_encode(['world_id' => $world->id, 'x' => $center->x, 'y' => $center->y], JSON_THROW_ON_ERROR),
                 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
 

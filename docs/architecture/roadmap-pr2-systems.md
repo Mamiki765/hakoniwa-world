@@ -4,7 +4,7 @@
 
 本変更は`roadmap-pr2-v1` ruleset、7種の国内command definition、国家別command queue、施設・地形の型付きcell state、生産definition、資源別売却方針、viewer依存cell表現、32px正方形tile rendererを追加する。command実行、turn runner、実労働者割当、生産物加算、自動売却、森林成長、ミサイル発射は含めない。
 
-DB・API・command targetの正本座標は引き続きsigned axial `q/r`である。`target_x/target_y`やoffset座標を保存しない。
+PR #4以降、DB・API・command targetの現行正本座標はstaggered square-tile `x/y`である。PR2当初の座標契約はPR #4でbreaking migrationされた。
 
 ## 旧作から確認した値
 
@@ -63,16 +63,14 @@ chunk responseは`private, no-store`かつ`Vary: Cookie`で、owner responseを�
 
 ## Staggered square renderer
 
-原画像は32×32px正方形で、旧作`hakow.js`は32px幅と16px spacerを使う。axialを正本のまま、表示専用に次を使う。
+原画像は32×32px正方形で、旧作`hakow.js`は32px幅と16px spacerを使う。PR #4ではabsolute x/yをそのまま次へ投影する。
 
 ```text
-row = r
-column = q + floorDiv(r + 1, 2)
-screenX = column * 32 + (rowが偶数なら16、奇数なら0)
-screenY = row * 32
+screenX = x * 32 + (yが偶数なら16、奇数なら0)
+screenY = y * 32
 ```
 
-negative座標でも数学的floorを使う。tile width/heightとvertical stepは32、half offsetは16で一元管理する。画像を`clip-path`で六角形へ切らず、6方向neighborとkeyboard操作はaxialのまま維持する。rendererはpan/zoom後の画面矩形から外れるcellのDOMを生成しない。
+tile width/heightとvertical stepは32、half offsetは16で一元管理する。画像を`clip-path`で六角形へ切らず、6方向neighborとkeyboard操作はeven/odd y規則を共有する。rendererはpan/zoom後の画面矩形から外れるcellのDOMを生成しない。
 
 ## Migrationとrollback
 

@@ -2,7 +2,7 @@
 
 namespace App\Application;
 
-use App\Domain\Hex\HexCoordinate;
+use App\Domain\Map\GridCoordinate;
 use App\Domain\World\DeterministicRandom;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerator
 {
-    public function generate(MapSpace $mapSpace, Nation $nation, HexCoordinate $center, string $seed): NationCapital
+    public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital
     {
         $rules = config('hakoniwa.ruleset');
         $random = new DeterministicRandom($seed);
@@ -25,13 +25,13 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             ->where('map_space_id', $mapSpace->id)
             ->where(function ($query) use ($reservation): void {
                 foreach ($reservation as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair->where('q', $coordinate->q)->where('r', $coordinate->r));
+                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
                 }
             })
             ->with('terrain')
             ->lockForUpdate()
             ->get()
-            ->keyBy(fn (MapCell $cell): string => $cell->q.':'.$cell->r);
+            ->keyBy(fn (MapCell $cell): string => $cell->x.':'.$cell->y);
 
         if ($cells->count() !== count($reservation)) {
             throw new DomainException('初期島の予約範囲が生成済み世界からはみ出しています。');
@@ -82,7 +82,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
 
         $placementCells = array_values(array_filter(
             $random->shuffled($center->radius(2)),
-            fn (HexCoordinate $coordinate): bool => $coordinate->distanceTo($center) > 0,
+            fn (GridCoordinate $coordinate): bool => $coordinate->distanceTo($center) > 0,
         ));
         $cursor = 0;
         for ($index = 0; $index < 3; $index++) {
@@ -149,7 +149,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
 
         $capital = NationCapital::query()->create([
             'nation_id' => $nation->id, 'map_cell_id' => $capitalCell->id,
-            'q' => $center->q, 'r' => $center->r,
+            'x' => $center->x, 'y' => $center->y,
         ]);
 
         DB::table('world_generation_runs')->insert([
@@ -164,7 +164,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
     }
 
     /** @param Collection<string, MapCell> $cells */
-    private function cell(Collection $cells, HexCoordinate $coordinate): MapCell
+    private function cell(Collection $cells, GridCoordinate $coordinate): MapCell
     {
         $cell = $cells->get($this->key($coordinate));
         if (! $cell instanceof MapCell) {
@@ -174,8 +174,8 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         return $cell;
     }
 
-    private function key(HexCoordinate $coordinate): string
+    private function key(GridCoordinate $coordinate): string
     {
-        return $coordinate->q.':'.$coordinate->r;
+        return $coordinate->x.':'.$coordinate->y;
     }
 }

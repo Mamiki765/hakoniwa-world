@@ -24,7 +24,7 @@
 - `NationCreationService`: PostgreSQL lockと1 transactionで登録全体を調停する。
 - `NationResourceService`: rulesetにある初期資源を国家残高へ作成する。生産・消費は担当しない。
 - `AssetManifestResolver`: asset keyを外部GIFまたはCSS fallbackへ解決する。
-- `HexCoordinate` / `ChunkCoordinateService`: signed axial計算を一か所へ集約する。
+- `GridCoordinate` / `ChunkCoordinateService`: staggered x/y の6近傍、距離、chunk計算を一か所へ集約する。
 
 Controllerは入力、認証、DTO変換だけを扱い、配置や島生成を行わない。
 
@@ -44,7 +44,7 @@ Controllerは入力、認証、DTO変換だけを扱い、配置や島生成を�
 
 API prefixは`/api/v1`で、me、world一覧、map space一覧、chunk、Nation作成・取得をLaravel API Resource経由で返す。外部provider ID、email、token、内部metadataは返さない。
 
-VueはAPI client、map state、odd-q projection、DOM rendererを分離する。Capital周辺9 chunksを取得し、pan、zoom、六方向keyboard選択、選択セルtext、loading/error/empty state、asset fallbackを提供する。
+VueはAPI client、map state、absolute x/y projection、DOM rendererを分離する。Capital周辺9 chunksを取得し、pan、zoom、六方向keyboard選択、選択セルtext、loading/error/empty state、asset fallbackを提供する。偶数absolute yだけを16px右へずらす。
 
 ## MVP外
 
