@@ -11,11 +11,12 @@ abstract class TestCase extends BaseTestCase
 {
     protected function setUp(): void
     {
-        $connection = (string) getenv('DB_CONNECTION');
-        $database = (string) getenv('DB_DATABASE');
+        $connection = (string) ($_SERVER['DB_CONNECTION'] ?? getenv('DB_CONNECTION'));
+        $database = (string) ($_SERVER['DB_DATABASE'] ?? getenv('DB_DATABASE'));
+        $environment = (string) ($_SERVER['APP_ENV'] ?? getenv('APP_ENV'));
 
-        if ($connection === 'pgsql' && ! str_ends_with($database, '_test')) {
-            throw new RuntimeException("Refusing to run tests against PostgreSQL database [{$database}].");
+        if ($environment !== 'testing' || ($connection === 'pgsql' && ! str_ends_with($database, '_test'))) {
+            throw new RuntimeException("Refusing to run tests in environment [{$environment}] against database [{$database}].");
         }
 
         parent::setUp();

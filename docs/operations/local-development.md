@@ -32,10 +32,12 @@ docker compose exec hakoniwa-web php artisan hakoniwa:world:init
 新しいDB volumeではinit scriptが`hakoniwa_test`を作る。
 
 ```powershell
-docker compose exec hakoniwa-web php artisan test
+docker compose exec -T -e APP_ENV=testing -e DB_DATABASE=hakoniwa_test hakoniwa-web php vendor/bin/phpunit --colors=never
 docker compose exec hakoniwa-web ./vendor/bin/pint --test
 docker compose exec hakoniwa-web ./vendor/bin/phpstan analyse --memory-limit=1G
 ```
+
+本番設定を持つcontainer内では`php artisan test`を直接実行しない。PHP process起動時から`APP_ENV=testing`と`DB_DATABASE=hakoniwa_test`を明示し、`tests/TestCase.php`のguardでも本番DBへの接続を拒否する。
 
 frontend test、lint、typecheck、production buildは`docker compose build`のNode stageで実行される。既存volumeにtest DBがない場合は、PostgreSQL管理権限を持つ運用者がtest専用DBを追加するか、開発volumeを明示的に再作成する。本番DBをtestに使用しない。
 
