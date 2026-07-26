@@ -11,20 +11,20 @@ export function useMapState() {
     const emptyChunks = ref<string[]>([]);
 
     const visibleCells = computed(() => [...cells.values()]);
-    const key = (q: number, r: number) => `${q}:${r}`;
+    const key = (x: number, y: number) => `${x}:${y}`;
 
-    async function loadAround(mapSpaceId: number, q: number, r: number): Promise<void> {
+    async function loadAround(mapSpaceId: number, x: number, y: number): Promise<void> {
         loading.value = true;
         error.value = null;
         cells.clear();
         emptyChunks.value = [];
-        const centerQ = floorDiv(q, 16);
-        const centerR = floorDiv(r, 16);
+        const centerX = floorDiv(x, 16);
+        const centerY = floorDiv(y, 16);
         const requests: Promise<MapChunk>[] = [];
 
-        for (let dq = -1; dq <= 1; dq++) {
-            for (let dr = -1; dr <= 1; dr++) {
-                requests.push(api<MapChunk>(`/api/v1/map-spaces/${mapSpaceId}/chunks/${centerQ + dq}/${centerR + dr}`));
+        for (let offsetX = -1; offsetX <= 1; offsetX++) {
+            for (let offsetY = -1; offsetY <= 1; offsetY++) {
+                requests.push(api<MapChunk>(`/api/v1/map-spaces/${mapSpaceId}/chunks/${centerX + offsetX}/${centerY + offsetY}`));
             }
         }
 
@@ -35,11 +35,11 @@ export function useMapState() {
                 continue;
             }
             if (result.value.state === 'empty') {
-                emptyChunks.value.push(`${result.value.chunk_q}:${result.value.chunk_r}`);
+                emptyChunks.value.push(`${result.value.chunk_x}:${result.value.chunk_y}`);
             }
-            for (const cell of result.value.cells) cells.set(key(cell.q, cell.r), cell);
+            for (const cell of result.value.cells) cells.set(key(cell.x, cell.y), cell);
         }
-        selected.value = cells.get(key(q, r)) ?? visibleCells.value[0] ?? null;
+        selected.value = cells.get(key(x, y)) ?? visibleCells.value[0] ?? null;
         loading.value = false;
     }
 
@@ -50,7 +50,7 @@ export function useMapState() {
     function moveSelection(direction: number): void {
         if (selected.value === null) return;
         const next = neighbor(selected.value, direction);
-        selected.value = cells.get(key(next.q, next.r)) ?? selected.value;
+        selected.value = cells.get(key(next.x, next.y)) ?? selected.value;
     }
 
     return { visibleCells, selected, loading, error, emptyChunks, loadAround, select, moveSelection };

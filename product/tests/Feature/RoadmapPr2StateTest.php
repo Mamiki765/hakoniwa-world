@@ -110,7 +110,10 @@ class RoadmapPr2StateTest extends TestCase
         $this->assertSame(5, $missileRules->launchCapacity($definition, 200));
 
         $ownerResponse = $this->actingAs($owner)->getJson($this->chunkUrl($mapSpace, $base));
-        $ownerResponse->assertOk()->assertHeader('Cache-Control', 'private, no-store, max-age=0')->assertHeader('Vary', 'Cookie');
+        $ownerResponse->assertOk()->assertHeader('Vary', 'Cookie');
+        $cacheControl = explode(', ', (string) $ownerResponse->headers->get('Cache-Control'));
+        sort($cacheControl);
+        $this->assertSame(['max-age=0', 'no-store', 'private'], $cacheControl);
         $ownerCell = $this->cellFromResponse($ownerResponse->json('data.cells'), $base);
         $ownerDetails = collect($ownerCell['details'])->keyBy('key');
         $this->assertSame('missile_base', $ownerCell['facility']);
@@ -130,7 +133,7 @@ class RoadmapPr2StateTest extends TestCase
         $this->assertSame([], $publicForest['details']);
         $this->assertSame(array_keys($publicForest), array_keys($publicBase));
 
-        foreach (['q', 'r', 'aria_label'] as $key) {
+        foreach (['x', 'y', 'aria_label'] as $key) {
             unset($publicBase[$key], $publicForest[$key]);
         }
         $this->assertSame($publicForest, $publicBase);
@@ -174,13 +177,13 @@ class RoadmapPr2StateTest extends TestCase
 
     private function chunkUrl(MapSpace $mapSpace, MapCell $cell): string
     {
-        return "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$cell->chunk_q}/{$cell->chunk_r}";
+        return "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$cell->chunk_x}/{$cell->chunk_y}";
     }
 
     /** @param array<int, array<string, mixed>> $cells @return array<string, mixed> */
     private function cellFromResponse(array $cells, MapCell $expected): array
     {
-        $cell = collect($cells)->first(fn (array $cell): bool => $cell['q'] === $expected->q && $cell['r'] === $expected->r);
+        $cell = collect($cells)->first(fn (array $cell): bool => $cell['x'] === $expected->x && $cell['y'] === $expected->y);
         $this->assertIsArray($cell);
 
         return $cell;

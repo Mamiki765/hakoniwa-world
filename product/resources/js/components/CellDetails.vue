@@ -11,7 +11,7 @@ const usesWorkforce = computed(() => ['farm', 'factory', 'mine'].includes(props.
         <template v-if="cell">
             <h3>{{ cell.display_name }}</h3>
             <dl>
-                <dt>座標</dt><dd>q={{ cell.q }}, r={{ cell.r }}</dd>
+                <dt>座標</dt><dd>x={{ cell.x }}, y={{ cell.y }}</dd>
                 <dt>地形</dt><dd>{{ cell.terrain_name }}</dd>
                 <dt>施設</dt><dd>{{ cell.facility_name ?? 'なし' }}</dd>
                 <dt>所有</dt><dd>{{ cell.owner_name ?? '中立' }}<span v-if="cell.owner_nation_id">（N{{ cell.owner_nation_id }}）</span></dd>

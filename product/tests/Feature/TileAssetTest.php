@@ -78,9 +78,11 @@ class TileAssetTest extends TestCase
 
         $this->assertNotSame($before, $after);
         $this->assertStringContainsString('?v=', (string) $after);
-        $this->get('/assets/hakoniwa-tiles/land0.gif')->assertOk()
-            ->assertHeader('Content-Type', 'image/gif')
-            ->assertHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        $response = $this->get('/assets/hakoniwa-tiles/land0.gif')->assertOk()
+            ->assertHeader('Content-Type', 'image/gif');
+        $cacheControl = explode(', ', (string) $response->headers->get('Cache-Control'));
+        sort($cacheControl);
+        $this->assertSame(['immutable', 'max-age=31536000', 'public'], $cacheControl);
         $this->get('/assets/hakoniwa-tiles/not-listed.gif')->assertNotFound();
     }
 

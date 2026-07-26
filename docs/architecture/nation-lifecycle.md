@@ -42,7 +42,7 @@
 例外commandはmonster_extermination等の明示typeとし、発射時・実行時の両方で次を検証する。
 
 - 対象nationがdormant_frozenまたはdormant_contestableである。
-- 指定したtarget q、rに既存怪獣がいる。
+- 指定したtarget x、yに既存怪獣がいる。
 - damage対象をその怪獣identityだけに限定する。
 - 散布・誤差後のセルに怪獣がいなければ無被害の失敗とする。
 - 地形、施設、人口、資源、所有権、国境を変更しない。
@@ -54,7 +54,7 @@
 
 180日到達後も経済・人口・災害・イベント・自動発展の凍結を継続する。首都以外の現在領土だけが占領可能になる。
 
-占領時はownership historyへ元所有者、取得者、q、r、turn、理由を記録する。元の国家が復帰しても、取得済みセルを自動返還しない。首都セル、首都施設、首都所有権は保護する。
+占領時はownership historyへ元所有者、取得者、x、y、turn、理由を記録する。元の国家が復帰しても、取得済みセルを自動返還しない。首都セル、首都施設、首都所有権は保護する。
 
 専用占領処理以外の一般damageを許可する決定ではない。休眠人口・施設を攻撃で変動させない。dormant_frozenと同じ怪獣討伐専用ミサイルの例外は継続する。占領時に通常施設を除去、停止、取得のどれにするか、防壁抵抗をどう扱うか、首都周辺の保護ringは未決定である。
 
@@ -150,7 +150,7 @@ last_active_atはUTC instantを正本とし、表示だけAsia/Tokyoへ変換す
 
 ### territory_history
 
-現在所有権と分離し、nation、map_space、q、r、from_turn、to_turn、change_reason、counterparty_nationを保持する案とする。履歴は現在map cellを巻き戻す命令として使わない。
+現在所有権と分離し、nation、map_space、x、y、from_turn、to_turn、change_reason、counterparty_nationを保持する案とする。履歴は現在map cellを巻き戻す命令として使わない。
 
 ## 定期判定と排他
 
@@ -162,7 +162,7 @@ turn worker、登録、占領、沈没はworld lockを共有する。turn開始�
 
 ## 大量領土の沈没
 
-最初に単一transactionの実行時間・lock時間を計測する。過大な場合はtransition operationを作り、所有chunkをmap_space_id、chunk_r、chunk_qの安定順でbatch処理する。
+最初に単一transactionの実行時間・lock時間を計測する。過大な場合はtransition operationを作り、所有chunkをmap_space_id、chunk_y、chunk_xの安定順でbatch処理する。
 
 各batchは「現在も対象nationが所有するセル」だけを更新し、checkpointを保存する。再実行は完了chunkを飛ばす。処理中は当該国家へのturn、占領、復帰をtransition lockで停止する。全batchと首都・施設除去を検証した最終transactionでsunken_archivedを確定する。
 

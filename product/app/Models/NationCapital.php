@@ -9,12 +9,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $id
  * @property int $nation_id
  * @property int $map_cell_id
- * @property int $q
- * @property int $r
+ * @property int $x
+ * @property int $y
  */
 class NationCapital extends Model
 {
-    protected $fillable = ['nation_id', 'map_cell_id', 'q', 'r'];
+    protected $fillable = ['nation_id', 'map_cell_id', 'x', 'y'];
 
     /** @return BelongsTo<Nation, $this> */
     public function nation(): BelongsTo

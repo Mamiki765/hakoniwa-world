@@ -9,10 +9,10 @@ const detail = (key: string, label: string, value: number | string, formatted: s
 
 function cell(overrides: Partial<MapCell> = {}): MapCell {
     return {
-        q: 3, r: -2, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
+        x: 3, y: -2, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
         display_name: '平地', owner_nation_id: 1, owner_name: '試験国', details: [],
         asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平地', fallback_style: 'tile-plain' },
-        overlays: [], aria_label: 'q 3 r -2 平地 所有 試験国', version: 1, updated_at: null,
+        overlays: [], aria_label: 'x 3 y -2 平地 所有 試験国', version: 1, updated_at: null,
         ...overrides,
     };
 }

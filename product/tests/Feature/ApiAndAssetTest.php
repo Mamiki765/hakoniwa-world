@@ -25,14 +25,18 @@ class ApiAndAssetTest extends TestCase
         $this->assertStringNotContainsString('secret-external-id', $response->getContent());
     }
 
-    public function test_negative_chunk_coordinates_and_nation_endpoints(): void
+    public function test_xy_chunk_coordinates_and_nation_endpoints(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = User::factory()->create();
         $mapSpace = MapSpace::query()->firstOrFail();
 
         $this->actingAs($user)->getJson("/api/v1/map-spaces/{$mapSpace->id}/chunks/-1/-1")
-            ->assertOk()->assertJsonPath('data.chunk_q', -1)->assertJsonCount(256, 'data.cells');
+            ->assertOk()->assertJsonPath('data.chunk_x', -1)->assertJsonPath('data.chunk_y', -1)
+            ->assertJsonPath('data.state', 'empty')->assertJsonCount(0, 'data.cells');
+        $this->actingAs($user)->getJson("/api/v1/map-spaces/{$mapSpace->id}/chunks/0/0")
+            ->assertOk()->assertJsonPath('data.chunk_x', 0)->assertJsonPath('data.chunk_y', 0)
+            ->assertJsonCount(256, 'data.cells');
 
         $nation = $this->actingAs($user)->postJson('/api/v1/nations', ['world_id' => $world->id, 'name' => 'API国'])
             ->assertCreated()

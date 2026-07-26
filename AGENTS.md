@@ -62,3 +62,16 @@ Before starting implementation work, read `docs/open-questions.md`.
 If an `Open` item is related to the implementation scope and its `Required before` gate has been reached, do not decide it implicitly or implement around it. Report the item, the viable options, and the effect on the planned implementation.
 
 For `Deferred` items, preserve only a clear extension boundary. Do not implement the deferred feature early as part of the MVP.
+
+## Coordinate system
+
+The canonical surface-map coordinate system is the staggered square-tile `x`/`y` grid defined by `docs/decisions/ADR-0003-hex-coordinate-system.md`.
+
+- Use `x`, `y`, `chunk_x`, `chunk_y`, `local_x`, `local_y`, `target_x`, and `target_y` in current code and public interfaces.
+- The initial world is `0..59` on both axes with 60 cells in every row.
+- Even absolute `y` rows are rendered 16px to the right; never derive parity from a capital-relative row.
+- Keep the six-neighbor direction numbering identical in Backend and Frontend.
+- Cube conversion is permitted only as a private distance-calculation detail.
+- Historical migrations may name the retired coordinate columns only to backfill or roll back them.
+
+Do not implement the turn runner while performing coordinate, migration, reset, or rendering work.

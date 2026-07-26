@@ -3,8 +3,9 @@
 namespace Tests\Feature;
 
 use App\Application\OceanWorldGenerator;
-use App\Domain\Hex\ChunkCoordinateService;
+use App\Domain\Map\ChunkCoordinateService;
 use App\Models\MapCell;
+use App\Models\MapChunk;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCapital;
@@ -29,6 +30,24 @@ class WorldInitializationTest extends TestCase
         $this->assertSame(1, World::query()->count());
         $this->assertSame(1, MapSpace::query()->count());
         $this->assertSame(3600, MapCell::query()->count());
+        $this->assertSame('staggered_square_offset', MapSpace::query()->value('coordinate_system'));
+        $this->assertSame(
+            ['min_x' => 0, 'max_x' => 59, 'min_y' => 0, 'max_y' => 59],
+            MapSpace::query()->firstOrFail()->only(['min_x', 'max_x', 'min_y', 'max_y']),
+        );
+        $this->assertSame(range(0, 59), MapCell::query()->distinct()->orderBy('y')->pluck('y')->all());
+        $this->assertSame(60, DB::table('map_cells')->select('y')->groupBy('y')->havingRaw('COUNT(*) = 60')->get()->count());
+        $this->assertSame(range(0, 59), MapCell::query()->where('y', 20)->orderBy('x')->pluck('x')->all());
+        $this->assertSame(3600, DB::table('map_cells')->select(['map_space_id', 'x', 'y'])->distinct()->get()->count());
+        $this->assertSame(16, MapChunk::query()->count());
+        $this->assertSame(range(0, 3), MapChunk::query()->distinct()->orderBy('chunk_x')->pluck('chunk_x')->all());
+        $this->assertSame(range(0, 3), MapChunk::query()->distinct()->orderBy('chunk_y')->pluck('chunk_y')->all());
+        $this->assertSame(0, DB::table('map_cells')
+            ->whereColumn('chunk_x', '!=', DB::raw('FLOOR(x / 16.0)'))
+            ->orWhereColumn('chunk_y', '!=', DB::raw('FLOOR(y / 16.0)'))
+            ->count());
+        $this->assertSame(0, MapCell::query()->whereNotBetween('local_x', [0, 15])->count());
+        $this->assertSame(0, MapCell::query()->whereNotBetween('local_y', [0, 15])->count());
         $this->assertSame(3600, DB::table('map_cells')->join('terrain_definitions', 'terrain_definitions.id', '=', 'map_cells.terrain_definition_id')->where('terrain_definitions.key', 'sea')->count());
         $this->assertSame(0, MapCell::query()->whereNotNull('owner_nation_id')->count());
         $this->assertSame(0, MapCell::query()->whereNotNull('facility_definition_id')->count());

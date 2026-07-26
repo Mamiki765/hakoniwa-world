@@ -8,7 +8,7 @@ Laravel API、OAuth callback、Vue 3 UI、世界・島生成、command queue、�
 - `/api/v1`: 認証済みJSON API
 - `resources/js/app.ts`: Vue entrypoint
 - `app/Application`: 世界生成、国家作成、配置、資源初期化
-- `app/Domain/Hex`: signed axial座標とchunk計算
+- `app/Domain/Map`: staggered x/yの6近傍、距離、projectionとchunk計算
 - `app/Application/CommandQueueService.php`: 未実行commandの予約・並べ替え・取消
 - `app/Services/MapCellPresenter.php`: viewer別の公開cell表現
 - `config/hakoniwa.php`: versioned rulesetのcommand・施設・生産定義

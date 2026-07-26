@@ -4,7 +4,7 @@ namespace App\Providers;
 
 use App\Application\InitialIslandGenerator;
 use App\Application\LegacyInspiredInitialIslandGenerator;
-use App\Domain\Hex\ChunkCoordinateService;
+use App\Domain\Map\ChunkCoordinateService;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Discord\Provider;

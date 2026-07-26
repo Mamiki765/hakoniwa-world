@@ -29,7 +29,7 @@ class NationResource extends JsonResource
                     'amount' => $balance->amount,
                 ])->values()->all()),
             'capital' => $this->whenLoaded('capital', fn (): ?array => $this->capital === null ? null : [
-                'q' => $this->capital->q, 'r' => $this->capital->r,
+                'x' => $this->capital->x, 'y' => $this->capital->y,
             ]),
         ];
     }

@@ -33,8 +33,8 @@ final class MapCellPresenter
         $details = $this->details($cell, $isOwner, $isDisguised, $rulesetVersionId);
 
         return [
-            'q' => $cell->q,
-            'r' => $cell->r,
+            'x' => $cell->x,
+            'y' => $cell->y,
             'terrain' => $terrain->key,
             'terrain_name' => $terrain->name,
             'facility' => $facility?->key,
@@ -116,9 +116,9 @@ final class MapCellPresenter
         $suffix = array_map(static fn (array $detail): string => $detail['label'].' '.$detail['formatted'], $details);
 
         return trim(implode(' ', [
-            "q {$cell->q} r {$cell->r}",
+            "x {$cell->x} y {$cell->y}",
             $displayName,
-            '所有 '.($cell->ownerNation?->name ?? '中立'),
+            '所有 '.($cell->owner_nation_id === null ? '中立' : $cell->ownerNation->name),
             ...$suffix,
         ]));
     }

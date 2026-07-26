@@ -10,12 +10,12 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $map_space_id
  * @property int $map_chunk_id
- * @property int $q
- * @property int $r
- * @property int $chunk_q
- * @property int $chunk_r
- * @property int $local_q
- * @property int $local_r
+ * @property int $x
+ * @property int $y
+ * @property int $chunk_x
+ * @property int $chunk_y
+ * @property int $local_x
+ * @property int $local_y
  * @property int $terrain_definition_id
  * @property int|null $facility_definition_id
  * @property int|null $owner_nation_id
@@ -34,7 +34,7 @@ use Illuminate\Support\Carbon;
 class MapCell extends Model
 {
     protected $fillable = [
-        'map_space_id', 'map_chunk_id', 'q', 'r', 'chunk_q', 'chunk_r', 'local_q', 'local_r',
+        'map_space_id', 'map_chunk_id', 'x', 'y', 'chunk_x', 'chunk_y', 'local_x', 'local_y',
         'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population', 'terrain_quantity',
         'facility_scale', 'facility_experience', 'facility_operational_state', 'state', 'version',
     ];

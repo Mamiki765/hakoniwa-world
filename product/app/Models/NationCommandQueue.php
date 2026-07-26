@@ -2,10 +2,18 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property int $nation_id
+ * @property int $map_space_id
+ * @property int $version
+ * @property-read Collection<int, NationCommandQueueItem> $items
+ */
 class NationCommandQueue extends Model
 {
     protected $fillable = ['nation_id', 'map_space_id', 'version'];

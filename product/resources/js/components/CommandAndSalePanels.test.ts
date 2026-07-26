@@ -5,15 +5,15 @@ import CommandQueuePanel from './CommandQueuePanel.vue';
 import SalePolicyPanel from './SalePolicyPanel.vue';
 
 const selected: MapCell = {
-    q: -4, r: 7, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
+    x: -4, y: 7, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
     display_name: '平地', owner_nation_id: 1, owner_name: '操作国', details: [],
     asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平地', fallback_style: 'tile-plain' },
-    overlays: [], aria_label: 'q -4 r 7 平地 所有 操作国', version: 1, updated_at: null,
+    overlays: [], aria_label: 'x -4 y 7 平地 所有 操作国', version: 1, updated_at: null,
 };
 
 const item = (id: number, position: number) => ({
     id, command_key: id === 1 ? 'land_clear' : 'build_farm', command_name: id === 1 ? '整地' : '農場建設',
-    queue_position: position, target_q: -4, target_r: 7, parameters: {}, status: 'queued', queued_at: null,
+    queue_position: position, target_x: -4, target_y: 7, parameters: {}, status: 'queued', queued_at: null,
 });
 
 const commandDefinition = (key: string, name: string): CommandDefinition => ({
@@ -40,7 +40,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reje
 afterEach(() => vi.unstubAllGlobals());
 
 describe('command queue panel', () => {
-    it('adds the selected q/r and clearly reports that execution is deferred', async () => {
+    it('adds the selected x/y and clearly reports that execution is deferred', async () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             let data: unknown;
@@ -67,8 +67,8 @@ describe('command queue panel', () => {
         const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
         expect(post).toBeDefined();
         const body = JSON.parse(String(post?.[1]?.body)) as Record<string, unknown>;
-        expect(body.target_q).toBe(-4);
-        expect(body.target_r).toBe(7);
+        expect(body.target_x).toBe(-4);
+        expect(body.target_y).toBe(7);
         expect(body.command_key).toBe('land_clear');
         expect(wrapper.text()).toContain('整地（-4, 7）');
     });
@@ -115,7 +115,7 @@ describe('command queue panel', () => {
                 }, 201));
             }
             if (path.includes('command-definitions')) {
-                return path.includes('target_q=-4') ? definitionA.promise : definitionB.promise;
+                return path.includes('target_x=-4') ? definitionA.promise : definitionB.promise;
             }
 
             queueGets++;
@@ -125,7 +125,7 @@ describe('command queue panel', () => {
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
-        const selectedB = { ...selected, q: 8, r: 9, aria_label: 'q 8 r 9 平地 所有 操作国' };
+        const selectedB = { ...selected, x: 8, y: 9, aria_label: 'x 8 y 9 平地 所有 操作国' };
         await wrapper.setProps({ selected: selectedB });
         await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
         definitionB.resolve(jsonResponse([commandDefinition('build_factory', 'Bの工場建設')]));
@@ -148,7 +148,7 @@ describe('command queue panel', () => {
 
         const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
         const body = JSON.parse(String(post?.[1]?.body)) as Record<string, unknown>;
-        expect(body).toMatchObject({ command_key: 'build_factory', target_q: 8, target_r: 9, expected_version: 9 });
+        expect(body).toMatchObject({ command_key: 'build_factory', target_x: 8, target_y: 9, expected_version: 9 });
         expect(wrapper.text()).not.toContain('A stale');
     });
 
@@ -161,7 +161,7 @@ describe('command queue panel', () => {
         });
         const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
             if (String(input).includes('command-definitions')) {
-                return String(input).includes('target_q=-4') ? abortingResponse(init?.signal) : definitionB.promise;
+                return String(input).includes('target_x=-4') ? abortingResponse(init?.signal) : definitionB.promise;
             }
             queueGets++;
             return queueGets === 1 ? abortingResponse(init?.signal) : queueB.promise;
@@ -170,7 +170,7 @@ describe('command queue panel', () => {
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
-        await wrapper.setProps({ selected: { ...selected, q: 8, r: 9 } });
+        await wrapper.setProps({ selected: { ...selected, x: 8, y: 9 } });
         await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
         await flushPromises();
 

@@ -38,7 +38,7 @@ async function prepareMap(): Promise<void> {
     const spaces = await api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`);
     mapSpace.value = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
     if (mapSpace.value !== null) {
-        await map.loadAround(mapSpace.value.id, currentNation.capital.q, currentNation.capital.r);
+        await map.loadAround(mapSpace.value.id, currentNation.capital.x, currentNation.capital.y);
         page.value = 'map';
     }
 }
@@ -92,7 +92,7 @@ async function createNation(): Promise<void> {
             <p class="eyebrow">WELCOME, {{ user.display_name }}</p>
             <h1 v-if="nation">{{ nation.name }}</h1>
             <template v-if="nation">
-                <p>資金 {{ nation.money }} ／ 小麦 {{ wheatAmount }} ／ 首都 q={{ nation.capital?.q }}, r={{ nation.capital?.r }}</p>
+                <p>資金 {{ nation.money }} ／ 小麦 {{ wheatAmount }} ／ 首都 x={{ nation.capital?.x }}, y={{ nation.capital?.y }}</p>
                 <button class="button primary" type="button" @click="page = 'map'">首都周辺を見る</button>
             </template>
             <form v-else class="nation-form" @submit.prevent="createNation">

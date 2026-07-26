@@ -37,7 +37,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $requestKey = (string) Str::uuid();
 
         $definitions = $this->actingAs($user)->getJson(
-            "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-definitions?target_q={$target->q}&target_r={$target->r}",
+            "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-definitions?target_x={$target->x}&target_y={$target->y}",
         )->assertOk()->json('data');
         $farmDefinition = collect($definitions)->firstWhere('key', 'build_farm');
         $this->assertSame(10000, $farmDefinition['initial_facility_capacity']['capacity_people']);
@@ -45,19 +45,19 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
         $this->actingAs($user)->getJson($queuePath)->assertOk()->assertJsonPath('data.version', 1);
         $first = $this->postJson($queuePath, [
-            'command_key' => 'build_farm', 'target_q' => $target->q, 'target_r' => $target->r,
+            'command_key' => 'build_farm', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => $requestKey, 'expected_version' => 1, 'parameters' => [],
         ])->assertCreated()->assertJsonPath('data.queue.version', 2)->json('data');
         $this->assertStringContainsString('まだ実行されていません', $first['message']);
 
         // Retrying with the same idempotency key returns the original item even with the old version.
         $this->postJson($queuePath, [
-            'command_key' => 'build_farm', 'target_q' => $target->q, 'target_r' => $target->r,
+            'command_key' => 'build_farm', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => $requestKey, 'expected_version' => 1, 'parameters' => [],
         ])->assertCreated()->assertJsonCount(1, 'data.queue.items');
 
         $second = $this->postJson($queuePath, [
-            'command_key' => 'land_clear', 'target_q' => $target->q, 'target_r' => $target->r,
+            'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 2, 'parameters' => ['future_quantity' => 1],
         ])->assertCreated()->assertJsonPath('data.queue.version', 3)->json('data');
         $firstId = $first['item_id'];
@@ -90,24 +90,24 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
         $this->actingAs(User::factory()->create())->getJson($path)->assertForbidden();
         $this->actingAs($owner)->postJson($path, [
-            'command_key' => 'not_a_command', 'target_q' => $target->q, 'target_r' => $target->r,
+            'command_key' => 'not_a_command', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
         ])->assertUnprocessable();
         $this->postJson($path, [
-            'command_key' => 'build_mine', 'target_q' => $target->q, 'target_r' => $target->r,
+            'command_key' => 'build_mine', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
         ])->assertUnprocessable();
         $this->postJson($path, [
-            'command_key' => 'land_clear', 'target_q' => $mapSpace->max_q + 1, 'target_r' => $target->r,
+            'command_key' => 'land_clear', 'target_x' => $mapSpace->max_x + 1, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
         ])->assertUnprocessable();
 
         $this->postJson($path, [
-            'command_key' => 'land_clear', 'target_q' => $target->q, 'target_r' => $target->r,
+            'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
         ])->assertCreated();
         $this->postJson($path, [
-            'command_key' => 'land_clear', 'target_q' => $target->q, 'target_r' => $target->r,
+            'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
         ])->assertConflict();
 
@@ -117,7 +117,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ]);
         $otherSpace = MapSpace::query()->create([
             'world_id' => $otherWorld->id, 'key' => 'surface', 'name' => '別地上',
-            'coordinate_system' => 'pointy_top_axial', 'min_q' => -1, 'max_q' => 1, 'min_r' => -1, 'max_r' => 1,
+            'coordinate_system' => 'staggered_square_offset', 'min_x' => 0, 'max_x' => 1, 'min_y' => 0, 'max_y' => 1,
         ]);
         $this->getJson("/api/v1/nations/{$nation->id}/map-spaces/{$otherSpace->id}/command-queue")->assertUnprocessable();
     }
@@ -130,7 +130,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
         $payload = [
-            'command_key' => 'land_clear', 'target_q' => $target->q, 'target_r' => $target->r,
+            'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
         ];
 

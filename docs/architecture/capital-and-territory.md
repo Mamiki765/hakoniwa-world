@@ -20,7 +20,7 @@ Capitalの不変条件と最低人口1単位は確定する。最初のMVP縦切
 
 ## 初期TerritoryのMVP既定値
 
-MVPの初期TerritoryはCapital cellと、Capitalからaxial distance 2以内を第一候補とする。最大19セル相当であり、`territory_initial_radius = 2`としてWorldが参照するruleset versionへ置く。
+MVPの初期TerritoryはCapital cellと、Capitalからx/y grid distance 2以内を第一候補とする。最大19セル相当であり、`territory_initial_radius = 2`としてWorldが参照するruleset versionへ置く。
 
 これは確定balance値ではなく、次の条件を守ったまま新しいruleset versionで見直せる値である。
 
@@ -94,7 +94,7 @@ MVPの初期TerritoryはCapital cellと、Capitalからaxial distance 2以内を
 
 dormant_frozen、dormant_contestable、sunken_archivedでは自動発展を停止するため発生させない。首都だけが残ったactive国家も、適格な隣接セルがあれば時間をかけて村と領土を再建できる。
 
-成功時はSettlementSeeded eventにsource capital、target q、r、生成施設、所有権変更を記録する。発生確率、最小村規模、1回あたりの頻度は未決定である。
+成功時はSettlementSeeded eventにsource capital、target x、y、生成施設、所有権変更を記録する。発生確率、最小村規模、1回あたりの頻度は未決定である。
 
 ## 緊急開拓
 

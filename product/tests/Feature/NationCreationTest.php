@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Application\InitialIslandGenerator;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
-use App\Domain\Hex\HexCoordinate;
+use App\Domain\Map\GridCoordinate;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -45,7 +45,12 @@ class NationCreationTest extends TestCase
         $this->assertSame(1, $this->facilityCount('missile_base'));
         $this->assertSame(1, $this->facilityCount('capital'));
         $this->assertSame(19, MapCell::query()->where('owner_nation_id', $nation->id)->count());
-        $this->assertSame('sea', MapCell::query()->where('q', 20)->where('r', 20)->firstOrFail()->terrain()->value('key'));
+        $this->assertGreaterThanOrEqual(1, MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->count());
+        $this->assertSame('sea', MapCell::query()->where('x', 20)->where('y', 20)->firstOrFail()->terrain()->value('key'));
     }
 
     public function test_second_nation_does_not_overlap_and_capitals_are_at_least_twelve_apart(): void
@@ -54,8 +59,8 @@ class NationCreationTest extends TestCase
         $service = app(NationCreationService::class);
         $first = $service->create(User::factory()->create(), $world, '第一国');
         $second = $service->create(User::factory()->create(), $world, '第二国');
-        $a = new HexCoordinate($first->capital->q, $first->capital->r);
-        $b = new HexCoordinate($second->capital->q, $second->capital->r);
+        $a = new GridCoordinate($first->capital->x, $first->capital->y);
+        $b = new GridCoordinate($second->capital->x, $second->capital->y);
 
         $this->assertGreaterThanOrEqual(12, $a->distanceTo($b));
         $this->assertNotSame($first->capital->map_cell_id, $second->capital->map_cell_id);
@@ -78,9 +83,9 @@ class NationCreationTest extends TestCase
         $world = app(OceanWorldGenerator::class)->initialize();
         $this->app->bind(InitialIslandGenerator::class, fn () => new class implements InitialIslandGenerator
         {
-            public function generate(MapSpace $mapSpace, Nation $nation, HexCoordinate $center, string $seed): NationCapital
+            public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital
             {
-                MapCell::query()->where('map_space_id', $mapSpace->id)->where('q', $center->q)->where('r', $center->r)->update(['population' => 999]);
+                MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', $center->x)->where('y', $center->y)->update(['population' => 999]);
                 throw new RuntimeException('injected island failure');
             }
         });

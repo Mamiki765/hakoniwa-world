@@ -3,7 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Concurrency\OptimisticLockException;
-use App\Domain\Hex\HexCoordinate;
+use App\Domain\Map\GridCoordinate;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -19,19 +19,22 @@ use Illuminate\Support\Facades\DB;
 
 final class CommandQueueService
 {
-    /** @return array{queue: NationCommandQueue, item: NationCommandQueueItem} */
+    /**
+     * @param  array<string, mixed>  $parameters
+     * @return array{queue: NationCommandQueue, item: NationCommandQueueItem}
+     */
     public function add(
         User $user,
         Nation $nation,
         MapSpace $mapSpace,
         string $commandKey,
-        int $targetQ,
-        int $targetR,
+        int $targetX,
+        int $targetY,
         string $requestKey,
         int $expectedVersion,
         array $parameters = [],
     ): array {
-        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetQ, $targetR, $requestKey, $expectedVersion, $parameters): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $parameters): array {
             $membership = $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
             $definition = CommandDefinition::query()
@@ -61,7 +64,7 @@ final class CommandQueueService
             }
             $this->assertVersion($queue, $expectedVersion);
 
-            $cell = $this->targetCell($mapSpace, $targetQ, $targetR);
+            $cell = $this->targetCell($mapSpace, $targetX, $targetY);
             $this->validateTarget($nation, $mapSpace, $definition, $cell);
             $active = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
@@ -76,8 +79,8 @@ final class CommandQueueService
                 'nation_command_queue_id' => $queue->id,
                 'command_definition_id' => $definition->id,
                 'queue_position' => $active + 1,
-                'target_q' => $targetQ,
-                'target_r' => $targetR,
+                'target_x' => $targetX,
+                'target_y' => $targetY,
                 'parameters' => $parameters,
                 'status' => 'queued',
                 'queued_by_membership_id' => $membership->id,
@@ -87,7 +90,7 @@ final class CommandQueueService
             ]);
             $queue->increment('version');
             $queue->refresh();
-            $this->audit($user, 'command.queued', $item, ['command_key' => $commandKey, 'q' => $targetQ, 'r' => $targetR]);
+            $this->audit($user, 'command.queued', $item, ['command_key' => $commandKey, 'x' => $targetX, 'y' => $targetY]);
 
             return ['queue' => $queue, 'item' => $item->load('definition')];
         }, 3);
@@ -212,16 +215,16 @@ final class CommandQueueService
         }
     }
 
-    private function targetCell(MapSpace $mapSpace, int $q, int $r): MapCell
+    private function targetCell(MapSpace $mapSpace, int $x, int $y): MapCell
     {
-        if ($q < $mapSpace->min_q || $q > $mapSpace->max_q || $r < $mapSpace->min_r || $r > $mapSpace->max_r) {
-            throw new DomainException('target q/rがmap bounds外です。');
+        if ($x < $mapSpace->min_x || $x > $mapSpace->max_x || $y < $mapSpace->min_y || $y > $mapSpace->max_y) {
+            throw new DomainException('target x/yがmap bounds外です。');
         }
 
         $cell = MapCell::query()
             ->where('map_space_id', $mapSpace->id)
-            ->where('q', $q)
-            ->where('r', $r)
+            ->where('x', $x)
+            ->where('y', $y)
             ->with(['terrain', 'facility'])
             ->first();
         if ($cell === null) {
@@ -233,11 +236,11 @@ final class CommandQueueService
 
     private function hasOwnedCellWithin(Nation $nation, MapSpace $mapSpace, MapCell $cell, int $radius, bool $includeCenter = true): bool
     {
-        $coordinates = (new HexCoordinate($cell->q, $cell->r))->radius($radius);
+        $coordinates = (new GridCoordinate($cell->x, $cell->y))->radius($radius);
         if (! $includeCenter) {
             $coordinates = array_values(array_filter(
                 $coordinates,
-                static fn (HexCoordinate $coordinate): bool => $coordinate->q !== $cell->q || $coordinate->r !== $cell->r,
+                static fn (GridCoordinate $coordinate): bool => $coordinate->x !== $cell->x || $coordinate->y !== $cell->y,
             ));
         }
 
@@ -246,7 +249,7 @@ final class CommandQueueService
             ->where('owner_nation_id', $nation->id)
             ->where(function ($query) use ($coordinates): void {
                 foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair->where('q', $coordinate->q)->where('r', $coordinate->r));
+                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
                 }
             })
             ->exists();

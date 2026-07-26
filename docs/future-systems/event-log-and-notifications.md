@@ -38,7 +38,7 @@ turn eventをゲーム上の出来事の正本とし、notification outboxを配
 - actor_type、actor_id。
 - target_type、target_id。
 - related_nation_idsまたは関連表。
-- map_space_id、signed axial q、r nullable。UI用odd-q座標は保存しない。
+- map_space_id、canonical x、y nullable。pixel座標や距離計算用の一時成分は保存しない。
 - structured payload。
 - occurred_at。
 - visibility: public、nation、private、admin。

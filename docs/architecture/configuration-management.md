@@ -14,7 +14,7 @@
 |---|---|---|---|
 | 環境・基盤 | DB接続、queue、cache、公開URL、認証client secret | 環境変数・secret manager | deploy権限者 |
 | ゲームruleset | ターン間隔、災害率、費用、生産率、初期資産、首都保護 | 版管理DB＋検証schema | 管理画面でdraft、公開 |
-| コード不変条件 | signed axial座標、`chunk_size = 16`、状態遷移、許可された演算種別 | source code・ADR | reviewとrelease |
+| コード不変条件 | staggered x/y座標、`chunk_size = 16`、状態遷移、許可された演算種別 | source code・ADR | reviewとrelease |
 
 秘密をrulesetへ入れない。ゲームバランス値を環境変数だけに置かない。管理者が任意PHPや式を入力して実行する仕組みも作らない。
 
@@ -37,7 +37,7 @@ MVP migrationは、Worldからversionを参照でき、配置用の`territory_in
 
 ### 世界
 
-- initial_q_min、initial_q_max、initial_r_min、initial_r_max。MVPは`-30`、`29`、`-30`、`29`。
+- initial_x_min、initial_x_max、initial_y_min、initial_y_max。MVPは`0`、`59`、`0`、`59`。
 - territory_initial_radius。MVPの暫定既定値は2。
 - capital_min_distance。MVPの暫定既定値は12。
 - registration_clearance_radius。

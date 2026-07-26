@@ -1,151 +1,94 @@
-# ADR-0003 六角座標方式
+# ADR-0003 staggered square-tile x/y 座標
 
-- 状態: 採用
-- 日付: 2026-07-26
-- 対象: 地上map_space、将来の六角形map_space、DB、API、ゲームルール、UI投影
+- Status: 採用
+- Date: 2026-07-26
+- Updated: 2026-07-26 / PR #4
+- Scope: 地上 map space、DB、API、ゲームルール、command target、Vue
 
-## 文脈
+## Context
 
-共有世界は初期生成範囲の外へ拡張し、負座標を許す。領土、ミサイル、災害、怪獣、登録地点探索、範囲効果が同じ隣接・距離規則を使う必要がある。
+初期実装は pointy-top axial 座標の直積を保存し、表示時だけ staggered row へ変換していた。この方式では各 row の表示開始位置が累積して、60×60 の世界全体が平行四辺形になる。
 
-offset座標を正本にすると、列の偶奇が隣接計算へ入り込み、負数の剰余差もPHP、TypeScript、SQLへ分散する。表示上の矩形配置と、ゲームルール上の座標を分離する。
+求める表示は旧式箱庭諸島に近い32px正方形 tile である。各 row は同数のセルを持ち、偶数 row だけ右へ16pxずれ、ゲーム上は6近傍として扱う。
 
 ## Decision
 
-DB、API、ゲームルールの正本には、符号付き整数のaxial q、rを使用する。地上はpointy-top hexとする。
+地上 map space の正本座標を integer `x` / `y` とする。
 
-q、r、chunk_q、chunk_rには負数を許可する。PostgreSQL等でunsigned型を使用しない。セルをx、y、row、column、offset座標として保存しない。
+- `x`: row 内の左から右へのセル番号
+- `y`: 上から下への row 番号
+- 初期範囲: `x = 0..59`、`y = 0..59`
+- 初期セル数: 3,600
+- `coordinate_system`: `staggered_square_offset`
 
-6方向の隣接ベクトルは次の固定順とする。
+DB、Model、API JSON、route parameter 名、command payload、capital、audit の新規 metadata、Vue type と UI label は x/y 用語だけを使う。過去 migration の backfill と rollback 以外では旧座標名を現行 interface に残さない。
 
-1. (+1, 0)
-2. (+1, -1)
-3. (0, -1)
-4. (-1, 0)
-5. (-1, +1)
-6. (0, +1)
+## Projection
 
-方向名を追加する場合も、この順序とベクトルの対応を1か所で定義する。
+```text
+TILE_SIZE = 32
+HALF_TILE = 16
+VERTICAL_STEP = 32
 
-2点間の差をdq、dr、ds = -(dq + dr)とすると、距離は次の標準式を使う。
+screenX = x * 32 + (floorMod(y, 2) == 0 ? 16 : 0)
+screenY = y * 32
+```
 
-distance = (abs(dq) + abs(dr) + abs(ds)) / 2
+projection は absolute x/y へ適用する。首都周辺を中央へ置く場合は、セルと首都をそれぞれ absolute 座標から pixel 化して差を取る。首都相対 y の偶奇で offset を決めてはならない。
 
-同値なmax(abs(dq), abs(dr), abs(dq + dr))を最適化に使ってもよいが、共通座標ライブラリ以外へ式を複製しない。
+全 row の表示幅は1,920pxで同じである。左端は0pxと16px、右端は1,888pxと1,904pxを交互に取り、row が進んでも横方向へ drift しない。
 
-## UI Projection
+## Directions and neighbors
 
-Vue等で矩形状に描画するときだけ、旧作の32px正方形tileに合わせたstaggered row projectionを使う。偶数行を右へ16pxずらす。offsetのcolumn、row、pixel位置は表示投影であり、API request、command payload、DBには保存しない。
+direction 番号は Backend と Frontend で次に固定する。
 
-axialから表示offsetへの変換:
+| number | direction |
+|---:|---|
+| 0 | east |
+| 1 | north-east |
+| 2 | north-west |
+| 3 | west |
+| 4 | south-west |
+| 5 | south-east |
 
-- row = r
-- column = q + floorDiv(r + 1, 2)
+偶数 y は右へ16pxずれ、近傍は west `(x-1,y)`、east `(x+1,y)`、north-west `(x,y-1)`、north-east `(x+1,y-1)`、south-west `(x,y+1)`、south-east `(x+1,y+1)` である。
 
-表示offsetからaxialへの逆変換:
+奇数 y の north-west / south-west は `x-1`、north-east / south-east は `x` を使う。map bounds 外の座標は存在しない。
 
-- q = column - floorDiv(row + 1, 2)
-- r = row
+## Distance
 
-pixel位置は`x = column * 32 + (floorMod(row, 2) == 0 ? 16 : 0)`、`y = row * 32`とする。floorDivとfloorModを使うことで負の行でも配置が反転しない。
+公開 interface と保存層は x/y のままにする。距離実装の private な数学処理だけ、偶数 row 右ずれ offset を一時的な cube 成分へ変換してよい。
 
-### 変換テスト例
+```text
+first = x - floorDiv(y + 1, 2)
+second = y
+third = -first - second
+distance = max(abs(deltaFirst), abs(deltaSecond), abs(deltaThird))
+```
 
-| axial q | axial r | column | row | 逆変換後q | 逆変換後r |
-|---:|---:|---:|---:|---:|---:|
-| 0 | 0 | 0 | 0 | 0 | 0 |
-| 1 | 0 | 1 | 0 | 1 | 0 |
-| 2 | 0 | 2 | 0 | 2 | 0 |
-| -1 | 0 | -1 | 0 | -1 | 0 |
-| -2 | 0 | -2 | 0 | -2 | 0 |
-| -1 | 1 | 0 | 1 | -1 | 1 |
-| 3 | -2 | 2 | -2 | 3 | -2 |
-
-PHP側とTypeScript側は同じ表をcontract testとして共有する。画面上でx、yという表示名を使う場合でも、それがaxial q、rの別名かpixel座標かをUI文言で明示し、offset座標をx、yと呼ばない。
+負数を扱う migration rollback と単体テストのため、除算は数学的 floor を使う。
 
 ## Chunking
 
-qとrを独立に数学的floor divisionし、チャンク内座標はfloor moduloで求める。
+`chunk_size = 16` とする。
 
-- chunk_size = 16
-- floorDiv(value, size) = floor(value / size)
-- floorMod(value, size) = value - floorDiv(value, size) * size
-- chunk_q = floorDiv(q, chunk_size)
-- chunk_r = floorDiv(r, chunk_size)
-- local_q = floorMod(q, chunk_size)
-- local_r = floorMod(r, chunk_size)
+```text
+chunk_x = floorDiv(x, 16)
+chunk_y = floorDiv(y, 16)
+local_x = floorMod(x, 16)
+local_y = floorMod(y, 16)
+```
 
-MVPの地上map_spaceは`size = 16`を採用する。これはDB、API、cache key、座標変換、既存Worldの互換性に関わる内部仕様であり、通常のruleset balance値として変更しない。ゼロ方向への丸めや、負数で負値を返す剰余をそのまま使わない。
+初期世界は `chunk_x = 0..3`、`chunk_y = 0..3` の16 chunksで、右端と下端は12×16、16×12、12×12の部分 chunk を含む。local 座標は常に0..15である。
 
-必須境界例:
+## Migration and reset
 
-| qまたはr | chunk座標 | local座標 |
-|---:|---:|---:|
-| 0 | 0 | 0 |
-| 15 | 0 | 15 |
-| 16 | 1 | 0 |
-| -1 | -1 | 15 |
-| -16 | -1 | 0 |
-| -17 | -2 | 15 |
+forward migration は新列追加、既存表示と同じ変換による backfill、chunk row 再構成、unique/index 移行、旧列削除の順に行う。migration だけで world や nation は削除しない。rollback は逆変換と chunk 再構成を行う。
 
-常に value = chunk * size + local、かつ 0 <= local < sizeを満たす。
+既存世界の外形は誤ったまま保存されるため、migration 後に `hakoniwa:world:reset` で正しい0..59の世界を再生成する。reset は users と auth identities を常に保持する。
 
-## 初期生成範囲
+## Consequences
 
-初期60×60はq=-30..29、r=-30..29を採用する。q=0..59、r=0..59案は原点が初期範囲の隅となり、登録探索、運用表示、四方向拡張の説明に偏りが出るため採用しない。
-
-60は偶数なので完全な点対称にはならず、範囲の中心は(-0.5, -0.5)である。それでも原点を含み、正負方向をほぼ均等に持つ。登録地点探索は原点固定ではなく、現行生成境界、既存首都距離、候補scoreを使うため不利益はない。UIは絶対q、rをstaggered rowへ投影するため、負の初期境界を特別扱いしない。
-
-論理上の地上map_spaceには固定座標上限を設けない。初期生成範囲と、座標型の論理範囲は別概念である。
-
-## HexCoordinateの責務
-
-将来のHexCoordinate値オブジェクトは次だけを正本実装とする。
-
-- q、r
-- neighbor(direction)
-- neighbors()
-- distanceTo()
-- add()
-- subtract()
-- toDisplayOffset()
-- fromDisplayOffset()
-- chunkCoordinate(chunkSize)
-- localCoordinate(chunkSize)
-
-領土、ミサイル、災害、怪獣、登録、UIが独自の隣接・距離・表示投影・チャンク式を持つことを禁止する。PHPとTypeScriptに同等実装を持つ場合も、同じfixtureとproperty testで一致を検証する。
-
-## Rejected
-
-offset座標をゲームルールとDBの正本にする案を採用しない。
-
-理由:
-
-- 負座標の偶奇処理が通常の剰余演算へ依存しやすい。
-- 隣接計算が偶数列・奇数列の分岐として各機能へ分散しやすい。
-- 距離、範囲、ring、line処理がaxialより複雑になる。
-- PHPとTypeScriptで除算・剰余の差を吸収する箇所が増える。
-- ミサイル、怪獣、領土処理の保守性と決定性を損なう。
-- 表示の都合をDB schemaとゲームルールへ固定してしまう。
-
-cube q、r、sを3列で保存する案も採用しない。s=-q-rで導出でき、三列の整合性制約が増えるためである。必要な計算時だけcube成分を導出する。
-
-## 地上世界と保存単位
-
-論理上、共有地上世界は1つである。ただし、地上全体を1つのJSONまたは1ファイルへ保存しない。地上map_spaceを複数チャンクに分け、セルの正本はmap_cellsの各行に一度だけ保持する。
-
-map_chunksのversion、checksum、更新turnはキャッシュ無効化、変更通知、同時更新検出の補助情報であり、別のマップ正本ではない。地下や宇宙は別map_spaceとし、地上と同じworldへ属しても座標境界・生成・可視性を独立させる。
-
-## 影響
-
-- DBとAPIの座標名はq、r、chunk_q、chunk_r、local_q、local_rになる。
-- UIは受信したq、rをstaggered rowへ投影し、表示投影をserverへ送らない。
-- 初期生成・登録・攻撃・災害・領土はHexCoordinateを共有する。
-- 負座標とチャンク境界のcontract testが実装前提になる。
-- 既存設計文書のx、y正本案は本ADRで置き換える。
-
-## 未決定事項
-
-- 宇宙map_spaceもhex axialにするか、別トポロジーにするか。
-- 利用者画面で座標をq、rと表示するか、日本語の別ラベルを付けるか。
-- 低zoom集約tileの座標契約。
+- 座標変更は API breaking change である。旧 command payload は必須 x/y validation を満たさず422になる。
+- 初期島、首都間距離、領土 radius、command target、keyboard 移動は同じ6近傍規則を共有する。
+- turn runner、command execution、生産、災害、戦闘、scheduler はこの決定の実装範囲外である。

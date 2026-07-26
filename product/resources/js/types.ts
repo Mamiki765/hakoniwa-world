@@ -20,7 +20,7 @@ export interface Nation {
     money: number;
     resources: NationResource[];
     state: string;
-    capital: { q: number; r: number } | null;
+    capital: { x: number; y: number } | null;
 }
 
 export interface NationResource {
@@ -52,8 +52,8 @@ export interface MapCellDetail {
 }
 
 export interface MapCell {
-    q: number;
-    r: number;
+    x: number;
+    y: number;
     terrain: string;
     terrain_name: string;
     facility: string | null;
@@ -72,8 +72,8 @@ export interface MapCell {
 export interface MapChunk {
     world_id: number;
     map_space_id: number;
-    chunk_q: number;
-    chunk_r: number;
+    chunk_x: number;
+    chunk_y: number;
     chunk_size: number;
     version: number | string;
     state: 'generated' | 'empty';
@@ -105,8 +105,8 @@ export interface CommandQueueItem {
     command_key: string;
     command_name: string;
     queue_position: number;
-    target_q: number;
-    target_r: number;
+    target_x: number;
+    target_y: number;
     parameters: Record<string, unknown>;
     status: string;
     queued_at: string | null;
