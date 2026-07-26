@@ -193,7 +193,22 @@ class OceanWorldGenerator
         foreach (config('hakoniwa.ruleset.command_definitions') as $definition) {
             CommandDefinition::query()->updateOrCreate(
                 ['ruleset_version_id' => $ruleset->id, 'key' => $definition['key']],
-                [...$definition, 'enabled' => true],
+                [
+                    'name' => $definition['name'],
+                    'description' => $definition['description'],
+                    'target_type' => $definition['target_type'],
+                    'target_terrain_keys' => $definition['target_terrain_keys'],
+                    'target_facility_keys' => $definition['target_facility_keys'],
+                    'requires_empty_facility' => $definition['requires_empty_facility'],
+                    'cost_money' => $definition['cost_money'],
+                    'required_resources' => $definition['required_resources'],
+                    'execution_phase' => $definition['execution_phase'],
+                    'result_terrain_key' => $definition['result_terrain_key'],
+                    'result_facility_key' => $definition['result_facility_key'],
+                    'sort_order' => $definition['sort_order'],
+                    'metadata' => $definition['metadata'],
+                    'enabled' => true,
+                ],
             );
         }
         foreach (config('hakoniwa.ruleset.production_definitions') as $definition) {

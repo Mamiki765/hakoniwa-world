@@ -2,9 +2,24 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $nation_command_queue_id
+ * @property int $command_definition_id
+ * @property int|null $queue_position
+ * @property int $target_x
+ * @property int $target_y
+ * @property array<string, mixed> $parameters
+ * @property string $status
+ * @property int $queued_by_membership_id
+ * @property string $request_key
+ * @property CarbonImmutable|null $queued_at
+ * @property-read CommandDefinition $definition
+ */
 class NationCommandQueueItem extends Model
 {
     protected $fillable = [

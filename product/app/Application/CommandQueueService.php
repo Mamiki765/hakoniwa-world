@@ -19,7 +19,10 @@ use Illuminate\Support\Facades\DB;
 
 final class CommandQueueService
 {
-    /** @return array{queue: NationCommandQueue, item: NationCommandQueueItem} */
+    /**
+     * @param  array<string, mixed>  $parameters
+     * @return array{queue: NationCommandQueue, item: NationCommandQueueItem}
+     */
     public function add(
         User $user,
         Nation $nation,

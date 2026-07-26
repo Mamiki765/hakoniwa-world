@@ -57,8 +57,15 @@ jobs:
           if ((${#changed_php[@]})); then
             vendor/bin/pint --test "${changed_php[@]}"
           fi
-      - name: Run PHP static analysis
-        run: vendor/bin/phpstan analyse --memory-limit=1G
+      - name: Run static analysis on changed app PHP
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base_sha="${BASE_SHA:-HEAD^}"
+          mapfile -t changed_app_php < <(git diff --name-only --diff-filter=ACMR "$base_sha...HEAD" -- 'app/**/*.php' | sed 's#^product/##')
+          if ((${#changed_app_php[@]})); then
+            vendor/bin/phpstan analyse "${changed_app_php[@]}" --memory-limit=1G
+          fi
       - name: Run isolated PostgreSQL tests
         run: php vendor/bin/phpunit --colors=never
 

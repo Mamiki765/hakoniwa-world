@@ -118,7 +118,7 @@ final class MapCellPresenter
         return trim(implode(' ', [
             "x {$cell->x} y {$cell->y}",
             $displayName,
-            '所有 '.($cell->ownerNation?->name ?? '中立'),
+            '所有 '.($cell->owner_nation_id === null ? '中立' : $cell->ownerNation->name),
             ...$suffix,
         ]));
     }
