@@ -2,7 +2,10 @@
 
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
+use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
+use App\Http\Middleware\PrivateApiResponse;
+use App\Http\Middleware\PublicApiResponse;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use Illuminate\Support\Facades\Route;
@@ -17,7 +20,20 @@ Route::get('/assets/hakoniwa-tiles/{filename}', AssetController::class)
 Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 
-Route::prefix('api/v1')->middleware('auth')->group(function (): void {
+Route::prefix('api/v1/public')
+    ->middleware(['throttle:60,1', PublicApiResponse::class])
+    ->group(function (): void {
+        Route::get('/worlds', [PublicApiController::class, 'worlds']);
+        Route::get('/worlds/{world}/summary', [PublicApiController::class, 'summary']);
+        Route::get('/worlds/{world}/rankings', [PublicApiController::class, 'rankings']);
+        Route::get('/worlds/{world}/events', [PublicApiController::class, 'events']);
+        Route::get('/worlds/{world}/map-spaces', [PublicApiController::class, 'mapSpaces']);
+        Route::get('/nations/{nation}', [PublicApiController::class, 'nation']);
+        Route::get('/nations/{nation}/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}', [PublicApiController::class, 'chunk'])
+            ->where(['chunkX' => '-?\d+', 'chunkY' => '-?\d+']);
+    });
+
+Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(function (): void {
     Route::get('/me', [ApiController::class, 'me']);
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/map-spaces', [ApiController::class, 'mapSpaces']);
@@ -30,6 +46,7 @@ Route::prefix('api/v1')->middleware('auth')->group(function (): void {
     Route::get('/nations/{nation}/map-spaces/{mapSpace}/command-queue', [CommandQueueController::class, 'index']);
     Route::post('/nations/{nation}/map-spaces/{mapSpace}/command-queue', [CommandQueueController::class, 'store']);
     Route::put('/nations/{nation}/map-spaces/{mapSpace}/command-queue/reorder', [CommandQueueController::class, 'reorder']);
+    Route::patch('/nations/{nation}/map-spaces/{mapSpace}/command-queue/{item}', [CommandQueueController::class, 'update']);
     Route::delete('/nations/{nation}/map-spaces/{mapSpace}/command-queue/{item}', [CommandQueueController::class, 'cancel']);
     Route::get('/nations/{nation}/sale-policies', [SalePolicyController::class, 'index']);
     Route::put('/nations/{nation}/resources/{resourceDefinition}/sale-policy', [SalePolicyController::class, 'update']);

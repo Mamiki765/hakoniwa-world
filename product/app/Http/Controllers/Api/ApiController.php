@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\NationCreationService;
+use App\Application\MapChunkService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateNationRequest;
 use App\Http\Resources\MapChunkResource;
@@ -10,12 +11,10 @@ use App\Http\Resources\MapSpaceResource;
 use App\Http\Resources\MeResource;
 use App\Http\Resources\NationResource;
 use App\Http\Resources\WorldResource;
-use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\World;
-use App\Services\MapCellPresenter;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,33 +38,18 @@ class ApiController extends Controller
         return MapSpaceResource::collection($world->mapSpaces()->orderBy('id')->get());
     }
 
-    public function chunk(Request $request, MapSpace $mapSpace, int $chunkX, int $chunkY, MapCellPresenter $presenter): MapChunkResource
+    public function chunk(Request $request, MapSpace $mapSpace, int $chunkX, int $chunkY, MapChunkService $chunks): MapChunkResource
     {
         $viewerNationId = NationMembership::query()
             ->where('user_id', $request->user()->id)
             ->where('world_id', $mapSpace->world_id)
             ->value('nation_id');
-        $rulesetVersionId = (int) $mapSpace->world()->value('ruleset_version_id');
-        $chunk = $mapSpace->chunks()->where('chunk_x', $chunkX)->where('chunk_y', $chunkY)->first();
-        $cells = MapCell::query()
-            ->where('map_space_id', $mapSpace->id)->where('chunk_x', $chunkX)->where('chunk_y', $chunkY)
-            ->with(['terrain', 'facility', 'ownerNation:id,name'])->orderBy('y')->orderBy('x')->get();
-
-        $presentedCells = $cells->map(fn (MapCell $cell): array => $presenter->present(
-            $cell,
+        return new MapChunkResource($chunks->present(
+            $mapSpace,
+            $chunkX,
+            $chunkY,
             $viewerNationId === null ? null : (int) $viewerNationId,
-            $rulesetVersionId,
-        ))->values();
-        $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
-
-        return new MapChunkResource([
-            'world_id' => $mapSpace->world_id, 'map_space_id' => $mapSpace->id,
-            'chunk_x' => $chunkX, 'chunk_y' => $chunkY,
-            'chunk_size' => config('hakoniwa.ruleset.chunk_size'),
-            'version' => $chunk === null ? 'empty' : $representationVersion,
-            'state' => $chunk === null ? 'empty' : 'generated',
-            'cells' => $presentedCells,
-        ]);
+        ));
     }
 
     public function createNation(CreateNationRequest $request, NationCreationService $service): JsonResponse

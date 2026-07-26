@@ -5,14 +5,10 @@ namespace App\Services;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\MissileBaseRules;
 use App\Models\MapCell;
-use App\Models\ProductionDefinition;
 use App\Models\TerrainDefinition;
 
 final class MapCellPresenter
 {
-    /** @var array<string, ProductionDefinition|null> */
-    private array $productionByFacility = [];
-
     private ?TerrainDefinition $forest = null;
 
     public function __construct(
@@ -22,7 +18,7 @@ final class MapCellPresenter
     ) {}
 
     /** @return array<string, mixed> */
-    public function present(MapCell $cell, ?int $viewerNationId, int $rulesetVersionId): array
+    public function present(MapCell $cell, ?int $viewerNationId): array
     {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
         $isDisguised = $cell->facility?->visibility_policy === 'disguised' && ! $isOwner;
@@ -30,7 +26,7 @@ final class MapCellPresenter
         $facility = $isDisguised ? null : $cell->facility;
         $displayDefinition = $facility ?? $terrain;
         $layers = $this->assets->resolveLayers($displayDefinition->asset_key, $displayDefinition->name);
-        $details = $this->details($cell, $isOwner, $isDisguised, $rulesetVersionId);
+        $details = $this->details($cell, $isOwner, $isDisguised);
 
         return [
             'x' => $cell->x,
@@ -53,7 +49,7 @@ final class MapCellPresenter
     }
 
     /** @return array<int, array{key: string, label: string, value: int|string, unit: string|null, formatted: string, visibility: string}> */
-    private function details(MapCell $cell, bool $isOwner, bool $isDisguised, int $rulesetVersionId): array
+    private function details(MapCell $cell, bool $isOwner, bool $isDisguised): array
     {
         if ($isDisguised) {
             return [];
@@ -79,17 +75,6 @@ final class MapCellPresenter
         if ($facility?->scale_unit_people !== null && $cell->facility_scale !== null) {
             $capacity = $this->capacities->capacityPeople($facility, $cell->facility_scale);
             $details[] = $this->detail('facility_capacity', '規模', $capacity, '人', number_format($capacity).'人規模', 'public');
-            $production = $this->production($facility->id, $rulesetVersionId);
-            if ($production !== null) {
-                $details[] = $this->detail(
-                    'planned_production',
-                    '生産予定',
-                    $production->outputResource->key,
-                    null,
-                    $production->outputResource->name,
-                    'public',
-                );
-            }
         }
 
         if ($facility?->key === 'missile_base' && $isOwner) {
@@ -126,20 +111,5 @@ final class MapCellPresenter
     private function forest(): TerrainDefinition
     {
         return $this->forest ??= TerrainDefinition::query()->where('key', 'forest')->firstOrFail();
-    }
-
-    private function production(int $facilityId, int $rulesetVersionId): ?ProductionDefinition
-    {
-        $cacheKey = $rulesetVersionId.':'.$facilityId;
-        if (! array_key_exists($cacheKey, $this->productionByFacility)) {
-            $this->productionByFacility[$cacheKey] = ProductionDefinition::query()
-                ->where('ruleset_version_id', $rulesetVersionId)
-                ->where('facility_definition_id', $facilityId)
-                ->where('enabled', true)
-                ->with('outputResource')
-                ->first();
-        }
-
-        return $this->productionByFacility[$cacheKey];
     }
 }

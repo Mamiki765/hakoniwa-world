@@ -45,6 +45,12 @@ class Nation extends Model
         return $this->hasOne(NationCommandQueue::class);
     }
 
+    /** @return HasMany<MapCell, $this> */
+    public function territoryCells(): HasMany
+    {
+        return $this->hasMany(MapCell::class, 'owner_nation_id');
+    }
+
     /** @return HasMany<NationResourceSalePolicy, $this> */
     public function salePolicies(): HasMany
     {

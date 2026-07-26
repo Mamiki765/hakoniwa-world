@@ -161,7 +161,7 @@ class RoadmapPr2StateTest extends TestCase
         );
         $details = collect($presented['details'])->keyBy('key');
         $this->assertSame('30,000人規模', $details['facility_capacity']['formatted']);
-        $this->assertSame('工業品', $details['planned_production']['formatted']);
+        $this->assertFalse($details->has('planned_production'));
         $this->assertFalse($details->has('population'));
     }
 

@@ -33,8 +33,9 @@ final class CommandQueueService
         string $requestKey,
         int $expectedVersion,
         array $parameters = [],
+        ?int $position = null,
     ): array {
-        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $parameters): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $parameters, $position): array {
             $membership = $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
             $definition = CommandDefinition::query()
@@ -66,19 +67,42 @@ final class CommandQueueService
 
             $cell = $this->targetCell($mapSpace, $targetX, $targetY);
             $this->validateTarget($nation, $mapSpace, $definition, $cell);
-            $active = NationCommandQueueItem::query()
+            if ($nation->money < $definition->cost_money) {
+                $shortfall = $definition->cost_money - $nation->money;
+                throw new DomainException('資金が'.number_format($shortfall).'億円不足しています。');
+            }
+            $parameters = $this->validateParameters($definition, $parameters);
+            $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
-                ->count();
+                ->orderBy('queue_position')
+                ->get();
             $limit = (int) config('hakoniwa.ruleset.command_queue_limit', 20);
-            if ($active >= $limit) {
+            if ($activeItems->count() >= $limit) {
                 throw new DomainException("command queueの上限{$limit}件に達しています。");
+            }
+            $position ??= $this->firstAutomaticPosition($activeItems->pluck('queue_position')->all(), $limit);
+            if ($position < 1 || $position > $limit) {
+                throw new DomainException("挿入位置は1から{$limit}の範囲で指定してください。");
+            }
+            $shifted = $activeItems->filter(
+                static fn (NationCommandQueueItem $item): bool => (int) $item->queue_position >= $position,
+            );
+            if ($shifted->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position >= $limit)) {
+                throw new DomainException('選択した位置へ挿入すると開発計画の末尾を超えます。');
+            }
+            if ($shifted->isNotEmpty()) {
+                NationCommandQueueItem::query()->whereIn('id', $shifted->modelKeys())->increment('queue_position', 1000);
+                foreach ($shifted->sortByDesc('queue_position') as $shiftedItem) {
+                    NationCommandQueueItem::query()->whereKey($shiftedItem->id)
+                        ->update(['queue_position' => (int) $shiftedItem->queue_position + 1]);
+                }
             }
 
             $item = NationCommandQueueItem::query()->create([
                 'nation_command_queue_id' => $queue->id,
                 'command_definition_id' => $definition->id,
-                'queue_position' => $active + 1,
+                'queue_position' => $position,
                 'target_x' => $targetX,
                 'target_y' => $targetY,
                 'parameters' => $parameters,
@@ -93,6 +117,74 @@ final class CommandQueueService
             $this->audit($user, 'command.queued', $item, ['command_key' => $commandKey, 'x' => $targetX, 'y' => $targetY]);
 
             return ['queue' => $queue, 'item' => $item->load('definition')];
+        }, 3);
+    }
+
+    /**
+     * @param  array<int, array{id: int, position: int}>  $placements
+     */
+    public function reposition(User $user, Nation $nation, array $placements, int $expectedVersion): NationCommandQueue
+    {
+        return DB::transaction(function () use ($user, $nation, $placements, $expectedVersion): NationCommandQueue {
+            $this->membership($user, $nation);
+            $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
+            $this->assertVersion($queue, $expectedVersion);
+            $currentIds = NationCommandQueueItem::query()
+                ->where('nation_command_queue_id', $queue->id)
+                ->where('status', 'queued')
+                ->pluck('id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->sort()
+                ->values()
+                ->all();
+            $receivedIds = collect($placements)->pluck('id')->map(static fn (mixed $id): int => (int) $id)
+                ->sort()->values()->all();
+            $positions = collect($placements)->pluck('position')->all();
+            $limit = (int) config('hakoniwa.ruleset.command_queue_limit', 20);
+            if ($currentIds !== $receivedIds || count($positions) !== count(array_unique($positions))) {
+                throw new DomainException('並べ替え対象が現在の開発計画と一致しません。');
+            }
+            if (collect($positions)->contains(static fn (mixed $position): bool => $position < 1 || $position > $limit)) {
+                throw new DomainException("開発計画の位置は1から{$limit}の範囲で指定してください。");
+            }
+
+            if ($currentIds !== []) {
+                NationCommandQueueItem::query()->whereIn('id', $currentIds)->increment('queue_position', 1000);
+                foreach ($placements as $placement) {
+                    NationCommandQueueItem::query()->whereKey($placement['id'])
+                        ->update(['queue_position' => $placement['position']]);
+                }
+            }
+            $queue->increment('version');
+            $queue->refresh();
+            $this->audit($user, 'command.reordered', $queue, ['placements' => $placements]);
+
+            return $queue;
+        }, 3);
+    }
+
+    /** @param array<string, mixed> $parameters */
+    public function updateParameters(
+        User $user,
+        Nation $nation,
+        NationCommandQueueItem $item,
+        array $parameters,
+        int $expectedVersion,
+    ): NationCommandQueue {
+        return DB::transaction(function () use ($user, $nation, $item, $parameters, $expectedVersion): NationCommandQueue {
+            $this->membership($user, $nation);
+            $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
+            $this->assertVersion($queue, $expectedVersion);
+            $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->with('definition')->firstOrFail();
+            if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
+                throw new DomainException('編集できないcommandです。');
+            }
+            $item->update(['parameters' => $this->validateParameters($item->definition, $parameters)]);
+            $queue->increment('version');
+            $queue->refresh();
+            $this->audit($user, 'command.parameters_updated', $item, ['parameter_keys' => array_keys($parameters)]);
+
+            return $queue;
         }, 3);
     }
 
@@ -277,6 +369,60 @@ final class CommandQueueService
         foreach ($items as $index => $item) {
             $item->update(['queue_position' => $index + 1]);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     * @return array<string, mixed>
+     */
+    private function validateParameters(CommandDefinition $definition, array $parameters): array
+    {
+        $schemas = $definition->metadata['parameters'] ?? [];
+        if (! is_array($schemas)) {
+            $schemas = [];
+        }
+        $unknown = array_diff(array_keys($parameters), array_keys($schemas));
+        if ($unknown !== []) {
+            throw new DomainException('未定義のcommand parameterが含まれています。');
+        }
+
+        $validated = [];
+        foreach ($schemas as $name => $schema) {
+            if (! is_array($schema)) {
+                continue;
+            }
+            $value = $parameters[$name] ?? $schema['default'] ?? null;
+            if (($schema['required'] ?? false) && $value === null) {
+                throw new DomainException("{$name}は必須です。");
+            }
+            if ($value === null) {
+                continue;
+            }
+            if (($schema['type'] ?? null) !== 'integer' || ! is_int($value)) {
+                throw new DomainException("{$name}は整数で指定してください。");
+            }
+            $minimum = (int) ($schema['minimum'] ?? PHP_INT_MIN);
+            $maximum = (int) ($schema['maximum'] ?? PHP_INT_MAX);
+            if ($value < $minimum || $value > $maximum) {
+                throw new DomainException("{$name}は{$minimum}から{$maximum}の範囲で指定してください。");
+            }
+            $validated[$name] = $value;
+        }
+
+        return $validated;
+    }
+
+    /** @param array<int, int|null> $occupied */
+    private function firstAutomaticPosition(array $occupied, int $limit): int
+    {
+        $positions = array_flip(array_map('intval', $occupied));
+        for ($position = 1; $position <= $limit; $position++) {
+            if (! isset($positions[$position])) {
+                return $position;
+            }
+        }
+
+        return $limit + 1;
     }
 
     /** @param array<string, mixed> $metadata */
