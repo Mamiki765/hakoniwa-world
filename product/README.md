@@ -15,7 +15,7 @@ Laravel API、OAuth callback、Vue 3 UI、世界・島生成domain serviceを含
 ```console
 composer install
 npm ci
-php artisan test
+php vendor/bin/phpunit
 vendor/bin/pint --test
 vendor/bin/phpstan analyse --memory-limit=1G
 npm run test
