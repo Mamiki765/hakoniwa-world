@@ -100,7 +100,7 @@ return new class extends Migration
                     'x', (metadata->>'q')::integer + FLOOR(((metadata->>'r')::integer + 1) / 2.0),
                     'y', (metadata->>'r')::integer
                 )
-            WHERE metadata ? 'q' AND metadata ? 'r'
+            WHERE metadata ?? 'q' AND metadata ?? 'r'
             SQL);
 
         DB::statement(<<<'SQL'
@@ -265,7 +265,7 @@ return new class extends Migration
                     'q', (metadata->>'x')::integer - FLOOR(((metadata->>'y')::integer + 1) / 2.0),
                     'r', (metadata->>'y')::integer
                 )
-            WHERE metadata ? 'x' AND metadata ? 'y'
+            WHERE metadata ?? 'x' AND metadata ?? 'y'
             SQL);
 
         DB::statement(<<<'SQL'
