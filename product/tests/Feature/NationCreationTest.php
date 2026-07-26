@@ -29,13 +29,17 @@ class NationCreationTest extends TestCase
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '最初の国');
 
         $this->assertSame(100, $nation->money);
-        $this->assertSame(['fish' => 0, 'monster_meat' => 0, 'wheat' => 100], NationResource::query()
+        $this->assertSame([
+            'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0, 'wheat' => 100,
+        ], NationResource::query()
             ->where('nation_id', $nation->id)
             ->join('resource_definitions', 'resource_definitions.id', '=', 'nation_resources.resource_definition_id')
             ->pluck('amount', 'key')->sortKeys()->all());
         $this->assertSame(3, ResourceDefinition::query()->where('category', 'food')->count());
+        $this->assertSame(5, $nation->salePolicies()->count());
         $this->assertSame(1000, $nation->capital->cell()->value('population'));
         $this->assertSame(3, $this->terrainCount('forest'));
+        $this->assertSame(3, MapCell::query()->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->where('terrain_quantity', 500)->count());
         $this->assertSame(1, $this->terrainCount('mountain'));
         $this->assertSame(1, $this->facilityCount('village'));
         $this->assertSame(1, $this->facilityCount('missile_base'));

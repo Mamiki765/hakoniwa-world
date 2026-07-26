@@ -91,6 +91,10 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             $cell->terrain->key = 'forest';
             $cell->facility_definition_id = null;
             $cell->population = 0;
+            $cell->terrain_quantity = $rules['terrain_quantities']['forest']['initial_quantity'];
+            $cell->facility_scale = null;
+            $cell->facility_experience = null;
+            $cell->facility_operational_state = null;
         }
 
         $village = $this->cell($cells, $placementCells[$cursor++]);
@@ -98,24 +102,40 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         $village->terrain->key = 'plain';
         $village->facility_definition_id = $facilityIds['village'];
         $village->population = 500;
+        $village->terrain_quantity = null;
+        $village->facility_scale = null;
+        $village->facility_experience = null;
+        $village->facility_operational_state = 'operational';
 
         $mountain = $this->cell($cells, $placementCells[$cursor++]);
         $mountain->terrain_definition_id = $terrainIds['mountain'];
         $mountain->terrain->key = 'mountain';
         $mountain->facility_definition_id = null;
         $mountain->population = 0;
+        $mountain->terrain_quantity = null;
+        $mountain->facility_scale = null;
+        $mountain->facility_experience = null;
+        $mountain->facility_operational_state = null;
 
         $base = $this->cell($cells, $placementCells[$cursor]);
         $base->terrain_definition_id = $terrainIds['plain'];
         $base->terrain->key = 'plain';
         $base->facility_definition_id = $facilityIds['missile_base'];
         $base->population = 0;
+        $base->terrain_quantity = null;
+        $base->facility_scale = null;
+        $base->facility_experience = $rules['facility_definitions']['missile_base']['initial_experience'];
+        $base->facility_operational_state = 'operational';
 
         $capitalCell = $this->cell($cells, $center);
         $capitalCell->terrain_definition_id = $terrainIds['plain'];
         $capitalCell->facility_definition_id = $facilityIds['capital'];
         $capitalCell->owner_nation_id = $nation->id;
         $capitalCell->population = $rules['capital_initial_population'];
+        $capitalCell->terrain_quantity = null;
+        $capitalCell->facility_scale = null;
+        $capitalCell->facility_experience = null;
+        $capitalCell->facility_operational_state = 'operational';
 
         $changedChunks = [];
         foreach ($cells as $cell) {

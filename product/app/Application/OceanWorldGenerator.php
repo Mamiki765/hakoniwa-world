@@ -3,8 +3,10 @@
 namespace App\Application;
 
 use App\Domain\Hex\ChunkCoordinateService;
+use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapSpace;
+use App\Models\ProductionDefinition;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
@@ -43,7 +45,7 @@ class OceanWorldGenerator
                 ],
             );
 
-            $this->ensureCatalogs();
+            $this->ensureCatalogs($ruleset);
 
             $completed = DB::table('world_generation_runs')
                 ->where('map_space_id', $mapSpace->id)
@@ -129,30 +131,76 @@ class OceanWorldGenerator
 
     protected function afterBatchInserted(int $inserted): void {}
 
-    private function ensureCatalogs(): void
+    private function ensureCatalogs(RulesetVersion $ruleset): void
     {
+        $forest = config('hakoniwa.ruleset.terrain_quantities.forest');
         $terrains = [
-            ['key' => 'sea', 'name' => '海', 'asset_key' => 'hakoniwa_original.sea', 'is_water' => true, 'is_buildable' => false],
-            ['key' => 'shallow', 'name' => '浅瀬', 'asset_key' => 'hakoniwa_original.shallow', 'is_water' => true, 'is_buildable' => false],
-            ['key' => 'wasteland', 'name' => '荒地', 'asset_key' => 'hakoniwa_original.wasteland', 'is_water' => false, 'is_buildable' => true],
-            ['key' => 'plain', 'name' => '平地', 'asset_key' => 'hakoniwa_original.plain', 'is_water' => false, 'is_buildable' => true],
-            ['key' => 'forest', 'name' => '森', 'asset_key' => 'hakoniwa_original.forest', 'is_water' => false, 'is_buildable' => false],
-            ['key' => 'mountain', 'name' => '山', 'asset_key' => 'hakoniwa_original.mountain', 'is_water' => false, 'is_buildable' => false],
-        ];
-        $facilities = [
-            ['key' => 'village', 'name' => '村', 'asset_key' => 'hakoniwa_original.village'],
-            ['key' => 'missile_base', 'name' => 'ミサイル基地', 'asset_key' => 'hakoniwa_original.missile_base'],
-            ['key' => 'capital', 'name' => '首都', 'asset_key' => 'hakoniwa_new.capital'],
+            ['key' => 'sea', 'name' => '海', 'asset_key' => 'tile.sea', 'is_water' => true, 'is_buildable' => false],
+            ['key' => 'shallow', 'name' => '浅瀬', 'asset_key' => 'tile.shallow', 'is_water' => true, 'is_buildable' => false],
+            ['key' => 'wasteland', 'name' => '荒地', 'asset_key' => 'tile.wasteland', 'is_water' => false, 'is_buildable' => true],
+            ['key' => 'plain', 'name' => '平地', 'asset_key' => 'tile.plain', 'is_water' => false, 'is_buildable' => true],
+            [
+                'key' => 'forest', 'name' => '森', 'asset_key' => 'tile.forest', 'is_water' => false, 'is_buildable' => false,
+                'quantity_key' => $forest['key'], 'quantity_label' => $forest['label'], 'quantity_unit' => $forest['unit'],
+                'initial_quantity' => $forest['initial_quantity'], 'minimum_quantity' => $forest['minimum_quantity'],
+                'maximum_quantity' => $forest['maximum_quantity'], 'growth_rule_key' => $forest['growth_rule_key'],
+                'metadata' => ['legacy_quantity_unit' => 100, 'growth_increment' => $forest['growth_increment']],
+            ],
+            ['key' => 'mountain', 'name' => '山', 'asset_key' => 'tile.mountain', 'is_water' => false, 'is_buildable' => false],
         ];
 
         foreach ($terrains as $definition) {
             TerrainDefinition::query()->updateOrCreate(['key' => $definition['key']], $definition);
         }
-        foreach ($facilities as $definition) {
-            FacilityDefinition::query()->updateOrCreate(['key' => $definition['key']], $definition);
+        foreach (config('hakoniwa.ruleset.facility_definitions') as $key => $definition) {
+            FacilityDefinition::query()->updateOrCreate(['key' => $key], [
+                'name' => $definition['name'],
+                'asset_key' => $definition['asset_key'],
+                'enabled' => true,
+                'build_command_key' => $definition['build_command_key'],
+                'visibility_policy' => $definition['visibility_policy'],
+                'disguise_terrain_key' => $definition['disguise_terrain_key'] ?? null,
+                'disguise_asset_key' => $definition['disguise_asset_key'] ?? null,
+                'scale_unit_people' => $definition['scale_unit_people'],
+                'initial_scale' => $definition['initial_scale'],
+                'scale_increment' => $definition['scale_increment'],
+                'maximum_scale' => $definition['maximum_scale'],
+                'workforce_per_scale_people' => $definition['workforce_per_scale_people'],
+                'production_definition_key' => $definition['production_definition_key'],
+                'buildable_terrain_keys' => $definition['buildable_terrain_keys'],
+                'metadata' => array_filter([
+                    'initial_experience' => $definition['initial_experience'] ?? null,
+                    'maximum_experience' => $definition['maximum_experience'] ?? null,
+                    'level_thresholds' => $definition['level_thresholds'] ?? null,
+                    'launch_capacity_by_level' => $definition['launch_capacity_by_level'] ?? null,
+                ], static fn (mixed $value): bool => $value !== null),
+            ]);
         }
         foreach (config('hakoniwa.ruleset.resource_definitions') as $definition) {
             ResourceDefinition::query()->updateOrCreate(['key' => $definition['key']], $definition);
+        }
+        foreach (config('hakoniwa.ruleset.command_definitions') as $definition) {
+            CommandDefinition::query()->updateOrCreate(
+                ['ruleset_version_id' => $ruleset->id, 'key' => $definition['key']],
+                [...$definition, 'enabled' => true],
+            );
+        }
+        foreach (config('hakoniwa.ruleset.production_definitions') as $definition) {
+            $facility = FacilityDefinition::query()->where('key', $definition['facility_key'])->firstOrFail();
+            $resource = ResourceDefinition::query()->where('key', $definition['output_resource_key'])->firstOrFail();
+            ProductionDefinition::query()->updateOrCreate(
+                ['ruleset_version_id' => $ruleset->id, 'key' => $definition['key']],
+                [
+                    'facility_definition_id' => $facility->id,
+                    'output_resource_definition_id' => $resource->id,
+                    'production_per_scale' => $definition['production_per_scale'],
+                    'required_workforce_per_scale' => $definition['required_workforce_per_scale'],
+                    'operating_condition' => $definition['operating_condition'],
+                    'price_reference' => $definition['price_reference'],
+                    'enabled' => true,
+                    'metadata' => $definition['metadata'],
+                ],
+            );
         }
     }
 }
