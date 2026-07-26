@@ -25,8 +25,7 @@ final class CommandQueueController extends Controller
         MapSpace $mapSpace,
         CommandQueueService $service,
         FacilityCapacityService $capacities,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         try {
             $service->queueFor($request->user(), $nation, $mapSpace);
             $cell = null;

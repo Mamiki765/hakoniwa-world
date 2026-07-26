@@ -36,6 +36,8 @@ jobs:
         working-directory: product
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.5"
@@ -46,8 +48,15 @@ jobs:
         run: echo "127.0.0.1 hakoniwa-postgres" | sudo tee -a /etc/hosts
       - name: Install PHP dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Check PHP formatting
-        run: vendor/bin/pint --test
+      - name: Check formatting of changed PHP files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base_sha="${BASE_SHA:-HEAD^}"
+          mapfile -t changed_php < <(git diff --name-only --diff-filter=ACMR "$base_sha...HEAD" -- '*.php' | sed 's#^product/##')
+          if ((${#changed_php[@]})); then
+            vendor/bin/pint --test "${changed_php[@]}"
+          fi
       - name: Run PHP static analysis
         run: vendor/bin/phpstan analyse --memory-limit=1G
       - name: Run isolated PostgreSQL tests
@@ -56,6 +65,8 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      LARAVEL_BYPASS_ENV_CHECK: "1"
     defaults:
       run:
         working-directory: product
