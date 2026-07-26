@@ -326,6 +326,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .map-column { height: min(67dvh, 680px); min-height: 430px; border: 1px solid var(--line); }
     .map-stage { min-height: 430px; }
     .map-viewport { min-height: 370px; }
+    .map-toolbar button { min-width: 44px; min-height: 44px; }
     .map-cell-count { display: none; }
     .mobile-panel-toggle {
         display: flex;
@@ -350,7 +351,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
         overflow: hidden;
     }
     .command-panel { bottom: max(8px, env(safe-area-inset-bottom)); }
-    .plan-panel { top: 108px; box-shadow: 0 10px 40px rgba(18,63,73,.2); }
+    .plan-panel { top: 260px; box-shadow: 0 10px 40px rgba(18,63,73,.2); }
     .command-panel-body, .plan-panel-body { display: none; height: auto; }
     .command-panel.expanded .command-panel-body {
         display: block;
