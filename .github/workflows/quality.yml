@@ -55,8 +55,7 @@ jobs:
           base_sha="${BASE_SHA:-HEAD^}"
           mapfile -t changed_php < <(git diff --name-only --diff-filter=ACMR "$base_sha...HEAD" -- '*.php' | sed 's#^product/##')
           if ((${#changed_php[@]})); then
-            vendor/bin/pint "${changed_php[@]}"
-            git diff --exit-code -- "${changed_php[@]}"
+            vendor/bin/pint --test "${changed_php[@]}"
           fi
       - name: Run PHP static analysis
         run: vendor/bin/phpstan analyse --memory-limit=1G
