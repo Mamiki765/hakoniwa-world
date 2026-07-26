@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from './api/client';
 import HexMap from './components/HexMap.vue';
+import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import { useMapState } from './state/mapState';
 import type { CurrentUser, MapSpace, Nation, World } from './types';
 
@@ -9,7 +10,7 @@ const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const nation = ref<Nation | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
-const page = ref<'home' | 'map' | 'account' | 'credits'>('home');
+const page = ref<'home' | 'map' | 'resources' | 'account' | 'credits'>('home');
 const nationName = ref('');
 const busy = ref(true);
 const message = ref('');
@@ -67,6 +68,7 @@ async function createNation(): Promise<void> {
         <nav v-if="user">
             <button type="button" @click="page = 'home'">ホーム</button>
             <button v-if="nation" type="button" @click="page = 'map'">世界地図</button>
+            <button v-if="nation" type="button" @click="page = 'resources'">資源方針</button>
             <button type="button" @click="page = 'account'">アカウント</button>
             <button type="button" @click="page = 'credits'">クレジット</button>
         </nav>
@@ -102,16 +104,20 @@ async function createNation(): Promise<void> {
         </section>
 
         <HexMap
-            v-else-if="user && page === 'map' && nation?.capital"
+            v-else-if="user && page === 'map' && nation?.capital && mapSpace"
             :cells="map.visibleCells.value"
             :selected="map.selected.value"
             :capital="nation.capital"
+            :nation-id="nation.id"
+            :map-space-id="mapSpace.id"
             :loading="map.loading.value"
             :error="map.error.value"
             :empty-chunks="map.emptyChunks.value"
             @select="map.select"
             @move="map.moveSelection"
         />
+
+        <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
 
         <section v-else-if="user && page === 'account'" class="panel account-panel">
             <p class="eyebrow">ACCOUNT SETTINGS</p>
