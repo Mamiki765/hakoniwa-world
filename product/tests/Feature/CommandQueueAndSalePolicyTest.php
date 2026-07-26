@@ -58,7 +58,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
         $second = $this->postJson($queuePath, [
             'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(), 'expected_version' => 2, 'parameters' => ['future_quantity' => 1],
+            'request_key' => (string) Str::uuid(), 'expected_version' => 2, 'parameters' => [],
         ])->assertCreated()->assertJsonPath('data.queue.version', 3)->json('data');
         $firstId = $first['item_id'];
         $secondId = $second['item_id'];
@@ -138,6 +138,131 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->postJson($path, [
             ...$payload, 'request_key' => (string) Str::uuid(), 'expected_version' => 2,
         ])->assertUnprocessable();
+    }
+
+    public function test_effective_plan_has_twenty_slots_and_supports_selected_insertion(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('計画国');
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        $empty = $this->actingAs($owner)->getJson($path)->assertOk()
+            ->assertJsonCount(20, 'data.plan')
+            ->assertJsonPath('data.explicit_count', 0);
+        foreach ($empty->json('data.plan') as $slot) {
+            $this->assertSame('automatic_finance', $slot['kind']);
+            $this->assertFalse($slot['editable']);
+        }
+
+        $this->postJson($path, [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'position' => 5,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.plan.4.kind', 'explicit')
+            ->assertJsonPath('data.queue.plan.4.command_name', '整地')
+            ->assertJsonCount(20, 'data.queue.plan');
+
+        $inserted = $this->postJson($path, [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'position' => 5,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.plan.4.kind', 'explicit')
+            ->assertJsonPath('data.queue.plan.5.kind', 'explicit')
+            ->assertJsonCount(20, 'data.queue.plan');
+
+        $firstId = $inserted->json('data.queue.plan.4.id');
+        $this->deleteJson($path."/{$firstId}", ['expected_version' => 3])
+            ->assertOk()
+            ->assertJsonPath('data.plan.0.kind', 'explicit')
+            ->assertJsonPath('data.plan.1.kind', 'automatic_finance')
+            ->assertJsonCount(20, 'data.plan');
+    }
+
+    public function test_quantity_parameter_metadata_validation_and_editing(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('数量国');
+        $nation->update(['money' => 500]);
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+
+        $definitions = $this->actingAs($owner)->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk();
+        $excavate = collect($definitions->json('data'))->firstWhere('key', 'excavate');
+        $this->assertSame([1, 5, 10, 25, 50, 99], $excavate['parameter_schema']['quantity']['quick_presets']);
+
+        $created = $this->postJson("{$base}/command-queue", [
+            'command_key' => 'excavate',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.0.parameters.quantity', 1);
+        $itemId = $created->json('data.item_id');
+
+        $this->patchJson("{$base}/command-queue/{$itemId}", [
+            'parameters' => ['quantity' => 99],
+            'expected_version' => 2,
+        ])->assertOk()
+            ->assertJsonPath('data.items.0.parameters.quantity', 99);
+
+        $this->patchJson("{$base}/command-queue/{$itemId}", [
+            'parameters' => ['quantity' => 100],
+            'expected_version' => 3,
+        ])->assertUnprocessable();
+        $this->patchJson("{$base}/command-queue/{$itemId}", [
+            'parameters' => ['quantity' => 1, 'secret' => true],
+            'expected_version' => 3,
+        ])->assertUnprocessable();
+    }
+
+    public function test_full_effective_plan_rejects_without_discarding_an_explicit_command(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('満員国');
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        $this->actingAs($owner);
+        for ($index = 0; $index < 20; $index++) {
+            $this->postJson($path, [
+                'command_key' => 'land_clear',
+                'target_x' => $target->x,
+                'target_y' => $target->y,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => $index + 1,
+            ])->assertCreated();
+        }
+
+        $before = NationCommandQueueItem::query()->where('status', 'queued')->orderBy('queue_position')->pluck('id')->all();
+        $this->postJson($path, [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 21,
+        ])->assertUnprocessable();
+
+        $this->assertSame(
+            $before,
+            NationCommandQueueItem::query()->where('status', 'queued')->orderBy('queue_position')->pluck('id')->all(),
+        );
+        $this->actingAs($owner)->getJson($path)
+            ->assertOk()
+            ->assertJsonCount(20, 'data.plan')
+            ->assertJsonPath('data.explicit_count', 20);
     }
 
     public function test_sale_policy_validation_authorization_audit_and_concurrency(): void

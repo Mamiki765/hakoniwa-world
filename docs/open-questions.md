@@ -248,7 +248,7 @@
 
 - Status: Decided
 - Required before: コマンド実装前
-- Decision: 旧作と同じ上限20件、1始まりの明示positionとし、追加・全件並べ替え・取消後の左詰めをtransactionで行う。header versionによるoptimistic concurrencyとrequest keyによる重複防止を使う。登録時に資金・資源を予約せず、turn runnerが実行時に再検証する。数量・繰返しは未実装で、versioned parameters境界だけ維持する。
+- Decision: 旧作と同じ上限20件、1始まりの明示positionとし、追加・全件並べ替え・取消後の左詰めをtransactionで行う。header versionによるoptimistic concurrencyとrequest keyによる重複防止を使う。登録時に資金・資源を予約せず、turn runnerが実行時に再検証する。PR5では既存JSON parameters境界を使って掘削quantityの予約・表示・編集・validationだけを実装し、quantityの実行意味と副作用はturn runnerまで延期する。effective planは20枠を返し、未使用枠を永続IDのないautomatic finance placeholderで補完する。
 - Decision record: `docs/architecture/roadmap-pr2-systems.md`
 
 ### CMD-01 箱庭諸島2＋コマンドの採否
