@@ -121,7 +121,7 @@ final class CommandQueueController extends Controller
             return response()->json(['data' => [
                 'queue' => $this->serializeQueue($this->loadQueue($result['queue'])),
                 'item_id' => $result['item']->id,
-                'message' => '開発計画に登録されました。実行はターン更新時に行われます。登録時点では資金・地形・施設は変化しません。',
+                'message' => '開発計画に登録されました。まだ実行されていません。実行はターン更新時に行われます。登録時点では資金・地形・施設は変化しません。',
             ]], 201);
         } catch (DomainException $exception) {
             return $this->domainError($exception);

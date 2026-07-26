@@ -190,6 +190,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
     public function test_quantity_parameter_metadata_validation_and_editing(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('数量国');
+        $nation->update(['money' => 500]);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
         $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
