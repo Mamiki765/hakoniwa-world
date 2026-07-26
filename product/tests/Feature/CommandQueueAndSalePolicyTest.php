@@ -58,7 +58,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
         $second = $this->postJson($queuePath, [
             'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(), 'expected_version' => 2, 'parameters' => ['future_quantity' => 1],
+            'request_key' => (string) Str::uuid(), 'expected_version' => 2, 'parameters' => [],
         ])->assertCreated()->assertJsonPath('data.queue.version', 3)->json('data');
         $firstId = $first['item_id'];
         $secondId = $second['item_id'];
