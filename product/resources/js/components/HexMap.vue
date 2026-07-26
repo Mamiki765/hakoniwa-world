@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { gridToPixel, TILE_SIZE } from '../map/projection';
 import type { MapCell } from '../types';
-import CellDetails from './CellDetails.vue';
-import CommandQueuePanel from './CommandQueuePanel.vue';
 
 const props = defineProps<{
     cells: MapCell[];
     selected: MapCell | null;
     capital: { x: number; y: number };
-    nationId: number;
-    mapSpaceId: number;
+    ownNationId?: number;
     loading: boolean;
     error: string | null;
     emptyChunks: string[];
@@ -18,11 +15,13 @@ const props = defineProps<{
 const emit = defineEmits<{ select: [cell: MapCell]; move: [direction: number] }>();
 
 const zoom = ref(1);
-const pan = ref({ x: 430, y: 270 });
+const pan = ref({ x: 0, y: 0 });
 const dragging = ref(false);
 const pointer = ref({ x: 0, y: 0 });
 const viewport = ref<HTMLElement | null>(null);
 const viewportSize = ref({ width: 900, height: 600 });
+const tooltipCell = ref<MapCell | null>(null);
+const tooltipPosition = ref({ x: 0, y: 0, placement: 'right' as 'right' | 'left' | 'bottom' | 'top' });
 let resizeObserver: ResizeObserver | null = null;
 
 const positioned = computed(() => props.cells.map((cell) => {
@@ -31,7 +30,6 @@ const positioned = computed(() => props.cells.map((cell) => {
     return { cell, x: pixel.x - capitalPixel.x, y: pixel.y - capitalPixel.y };
 }));
 
-// Keep the browser DOM bounded even when the API supplies many chunks.
 const visiblePositioned = computed(() => positioned.value.filter((item) => {
     const screenX = pan.value.x + item.x * zoom.value;
     const screenY = pan.value.y + item.y * zoom.value;
@@ -41,14 +39,26 @@ const visiblePositioned = computed(() => positioned.value.filter((item) => {
         && screenY >= -padding && screenY <= viewportSize.value.height + padding;
 }));
 
+const tooltipDetails = computed(() => {
+    const cell = tooltipCell.value;
+    if (cell === null) return [];
+
+    return [
+        `座標 x=${cell.x}, y=${cell.y}`,
+        `所有: ${cell.owner_name ?? '中立'}`,
+        ...(cell.facility === null ? ['施設: なし'] : []),
+        ...cell.details.map((detail) => `${detail.label}: ${detail.formatted}`),
+    ];
+});
+
 onMounted(() => {
     if (viewport.value === null) return;
     const updateSize = (): void => {
-        if (viewport.value !== null) {
-            const width = viewport.value.clientWidth;
-            const height = viewport.value.clientHeight;
-            if (width > 0 && height > 0) viewportSize.value = { width, height };
-        }
+        if (viewport.value === null) return;
+        const width = viewport.value.clientWidth || 900;
+        const height = viewport.value.clientHeight || 600;
+        viewportSize.value = { width, height };
+        centerOnCapital();
     };
     updateSize();
     if ('ResizeObserver' in window) {
@@ -57,10 +67,24 @@ onMounted(() => {
     }
 });
 
+watch(() => [props.capital.x, props.capital.y], () => void nextTick(centerOnCapital));
 onBeforeUnmount(() => resizeObserver?.disconnect());
+
+function centerOnCapital(): void {
+    pan.value = {
+        x: viewportSize.value.width / 2 - (TILE_SIZE * zoom.value) / 2,
+        y: viewportSize.value.height / 2 - (TILE_SIZE * zoom.value) / 2,
+    };
+}
+
+function changeZoom(delta: number): void {
+    zoom.value = Math.min(2, Math.max(0.45, Number((zoom.value + delta).toFixed(2))));
+    centerOnCapital();
+}
 
 function beginPan(event: PointerEvent): void {
     dragging.value = true;
+    tooltipCell.value = null;
     pointer.value = { x: event.clientX, y: event.clientY };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
 }
@@ -85,15 +109,47 @@ function keydown(event: KeyboardEvent): void {
         emit('move', direction);
     }
 }
+
+function showTooltip(cell: MapCell, event: Event): void {
+    const target = event.currentTarget as HTMLElement;
+    const viewportElement = viewport.value;
+    if (viewportElement === null) return;
+    const cellRect = target.getBoundingClientRect();
+    const bounds = viewportElement.getBoundingClientRect();
+    const width = 220;
+    const height = 128;
+    const gap = 10;
+    let placement: 'right' | 'left' | 'bottom' | 'top' = 'right';
+    let x = cellRect.right - bounds.left + gap;
+    let y = cellRect.top - bounds.top;
+
+    if (x + width > bounds.width) {
+        placement = 'left';
+        x = cellRect.left - bounds.left - width - gap;
+    }
+    if (x < 0) {
+        placement = 'bottom';
+        x = Math.max(8, Math.min(cellRect.left - bounds.left, bounds.width - width - 8));
+        y = cellRect.bottom - bounds.top + gap;
+    }
+    if (y + height > bounds.height) {
+        placement = 'top';
+        y = cellRect.top - bounds.top - height - gap;
+    }
+
+    tooltipCell.value = cell;
+    tooltipPosition.value = { x: Math.max(8, x), y: Math.max(8, y), placement };
+}
 </script>
 
 <template>
-    <section class="map-layout" aria-label="世界地図">
+    <section class="map-stage" aria-label="世界地図">
         <div class="map-toolbar">
-            <button type="button" @click="zoom = Math.min(2, zoom + 0.1)">拡大</button>
-            <button type="button" @click="zoom = Math.max(0.4, zoom - 0.1)">縮小</button>
+            <button type="button" aria-label="自島へ戻る" @click="centerOnCapital">自島へ</button>
+            <button type="button" aria-label="地図を拡大" @click="changeZoom(0.1)">＋</button>
+            <button type="button" aria-label="地図を縮小" @click="changeZoom(-0.1)">−</button>
             <span>{{ Math.round(zoom * 100) }}%</span>
-            <span>表示 {{ visiblePositioned.length }}/{{ cells.length }}セル</span>
+            <span class="map-cell-count">表示 {{ visiblePositioned.length }}/{{ cells.length }}セル</span>
             <span v-if="loading" role="status">読み込み中…</span>
             <span v-if="error" class="error" role="alert">{{ error }}</span>
         </div>
@@ -101,7 +157,7 @@ function keydown(event: KeyboardEvent): void {
             ref="viewport"
             class="map-viewport"
             tabindex="0"
-            aria-label="六方向移動は矢印キーとPageUp・PageDownを使用します"
+            aria-label="地図。六方向移動は矢印キーとPageUp・PageDownを使用します"
             @keydown="keydown"
             @pointerdown="beginPan"
             @pointermove="updatePan"
@@ -113,11 +169,23 @@ function keydown(event: KeyboardEvent): void {
                     v-for="item in visiblePositioned"
                     :key="`${item.cell.x}:${item.cell.y}`"
                     class="map-cell"
-                    :class="[`terrain-${item.cell.terrain}`, { selected: selected?.x === item.cell.x && selected?.y === item.cell.y, owned: item.cell.owner_nation_id !== null, capital: item.cell.facility === 'capital' }]"
+                    :class="[
+                        `terrain-${item.cell.terrain}`,
+                        {
+                            selected: selected?.x === item.cell.x && selected?.y === item.cell.y,
+                            owned: item.cell.owner_nation_id !== null,
+                            'owned-by-me': ownNationId !== undefined && item.cell.owner_nation_id === ownNationId,
+                            capital: item.cell.facility === 'capital',
+                        },
+                    ]"
                     :style="{ left: `${item.x}px`, top: `${item.y}px` }"
                     :aria-label="item.cell.aria_label"
                     type="button"
                     @pointerdown.stop
+                    @mouseenter="showTooltip(item.cell, $event)"
+                    @mouseleave="tooltipCell = null"
+                    @focus="showTooltip(item.cell, $event)"
+                    @blur="tooltipCell = null"
                     @click="emit('select', item.cell)"
                 >
                     <img v-if="item.cell.asset.available && item.cell.asset.url" :src="item.cell.asset.url" alt="" @error="($event.currentTarget as HTMLImageElement).hidden = true">
@@ -128,11 +196,17 @@ function keydown(event: KeyboardEvent): void {
                     <small v-if="item.cell.owner_nation_id !== null">N{{ item.cell.owner_nation_id }}</small>
                 </button>
             </div>
+            <div
+                v-if="tooltipCell"
+                class="cell-tooltip"
+                :class="`placement-${tooltipPosition.placement}`"
+                :style="{ left: `${tooltipPosition.x}px`, top: `${tooltipPosition.y}px` }"
+                role="tooltip"
+            >
+                <strong>{{ tooltipCell.display_name }}</strong>
+                <span v-for="line in tooltipDetails" :key="line">{{ line }}</span>
+            </div>
         </div>
-        <aside class="cell-details">
-            <CellDetails :cell="selected" />
-            <p v-if="emptyChunks.length">未生成／空chunk: {{ emptyChunks.join(', ') }}</p>
-            <CommandQueuePanel :nation-id="nationId" :map-space-id="mapSpaceId" :selected="selected" />
-        </aside>
+        <p v-if="emptyChunks.length" class="map-empty-note">未生成／空chunk: {{ emptyChunks.join(', ') }}</p>
     </section>
 </template>

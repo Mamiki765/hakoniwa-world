@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { MapCell } from '../types';
 import HexMap from './HexMap.vue';
 
@@ -14,17 +14,8 @@ function mapCell(overrides: Partial<MapCell> = {}): MapCell {
     };
 }
 
-afterEach(() => vi.unstubAllGlobals());
-
 describe('staggered square-image map', () => {
     it('renders completed and optional overlay images, fallback, selection and six-way keyboard input', async () => {
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-            const path = String(input);
-            const data = path.includes('command-definitions')
-                ? []
-                : { version: 1, limit: 20, items: [] };
-            return new Response(JSON.stringify({ data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-        }));
         const selected = mapCell({
             details: [{ key: 'population', label: '人口', value: 1000, unit: '人', formatted: '1,000人', visibility: 'public' }],
         });
@@ -34,7 +25,7 @@ describe('staggered square-image map', () => {
             overlays: [], aria_label: 'x 1 y 0 森 所有 中立',
         });
         const wrapper = mount(HexMap, { props: {
-            cells: [selected, fallback], selected, capital: { x: 0, y: 0 }, nationId: 1, mapSpaceId: 1,
+            cells: [selected, fallback], selected, capital: { x: 0, y: 0 }, ownNationId: 1,
             loading: false, error: null, emptyChunks: [],
         } });
         await flushPromises();
@@ -46,8 +37,9 @@ describe('staggered square-image map', () => {
         expect(tiles[0]!.find('.tile-overlay').attributes('src')).toContain('/tiles/selection.png');
         expect(tiles[1]!.find('img').exists()).toBe(false);
         expect(tiles[1]!.find('.tile-label').text()).toBe('森');
-        expect(wrapper.text()).toContain('x=0, y=0');
-        expect(wrapper.text()).toContain('人口');
+        await tiles[0]!.trigger('mouseenter');
+        expect(wrapper.find('.cell-tooltip').text()).toContain('座標 x=0, y=0');
+        expect(wrapper.find('.cell-tooltip').text()).toContain('人口');
 
         await wrapper.find('.map-viewport').trigger('keydown', { key: 'PageUp' });
         expect(wrapper.emitted('move')).toEqual([[1]]);
@@ -56,16 +48,13 @@ describe('staggered square-image map', () => {
     });
 
     it('does not leak secret facility data when given the public forest representation', async () => {
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify({
-            data: String(input).includes('command-definitions') ? [] : { version: 1, limit: 20, items: [] },
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
         const publicForest = mapCell({
             terrain: 'forest', terrain_name: '森', facility: null, facility_name: null, display_name: '森',
             details: [], asset: { key: 'tile.forest', url: null, available: false, fallback_label: '森', fallback_style: 'tile-forest' },
             overlays: [], aria_label: 'x 0 y 0 森 所有 他国', owner_name: '他国',
         });
         const wrapper = mount(HexMap, { props: {
-            cells: [publicForest], selected: publicForest, capital: { x: 0, y: 0 }, nationId: 2, mapSpaceId: 1,
+            cells: [publicForest], selected: publicForest, capital: { x: 0, y: 0 },
             loading: false, error: null, emptyChunks: [],
         } });
         await flushPromises();
@@ -77,13 +66,10 @@ describe('staggered square-image map', () => {
     });
 
     it('uses absolute world y parity before panning around an odd-row capital', async () => {
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify({
-            data: String(input).includes('command-definitions') ? [] : { version: 1, limit: 20, items: [] },
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
         const evenRow = mapCell({ x: 0, y: 0 });
         const oddRow = mapCell({ x: 0, y: 1 });
         const wrapper = mount(HexMap, { props: {
-            cells: [evenRow, oddRow], selected: evenRow, capital: { x: 5, y: 1 }, nationId: 2, mapSpaceId: 1,
+            cells: [evenRow, oddRow], selected: evenRow, capital: { x: 5, y: 1 },
             loading: false, error: null, emptyChunks: [],
         } });
         await flushPromises();

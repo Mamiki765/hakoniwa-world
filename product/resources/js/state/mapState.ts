@@ -13,7 +13,12 @@ export function useMapState() {
     const visibleCells = computed(() => [...cells.values()]);
     const key = (x: number, y: number) => `${x}:${y}`;
 
-    async function loadAround(mapSpaceId: number, x: number, y: number): Promise<void> {
+    async function loadAround(
+        mapSpaceId: number,
+        x: number,
+        y: number,
+        source: { kind: 'private' } | { kind: 'public'; nationId: number } = { kind: 'private' },
+    ): Promise<void> {
         loading.value = true;
         error.value = null;
         cells.clear();
@@ -24,7 +29,12 @@ export function useMapState() {
 
         for (let offsetX = -1; offsetX <= 1; offsetX++) {
             for (let offsetY = -1; offsetY <= 1; offsetY++) {
-                requests.push(api<MapChunk>(`/api/v1/map-spaces/${mapSpaceId}/chunks/${centerX + offsetX}/${centerY + offsetY}`));
+                const chunkX = centerX + offsetX;
+                const chunkY = centerY + offsetY;
+                const path = source.kind === 'public'
+                    ? `/api/v1/public/nations/${source.nationId}/map-spaces/${mapSpaceId}/chunks/${chunkX}/${chunkY}`
+                    : `/api/v1/map-spaces/${mapSpaceId}/chunks/${chunkX}/${chunkY}`;
+                requests.push(api<MapChunk>(path));
             }
         }
 

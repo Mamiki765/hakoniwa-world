@@ -48,10 +48,10 @@ describe('viewer-safe cell details', () => {
     ])('shows backend-formatted capacity for %s', (facility, name, formatted) => {
         const wrapper = mount(CellDetails, { props: { cell: cell({
             facility, facility_name: name, display_name: name,
-            details: [detail('facility_capacity', '規模', 10000, formatted), detail('planned_production', '生産予定', 'output', '生産物')],
+            details: [detail('facility_capacity', '規模', 10000, formatted)],
         }) } });
         expect(wrapper.text()).toContain(formatted);
-        expect(wrapper.text()).toContain('生産予定');
+        expect(wrapper.text()).not.toContain('生産予定');
         expect(wrapper.text()).toContain('労働者割当');
         expect(wrapper.text()).toContain('ターン処理未実装');
         expect(wrapper.text()).not.toContain('人口0');
