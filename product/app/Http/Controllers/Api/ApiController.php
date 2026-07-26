@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Application\NationCreationService;
 use App\Application\MapChunkService;
+use App\Application\NationCreationService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateNationRequest;
 use App\Http\Resources\MapChunkResource;
@@ -44,6 +44,7 @@ class ApiController extends Controller
             ->where('user_id', $request->user()->id)
             ->where('world_id', $mapSpace->world_id)
             ->value('nation_id');
+
         return new MapChunkResource($chunks->present(
             $mapSpace,
             $chunkX,

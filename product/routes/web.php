@@ -4,10 +4,10 @@ use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
-use App\Http\Middleware\PrivateApiResponse;
-use App\Http\Middleware\PublicApiResponse;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
+use App\Http\Middleware\PrivateApiResponse;
+use App\Http\Middleware\PublicApiResponse;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');
