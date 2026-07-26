@@ -29,7 +29,7 @@
         <env name="DB_HOST" value="hakoniwa-postgres" force="true"/>
         <env name="DB_PORT" value="5432" force="true"/>
         <env name="DB_DATABASE" value="hakoniwa_test" force="true"/>
-        <env name="DB_USERNAME" value="hakoniwa" force="true"/>
+        <env name="DB_USERNAME" value="hakoniwa"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
