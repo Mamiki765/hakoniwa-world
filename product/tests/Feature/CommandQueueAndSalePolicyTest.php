@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\RulesetPublisher;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -38,7 +39,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
         $definitions = $this->actingAs($user)->getJson(
             "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-definitions?target_x={$target->x}&target_y={$target->y}",
-        )->assertOk()->json('data');
+        )->assertOk()->json('data.commands');
         $farmDefinition = collect($definitions)->firstWhere('key', 'build_farm');
         $this->assertSame(10000, $farmDefinition['initial_facility_capacity']['capacity_people']);
         $this->assertSame('10,000人規模', $farmDefinition['initial_facility_capacity']['formatted']);
@@ -124,8 +125,13 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
     public function test_queue_limit_is_enforced_from_the_versioned_ruleset_boundary(): void
     {
-        config(['hakoniwa.ruleset.command_queue_limit' => 1]);
         [$owner, $nation, $mapSpace] = $this->nation('上限国');
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings['key'] = 'test-command-queue-limit-v1';
+        $settings['command_queue_limit'] = 1;
+        $nation->world()->update([
+            'ruleset_version_id' => app(RulesetPublisher::class)->publish($settings)->id,
+        ]);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
@@ -187,44 +193,174 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonCount(20, 'data.plan');
     }
 
-    public function test_quantity_parameter_metadata_validation_and_editing(): void
+    public function test_universal_quantity_contract_validation_storage_editing_response_and_audit(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('数量国');
-        $nation->update(['money' => 500]);
+        $nation->update(['money' => 10_000]);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
         $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+        $path = "{$base}/command-queue";
 
         $definitions = $this->actingAs($owner)->getJson(
             "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
         )->assertOk();
-        $excavate = collect($definitions->json('data'))->firstWhere('key', 'excavate');
-        $this->assertSame([1, 5, 10, 25, 50, 99], $excavate['parameter_schema']['quantity']['quick_presets']);
+        $definitions->assertJsonPath('data.quantity_contract.type', 'integer')
+            ->assertJsonPath('data.quantity_contract.minimum', 1)
+            ->assertJsonPath('data.quantity_contract.maximum', 99)
+            ->assertJsonPath('data.quantity_contract.default', 1)
+            ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99])
+            ->assertJsonCount(7, 'data.commands');
+        foreach ($definitions->json('data.commands') as $definition) {
+            $this->assertArrayNotHasKey('parameter_schema', $definition);
+        }
 
-        $created = $this->postJson("{$base}/command-queue", [
+        foreach ([null, 0, 100, -1, 1.5, '10', true, [], ['nested' => true]] as $invalid) {
+            $this->postJson($path, [
+                'command_key' => 'excavate',
+                'target_x' => $target->x,
+                'target_y' => $target->y,
+                'quantity' => $invalid,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => 1,
+            ])->assertUnprocessable();
+        }
+
+        $created = $this->postJson($path, [
             'command_key' => 'excavate',
             'target_x' => $target->x,
             'target_y' => $target->y,
             'request_key' => (string) Str::uuid(),
             'expected_version' => 1,
         ])->assertCreated()
-            ->assertJsonPath('data.queue.items.0.parameters.quantity', 1);
+            ->assertJsonPath('data.queue.items.0.quantity', 1)
+            ->assertJsonPath('data.queue.items.0.parameters', [])
+            ->assertJsonPath('data.queue.plan.0.quantity', 1)
+            ->assertJsonPath('data.queue.plan.1.quantity', null);
+        $this->assertStringContainsString('"parameters":{}', $created->getContent());
         $itemId = $created->json('data.item_id');
 
-        $this->patchJson("{$base}/command-queue/{$itemId}", [
-            'parameters' => ['quantity' => 99],
+        $this->patchJson("{$path}/{$itemId}", [
+            'quantity' => 99,
             'expected_version' => 2,
         ])->assertOk()
-            ->assertJsonPath('data.items.0.parameters.quantity', 99);
+            ->assertJsonPath('data.items.0.quantity', 99)
+            ->assertJsonPath('data.items.0.parameters', []);
 
-        $this->patchJson("{$base}/command-queue/{$itemId}", [
-            'parameters' => ['quantity' => 100],
+        $this->patchJson("{$path}/{$itemId}", [
+            'quantity' => 100,
             'expected_version' => 3,
         ])->assertUnprocessable();
-        $this->patchJson("{$base}/command-queue/{$itemId}", [
-            'parameters' => ['quantity' => 1, 'secret' => true],
+        $this->patchJson("{$path}/{$itemId}", [
+            'quantity' => null,
             'expected_version' => 3,
         ])->assertUnprocessable();
+        $this->postJson($path, [
+            'command_key' => 'excavate',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'quantity' => 10,
+            'parameters' => ['quantity' => 20],
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+        ])->assertUnprocessable();
+
+        $this->postJson($path, [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'quantity' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.1.quantity', 1);
+
+        $this->postJson($path, [
+            'command_key' => 'build_farm',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'quantity' => 99,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 4,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.2.quantity', 99)
+            ->assertJsonCount(3, 'data.queue.items');
+
+        $this->assertSame(3, NationCommandQueueItem::query()->where('status', 'queued')->count());
+        $queuedAudit = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.queued')
+            ->where('subject_id', $itemId)
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $queuedAudit['quantity']);
+        $updatedAudit = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.quantity_updated')
+            ->where('subject_id', $itemId)
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(['old_quantity' => 1, 'new_quantity' => 99], $updatedAudit);
+    }
+
+    public function test_future_special_parameter_api_distinguishes_omitted_defaults_from_explicit_null(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('特殊parameter国');
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings['key'] = 'test-special-parameters-v1';
+        foreach ($settings['command_definitions'] as &$definition) {
+            if ($definition['key'] !== 'land_clear') {
+                continue;
+            }
+            $definition['metadata']['parameters'] = [
+                'design_id' => [
+                    'type' => 'integer',
+                    'minimum' => 1,
+                    'maximum' => 9,
+                    'default' => 2,
+                    'required' => true,
+                ],
+                'optional_variant' => [
+                    'type' => 'integer',
+                    'minimum' => 1,
+                    'maximum' => 9,
+                    'required' => false,
+                    'nullable' => true,
+                ],
+            ];
+        }
+        unset($definition);
+        $ruleset = app(RulesetPublisher::class)->publish($settings);
+        $nation->world()->update(['ruleset_version_id' => $ruleset->id]);
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        $this->actingAs($owner)->postJson($path, [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+            'parameters' => [],
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.0.parameters.design_id', 2);
+
+        $this->postJson($path, [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+            'parameters' => ['design_id' => null],
+        ])->assertUnprocessable();
+
+        $this->postJson($path, [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+            'parameters' => ['optional_variant' => null],
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.1.parameters.design_id', 2)
+            ->assertJsonPath('data.queue.items.1.parameters.optional_variant', null);
     }
 
     public function test_full_effective_plan_rejects_without_discarding_an_explicit_command(): void
@@ -286,6 +422,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
         $nonTradable = ResourceDefinition::query()->create([
             'key' => 'test_non_tradable', 'name' => '非売品', 'category' => 'test', 'unit' => 'unit',
+            'unit_label' => null,
             'nutrition_per_unit' => null, 'storable' => true, 'tradable' => false,
             'sale_price_key' => null, 'sort_order' => 999, 'metadata' => [],
         ]);

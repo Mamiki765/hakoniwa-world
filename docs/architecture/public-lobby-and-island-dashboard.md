@@ -65,25 +65,25 @@ reorderは全明示itemのIDとpositionを送る。optimistic queue versionを�
 
 automatic financeの実行、`auto_finance_streak`、`last_player_plan_turn`、720turnでの休眠遷移はturn runner／nation lifecycle PRへ延期する。PR5は表示用placeholderと拡張境界だけを持ち、loginだけでstreakを解除する等の挙動を決めない。
 
-## Generic parameters
+## Universal development-plan quantity
 
-既存のJSON `parameters` columnとcommand definition `metadata`を使う。PR5 migrationは既存queue dataを保持したまま、掘削definitionへquantity schemaを追加する。
+PR6はPR5の掘削固有quantity metadataを廃止し、全commandへ共通のfirst-class `quantity`を追加する。既存queue itemはdata-preserving migrationで`parameters.quantity`をcolumnへ移し、quantityがないitemは1とする。移行対象値が整数1–99でなければ、推測や切り捨てをせずmigrationを停止する。
 
 ```json
 {
-  "quantity": {
-    "label": "数量",
-    "type": "integer",
-    "minimum": 1,
-    "maximum": 99,
-    "default": 1,
-    "quick_presets": [1, 5, 10, 25, 50, 99],
-    "required": true
-  }
+  "type": "integer",
+  "minimum": 1,
+  "maximum": 99,
+  "default": 1,
+  "quick_presets": [1, 5, 10, 25, 50, 99]
 }
 ```
 
-parametersなしの旧requestはdefault quantity 1として有効である。PR5は予約、表示、編集、validationだけを行い、quantityがturnで起こす処理は実装しない。
+quantity省略はdefault 1として有効だが、明示的`null`は422とする。UIはすべてのcommandで同じpresetとvalidationを使い、planには`×1`を含めて数量を明示する。desktopはdouble clickまたはquantity button、keyboardは`q`またはEnter、mobileは行tapで編集を開ける。
+
+既存のJSON `parameters`は将来のcommand固有parameter用に維持するが、quantityを二重に保持しない。required parameterの不存在時だけdefault適用を許し、required parameterの明示的`null`はvalidation errorとする。
+
+PR6は予約、表示、編集、validationだけを行う。quantityに応じた費用、生産量、複数回実行、decrementなどの意味はturn runner実装前の設計判断まで延期する。
 
 ## Responsive interaction
 
