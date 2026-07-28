@@ -14,6 +14,10 @@ class NationResource extends JsonResource
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
+        $balances = $this->relationLoaded('resourceBalances')
+            ? $this->resourceBalances->sortBy(fn (NationResourceBalance $balance): int => $balance->definition->sort_order)
+            : null;
+
         return [
             'id' => $this->id, 'world_id' => $this->world_id, 'name' => $this->name,
             'money' => $this->money,
@@ -22,18 +26,30 @@ class NationResource extends JsonResource
             'current_turn' => (int) $this->world()->value('current_turn'),
             'total_population' => (int) $this->territoryCells()->sum('population'),
             'territory_cell_count' => $this->territoryCells()->count(),
-            'resources' => $this->whenLoaded('resourceBalances', fn (): array => $this->resourceBalances
-                ->sortBy(fn (NationResourceBalance $balance): int => $balance->definition->sort_order)
+            'total_food_tons' => $this->when($balances !== null, fn (): int => (int) $balances
+                ?->filter(fn (NationResourceBalance $balance): bool => $balance->definition->category === 'food')
+                ->sum('amount')),
+            'food_resources' => $this->when($balances !== null, fn (): array => $balances
+                ?->filter(fn (NationResourceBalance $balance): bool => $balance->definition->category === 'food')
                 ->map(fn (NationResourceBalance $balance): array => [
+                    'key' => $balance->definition->key,
+                    'name' => $balance->definition->name,
+                    'balance' => $balance->amount,
+                    'unit' => $balance->definition->unit,
+                    'unit_label' => $balance->definition->unit_label,
+                ])->values()->all() ?? []),
+            'resources' => $this->when($balances !== null, fn (): array => $balances
+                ?->map(fn (NationResourceBalance $balance): array => [
                     'key' => $balance->definition->key,
                     'name' => $balance->definition->name,
                     'category' => $balance->definition->category,
                     'unit' => $balance->definition->unit,
+                    'unit_label' => $balance->definition->unit_label,
                     'nutrition_per_unit' => $balance->definition->nutrition_per_unit,
                     'storable' => $balance->definition->storable,
                     'tradable' => $balance->definition->tradable,
                     'amount' => $balance->amount,
-                ])->values()->all()),
+                ])->values()->all() ?? []),
             'capital' => $this->whenLoaded('capital', fn (): ?array => $this->capital === null ? null : [
                 'x' => $this->capital->x, 'y' => $this->capital->y,
             ]),

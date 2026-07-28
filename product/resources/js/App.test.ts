@@ -75,11 +75,20 @@ describe('application lobby and island entry', () => {
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {
         const nation: Nation = {
             id: 3, world_id: 1, name: '自島', money: 62728, money_display: '62,728億円',
+            total_food_tons: 10000,
+            food_resources: [
+                { key: 'wheat', name: '小麦', balance: 10000, unit: 'ton', unit_label: 'トン' },
+                { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },
+                { key: 'monster_meat', name: '怪獣肉', balance: 0, unit: 'ton', unit_label: 'トン' },
+            ],
             state: 'active', current_turn: 0, total_population: 1000, territory_cell_count: 19,
             capital: { x: 12, y: 8 },
             resources: [
-                { key: 'wheat', name: '小麦', category: 'food', unit: 'unit', nutrition_per_unit: 1, storable: true, tradable: true, amount: 100 },
-                { key: 'fish', name: '魚', category: 'food', unit: 'unit', nutrition_per_unit: 1, storable: true, tradable: true, amount: 5 },
+                { key: 'wheat', name: '小麦', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 1, storable: true, tradable: true, amount: 10000 },
+                { key: 'fish', name: '魚', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 1, storable: true, tradable: true, amount: 0 },
+                { key: 'monster_meat', name: '怪獣肉', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 2, storable: true, tradable: true, amount: 0 },
+                { key: 'industrial_goods', name: '工業品', category: 'industry', unit: 'unit', unit_label: null, nutrition_per_unit: null, storable: true, tradable: true, amount: 0 },
+                { key: 'minerals', name: '鉱物', category: 'material', unit: 'unit', unit_label: null, nutrition_per_unit: null, storable: true, tradable: true, amount: 0 },
             ],
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -90,11 +99,14 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me/nation') return response(nation);
             if (path === '/api/v1/worlds/1/map-spaces') return response([{ id: 2, world_id: 1, key: 'surface', name: '地上' }]);
             if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
-            if (path.includes('command-definitions')) return response([]);
+            if (path.includes('command-definitions')) return response({
+                commands: [],
+                quantity_contract: { type: 'integer', minimum: 1, maximum: 99, default: 1, quick_presets: [1, 5, 10, 25, 50, 99] },
+            });
             if (path.includes('command-queue')) return response({
                 version: 1, limit: 20, explicit_count: 0, items: [],
                 plan: Array.from({ length: 20 }, (_, index) => ({
-                    position: index + 1, kind: 'automatic_finance', editable: false, command_name: '資金繰り',
+                    position: index + 1, kind: 'automatic_finance', editable: false, command_name: '資金繰り', quantity: null,
                 })),
             });
             return response(null, 404);
@@ -106,8 +118,16 @@ describe('application lobby and island entry', () => {
         await wrapper.find('.session-actions button').trigger('click');
         await flushPromises();
         expect(wrapper.find('.nation-hud').text()).toContain('62,728億円');
-        expect(wrapper.find('.nation-hud').text()).toContain('小麦');
-        expect(wrapper.find('.nation-hud').text()).toContain('100');
+        expect(wrapper.find('.nation-hud').text()).toContain('食料');
+        expect(wrapper.find('.nation-hud').text()).toContain('10,000トン');
+        expect(wrapper.find('.hud-food-detail').exists()).toBe(false);
+        await wrapper.find('.food-detail-toggle').trigger('click');
+        expect(wrapper.find('.hud-food-detail').text()).toContain('小麦');
+        expect(wrapper.find('.hud-food-detail').text()).toContain('魚');
+        expect(wrapper.find('.hud-food-detail').text()).toContain('怪獣肉');
+        expect(wrapper.find('.hud-food-detail').text()).toContain('0トン');
+        await wrapper.find('.hud-food-detail > button').trigger('click');
+        expect(wrapper.find('.hud-food-detail').exists()).toBe(false);
         expect(wrapper.find('.island-grid').exists()).toBe(true);
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);

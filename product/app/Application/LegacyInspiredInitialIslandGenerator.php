@@ -18,9 +18,10 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
 {
     public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital
     {
-        $rules = config('hakoniwa.ruleset');
+        $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
         $random = new DeterministicRandom($seed);
         $reservation = $center->radius($rules['initial_island_reservation_radius']);
+        $terrainIds = TerrainDefinition::query()->pluck('id', 'key');
         $cells = MapCell::query()
             ->where('map_space_id', $mapSpace->id)
             ->where(function ($query) use ($reservation): void {
@@ -28,7 +29,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
                     $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
                 }
             })
-            ->with('terrain')
             ->lockForUpdate()
             ->get()
             ->keyBy(fn (MapCell $cell): string => $cell->x.':'.$cell->y);
@@ -38,12 +38,13 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         }
 
         foreach ($cells as $cell) {
-            if ($cell->terrain->key !== 'sea' || $cell->owner_nation_id !== null || $cell->facility_definition_id !== null) {
+            if ((int) $cell->terrain_definition_id !== (int) $terrainIds['sea']
+                || $cell->owner_nation_id !== null
+                || $cell->facility_definition_id !== null) {
                 throw new DomainException('選択された海域はすでに使用されています。');
             }
         }
 
-        $terrainIds = TerrainDefinition::query()->pluck('id', 'key');
         $facilityIds = FacilityDefinition::query()->pluck('id', 'key');
         $territoryRadius = $rules['initial_territory_radius'];
 
@@ -51,7 +52,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             $cell = $this->cell($cells, $coordinate);
             $cell->terrain_definition_id = $terrainIds['wasteland'];
             $cell->owner_nation_id = $coordinate->distanceTo($center) <= $territoryRadius ? $nation->id : null;
-            $cell->terrain->key = 'wasteland';
         }
 
         $growthArea = $center->radius($rules['initial_island_growth_radius']);
@@ -61,22 +61,24 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             $landNeighbors = 0;
             for ($direction = 0; $direction < 6; $direction++) {
                 $neighbor = $cells->get($this->key($coordinate->neighbor($direction)));
-                if ($neighbor instanceof MapCell && ! in_array($neighbor->terrain->key, ['sea', 'shallow'], true)) {
+                if ($neighbor instanceof MapCell
+                    && ! in_array(
+                        (int) $neighbor->terrain_definition_id,
+                        [(int) $terrainIds['sea'], (int) $terrainIds['shallow']],
+                        true,
+                    )) {
                     $landNeighbors++;
                 }
             }
             if ($landNeighbors === 0) {
                 continue;
             }
-            if ($cell->terrain->key === 'wasteland') {
+            if ((int) $cell->terrain_definition_id === (int) $terrainIds['wasteland']) {
                 $cell->terrain_definition_id = $terrainIds['plain'];
-                $cell->terrain->key = 'plain';
-            } elseif ($cell->terrain->key === 'shallow') {
+            } elseif ((int) $cell->terrain_definition_id === (int) $terrainIds['shallow']) {
                 $cell->terrain_definition_id = $terrainIds['wasteland'];
-                $cell->terrain->key = 'wasteland';
-            } elseif ($cell->terrain->key === 'sea') {
+            } elseif ((int) $cell->terrain_definition_id === (int) $terrainIds['sea']) {
                 $cell->terrain_definition_id = $terrainIds['shallow'];
-                $cell->terrain->key = 'shallow';
             }
         }
 
@@ -88,7 +90,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         for ($index = 0; $index < 3; $index++) {
             $cell = $this->cell($cells, $placementCells[$cursor++]);
             $cell->terrain_definition_id = $terrainIds['forest'];
-            $cell->terrain->key = 'forest';
             $cell->facility_definition_id = null;
             $cell->population = 0;
             $cell->terrain_quantity = $rules['terrain_quantities']['forest']['initial_quantity'];
@@ -99,7 +100,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
 
         $village = $this->cell($cells, $placementCells[$cursor++]);
         $village->terrain_definition_id = $terrainIds['plain'];
-        $village->terrain->key = 'plain';
         $village->facility_definition_id = $facilityIds['village'];
         $village->population = 500;
         $village->terrain_quantity = null;
@@ -109,7 +109,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
 
         $mountain = $this->cell($cells, $placementCells[$cursor++]);
         $mountain->terrain_definition_id = $terrainIds['mountain'];
-        $mountain->terrain->key = 'mountain';
         $mountain->facility_definition_id = null;
         $mountain->population = 0;
         $mountain->terrain_quantity = null;
@@ -119,7 +118,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
 
         $base = $this->cell($cells, $placementCells[$cursor++]);
         $base->terrain_definition_id = $terrainIds['plain'];
-        $base->terrain->key = 'plain';
         $base->facility_definition_id = $facilityIds['missile_base'];
         $base->population = 0;
         $base->terrain_quantity = null;
@@ -129,7 +127,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
 
         $starterPlain = $this->cell($cells, $placementCells[$cursor]);
         $starterPlain->terrain_definition_id = $terrainIds['plain'];
-        $starterPlain->terrain->key = 'plain';
         $starterPlain->facility_definition_id = null;
         $starterPlain->population = 0;
         $starterPlain->terrain_quantity = null;
@@ -146,6 +143,15 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         $capitalCell->facility_scale = null;
         $capitalCell->facility_experience = null;
         $capitalCell->facility_operational_state = 'operational';
+
+        $this->ensureMinimumShallows(
+            $cells,
+            $reservation,
+            (int) $terrainIds['sea'],
+            (int) $terrainIds['shallow'],
+            (int) ($rules['initial_island_minimum_shallow_cells'] ?? 0),
+            $random,
+        );
 
         $changedChunks = [];
         foreach ($cells as $cell) {
@@ -187,5 +193,57 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
     private function key(GridCoordinate $coordinate): string
     {
         return $coordinate->x.':'.$coordinate->y;
+    }
+
+    /**
+     * @param  Collection<string, MapCell>  $cells
+     * @param  list<GridCoordinate>  $reservation
+     */
+    private function ensureMinimumShallows(
+        Collection $cells,
+        array $reservation,
+        int $seaTerrainId,
+        int $shallowTerrainId,
+        int $minimum,
+        DeterministicRandom $random,
+    ): void {
+        $current = $cells->filter(
+            static fn (MapCell $cell): bool => (int) $cell->terrain_definition_id === $shallowTerrainId
+                && $cell->owner_nation_id === null
+                && $cell->facility_definition_id === null,
+        )->count();
+        $required = max(0, $minimum - $current);
+        if ($required === 0) {
+            return;
+        }
+
+        $candidates = [];
+        foreach ($reservation as $coordinate) {
+            $cell = $this->cell($cells, $coordinate);
+            if ((int) $cell->terrain_definition_id !== $seaTerrainId
+                || $cell->owner_nation_id !== null
+                || $cell->facility_definition_id !== null) {
+                continue;
+            }
+
+            for ($direction = 0; $direction < 6; $direction++) {
+                $neighbor = $cells->get($this->key($coordinate->neighbor($direction)));
+                if ($neighbor instanceof MapCell
+                    && ! in_array(
+                        (int) $neighbor->terrain_definition_id,
+                        [$seaTerrainId, $shallowTerrainId],
+                        true,
+                    )) {
+                    $candidates[] = $cell;
+                    break;
+                }
+            }
+        }
+
+        foreach (array_slice($random->shuffled($candidates), 0, $required) as $cell) {
+            $cell->terrain_definition_id = $shallowTerrainId;
+            $cell->owner_nation_id = null;
+            $cell->facility_definition_id = null;
+        }
     }
 }

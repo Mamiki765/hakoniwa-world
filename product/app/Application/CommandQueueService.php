@@ -2,6 +2,8 @@
 
 namespace App\Application;
 
+use App\Domain\Command\CommandParametersValidator;
+use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
 use App\Models\CommandDefinition;
@@ -19,6 +21,8 @@ use Illuminate\Support\Facades\DB;
 
 final class CommandQueueService
 {
+    public function __construct(private readonly CommandParametersValidator $parameters) {}
+
     /**
      * @param  array<string, mixed>  $parameters
      * @return array{queue: NationCommandQueue, item: NationCommandQueueItem}
@@ -32,10 +36,11 @@ final class CommandQueueService
         int $targetY,
         string $requestKey,
         int $expectedVersion,
+        int $quantity = DevelopmentPlanQuantity::DEFAULT,
         array $parameters = [],
         ?int $position = null,
     ): array {
-        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $parameters, $position): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $quantity, $parameters, $position): array {
             $membership = $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
             $definition = CommandDefinition::query()
@@ -71,13 +76,18 @@ final class CommandQueueService
                 $shortfall = $definition->cost_money - $nation->money;
                 throw new DomainException('資金が'.number_format($shortfall).'億円不足しています。');
             }
-            $parameters = $this->validateParameters($definition, $parameters);
+            $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
+            $schemas = $definition->metadata['parameters'] ?? [];
+            if (! is_array($schemas)) {
+                throw new DomainException('command parameter schemaが不正です。');
+            }
+            $parameters = $this->parameters->validate($schemas, $parameters);
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
                 ->orderBy('queue_position')
                 ->get();
-            $limit = (int) config('hakoniwa.ruleset.command_queue_limit', 20);
+            $limit = $this->queueLimit($nation);
             if ($activeItems->count() >= $limit) {
                 throw new DomainException("command queueの上限{$limit}件に達しています。");
             }
@@ -105,7 +115,8 @@ final class CommandQueueService
                 'queue_position' => $position,
                 'target_x' => $targetX,
                 'target_y' => $targetY,
-                'parameters' => $parameters,
+                'quantity' => $quantity,
+                'parameters' => $parameters === [] ? (object) [] : $parameters,
                 'status' => 'queued',
                 'queued_by_membership_id' => $membership->id,
                 'request_key' => $requestKey,
@@ -114,7 +125,12 @@ final class CommandQueueService
             ]);
             $queue->increment('version');
             $queue->refresh();
-            $this->audit($user, 'command.queued', $item, ['command_key' => $commandKey, 'x' => $targetX, 'y' => $targetY]);
+            $this->audit($user, 'command.queued', $item, [
+                'command_key' => $commandKey,
+                'x' => $targetX,
+                'y' => $targetY,
+                'quantity' => $quantity,
+            ]);
 
             return ['queue' => $queue, 'item' => $item->load('definition')];
         }, 3);
@@ -140,7 +156,7 @@ final class CommandQueueService
             $receivedIds = collect($placements)->pluck('id')->map(static fn (mixed $id): int => (int) $id)
                 ->sort()->values()->all();
             $positions = collect($placements)->pluck('position')->all();
-            $limit = (int) config('hakoniwa.ruleset.command_queue_limit', 20);
+            $limit = $this->queueLimit($nation);
             if ($currentIds !== $receivedIds || count($positions) !== count(array_unique($positions))) {
                 throw new DomainException('並べ替え対象が現在の開発計画と一致しません。');
             }
@@ -163,26 +179,30 @@ final class CommandQueueService
         }, 3);
     }
 
-    /** @param array<string, mixed> $parameters */
-    public function updateParameters(
+    public function updateQuantity(
         User $user,
         Nation $nation,
         NationCommandQueueItem $item,
-        array $parameters,
+        int $quantity,
         int $expectedVersion,
     ): NationCommandQueue {
-        return DB::transaction(function () use ($user, $nation, $item, $parameters, $expectedVersion): NationCommandQueue {
+        return DB::transaction(function () use ($user, $nation, $item, $quantity, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
             $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->with('definition')->firstOrFail();
+            $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
                 throw new DomainException('編集できないcommandです。');
             }
-            $item->update(['parameters' => $this->validateParameters($item->definition, $parameters)]);
+            $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
+            $oldQuantity = $item->quantity;
+            $item->update(['quantity' => $quantity]);
             $queue->increment('version');
             $queue->refresh();
-            $this->audit($user, 'command.parameters_updated', $item, ['parameter_keys' => array_keys($parameters)]);
+            $this->audit($user, 'command.quantity_updated', $item, [
+                'old_quantity' => $oldQuantity,
+                'new_quantity' => $quantity,
+            ]);
 
             return $queue;
         }, 3);
@@ -296,6 +316,7 @@ final class CommandQueueService
         if ($membership === null) {
             throw new AuthorizationException('自国のcommand queueだけを操作できます。');
         }
+        $this->assertUniversalQuantityRuleset($nation);
 
         return $membership;
     }
@@ -304,6 +325,25 @@ final class CommandQueueService
     {
         if ($mapSpace->world_id !== $nation->world_id) {
             throw new DomainException('Nationとmap spaceのworldが一致しません。');
+        }
+    }
+
+    private function queueLimit(Nation $nation): int
+    {
+        $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        $limit = $settings['command_queue_limit'] ?? null;
+        if (! is_int($limit) || $limit < 1) {
+            throw new DomainException('Worldのcommand queue設定が不正です。');
+        }
+
+        return $limit;
+    }
+
+    private function assertUniversalQuantityRuleset(Nation $nation): void
+    {
+        $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        if (! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'] ?? null)) {
+            throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');
         }
     }
 
@@ -369,47 +409,6 @@ final class CommandQueueService
         foreach ($items as $index => $item) {
             $item->update(['queue_position' => $index + 1]);
         }
-    }
-
-    /**
-     * @param  array<string, mixed>  $parameters
-     * @return array<string, mixed>
-     */
-    private function validateParameters(CommandDefinition $definition, array $parameters): array
-    {
-        $schemas = $definition->metadata['parameters'] ?? [];
-        if (! is_array($schemas)) {
-            $schemas = [];
-        }
-        $unknown = array_diff(array_keys($parameters), array_keys($schemas));
-        if ($unknown !== []) {
-            throw new DomainException('未定義のcommand parameterが含まれています。');
-        }
-
-        $validated = [];
-        foreach ($schemas as $name => $schema) {
-            if (! is_array($schema)) {
-                continue;
-            }
-            $value = $parameters[$name] ?? $schema['default'] ?? null;
-            if (($schema['required'] ?? false) && $value === null) {
-                throw new DomainException("{$name}は必須です。");
-            }
-            if ($value === null) {
-                continue;
-            }
-            if (($schema['type'] ?? null) !== 'integer' || ! is_int($value)) {
-                throw new DomainException("{$name}は整数で指定してください。");
-            }
-            $minimum = (int) ($schema['minimum'] ?? PHP_INT_MIN);
-            $maximum = (int) ($schema['maximum'] ?? PHP_INT_MAX);
-            if ($value < $minimum || $value > $maximum) {
-                throw new DomainException("{$name}は{$minimum}から{$maximum}の範囲で指定してください。");
-            }
-            $validated[$name] = $value;
-        }
-
-        return $validated;
     }
 
     /** @param array<int, int|null> $occupied */

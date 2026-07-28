@@ -26,7 +26,7 @@ class RoadmapPr2StateTest extends TestCase
 
     public function test_ruleset_defines_typed_facility_capacity_and_production(): void
     {
-        app(OceanWorldGenerator::class)->initialize();
+        $world = app(OceanWorldGenerator::class)->initialize();
         $capacities = app(FacilityCapacityService::class);
 
         foreach ([
@@ -47,7 +47,8 @@ class RoadmapPr2StateTest extends TestCase
 
         $this->assertSame([
             'factory_industrial_goods', 'farm_wheat', 'mine_minerals',
-        ], ProductionDefinition::query()->orderBy('key')->pluck('key')->all());
+        ], ProductionDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)
+            ->orderBy('key')->pluck('key')->all());
         $this->assertSame(['industrial_goods', 'minerals'], ResourceDefinition::query()
             ->whereIn('key', ['industrial_goods', 'minerals'])->orderBy('key')->pluck('key')->all());
         $this->assertFalse(Schema::hasColumn('nations', 'industrial_goods'));

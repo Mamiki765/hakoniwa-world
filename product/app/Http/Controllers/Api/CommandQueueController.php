@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\CommandQueueService;
+use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Http\Controllers\Controller;
@@ -70,7 +71,6 @@ final class CommandQueueController extends Controller
                         'description' => $definition->description,
                         'cost_money' => $definition->cost_money,
                         'execution_phase' => $definition->execution_phase,
-                        'parameter_schema' => $definition->metadata['parameters'] ?? [],
                         'initial_facility_capacity' => $initialCapacity === null ? null : [
                             ...$initialCapacity,
                             'facility_key' => (string) $definition->result_facility_key,
@@ -83,7 +83,16 @@ final class CommandQueueController extends Controller
                     ];
                 });
 
-            return response()->json(['data' => $definitions]);
+            $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+            $quantityContract = $rules['development_plan_quantity'] ?? null;
+            if (! DevelopmentPlanQuantity::matchesContract($quantityContract)) {
+                throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');
+            }
+
+            return response()->json(['data' => [
+                'commands' => $definitions,
+                'quantity_contract' => $quantityContract,
+            ]]);
         } catch (DomainException $exception) {
             return $this->domainError($exception);
         }
@@ -106,16 +115,28 @@ final class CommandQueueController extends Controller
             'target_y' => ['required', 'integer'],
             'request_key' => ['required', 'uuid'],
             'expected_version' => ['required', 'integer', 'min:1'],
+            'quantity' => ['sometimes'],
             'parameters' => ['sometimes', 'array'],
             'position' => ['sometimes', 'integer', 'min:1', 'max:20'],
         ]);
 
         try {
+            $quantity = DevelopmentPlanQuantity::normalize(
+                $request->input('quantity'),
+                $request->exists('quantity'),
+            );
             $result = $service->add(
-                $request->user(), $nation, $mapSpace,
-                $validated['command_key'], $validated['target_x'], $validated['target_y'],
-                $validated['request_key'], $validated['expected_version'], $validated['parameters'] ?? [],
-                $validated['position'] ?? null,
+                user: $request->user(),
+                nation: $nation,
+                mapSpace: $mapSpace,
+                commandKey: $validated['command_key'],
+                targetX: $validated['target_x'],
+                targetY: $validated['target_y'],
+                requestKey: $validated['request_key'],
+                expectedVersion: $validated['expected_version'],
+                quantity: $quantity,
+                parameters: $validated['parameters'] ?? [],
+                position: $validated['position'] ?? null,
             );
 
             return response()->json(['data' => [
@@ -174,16 +195,17 @@ final class CommandQueueController extends Controller
     ): JsonResponse {
         $validated = $request->validate([
             'expected_version' => ['required', 'integer', 'min:1'],
-            'parameters' => ['required', 'array'],
+            'quantity' => ['required'],
+            'parameters' => ['prohibited'],
         ]);
 
         try {
             $service->queueFor($request->user(), $nation, $mapSpace);
-            $queue = $service->updateParameters(
+            $queue = $service->updateQuantity(
                 $request->user(),
                 $nation,
                 $item,
-                $validated['parameters'],
+                DevelopmentPlanQuantity::normalize($request->input('quantity'), true),
                 $validated['expected_version'],
             );
 
@@ -203,12 +225,18 @@ final class CommandQueueController extends Controller
             'queue_position' => $item->queue_position,
             'target_x' => $item->target_x,
             'target_y' => $item->target_y,
-            'parameters' => $item->parameters,
+            'quantity' => $item->quantity,
+            'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
             'status' => $item->status,
             'queued_at' => $item->queued_at?->toIso8601String(),
         ])->values();
         $byPosition = $items->keyBy('queue_position');
-        $limit = (int) config('hakoniwa.ruleset.command_queue_limit', 20);
+        $settings = $queue->nation()->firstOrFail()->world()->firstOrFail()
+            ->rulesetVersion()->firstOrFail()->settings;
+        $limit = $settings['command_queue_limit'] ?? null;
+        if (! is_int($limit) || $limit < 1) {
+            throw new DomainException('Worldのcommand queue設定が不正です。');
+        }
         $plan = collect(range(1, $limit))->map(static function (int $position) use ($byPosition): array {
             $item = $byPosition->get($position);
             if ($item === null) {
@@ -217,6 +245,7 @@ final class CommandQueueController extends Controller
                     'kind' => 'automatic_finance',
                     'editable' => false,
                     'command_name' => '資金繰り',
+                    'quantity' => null,
                 ];
             }
 

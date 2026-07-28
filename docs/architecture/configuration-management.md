@@ -2,7 +2,7 @@
 
 ## 状態
 
-各Worldが不変の`ruleset_version_id`を参照することをMVP基盤として確定する。MVPではNation配置と初期Territoryに必要な最小keyだけを版管理し、turn、command、災害、戦闘、管理画面は先行実装しない。
+各Worldが不変の`ruleset_version_id`を参照することをMVP基盤として確定する。Roadmap PR6では初期配置、初期資源、command definition、production definitionを含むsettings全体をsnapshotとして公開する。turn、command execution、災害、戦闘、管理画面は先行実装しない。
 
 ## 目的
 
@@ -20,9 +20,17 @@
 
 ## rulesetの版管理
 
-ruleset versionは公開後に不変とし、変更は新しい版を作る。各Worldは内部`ruleset_version_id`を記録する。turn導入後は各turn_runも実行時に解決した同じversionを記録する。
+ruleset versionは公開後に不変とし、変更は新しい一意なkey/versionを作る。各Worldは内部`ruleset_version_id`を記録する。turn導入後は各turn_runも実行時に解決した同じversionを記録する。
 
-MVP migrationは、Worldからversionを参照でき、配置用の`territory_initial_radius = 2`と`capital_min_distance = 12`を保持できる最小構造に留める。draft、scheduled、retired、公開workflow、turn・command・災害schemaを空実装で先行させない。
+公開payloadはsettings全体と、その`ruleset_version_id`に属するcommand definitionsおよびproduction definitionsから成る。同じkeyがすでに存在するときは、payloadと関連定義が完全一致する場合だけ冪等に再利用する。不一致をupdateで合わせず、例外で停止して新しいkey/versionの公開を要求する。
+
+`OceanWorldGenerator::initialize()`は、configured rulesetが存在しない場合だけpublisherを通して作成し、存在する場合は保存済みsnapshotとの完全一致を確認する。新規Worldだけをconfigured rulesetへ関連付け、既存Worldの`ruleset_version_id`を変更しない。既存Worldを新rulesetへ移す操作は、対象Worldと旧ruleset IDを限定したdata-preserving migrationで行う。
+
+Roadmap PR6は`roadmap-pr2-v1`を更新せず、`roadmap-pr6-v1`を新規公開する。forward-only migrationは`shared-world`が旧rulesetを参照している場合だけ新rulesetへ移し、queue itemのcommand definition参照を同じcommand keyの新定義へ付け替える。既適用migrationのrollbackやWorld再初期化を移行手段にしない。
+
+global catalogである`TerrainDefinition`、`FacilityDefinition`、`ResourceDefinition`もinitializerから上書きしない。欠けているrowだけ作成し、既存値がconfigと異なる場合は明示的migrationを要求して停止する。PR6のfood単位変更は専用migrationが既存food balanceを100倍し、catalogの単位を`ton`へ変更する。
+
+draft、scheduled、retired、管理画面での公開workflow、turn・災害schemaは空実装で先行させない。
 
 公開操作では次を検証する。
 

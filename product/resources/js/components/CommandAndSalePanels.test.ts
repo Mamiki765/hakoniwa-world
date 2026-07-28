@@ -1,8 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
+    CommandCatalog,
     CommandDefinition,
-    CommandParameterSchema,
     CommandQueue,
     CommandQueueItem,
     EffectivePlanSlot,
@@ -18,21 +18,16 @@ const selected: MapCell = {
     overlays: [], aria_label: 'x 8 y 7 平地 所有 操作国', version: 1, updated_at: null,
 };
 
-const quantitySchema: CommandParameterSchema = {
-    label: '数量', type: 'integer', minimum: 1, maximum: 99, default: 1,
-    quick_presets: [1, 5, 10, 25, 50, 99], required: true, meaning: '予約数量',
-};
-
 const definition = (overrides: Partial<CommandDefinition> = {}): CommandDefinition => ({
     key: 'land_clear', name: '整地', description: '平地にします。', cost_money: 5,
-    execution_phase: 'terrain', parameter_schema: {}, initial_facility_capacity: null,
+    execution_phase: 'terrain', initial_facility_capacity: null,
     applicable: true, available: true, shortfall_money: 0, unavailable_reason: null,
     ...overrides,
 });
 
 const item = (id: number, position: number, overrides: Partial<CommandQueueItem> = {}): CommandQueueItem => ({
     id, command_key: 'land_clear', command_name: '整地', queue_position: position,
-    target_x: 8, target_y: 7, parameters: {}, status: 'queued', queued_at: null,
+    target_x: 8, target_y: 7, quantity: 1, parameters: {}, status: 'queued', queued_at: null,
     ...overrides,
 });
 
@@ -42,11 +37,22 @@ function commandQueue(version = 1, items: CommandQueueItem[] = []): CommandQueue
         const position = index + 1;
         const explicit = byPosition.get(position);
         return explicit === undefined
-            ? { position, kind: 'automatic_finance', editable: false, command_name: '資金繰り' }
+            ? { position, kind: 'automatic_finance', editable: false, command_name: '資金繰り', quantity: null }
             : { ...explicit, position, kind: 'explicit', editable: true };
     });
     return { version, limit: 20, explicit_count: items.length, items, plan };
 }
+
+const catalog = (commands: CommandDefinition[]): CommandCatalog => ({
+    commands,
+    quantity_contract: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 99,
+        default: 1,
+        quick_presets: [1, 5, 10, 25, 50, 99],
+    },
+});
 
 const jsonResponse = (data: unknown, status = 200) => new Response(JSON.stringify({ data }), {
     status,
@@ -64,7 +70,7 @@ describe('command plan workspace', () => {
                     message: '開発計画に登録されました。実行はターン更新時に行われます。',
                 }, 201);
             }
-            return jsonResponse(String(input).includes('command-definitions') ? [definition()] : commandQueue());
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : commandQueue());
         });
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
@@ -75,11 +81,14 @@ describe('command plan workspace', () => {
         await wrapper.findAll('.plan-row')[4]!.trigger('click');
         expect(wrapper.findAll('.plan-row')[4]!.classes()).toContain('selected');
         await wrapper.find('.command-grid button').trigger('click');
+        expect(wrapper.find('.parameter-popover').exists()).toBe(true);
+        await wrapper.find('.parameter-popover').trigger('submit');
         await flushPromises();
 
         const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
         expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
-            command_key: 'land_clear', target_x: 8, target_y: 7, position: 5, expected_version: 1,
+            command_key: 'land_clear', target_x: 8, target_y: 7, position: 5,
+            expected_version: 1, quantity: 1, parameters: {},
         });
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(wrapper.findAll('.plan-row')[4]!.text()).toContain('整地');
@@ -90,7 +99,7 @@ describe('command plan workspace', () => {
         const initial = commandQueue(3, [item(1, 1), item(2, 2, { command_name: '掘削', command_key: 'excavate' })]);
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             if (init?.method === 'PUT') return jsonResponse(commandQueue(4, [item(1, 2), item(2, 1)]));
-            return jsonResponse(String(input).includes('command-definitions') ? [definition()] : initial);
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : initial);
         });
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
@@ -113,16 +122,16 @@ describe('command plan workspace', () => {
         expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT').length).toBe(2);
     });
 
-    it('opens quantity presets by double click and by a visible selected-row action', async () => {
+    it('opens the universal quantity editor by double click and keyboard without command schemas', async () => {
         const excavate = definition({
-            key: 'excavate', name: '掘削', cost_money: 200, parameter_schema: { quantity: quantitySchema },
+            key: 'excavate', name: '掘削', cost_money: 200,
         });
         const queued = item(9, 1, {
-            command_key: 'excavate', command_name: '掘削', parameters: { quantity: 1 },
+            command_key: 'excavate', command_name: '掘削', quantity: 1,
         });
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-            if (init?.method === 'PATCH') return jsonResponse(commandQueue(2, [{ ...queued, parameters: { quantity: 99 } }]));
-            return jsonResponse(String(input).includes('command-definitions') ? [excavate] : commandQueue(1, [queued]));
+            if (init?.method === 'PATCH') return jsonResponse(commandQueue(2, [{ ...queued, quantity: 99 }]));
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([excavate]) : commandQueue(1, [queued]));
         });
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
@@ -136,17 +145,51 @@ describe('command plan workspace', () => {
         await flushPromises();
         const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
         expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
-            parameters: { quantity: 99 }, expected_version: 1,
+            quantity: 99, expected_version: 1,
         });
 
         await row.trigger('click');
         expect(row.classes()).toContain('selected');
         expect(row.find('.plan-row-actions').text()).toContain('数量');
+        await row.trigger('keydown', { key: 'q' });
+        expect(wrapper.find('.plan-parameter-popover').exists()).toBe(true);
+    });
+
+    it('shows the same presets for every command and blocks out-of-range custom quantities', async () => {
+        const commands = [definition(), definition({ key: 'build_farm', name: '農場建設' })];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
+            String(input).includes('command-definitions') ? catalog(commands) : commandQueue(),
+        )));
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        for (const command of wrapper.findAll('.command-grid button')) {
+            await command.trigger('click');
+            expect(wrapper.findAll('.preset-row button').map((button) => button.text())).toEqual(['1', '5', '10', '25', '50', '99']);
+            const input = wrapper.find('.parameter-popover input');
+            await input.setValue('0');
+            expect(wrapper.find('.parameter-popover button[type="submit"]').attributes('disabled')).toBeDefined();
+            await input.setValue('100');
+            expect(wrapper.find('.parameter-popover button[type="submit"]').attributes('disabled')).toBeDefined();
+            await wrapper.find('.popover-actions button[type="button"]').trigger('click');
+        }
+    });
+
+    it('opens quantity editing from a single mobile plan-row tap', async () => {
+        vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
+            String(input).includes('command-definitions') ? catalog([definition()]) : commandQueue(1, [item(1, 1)]),
+        )));
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.plan-row').trigger('click');
+        expect(wrapper.find('.plan-parameter-popover').exists()).toBe(true);
     });
 
     it('mutually collapses the mobile command sheet and plan drawer', async () => {
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
-            String(input).includes('command-definitions') ? [] : commandQueue(),
+            String(input).includes('command-definitions') ? catalog([]) : commandQueue(),
         )));
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await flushPromises();
@@ -167,7 +210,7 @@ describe('command plan workspace', () => {
             const path = String(input);
             if (path.includes('command-definitions')) {
                 definitionCalls++;
-                return definitionCalls === 1 ? old : Promise.resolve(jsonResponse([definition({ name: '最新コマンド' })]));
+                return definitionCalls === 1 ? old : Promise.resolve(jsonResponse(catalog([definition({ name: '最新コマンド' })])));
             }
             return Promise.resolve(jsonResponse(commandQueue(7)));
         });
@@ -178,7 +221,7 @@ describe('command plan workspace', () => {
         await flushPromises();
         expect(wrapper.text()).toContain('最新コマンド');
 
-        resolveOld(jsonResponse([definition({ name: '古いコマンド' })]));
+        resolveOld(jsonResponse(catalog([definition({ name: '古いコマンド' })])));
         await flushPromises();
         expect(wrapper.text()).toContain('最新コマンド');
         expect(wrapper.text()).not.toContain('古いコマンド');

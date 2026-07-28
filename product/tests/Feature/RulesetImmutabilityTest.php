@@ -1,0 +1,185 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Application\OceanWorldGenerator;
+use App\Application\RulesetPublisher;
+use App\Models\CommandDefinition;
+use App\Models\ProductionDefinition;
+use App\Models\ResourceDefinition;
+use App\Models\RulesetVersion;
+use DomainException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class RulesetImmutabilityTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_clean_database_publishes_immutable_pr2_and_pr6_snapshots_and_initializer_is_idempotent(): void
+    {
+        $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
+        $target = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
+        $sourceSnapshot = $source->settings;
+        $sourceCommands = $this->commandSnapshot($source->id);
+        $sourceProduction = $this->productionSnapshot($source->id);
+        $targetSnapshot = $target->settings;
+        $targetCommands = $this->commandSnapshot($target->id);
+        $targetProduction = $this->productionSnapshot($target->id);
+
+        $this->assertArrayHasKey(
+            'quantity',
+            CommandDefinition::query()->where('ruleset_version_id', $source->id)
+                ->where('key', 'excavate')->firstOrFail()->metadata['parameters'],
+        );
+        $this->assertArrayNotHasKey(
+            'parameters',
+            CommandDefinition::query()->where('ruleset_version_id', $target->id)
+                ->where('key', 'excavate')->firstOrFail()->metadata,
+        );
+
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $this->assertSame($target->id, $world->ruleset_version_id);
+        app(OceanWorldGenerator::class)->initialize();
+
+        $this->assertSame($sourceSnapshot, $source->fresh()->settings);
+        $this->assertSame($targetSnapshot, $target->fresh()->settings);
+        $this->assertSame($sourceCommands, $this->commandSnapshot($source->id));
+        $this->assertSame($targetCommands, $this->commandSnapshot($target->id));
+        $this->assertSame($sourceProduction, $this->productionSnapshot($source->id));
+        $this->assertSame($targetProduction, $this->productionSnapshot($target->id));
+    }
+
+    public function test_initializer_rejects_same_key_with_different_payload_without_mutating_published_ruleset(): void
+    {
+        $published = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
+        $before = $this->rulesetSnapshot($published);
+        config(['hakoniwa.ruleset.initial_money' => 999]);
+
+        try {
+            app(OceanWorldGenerator::class)->initialize();
+            $this->fail('Expected an immutable ruleset collision.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('different immutable payload', $exception->getMessage());
+        }
+
+        $this->assertSame($before, $this->rulesetSnapshot($published->fresh()));
+    }
+
+    public function test_initializer_never_repoints_an_existing_world_or_repairs_catalog_drift_silently(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
+        $world->update(['ruleset_version_id' => $source->id]);
+
+        app(OceanWorldGenerator::class)->initialize();
+        $this->assertSame($source->id, $world->fresh()->ruleset_version_id);
+
+        $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
+        $wheat->update(['name' => 'drifted-name']);
+        try {
+            app(OceanWorldGenerator::class)->initialize();
+            $this->fail('Expected catalog drift to stop initialization.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('explicit data migration', $exception->getMessage());
+        }
+        $this->assertSame('drifted-name', $wheat->fresh()->name);
+    }
+
+    public function test_ruleset_publisher_reuses_exact_payload_and_rejects_snapshot_or_definition_drift(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings['key'] = 'test-publisher-v1';
+        $publisher = app(RulesetPublisher::class);
+        $published = $publisher->publish($settings);
+
+        $this->assertSame($published->id, $publisher->publish($settings)->id);
+
+        $different = $settings;
+        $different['initial_money'] = 777;
+        $this->expectException(DomainException::class);
+        $publisher->publish($different);
+    }
+
+    public function test_ruleset_publisher_rejects_definition_drift_without_repairing_it(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings['key'] = 'test-definition-drift-v1';
+        $publisher = app(RulesetPublisher::class);
+        $published = $publisher->publish($settings);
+        $command = CommandDefinition::query()->where('ruleset_version_id', $published->id)
+            ->where('key', 'land_clear')->firstOrFail();
+        $command->update(['name' => 'drifted-command']);
+
+        try {
+            $publisher->publish($settings);
+            $this->fail('Expected published definition drift failure.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('differs from its snapshot', $exception->getMessage());
+        }
+        $this->assertSame('drifted-command', $command->fresh()->name);
+    }
+
+    public function test_ruleset_publisher_rejects_production_drift_without_repairing_it(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings['key'] = 'test-production-drift-v1';
+        $publisher = app(RulesetPublisher::class);
+        $published = $publisher->publish($settings);
+        $production = ProductionDefinition::query()->where('ruleset_version_id', $published->id)
+            ->where('key', 'farm_wheat')->firstOrFail();
+        $production->update(['production_per_scale' => 123]);
+
+        try {
+            $publisher->publish($settings);
+            $this->fail('Expected published production drift failure.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('differs from its snapshot', $exception->getMessage());
+        }
+        $this->assertSame(123.0, $production->fresh()->production_per_scale);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function commandSnapshot(int $rulesetVersionId): array
+    {
+        return CommandDefinition::query()
+            ->where('ruleset_version_id', $rulesetVersionId)
+            ->orderBy('key')
+            ->get()
+            ->map(static fn (CommandDefinition $definition): array => [
+                'id' => $definition->id,
+                'key' => $definition->key,
+                'metadata' => $definition->metadata,
+                'updated_at' => $definition->updated_at?->toJSON(),
+            ])
+            ->all();
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function productionSnapshot(int $rulesetVersionId): array
+    {
+        return ProductionDefinition::query()
+            ->where('ruleset_version_id', $rulesetVersionId)
+            ->orderBy('key')
+            ->get()
+            ->map(static fn (ProductionDefinition $definition): array => [
+                'id' => $definition->id,
+                'key' => $definition->key,
+                'production_per_scale' => $definition->production_per_scale,
+                'metadata' => $definition->metadata,
+                'updated_at' => $definition->updated_at?->toJSON(),
+            ])
+            ->all();
+    }
+
+    /** @return array<string, mixed> */
+    private function rulesetSnapshot(RulesetVersion $ruleset): array
+    {
+        return [
+            'version' => $ruleset->version,
+            'settings' => $ruleset->settings,
+            'is_active' => $ruleset->is_active,
+            'updated_at' => $ruleset->updated_at?->toJSON(),
+        ];
+    }
+}

@@ -26,18 +26,23 @@ final class SalePolicyController extends Controller
             ->orderBy('sort_order')
             ->get();
         $policies = NationResourceSalePolicy::query()->where('nation_id', $nation->id)->get()->keyBy('resource_definition_id');
+        $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        $defaultPolicy = $rules['default_sale_policy'] ?? null;
+        if (! is_string($defaultPolicy)) {
+            throw new DomainException('Worldのdefault sale policy設定が不正です。');
+        }
 
-        return response()->json(['data' => $resources->map(function (ResourceDefinition $resource) use ($policies): array {
+        return response()->json(['data' => $resources->map(function (ResourceDefinition $resource) use ($policies, $defaultPolicy): array {
             $policy = $policies->get($resource->id);
 
             return [
                 'resource_id' => $resource->id,
                 'resource_key' => $resource->key,
                 'resource_name' => $resource->name,
-                'amount' => (int) ($resource->nationBalances->first()?->amount ?? 0),
-                'policy' => $policy?->policy ?? config('hakoniwa.ruleset.default_sale_policy', 'stockpile'),
+                'amount' => (int) ($resource->nationBalances->first()->amount ?? 0),
+                'policy' => $policy->policy ?? $defaultPolicy,
                 'keep_amount' => $policy?->keep_amount,
-                'version' => $policy?->version ?? 1,
+                'version' => $policy->version ?? 1,
             ];
         })->values()]);
     }

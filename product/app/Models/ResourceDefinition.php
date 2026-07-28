@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $name
  * @property string $category
  * @property string $unit
+ * @property string|null $unit_label
  * @property float|null $nutrition_per_unit
  * @property bool $storable
  * @property bool $tradable
@@ -21,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ResourceDefinition extends Model
 {
     protected $fillable = [
-        'key', 'name', 'category', 'unit', 'nutrition_per_unit', 'storable', 'tradable',
+        'key', 'name', 'category', 'unit', 'unit_label', 'nutrition_per_unit', 'storable', 'tradable',
         'sale_price_key', 'sort_order', 'metadata',
     ];
 

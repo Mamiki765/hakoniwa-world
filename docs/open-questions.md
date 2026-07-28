@@ -60,9 +60,10 @@
 ### A-09 rulesetのMVP境界
 
 - Status: Decided
-- Decision: 各Worldは不変の`ruleset_version_id`を参照する。初期MVPは配置・初期領土だけを版管理し、Roadmap PR2のdata-preserving migrationで既存worldを新しい`roadmap-pr2-v1`へ明示的に移してcommand・施設・生産定義を追加する。既存ruleset rowを上書きしない。
+- Decision: 各Worldは不変の`ruleset_version_id`を参照する。一度公開したruleset row、settings、そのrulesetに属するcommand definitionsおよびproduction definitionsをinitializerや通常application codeから更新しない。変更はsettings全体と関連定義を持つ新しい一意なkey/versionとして公開し、同じkeyの完全一致だけを冪等に再利用する。不一致は例外で停止する。既存Worldの移行は対象Worldと旧ruleset IDを限定したdata-preserving migrationで行い、initializerは既存Worldを自動移行しない。Roadmap PR6は`roadmap-pr2-v1`を変更せず`roadmap-pr6-v1`を公開し、forward-only migrationで`shared-world`だけを明示的に移す。
 - Decision record: `docs/architecture/configuration-management.md`、`docs/architecture/target-architecture.md`
 - `chunk_size = 16`と座標方式は既存worldの互換性に関わるarchitecture invariantであり、通常のバランス設定として変更しない。
+- global catalogはinitializerが欠損rowだけを作成する。既存rowとconfigの不一致は上書きせず、明示的migrationを要求する。
 
 ### A-10 認証方式
 
@@ -248,8 +249,14 @@
 
 - Status: Decided
 - Required before: コマンド実装前
-- Decision: 旧作と同じ上限20件、1始まりの明示positionとし、追加・全件並べ替え・取消後の左詰めをtransactionで行う。header versionによるoptimistic concurrencyとrequest keyによる重複防止を使う。登録時に資金・資源を予約せず、turn runnerが実行時に再検証する。PR5では既存JSON parameters境界を使って掘削quantityの予約・表示・編集・validationだけを実装し、quantityの実行意味と副作用はturn runnerまで延期する。effective planは20枠を返し、未使用枠を永続IDのないautomatic finance placeholderで補完する。
+- Decision: 旧作と同じ上限20件、1始まりの明示positionとし、追加・全件並べ替え・取消後の左詰めをtransactionで行う。header versionによるoptimistic concurrencyとrequest keyによる重複防止を使う。登録時に資金・資源を予約せず、turn runnerが実行時に再検証する。PR6ではquantityを全command共通のfirst-class column/API fieldとし、整数1–99、default 1、preset 1/5/10/25/50/99で予約・表示・編集・validationだけを実装する。明示的nullは422とし、quantityの実行意味と副作用はturn runnerまで延期する。effective planは20枠を返し、未使用枠をquantity nullかつ永続IDのないautomatic finance placeholderで補完する。
 - Decision record: `docs/architecture/roadmap-pr2-systems.md`
+
+### RES-01 food生産量のton換算
+
+- Status: Open
+- Required before: ターン処理・production実装前
+- PR6でfood balanceのcanonical unitは整数ton、初期食料は10,000トンに確定した。既存`farm_wheat.production_per_scale = 10`を旧100トン単位として1,000トンへ換算するか、10トンとして維持するかは生産・消費バランスと同時に決める。PR6ではturn executionを実装せず、既存値を推測して変更しない。
 
 ### CMD-01 箱庭諸島2＋コマンドの採否
 

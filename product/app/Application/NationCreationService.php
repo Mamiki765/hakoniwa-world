@@ -26,6 +26,7 @@ final class NationCreationService
         return DB::transaction(function () use ($user, $world, $name): Nation {
             $world = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
             $this->lockRegistration($world);
+            $rules = $world->rulesetVersion()->firstOrFail()->settings;
 
             if (NationMembership::query()->where('user_id', $user->id)->where('world_id', $world->id)->exists()) {
                 throw new DomainException('このWorldにはすでにNationがあります。');
@@ -53,7 +54,7 @@ final class NationCreationService
 
             $nation = Nation::query()->create([
                 'world_id' => $world->id, 'name' => $name,
-                'money' => config('hakoniwa.ruleset.initial_money'),
+                'money' => $rules['initial_money'],
                 'state' => 'active',
             ]);
             $this->resources->initialize($nation);

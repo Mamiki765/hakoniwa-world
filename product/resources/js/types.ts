@@ -19,6 +19,8 @@ export interface Nation {
     name: string;
     money: number;
     money_display: string;
+    total_food_tons: number;
+    food_resources: FoodResource[];
     resources: NationResource[];
     state: string;
     current_turn: number;
@@ -72,10 +74,19 @@ export interface NationResource {
     name: string;
     category: string;
     unit: string;
+    unit_label: string | null;
     nutrition_per_unit: number | null;
     storable: boolean;
     tradable: boolean;
     amount: number;
+}
+
+export interface FoodResource {
+    key: string;
+    name: string;
+    balance: number;
+    unit: 'ton';
+    unit_label: 'トン';
 }
 
 export interface AssetDescriptor {
@@ -130,7 +141,6 @@ export interface CommandDefinition {
     description: string;
     cost_money: number;
     execution_phase: string;
-    parameter_schema: Record<string, CommandParameterSchema>;
     initial_facility_capacity: null | {
         facility_key: string;
         facility_scale: number;
@@ -147,15 +157,17 @@ export interface CommandDefinition {
     unavailable_reason: string | null;
 }
 
-export interface CommandParameterSchema {
-    label: string;
+export interface DevelopmentPlanQuantityContract {
     type: 'integer';
     minimum: number;
     maximum: number;
     default: number;
     quick_presets: number[];
-    required: boolean;
-    meaning: string;
+}
+
+export interface CommandCatalog {
+    commands: CommandDefinition[];
+    quantity_contract: DevelopmentPlanQuantityContract;
 }
 
 export interface CommandQueueItem {
@@ -165,6 +177,7 @@ export interface CommandQueueItem {
     queue_position: number;
     target_x: number;
     target_y: number;
+    quantity: number;
     parameters: Record<string, unknown>;
     status: string;
     queued_at: string | null;
@@ -183,6 +196,7 @@ export type EffectivePlanSlot = {
     kind: 'automatic_finance';
     editable: false;
     command_name: '資金繰り';
+    quantity: null;
 } | (CommandQueueItem & {
     position: number;
     kind: 'explicit';

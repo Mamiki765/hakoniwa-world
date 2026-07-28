@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import { formatExactMoney } from '../formatters/money';
 import type {
+    CommandCatalog,
     CommandDefinition,
     CommandQueue,
     CommandQueueItem,
@@ -22,9 +23,17 @@ const automaticPlan = (): EffectivePlanSlot[] => Array.from({ length: 20 }, (_, 
     kind: 'automatic_finance' as const,
     editable: false as const,
     command_name: '資金繰り' as const,
+    quantity: null,
 }));
 
 const definitions = ref<CommandDefinition[]>([]);
+const quantityContract = ref({
+    type: 'integer' as const,
+    minimum: 1,
+    maximum: 99,
+    default: 1,
+    quick_presets: [1, 5, 10, 25, 50, 99],
+});
 const queue = ref<CommandQueue>({
     version: 1,
     limit: 20,
@@ -48,11 +57,9 @@ let activeRefreshController: AbortController | null = null;
 
 const basePath = (nationId = props.nationId, mapSpaceId = props.mapSpaceId) => `/api/v1/nations/${nationId}/map-spaces/${mapSpaceId}`;
 const applicableDefinitions = computed(() => definitions.value.filter((definition) => definition.applicable));
-const quantitySchema = computed(() => pendingDefinition.value?.parameter_schema.quantity ?? null);
-const editingSchema = computed(() => {
-    const item = editingItem.value;
-    return item === null ? null : definitions.value.find((definition) => definition.key === item.command_key)?.parameter_schema.quantity ?? null;
-});
+const quantityIsValid = computed(() => Number.isInteger(quantity.value)
+    && quantity.value >= quantityContract.value.minimum
+    && quantity.value <= quantityContract.value.maximum);
 
 watch(
     () => [props.selected?.x, props.selected?.y, props.nationId, props.mapSpaceId],
@@ -74,12 +81,13 @@ async function refresh(): Promise<void> {
 
     try {
         const [nextDefinitions, nextQueue] = await Promise.all([
-            api<CommandDefinition[]>(`${path}/command-definitions${target}`, { signal: controller.signal }),
+            api<CommandCatalog>(`${path}/command-definitions${target}`, { signal: controller.signal }),
             api<CommandQueue>(`${path}/command-queue`, { signal: controller.signal }),
         ]);
 
         if (generation !== refreshGeneration) return;
-        definitions.value = nextDefinitions;
+        definitions.value = nextDefinitions.commands;
+        quantityContract.value = nextDefinitions.quantity_contract;
         queue.value = nextQueue;
         if (selectedPosition.value > nextQueue.limit) selectedPosition.value = nextQueue.limit;
     } catch (error) {
@@ -95,23 +103,18 @@ async function refresh(): Promise<void> {
 
 function chooseCommand(definition: CommandDefinition): void {
     if (!definition.available || props.selected === null) return;
-    const schema = definition.parameter_schema.quantity;
-    if (schema !== undefined) {
-        pendingDefinition.value = definition;
-        quantity.value = schema.default;
-        return;
-    }
-    void addCommand(definition, {});
+    pendingDefinition.value = definition;
+    quantity.value = quantityContract.value.default;
 }
 
 async function addPendingCommand(): Promise<void> {
     const definition = pendingDefinition.value;
-    if (definition === null) return;
-    await addCommand(definition, { quantity: quantity.value });
+    if (definition === null || !quantityIsValid.value) return;
+    await addCommand(definition, quantity.value);
     pendingDefinition.value = null;
 }
 
-async function addCommand(definition: CommandDefinition, parameters: Record<string, unknown>): Promise<void> {
+async function addCommand(definition: CommandDefinition, requestedQuantity: number): Promise<void> {
     if (props.selected === null || !definition.available) return;
     const generation = refreshGeneration;
     const selected = { x: props.selected.x, y: props.selected.y };
@@ -128,7 +131,8 @@ async function addCommand(definition: CommandDefinition, parameters: Record<stri
                 position: selectedPosition.value,
                 request_key: crypto.randomUUID(),
                 expected_version: queue.value.version,
-                parameters,
+                quantity: requestedQuantity,
+                parameters: {},
             }),
         });
         if (generation !== refreshGeneration) return;
@@ -148,6 +152,9 @@ async function addCommand(definition: CommandDefinition, parameters: Record<stri
 
 function selectPlanSlot(slot: EffectivePlanSlot): void {
     selectedPosition.value = slot.position;
+    if (slot.kind === 'explicit' && window.matchMedia?.('(max-width: 820px)').matches) {
+        openQuantityEditor(slot);
+    }
 }
 
 function beginDrag(slot: EffectivePlanSlot): void {
@@ -193,18 +200,16 @@ async function cancel(itemId: number): Promise<void> {
     editingItem.value = null;
 }
 
-function openParameterEditor(item: CommandQueueItem): void {
-    const schema = definitions.value.find((definition) => definition.key === item.command_key)?.parameter_schema.quantity;
-    if (schema === undefined) return;
+function openQuantityEditor(item: CommandQueueItem): void {
     editingItem.value = item;
-    quantity.value = typeof item.parameters.quantity === 'number' ? item.parameters.quantity : schema.default;
+    quantity.value = item.quantity;
 }
 
-async function saveParameters(): Promise<void> {
+async function saveQuantity(): Promise<void> {
     const item = editingItem.value;
-    if (item === null) return;
+    if (item === null || !quantityIsValid.value) return;
     await mutateQueue('PATCH', `${basePath()}/command-queue/${item.id}`, {
-        parameters: { quantity: quantity.value },
+        quantity: quantity.value,
         expected_version: queue.value.version,
     });
     editingItem.value = null;
@@ -224,6 +229,10 @@ function planKeydown(event: KeyboardEvent, slot: EffectivePlanSlot): void {
     if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         event.preventDefault();
         void move(slot.id, event.key === 'ArrowUp' ? -1 : 1);
+    }
+    if (event.key === 'Enter' || event.key.toLowerCase() === 'q') {
+        event.preventDefault();
+        openQuantityEditor(slot);
     }
 }
 
@@ -293,17 +302,17 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
                     <p v-else class="empty-state">このセルで登録できるコマンドはありません。</p>
-                    <form v-if="pendingDefinition && quantitySchema" class="parameter-popover" @submit.prevent="addPendingCommand">
+                    <form v-if="pendingDefinition" class="parameter-popover" @submit.prevent="addPendingCommand">
                         <strong>{{ pendingDefinition.name }}の数量</strong>
                         <div class="preset-row">
-                            <button v-for="preset in quantitySchema.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
+                            <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
                         </div>
-                        <label>{{ quantitySchema.label }}
-                            <input v-model.number="quantity" type="number" :min="quantitySchema.minimum" :max="quantitySchema.maximum" required>
+                        <label>数量
+                            <input v-model.number="quantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
                         </label>
                         <div class="popover-actions">
                             <button type="button" @click="pendingDefinition = null">閉じる</button>
-                            <button type="submit">計画へ登録</button>
+                            <button type="submit" :disabled="!quantityIsValid">計画へ登録</button>
                         </div>
                     </form>
                 </section>
@@ -331,7 +340,7 @@ onBeforeUnmount(() => {
                         :draggable="slot.kind === 'explicit'"
                         tabindex="0"
                         @click="selectPlanSlot(slot)"
-                        @dblclick="slot.kind === 'explicit' && openParameterEditor(slot)"
+                        @dblclick="slot.kind === 'explicit' && openQuantityEditor(slot)"
                         @contextmenu.prevent="slot.kind === 'explicit' && cancel(slot.id)"
                         @keydown="planKeydown($event, slot)"
                         @dragstart="beginDrag(slot)"
@@ -341,32 +350,31 @@ onBeforeUnmount(() => {
                         <span class="plan-position">{{ slot.position }}</span>
                         <span class="drag-handle" aria-hidden="true">⠿</span>
                         <span class="plan-command">
-                            <strong>{{ slot.command_name }}</strong>
+                            <strong>{{ slot.command_name }}<template v-if="slot.kind === 'explicit'"> ×{{ slot.quantity }}</template></strong>
                             <small v-if="slot.kind === 'explicit'">
                                 x={{ slot.target_x }}, y={{ slot.target_y }}
-                                <template v-if="typeof slot.parameters.quantity === 'number'"> ／ 数量 {{ slot.parameters.quantity }}</template>
                             </small>
                             <small v-else>自動</small>
                         </span>
                         <span v-if="slot.kind === 'explicit'" class="plan-row-actions">
                             <button type="button" aria-label="前へ移動" :disabled="busy || slot.position === 1" @click.stop="move(slot.id, -1)">↑</button>
                             <button type="button" aria-label="後へ移動" :disabled="busy || slot.position === queue.limit" @click.stop="move(slot.id, 1)">↓</button>
-                            <button v-if="definitions.find((definition) => definition.key === slot.command_key)?.parameter_schema.quantity" type="button" @click.stop="openParameterEditor(slot)">数量</button>
+                            <button type="button" @click.stop="openQuantityEditor(slot)">数量</button>
                             <button type="button" @click.stop="cancel(slot.id)">取消</button>
                         </span>
                     </li>
                 </ol>
-                <form v-if="editingItem && editingSchema" class="parameter-popover plan-parameter-popover" @submit.prevent="saveParameters">
+                <form v-if="editingItem" class="parameter-popover plan-parameter-popover" @submit.prevent="saveQuantity">
                     <strong>{{ editingItem.command_name }}の数量</strong>
                     <div class="preset-row">
-                        <button v-for="preset in editingSchema.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
+                        <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
                     </div>
-                    <label>{{ editingSchema.label }}
-                        <input v-model.number="quantity" type="number" :min="editingSchema.minimum" :max="editingSchema.maximum" required>
+                    <label>数量
+                        <input v-model.number="quantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
                     </label>
                     <div class="popover-actions">
                         <button type="button" @click="editingItem = null">閉じる</button>
-                        <button type="submit">保存</button>
+                        <button type="submit" :disabled="!quantityIsValid">保存</button>
                     </div>
                 </form>
             </div>

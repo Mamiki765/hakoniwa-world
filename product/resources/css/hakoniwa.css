@@ -139,10 +139,36 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 }
 .hud-identity h1 { margin: 0; font-size: 1.35rem; }
 .hud-primary { display: grid; grid-template-columns: repeat(8, minmax(70px, 1fr)); gap: 6px; margin: 0; }
-.hud-primary div { min-width: 0; padding: 6px 8px; border-left: 1px solid rgba(255,255,255,.16); }
+.hud-primary > div { min-width: 0; padding: 6px 8px; border-left: 1px solid rgba(255,255,255,.16); }
 .hud-primary dt { color: #b9d2d2; font-size: .64rem; }
 .hud-primary dd { margin: 2px 0 0; font-size: .83rem; font-weight: 850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hud-money { min-width: 124px !important; }
+.hud-food { position: relative; overflow: visible !important; }
+.hud-food dd { display: flex; align-items: center; gap: 6px; overflow: visible; }
+.food-detail-toggle {
+    min-height: 26px;
+    padding: 2px 6px;
+    border: 1px solid rgba(255,255,255,.5);
+    background: transparent;
+    color: white;
+    font-size: .65rem;
+    cursor: pointer;
+}
+.hud-food-detail {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(300px, 86vw);
+    padding: 12px;
+    border: 2px solid var(--coral);
+    background: white;
+    color: var(--ink);
+    box-shadow: var(--shadow);
+}
+.hud-food-detail ul { display: grid; gap: 7px; margin: 9px 0; padding: 0; list-style: none; }
+.hud-food-detail li { display: flex; justify-content: space-between; gap: 18px; font-variant-numeric: tabular-nums; }
+.hud-food-detail > button { min-height: 34px; padding: 4px 10px; border: 1px solid var(--line); background: var(--paper); }
 .hud-more { font-size: .72rem; }
 .hud-more summary { cursor: pointer; }
 .hud-more span { display: block; margin-top: 5px; color: #d9e7e4; }
@@ -316,10 +342,12 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .hud-identity { display: flex; align-items: baseline; justify-content: space-between; }
     .hud-identity .eyebrow { display: none; }
     .hud-identity h1 { font-size: 1rem; }
-    .hud-primary { grid-template-columns: repeat(3, 1fr); gap: 3px; }
-    .hud-primary div { padding: 3px 6px; }
-    .hud-primary div:nth-child(n+4) { display: none; }
+    .hud-primary { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
+    .hud-primary > div { padding: 3px 5px; }
+    .hud-primary > div:nth-child(n+5) { display: none; }
     .hud-primary dd { font-size: .75rem; }
+    .hud-food dd { gap: 3px; }
+    .food-detail-toggle { min-height: 30px; padding: 2px 4px; }
     .hud-more { position: absolute; right: 20px; top: 119px; color: white; z-index: 2; }
 
     .island-grid { display: block; height: auto; min-height: 0; border: 0; }

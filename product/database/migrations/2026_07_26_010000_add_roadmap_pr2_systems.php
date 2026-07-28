@@ -169,7 +169,10 @@ return new class extends Migration
     private function upgradeCatalogsAndRuleset(): void
     {
         $now = now();
-        $rules = config('hakoniwa.ruleset');
+        $rules = config('hakoniwa.published_rulesets.roadmap-pr2-v1');
+        if (! is_array($rules)) {
+            throw new RuntimeException('The immutable roadmap-pr2-v1 ruleset snapshot is missing.');
+        }
         $oldRulesetId = DB::table('ruleset_versions')->where('key', 'mvp-v1')->value('id');
         $rulesetId = DB::table('ruleset_versions')->where('key', $rules['key'])->value('id');
 
@@ -305,7 +308,7 @@ return new class extends Migration
             ]);
         }
 
-        foreach (config('hakoniwa.ruleset.facility_definitions') as $key => $definition) {
+        foreach (config('hakoniwa.published_rulesets.roadmap-pr2-v1.facility_definitions') as $key => $definition) {
             if ($definition['initial_scale'] === null) {
                 continue;
             }
@@ -324,6 +327,7 @@ return new class extends Migration
     private function backfillNationResourcesAndPolicies(): void
     {
         $now = now();
+        $rules = config('hakoniwa.published_rulesets.roadmap-pr2-v1');
         $resources = DB::table('resource_definitions')->get(['id', 'key', 'tradable']);
 
         foreach (DB::table('nations')->pluck('id') as $nationId) {
@@ -331,7 +335,7 @@ return new class extends Migration
                 DB::table('nation_resources')->insertOrIgnore([
                     'nation_id' => $nationId,
                     'resource_definition_id' => $resource->id,
-                    'amount' => config('hakoniwa.ruleset.initial_resources.'.$resource->key, 0),
+                    'amount' => $rules['initial_resources'][$resource->key] ?? 0,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);
@@ -339,7 +343,7 @@ return new class extends Migration
                     DB::table('nation_resource_sale_policies')->insertOrIgnore([
                         'nation_id' => $nationId,
                         'resource_definition_id' => $resource->id,
-                        'policy' => config('hakoniwa.ruleset.default_sale_policy', 'stockpile'),
+                        'policy' => $rules['default_sale_policy'] ?? 'stockpile',
                         'keep_amount' => null,
                         'version' => 1,
                         'created_at' => $now,

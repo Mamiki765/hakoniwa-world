@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\InitialIslandGenerator;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -30,12 +31,14 @@ class NationCreationTest extends TestCase
 
         $this->assertSame(100, $nation->money);
         $this->assertSame([
-            'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0, 'wheat' => 100,
+            'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0, 'wheat' => 10_000,
         ], NationResource::query()
             ->where('nation_id', $nation->id)
             ->join('resource_definitions', 'resource_definitions.id', '=', 'nation_resources.resource_definition_id')
             ->pluck('amount', 'key')->sortKeys()->all());
         $this->assertSame(3, ResourceDefinition::query()->where('category', 'food')->count());
+        $this->assertSame(3, ResourceDefinition::query()
+            ->where('category', 'food')->where('unit', 'ton')->where('unit_label', 'トン')->count());
         $this->assertSame(5, $nation->salePolicies()->count());
         $this->assertSame(1000, $nation->capital->cell()->value('population'));
         $this->assertSame(3, $this->terrainCount('forest'));
@@ -45,6 +48,17 @@ class NationCreationTest extends TestCase
         $this->assertSame(1, $this->facilityCount('missile_base'));
         $this->assertSame(1, $this->facilityCount('capital'));
         $this->assertSame(19, MapCell::query()->where('owner_nation_id', $nation->id)->count());
+        $shallowCells = MapCell::query()->whereHas('terrain', fn ($query) => $query->where('key', 'shallow'))->get();
+        $this->assertGreaterThanOrEqual(3, $shallowCells->count());
+        foreach ($shallowCells as $shallow) {
+            $this->assertNull($shallow->owner_nation_id);
+            $this->assertNull($shallow->facility_definition_id);
+            $this->assertLessThanOrEqual(
+                5,
+                (new GridCoordinate($nation->capital->x, $nation->capital->y))
+                    ->distanceTo(new GridCoordinate($shallow->x, $shallow->y)),
+            );
+        }
         $this->assertGreaterThanOrEqual(1, MapCell::query()
             ->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
@@ -76,6 +90,44 @@ class NationCreationTest extends TestCase
 
         $this->expectException(DomainException::class);
         $service->create($user, $world, '二つ目');
+    }
+
+    public function test_initial_shallow_coordinates_are_deterministic_for_the_same_seed_and_state(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $user = User::factory()->create();
+        $service = app(NationCreationService::class);
+
+        DB::beginTransaction();
+        $first = $service->create($user, $world, '再現国');
+        $firstCoordinates = MapCell::query()
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'shallow'))
+            ->orderBy('x')->orderBy('y')->get(['x', 'y'])->map->only(['x', 'y'])->all();
+        DB::rollBack();
+
+        $second = $service->create($user, $world, '再現国');
+        $secondCoordinates = MapCell::query()
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'shallow'))
+            ->orderBy('x')->orderBy('y')->get(['x', 'y'])->map->only(['x', 'y'])->all();
+
+        $this->assertSame([$first->capital->x, $first->capital->y], [$second->capital->x, $second->capital->y]);
+        $this->assertSame($firstCoordinates, $secondCoordinates);
+    }
+
+    public function test_initial_island_completes_when_fewer_coastal_candidates_exist_than_the_configured_minimum(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings['key'] = 'test-shallow-candidate-shortage-v1';
+        $settings['initial_island_minimum_shallow_cells'] = 1000;
+        $ruleset = app(RulesetPublisher::class)->publish($settings);
+        $world->update(['ruleset_version_id' => $ruleset->id]);
+
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '候補不足国');
+
+        $this->assertNotNull($nation->capital);
+        $this->assertSame(19, MapCell::query()->where('owner_nation_id', $nation->id)->count());
+        $this->assertLessThan(1000, $this->terrainCount('shallow'));
     }
 
     public function test_generator_failure_rolls_back_nation_island_capital_membership_and_request(): void

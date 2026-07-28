@@ -12,8 +12,9 @@ final class CapitalPlacementService
     /** @return list<GridCoordinate> */
     public function candidates(MapSpace $mapSpace, int $limit = 3): array
     {
-        $radius = (int) config('hakoniwa.ruleset.initial_island_reservation_radius');
-        $minimumDistance = (int) config('hakoniwa.ruleset.minimum_capital_distance');
+        $rules = $mapSpace->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        $radius = (int) $rules['initial_island_reservation_radius'];
+        $minimumDistance = (int) $rules['minimum_capital_distance'];
         $requiredCells = 1 + 3 * $radius * ($radius + 1);
         $sql = <<<'SQL'
             WITH candidates AS (

@@ -12,7 +12,8 @@ final class NationResourceService
 {
     public function initialize(Nation $nation): void
     {
-        $initial = $this->initialResources();
+        $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        $initial = $this->initialResources($rules);
         $definitions = ResourceDefinition::query()->whereIn('key', array_keys($initial))->get()->keyBy('key');
 
         if ($definitions->count() !== count($initial)) {
@@ -32,7 +33,7 @@ final class NationResourceService
                 NationResourceSalePolicy::query()->create([
                     'nation_id' => $nation->id,
                     'resource_definition_id' => $definition->id,
-                    'policy' => config('hakoniwa.ruleset.default_sale_policy', 'stockpile'),
+                    'policy' => $rules['default_sale_policy'] ?? 'stockpile',
                     'keep_amount' => null,
                     'version' => 1,
                 ]);
@@ -40,10 +41,13 @@ final class NationResourceService
         }
     }
 
-    /** @return array<string, int> */
-    private function initialResources(): array
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, int>
+     */
+    private function initialResources(array $rules): array
     {
-        $configured = config('hakoniwa.ruleset.initial_resources');
+        $configured = $rules['initial_resources'] ?? null;
 
         if (! is_array($configured)) {
             throw new DomainException('初期資源設定が不正です。');
