@@ -1,5 +1,10 @@
 # ターン処理パイプライン
 
+> PR #7 note: 下記の推奨フェーズ表は初期設計案であり、実装順の正本ではない。
+> 箱庭諸島2＋のsourceから確認した因果順と現在の安全なscaffoldは
+> `docs/architecture/turn-runner-scaffold.md`を正本とする。未決定の同時解決規則を
+> この初期案から暗黙に採用してはならない。
+
 ## 目的
 
 箱庭諸島2＋が持つ共有世界の処理順と、やまにてぃが持つApplication Service・DB transactionの方向性を、再実行可能で監査できる独立設計へ置き換える。
