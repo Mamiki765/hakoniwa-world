@@ -227,6 +227,10 @@ class OceanWorldGenerator
         return $stored === $expected;
     }
 
+    /**
+     * @param  array<array-key, mixed>  $value
+     * @return array<array-key, mixed>
+     */
     private function canonicalize(array $value): array
     {
         if (! array_is_list($value)) {

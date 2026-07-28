@@ -39,10 +39,10 @@ final class SalePolicyController extends Controller
                 'resource_id' => $resource->id,
                 'resource_key' => $resource->key,
                 'resource_name' => $resource->name,
-                'amount' => (int) ($resource->nationBalances->first()?->amount ?? 0),
-                'policy' => $policy?->policy ?? $defaultPolicy,
+                'amount' => (int) ($resource->nationBalances->first()->amount ?? 0),
+                'policy' => $policy->policy ?? $defaultPolicy,
                 'keep_amount' => $policy?->keep_amount,
-                'version' => $policy?->version ?? 1,
+                'version' => $policy->version ?? 1,
             ];
         })->values()]);
     }
