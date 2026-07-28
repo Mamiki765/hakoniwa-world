@@ -3,7 +3,6 @@
 use App\Application\RulesetPublisher;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 return new class extends Migration
 {
