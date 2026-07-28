@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\OceanWorldGenerator;
+use App\Application\RulesetPublisher;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Models\MapCell;
 use App\Models\MapChunk;
@@ -57,14 +58,16 @@ class WorldInitializationTest extends TestCase
         $this->assertSame(['fish', 'industrial_goods', 'minerals', 'monster_meat', 'wheat'], ResourceDefinition::query()->orderBy('key')->pluck('key')->all());
         $this->assertSame(2.0, ResourceDefinition::query()->where('key', 'monster_meat')->value('nutrition_per_unit'));
         $this->assertTrue(Schema::hasColumns('resource_definitions', [
-            'unit', 'nutrition_per_unit', 'storable', 'tradable', 'sale_price_key', 'metadata',
+            'unit', 'unit_label', 'nutrition_per_unit', 'storable', 'tradable', 'sale_price_key', 'metadata',
         ]));
+        $this->assertSame('ton', ResourceDefinition::query()->where('key', 'wheat')->value('unit'));
+        $this->assertSame('トン', ResourceDefinition::query()->where('key', 'wheat')->value('unit_label'));
         $this->assertFalse(Schema::hasColumn('nations', 'food'));
     }
 
     public function test_failure_rolls_back_world_and_cells(): void
     {
-        $generator = new class(app(ChunkCoordinateService::class)) extends OceanWorldGenerator
+        $generator = new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class)) extends OceanWorldGenerator
         {
             protected function afterBatchInserted(int $inserted): void
             {

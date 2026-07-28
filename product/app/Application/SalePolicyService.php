@@ -39,7 +39,7 @@ final class SalePolicyService
 
             $record = NationResourceSalePolicy::query()->firstOrCreate(
                 ['nation_id' => $nation->id, 'resource_definition_id' => $resource->id],
-                ['policy' => config('hakoniwa.ruleset.default_sale_policy', 'stockpile'), 'keep_amount' => null, 'version' => 1],
+                ['policy' => $this->defaultPolicy($nation), 'keep_amount' => null, 'version' => 1],
             );
             $record = NationResourceSalePolicy::query()->whereKey($record->id)->lockForUpdate()->firstOrFail();
             if ($record->version !== $expectedVersion) {
@@ -64,5 +64,16 @@ final class SalePolicyService
         if (! NationMembership::query()->where('user_id', $user->id)->where('nation_id', $nation->id)->exists()) {
             throw new AuthorizationException('自国のsale policyだけを変更できます。');
         }
+    }
+
+    private function defaultPolicy(Nation $nation): string
+    {
+        $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        $policy = $settings['default_sale_policy'] ?? null;
+        if (! is_string($policy) || ! in_array($policy, ['sell_all', 'stockpile', 'keep_amount'], true)) {
+            throw new DomainException('Worldのdefault sale policy設定が不正です。');
+        }
+
+        return $policy;
     }
 }

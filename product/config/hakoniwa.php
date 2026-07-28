@@ -1,7 +1,8 @@
 <?php
 
-return [
-    'ruleset' => [
+use App\Domain\Command\DevelopmentPlanQuantity;
+
+$roadmapPr2Ruleset = [
         'key' => 'roadmap-pr2-v1',
         'version' => 3,
         'chunk_size' => 16,
@@ -103,6 +104,48 @@ return [
         'initial_island_growth_radius' => 4,
         'initial_island_reservation_radius' => 5,
         'initial_island_growth_steps' => 100,
+];
+
+$roadmapPr6Ruleset = $roadmapPr2Ruleset;
+$roadmapPr6Ruleset['key'] = 'roadmap-pr6-v1';
+$roadmapPr6Ruleset['version'] = 1;
+$roadmapPr6Ruleset['development_plan_quantity'] = DevelopmentPlanQuantity::contract();
+$roadmapPr6Ruleset['initial_resources'] = [
+    'wheat' => 10_000,
+    'fish' => 0,
+    'monster_meat' => 0,
+    'industrial_goods' => 0,
+    'minerals' => 0,
+];
+$roadmapPr6Ruleset['initial_island_minimum_shallow_cells'] = 3;
+
+foreach ($roadmapPr6Ruleset['resource_definitions'] as &$resourceDefinition) {
+    $resourceDefinition['unit_label'] = null;
+    if ($resourceDefinition['category'] === 'food') {
+        $resourceDefinition['unit'] = 'ton';
+        $resourceDefinition['unit_label'] = 'トン';
+    }
+    if ($resourceDefinition['key'] === 'monster_meat') {
+        $resourceDefinition['name'] = '怪獣肉';
+    }
+}
+unset($resourceDefinition);
+
+foreach ($roadmapPr6Ruleset['command_definitions'] as &$commandDefinition) {
+    if (isset($commandDefinition['metadata']['parameters']['quantity'])) {
+        unset($commandDefinition['metadata']['parameters']['quantity']);
+        if ($commandDefinition['metadata']['parameters'] === []) {
+            unset($commandDefinition['metadata']['parameters']);
+        }
+    }
+}
+unset($commandDefinition);
+
+return [
+    'ruleset' => $roadmapPr6Ruleset,
+    'published_rulesets' => [
+        'roadmap-pr2-v1' => $roadmapPr2Ruleset,
+        'roadmap-pr6-v1' => $roadmapPr6Ruleset,
     ],
     'world' => [
         'key' => 'shared-world',
@@ -115,7 +158,7 @@ return [
     ],
     'initial_island' => [
         'generator_id' => 'legacy-inspired-initial-island',
-        'generator_version' => '2',
+        'generator_version' => '3',
     ],
     'assets' => [
         'base_url' => env('HAKONIWA_TILE_ASSET_BASE_URL', env('HAKONIWA_ORIGINAL_ASSET_BASE_URL', '/assets/hakoniwa-tiles')),

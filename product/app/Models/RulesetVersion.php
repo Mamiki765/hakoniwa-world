@@ -17,6 +17,6 @@ class RulesetVersion extends Model
 
     protected function casts(): array
     {
-        return ['settings' => 'array', 'is_active' => 'boolean'];
+        return ['version' => 'integer', 'settings' => 'array', 'is_active' => 'boolean'];
     }
 }
