@@ -75,7 +75,9 @@ describe('application lobby and island entry', () => {
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {
         const nation: Nation = {
             id: 3, world_id: 1, name: '自島', money: 62728, money_display: '62,728億円',
-            total_food_tons: 10000,
+            money_capacity: 9999, money_remaining_capacity: 0,
+            total_food_tons: 10000, food_total_tons: 10000,
+            food_capacity_tons: 999900, food_remaining_capacity_tons: 989900,
             food_resources: [
                 { key: 'wheat', name: '小麦', balance: 10000, unit: 'ton', unit_label: 'トン' },
                 { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },

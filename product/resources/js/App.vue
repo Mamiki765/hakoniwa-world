@@ -228,12 +228,16 @@ async function createNation(): Promise<void> {
                 <div class="hud-identity"><p class="eyebrow">MY ISLAND</p><h1>{{ nation.name }}</h1></div>
                 <dl class="hud-primary">
                     <div><dt>turn</dt><dd>{{ nation.current_turn }}</dd></div>
-                    <div class="hud-money"><dt>資金</dt><dd>{{ formatExactMoney(nation.money) }}</dd></div>
+                    <div class="hud-money">
+                        <dt>資金</dt>
+                        <dd>{{ formatExactMoney(nation.money) }} / {{ formatExactMoney(nation.money_capacity) }}</dd>
+                    </div>
                     <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
                     <div class="hud-food">
                         <dt>食料</dt>
                         <dd>
                             {{ formatResource(nation.total_food_tons, 'トン') }}
+                            / {{ formatResource(nation.food_capacity_tons, 'トン') }}
                             <button
                                 class="food-detail-toggle"
                                 type="button"

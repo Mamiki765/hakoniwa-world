@@ -16,13 +16,17 @@ class RulesetImmutabilityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_clean_database_publishes_immutable_pr2_and_pr6_snapshots_and_initializer_is_idempotent(): void
+    public function test_clean_database_publishes_immutable_pr2_pr6_and_pr7_snapshots_and_initializer_is_idempotent(): void
     {
         $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
-        $target = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
+        $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
+        $target = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
         $sourceSnapshot = $source->settings;
         $sourceCommands = $this->commandSnapshot($source->id);
         $sourceProduction = $this->productionSnapshot($source->id);
+        $pr6Snapshot = $pr6->settings;
+        $pr6Commands = $this->commandSnapshot($pr6->id);
+        $pr6Production = $this->productionSnapshot($pr6->id);
         $targetSnapshot = $target->settings;
         $targetCommands = $this->commandSnapshot($target->id);
         $targetProduction = $this->productionSnapshot($target->id);
@@ -34,25 +38,30 @@ class RulesetImmutabilityTest extends TestCase
         );
         $this->assertArrayNotHasKey(
             'parameters',
-            CommandDefinition::query()->where('ruleset_version_id', $target->id)
+            CommandDefinition::query()->where('ruleset_version_id', $pr6->id)
                 ->where('key', 'excavate')->firstOrFail()->metadata,
         );
+        $this->assertSame(9_999, $target->settings['base_money_capacity']);
+        $this->assertSame(999_900, $target->settings['base_food_capacity_tons']);
 
         $world = app(OceanWorldGenerator::class)->initialize();
         $this->assertSame($target->id, $world->ruleset_version_id);
         app(OceanWorldGenerator::class)->initialize();
 
         $this->assertSame($sourceSnapshot, $source->fresh()->settings);
+        $this->assertSame($pr6Snapshot, $pr6->fresh()->settings);
         $this->assertSame($targetSnapshot, $target->fresh()->settings);
         $this->assertSame($sourceCommands, $this->commandSnapshot($source->id));
+        $this->assertSame($pr6Commands, $this->commandSnapshot($pr6->id));
         $this->assertSame($targetCommands, $this->commandSnapshot($target->id));
         $this->assertSame($sourceProduction, $this->productionSnapshot($source->id));
+        $this->assertSame($pr6Production, $this->productionSnapshot($pr6->id));
         $this->assertSame($targetProduction, $this->productionSnapshot($target->id));
     }
 
     public function test_initializer_rejects_same_key_with_different_payload_without_mutating_published_ruleset(): void
     {
-        $published = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
+        $published = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
         $before = $this->rulesetSnapshot($published);
         config(['hakoniwa.ruleset.initial_money' => 999]);
 

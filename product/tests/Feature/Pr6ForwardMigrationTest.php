@@ -24,6 +24,9 @@ class Pr6ForwardMigrationTest extends TestCase
     public function test_pr5_shaped_database_is_forward_migrated_without_rewriting_source_ruleset_or_losing_game_data(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
+        $pr7Migration = require database_path('migrations/2026_07_29_000000_publish_roadmap_pr7_ruleset.php');
+        $pr7Migration->down();
+        $world->refresh();
         $user = app(AuthIdentityService::class)->authenticate(
             'discord',
             new ExternalIdentityData('forward-user', 'Forward User'),
@@ -141,6 +144,10 @@ class Pr6ForwardMigrationTest extends TestCase
         $this->assertSame(300, $balances['fish']);
         $this->assertSame(1200, $balances['monster_meat']);
         $this->assertSame(7, $balances['industrial_goods']);
+
+        $pr7Migration->up();
+        $pr7RulesetId = DB::table('ruleset_versions')->where('key', 'roadmap-pr7-v1')->value('id');
+        $this->assertSame($pr7RulesetId, $world->fresh()->ruleset_version_id);
     }
 
     public function test_invalid_legacy_quantity_fails_before_adding_the_column(): void
