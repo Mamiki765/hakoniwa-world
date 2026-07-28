@@ -106,6 +106,9 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.map_space.id', $mapSpace->id)
             ->assertJsonPath('data.money_display', '約62,000億円');
         $this->assertStringNotContainsString('62728', $nationResponse->getContent());
+        $this->assertStringNotContainsString('total_food_tons', $nationResponse->getContent());
+        $this->assertStringNotContainsString('food_resources', $nationResponse->getContent());
+        $this->assertStringNotContainsString('wheat', $nationResponse->getContent());
 
         $url = "/api/v1/public/nations/{$nation->id}/map-spaces/{$mapSpace->id}/chunks/{$base->chunk_x}/{$base->chunk_y}";
         $response = $this->getJson($url)->assertOk();

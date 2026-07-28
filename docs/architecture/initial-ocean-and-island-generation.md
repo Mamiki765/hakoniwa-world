@@ -29,9 +29,12 @@
 - growth radius: 4
 - initial land radius: 2
 - initial territory radius: 2（19 cells）
+- minimum neutral shallow cells: 3
 - Capital、village、forest 3、mountain 1、missile base 1
 
 growth、random neighbor、bounds、territory、Capital 保存、creation request と audit metadata は x/y を使う。row の偶奇で6近傍が変わるが、距離と radius は同一 domain value object に集約する。
+
+growth後に中立・施設なしの浅瀬が3未満なら、reservation内で陸地に隣接する海からdeterministicに不足分を浅瀬へ変える。既存浅瀬を所有化せず、施設を置かない。候補不足時に範囲外へ広げたり既存cellを破壊したりせず、生成できた範囲だけを保持する。値はWorldが参照する不変ruleset snapshotから読む。
 
 ## Failure behavior
 

@@ -64,9 +64,18 @@ class ApiController extends Controller
         return (new NationResource($nation))->response()->setStatusCode(201);
     }
 
-    public function nation(Nation $nation): NationResource
+    public function nation(Request $request, Nation $nation): NationResource
     {
-        return new NationResource($nation->load(['capital', 'resourceBalances.definition']));
+        $nation->load('capital');
+        $isOwner = NationMembership::query()
+            ->where('user_id', $request->user()->id)
+            ->where('nation_id', $nation->id)
+            ->exists();
+        if ($isOwner) {
+            $nation->load('resourceBalances.definition');
+        }
+
+        return new NationResource($nation);
     }
 
     public function myNation(Request $request): NationResource|JsonResponse

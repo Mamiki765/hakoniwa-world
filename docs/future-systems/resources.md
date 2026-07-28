@@ -22,7 +22,7 @@
 
 ### resource definitions
 
-安定したresource key、表示名message key、単位、表示精度、残高下限・上限方針、transfer可否、負残高可否、公開範囲、metadata schema versionを持つ。
+安定したresource key、表示名message key、canonical unit、表示用unit label、表示精度、残高下限・上限方針、transfer可否、負残高可否、公開範囲、metadata schema versionを持つ。
 
 資源固有の表示・分類など可変属性はJSONB候補である。一方、key、active、unit、precision、transferableのような検索・制約対象は通常列を推奨する。
 
@@ -106,7 +106,7 @@ available amountはamount minus reserved_amountとして扱う。予約は命令
 
 ## 未決定事項
 
-- amountの整数最小単位とdecimalの必要性。
+- food以外のamountの整数最小単位とdecimalの必要性。foodはPR6で整数tonに確定した。
 - command登録時の資源予約範囲。
 - 国家間取引、奪取、負債を初期範囲に含めるか。
 - balanceとledgerのどちらを会計上の最終正本とするか。
@@ -115,9 +115,13 @@ available amountはamount minus reserved_amountとして扱う。予約は命令
 
 ## MVP縦切りで必要か
 
-MVPでは固定`nations.food`を採用せず、`resource_definitions`と`nation_resources`を実装する。food categoryのbaselineは`wheat`（小麦、栄養1、初期100）、`fish`（魚、栄養1、初期0）、`monster_meat`（肉、暫定栄養2、初期0）である。monster meatの値はrulesetで変更できる。moneyは今回に限り`nations.money`のままとする。
+MVPでは固定`nations.food`を採用せず、`resource_definitions`と`nation_resources`を実装する。PR6以降、food categoryのcanonical unitは整数`ton`、表示labelは`トン`である。baselineは`wheat`（小麦、栄養1、初期10,000トン）、`fish`（魚、栄養1、初期0トン）、`monster_meat`（怪獣肉、暫定栄養2、初期0トン）である。monster meatの値は新しいruleset版で変更できる。moneyは今回に限り`nations.money`のままとする。
 
-生産・消費・ledgerは未実装である。将来の第一候補は、food categoryの利用可能種類へ必要栄養量を均等配分し、不足分を残りへ再配分し、全種類を消費しても不足する場合だけ食料不足とする方式である。農場は抽象foodではなく`wheat`を生産する。実装前に整数単位、丸め、transaction lock、event記録を決定する。
+PR5適用済みDBはfood categoryの既存balanceを明示的なforward migrationで100倍する。resource definitionの単位変更と同じmigration内で行い、initializerの再実行では換算しない。users、auth identities、World、Nation、membership、map、queue、position、status、request keyおよび非food残高は変更しない。
+
+owner APIはfood categoryを動的に集計した`total_food_tons`と種類別`food_resources`を返す。HUDは合計を`10,000トン`形式で短く表示し、詳細で小麦・魚・怪獣肉を列挙する。guestや他国viewerへ正確な残高を返さない。固定の`wheat + fish + monster_meat`式をsummaryの正本にしない。
+
+生産・消費・ledgerは未実装である。将来の第一候補は、food categoryの利用可能種類へ必要栄養量を均等配分し、不足分を残りへ再配分し、全種類を消費しても不足する場合だけ食料不足とする方式である。農場は抽象foodではなく`wheat`を生産する。既存`production_per_scale = 10`を旧100トン単位から換算するかは未決定であり、turn runner実装前に明示的に決める。PR6では値を推測して変更しない。実装前に丸め、transaction lock、event記録を決定する。
 
 ## 将来の施設生産と売却
 

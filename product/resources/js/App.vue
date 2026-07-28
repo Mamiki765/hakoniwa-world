@@ -28,21 +28,17 @@ const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
 const page = ref<'home' | 'island' | 'preview' | 'resources' | 'account' | 'credits'>('home');
 const nationName = ref('');
+const foodDetailOpen = ref(false);
 const busy = ref(true);
 const message = ref('');
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
-const hudResources = computed(() => {
-    const byKey = new Map(nation.value?.resources.map((resource) => [resource.key, resource]) ?? []);
-    return [
-        { key: 'wheat', label: '小麦' },
-        { key: 'fish', label: '魚' },
-        { key: 'monster_meat', label: '怪獣肉' },
-        { key: 'industrial_goods', label: '工業品' },
-        { key: 'minerals', label: '鉱物' },
-    ].map(({ key, label }) => ({ key, label, amount: byKey.get(key)?.amount ?? 0 }));
-});
+const nonFoodResources = computed(() => nation.value?.resources.filter((resource) => resource.category !== 'food') ?? []);
+
+function formatResource(amount: number, unitLabel: string | null): string {
+    return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
+}
 
 onMounted(async () => {
     await loadPublicLobby();
@@ -234,7 +230,34 @@ async function createNation(): Promise<void> {
                     <div><dt>turn</dt><dd>{{ nation.current_turn }}</dd></div>
                     <div class="hud-money"><dt>資金</dt><dd>{{ formatExactMoney(nation.money) }}</dd></div>
                     <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
-                    <div v-for="resource in hudResources" :key="resource.key"><dt>{{ resource.label }}</dt><dd>{{ resource.amount.toLocaleString() }}</dd></div>
+                    <div class="hud-food">
+                        <dt>食料</dt>
+                        <dd>
+                            {{ formatResource(nation.total_food_tons, 'トン') }}
+                            <button
+                                class="food-detail-toggle"
+                                type="button"
+                                :aria-expanded="foodDetailOpen"
+                                @click="foodDetailOpen = !foodDetailOpen"
+                            >
+                                詳細
+                            </button>
+                        </dd>
+                        <div v-if="foodDetailOpen" class="hud-food-detail" role="dialog" aria-label="食料の内訳">
+                            <strong>食料の内訳</strong>
+                            <ul>
+                                <li v-for="resource in nation.food_resources" :key="resource.key">
+                                    <span>{{ resource.name }}</span>
+                                    <span>{{ formatResource(resource.balance, resource.unit_label) }}</span>
+                                </li>
+                            </ul>
+                            <button type="button" @click="foodDetailOpen = false">閉じる</button>
+                        </div>
+                    </div>
+                    <div v-for="resource in nonFoodResources" :key="resource.key">
+                        <dt>{{ resource.name }}</dt>
+                        <dd>{{ formatResource(resource.amount, resource.unit_label) }}</dd>
+                    </div>
                 </dl>
                 <details class="hud-more">
                     <summary>追加統計</summary>

@@ -6,6 +6,8 @@ use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
 use App\Application\OceanWorldGenerator;
 use App\Models\MapSpace;
+use App\Models\NationResource;
+use App\Models\ResourceDefinition;
 use App\Models\User;
 use App\Services\AssetManifestResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -42,9 +44,44 @@ class ApiAndAssetTest extends TestCase
             ->assertCreated()
             ->assertJsonMissingPath('data.food')
             ->assertJsonPath('data.resources.0.key', 'wheat')
-            ->assertJsonPath('data.resources.0.amount', 100)
+            ->assertJsonPath('data.resources.0.amount', 10_000)
+            ->assertJsonPath('data.resources.0.unit', 'ton')
+            ->assertJsonPath('data.resources.0.unit_label', 'トン')
+            ->assertJsonPath('data.total_food_tons', 10_000)
+            ->assertJsonPath('data.food_resources.0.balance', 10_000)
             ->json('data');
         $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->assertJsonPath('data.id', $nation['id']);
+
+        $customFood = ResourceDefinition::query()->create([
+            'key' => 'seaweed',
+            'name' => '海藻',
+            'category' => 'food',
+            'unit' => 'ton',
+            'unit_label' => 'トン',
+            'nutrition_per_unit' => 9,
+            'storable' => true,
+            'tradable' => false,
+            'sale_price_key' => null,
+            'sort_order' => 35,
+            'metadata' => [],
+        ]);
+        NationResource::query()->create([
+            'nation_id' => $nation['id'],
+            'resource_definition_id' => $customFood->id,
+            'amount' => 250,
+        ]);
+
+        $this->getJson('/api/v1/me/nation')
+            ->assertOk()
+            ->assertJsonPath('data.total_food_tons', 10_250)
+            ->assertJsonPath('data.food_resources.3.key', 'seaweed')
+            ->assertJsonPath('data.food_resources.3.balance', 250);
+
+        $other = User::factory()->create();
+        $otherResponse = $this->actingAs($other)->getJson("/api/v1/nations/{$nation['id']}")->assertOk();
+        $otherResponse->assertJsonMissingPath('data.total_food_tons')
+            ->assertJsonMissingPath('data.food_resources')
+            ->assertJsonMissingPath('data.resources');
     }
 
     public function test_assets_fall_back_without_original_gifs_and_capital_is_placeholder(): void
