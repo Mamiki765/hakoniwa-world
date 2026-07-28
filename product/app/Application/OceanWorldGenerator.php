@@ -193,8 +193,8 @@ class OceanWorldGenerator
     }
 
     /**
-     * @param class-string<TerrainDefinition|FacilityDefinition|ResourceDefinition> $modelClass
-     * @param array<string, mixed> $expected
+     * @param  class-string<TerrainDefinition|FacilityDefinition|ResourceDefinition>  $modelClass
+     * @param  array<string, mixed>  $expected
      */
     private function createOrAssert(string $modelClass, array $expected): void
     {

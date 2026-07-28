@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\CommandQueueService;
-use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Http\Controllers\Controller;
 use App\Models\CommandDefinition;

@@ -198,8 +198,8 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
     }
 
     /**
-     * @param Collection<string, MapCell> $cells
-     * @param list<GridCoordinate> $reservation
+     * @param  Collection<string, MapCell>  $cells
+     * @param  list<GridCoordinate>  $reservation
      */
     private function ensureMinimumShallows(
         Collection $cells,

@@ -42,7 +42,7 @@ final class NationResourceService
     }
 
     /**
-     * @param array<string, mixed> $rules
+     * @param  array<string, mixed>  $rules
      * @return array<string, int>
      */
     private function initialResources(array $rules): array

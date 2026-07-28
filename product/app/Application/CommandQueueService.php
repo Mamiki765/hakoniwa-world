@@ -2,9 +2,9 @@
 
 namespace App\Application;
 
-use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -74,7 +75,7 @@ return new class extends Migration
         });
     }
 
-    /** @return \Illuminate\Support\Collection<int, object> */
+    /** @return Collection<int, object> */
     private function foodBalances()
     {
         return DB::table('nation_resources')
@@ -87,5 +88,4 @@ return new class extends Migration
                 'resource_definitions.key as resource_key',
             ]);
     }
-
 };
