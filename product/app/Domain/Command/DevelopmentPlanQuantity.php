@@ -41,4 +41,17 @@ final class DevelopmentPlanQuantity
             'quick_presets' => self::QUICK_PRESETS,
         ];
     }
+
+    public static function matchesContract(mixed $value): bool
+    {
+        if (! is_array($value)) {
+            return false;
+        }
+
+        $expected = self::contract();
+        ksort($expected);
+        ksort($value);
+
+        return $value === $expected;
+    }
 }

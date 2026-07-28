@@ -85,7 +85,7 @@ final class CommandQueueController extends Controller
 
             $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
             $quantityContract = $rules['development_plan_quantity'] ?? null;
-            if (! is_array($quantityContract) || $quantityContract !== DevelopmentPlanQuantity::contract()) {
+            if (! DevelopmentPlanQuantity::matchesContract($quantityContract)) {
                 throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');
             }
 

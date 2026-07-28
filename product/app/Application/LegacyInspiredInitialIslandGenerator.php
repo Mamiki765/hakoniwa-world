@@ -80,14 +80,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             }
         }
 
-        $this->ensureMinimumShallows(
-            $cells,
-            $reservation,
-            (int) $terrainIds['shallow'],
-            (int) ($rules['initial_island_minimum_shallow_cells'] ?? 0),
-            $random,
-        );
-
         $placementCells = array_values(array_filter(
             $random->shuffled($center->radius(2)),
             fn (GridCoordinate $coordinate): bool => $coordinate->distanceTo($center) > 0,
@@ -154,6 +146,14 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         $capitalCell->facility_scale = null;
         $capitalCell->facility_experience = null;
         $capitalCell->facility_operational_state = 'operational';
+
+        $this->ensureMinimumShallows(
+            $cells,
+            $reservation,
+            (int) $terrainIds['shallow'],
+            (int) ($rules['initial_island_minimum_shallow_cells'] ?? 0),
+            $random,
+        );
 
         $changedChunks = [];
         foreach ($cells as $cell) {

@@ -342,7 +342,7 @@ final class CommandQueueService
     private function assertUniversalQuantityRuleset(Nation $nation): void
     {
         $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
-        if (($settings['development_plan_quantity'] ?? null) !== DevelopmentPlanQuantity::contract()) {
+        if (! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'] ?? null)) {
             throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');
         }
     }
