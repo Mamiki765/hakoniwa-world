@@ -212,24 +212,28 @@
 - Status: Open
 - Required before: ターン処理実装前
 - 現時点ではMVP縦切りを妨げない。phase境界と同時解決規則をシナリオテストで確定する。
+- PR #7 checkpoint: 箱庭諸島2＋の実処理順をphase scaffoldへ記録したが、同時解決規則は未決定であり、必須stubが残る限りproduction turnを進めない。
 
 ### A-07 1ターンのtransaction規模
 
 - Status: Open
 - Required before: ターン処理実装前
 - 単一transaction、phase checkpoint、公開境界を負荷試験後に決める。
+- PR #7 checkpoint: 単一World・単一turn transactionを安全なscaffoldとして実装した。実phaseを有効化する前に実データ規模のlock時間を測定し、checkpointが必要なら別途決定する。
 
 ### B-09 災害抽選単位
 
 - Status: Open
 - Required before: ターン処理実装前
 - world、Nation、chunk、cellのどれを母集団にするか、災害種ごとに決める。
+- PR #7 checkpoint: `global_disasters` phaseは必須stubに留め、抽選単位を暗黙に決めない。
 
 ### T-01 乱数seedと再現方式
 
 - Status: Open
 - Required before: ターン処理実装前
 - seedの生成・保存、安定した列挙順、再試行時の再現契約を決める。
+- PR #7 checkpoint: turn run開始時に256-bit master seedを保存し、失敗retryでは同じseedを再利用する。phase別streamと安定列挙順は未決定。
 
 ### T-02 休眠状態遷移Job
 
@@ -242,6 +246,7 @@
 - Status: Open
 - Required before: ターン処理実装前
 - 冪等性を保証した後、回数、backoff、手動再開条件を決める。
+- PR #7 checkpoint: game stateをrollbackし、同じrun・target turn・ruleset・seedを明示的な手動再実行で再利用する。自動retry、backoff、stale-running回復は未決定。
 
 ## コマンド実装前まで保留する事項
 
@@ -343,9 +348,10 @@
 
 ### D-01 scheduler・queue基盤
 
-- Status: Open
+- Status: Decided
 - Required before: ターン処理実装前
-- Web processと分離する。製品と運用方式はturn・Lifecycle Job導入前に決める。
+- Decision: 当面はAsia/TokyoのOCI host cronを1時間ごとのthin triggerとし、`docker compose exec -T`で同じArtisan commandを呼ぶ。Web containerへcron daemonを同居させず、DB/application lockを正本、host `flock`を任意の一次filterとする。production登録は別の運用変更とする。
+- Decision record: `docs/operations/turn-cron.md`
 
 ### D-03 ruleset公開承認
 
