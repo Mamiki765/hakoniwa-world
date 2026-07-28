@@ -68,10 +68,10 @@ class Pr6ForwardMigrationTest extends TestCase
         $rulesetMigration->down();
 
         $sourceId = DB::table('ruleset_versions')->where('key', 'roadmap-pr2-v1')->value('id');
-        $this->assertSame(
-            ['future_key' => 7, 'quantity' => 49],
-            NationCommandQueueItem::query()->findOrFail($item->id)->parameters,
-        );
+        $legacyParameters = NationCommandQueueItem::query()->findOrFail($item->id)->parameters;
+        $this->assertCount(2, $legacyParameters);
+        $this->assertSame(7, $legacyParameters['future_key']);
+        $this->assertSame(49, $legacyParameters['quantity']);
         $legacyBalances = DB::table('nation_resources')
             ->join('resource_definitions', 'resource_definitions.id', '=', 'nation_resources.resource_definition_id')
             ->where('nation_resources.nation_id', $nation->id)

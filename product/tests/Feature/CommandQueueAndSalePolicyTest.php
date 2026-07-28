@@ -296,7 +296,9 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->where('event_type', 'command.quantity_updated')
             ->where('subject_id', $itemId)
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(['old_quantity' => 1, 'new_quantity' => 99], $updatedAudit);
+        $this->assertCount(2, $updatedAudit);
+        $this->assertSame(1, $updatedAudit['old_quantity']);
+        $this->assertSame(99, $updatedAudit['new_quantity']);
     }
 
     public function test_future_special_parameter_api_distinguishes_omitted_defaults_from_explicit_null(): void
