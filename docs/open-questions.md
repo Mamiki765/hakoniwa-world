@@ -209,10 +209,10 @@
 
 ### A-06 ターンの確定順序
 
-- Status: Open
+- Status: Decided
 - Required before: ターン処理実装前
-- 現時点ではMVP縦切りを妨げない。phase境界と同時解決規則をシナリオテストで確定する。
-- PR #7 checkpoint: 箱庭諸島2＋の実処理順をphase scaffoldへ記録したが、同時解決規則は未決定であり、必須stubが残る限りproduction turnを進めない。
+- Decision: `development_commands`では、各turnにつきNationのcommand処理順を1回ランダム化し、その順序で逐次処理する。`process_cells`では、全surface cellの処理順を各turnにつき独立して1回ランダム化し、その順序で逐次処理する。先に成立したgame-state changeは、同じturn内の後続処理から観測される。economyその他のphaseまで一律にNation shuffleするとは決めず、Hakoniwa Islands 2+で確認したphase固有の順序を維持する。monster、missile、territory influenceその他のcross-border effectも、Hakoniwa Islands 2+で確認した因果順を維持する。完全なsimultaneous resolutionを暗黙に導入しない。
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
 
 ### A-07 1ターンのtransaction規模
 
@@ -221,11 +221,17 @@
 - Decision: 同じWorldの1ターンは1つのPostgreSQL transactionで処理し、ゲーム状態の全phaseと`current_turn`更新を含める。全phase成功時だけcommitし、途中失敗時はそのターンのゲーム状態をすべてrollbackする。World単位のadvisory lockをturn実行全体で保持する。`turn_runs`の開始・失敗記録はゲーム状態transactionから分離して監査可能にする。transaction内では外部HTTP通信、通知送信、長時間の外部I/Oを行わず、notification等はcommit後の別境界とする。phaseごとの処理時間を`turn_runs.phase_results`へ記録する。実command、全cell処理、災害等を追加後にlock時間を計測し、実運用で許容できない長時間transactionになった場合だけcheckpoint方式を別ADRで再検討する。現時点では部分commitやphase checkpointを実装しない。
 - Decision record: `docs/architecture/turn-runner-scaffold.md`、`docs/architecture/turn-pipeline.md`
 
+### POP-01 population random rangeのcanonical化
+
+- Status: Decided
+- Required before: population増減処理実装前
+- Decision: legacyで100人単位として定義されたrandom population rangeは、canonical 1人単位のinteger rangeへ展開する。例としてlegacy 1..30 unitsはcanonical 100..3,000人とする。legacyと同じminimum、maximum、expected valueを維持する。100人刻みの離散分布そのものに明確なgameplay上の意味が確認された場合は、その個別処理だけsource analysisに基づいて例外を記録する。
+
 ### B-09 災害抽選単位
 
 - Status: Open
-- Required before: ターン処理実装前
-- world、Nation、chunk、cellのどれを母集団にするか、災害種ごとに決める。
+- Required before: 各disaster handler実装前
+- Owner direction: disasterごとにHakoniwa Islands 2+の抽選母集団と抽選回数を調査する。world-level、Nation-level、cell-level、command-time drawを区別する。chunkはstorage/API boundaryであり、legacy source根拠なしにdisaster draw scopeへ使用しない。
 - PR #7 checkpoint: `global_disasters` phaseは必須stubに留め、抽選単位を暗黙に決めない。
 
 ### T-01 乱数seedと再現方式
@@ -234,11 +240,12 @@
 - Required before: ターン処理実装前
 - seedの生成・保存、安定した列挙順、再試行時の再現契約を決める。
 - PR #7 checkpoint: turn run開始時に256-bit master seedを保存し、失敗retryでは同じseedを再利用する。phase別streamと安定列挙順は未決定。
+- Owner direction: master seedはプレイヤーへ事前公開せず、turn runのaudit情報として保存する。同じfailed runのretryでは同じseedを再利用する。phase別labelled streamとstable enumerationは未決定とする。seedを保存する目的は障害調査とretry整合性であり、プレイヤーによる乱数調整を可能にすることではない。
 
 ### T-02 休眠状態遷移Job
 
 - Status: Open
-- Required before: ターン処理実装前
+- Required before: 休眠状態遷移実装前
 - ADR-0004の状態とUTC境界は決定済み。scheduler、world lock、turnとの直列化、batch checkpointは実装前に確定する。
 
 ### D-02 turn失敗時の再試行
@@ -247,6 +254,7 @@
 - Required before: ターン処理実装前
 - 冪等性を保証した後、回数、backoff、手動再開条件を決める。
 - PR #7 checkpoint: game stateをrollbackし、同じrun・target turn・ruleset・seedを明示的な手動再実行で再利用する。自動retry、backoff、stale-running回復は未決定。
+- Owner direction: transient failureにはbounded automatic retryを導入する方向とする。retry上限後は`current_turn`を進めず保留状態にし、管理者へ「turn処理を再開できないため確認が必要」と通知する方向とする。exact retry count、backoff、retryable error分類、stale-running recovery、通知経路は未決定とする。
 
 ## コマンド実装前まで保留する事項
 
@@ -259,9 +267,10 @@
 
 ### RES-01 food生産量のton換算
 
-- Status: Open
+- Status: Decided
 - Required before: ターン処理・production実装前
-- PR6でfood balanceのcanonical unitは整数ton、初期食料は10,000トンに確定した。既存`farm_wheat.production_per_scale = 10`を旧100トン単位として1,000トンへ換算するか、10トンとして維持するかは生産・消費バランスと同時に決める。PR6ではturn executionを実装せず、既存値を推測して変更しない。
+- Decision: legacy food storage 1 unitは100 tonsとしてcanonical tonへ変換する。legacy farm productionのscale 1あたり10 food unitsは、canonical 1,000 tonsとして扱う。food consumptionはlegacy balanceを維持し、population 1人あたり0.2 tonsとする。およそpopulationの20%がfarm capacityに収容されていれば、基本的な食料収支が釣り合う関係を維持する。integer calculationと丸め規則はsource analysisで確認したlegacyの非負整数切捨てを基準とする。
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
 
 ### CMD-01 箱庭諸島2＋コマンドの採否
 
@@ -273,14 +282,14 @@
 ### B-16 settlement_seed
 
 - Status: Open
-- Required before: ターン処理実装前
-- 発生率、村規模、頻度、候補選択を決める。MVP縦切りでは自動発展を実装しない。
+- Required before: settlement_seedまたはsettlement growth実装前
+- Owner direction: settlement appearanceとvillage/town/city growthはlegacy基準とする方向とする。Capitalの初期population growthも、当面は通常のvillage/town/cityと同じ式を使う方向とする。exact probability、population threshold、candidate selection、maximum、Capital固有効果との分離はsource調査待ちとする。
 
 ### B-17 緊急農場
 
-- Status: Open
+- Status: Decided
 - Required before: コマンド実装前
-- cooldown、自己撤去確認期間、昇格・消滅・代償を決める。MVP縦切りでは実装しない。
+- Decision: emergency farm commandはMVPへ導入しない。automatic financeによる資金10億円の増加と、explicit abandonment/recreationを立て直しの境界とする。将来の別rulesetで再検討する可能性までは禁止しない。
 
 ## 戦闘実装前まで保留する事項
 
@@ -306,13 +315,20 @@
 
 - Status: Open
 - Required before: 戦闘実装前
-- 国家の処理順に依存せず、同一turnの影響を集約して1セル1結果にする規則を決める。
+- Owner direction: Nation orderに依存しないsimultaneous resolutionを前提にしない。legacyがrandom cell orderによる逐次処理なら、その因果順を採用する。exact territory influence algorithm、同値競合、tie handlingはsource調査待ちとする。
+
+### MISSILE-01 launch intentと基地単位解決
+
+- Status: Decided
+- Required before: ミサイルcommand実装前
+- Decision: missile commandは`development_commands`で即時発射しない。commandはturn-scopedなlaunch intentとして、発射Nation、missile type、target、要求発射数を登録する。実際の発射、費用支払、着弾解決は`process_cells`で行う。ランダム化されたcell順で各missile base cellの手番が来た時に、その基地が発射を試みる。各基地の発射数は、その基地自身のlevelを上限とする。さらに、launch intentの残り発射数、現在資金、射程、基地がその時点で存在し稼働していることによって制限する。発射前に破壊された基地は発射できない。すでに発射した基地が後から破壊されても、成立済みの発射は取り消さない。基地levelをturn開始時に合計してNation単位で一括発射する実装にはしない。利用可能な各基地のlevel合計は理論上の最大発射数になるが、実際の発射数と順序はcell processing中の状態に従う。exact missile type、accuracy、cost、range、experience、defense interception、public log payloadは別の既存gateまたはmissile実装前のgateで扱う。
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
 
 ### B-10 ミサイル可視性
 
 - Status: Open
 - Required before: 戦闘実装前
-- 発射者、目標、結果、命中・失敗理由の公開範囲を決める。
+- Owner direction: normal missileは発射Nationを公開する方向とし、ST missileは発射Nationを匿名とする方向とする。target、impact、damage、failure、internal random valuesのexact public/private event payloadはsource調査待ちとする。
 
 ### B-11 怪獣の主体モデル
 
