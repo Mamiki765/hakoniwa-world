@@ -69,6 +69,7 @@ return new class extends Migration
 
         if ((int) $world->ruleset_version_id === $toRulesetId) {
             $this->assertQueueItemsUseRuleset((int) $world->id, $toRulesetId, 'already migrated');
+            DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' IMMEDIATE');
 
             return;
         }
@@ -107,6 +108,7 @@ return new class extends Migration
         ]);
 
         $this->assertQueueItemsUseRuleset((int) $world->id, $toRulesetId, 'after migration');
+        DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' IMMEDIATE');
     }
 
     private function assertQueueItemsUseRuleset(int $worldId, int $rulesetId, string $stage): void

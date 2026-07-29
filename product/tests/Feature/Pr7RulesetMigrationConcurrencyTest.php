@@ -42,8 +42,6 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
         ]);
         DB::connection($this->primaryConnection)->statement("SET lock_timeout TO '300ms'");
         DB::connection(self::PROBE_CONNECTION)->statement("SET lock_timeout TO '300ms'");
-        DB::connection($this->primaryConnection)->statement("SET statement_timeout TO '5s'");
-        DB::connection(self::PROBE_CONNECTION)->statement("SET statement_timeout TO '5s'");
     }
 
     protected function tearDown(): void
@@ -71,6 +69,7 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
 
         $primary->beginTransaction();
         $item = $this->add($user, $nation, $mapSpace, $target);
+        DB::connection(self::PROBE_CONNECTION)->statement("SET statement_timeout TO '5s'");
 
         try {
             $this->runMigration(self::PROBE_CONNECTION, $migration, 'up');
@@ -78,6 +77,7 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
         } catch (QueryException $exception) {
             $this->assertSame('55P03', $exception->errorInfo[0] ?? null);
         } finally {
+            DB::connection(self::PROBE_CONNECTION)->statement('SET statement_timeout TO DEFAULT');
             DB::setDefaultConnection($this->primaryConnection);
             $primary->commit();
         }
@@ -103,12 +103,15 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
         $probe->table('worlds')->where('id', $world->id)->lockForUpdate()->first();
         $probe->statement('LOCK TABLE nation_command_queues IN SHARE ROW EXCLUSIVE MODE');
         $probe->statement('LOCK TABLE nation_command_queue_items IN SHARE ROW EXCLUSIVE MODE');
+        DB::connection($this->primaryConnection)->statement("SET statement_timeout TO '5s'");
 
         try {
             $this->add($user, $nation, $mapSpace, $target);
             $this->fail('Queue add unexpectedly passed the migration World lock.');
         } catch (QueryException $exception) {
             $this->assertSame('55P03', $exception->errorInfo[0] ?? null);
+        } finally {
+            DB::connection($this->primaryConnection)->statement('SET statement_timeout TO DEFAULT');
         }
 
         DB::setDefaultConnection(self::PROBE_CONNECTION);
