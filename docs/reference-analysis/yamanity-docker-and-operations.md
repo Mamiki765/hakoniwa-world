@@ -59,10 +59,10 @@ Cloud Buildは同じimageでCloud Run Job `hakoniwa-develop-exec-turn`を更新�
 
 採用する考え方は「cronはthin triggerで、同じArtisan/Application Serviceを手動・定期実行から共有する」「turn全体をDB transactionで囲む」「CLI exit codeと標準出力を運用監視へ渡す」である。
 
-現行OCI/ComposeはWebとPostgreSQLだけで、1時間に1回の単一World triggerにqueue workerや常駐scheduler containerは過剰である。PR #7ではOCI host cronから、checkoutに含むwrapperを通して次を呼ぶ方式を採用する。
+現行OCI/ComposeはWebとPostgreSQLだけで、1時間に1回の単一World triggerにqueue workerや常駐scheduler containerは過剰である。PR #7は調査結果と次の運用案だけを残す。wrapper、Artisan command、TurnRunner、advisory lock、一意制約の実装は、分割後のstacked Draft PR #8（`codex/turn-runner-scaffold`）に含まれるため、PR #7単体ではこのcommandを実行できない。
 
 ```text
-OCI host cron (Asia/Tokyo、毎時0分)
+PR #8で実装するOCI host cron案 (Asia/Tokyo、毎時0分)
 → optional host flock
 → docker compose exec -T --user www-data hakoniwa-web
 → php artisan hakoniwa:turn:run --world=shared-world --source=cron
@@ -70,7 +70,7 @@ OCI host cron (Asia/Tokyo、毎時0分)
 → PostgreSQL advisory lock + turn transaction
 ```
 
-`flock`は同一host上の不要なprocess生成を減らす補助であり、正本排他はLaravel側のWorld advisory lockと`(world_id,target_turn)`一意制約である。既存`hakoniwa-web`へcron daemonを同居させず、production OCIへの実登録もこのPRでは行わない。World数、実行時間、outbox量が常駐processを正当化した時点で専用scheduler/worker containerを再評価する。
+PR #8の案では、`flock`は同一host上の不要なprocess生成を減らす補助であり、正本排他はLaravel側のWorld advisory lockと`(world_id,target_turn)`一意制約である。既存`hakoniwa-web`へcron daemonを同居させず、production OCIへの実登録もPR #8では行わない。World数、実行時間、outbox量が常駐processを正当化した時点で専用scheduler/worker containerを再評価する。
 
 ## DB・volume・backup
 
