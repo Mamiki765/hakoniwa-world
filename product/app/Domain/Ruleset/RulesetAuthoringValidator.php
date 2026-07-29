@@ -20,6 +20,9 @@ final class RulesetAuthoringValidator
     private const INITIAL_Y_MAX = 59;
 
     /** @var list<string> */
+    private const REQUIRED_INITIAL_ISLAND_FACILITY_KEYS = ['village', 'missile_base', 'capital'];
+
+    /** @var list<string> */
     private const TERRAIN_KEYS = ['sea', 'shallow', 'wasteland', 'plain', 'forest', 'mountain'];
 
     /** @var list<string> */
@@ -100,14 +103,28 @@ final class RulesetAuthoringValidator
             );
         }
         $this->integer($settings['command_queue_limit'], 'ruleset.command_queue_limit', 1);
-        foreach ([
-            'initial_territory_radius',
-            'initial_island_land_radius',
-            'initial_island_growth_radius',
-            'initial_island_reservation_radius',
-            'initial_island_growth_steps',
-        ] as $field) {
-            $this->integer($settings[$field], "ruleset.{$field}", 0);
+        $this->integer($settings['initial_territory_radius'], 'ruleset.initial_territory_radius', 0);
+        $landRadius = $this->integer(
+            $settings['initial_island_land_radius'],
+            'ruleset.initial_island_land_radius',
+            0,
+        );
+        $growthRadius = $this->integer(
+            $settings['initial_island_growth_radius'],
+            'ruleset.initial_island_growth_radius',
+            0,
+        );
+        $reservationRadius = $this->integer(
+            $settings['initial_island_reservation_radius'],
+            'ruleset.initial_island_reservation_radius',
+            0,
+        );
+        $this->integer($settings['initial_island_growth_steps'], 'ruleset.initial_island_growth_steps', 0);
+        if ($reservationRadius < max($landRadius, $growthRadius, 2)) {
+            throw new DomainException(
+                'ruleset.initial_island_reservation_radius must be at least '
+                .'max(initial_island_land_radius, initial_island_growth_radius, 2).',
+            );
         }
 
         $resourceKeys = $this->validateResources($settings);
@@ -125,6 +142,7 @@ final class RulesetAuthoringValidator
             true,
         );
 
+        $this->validateInitialIslandFacilities($settings, $facilityKeys);
         $this->validateTerrainQuantities($settings);
         $this->validateFacilities($settings, $commandKeys, $productionKeys);
         $this->validateCommands($settings, $resourceKeys, $facilityKeys);
@@ -224,6 +242,26 @@ final class RulesetAuthoringValidator
                 throw new DomainException("{$path} requires minimum <= initial <= maximum.");
             }
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<string>  $facilityKeys
+     */
+    private function validateInitialIslandFacilities(array $settings, array $facilityKeys): void
+    {
+        foreach (self::REQUIRED_INITIAL_ISLAND_FACILITY_KEYS as $facilityKey) {
+            if (! in_array($facilityKey, $facilityKeys, true)) {
+                throw new DomainException(
+                    "ruleset.facility_definitions must include {$facilityKey} for initial island generation.",
+                );
+            }
+        }
+
+        $path = 'ruleset.facility_definitions.missile_base';
+        $missileBase = $this->map($settings['facility_definitions']['missile_base'], $path);
+        $this->requireKeys($missileBase, ['initial_experience'], $path);
+        $this->integer($missileBase['initial_experience'], "{$path}.initial_experience", 0);
     }
 
     /**

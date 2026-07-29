@@ -235,6 +235,125 @@ class RulesetAuthoringValidatorTest extends TestCase
         ];
     }
 
+    public function test_initial_island_required_facilities_are_valid(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+        $this->assertArrayHasKey('village', $settings['facility_definitions']);
+        $this->assertArrayHasKey('missile_base', $settings['facility_definitions']);
+        $this->assertArrayHasKey('capital', $settings['facility_definitions']);
+    }
+
+    #[DataProvider('missingInitialIslandFacilityProvider')]
+    public function test_initial_island_required_facility_is_rejected_when_missing(string $facilityKey): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        unset($settings['facility_definitions'][$facilityKey]);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            "ruleset.facility_definitions must include {$facilityKey} for initial island generation",
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function missingInitialIslandFacilityProvider(): array
+    {
+        return [
+            'village' => ['village'],
+            'missile base' => ['missile_base'],
+            'capital' => ['capital'],
+        ];
+    }
+
+    public function test_missile_base_initial_experience_is_required(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        unset($settings['facility_definitions']['missile_base']['initial_experience']);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.missile_base is missing required key initial_experience',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    #[DataProvider('invalidMissileBaseInitialExperienceProvider')]
+    public function test_missile_base_initial_experience_must_be_a_non_negative_integer(mixed $experience): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['missile_base']['initial_experience'] = $experience;
+
+        $this->expectException(DomainException::class);
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function invalidMissileBaseInitialExperienceProvider(): array
+    {
+        return [
+            'float' => [0.0],
+            'string' => ['0'],
+            'negative integer' => [-1],
+        ];
+    }
+
+    public function test_equal_initial_island_radius_boundary_is_valid(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_island_land_radius'] = 2;
+        $settings['initial_island_growth_radius'] = 2;
+        $settings['initial_island_reservation_radius'] = 2;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    #[DataProvider('invalidInitialIslandRadiusProvider')]
+    public function test_initial_island_reservation_radius_must_contain_generation_areas(array $radii): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings = [...$settings, ...$radii];
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.initial_island_reservation_radius must be at least '
+            .'max(initial_island_land_radius, initial_island_growth_radius, 2)',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{array<string, int>}> */
+    public static function invalidInitialIslandRadiusProvider(): array
+    {
+        return [
+            'reservation below land radius' => [[
+                'initial_island_land_radius' => 3,
+                'initial_island_growth_radius' => 2,
+                'initial_island_reservation_radius' => 2,
+            ]],
+            'reservation below growth radius' => [[
+                'initial_island_land_radius' => 2,
+                'initial_island_growth_radius' => 3,
+                'initial_island_reservation_radius' => 2,
+            ]],
+            'reservation below fixed placement radius' => [[
+                'initial_island_land_radius' => 1,
+                'initial_island_growth_radius' => 1,
+                'initial_island_reservation_radius' => 1,
+            ]],
+        ];
+    }
+
     public function test_duplicate_authoring_version_keys_are_rejected(): void
     {
         $ruleset = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
