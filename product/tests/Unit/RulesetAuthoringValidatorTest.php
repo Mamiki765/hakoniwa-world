@@ -590,6 +590,30 @@ class RulesetAuthoringValidatorTest extends TestCase
         ];
     }
 
+    public function test_required_workforce_accepts_postgresql_integer_maximum(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['production_definitions'][0]['required_workforce_per_scale'] = 2_147_483_647;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_required_workforce_rejects_values_above_postgresql_integer_maximum(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['production_definitions'][0]['required_workforce_per_scale'] = 2_147_483_648;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.production_definitions.0.required_workforce_per_scale '
+            .'must fit the PostgreSQL integer range',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     public function test_each_facility_can_have_only_one_production_definition_per_ruleset(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
@@ -652,6 +676,32 @@ class RulesetAuthoringValidatorTest extends TestCase
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage(
             'ruleset.command_definitions.0.metadata.nested contains a key that must contain valid UTF-8',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_nested_json_authored_string_values_must_not_contain_u_0000(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_definitions'][0]['metadata']['nested']['invalid'] = "before\0after";
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.command_definitions.0.metadata.nested.invalid must not contain U+0000',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_nested_json_authored_string_keys_must_not_contain_u_0000(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_definitions'][0]['metadata']['nested']["before\0after"] = 'value';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.command_definitions.0.metadata.nested contains a key that must not contain U+0000',
         );
 
         app(RulesetAuthoringValidator::class)->validate($settings);

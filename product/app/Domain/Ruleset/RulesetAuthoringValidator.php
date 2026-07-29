@@ -465,10 +465,9 @@ final class RulesetAuthoringValidator
             $productionFacilityKeys[] = $facilityKey;
             $this->reference($definition['output_resource_key'], $resourceKeys, "{$path}.output_resource_key");
             $this->productionDecimal($definition['production_per_scale'], "{$path}.production_per_scale");
-            $this->integer(
+            $this->persistedNonNegativeInteger(
                 $definition['required_workforce_per_scale'],
                 "{$path}.required_workforce_per_scale",
-                0,
             );
             $this->persistedString($definition['operating_condition'], "{$path}.operating_condition");
             $priceReference = $this->persistedString(
@@ -733,6 +732,9 @@ final class RulesetAuthoringValidator
             if (preg_match('//u', $value) !== 1) {
                 throw new DomainException("{$path} must contain valid UTF-8.");
             }
+            if (str_contains($value, "\0")) {
+                throw new DomainException("{$path} must not contain U+0000.");
+            }
 
             return;
         }
@@ -743,6 +745,9 @@ final class RulesetAuthoringValidator
         foreach ($value as $key => $nested) {
             if (is_string($key) && preg_match('//u', $key) !== 1) {
                 throw new DomainException("{$path} contains a key that must contain valid UTF-8.");
+            }
+            if (is_string($key) && str_contains($key, "\0")) {
+                throw new DomainException("{$path} contains a key that must not contain U+0000.");
             }
             $this->validateJsonAuthoredValue($nested, "{$path}.{$key}");
         }
