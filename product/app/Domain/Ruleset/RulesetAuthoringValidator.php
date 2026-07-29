@@ -19,6 +19,21 @@ final class RulesetAuthoringValidator
 
     private const INITIAL_Y_MAX = 59;
 
+    private const POSTGRESQL_INTEGER_MAX = 2_147_483_647;
+
+    private const PRODUCTION_DECIMAL_INTEGER_DIGITS = 12;
+
+    private const PRODUCTION_DECIMAL_SCALE = 4;
+
+    /** @var list<string> */
+    private const FACILITY_SCALE_FIELDS = [
+        'scale_unit_people',
+        'initial_scale',
+        'scale_increment',
+        'maximum_scale',
+        'workforce_per_scale_people',
+    ];
+
     /** @var list<string> */
     private const REQUIRED_INITIAL_ISLAND_FACILITY_KEYS = ['village', 'missile_base', 'capital'];
 
@@ -124,6 +139,16 @@ final class RulesetAuthoringValidator
             throw new DomainException(
                 'ruleset.initial_island_reservation_radius must be at least '
                 .'max(initial_island_land_radius, initial_island_growth_radius, 2).',
+            );
+        }
+        $maximumReservationRadius = min(
+            intdiv($xMax - $xMin, 2),
+            intdiv($yMax - $yMin, 2),
+        );
+        if ($reservationRadius > $maximumReservationRadius) {
+            throw new DomainException(
+                'ruleset.initial_island_reservation_radius must be at most '
+                ."{$maximumReservationRadius} so the initial bounds contain a Capital candidate.",
             );
         }
 
@@ -260,8 +285,20 @@ final class RulesetAuthoringValidator
 
         $path = 'ruleset.facility_definitions.missile_base';
         $missileBase = $this->map($settings['facility_definitions']['missile_base'], $path);
-        $this->requireKeys($missileBase, ['initial_experience'], $path);
-        $this->integer($missileBase['initial_experience'], "{$path}.initial_experience", 0);
+        $this->requireKeys($missileBase, ['initial_experience', 'maximum_experience'], $path);
+        $initialExperience = $this->persistedNonNegativeInteger(
+            $missileBase['initial_experience'],
+            "{$path}.initial_experience",
+        );
+        $maximumExperience = $this->persistedNonNegativeInteger(
+            $missileBase['maximum_experience'],
+            "{$path}.maximum_experience",
+        );
+        if ($initialExperience > $maximumExperience) {
+            throw new DomainException(
+                "{$path}.initial_experience cannot exceed maximum_experience.",
+            );
+        }
     }
 
     /**
@@ -294,9 +331,9 @@ final class RulesetAuthoringValidator
                 $productionKeys,
                 "{$path}.production_definition_key",
             );
+            $this->validateFacilityScaleTuple($definition, $path);
             foreach ([
-                'scale_unit_people', 'initial_scale', 'scale_increment', 'maximum_scale',
-                'workforce_per_scale_people', 'initial_experience', 'maximum_experience',
+                'initial_experience', 'maximum_experience',
             ] as $field) {
                 if (array_key_exists($field, $definition) && $definition[$field] !== null) {
                     $this->integer($definition[$field], "{$path}.{$field}", 0);
@@ -386,10 +423,7 @@ final class RulesetAuthoringValidator
             $this->string($definition['key'], "{$path}.key");
             $this->reference($definition['facility_key'], $facilityKeys, "{$path}.facility_key");
             $this->reference($definition['output_resource_key'], $resourceKeys, "{$path}.output_resource_key");
-            if ((! is_int($definition['production_per_scale']) && ! is_float($definition['production_per_scale']))
-                || $definition['production_per_scale'] < 0) {
-                throw new DomainException("{$path}.production_per_scale must be a non-negative number.");
-            }
+            $this->productionDecimal($definition['production_per_scale'], "{$path}.production_per_scale");
             $this->integer(
                 $definition['required_workforce_per_scale'],
                 "{$path}.required_workforce_per_scale",
@@ -486,6 +520,108 @@ final class RulesetAuthoringValidator
                 throw new DomainException("{$path} is missing required key {$key}.");
             }
         }
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function validateFacilityScaleTuple(array $definition, string $path): void
+    {
+        $nonNullFields = array_values(array_filter(
+            self::FACILITY_SCALE_FIELDS,
+            static fn (string $field): bool => $definition[$field] !== null,
+        ));
+        if ($nonNullFields === []) {
+            return;
+        }
+        if (count($nonNullFields) !== count(self::FACILITY_SCALE_FIELDS)) {
+            throw new DomainException(
+                "{$path} scale fields must either all be null or all be non-null.",
+            );
+        }
+
+        /** @var array<string, int> $values */
+        $values = [];
+        foreach (self::FACILITY_SCALE_FIELDS as $field) {
+            $values[$field] = $this->persistedNonNegativeInteger(
+                $definition[$field],
+                "{$path}.{$field}",
+            );
+        }
+        if ($values['initial_scale'] > $values['maximum_scale']) {
+            throw new DomainException(
+                "{$path}.initial_scale cannot exceed maximum_scale.",
+            );
+        }
+    }
+
+    private function persistedNonNegativeInteger(mixed $value, string $path): int
+    {
+        $value = $this->integer($value, $path, 0);
+        if ($value > self::POSTGRESQL_INTEGER_MAX) {
+            throw new DomainException(
+                "{$path} must fit the PostgreSQL integer range 0..".self::POSTGRESQL_INTEGER_MAX.'.',
+            );
+        }
+
+        return $value;
+    }
+
+    private function productionDecimal(mixed $value, string $path): int|float
+    {
+        if (! is_int($value) && ! is_float($value)) {
+            throw new DomainException(
+                "{$path} must fit decimal(16,4) without rounding.",
+            );
+        }
+        if (is_float($value) && ! is_finite($value)) {
+            throw new DomainException(
+                "{$path} must be finite and fit decimal(16,4) without rounding.",
+            );
+        }
+
+        $serialized = json_encode($value, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+        if (str_starts_with($serialized, '-')) {
+            throw new DomainException(
+                "{$path} must be non-negative with at most "
+                .self::PRODUCTION_DECIMAL_INTEGER_DIGITS.' integer digits.',
+            );
+        }
+        if (! preg_match('/^(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/', $serialized, $parts)) {
+            throw new DomainException(
+                "{$path} must fit decimal(16,4) without rounding.",
+            );
+        }
+
+        $integer = $parts[1];
+        $fraction = $parts[2] ?? '';
+        $digits = $integer.$fraction;
+        $decimalPosition = strlen($integer) + (int) ($parts[3] ?? 0);
+        if ($decimalPosition <= 0) {
+            $integer = '0';
+            $fraction = str_repeat('0', -$decimalPosition).$digits;
+        } elseif ($decimalPosition >= strlen($digits)) {
+            $integer = $digits.str_repeat('0', $decimalPosition - strlen($digits));
+            $fraction = '';
+        } else {
+            $integer = substr($digits, 0, $decimalPosition);
+            $fraction = substr($digits, $decimalPosition);
+        }
+
+        $integerDigits = strlen(ltrim($integer, '0'));
+        if ($integerDigits > self::PRODUCTION_DECIMAL_INTEGER_DIGITS) {
+            throw new DomainException(
+                "{$path} must be non-negative with at most "
+                .self::PRODUCTION_DECIMAL_INTEGER_DIGITS.' integer digits.',
+            );
+        }
+        if (strlen(rtrim($fraction, '0')) > self::PRODUCTION_DECIMAL_SCALE) {
+            throw new DomainException(
+                "{$path} must have at most "
+                .self::PRODUCTION_DECIMAL_SCALE
+                .' fractional digits and fit decimal(16,4) without rounding.',
+            );
+        }
+
+        return $value;
     }
 
     private function string(mixed $value, string $path): string

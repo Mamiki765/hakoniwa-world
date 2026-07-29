@@ -284,6 +284,19 @@ class RulesetAuthoringValidatorTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
+    public function test_missile_base_maximum_experience_is_required(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        unset($settings['facility_definitions']['missile_base']['maximum_experience']);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.missile_base is missing required key maximum_experience',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     #[DataProvider('invalidMissileBaseInitialExperienceProvider')]
     public function test_missile_base_initial_experience_must_be_a_non_negative_integer(mixed $experience): void
     {
@@ -302,7 +315,125 @@ class RulesetAuthoringValidatorTest extends TestCase
             'float' => [0.0],
             'string' => ['0'],
             'negative integer' => [-1],
+            'outside PostgreSQL integer range' => [2_147_483_648],
         ];
+    }
+
+    #[DataProvider('invalidMissileBaseMaximumExperienceProvider')]
+    public function test_missile_base_maximum_experience_must_be_a_persisted_non_negative_integer(
+        mixed $experience,
+    ): void {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['missile_base']['maximum_experience'] = $experience;
+
+        $this->expectException(DomainException::class);
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function invalidMissileBaseMaximumExperienceProvider(): array
+    {
+        return [
+            'float' => [200.0],
+            'string' => ['200'],
+            'negative integer' => [-1],
+            'outside PostgreSQL integer range' => [2_147_483_648],
+        ];
+    }
+
+    public function test_missile_base_initial_experience_cannot_exceed_maximum(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['missile_base']['initial_experience'] = 201;
+        $settings['facility_definitions']['missile_base']['maximum_experience'] = 200;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.missile_base.initial_experience cannot exceed maximum_experience',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_missile_base_experience_accepts_the_persisted_integer_boundary(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['missile_base']['initial_experience'] = 2_147_483_647;
+        $settings['facility_definitions']['missile_base']['maximum_experience'] = 2_147_483_647;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_facility_scale_fields_may_be_consistently_null(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertNull($settings['facility_definitions']['village']['scale_unit_people']);
+        $this->assertNull($settings['facility_definitions']['village']['initial_scale']);
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_facility_scale_fields_must_be_a_complete_tuple(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['farm']['scale_increment'] = null;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.farm scale fields must either all be null or all be non-null',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_facility_initial_scale_cannot_exceed_maximum_scale(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['farm']['initial_scale'] = 51;
+        $settings['facility_definitions']['farm']['maximum_scale'] = 50;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.farm.initial_scale cannot exceed maximum_scale',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_facility_scale_fields_accept_the_persisted_integer_boundary(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        foreach ([
+            'scale_unit_people',
+            'initial_scale',
+            'scale_increment',
+            'maximum_scale',
+            'workforce_per_scale_people',
+        ] as $field) {
+            $settings['facility_definitions']['farm'][$field] = 2_147_483_647;
+        }
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_facility_scale_fields_reject_values_outside_the_persisted_integer_range(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['farm']['scale_increment'] = 2_147_483_648;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.farm.scale_increment must fit the PostgreSQL integer range',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
     public function test_equal_initial_island_radius_boundary_is_valid(): void
@@ -351,6 +482,83 @@ class RulesetAuthoringValidatorTest extends TestCase
                 'initial_island_growth_radius' => 1,
                 'initial_island_reservation_radius' => 1,
             ]],
+        ];
+    }
+
+    public function test_largest_reservation_radius_that_fits_initial_bounds_is_valid(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_island_reservation_radius'] = 29;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_reservation_radius_must_leave_a_capital_candidate_inside_initial_bounds(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_island_reservation_radius'] = 30;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.initial_island_reservation_radius must be at most 29 '
+            .'so the initial bounds contain a Capital candidate',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    #[DataProvider('validProductionDecimalProvider')]
+    public function test_production_per_scale_accepts_values_exactly_persistable_as_decimal_16_4(
+        int|float $value,
+    ): void {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['production_definitions'][0]['production_per_scale'] = $value;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    /** @return array<string, array{int|float}> */
+    public static function validProductionDecimalProvider(): array
+    {
+        return [
+            'zero' => [0],
+            'integer' => [10],
+            'four decimal places' => [1.2345],
+            'smallest four-decimal increment' => [0.0001],
+            'twelve integer digits' => [999_999_999_999],
+            'decimal 16 4 maximum' => [999_999_999_999.9999],
+            'large four-decimal value' => [99_999_999_999.1234],
+        ];
+    }
+
+    #[DataProvider('invalidProductionDecimalProvider')]
+    public function test_production_per_scale_rejects_values_not_exactly_persistable_as_decimal_16_4(
+        mixed $value,
+    ): void {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['production_definitions'][0]['production_per_scale'] = $value;
+
+        $this->expectException(DomainException::class);
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function invalidProductionDecimalProvider(): array
+    {
+        return [
+            'string' => ['1.2345'],
+            'negative' => [-0.0001],
+            'negative zero' => [-0.0],
+            'not finite positive' => [INF],
+            'not finite negative' => [-INF],
+            'not a number' => [NAN],
+            'five decimal places' => [1.23456],
+            'thirteen integer digits' => [1_000_000_000_000],
         ];
     }
 

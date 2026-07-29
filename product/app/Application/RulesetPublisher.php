@@ -67,6 +67,8 @@ final class RulesetPublisher
             CommandDefinition::query()->create($payload);
         }
         foreach ($this->productionPayloads($ruleset, $settings) as $payload) {
+            $payload['production_per_scale'] = $this->databaseDecimal($payload['production_per_scale']);
+            /** @var array<model-property<ProductionDefinition>, mixed> $payload */
             ProductionDefinition::query()->create($payload);
         }
     }
@@ -214,6 +216,15 @@ final class RulesetPublisher
     private function canonicalJson(mixed $value): string
     {
         return json_encode($this->canonicalize($value), JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    private function databaseDecimal(mixed $value): string
+    {
+        if (! is_int($value) && ! is_float($value)) {
+            throw new DomainException('Validated production_per_scale must be numeric.');
+        }
+
+        return json_encode($value, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
     }
 
     private function canonicalize(mixed $value): mixed
