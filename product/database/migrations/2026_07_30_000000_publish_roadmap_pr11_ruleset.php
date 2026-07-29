@@ -119,6 +119,7 @@ return new class extends Migration
                 'shared-world is attached to an unexpected ruleset; refusing an implicit ruleset migration.',
             );
         }
+        $this->assertWheatSalePoliciesAreCompatible((int) $world->id);
         $this->assertQueueItemsUseRuleset((int) $world->id, $fromRulesetId, 'before migration');
 
         $fromDefinitions = DB::table('command_definitions')->where('ruleset_version_id', $fromRulesetId)
@@ -146,6 +147,32 @@ return new class extends Migration
 
         $this->assertQueueItemsUseRuleset((int) $world->id, $toRulesetId, 'after migration');
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' IMMEDIATE');
+    }
+
+    private function assertWheatSalePoliciesAreCompatible(int $worldId): void
+    {
+        $policies = DB::table('nation_resource_sale_policies')
+            ->join('nations', 'nations.id', '=', 'nation_resource_sale_policies.nation_id')
+            ->join('resource_definitions', 'resource_definitions.id', '=', 'nation_resource_sale_policies.resource_definition_id')
+            ->where('nations.world_id', $worldId)
+            ->where('resource_definitions.key', 'wheat')
+            ->where('nation_resource_sale_policies.policy', 'sell_all')
+            ->orderBy('nation_resource_sale_policies.id')
+            ->limit(20)
+            ->get(['nation_resource_sale_policies.id', 'nation_resource_sale_policies.nation_id']);
+
+        if ($policies->isEmpty()) {
+            return;
+        }
+
+        $affected = $policies
+            ->map(static fn (object $policy): string => "{$policy->id} (nation {$policy->nation_id}, policy sell_all)")
+            ->implode(', ');
+
+        throw new RuntimeException(
+            "shared-world has PR11-incompatible wheat sale policies: {$affected}; "
+            .'change each policy to stockpile or keep_amount before retrying the migration.',
+        );
     }
 
     private function assertQueueItemsUseRuleset(int $worldId, int $rulesetId, string $stage): void

@@ -120,4 +120,34 @@ class Pr11ForwardMigrationTest extends TestCase
         $this->expectExceptionMessage('forward-only');
         $migration->down();
     }
+
+    public function test_shared_world_migration_refuses_legacy_wheat_sell_all_with_affected_ids(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'Legacy wheat seller');
+        $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
+        $world->update(['ruleset_version_id' => $pr7->id]);
+        $policy = DB::table('nation_resource_sale_policies')
+            ->join('resource_definitions', 'resource_definitions.id', '=', 'nation_resource_sale_policies.resource_definition_id')
+            ->where('nation_resource_sale_policies.nation_id', $nation->id)
+            ->where('resource_definitions.key', 'wheat')
+            ->select('nation_resource_sale_policies.id')
+            ->first();
+        $this->assertNotNull($policy);
+        DB::table('nation_resource_sale_policies')->where('id', $policy->id)->update(['policy' => 'sell_all']);
+        $migration = require database_path('migrations/2026_07_30_000000_publish_roadmap_pr11_ruleset.php');
+
+        try {
+            $migration->up();
+            $this->fail('The migration accepted a PR11-incompatible wheat sell_all policy.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString((string) $policy->id, $exception->getMessage());
+            $this->assertStringContainsString("nation {$nation->id}", $exception->getMessage());
+            $this->assertStringContainsString('policy sell_all', $exception->getMessage());
+        }
+
+        $this->assertSame($pr7->id, $world->fresh()->ruleset_version_id);
+        $this->assertSame('sell_all', DB::table('nation_resource_sale_policies')->where('id', $policy->id)->value('policy'));
+    }
 }
