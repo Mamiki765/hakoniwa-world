@@ -89,6 +89,12 @@ final class RulesetAuthoringValidator
 
         $key = $this->persistedString($settings['key'], 'ruleset.key');
         $version = $this->integer($settings['version'], 'ruleset.version', 1);
+        if ($version > self::POSTGRESQL_INTEGER_MAX) {
+            throw new DomainException(
+                'ruleset.version must fit the PostgreSQL integer range 1..'
+                .self::POSTGRESQL_INTEGER_MAX.'.',
+            );
+        }
         $chunkSize = $this->integer($settings['chunk_size'], 'ruleset.chunk_size', 1);
         if ($chunkSize !== self::ARCHITECTURE_CHUNK_SIZE) {
             throw new DomainException('ruleset.chunk_size must be exactly 16.');
@@ -332,6 +338,7 @@ final class RulesetAuthoringValidator
      */
     private function validateFacilities(array $settings, array $commandKeys, array $productionKeys): void
     {
+        $assetKeys = [];
         foreach ($this->map($settings['facility_definitions'], 'ruleset.facility_definitions') as $key => $definition) {
             $path = "ruleset.facility_definitions.{$key}";
             $definition = $this->map($definition, $path);
@@ -342,7 +349,13 @@ final class RulesetAuthoringValidator
             ], $path);
             $this->persistedString($key, "{$path} key");
             $this->persistedString($definition['name'], "{$path}.name");
-            $this->persistedString($definition['asset_key'], "{$path}.asset_key");
+            $assetKey = $this->persistedString($definition['asset_key'], "{$path}.asset_key");
+            if (in_array($assetKey, $assetKeys, true)) {
+                throw new DomainException(
+                    "{$path}.asset_key duplicates facility asset key {$assetKey}.",
+                );
+            }
+            $assetKeys[] = $assetKey;
             $visibilityPolicy = $this->persistedString(
                 $definition['visibility_policy'],
                 "{$path}.visibility_policy",

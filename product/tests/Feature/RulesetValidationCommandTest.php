@@ -40,6 +40,20 @@ class RulesetValidationCommandTest extends TestCase
         $this->assertSame($before, $this->databaseSnapshot($world->fresh()));
     }
 
+    public function test_validation_command_looks_up_dot_containing_key_literally(): void
+    {
+        $key = 'season.2-v1';
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['key'] = $key;
+        $rulesets = config('hakoniwa.published_rulesets');
+        $rulesets[$key] = $settings;
+        config(['hakoniwa.published_rulesets' => $rulesets]);
+
+        $this->artisan('hakoniwa:ruleset:validate', ['--key' => $key])
+            ->expectsOutputToContain("Ruleset {$key} is valid")
+            ->assertSuccessful();
+    }
+
     /** @return array<string, mixed> */
     private function databaseSnapshot(World $world): array
     {

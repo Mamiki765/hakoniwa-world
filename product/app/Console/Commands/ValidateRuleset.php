@@ -21,7 +21,10 @@ final class ValidateRuleset extends Command
             return self::FAILURE;
         }
 
-        $settings = config("hakoniwa.published_rulesets.{$key}");
+        $rulesets = config('hakoniwa.published_rulesets');
+        $settings = is_array($rulesets) && array_key_exists($key, $rulesets)
+            ? $rulesets[$key]
+            : null;
         if (! is_array($settings)) {
             $this->error("Ruleset authoring key {$key} does not exist.");
 

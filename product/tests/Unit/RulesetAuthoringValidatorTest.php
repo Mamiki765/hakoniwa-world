@@ -59,6 +59,29 @@ class RulesetAuthoringValidatorTest extends TestCase
         $this->assertSame('roadmap-pr7-v1', $summary['key']);
     }
 
+    public function test_ruleset_version_accepts_postgresql_integer_maximum(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['version'] = 2_147_483_647;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame(2_147_483_647, $summary['version']);
+    }
+
+    public function test_ruleset_version_rejects_values_above_postgresql_integer_maximum(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['version'] = 2_147_483_648;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.version must fit the PostgreSQL integer range 1..2147483647',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     #[DataProvider('invalidChunkSizeProvider')]
     public function test_non_architecture_chunk_sizes_are_rejected(int $chunkSize): void
     {
@@ -431,6 +454,20 @@ class RulesetAuthoringValidatorTest extends TestCase
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage(
             'ruleset.facility_definitions.farm.scale_increment must fit the PostgreSQL integer range',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_facility_asset_keys_must_be_unique(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['factory']['asset_key'] =
+            $settings['facility_definitions']['farm']['asset_key'];
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.factory.asset_key duplicates facility asset key',
         );
 
         app(RulesetAuthoringValidator::class)->validate($settings);
