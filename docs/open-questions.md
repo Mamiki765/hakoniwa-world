@@ -236,11 +236,13 @@
 
 ### T-01 乱数seedと再現方式
 
-- Status: Open
+- Status: Decided
 - Required before: ターン処理実装前
-- seedの生成・保存、安定した列挙順、再試行時の再現契約を決める。
-- PR #7 checkpoint: turn run開始時に256-bit master seedを保存し、失敗retryでは同じseedを再利用する。phase別streamと安定列挙順は未決定。
-- Owner direction: master seedはプレイヤーへ事前公開せず、turn runのaudit情報として保存する。同じfailed runのretryでは同じseedを再利用する。phase別labelled streamとstable enumerationは未決定とする。seedを保存する目的は障害調査とretry整合性であり、プレイヤーによる乱数調整を可能にすることではない。
+- Decision: `turn_runs.random_seed`に保存するprivateな256-bit master seedを正本とし、プレイヤーへturn実行前に公開しない。同じfailedまたはblocked runのretryは同じseedを再利用し、新しいtarget turnだけが新しいseedを生成する。
+- Decision: 固定version文字列を含むHMAC-SHA-256で用途labelごとにcounter-based streamを派生する。Nationは不変ID昇順、surface cellはmap space ID・canonical x/y・cell ID順をstable inputとし、それぞれ専用streamで1 turnに1回だけdeterministic Fisher-Yates shuffleする。
+- Decision: inclusive bounded integer drawはfloatやglobal RNGを使わず、32-bit unsigned wordに対するrejection samplingでmodulo biasを避ける。別labelは独立しており、あるstreamへのdraw追加は他streamを変えない。
+- Decision: random call log全件は保存しない。master seed、versioned derivation contract、stable input、ruleset/input state、phase resultsをretry整合性と障害調査の境界とする。
+- Decision record: `docs/architecture/turn-randomness.md`
 
 ### T-02 休眠状態遷移Job
 

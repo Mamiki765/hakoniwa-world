@@ -8,14 +8,14 @@ The default pipeline is deliberately incomplete. `hakoniwa:turn:run` must not ad
 
 ## Design-gate handling
 
-The following `docs/open-questions.md` gates are reached. A-07 is now formally decided; the other gameplay gates remain bounded by stubs.
+The following `docs/open-questions.md` gates are reached. A-06, A-07, and T-01 are formally decided; unresolved gameplay gates remain bounded by stubs.
 
 | Gate | PR #7 decision or boundary | Still open |
 |---|---|---|
-| A-06 turn order | Preserve the observed Hakoniwa 2+ causal order as named phases and test its order | Simultaneous resolution rules and detailed current-game effects |
+| A-06 turn order | Preserve randomized sequential causality as an explicit game rule, with stable input order, labelled shuffles, and sequential application | Detailed current-game effects |
 | A-07 transaction size | Decided: one World/turn PostgreSQL transaction contains every game-state phase and `current_turn` | Measurement after real commands, all-cell work, and disasters; checkpoint reconsideration requires a separate ADR |
 | B-09 disaster population | Keep a required but unimplemented `global_disasters` phase | Disaster-specific draw population |
-| T-01 random seed | Persist a 256-bit master seed before execution and reuse it for a failed-run retry | Stable enumeration and labelled stream contract for each future random phase |
+| T-01 random seed | Decided: private 256-bit master seed, versioned labelled HMAC streams, rejection-sampled integers, deterministic Fisher-Yates, and stable Nation/cell enumeration | Additional labels are introduced only with their gameplay handlers |
 | D-01 scheduler | Choose OCI host cron as the thin hourly trigger | When multiple Worlds justify a scheduler/worker service |
 | D-02 retry | Roll game state back, record failure, and permit explicit retry of the same run/seed | Automatic retry count, backoff, stale-running recovery |
 
@@ -39,7 +39,7 @@ The order is derived from `_references/hakoniwa-2plus/extracted/turn.c:9-148`, w
 | 10 | `enforce_capacities` | food overflow/sale then money cap | stub; capacity services are ready |
 | 11 | `finalize_turn` | elimination, prizes, ranking/owner projection, persistence | implemented commit boundary only |
 
-The legacy code randomises the command Nation order and cell order, while economy uses the pre-existing ranking order. PR #7 does not reproduce those shuffles yet. A later gameplay PR must use the saved master seed plus stable Nation IDs and x/y coordinates, not ranking IDs or implicit random-call order.
+The legacy code randomises the command Nation order and cell order, while economy uses the pre-existing ranking order. The foundation now exposes deterministic shuffles without connecting gameplay: command Nations start in immutable Nation ID order and use `development_commands:nation_order`; surface cells start in map-space ID, canonical x/y, and cell ID order and use `process_cells:surface_cell_order`. Required gameplay phases remain stubs.
 
 ## Turn run schema
 
@@ -82,7 +82,11 @@ Each phase duration is measured and stored as `duration_ms` in `turn_runs.phase_
 
 ## Seed and retry
 
-A new run generates 32 random bytes and stores the lowercase 64-character hexadecimal master seed before phase execution. A failed or scaffold-blocked retry reuses the same row and seed. Future random handlers must derive deterministic, labelled streams from the saved seed and stable target identifiers.
+A new target turn generates 32 random bytes and stores the lowercase 64-character hexadecimal master seed before phase execution. The seed is private until execution and is not a player prediction interface. A failed or scaffold-blocked retry reuses the same row and seed. Every attempt creates a fresh random factory and turn-scoped state inside the transaction, so retry reconstructs in-memory state from database state and the saved seed.
+
+`TurnRandomStreamFactory` derives independent, versioned streams and `TurnOrderService` owns stable enumeration plus shuffle boundaries. The exact HMAC blocks, bounded draw, Fisher-Yates algorithm, labels, and fixed vector are specified in `docs/architecture/turn-randomness.md`. A draw added to one label cannot advance another label. Full random-call logs are not stored; the master seed and phase results are the operational investigation boundary.
+
+`TurnState` is a typed, non-persistent per-attempt object. It can collect future missile launch intents during `development_commands` and expose them to `process_cells`, but this foundation does not fire missiles, charge costs, consume queue items, or mark either phase implemented.
 
 Caught failures store a bounded message, failure code, failed phase key, and exception class, without stack traces, request credentials, or secrets. The CLI returns non-zero. Automatic retry and stale `running` takeover remain disabled. An operator first runs status, fixes the cause, and invokes the same run command; only `failed` or `blocked` runs are eligible for explicit reuse.
 
@@ -160,12 +164,11 @@ The selected operations example is an OCI host cron at the top of every hour in 
 
 Production cron registration, production DB access, and a production turn are outside this PR.
 
-## Next PR decisions
+## Next PR work and decisions
 
-- A-06 simultaneous resolution and which current-domain effects share a snapshot.
+- Implement A-06 randomized sequential causality for the peaceful turn slice without converting it to simultaneous resolution.
 - A-07 operational lock-duration budget and measurements with realistic Nation/cell counts; the atomicity decision remains in force unless replaced by a separate ADR.
 - RES-01 farm production balance after converting the legacy 1,000 tons per scale.
-- T-01 labelled random streams, stable enumeration, and replay assertions.
 - D-02 automatic retry/backoff and stale-running recovery.
 - Exact command result/event schema and the seven handlers.
 - Production, food consumption, population, forest, disasters, monsters, combat, missiles, oil and item specifications.

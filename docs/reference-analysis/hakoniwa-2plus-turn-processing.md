@@ -223,9 +223,11 @@ inventory 1,000単位 → 売却可能額1億円
 ## 新作へ残す候補
 
 - ターンを明示的フェイズへ分ける考え方。
-- 国家順・セル順の偏りを避けるシャッフル。ただし再現可能な乱数へ変更する。
+- 国家順・セル順の偏りを避けるシャッフル。ただし再現可能なversioned labelled streamへ変更する。
 - コマンド予約と1ターン1基本行動。
 - 収支後にセルイベント、最後に再集計するドメイン上の順序。ただし新仕様とテストで再確定する。
 - 災害・戦闘・国境変更をイベントログに残すこと。
 
-グローバル可変状態、その場更新による順序依存、秒seed、全セル走査、非原子的保存、rank-based ownerは持ち込まない。
+新作へ持ち込まない「その場更新による順序依存」とは、DB取得順、memory layout、chunk load順、偶然のiteration順などlegacy実装技法への暗黙依存を指す。一方、A-06でDecidedとなったrandomized sequential causalityはゲームルールとして維持する。元のstable order、専用shuffle stream、逐次反映を明示的に実装してtestし、simultaneous resolutionへ勝手に変更しない。
+
+この設計上の解釈は上記のsource確認事実を変更しない。グローバル可変状態、秒seed、非原子的保存、rank-based ownerは持ち込まず、全セル走査は必要性と性能測定に基づいて扱う。

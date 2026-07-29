@@ -56,9 +56,9 @@ commandはqueued、accepted、executed、failed、cancelled、expiredを持つ�
 
 ## 乱数
 
-turn_runにmaster seedを保存し、用途ラベルと安定対象IDから派生ストリームを作る案を推奨する。これにより、ログ出力を1件追加しても災害結果がずれるような暗黙の乱数消費を防ぐ。
+T-01のDecisionとして、`turn_runs.random_seed`にprivateな256-bit master seedを保存し、固定version文字列を含むHMAC-SHA-256で用途labelごとのcounter-based streamを派生する。failedまたはblocked runのretryは同じseedを使い、新しいtarget turnだけが新しいseedを生成する。
 
-用途例はdisaster-selection、missile-hit、terrain-growth、monster-moveである。同じseed、ruleset、入力snapshotから同じ結果になる決定性テストを設ける。暗号用途の乱数とは分離する。
+bounded integerはrejection sampling、順列はstable inputに対するdeterministic Fisher-Yatesを使う。label間でstateを共有しないため、ある用途のdraw追加は別用途の結果を変えない。exact algorithm、予約label、Nation/cellのstable enumeration、固定test vectorは`docs/architecture/turn-randomness.md`を正本とする。
 
 ## transactionと再試行
 
