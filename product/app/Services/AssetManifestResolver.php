@@ -60,7 +60,7 @@ final class AssetManifestResolver
     }
 
     /**
-     * @param array<int, string> $overlayAssetKeys
+     * @param  array<int, string>  $overlayAssetKeys
      * @return array{completed: array{key: string, url: ?string, available: bool, fallback_label: string, fallback_style: string}, overlays: array<int, array{key: string, url: ?string, available: bool, fallback_label: string, fallback_style: string}>}
      */
     public function resolveLayers(string $completedAssetKey, string $fallbackLabel, array $overlayAssetKeys = []): array
