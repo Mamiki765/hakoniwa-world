@@ -41,13 +41,17 @@ async function save(policy: SalePolicy): Promise<void> {
         busyResource.value = null;
     }
 }
+
+function allows(policy: SalePolicy, value: SalePolicy['policy']): boolean {
+    return (policy.allowed_policies ?? ['sell_all', 'stockpile', 'keep_amount']).includes(value);
+}
 </script>
 
 <template>
     <section class="panel resource-panel">
         <p class="eyebrow">RESOURCE POLICY</p>
         <h1>資源の売却方針</h1>
-        <p>ターン処理の拡張境界です。現在は方針だけを保存し、自動売却はまだ実行しません。</p>
+        <p>食料消費後のターン処理で、資源ごとの方針に従って自動売却します。</p>
         <p v-if="message" class="compact-message" role="status">{{ message }}</p>
         <div class="policy-list">
             <form v-for="policy in policies" :key="policy.resource_id" @submit.prevent="save(policy)">
@@ -56,9 +60,9 @@ async function save(policy: SalePolicy): Promise<void> {
                 <label>
                     方針
                     <select v-model="policy.policy">
-                        <option value="stockpile">備蓄する</option>
-                        <option value="sell_all">すべて売却</option>
-                        <option value="keep_amount">指定数を残して売却</option>
+                        <option v-if="allows(policy, 'stockpile')" value="stockpile">備蓄する</option>
+                        <option v-if="allows(policy, 'sell_all')" value="sell_all">すべて売却</option>
+                        <option v-if="allows(policy, 'keep_amount')" value="keep_amount">指定数を残して売却</option>
                     </select>
                 </label>
                 <label v-if="policy.policy === 'keep_amount'">

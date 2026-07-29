@@ -126,10 +126,23 @@ class RulesetAuthoringValidatorTest extends TestCase
         ];
     }
 
-    public function test_architecture_command_queue_limit_is_valid(): void
+    public function test_existing_and_pr11_command_queue_limits_are_valid(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+
+        $legacy = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $pr11 = config('hakoniwa.published_rulesets.roadmap-pr11-v1');
+
+        $this->assertSame(20, $legacy['command_queue_limit']);
+        $this->assertSame('roadmap-pr7-v1', $validator->validate($legacy)['key']);
+        $this->assertSame(30, $pr11['command_queue_limit']);
+        $this->assertSame('roadmap-pr11-v1', $validator->validate($pr11)['key']);
+    }
+
+    public function test_command_queue_authoring_safety_maximum_is_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
-        $settings['command_queue_limit'] = 20;
+        $settings['command_queue_limit'] = 168;
 
         $summary = app(RulesetAuthoringValidator::class)->validate($settings);
 
@@ -137,25 +150,49 @@ class RulesetAuthoringValidatorTest extends TestCase
     }
 
     #[DataProvider('invalidCommandQueueLimitProvider')]
-    public function test_non_architecture_command_queue_limits_are_rejected(int $limit): void
+    public function test_command_queue_limits_outside_the_authoring_safety_range_are_rejected(mixed $limit): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
         $settings['command_queue_limit'] = $limit;
 
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('ruleset.command_queue_limit must be exactly 20');
+        $this->expectExceptionMessage('ruleset.command_queue_limit');
 
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    /** @return array<string, array{int}> */
+    /** @return array<string, array{mixed}> */
     public static function invalidCommandQueueLimitProvider(): array
     {
         return [
-            'nineteen' => [19],
-            'twenty-one' => [21],
+            'zero' => [0],
+            'negative' => [-1],
+            'one hundred sixty-nine' => [169],
             'postgresql integer overflow' => [2_147_483_648],
+            'numeric string' => ['30'],
+            'float' => [30.0],
         ];
+    }
+
+    public function test_pr11_turn_processing_rejects_invalid_probability_and_stage_ranges(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr11-v1');
+        $settings['turn_processing']['settlement']['appearance_probability']['numerator'] = 101;
+
+        try {
+            $validator->validate($settings);
+            $this->fail('An invalid probability must be rejected.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('numerator cannot exceed denominator', $exception->getMessage());
+        }
+
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr11-v1');
+        $settings['turn_processing']['settlement']['stages']['town']['minimum_population'] = 3001;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('contiguous population thresholds');
+        $validator->validate($settings);
     }
 
     #[DataProvider('invalidInitialBoundsProvider')]

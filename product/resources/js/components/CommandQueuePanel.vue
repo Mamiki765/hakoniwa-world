@@ -18,14 +18,6 @@ const props = defineProps<{
     selected: MapCell | null;
 }>();
 
-const automaticPlan = (): EffectivePlanSlot[] => Array.from({ length: 20 }, (_, index) => ({
-    position: index + 1,
-    kind: 'automatic_finance' as const,
-    editable: false as const,
-    command_name: '資金繰り' as const,
-    quantity: null,
-}));
-
 const definitions = ref<CommandDefinition[]>([]);
 const quantityContract = ref({
     type: 'integer' as const,
@@ -36,10 +28,10 @@ const quantityContract = ref({
 });
 const queue = ref<CommandQueue>({
     version: 1,
-    limit: 20,
+    limit: 1,
     explicit_count: 0,
     items: [],
-    plan: automaticPlan(),
+    plan: [],
 });
 const refreshing = ref(false);
 const mutating = ref(false);

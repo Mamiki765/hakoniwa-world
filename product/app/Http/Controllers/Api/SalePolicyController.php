@@ -34,8 +34,14 @@ final class SalePolicyController extends Controller
             throw new DomainException('Worldのdefault sale policy設定が不正です。');
         }
 
-        return response()->json(['data' => $resources->map(function (ResourceDefinition $resource) use ($policies, $defaultPolicy): array {
+        $forbiddenSellAll = $rules['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'] ?? [];
+
+        return response()->json(['data' => $resources->map(function (ResourceDefinition $resource) use ($policies, $defaultPolicy, $forbiddenSellAll): array {
             $policy = $policies->get($resource->id);
+            $allowedPolicies = SalePolicy::values();
+            if (is_array($forbiddenSellAll) && in_array($resource->key, $forbiddenSellAll, true)) {
+                $allowedPolicies = array_values(array_diff($allowedPolicies, [SalePolicy::SellAll->value]));
+            }
 
             return [
                 'resource_id' => $resource->id,
@@ -45,6 +51,7 @@ final class SalePolicyController extends Controller
                 'policy' => $policy->policy ?? $defaultPolicy,
                 'keep_amount' => $policy?->keep_amount,
                 'version' => $policy->version ?? 1,
+                'allowed_policies' => $allowedPolicies,
             ];
         })->values()]);
     }

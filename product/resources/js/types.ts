@@ -214,6 +214,7 @@ export interface SalePolicy {
     resource_name: string;
     amount: number;
     policy: 'sell_all' | 'stockpile' | 'keep_amount';
+    allowed_policies?: Array<'sell_all' | 'stockpile' | 'keep_amount'>;
     keep_amount: number | null;
     version: number;
 }

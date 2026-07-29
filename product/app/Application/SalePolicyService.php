@@ -31,6 +31,7 @@ final class SalePolicyService
             if (! SalePolicy::isSupported($policy)) {
                 throw new DomainException('sale policyが不正です。');
             }
+            $this->assertResourceCapability($nation, $resource, $policy);
             if ($policy === SalePolicy::KeepAmount->value && ($keepAmount === null || $keepAmount < 0)) {
                 throw new DomainException('keep_amountには0以上の保持数量が必要です。');
             }
@@ -76,5 +77,20 @@ final class SalePolicyService
         }
 
         return $policy;
+    }
+
+    private function assertResourceCapability(
+        Nation $nation,
+        ResourceDefinition $resource,
+        string $policy,
+    ): void {
+        if ($policy !== SalePolicy::SellAll->value) {
+            return;
+        }
+        $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        $forbidden = $settings['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'] ?? [];
+        if (is_array($forbidden) && in_array($resource->key, $forbidden, true)) {
+            throw new DomainException("{$resource->name}ではsell_allを使用できません。");
+        }
     }
 }

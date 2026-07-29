@@ -154,7 +154,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
         $this->actingAs($owner);
 
-        foreach (range(1, 20) as $expectedVersion) {
+        foreach (range(1, 30) as $expectedVersion) {
             $this->postJson($path, [
                 'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
                 'request_key' => (string) Str::uuid(), 'expected_version' => $expectedVersion,
@@ -163,11 +163,11 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
         $this->postJson($path, [
             'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(), 'expected_version' => 21,
+            'request_key' => (string) Str::uuid(), 'expected_version' => 31,
         ])->assertUnprocessable();
     }
 
-    public function test_effective_plan_has_twenty_slots_and_supports_selected_insertion(): void
+    public function test_effective_plan_has_thirty_slots_and_supports_selected_insertion(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('計画国');
         $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
@@ -175,7 +175,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
 
         $empty = $this->actingAs($owner)->getJson($path)->assertOk()
-            ->assertJsonCount(20, 'data.plan')
+            ->assertJsonCount(30, 'data.plan')
             ->assertJsonPath('data.explicit_count', 0);
         foreach ($empty->json('data.plan') as $slot) {
             $this->assertSame('automatic_finance', $slot['kind']);
@@ -192,7 +192,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.queue.plan.4.kind', 'explicit')
             ->assertJsonPath('data.queue.plan.4.command_name', '整地')
-            ->assertJsonCount(20, 'data.queue.plan');
+            ->assertJsonCount(30, 'data.queue.plan');
 
         $inserted = $this->postJson($path, [
             'command_key' => 'land_clear',
@@ -204,14 +204,14 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.queue.plan.4.kind', 'explicit')
             ->assertJsonPath('data.queue.plan.5.kind', 'explicit')
-            ->assertJsonCount(20, 'data.queue.plan');
+            ->assertJsonCount(30, 'data.queue.plan');
 
         $firstId = $inserted->json('data.queue.plan.4.id');
         $this->deleteJson($path."/{$firstId}", ['expected_version' => 3])
             ->assertOk()
             ->assertJsonPath('data.plan.0.kind', 'explicit')
             ->assertJsonPath('data.plan.1.kind', 'automatic_finance')
-            ->assertJsonCount(20, 'data.plan');
+            ->assertJsonCount(30, 'data.plan');
     }
 
     public function test_universal_quantity_contract_validation_storage_editing_response_and_audit(): void
@@ -394,7 +394,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
 
         $this->actingAs($owner);
-        for ($index = 0; $index < 20; $index++) {
+        for ($index = 0; $index < 30; $index++) {
             $this->postJson($path, [
                 'command_key' => 'land_clear',
                 'target_x' => $target->x,
@@ -411,7 +411,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'target_y' => $target->y,
             'position' => 1,
             'request_key' => (string) Str::uuid(),
-            'expected_version' => 21,
+            'expected_version' => 31,
         ])->assertUnprocessable();
 
         $this->assertSame(
@@ -420,18 +420,25 @@ class CommandQueueAndSalePolicyTest extends TestCase
         );
         $this->actingAs($owner)->getJson($path)
             ->assertOk()
-            ->assertJsonCount(20, 'data.plan')
-            ->assertJsonPath('data.explicit_count', 20);
+            ->assertJsonCount(30, 'data.plan')
+            ->assertJsonPath('data.explicit_count', 30);
     }
 
     public function test_sale_policy_validation_authorization_audit_and_concurrency(): void
     {
         [$owner, $nation] = $this->nation('売却国');
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
-        $path = "/api/v1/nations/{$nation->id}/resources/{$wheat->id}/sale-policy";
+        $industrialGoods = ResourceDefinition::query()->where('key', 'industrial_goods')->firstOrFail();
+        $path = "/api/v1/nations/{$nation->id}/resources/{$industrialGoods->id}/sale-policy";
 
-        $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/sale-policies")
+        $policies = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/sale-policies")
             ->assertOk()->assertJsonCount(5, 'data');
+        $wheatPolicy = collect($policies->json('data'))->firstWhere('resource_key', 'wheat');
+        $this->assertSame('stockpile', $wheatPolicy['policy']);
+        $this->assertNotContains('sell_all', $wheatPolicy['allowed_policies']);
+        $this->putJson("/api/v1/nations/{$nation->id}/resources/{$wheat->id}/sale-policy", [
+            'policy' => 'sell_all', 'keep_amount' => null, 'expected_version' => 1,
+        ])->assertUnprocessable();
         $this->putJson($path, ['policy' => 'sell_all', 'keep_amount' => null, 'expected_version' => 1])
             ->assertOk()->assertJsonPath('data.policy', 'sell_all')->assertJsonPath('data.version', 2);
         $this->putJson($path, ['policy' => 'keep_amount', 'keep_amount' => 25, 'expected_version' => 2])
@@ -454,7 +461,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ])->assertUnprocessable();
 
         $this->assertSame('keep_amount', NationResourceSalePolicy::query()
-            ->where('nation_id', $nation->id)->where('resource_definition_id', $wheat->id)->value('policy'));
+            ->where('nation_id', $nation->id)->where('resource_definition_id', $industrialGoods->id)->value('policy'));
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'resource.sale_policy.updated')->count());
     }
 
