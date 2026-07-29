@@ -63,6 +63,31 @@ If an `Open` item is related to the implementation scope and its `Required befor
 
 For `Deferred` items, preserve only a clear extension boundary. Do not implement the deferred feature early as part of the MVP.
 
+## Pull request scope and cross-cutting changes
+
+Do not combine substantial TurnRunner implementation with unrelated coordinate-system
+changes, existing-game-data migrations, World-reset redesigns, or broad rendering
+changes in the same pull request.
+
+Schema migrations that create or update TurnRunner-owned tables, indexes, constraints,
+and audit records are part of the TurnRunner scope.
+
+Small compatibility, integrity, safety, and operator-reporting changes directly required
+by the TurnRunner schema or behavior may be included in the same pull request only when
+they are explicitly identified, narrowly scoped to the integration boundary, and covered
+by regression tests.
+
+Unrelated refactoring, broad UI redesign, coordinate conversion, World-reset redesign,
+or migration of existing gameplay data must be split into a separate or stacked pull
+request.
+
+If a required compatibility change grows beyond a small and reviewable boundary, stop
+and propose the split before implementing it.
+
+## Tool-call batching
+
+In Code Mode, within each bounded stage, run independent, functions.exec-available tool calls concurrently in one functions.exec call. Use await Promise.allSettled([...]) when partial results are useful, and inspect every result; use await Promise.all([...]) only when any failure should abort the batch. Keep dependencies, waits/resumes, approvals, conflicting or interdependent mutations, and adaptive investigations where each result may change the next step sequential. Do not split otherwise batchable inspections across outer tool calls.
+
 ## Coordinate system
 
 The canonical surface-map coordinate system is the staggered square-tile `x`/`y` grid defined by `docs/decisions/ADR-0003-hex-coordinate-system.md`.
@@ -73,5 +98,3 @@ The canonical surface-map coordinate system is the staggered square-tile `x`/`y`
 - Keep the six-neighbor direction numbering identical in Backend and Frontend.
 - Cube conversion is permitted only as a private distance-calculation detail.
 - Historical migrations may name the retired coordinate columns only to backfill or roll back them.
-
-Do not implement the turn runner while performing coordinate, migration, reset, or rendering work.
