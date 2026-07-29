@@ -116,6 +116,32 @@ class TurnRunnerTest extends TestCase
         ];
     }
 
+    public function test_canonical_phase_cannot_be_downgraded_to_optional(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $observed = [];
+        $pipeline = new TurnPipeline(array_map(
+            static fn (string $key): TurnPhase => $key === 'global_disasters'
+                ? new ScaffoldTurnPhase($key, false, required: false)
+                : new RecordingTurnPhase(
+                    $key,
+                    static function (TurnContext $context, string $phase) use (&$observed): void {
+                        $observed[] = $phase;
+                    },
+                ),
+            self::PHASES,
+        ));
+
+        $run = $this->runner($pipeline)->run($world);
+
+        $this->assertSame(TurnRun::STATUS_BLOCKED, $run->status);
+        $this->assertSame('pipeline_invalid', $run->failure_code);
+        $this->assertSame(['global_disasters'], $run->failure_context['non_required_phases']);
+        $this->assertSame([], $run->phase_results);
+        $this->assertSame([], $observed);
+        $this->assertSame(0, $world->fresh()->current_turn);
+    }
+
     public function test_complete_pipeline_runs_in_source_order_and_advances_only_after_all_phases(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();

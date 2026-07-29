@@ -19,6 +19,9 @@ final class TurnPipeline
         'finalize_turn',
     ];
 
+    /** @var list<string> */
+    public const CANONICAL_REQUIRED_PHASE_KEYS = self::CANONICAL_PHASE_KEYS;
+
     /** @var list<TurnPhase> */
     private array $phases;
 
@@ -41,7 +44,11 @@ final class TurnPipeline
             static fn (TurnPhase $phase): string => $phase->key(),
             array_filter(
                 $this->phases,
-                static fn (TurnPhase $phase): bool => $phase->required() && ! $phase->implemented(),
+                static fn (TurnPhase $phase): bool => in_array(
+                    $phase->key(),
+                    self::CANONICAL_REQUIRED_PHASE_KEYS,
+                    true,
+                ) && ! $phase->implemented(),
             ),
         ));
     }
@@ -54,6 +61,7 @@ final class TurnPipeline
      *     missing_phases: list<string>,
      *     duplicated_phases: list<string>,
      *     unexpected_phases: list<string>,
+     *     non_required_phases: list<string>,
      *     out_of_order_phases: list<array{position: int, expected: string|null, actual: string|null}>
      * }
      */
@@ -81,6 +89,14 @@ final class TurnPipeline
                 $unexpected[] = $key;
             }
         }
+        $nonRequired = [];
+        foreach ($this->phases as $phase) {
+            if (in_array($phase->key(), self::CANONICAL_REQUIRED_PHASE_KEYS, true)
+                && ! $phase->required()
+                && ! in_array($phase->key(), $nonRequired, true)) {
+                $nonRequired[] = $phase->key();
+            }
+        }
         $outOfOrder = [];
         $positions = max(count(self::CANONICAL_PHASE_KEYS), count($actual));
         for ($index = 0; $index < $positions; $index++) {
@@ -96,12 +112,13 @@ final class TurnPipeline
         }
 
         return [
-            'valid' => $actual === self::CANONICAL_PHASE_KEYS,
+            'valid' => $actual === self::CANONICAL_PHASE_KEYS && $nonRequired === [],
             'expected_phase_order' => self::CANONICAL_PHASE_KEYS,
             'actual_phase_order' => $actual,
             'missing_phases' => $missing,
             'duplicated_phases' => $duplicated,
             'unexpected_phases' => $unexpected,
+            'non_required_phases' => $nonRequired,
             'out_of_order_phases' => $outOfOrder,
         ];
     }
