@@ -2,11 +2,7 @@
 
 namespace App\Domain\Economy;
 
-use App\Models\Nation;
-
 interface CapacityModifier
 {
-    public function moneyCapacityDelta(Nation $nation): int;
-
-    public function foodCapacityTonsDelta(Nation $nation): int;
+    // Marker boundary only. E-04 must define operations and ordering before methods are added.
 }

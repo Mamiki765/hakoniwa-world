@@ -31,16 +31,10 @@ final class NationCapacityResolver
             throw new DomainException('Published ruleset capacity settings are invalid.');
         }
 
-        $money = $baseMoney;
-        $food = $baseFood;
-        foreach ($this->modifiers as $modifier) {
-            $money += $modifier->moneyCapacityDelta($nation);
-            $food += $modifier->foodCapacityTonsDelta($nation);
-        }
-        if ($money < 0 || $food < 0) {
-            throw new DomainException('Effective Nation capacity cannot be negative.');
+        if ($this->modifiers !== []) {
+            throw new DomainException('Capacity modifier semantics are deferred until E-04 is decided.');
         }
 
-        return new NationCapacities($money, $food);
+        return new NationCapacities($baseMoney, $baseFood);
     }
 }

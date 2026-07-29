@@ -13,6 +13,7 @@ use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
 use App\Models\User;
 use App\Models\World;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -21,6 +22,28 @@ use Tests\TestCase;
 class CommandQueueAndSalePolicyTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_queue_read_validates_ruleset_without_locking_the_shared_world(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('読取国');
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+
+        $this->actingAs($user)->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue",
+        )->assertOk();
+
+        $worldQueries = array_values(array_filter(
+            $queries,
+            static fn (string $sql): bool => str_contains($sql, 'from "worlds"'),
+        ));
+        $this->assertNotEmpty($worldQueries);
+        $this->assertFalse(collect($worldQueries)->contains(
+            static fn (string $sql): bool => str_contains($sql, 'for update'),
+        ));
+    }
 
     public function test_member_can_add_list_reorder_and_cancel_without_executing_commands(): void
     {

@@ -11,6 +11,7 @@ use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\User;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -18,30 +19,24 @@ class NationCapacityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_resolver_uses_published_base_capacities_and_accepts_future_modifiers(): void
+    public function test_resolver_uses_published_base_capacities_without_modifiers(): void
     {
         [, $nation] = $this->nation('容量国');
         $base = app(NationCapacityResolver::class)->resolve($nation);
 
         $this->assertSame(9_999, $base->money);
         $this->assertSame(999_900, $base->foodTons);
+    }
 
-        $modifier = new class implements CapacityModifier
-        {
-            public function moneyCapacityDelta(Nation $nation): int
-            {
-                return 25;
-            }
+    public function test_modifier_boundary_stays_fail_closed_until_e04_is_decided(): void
+    {
+        [, $nation] = $this->nation('容量拡張保留国');
+        $modifier = new class implements CapacityModifier {};
 
-            public function foodCapacityTonsDelta(Nation $nation): int
-            {
-                return 1_500;
-            }
-        };
-        $effective = (new NationCapacityResolver([$modifier]))->resolve($nation);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Capacity modifier semantics are deferred until E-04 is decided.');
 
-        $this->assertSame(10_024, $effective->money);
-        $this->assertSame(1_001_400, $effective->foodTons);
+        (new NationCapacityResolver([$modifier]))->resolve($nation);
     }
 
     public function test_money_credit_never_exceeds_capacity_and_reports_actual_application(): void

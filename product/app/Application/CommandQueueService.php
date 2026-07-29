@@ -281,7 +281,8 @@ final class CommandQueueService
         return DB::transaction(function () use ($user, $nation, $mapSpace): NationCommandQueue {
             $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
-            $this->lockWorldForQueue($nation);
+            $world = World::query()->whereKey($nation->world_id)->firstOrFail();
+            $this->assertUniversalQuantityRuleset($world);
 
             return NationCommandQueue::query()->firstOrCreate(
                 ['nation_id' => $nation->id],
