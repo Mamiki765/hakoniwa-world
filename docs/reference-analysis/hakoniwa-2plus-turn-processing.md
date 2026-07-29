@@ -6,6 +6,24 @@
 
 更新直前に `lastTime += unitTime` を1回行い、`Turn::main` を呼ぶ（`main.c:72-76`）。遅延ターンを一度に全消化するループはない。
 
+配布物にcron設定や専用turn executableはない。通常のCGI requestが`main()`を通るたびに期限を判定し、期限到来時は本来の画面modeを`MODE_TURN`へ置き換える。したがって外部から定期的にHTTP requestを送る運用は考えられるが、このarchiveだけから呼出元、間隔、成功判定、再試行方法は確定できない。`Makefile`も`hakow.cgi`のbuildだけを担う。
+
+`main()`はinfo読込前に`Util::lock()`を呼ぶ（`main.c:21-23`）。`Util::lock`はdata directoryをopenして`flock(LOCK_EX)`を呼ぶが、標準的な`flock`の0=成功という契約と分岐が逆に見えるため、そのまま新作の排他仕様とはしない（`util.c:123-142`）。新作はPostgreSQL advisory lockを正本にする。
+
+## 主要な呼び出し関係
+
+| 入口 | 呼出先 | 役割 |
+|---|---|---|
+| `main` (`main.c:3-147`) | `HakoIO::cgiInput` → `Util::lock` → `HakoIO::readInfoFile` | CGI入力、全体排他、保存済み状態読込 |
+| `main` (`main.c:35-41,72-76`) | `Turn::main` | 期限到来またはdebug入力による1ターン実行 |
+| `Turn::main` (`turn.c:9-148`) | `Map`, `Island`, `Command`, `HakoIO`, `Mentenance` | 1ターン全体の順序を固定 |
+| `Command::exec` (`command.c:74-103`) | `Com::exec` | 先頭計画の実行、削除、保持、次計画への再帰 |
+| `Com::exec` (`command.c:127-624`) | `Com::buildCommand`, `Map`, `Info`, `HakoIO::logOutput` | command固有の検証、費用、quantity、即時効果または遅延効果 |
+| `Map::process` (`map.c:264-739`) | 災害、人口、森林、ミサイル、怪獣処理 | セル乱数順のその場更新 |
+| `Map::globalDisaster` (`map.c:742-819`) | 災害function群、`disMonster` | 世界単位の災害・怪獣出現 |
+| `Map::estimate` / `Land::estimate` (`map.c:1293-1326`) | `Island::clear` | 変更後セルから人口・面積・施設規模を再集計 |
+| `HakoIO::writeMapFile` / `writeInfoFile` | `Map::output` / `Info::output` | 別fileへの非原子的な保存 |
+
 ## 全体の処理順序
 
 `Turn::main` の確定順序は次の通り（`turn.c:9-148`）。
@@ -54,6 +72,97 @@
 各国家の `command<ID>.cgi` を読み、先頭だけを実行し、直後に同ファイルへ書き戻す（`turn.c:49-55`; `Command::exec`, `command.c:74-103`）。無効コマンドはキューから除去し、再帰的に次を同ターン中に試す。ターンを消費しないコマンドも次を実行し得る。回数指定の農場・工場・採掘場等は `amount` を減らして先頭に残せる。
 
 ミサイルコマンドはこの時点では国家一時状態 `tx`, `ty`, `command`, `amount` を設定するだけで、各ミサイル基地セルの処理時に実射する（`command.c:535-548`; `Map::process`, `map.c:411-641`）。怪獣派遣も対象国の `amonster` を増やし、対象国の有人口町セルが処理された時点で出現する（`command.c:550-564`; `map.c:295-304`）。
+
+### 戻り値とturn消費
+
+`Com::exec`の戻り値はqueue制御でもある。
+
+| 戻り値 | `Command::exec`の扱い | 代表例 |
+|---:|---|---|
+| `0` | 先頭を削除し、同じturnに次の先頭を再帰実行 | validation失敗、資金・食料不足、地ならし、援助、食料輸出 |
+| `1` | 先頭を削除し、この国家のcommand phaseを終了 | 通常成功、資金繰り、ミサイル予約 |
+| `2` | 先頭itemをその位置に保持し、この国家のcommand phaseを終了 | 残quantityがある農場・工場・採掘場建設、放棄差替え |
+
+資金繰りは明示計画がなくてもqueue末尾へ常に補充される`DoNothing`で、資金10億円を加算し`absent`を増やす（`command.c:89-96,144-159`）。失敗は例外ではなく数値logを生成し、itemを除去して次へ進む。費用は共通の事前確認後、各handlerが地形・対象を再検証して成功させる直前に差し引く。失敗経路では原則差し引かない。ミサイルは予約時に差し引かず、後の基地セル処理で1発ごとに差し引く（`map.c:441-448`）。
+
+### `amount`（新作の`quantity`）の複数の意味
+
+保存形式は`kind target x y amount`であり、`amount`は0..99へ補正される（`command.c:105-142`）。意味はcommand handlerが決めており、queue自体は解釈しない。
+
+| command | 旧作での意味 | 根拠 | 新作の境界 |
+|---|---|---|---|
+| 農場・工場・採掘場 | 1回成功後に1減らし、残数があれば先頭へ保持 | `command.c:484-507,626-697` | handlerがdecrementとretain-headを返す |
+| 海底油田の掘削 | 同一turnの予算倍率。`min(cost*amount, money)`を一括支出し、`floor(spend/cost)%`で抽選 | `command.c:320-341` | handlerが一括回数、費用、抽選を所有 |
+| ミサイル | 発射上限。0は実質無制限の1000へ置換 | `command.c:535-548` | handler/後続combat phaseが消費 |
+| 記念碑 | 繰返し回数ではなくdesign番号。種類数以上は0 | `command.c:471-477` | handlerがparameter valueとして解釈 |
+| 資金・食料援助、食料輸出 | 100保存単位の倍数。0でも残高があれば最低100単位 | `command.c:566-603` | handlerが送付・売却単位とcapacityを判断 |
+
+このため新作の`CommandQueueService`へdecrement、一括使用、design番号、費用倍率を戻してはならない。
+
+## 保存単位、表示桁、整数演算
+
+保存、計算、表示を追跡した結論は次の通り。`Island::output/input`は整数をそのまま保存し（`info.c:159-235`）、`Island::jsOut`が同じ整数をJavaScriptへ出し（`info.c:269-281`）、`hakow.js`のformatterが末尾桁を付加する。
+
+| 項目 | 旧作の保存値1単位 | 旧作の表示 | 現在の正本 | 旧→現在 |
+|---|---:|---|---:|---:|
+| 人口 | 100人 | 保存値 + `00人` | 1人 | ×100 |
+| 食料 | 100トン | 保存値 + `00トン` | 1トン | ×100 |
+| 資金 | 1億円 | 保存値 + `億円` | 1億円 | ×1 |
+| 農場規模 | 1,000人分 | param + `0` + `00人規模` | 既存scale 1、`scale_unit_people=1,000` | scaleは×1、人数は×1,000 |
+| 工場規模 | 1,000人分 | 同上 | 既存scale 1、`scale_unit_people=1,000` | 同上 |
+| 採掘場規模 | 1,000人分 | 同上 | 既存scale 1、`scale_unit_people=1,000` | 同上 |
+| 農場生産 | scale 1につき食料10保存単位 | 1,000トン | food inventory 1トン | scale 1につき1,000トン |
+| 工場・採掘場の収入能力 | 稼働可能scale 1につき1億円 | 億円 | inventory方式を予定 | 1,000労働者につき1億円相当 |
+
+表示根拠は`hakow.js:18-31,551-593,700-718`、保存根拠は`info.c:159-235`、施設集計根拠は`Land::estimate`（`map.c:1293-1326`）である。初期村の`param=5`が500人とコメントされることも人口換算を裏付ける（`new_island.c:153-169`）。
+
+`Island::income`の式を現在単位へ展開すると次になる（`info.c:285-303`）。
+
+```text
+農業労働者 = min(population, farm_scale × 1,000人)
+食料生産 = 農業労働者 × 1トン
+非農業労働者 = max(0, population - 農業労働者)
+工業・採掘の稼働scale = min(floor(非農業労働者 / 1,000人),
+                                factory_scale + mine_scale)
+旧作の直接資金収入 = 稼働scale × 1億円
+食料消費 = population × 0.2トン
+```
+
+C/C++整数除算は非負値について切捨てである。`(pop - farm*10)/10`、`food100/100`、余剰食料の`r/10`、食料輸出の`c/10`はすべて切捨てる。明示的な切上げは確認できない。他国向け資金表示だけは`((money + 500) / 1000) * 1000`で1,000億円単位へ四捨五入する（`info.c:271-280`）。地図表示側は`Math.floor`を怪獣種類等に使うが、国家資産換算の切上げには使わない。
+
+### 新作の工業品・鉱物inventoryへの置換
+
+旧作は工業と採掘を区別せず、合計稼働scaleをそのturnに直接整数億円へ変える。新作ではこの副作用を移植しない。
+
+```text
+工場労働者1人 → industrial_goods 1単位
+採掘場労働者1人 → minerals 1単位
+inventory 1,000単位 → 売却可能額1億円
+1,000未満とmoney capacityで売れない分 → inventoryに残す
+```
+
+これにより旧作の「1,000労働者で1億円」という価値対応を保ちつつ、moneyを整数億円のまま維持できる。PR #7はproductionと自動売却を実行せず、整数quote/resultの境界だけを追加する。
+
+## 資金・食料の保有上限
+
+上限はconfigではなく`Turn::main`へ直接埋め込まれている（`turn.c:74-91`）。
+
+| 項目 | 旧作上限 | 旧作1単位 | 現在の基礎上限 |
+|---|---:|---:|---:|
+| 資金 | 9,999 | 1億円 | 9,999億円 |
+| 食料 | 9,999 | 100トン | 999,900トン |
+
+適用順は食料、資金である。食料が9,999を超えると、超過全量を在庫から除き、`floor(超過/10)`億円を加算する。その後moneyを9,999へ切り詰める。食料超過の10保存単位未満、money上限を超えた換金額は失われる。援助は送信側残高を先に全量消費し、受信側へ全量加算するが、最終上限処理で受信側超過が失われる（`command.c:566-603`; `turn.c:82-91`）。費用支払後の空きcapacityに合わせて援助量や売却量を減らす処理はない。
+
+森林売却、油田収入、怪獣残骸、埋蔵金、資金繰り、工場・採掘場収入も途中では上限を見ず、turn末に一括切捨てる。上限を増やす施設、item、command、設定値はこのsourceから確認できない。`rename.c:69-75`の特別password経路はmoney/foodを9,999へ直接設定する管理用debug動作であり、capacity modifierではない。
+
+新作では超過を黙って消さない共通加算結果`before/requested/applied/overflow/after/capacity`を使う。food capacityは固定resource keyではなく`resource_definitions.category = food`の国家別合計へ適用する。工業品・鉱物の売却は受取可能なmoney分だけinventoryを消費し、売れない整数単位と1,000未満の端数を残す。
+
+## 途中失敗と原子性
+
+旧作はturn番号を処理冒頭で増やし、`lastTime`を`Turn::main`呼出前に進める。各国command fileはその国の実行直後に上書きされる一方、mapとinfoはturn末に別々のfileへ上書きされる（`main.c:72-76`; `turn.c:9-14,49-55,133-143`）。write functionはopen失敗を0で返すが、`Turn::main`は戻り値を検査しない（`hako_io.c:62-76,100-151`）。process crash、disk error、途中例外をrollbackする仕組みはなく、commandだけ更新、mapだけ更新、時刻だけ更新という部分状態が起こり得る。
+
+新作はturn run履歴だけをtransaction外で開始・失敗記録に使い、game state、event、current turnはWorld単位の単一PostgreSQL transactionで確定する。失敗時はgame stateをrollbackし、同じrun/seedによる明示的な再試行境界を残す。
 
 ## セル単位処理
 

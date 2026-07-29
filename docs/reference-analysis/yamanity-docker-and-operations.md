@@ -34,6 +34,44 @@ infra/app/cronには毎分 php artisan schedule:run がある。しかし:
 
 したがってlocal composeだけで自動turnが進むとは確認できない。Makefileのnext-turnは手動繰返しである（Makefile:53-56）。
 
+### cronからturnまでを追跡した結果
+
+| 確認項目 | source上の事実 | 結論 |
+|---|---|---|
+| cron設定 | `infra/app/cron:1`は`* * * * * www-data cd /app && /usr/local/bin/php artisan schedule:run >> /var/log/app/schedule.log 2>&1` | 毎分schedulerを呼ぶ意図 |
+| cronから呼ぶcommand | `schedule:run` | turn commandを直接は呼ばない |
+| Laravel schedule | `app/app/Console/Kernel.php:16-19`は空 | `execute:turn`への接続なし |
+| turn command | `ExecuteTurn::$signature = execute:turn` (`ExecuteTurn.php:29-56`) | 手動またはrepository外の起動元が必要 |
+| turn間隔 | `TURN_UPDATE_MINUTES`既定240分 (`app/config/app.php:225-227`) | 次回予定時刻の表示用。command自身はdue判定しない |
+| timezone | Laravelとphp.iniが`Asia/Tokyo`、MySQL containerも`TZ=Asia/Tokyo` | calendar表示はJST |
+| Docker組込み | imageはcron packageをinstallするがcron fileをcopyせずdaemonも起動しない | local composeでcronは稼働しない |
+| log | cron案は`/var/log/app/schedule.log`、Supervisorは`storage/logs/laravel.log`をstdoutへtail | 実際のcron log directory作成も未確認 |
+| 成功・失敗 | `execute:turn`は成功時`Command::SUCCESS`、例外は再throw | process exit codeで判定可能 |
+| 二重実行防止 | turn番号uniqueのみ。mutex、`withoutOverlapping`、DB lock、run rowなし | 並行計算を事前拒否しない |
+| 長時間処理 | PHP `max_execution_time=300`だがCLIへの実効性は保証にならず、timeout/lease/checkpointなし | 次回起動との重複を防げない |
+| 再実行 | 例外時DB transactionはrollbackするがretry/backoff/attempt記録なし | 運用者またはrepository外scheduler依存 |
+
+`ExecuteTurn::handle`は最新turn取得、新turn row作成、全島snapshot読込から保存までを1つの`DB::transaction`に入れる（`ExecuteTurn.php:56-360`）。成功後に`prune:logs`を別実行するため、その失敗は確定済みturnを戻さない。例外時はwebhookへ同期POST後に再throwする（`ExecuteTurn.php:361-379`）。外部通知例外が元のturn失敗を覆う可能性があるため、新作では通知をturn transactionと失敗記録から分離する。
+
+Cloud Buildは同じimageでCloud Run Job `hakoniwa-develop-exec-turn`を更新し、task数を1にする（`infra/cloudbuild/develop.yaml:99-118`）。ただしJobのcommand/args、Cloud Scheduler設定、起動interval、retry policyはrepositoryにない。image既定CMDはSupervisorなので、このfileだけではJobが`execute:turn`を実行することも確認できない。
+
+### Hakoniwa Worldへの採用判断
+
+採用する考え方は「cronはthin triggerで、同じArtisan/Application Serviceを手動・定期実行から共有する」「turn全体をDB transactionで囲む」「CLI exit codeと標準出力を運用監視へ渡す」である。
+
+現行OCI/ComposeはWebとPostgreSQLだけで、1時間に1回の単一World triggerにqueue workerや常駐scheduler containerは過剰である。PR #7ではOCI host cronから、checkoutに含むwrapperを通して次を呼ぶ方式を採用する。
+
+```text
+OCI host cron (Asia/Tokyo、毎時0分)
+→ optional host flock
+→ docker compose exec -T --user www-data hakoniwa-web
+→ php artisan hakoniwa:turn:run --world=shared-world --source=cron
+→ TurnRunner
+→ PostgreSQL advisory lock + turn transaction
+```
+
+`flock`は同一host上の不要なprocess生成を減らす補助であり、正本排他はLaravel側のWorld advisory lockと`(world_id,target_turn)`一意制約である。既存`hakoniwa-web`へcron daemonを同居させず、production OCIへの実登録もこのPRでは行わない。World数、実行時間、outbox量が常駐processを正当化した時点で専用scheduler/worker containerを再評価する。
+
 ## DB・volume・backup
 
 DBはutf8mb4_binで初期化する。compose/init.sqlには固定の開発credentialが平文で入るため、公開本番秘密として再利用してはならない。DB volumeはlocal driver。dump、point-in-time recovery、backup service、restore rehearsalはrepoにない。
@@ -62,7 +100,7 @@ deploy imageはcomposer installをno-devなしで実行し、APP_ENVと秘密を
 
 ## 新作で必要なサービス境界
 
-今回composeは変更しない。将来候補:
+今回composeへcron daemonは追加しない。将来候補:
 
 - hakoniwa-web: stateless HTTP/API、Vue assets。
 - hakoniwa-worker: outbox通知、非turn background jobs。
