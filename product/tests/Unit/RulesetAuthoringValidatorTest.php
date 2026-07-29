@@ -237,10 +237,10 @@ class RulesetAuthoringValidatorTest extends TestCase
     }
 
     #[DataProvider('supportedFacilityVisibilityPolicyProvider')]
-    public function test_supported_facility_visibility_policies_are_valid(string $policy): void
+    public function test_supported_facility_visibility_policies_are_valid_for_other_facilities(string $policy): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
-        $settings['facility_definitions']['missile_base']['visibility_policy'] = $policy;
+        $settings['facility_definitions']['farm']['visibility_policy'] = $policy;
 
         $summary = app(RulesetAuthoringValidator::class)->validate($settings);
 
@@ -259,11 +259,24 @@ class RulesetAuthoringValidatorTest extends TestCase
     public function test_unsupported_facility_visibility_policy_is_rejected(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
-        $settings['facility_definitions']['missile_base']['visibility_policy'] = 'disgused';
+        $settings['facility_definitions']['farm']['visibility_policy'] = 'disgused';
 
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage(
-            'ruleset.facility_definitions.missile_base.visibility_policy must be one of public, disguised',
+            'ruleset.facility_definitions.farm.visibility_policy must be one of public, disguised',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_missile_base_must_use_disguised_visibility_policy(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['missile_base']['visibility_policy'] = 'public';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.missile_base.visibility_policy must be disguised',
         );
 
         app(RulesetAuthoringValidator::class)->validate($settings);
@@ -610,10 +623,47 @@ class RulesetAuthoringValidatorTest extends TestCase
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
         $settings['initial_island_reservation_radius'] = 29;
+        $settings['minimum_capital_distance'] = 1;
 
         $summary = app(RulesetAuthoringValidator::class)->validate($settings);
 
         $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_minimum_capital_distance_may_equal_maximum_candidate_separation(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_island_reservation_radius'] = 5;
+        $settings['minimum_capital_distance'] = 74;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    #[DataProvider('oversizedMinimumCapitalDistanceProvider')]
+    public function test_minimum_capital_distance_cannot_exceed_maximum_candidate_separation(int $distance): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_island_reservation_radius'] = 5;
+        $settings['minimum_capital_distance'] = $distance;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.minimum_capital_distance must be at most 74 '
+            .'for the initial bounds and reservation radius',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{int}> */
+    public static function oversizedMinimumCapitalDistanceProvider(): array
+    {
+        return [
+            'one beyond the maximum' => [75],
+            'oversized authored value' => [1000],
+        ];
     }
 
     public function test_reservation_radius_must_leave_a_capital_candidate_inside_initial_bounds(): void

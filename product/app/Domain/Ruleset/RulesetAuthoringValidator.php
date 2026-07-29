@@ -5,6 +5,7 @@ namespace App\Domain\Ruleset;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
+use App\Domain\Map\GridCoordinate;
 use DomainException;
 use JsonException;
 
@@ -114,7 +115,11 @@ final class RulesetAuthoringValidator
             throw new DomainException('Ruleset initial bounds must be x=0..59 and y=0..59.');
         }
 
-        $this->integer($settings['minimum_capital_distance'], 'ruleset.minimum_capital_distance', 0);
+        $minimumCapitalDistance = $this->integer(
+            $settings['minimum_capital_distance'],
+            'ruleset.minimum_capital_distance',
+            0,
+        );
         $initialPopulation = $this->integer(
             $settings['capital_initial_population'],
             'ruleset.capital_initial_population',
@@ -190,6 +195,19 @@ final class RulesetAuthoringValidator
             throw new DomainException(
                 'ruleset.initial_island_reservation_radius must be at most '
                 ."{$maximumReservationRadius} so the initial bounds contain a Capital candidate.",
+            );
+        }
+        $maximumCapitalDistance = $this->maximumCapitalDistance(
+            $xMin,
+            $xMax,
+            $yMin,
+            $yMax,
+            $reservationRadius,
+        );
+        if ($minimumCapitalDistance > $maximumCapitalDistance) {
+            throw new DomainException(
+                'ruleset.minimum_capital_distance must be at most '
+                ."{$maximumCapitalDistance} for the initial bounds and reservation radius.",
             );
         }
 
@@ -335,7 +353,18 @@ final class RulesetAuthoringValidator
 
         $path = 'ruleset.facility_definitions.missile_base';
         $missileBase = $this->map($settings['facility_definitions']['missile_base'], $path);
-        $this->requireKeys($missileBase, ['initial_experience', 'maximum_experience'], $path);
+        $this->requireKeys(
+            $missileBase,
+            ['visibility_policy', 'initial_experience', 'maximum_experience'],
+            $path,
+        );
+        $visibilityPolicy = $this->persistedString(
+            $missileBase['visibility_policy'],
+            "{$path}.visibility_policy",
+        );
+        if ($visibilityPolicy !== FacilityVisibilityPolicy::Disguised->value) {
+            throw new DomainException("{$path}.visibility_policy must be disguised.");
+        }
         $initialExperience = $this->persistedNonNegativeInteger(
             $missileBase['initial_experience'],
             "{$path}.initial_experience",
@@ -427,6 +456,34 @@ final class RulesetAuthoringValidator
                 }
             }
         }
+    }
+
+    private function maximumCapitalDistance(
+        int $xMin,
+        int $xMax,
+        int $yMin,
+        int $yMax,
+        int $reservationRadius,
+    ): int {
+        $candidateXMin = $xMin + $reservationRadius;
+        $candidateXMax = $xMax - $reservationRadius;
+        $candidateYMin = $yMin + $reservationRadius;
+        $candidateYMax = $yMax - $reservationRadius;
+        $corners = [
+            new GridCoordinate($candidateXMin, $candidateYMin),
+            new GridCoordinate($candidateXMin, $candidateYMax),
+            new GridCoordinate($candidateXMax, $candidateYMin),
+            new GridCoordinate($candidateXMax, $candidateYMax),
+        ];
+        $maximumDistance = 0;
+
+        foreach ($corners as $index => $corner) {
+            foreach (array_slice($corners, $index + 1) as $otherCorner) {
+                $maximumDistance = max($maximumDistance, $corner->distanceTo($otherCorner));
+            }
+        }
+
+        return $maximumDistance;
     }
 
     /**
