@@ -71,7 +71,7 @@ final class SalePolicyService
     {
         $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
         $policy = $settings['default_sale_policy'] ?? null;
-        if (! SalePolicy::isSupported($policy)) {
+        if (! SalePolicy::isSupportedRulesetDefault($policy)) {
             throw new DomainException('Worldのdefault sale policy設定が不正です。');
         }
 

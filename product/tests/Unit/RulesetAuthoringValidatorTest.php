@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Economy\SalePolicy;
 use App\Domain\Ruleset\RulesetAuthoringCollection;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use DomainException;
@@ -44,12 +45,14 @@ class RulesetAuthoringValidatorTest extends TestCase
         }
     }
 
-    public function test_architecture_chunk_size_and_independent_initial_bounds_are_valid(): void
+    public function test_architecture_chunk_size_and_canonical_initial_bounds_are_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
         $settings['chunk_size'] = 16;
-        $settings['initial_x_max'] = 63;
-        $settings['initial_y_max'] = 63;
+        $settings['initial_x_min'] = 0;
+        $settings['initial_x_max'] = 59;
+        $settings['initial_y_min'] = 0;
+        $settings['initial_y_max'] = 59;
 
         $summary = app(RulesetAuthoringValidator::class)->validate($settings);
 
@@ -77,7 +80,34 @@ class RulesetAuthoringValidatorTest extends TestCase
         ];
     }
 
-    #[DataProvider('supportedSalePolicyProvider')]
+    #[DataProvider('invalidInitialBoundsProvider')]
+    public function test_noncanonical_initial_bounds_are_rejected(array $bounds): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings = [...$settings, ...$bounds];
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Ruleset initial bounds must be x=0..59 and y=0..59');
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{array<string, int>}> */
+    public static function invalidInitialBoundsProvider(): array
+    {
+        return [
+            'zero through sixty-three' => [[
+                'initial_x_min' => 0,
+                'initial_x_max' => 63,
+                'initial_y_min' => 0,
+                'initial_y_max' => 63,
+            ]],
+            'negative x minimum' => [['initial_x_min' => -1]],
+            'short y maximum' => [['initial_y_max' => 58]],
+        ];
+    }
+
+    #[DataProvider('supportedDefaultSalePolicyProvider')]
     public function test_supported_default_sale_policies_are_valid(string $policy): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
@@ -89,26 +119,120 @@ class RulesetAuthoringValidatorTest extends TestCase
     }
 
     /** @return array<string, array{string}> */
-    public static function supportedSalePolicyProvider(): array
+    public static function supportedDefaultSalePolicyProvider(): array
     {
         return [
             'sell all' => ['sell_all'],
             'stockpile' => ['stockpile'],
-            'keep amount' => ['keep_amount'],
         ];
     }
 
-    public function test_unsupported_default_sale_policy_is_rejected(): void
+    #[DataProvider('unsupportedDefaultSalePolicyProvider')]
+    public function test_unsupported_default_sale_policy_is_rejected(string $policy): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
-        $settings['default_sale_policy'] = 'stockplie';
+        $settings['default_sale_policy'] = $policy;
 
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage(
-            'ruleset.default_sale_policy must be one of sell_all, stockpile, keep_amount',
+            'ruleset.default_sale_policy must be one of sell_all, stockpile',
         );
 
         app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function unsupportedDefaultSalePolicyProvider(): array
+    {
+        return [
+            'runtime-only keep amount' => ['keep_amount'],
+            'typo' => ['stockplie'],
+        ];
+    }
+
+    public function test_runtime_sale_policy_still_supports_keep_amount(): void
+    {
+        $this->assertTrue(SalePolicy::isSupported('keep_amount'));
+        $this->assertContains('keep_amount', SalePolicy::values());
+        $this->assertFalse(SalePolicy::isSupportedRulesetDefault('keep_amount'));
+        $this->assertNotContains('keep_amount', SalePolicy::rulesetDefaultValues());
+    }
+
+    #[DataProvider('supportedFacilityVisibilityPolicyProvider')]
+    public function test_supported_facility_visibility_policies_are_valid(string $policy): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['missile_base']['visibility_policy'] = $policy;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function supportedFacilityVisibilityPolicyProvider(): array
+    {
+        return [
+            'public' => ['public'],
+            'disguised' => ['disguised'],
+        ];
+    }
+
+    public function test_unsupported_facility_visibility_policy_is_rejected(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['facility_definitions']['missile_base']['visibility_policy'] = 'disgused';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.facility_definitions.missile_base.visibility_policy must be one of public, disguised',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_forest_terrain_quantity_is_valid(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['terrain_quantities'] = [
+            'forest' => $settings['terrain_quantities']['forest'],
+        ];
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    #[DataProvider('missingForestTerrainQuantityProvider')]
+    public function test_forest_terrain_quantity_is_required(array $quantities): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['terrain_quantities'] = $quantities;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('ruleset.terrain_quantities must include forest');
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{array<string, mixed>}> */
+    public static function missingForestTerrainQuantityProvider(): array
+    {
+        return [
+            'empty' => [[]],
+            'only another terrain' => [[
+                'plain' => [
+                    'key' => 'trees',
+                    'label' => '木',
+                    'unit' => '本',
+                    'initial_quantity' => 1,
+                    'minimum_quantity' => 0,
+                    'maximum_quantity' => 200,
+                    'growth_increment' => 1,
+                    'growth_rule_key' => 'forest_growth',
+                ],
+            ]],
+        ];
     }
 
     public function test_duplicate_authoring_version_keys_are_rejected(): void

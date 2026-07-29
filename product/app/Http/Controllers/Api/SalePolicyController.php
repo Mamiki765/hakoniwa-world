@@ -30,7 +30,7 @@ final class SalePolicyController extends Controller
         $policies = NationResourceSalePolicy::query()->where('nation_id', $nation->id)->get()->keyBy('resource_definition_id');
         $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
         $defaultPolicy = $rules['default_sale_policy'] ?? null;
-        if (! SalePolicy::isSupported($defaultPolicy)) {
+        if (! SalePolicy::isSupportedRulesetDefault($defaultPolicy)) {
             throw new DomainException('Worldのdefault sale policy設定が不正です。');
         }
 

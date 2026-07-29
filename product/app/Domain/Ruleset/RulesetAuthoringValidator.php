@@ -4,11 +4,20 @@ namespace App\Domain\Ruleset;
 
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Economy\SalePolicy;
+use App\Domain\Facility\FacilityVisibilityPolicy;
 use DomainException;
 
 final class RulesetAuthoringValidator
 {
     private const ARCHITECTURE_CHUNK_SIZE = 16;
+
+    private const INITIAL_X_MIN = 0;
+
+    private const INITIAL_X_MAX = 59;
+
+    private const INITIAL_Y_MIN = 0;
+
+    private const INITIAL_Y_MAX = 59;
 
     /** @var list<string> */
     private const TERRAIN_KEYS = ['sea', 'shallow', 'wasteland', 'plain', 'forest', 'mountain'];
@@ -60,8 +69,11 @@ final class RulesetAuthoringValidator
         $xMax = $this->integer($settings['initial_x_max'], 'ruleset.initial_x_max');
         $yMin = $this->integer($settings['initial_y_min'], 'ruleset.initial_y_min');
         $yMax = $this->integer($settings['initial_y_max'], 'ruleset.initial_y_max');
-        if ($xMin > $xMax || $yMin > $yMax) {
-            throw new DomainException('Ruleset initial coordinate minima must not exceed their maxima.');
+        if ($xMin !== self::INITIAL_X_MIN
+            || $xMax !== self::INITIAL_X_MAX
+            || $yMin !== self::INITIAL_Y_MIN
+            || $yMax !== self::INITIAL_Y_MAX) {
+            throw new DomainException('Ruleset initial bounds must be x=0..59 and y=0..59.');
         }
 
         $this->integer($settings['minimum_capital_distance'], 'ruleset.minimum_capital_distance', 0);
@@ -81,9 +93,10 @@ final class RulesetAuthoringValidator
 
         $this->integer($settings['initial_money'], 'ruleset.initial_money', 0);
         $defaultSalePolicy = $this->string($settings['default_sale_policy'], 'ruleset.default_sale_policy');
-        if (! SalePolicy::isSupported($defaultSalePolicy)) {
+        if (! SalePolicy::isSupportedRulesetDefault($defaultSalePolicy)) {
             throw new DomainException(
-                'ruleset.default_sale_policy must be one of '.implode(', ', SalePolicy::values()).'.',
+                'ruleset.default_sale_policy must be one of '
+                .implode(', ', SalePolicy::rulesetDefaultValues()).'.',
             );
         }
         $this->integer($settings['command_queue_limit'], 'ruleset.command_queue_limit', 1);
@@ -188,6 +201,9 @@ final class RulesetAuthoringValidator
     private function validateTerrainQuantities(array $settings): void
     {
         $quantities = $this->map($settings['terrain_quantities'], 'ruleset.terrain_quantities');
+        if (! array_key_exists('forest', $quantities)) {
+            throw new DomainException('ruleset.terrain_quantities must include forest.');
+        }
         foreach ($quantities as $terrainKey => $quantity) {
             $this->reference($terrainKey, self::TERRAIN_KEYS, 'ruleset.terrain_quantities');
             $path = "ruleset.terrain_quantities.{$terrainKey}";
@@ -227,7 +243,13 @@ final class RulesetAuthoringValidator
             ], $path);
             $this->string($definition['name'], "{$path}.name");
             $this->string($definition['asset_key'], "{$path}.asset_key");
-            $this->string($definition['visibility_policy'], "{$path}.visibility_policy");
+            $visibilityPolicy = $this->string($definition['visibility_policy'], "{$path}.visibility_policy");
+            if (! FacilityVisibilityPolicy::isSupported($visibilityPolicy)) {
+                throw new DomainException(
+                    "{$path}.visibility_policy must be one of "
+                    .implode(', ', FacilityVisibilityPolicy::values()).'.',
+                );
+            }
             $this->nullableReference($definition['build_command_key'], $commandKeys, "{$path}.build_command_key");
             $this->nullableReference(
                 $definition['production_definition_key'],
