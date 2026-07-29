@@ -629,6 +629,31 @@ class RulesetAuthoringValidatorTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
+    public function test_minimum_shallow_cells_may_equal_reservation_cell_count(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_island_reservation_radius'] = 5;
+        $settings['initial_island_minimum_shallow_cells'] = 91;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_minimum_shallow_cells_cannot_exceed_reservation_cell_count(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_island_reservation_radius'] = 5;
+        $settings['initial_island_minimum_shallow_cells'] = 92;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.initial_island_minimum_shallow_cells cannot exceed the reservation cell count 91',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     #[DataProvider('validProductionDecimalProvider')]
     public function test_production_per_scale_accepts_values_exactly_persistable_as_decimal_16_4(
         int|float $value,

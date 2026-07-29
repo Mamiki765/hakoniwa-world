@@ -213,7 +213,7 @@ final class RulesetAuthoringValidator
         $this->validateFacilities($settings, $commandKeys, $productionKeys);
         $this->validateCommands($settings, $resourceKeys, $facilityKeys);
         $this->validateProduction($settings, $resourceKeys, $facilityKeys);
-        $this->validateVersionAdditions($settings, $resourceKeys);
+        $this->validateVersionAdditions($settings, $resourceKeys, $reservationRadius);
 
         return [
             'key' => $key,
@@ -518,18 +518,29 @@ final class RulesetAuthoringValidator
      * @param  array<string, mixed>  $settings
      * @param  list<string>  $resourceKeys
      */
-    private function validateVersionAdditions(array $settings, array $resourceKeys): void
+    private function validateVersionAdditions(
+        array $settings,
+        array $resourceKeys,
+        int $reservationRadius,
+    ): void
     {
         if (array_key_exists('development_plan_quantity', $settings)
             && ! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'])) {
             throw new DomainException('ruleset.development_plan_quantity does not match the canonical quantity contract.');
         }
         if (array_key_exists('initial_island_minimum_shallow_cells', $settings)) {
-            $this->integer(
+            $minimumShallowCells = $this->integer(
                 $settings['initial_island_minimum_shallow_cells'],
                 'ruleset.initial_island_minimum_shallow_cells',
                 0,
             );
+            $reservationCellCount = 1 + (3 * $reservationRadius * ($reservationRadius + 1));
+            if ($minimumShallowCells > $reservationCellCount) {
+                throw new DomainException(
+                    'ruleset.initial_island_minimum_shallow_cells cannot exceed '
+                    ."the reservation cell count {$reservationCellCount}.",
+                );
+            }
         }
         if (array_key_exists('base_money_capacity', $settings)) {
             $moneyCapacity = $this->integer(

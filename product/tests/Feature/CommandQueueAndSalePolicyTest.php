@@ -149,23 +149,21 @@ class CommandQueueAndSalePolicyTest extends TestCase
     public function test_queue_limit_is_enforced_from_the_versioned_ruleset_boundary(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('上限国');
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
-        $settings['key'] = 'test-command-queue-limit-v1';
-        $settings['command_queue_limit'] = 1;
-        $nation->world()->update([
-            'ruleset_version_id' => app(RulesetPublisher::class)->publish($settings)->id,
-        ]);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
-        $payload = [
-            'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(), 'expected_version' => 1,
-        ];
+        $this->actingAs($owner);
 
-        $this->actingAs($owner)->postJson($path, $payload)->assertCreated();
+        foreach (range(1, 20) as $expectedVersion) {
+            $this->postJson($path, [
+                'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
+                'request_key' => (string) Str::uuid(), 'expected_version' => $expectedVersion,
+            ])->assertCreated();
+        }
+
         $this->postJson($path, [
-            ...$payload, 'request_key' => (string) Str::uuid(), 'expected_version' => 2,
+            'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(), 'expected_version' => 21,
         ])->assertUnprocessable();
     }
 
