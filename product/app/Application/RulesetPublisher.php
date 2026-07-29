@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Ruleset\RulesetAuthoringValidator;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\ProductionDefinition;
@@ -12,9 +13,13 @@ use Illuminate\Support\Facades\DB;
 
 final class RulesetPublisher
 {
+    public function __construct(private readonly RulesetAuthoringValidator $validator) {}
+
     /** @param array<string, mixed> $settings */
     public function publish(array $settings): RulesetVersion
     {
+        $this->validator->validate($settings);
+
         $key = $settings['key'] ?? null;
         $version = $settings['version'] ?? null;
         if (! is_string($key) || $key === '' || ! is_int($version) || $version < 1) {
