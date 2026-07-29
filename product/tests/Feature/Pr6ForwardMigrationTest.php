@@ -25,7 +25,9 @@ class Pr6ForwardMigrationTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $pr7Migration = require database_path('migrations/2026_07_29_000000_publish_roadmap_pr7_ruleset.php');
+        $consistencyMigration = require database_path('migrations/2026_07_28_999999_enforce_queue_item_ruleset_consistency.php');
         $pr7Migration->down();
+        $consistencyMigration->down();
         $world->refresh();
         $user = app(AuthIdentityService::class)->authenticate(
             'discord',
@@ -113,6 +115,7 @@ class Pr6ForwardMigrationTest extends TestCase
         $rulesetMigration->up();
         $quantityMigration->up();
         $foodMigration->up();
+        $consistencyMigration->up();
 
         $targetRulesetId = DB::table('ruleset_versions')->where('key', 'roadmap-pr6-v1')->value('id');
         $this->assertSame($targetRulesetId, DB::table('worlds')->where('id', $world->id)->value('ruleset_version_id'));
