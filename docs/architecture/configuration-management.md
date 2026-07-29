@@ -28,6 +28,8 @@ ruleset versionは公開後に不変とし、変更は新しい一意なkey/vers
 
 Roadmap PR6は`roadmap-pr2-v1`を更新せず、`roadmap-pr6-v1`を新規公開する。forward-only migrationは`shared-world`が旧rulesetを参照している場合だけ新rulesetへ移し、queue itemのcommand definition参照を同じcommand keyの新定義へ付け替える。既適用migrationのrollbackやWorld再初期化を移行手段にしない。
 
+Roadmap PR7も既存snapshotを更新せず、基礎資金上限と基礎食料上限を含む`roadmap-pr7-v1`を新規公開する。`shared-world`の移行はWorld行を`SELECT FOR UPDATE`してから、Nation queue、queue itemの順にlockする。migration中は旧application processによる遅延insertも直列化するため、queue item tableへ短時間の`SHARE ROW EXCLUSIVE` lockを取得する。DBのdeferred constraint triggerは、queue itemが参照するcommand definitionとWorldの`ruleset_version_id`一致を通常書込み時にも強制する。移行前後に全queue itemを検証し、不一致が1件でもあればtransaction全体をrollbackする。`CommandQueueService`もWorld、Nation queue、queue itemの順にlockし、lock済みWorldからdefinitionを解決してinsert直前にruleset一致を再確認する。
+
 global catalogである`TerrainDefinition`、`FacilityDefinition`、`ResourceDefinition`もinitializerから上書きしない。欠けているrowだけ作成し、既存値がconfigと異なる場合は明示的migrationを要求して停止する。PR6のfood単位変更は専用migrationが既存food balanceを100倍し、catalogの単位を`ton`へ変更する。
 
 draft、scheduled、retired、管理画面での公開workflow、turn・災害schemaは空実装で先行させない。

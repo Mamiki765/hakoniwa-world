@@ -94,5 +94,28 @@ class Pr7ForwardMigrationTest extends TestCase
             'build_farm',
             $migratedItem->definition()->value('key'),
         );
+        $this->assertSame(
+            $pr7->id,
+            $migratedItem->definition()->value('ruleset_version_id'),
+        );
+
+        $migration->down();
+        $rolledBackItem = NationCommandQueueItem::query()->findOrFail($item->id);
+        $this->assertSame($pr6->id, $world->fresh()->ruleset_version_id);
+        $this->assertSame($pr6->id, $rolledBackItem->definition()->value('ruleset_version_id'));
+        $this->assertSame(
+            0,
+            DB::table('nation_command_queue_items')
+                ->join('nation_command_queues', 'nation_command_queues.id', '=', 'nation_command_queue_items.nation_command_queue_id')
+                ->join('nations', 'nations.id', '=', 'nation_command_queues.nation_id')
+                ->join('command_definitions', 'command_definitions.id', '=', 'nation_command_queue_items.command_definition_id')
+                ->join('worlds', 'worlds.id', '=', 'nations.world_id')
+                ->where('worlds.id', $world->id)
+                ->whereColumn('command_definitions.ruleset_version_id', '!=', 'worlds.ruleset_version_id')
+                ->count(),
+        );
+
+        $migration->up();
+        $this->assertSame($pr7->id, $world->fresh()->ruleset_version_id);
     }
 }
