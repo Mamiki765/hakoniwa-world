@@ -14,6 +14,7 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\User;
 use App\Models\World;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -57,6 +58,10 @@ class WorldResetCommandTest extends TestCase
         $identityAuditCount = DB::table('audit_events')
             ->where('event_type', 'auth.identity_registered')
             ->count();
+        $resetQueries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$resetQueries): void {
+            $resetQueries[] = strtolower($query->sql);
+        });
 
         $this->artisan('hakoniwa:world:reset', [
             '--world' => $world->key,
@@ -87,6 +92,20 @@ class WorldResetCommandTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')
             ->where('event_type', 'command.queued')
             ->count());
+
+        $worldLockIndex = null;
+        $queueItemDeleteIndex = null;
+        foreach ($resetQueries as $index => $sql) {
+            if ($worldLockIndex === null && str_contains($sql, 'from "worlds"') && str_contains($sql, 'for update')) {
+                $worldLockIndex = $index;
+            }
+            if ($queueItemDeleteIndex === null && str_contains($sql, 'delete from "nation_command_queue_items"')) {
+                $queueItemDeleteIndex = $index;
+            }
+        }
+        $this->assertIsInt($worldLockIndex);
+        $this->assertIsInt($queueItemDeleteIndex);
+        $this->assertLessThan($queueItemDeleteIndex, $worldLockIndex);
     }
 
     public function test_generator_failure_rolls_back_deletion_and_never_reports_success(): void

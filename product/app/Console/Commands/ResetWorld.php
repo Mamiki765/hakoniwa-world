@@ -69,9 +69,10 @@ final class ResetWorld extends Command
 
         try {
             DB::transaction(function () use ($world, $worldKey, $generator, $userCount, $identityCount): void {
-                $this->deleteWorldAuditEvents($world);
-                $this->deleteQueueItems($world);
-                World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail()->delete();
+                $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+                $this->deleteWorldAuditEvents($lockedWorld);
+                $this->deleteQueueItems($lockedWorld);
+                $lockedWorld->delete();
 
                 $generatedWorld = $generator->initialize();
                 if ($generatedWorld->key !== $worldKey) {
