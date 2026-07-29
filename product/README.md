@@ -5,6 +5,8 @@ Laravel API、OAuth callback、Vue 3 UI、世界・島生成、command queue、�
 主要な入口:
 
 - `php artisan hakoniwa:world:init`: 全面海の共有Worldを冪等初期化
+- `php artisan hakoniwa:turn:run --world=shared-world --dry-run`: turn pipelineとruleset snapshotを確認
+- `php artisan hakoniwa:turn:status --world=shared-world`: Worldとturn run履歴を確認
 - `/api/v1`: 認証済みJSON API
 - `resources/js/app.ts`: Vue entrypoint
 - `app/Application`: 世界生成、国家作成、配置、資源初期化
@@ -30,3 +32,6 @@ npm run build
 ```
 
 通常の起動・DB操作・OAuth設定はrepository rootの運用文書を参照してください。実際のsecretや原作GIFをこのdirectoryへ追加しないでください。
+
+production turnは必須phaseがstubの間は進みません。cron例と手動retry手順は
+`docs/operations/turn-cron.md`を参照してください。

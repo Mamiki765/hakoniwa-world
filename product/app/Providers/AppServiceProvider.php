@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Application\InitialIslandGenerator;
 use App\Application\LegacyInspiredInitialIslandGenerator;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\Turn\RandomTurnSeedGenerator;
+use App\Domain\Turn\TurnSeedGenerator;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Discord\Provider;
@@ -21,6 +23,7 @@ class AppServiceProvider extends ServiceProvider
             (int) config('hakoniwa.ruleset.chunk_size'),
         ));
         $this->app->bind(InitialIslandGenerator::class, LegacyInspiredInitialIslandGenerator::class);
+        $this->app->bind(TurnSeedGenerator::class, RandomTurnSeedGenerator::class);
     }
 
     /**

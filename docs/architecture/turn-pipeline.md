@@ -1,5 +1,10 @@
 # ターン処理パイプライン
 
+> PR #7 note: 下記の推奨フェーズ表は初期設計案であり、実装順の正本ではない。
+> 箱庭諸島2＋のsourceから確認した因果順と現在の安全なscaffoldは
+> `docs/architecture/turn-runner-scaffold.md`を正本とする。未決定の同時解決規則を
+> この初期案から暗黙に採用してはならない。
+
 ## 目的
 
 箱庭諸島2＋が持つ共有世界の処理順と、やまにてぃが持つApplication Service・DB transactionの方向性を、再実行可能で監査できる独立設計へ置き換える。
@@ -57,14 +62,18 @@ turn_runにmaster seedを保存し、用途ラベルと安定対象IDから派�
 
 ## transactionと再試行
 
-暫定案では1世界1ターンのゲーム状態、domain event、outboxを1 transactionで確定する。世界規模が大きくなり時間制限を超える場合は、次の順で対策する。
+A-07のDecisionとして、1世界1ターンのゲーム状態、domain event、outbox、`current_turn`を1つのPostgreSQL transactionで確定する。全phase成功時だけcommitし、途中例外ではゲーム状態をすべてrollbackする。`turn_runs`の開始・失敗監査はこのtransaction外へ残せるが、失敗したphaseのゲーム状態は残さない。
+
+transaction内で外部HTTP通信、通知送信、長時間の外部I/Oを行わない。通知配送等はcommit後の別境界とする。phaseごとの所要時間を`turn_runs`へ記録し、実command、全cell処理、災害を追加後にadvisory lock保持時間とtransaction時間を計測する。
+
+世界規模が大きくなり実運用で許容できない時間を超える場合は、次の順で対策する。
 
 1. 対象集合とクエリを最適化し、全セル走査を除く。
 2. bulk書込みと読取投影を分離する。
 3. 世界を安全に分割できるフェーズだけを並列計算し、確定順を統一する。
-4. 最後にcheckpoint型sagaを検討する。
+4. 最後にcheckpoint型sagaを別ADRとして検討する。
 
-途中commitだけを追加すると、攻撃だけ成功して収支が戻るなどの半端状態を生む。分割時はphase_runの入力hash、出力hash、再開条件、公開境界が必要である。
+現時点では部分commitやphase checkpointを実装しない。途中commitだけを追加すると、攻撃だけ成功して収支が戻るなどの半端状態を生む。分割を再検討するときはphase_runの入力hash、出力hash、再開条件、公開境界が必要である。
 
 ## 外部障害
 
