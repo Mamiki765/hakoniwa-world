@@ -48,6 +48,9 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.resources.0.unit', 'ton')
             ->assertJsonPath('data.resources.0.unit_label', 'トン')
             ->assertJsonPath('data.total_food_tons', 10_000)
+            ->assertJsonPath('data.food_total_tons', 10_000)
+            ->assertJsonPath('data.money_capacity', 9_999)
+            ->assertJsonPath('data.food_capacity_tons', 999_900)
             ->assertJsonPath('data.food_resources.0.balance', 10_000)
             ->json('data');
         $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->assertJsonPath('data.id', $nation['id']);
@@ -80,6 +83,9 @@ class ApiAndAssetTest extends TestCase
         $other = User::factory()->create();
         $otherResponse = $this->actingAs($other)->getJson("/api/v1/nations/{$nation['id']}")->assertOk();
         $otherResponse->assertJsonMissingPath('data.total_food_tons')
+            ->assertJsonMissingPath('data.money')
+            ->assertJsonMissingPath('data.money_capacity')
+            ->assertJsonMissingPath('data.food_capacity_tons')
             ->assertJsonMissingPath('data.food_resources')
             ->assertJsonMissingPath('data.resources');
     }

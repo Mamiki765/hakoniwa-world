@@ -19,7 +19,12 @@ export interface Nation {
     name: string;
     money: number;
     money_display: string;
+    money_capacity: number;
+    money_remaining_capacity: number;
     total_food_tons: number;
+    food_total_tons: number;
+    food_capacity_tons: number;
+    food_remaining_capacity_tons: number;
     food_resources: FoodResource[];
     resources: NationResource[];
     state: string;

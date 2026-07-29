@@ -14,6 +14,7 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\User;
+use App\Models\World;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Model;
@@ -43,8 +44,9 @@ final class CommandQueueService
         return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $quantity, $parameters, $position): array {
             $membership = $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
+            $world = $this->lockWorldForQueue($nation);
             $definition = CommandDefinition::query()
-                ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+                ->where('ruleset_version_id', $world->ruleset_version_id)
                 ->where('key', $commandKey)
                 ->where('enabled', true)
                 ->first();
@@ -64,6 +66,7 @@ final class CommandQueueService
             $duplicate = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('request_key', $requestKey)
+                ->lockForUpdate()
                 ->first();
             if ($duplicate !== null) {
                 return ['queue' => $queue, 'item' => $duplicate->load('definition')];
@@ -86,8 +89,9 @@ final class CommandQueueService
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
                 ->orderBy('queue_position')
+                ->lockForUpdate()
                 ->get();
-            $limit = $this->queueLimit($nation);
+            $limit = $this->queueLimit($world);
             if ($activeItems->count() >= $limit) {
                 throw new DomainException("command queueの上限{$limit}件に達しています。");
             }
@@ -107,6 +111,10 @@ final class CommandQueueService
                     NationCommandQueueItem::query()->whereKey($shiftedItem->id)
                         ->update(['queue_position' => (int) $shiftedItem->queue_position + 1]);
                 }
+            }
+
+            if ($definition->ruleset_version_id !== $world->ruleset_version_id) {
+                throw new DomainException('Command definition no longer matches the locked World ruleset.');
             }
 
             $item = NationCommandQueueItem::query()->create([
@@ -143,11 +151,13 @@ final class CommandQueueService
     {
         return DB::transaction(function () use ($user, $nation, $placements, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
+            $world = $this->lockWorldForQueue($nation);
             $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
             $currentIds = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
+                ->lockForUpdate()
                 ->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->sort()
@@ -156,7 +166,7 @@ final class CommandQueueService
             $receivedIds = collect($placements)->pluck('id')->map(static fn (mixed $id): int => (int) $id)
                 ->sort()->values()->all();
             $positions = collect($placements)->pluck('position')->all();
-            $limit = $this->queueLimit($nation);
+            $limit = $this->queueLimit($world);
             if ($currentIds !== $receivedIds || count($positions) !== count(array_unique($positions))) {
                 throw new DomainException('並べ替え対象が現在の開発計画と一致しません。');
             }
@@ -188,6 +198,7 @@ final class CommandQueueService
     ): NationCommandQueue {
         return DB::transaction(function () use ($user, $nation, $item, $quantity, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
+            $this->lockWorldForQueue($nation);
             $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
             $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
@@ -213,12 +224,14 @@ final class CommandQueueService
     {
         return DB::transaction(function () use ($user, $nation, $orderedIds, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
+            $this->lockWorldForQueue($nation);
             $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
             $current = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
                 ->orderBy('queue_position')
+                ->lockForUpdate()
                 ->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->all();
@@ -246,6 +259,7 @@ final class CommandQueueService
     {
         return DB::transaction(function () use ($user, $nation, $item, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
+            $this->lockWorldForQueue($nation);
             $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
             $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
@@ -264,13 +278,17 @@ final class CommandQueueService
 
     public function queueFor(User $user, Nation $nation, MapSpace $mapSpace): NationCommandQueue
     {
-        $this->membership($user, $nation);
-        $this->assertMapSpace($nation, $mapSpace);
+        return DB::transaction(function () use ($user, $nation, $mapSpace): NationCommandQueue {
+            $this->membership($user, $nation);
+            $this->assertMapSpace($nation, $mapSpace);
+            $world = World::query()->whereKey($nation->world_id)->firstOrFail();
+            $this->assertUniversalQuantityRuleset($world);
 
-        return NationCommandQueue::query()->firstOrCreate(
-            ['nation_id' => $nation->id],
-            ['map_space_id' => $mapSpace->id, 'version' => 1],
-        )->load(['items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'), 'items.definition']);
+            return NationCommandQueue::query()->firstOrCreate(
+                ['nation_id' => $nation->id],
+                ['map_space_id' => $mapSpace->id, 'version' => 1],
+            )->load(['items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'), 'items.definition']);
+        }, 3);
     }
 
     public function validateTarget(Nation $nation, MapSpace $mapSpace, CommandDefinition $definition, MapCell $cell): void
@@ -316,7 +334,6 @@ final class CommandQueueService
         if ($membership === null) {
             throw new AuthorizationException('自国のcommand queueだけを操作できます。');
         }
-        $this->assertUniversalQuantityRuleset($nation);
 
         return $membership;
     }
@@ -328,9 +345,17 @@ final class CommandQueueService
         }
     }
 
-    private function queueLimit(Nation $nation): int
+    private function lockWorldForQueue(Nation $nation): World
     {
-        $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        $world = World::query()->whereKey($nation->world_id)->lockForUpdate()->firstOrFail();
+        $this->assertUniversalQuantityRuleset($world);
+
+        return $world;
+    }
+
+    private function queueLimit(World $world): int
+    {
+        $settings = $world->rulesetVersion()->firstOrFail()->settings;
         $limit = $settings['command_queue_limit'] ?? null;
         if (! is_int($limit) || $limit < 1) {
             throw new DomainException('Worldのcommand queue設定が不正です。');
@@ -339,9 +364,9 @@ final class CommandQueueService
         return $limit;
     }
 
-    private function assertUniversalQuantityRuleset(Nation $nation): void
+    private function assertUniversalQuantityRuleset(World $world): void
     {
-        $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        $settings = $world->rulesetVersion()->firstOrFail()->settings;
         if (! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'] ?? null)) {
             throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');
         }

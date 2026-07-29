@@ -141,11 +141,22 @@ foreach ($roadmapPr6Ruleset['command_definitions'] as &$commandDefinition) {
 }
 unset($commandDefinition);
 
+$roadmapPr7Ruleset = $roadmapPr6Ruleset;
+$roadmapPr7Ruleset['key'] = 'roadmap-pr7-v1';
+$roadmapPr7Ruleset['version'] = 1;
+$roadmapPr7Ruleset['base_money_capacity'] = 9_999;
+$roadmapPr7Ruleset['base_food_capacity_tons'] = 999_900;
+$roadmapPr7Ruleset['inventory_sale_rates'] = [
+    'industrial_goods' => ['inventory_units' => 1_000, 'money_units' => 1],
+    'minerals' => ['inventory_units' => 1_000, 'money_units' => 1],
+];
+
 return [
-    'ruleset' => $roadmapPr6Ruleset,
+    'ruleset' => $roadmapPr7Ruleset,
     'published_rulesets' => [
         'roadmap-pr2-v1' => $roadmapPr2Ruleset,
         'roadmap-pr6-v1' => $roadmapPr6Ruleset,
+        'roadmap-pr7-v1' => $roadmapPr7Ruleset,
     ],
     'world' => [
         'key' => 'shared-world',
