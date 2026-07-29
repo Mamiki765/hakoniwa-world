@@ -119,7 +119,7 @@ final class AssetManifestResolver
         }
 
         $allowedMimes = ['image/gif', 'image/png', 'image/webp'];
-        if (! in_array($image['mime'] ?? '', $allowedMimes, true)) {
+        if (! in_array($image['mime'], $allowedMimes, true)) {
             return null;
         }
 
