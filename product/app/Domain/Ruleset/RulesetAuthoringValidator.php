@@ -593,11 +593,15 @@ final class RulesetAuthoringValidator
             );
             $reservationCellCount = 1 + (3 * $reservationRadius * ($reservationRadius + 1));
             $permanentLandCellCount = 1 + (3 * $landRadius * ($landRadius + 1));
-            $maximumShallowCells = $reservationCellCount - $permanentLandCellCount;
+            $reservationWaterCellCapacity = $reservationCellCount - $permanentLandCellCount;
+            $coastalCandidateCapacity = $reservationRadius > $landRadius
+                ? 6 * ($landRadius + 1)
+                : 0;
+            $maximumShallowCells = min($reservationWaterCellCapacity, $coastalCandidateCapacity);
             if ($minimumShallowCells > $maximumShallowCells) {
                 throw new DomainException(
                     'ruleset.initial_island_minimum_shallow_cells cannot exceed '
-                    ."the reservation water-cell capacity {$maximumShallowCells}.",
+                    ."the guaranteed coastal candidate capacity {$maximumShallowCells}.",
                 );
             }
         }

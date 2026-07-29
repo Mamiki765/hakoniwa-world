@@ -680,28 +680,31 @@ class RulesetAuthoringValidatorTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    public function test_minimum_shallow_cells_may_equal_reservation_water_cell_capacity(): void
+    public function test_minimum_shallow_cells_may_equal_guaranteed_coastal_candidate_capacity(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
         $settings['initial_island_reservation_radius'] = 5;
         $settings['initial_island_land_radius'] = 2;
-        $settings['initial_island_minimum_shallow_cells'] = 72;
+        $settings['initial_island_growth_steps'] = 0;
+        $settings['initial_island_minimum_shallow_cells'] = 18;
 
         $summary = app(RulesetAuthoringValidator::class)->validate($settings);
 
         $this->assertSame('roadmap-pr7-v1', $summary['key']);
     }
 
-    public function test_minimum_shallow_cells_cannot_exceed_reservation_water_cell_capacity(): void
+    public function test_minimum_shallow_cells_cannot_exceed_guaranteed_coastal_candidate_capacity(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
         $settings['initial_island_reservation_radius'] = 5;
         $settings['initial_island_land_radius'] = 2;
-        $settings['initial_island_minimum_shallow_cells'] = 73;
+        $settings['initial_island_growth_steps'] = 0;
+        $settings['initial_island_minimum_shallow_cells'] = 19;
 
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage(
-            'ruleset.initial_island_minimum_shallow_cells cannot exceed the reservation water-cell capacity 72',
+            'ruleset.initial_island_minimum_shallow_cells cannot exceed '
+            .'the guaranteed coastal candidate capacity 18',
         );
 
         app(RulesetAuthoringValidator::class)->validate($settings);
