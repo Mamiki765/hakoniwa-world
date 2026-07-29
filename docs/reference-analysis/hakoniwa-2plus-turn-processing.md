@@ -113,6 +113,8 @@ Owner decisionにより、PR #11は`land_level`本体の検証、費用控除、
 
 このため新作の`CommandQueueService`へdecrement、一括使用、design番号、費用倍率を戻してはならない。
 
+農場・工場は平地なら初期規模で建設し、同じ種類の既存施設なら各成功ごとに規模をdefinitionの増分だけ加算してmaximumでclampする（`Com::buildCommand`, `command.c:626-697`）。採掘場も山セルの規模へ5ずつ加算して200でclampする。同じtargetへ残したquantityは次turnにこの増築経路を通り、maximum到達後も旧作は費用を引いて成功としてquantityを消費する。
+
 ## 保存単位、表示桁、整数演算
 
 保存、計算、表示を追跡した結論は次の通り。`Island::output/input`は整数をそのまま保存し（`info.c:159-235`）、`Island::jsOut`が同じ整数をJavaScriptへ出し（`info.c:269-281`）、`hakow.js`のformatterが末尾桁を付加する。

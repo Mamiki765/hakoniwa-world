@@ -89,10 +89,12 @@ class DomesticCommandExecutionTest extends TestCase
             ->where('queue_position', 2)->whereHas('definition', fn ($query) => $query->where('key', 'reclaim'))->count());
 
         $secondPass = $executor->execute($context);
-        $this->assertSame(1, $secondPass['failures']);
+        $this->assertSame(0, $secondPass['failures']);
         $this->assertSame(1, $secondPass['successes']);
-        $this->assertSame('failed', $farmItem->fresh()->status);
-        $this->assertSame('facility_not_empty', $farmItem->fresh()->failure_code);
+        $this->assertSame('completed', $farmItem->fresh()->status);
+        $this->assertSame(12, $farmTarget->fresh()->facility_scale);
+
+        $executor->execute($context);
         $this->assertSame('wasteland', $reclaimTarget->fresh()->terrain()->value('key'));
         $this->assertSame($first->id, $reclaimTarget->fresh()->owner_nation_id);
 
@@ -107,11 +109,12 @@ class DomesticCommandExecutionTest extends TestCase
         $automatic = $executor->execute($context);
 
         $this->assertSame(1, $automatic['automatic_finance']);
-        $this->assertSame(1_135, $first->fresh()->money);
-        $this->assertSame(7, DB::table('audit_events')->where('event_type', 'command.success')->count());
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.invalid')->count());
+        $this->assertSame(1_115, $first->fresh()->money);
+        $this->assertSame(8, DB::table('audit_events')->where('event_type', 'command.success')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.invalid')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.quantity_decremented')->count());
         $this->assertSame(3, DB::table('audit_events')->where('event_type', 'facility.constructed')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'facility.expanded')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.automatic_finance')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'like', '%earthquake%')->count());
 

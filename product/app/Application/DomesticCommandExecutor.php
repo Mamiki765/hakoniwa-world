@@ -172,7 +172,13 @@ final class DomesticCommandExecutor
             return ['code' => 'invalid_terrain', 'message' => 'Target terrain is no longer valid.'];
         }
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
-            return ['code' => 'facility_not_empty', 'message' => 'Target cell now contains a facility.'];
+            if (! $this->isMatchingQuantityFacility($definition, $cell)) {
+                return ['code' => 'facility_not_empty', 'message' => 'Target cell now contains a facility.'];
+            }
+            if ($cell->facility_scale === null || $cell->facility?->scale_increment === null
+                || $cell->facility->maximum_scale === null) {
+                return ['code' => 'invalid_facility_scale', 'message' => 'Target facility has invalid scale state.'];
+            }
         }
         if ($definition->target_facility_keys !== []
             && ! in_array($cell->facility?->key, $definition->target_facility_keys, true)) {
@@ -206,6 +212,13 @@ final class DomesticCommandExecutor
         }
 
         return null;
+    }
+
+    private function isMatchingQuantityFacility(CommandDefinition $definition, MapCell $cell): bool
+    {
+        return in_array($definition->key, self::QUANTITY_COMMANDS, true)
+            && $definition->result_facility_key !== null
+            && $cell->facility?->key === $definition->result_facility_key;
     }
 
     private function deductCostAndResources(Nation $nation, CommandDefinition $definition): void
@@ -282,15 +295,26 @@ final class DomesticCommandExecutor
             throw new DomainException("Command {$definition->key} has no facility result.");
         }
         $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
-        $this->cells->setFacility($cell, $facility);
+        $expanded = $this->isMatchingQuantityFacility($definition, $cell);
+        $beforeScale = $cell->facility_scale;
+        $scale = null;
+        if ($expanded) {
+            $scale = min(
+                (int) $facility->maximum_scale,
+                (int) $cell->facility_scale + (int) $facility->scale_increment,
+            );
+        }
+        $this->cells->setFacility($cell, $facility, $scale);
         $cell->population = 0;
         $cell->version++;
         $cell->save();
-        $this->events->record($context, 'facility.constructed', $cell, [
+        $this->events->record($context, $expanded ? 'facility.expanded' : 'facility.constructed', $cell, [
             'nation_id' => $nation->id,
             'command_key' => $definition->key,
             'facility_key' => $facilityKey,
+            'before_scale' => $beforeScale,
             'facility_scale' => $cell->facility_scale,
+            'scale_increment' => $expanded ? $facility->scale_increment : null,
             'x' => $cell->x,
             'y' => $cell->y,
         ]);
