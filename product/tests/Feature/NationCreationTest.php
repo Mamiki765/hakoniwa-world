@@ -119,7 +119,7 @@ class NationCreationTest extends TestCase
         $world = app(OceanWorldGenerator::class)->initialize();
         $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
         $settings['key'] = 'test-shallow-candidate-shortage-v1';
-        $settings['initial_island_minimum_shallow_cells'] = 1000;
+        $settings['initial_island_minimum_shallow_cells'] = 72;
         $ruleset = app(RulesetPublisher::class)->publish($settings);
         $world->update(['ruleset_version_id' => $ruleset->id]);
 
@@ -127,7 +127,7 @@ class NationCreationTest extends TestCase
 
         $this->assertNotNull($nation->capital);
         $this->assertSame(19, MapCell::query()->where('owner_nation_id', $nation->id)->count());
-        $this->assertLessThan(1000, $this->terrainCount('shallow'));
+        $this->assertLessThan(72, $this->terrainCount('shallow'));
     }
 
     public function test_generator_failure_rolls_back_nation_island_capital_membership_and_request(): void
