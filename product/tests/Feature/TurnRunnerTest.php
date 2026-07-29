@@ -8,11 +8,15 @@ use App\Domain\Turn\ScaffoldTurnPhase;
 use App\Domain\Turn\TurnAlreadyAppliedException;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\TurnContext;
+use App\Domain\Turn\TurnOrderService;
 use App\Domain\Turn\TurnPhase;
 use App\Domain\Turn\TurnPhaseResult;
 use App\Domain\Turn\TurnPipeline;
+use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnSeedGenerator;
+use App\Domain\Turn\TurnState;
 use App\Domain\Turn\WorldTurnLock;
+use App\Models\Nation;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
@@ -151,6 +155,9 @@ class TurnRunnerTest extends TestCase
             $this->assertSame(0, $context->world->current_turn);
             $this->assertSame(1, $context->targetTurn);
             $this->assertSame(self::SEED, $context->randomSeed);
+            $this->assertInstanceOf(TurnRandomStreamFactory::class, $context->random);
+            $this->assertSame(self::SEED, $context->random->masterSeed);
+            $this->assertInstanceOf(TurnState::class, $context->state);
             $observed[] = $phase;
         }));
 
@@ -195,6 +202,59 @@ class TurnRunnerTest extends TestCase
         $this->assertSame(2, $completed->attempt_count);
         $this->assertSame('cron', $completed->source);
         $this->assertSame(1, $world->fresh()->current_turn);
+    }
+
+    public function test_retry_reconstructs_random_orders_and_discards_failed_attempt_state(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        foreach (['One', 'Two', 'Three', 'Four'] as $name) {
+            Nation::query()->create(['world_id' => $world->id, 'name' => $name]);
+        }
+        $orders = app(TurnOrderService::class);
+        $attemptOrders = [];
+        $attemptStates = [];
+        $failFirstAttempt = true;
+        $pipeline = $this->pipeline(
+            function (TurnContext $context, string $phase) use (
+                $orders,
+                &$attemptOrders,
+                &$attemptStates,
+                &$failFirstAttempt,
+            ): void {
+                if ($phase === 'prepare_turn') {
+                    $attemptOrders[] = [
+                        'nations' => $orders->shuffledNationIds($context->world, $context->random),
+                        'cells' => $orders->shuffledSurfaceCellIds($context->world, $context->random),
+                    ];
+                    $attemptStates[] = $context->state;
+                }
+                if ($phase === 'development_commands') {
+                    $context->state->registerLaunchIntent(1, 'future_missile', 4, 5, 3);
+                    if ($failFirstAttempt) {
+                        $failFirstAttempt = false;
+                        throw new RuntimeException('fail after turn state mutation');
+                    }
+                }
+            },
+        );
+
+        try {
+            $this->runner($pipeline)->run($world);
+            $this->fail('Expected first attempt failure.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('fail after turn state mutation', $exception->getMessage());
+        }
+
+        $run = $this->runner($pipeline)->run($world->fresh());
+
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame(2, $run->attempt_count);
+        $this->assertSame(self::SEED, $run->random_seed);
+        $this->assertCount(2, $attemptOrders);
+        $this->assertSame($attemptOrders[0], $attemptOrders[1]);
+        $this->assertNotSame($attemptStates[0], $attemptStates[1]);
+        $this->assertCount(1, $attemptStates[0]->launchIntents());
+        $this->assertCount(1, $attemptStates[1]->launchIntents());
     }
 
     public function test_completed_world_target_cannot_be_applied_twice(): void
