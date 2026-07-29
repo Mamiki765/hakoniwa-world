@@ -12,6 +12,8 @@ final class RulesetAuthoringValidator
 {
     private const ARCHITECTURE_CHUNK_SIZE = 16;
 
+    private const ARCHITECTURE_COMMAND_QUEUE_LIMIT = 20;
+
     private const INITIAL_X_MIN = 0;
 
     private const INITIAL_X_MAX = 59;
@@ -135,7 +137,14 @@ final class RulesetAuthoringValidator
                 .implode(', ', SalePolicy::rulesetDefaultValues()).'.',
             );
         }
-        $this->integer($settings['command_queue_limit'], 'ruleset.command_queue_limit', 1);
+        $commandQueueLimit = $this->integer(
+            $settings['command_queue_limit'],
+            'ruleset.command_queue_limit',
+            1,
+        );
+        if ($commandQueueLimit !== self::ARCHITECTURE_COMMAND_QUEUE_LIMIT) {
+            throw new DomainException('ruleset.command_queue_limit must be exactly 20.');
+        }
         $territoryRadius = $this->integer(
             $settings['initial_territory_radius'],
             'ruleset.initial_territory_radius',

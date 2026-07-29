@@ -126,6 +126,38 @@ class RulesetAuthoringValidatorTest extends TestCase
         ];
     }
 
+    public function test_architecture_command_queue_limit_is_valid(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_queue_limit'] = 20;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    #[DataProvider('invalidCommandQueueLimitProvider')]
+    public function test_non_architecture_command_queue_limits_are_rejected(int $limit): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_queue_limit'] = $limit;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('ruleset.command_queue_limit must be exactly 20');
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{int}> */
+    public static function invalidCommandQueueLimitProvider(): array
+    {
+        return [
+            'nineteen' => [19],
+            'twenty-one' => [21],
+            'postgresql integer overflow' => [2_147_483_648],
+        ];
+    }
+
     #[DataProvider('invalidInitialBoundsProvider')]
     public function test_noncanonical_initial_bounds_are_rejected(array $bounds): void
     {
