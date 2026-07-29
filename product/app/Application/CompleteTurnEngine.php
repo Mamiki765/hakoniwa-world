@@ -549,8 +549,9 @@ final class CompleteTurnEngine
 
     private function isSettlement(MapCell $cell): bool
     {
-        return $cell->population > 0 && $cell->facility !== null
-            && in_array($cell->facility->key, self::SETTLEMENT_FACILITY_KEYS, true);
+        return $cell->facility !== null
+            && in_array($cell->facility->key, self::SETTLEMENT_FACILITY_KEYS, true)
+            && ($cell->population > 0 || $cell->facility->key === 'capital');
     }
 
     private function appearSettlement(TurnContext $context, MapCell $cell): bool

@@ -223,6 +223,18 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(0, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
 
+        [$capitalRecoveryContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+            [$capital->id => 0],
+        );
+        $capitalRecovery = $engine->execute('process_cells', $capitalRecoveryContext);
+        $this->assertSame(100, $capitalRecovery->metrics['population_increased']);
+        $this->assertSame(100, $capital->fresh()->population);
+        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+
         $riotCells = [$firstCandidate, $secondCandidate, $this->ownedEmptyCell($nation, [$capital->id, $firstCandidate->id, $secondCandidate->id])];
         foreach (['farm', 'factory', 'missile_base'] as $index => $facilityKey) {
             $this->facility($riotCells[$index], $facilityKey, 'plain');
