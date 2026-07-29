@@ -333,6 +333,7 @@ final class CommandQueueService
         if ($membership === null) {
             throw new AuthorizationException('自国のcommand queueだけを操作できます。');
         }
+
         return $membership;
     }
 
