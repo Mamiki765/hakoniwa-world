@@ -3,10 +3,13 @@
 namespace App\Domain\Ruleset;
 
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Economy\SalePolicy;
 use DomainException;
 
 final class RulesetAuthoringValidator
 {
+    private const ARCHITECTURE_CHUNK_SIZE = 16;
+
     /** @var list<string> */
     private const TERRAIN_KEYS = ['sea', 'shallow', 'wasteland', 'plain', 'forest', 'mountain'];
 
@@ -49,7 +52,10 @@ final class RulesetAuthoringValidator
 
         $key = $this->string($settings['key'], 'ruleset.key');
         $version = $this->integer($settings['version'], 'ruleset.version', 1);
-        $this->integer($settings['chunk_size'], 'ruleset.chunk_size', 1);
+        $chunkSize = $this->integer($settings['chunk_size'], 'ruleset.chunk_size', 1);
+        if ($chunkSize !== self::ARCHITECTURE_CHUNK_SIZE) {
+            throw new DomainException('ruleset.chunk_size must be exactly 16.');
+        }
         $xMin = $this->integer($settings['initial_x_min'], 'ruleset.initial_x_min');
         $xMax = $this->integer($settings['initial_x_max'], 'ruleset.initial_x_max');
         $yMin = $this->integer($settings['initial_y_min'], 'ruleset.initial_y_min');
@@ -74,7 +80,12 @@ final class RulesetAuthoringValidator
         }
 
         $this->integer($settings['initial_money'], 'ruleset.initial_money', 0);
-        $this->string($settings['default_sale_policy'], 'ruleset.default_sale_policy');
+        $defaultSalePolicy = $this->string($settings['default_sale_policy'], 'ruleset.default_sale_policy');
+        if (! SalePolicy::isSupported($defaultSalePolicy)) {
+            throw new DomainException(
+                'ruleset.default_sale_policy must be one of '.implode(', ', SalePolicy::values()).'.',
+            );
+        }
         $this->integer($settings['command_queue_limit'], 'ruleset.command_queue_limit', 1);
         foreach ([
             'initial_territory_radius',

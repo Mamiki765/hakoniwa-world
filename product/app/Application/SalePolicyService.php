@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Concurrency\OptimisticLockException;
+use App\Domain\Economy\SalePolicy;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\NationResourceSalePolicy;
@@ -27,13 +28,13 @@ final class SalePolicyService
             if (! $resource->tradable) {
                 throw new DomainException('売却できないresourceです。');
             }
-            if (! in_array($policy, ['sell_all', 'stockpile', 'keep_amount'], true)) {
+            if (! SalePolicy::isSupported($policy)) {
                 throw new DomainException('sale policyが不正です。');
             }
-            if ($policy === 'keep_amount' && ($keepAmount === null || $keepAmount < 0)) {
+            if ($policy === SalePolicy::KeepAmount->value && ($keepAmount === null || $keepAmount < 0)) {
                 throw new DomainException('keep_amountには0以上の保持数量が必要です。');
             }
-            if ($policy !== 'keep_amount' && $keepAmount !== null) {
+            if ($policy !== SalePolicy::KeepAmount->value && $keepAmount !== null) {
                 throw new DomainException('keep_amount以外では保持数量を指定できません。');
             }
 
@@ -70,7 +71,7 @@ final class SalePolicyService
     {
         $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
         $policy = $settings['default_sale_policy'] ?? null;
-        if (! is_string($policy) || ! in_array($policy, ['sell_all', 'stockpile', 'keep_amount'], true)) {
+        if (! SalePolicy::isSupported($policy)) {
             throw new DomainException('Worldのdefault sale policy設定が不正です。');
         }
 

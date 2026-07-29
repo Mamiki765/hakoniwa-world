@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\SalePolicyService;
 use App\Domain\Concurrency\OptimisticLockException;
+use App\Domain\Economy\SalePolicy;
 use App\Http\Controllers\Controller;
 use App\Models\Nation;
 use App\Models\NationMembership;
@@ -12,6 +13,7 @@ use App\Models\ResourceDefinition;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 final class SalePolicyController extends Controller
 {
@@ -28,7 +30,7 @@ final class SalePolicyController extends Controller
         $policies = NationResourceSalePolicy::query()->where('nation_id', $nation->id)->get()->keyBy('resource_definition_id');
         $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
         $defaultPolicy = $rules['default_sale_policy'] ?? null;
-        if (! is_string($defaultPolicy)) {
+        if (! SalePolicy::isSupported($defaultPolicy)) {
             throw new DomainException('Worldのdefault sale policy設定が不正です。');
         }
 
@@ -50,7 +52,7 @@ final class SalePolicyController extends Controller
     public function update(Request $request, Nation $nation, ResourceDefinition $resourceDefinition, SalePolicyService $service): JsonResponse
     {
         $validated = $request->validate([
-            'policy' => ['required', 'in:sell_all,stockpile,keep_amount'],
+            'policy' => ['required', Rule::in(SalePolicy::values())],
             'keep_amount' => ['nullable', 'integer', 'min:0'],
             'expected_version' => ['required', 'integer', 'min:1'],
         ]);

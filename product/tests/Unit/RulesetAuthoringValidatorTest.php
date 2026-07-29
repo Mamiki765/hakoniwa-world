@@ -44,6 +44,73 @@ class RulesetAuthoringValidatorTest extends TestCase
         }
     }
 
+    public function test_architecture_chunk_size_and_independent_initial_bounds_are_valid(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['chunk_size'] = 16;
+        $settings['initial_x_max'] = 63;
+        $settings['initial_y_max'] = 63;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    #[DataProvider('invalidChunkSizeProvider')]
+    public function test_non_architecture_chunk_sizes_are_rejected(int $chunkSize): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['chunk_size'] = $chunkSize;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('ruleset.chunk_size must be exactly 16');
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{int}> */
+    public static function invalidChunkSizeProvider(): array
+    {
+        return [
+            'fifteen' => [15],
+            'seventeen' => [17],
+        ];
+    }
+
+    #[DataProvider('supportedSalePolicyProvider')]
+    public function test_supported_default_sale_policies_are_valid(string $policy): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['default_sale_policy'] = $policy;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function supportedSalePolicyProvider(): array
+    {
+        return [
+            'sell all' => ['sell_all'],
+            'stockpile' => ['stockpile'],
+            'keep amount' => ['keep_amount'],
+        ];
+    }
+
+    public function test_unsupported_default_sale_policy_is_rejected(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['default_sale_policy'] = 'stockplie';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.default_sale_policy must be one of sell_all, stockpile, keep_amount',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     public function test_duplicate_authoring_version_keys_are_rejected(): void
     {
         $ruleset = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
