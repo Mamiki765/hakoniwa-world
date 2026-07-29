@@ -413,6 +413,7 @@ final class RulesetAuthoringValidator
     private function validateProduction(array $settings, array $resourceKeys, array $facilityKeys): void
     {
         $salePrices = $this->map($settings['resource_sale_prices'], 'ruleset.resource_sale_prices');
+        $productionFacilityKeys = [];
         foreach ($this->list($settings['production_definitions'], 'ruleset.production_definitions') as $index => $definition) {
             $path = "ruleset.production_definitions.{$index}";
             $definition = $this->map($definition, $path);
@@ -421,7 +422,17 @@ final class RulesetAuthoringValidator
                 'required_workforce_per_scale', 'operating_condition', 'price_reference', 'metadata',
             ], $path);
             $this->string($definition['key'], "{$path}.key");
-            $this->reference($definition['facility_key'], $facilityKeys, "{$path}.facility_key");
+            $facilityKey = $this->reference(
+                $definition['facility_key'],
+                $facilityKeys,
+                "{$path}.facility_key",
+            );
+            if (in_array($facilityKey, $productionFacilityKeys, true)) {
+                throw new DomainException(
+                    "{$path}.facility_key duplicates production facility {$facilityKey}.",
+                );
+            }
+            $productionFacilityKeys[] = $facilityKey;
             $this->reference($definition['output_resource_key'], $resourceKeys, "{$path}.output_resource_key");
             $this->productionDecimal($definition['production_per_scale'], "{$path}.production_per_scale");
             $this->integer(
@@ -628,6 +639,9 @@ final class RulesetAuthoringValidator
     {
         if (! is_string($value) || $value === '') {
             throw new DomainException("{$path} must be a non-empty string.");
+        }
+        if (preg_match('//u', $value) !== 1) {
+            throw new DomainException("{$path} must contain valid UTF-8.");
         }
 
         return $value;

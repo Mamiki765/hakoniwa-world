@@ -562,6 +562,34 @@ class RulesetAuthoringValidatorTest extends TestCase
         ];
     }
 
+    public function test_each_facility_can_have_only_one_production_definition_per_ruleset(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $duplicate = $settings['production_definitions'][0];
+        $duplicate['key'] = 'farm_wheat_duplicate';
+        $settings['production_definitions'][] = $duplicate;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.production_definitions.3.facility_key duplicates production facility farm',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_authored_strings_must_contain_valid_utf_8(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['resource_definitions'][0]['name'] = "\xC3\x28";
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.resource_definitions.0.name must contain valid UTF-8',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     public function test_duplicate_authoring_version_keys_are_rejected(): void
     {
         $ruleset = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
