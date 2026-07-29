@@ -125,6 +125,38 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertArrayNotHasKey('earthquake', $landLevelEvent);
     }
 
+    public function test_terrain_commands_cannot_remove_the_nation_capital(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, 'Capital guard');
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $moneyBefore = $nation->money;
+        $populationBefore = $capital->population;
+        $items = [];
+        foreach (['land_clear', 'land_level', 'excavate'] as $position => $commandKey) {
+            $items[] = $this->queue($user, $nation, $space, $commandKey, $capital, 1, $position + 1);
+        }
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], str_repeat('9', 64)),
+        );
+
+        $this->assertSame(3, $result['failures']);
+        $this->assertSame(3, $result['removed']);
+        $this->assertSame(1, $result['automatic_finance']);
+        foreach ($items as $item) {
+            $this->assertSame('failed', $item->fresh()->status);
+            $this->assertSame('capital_protected', $item->fresh()->failure_code);
+        }
+        $this->assertSame($moneyBefore + 10, $nation->fresh()->money);
+        $this->assertSame($populationBefore, $capital->fresh()->population);
+        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+        $this->assertSame('plain', $capital->fresh()->terrain()->value('key'));
+        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.invalid')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
+    }
+
     public function test_buried_treasure_uses_exact_boundaries_capacity_replay_and_rollback(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();

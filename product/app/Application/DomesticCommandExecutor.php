@@ -23,6 +23,9 @@ final class DomesticCommandExecutor
     /** @var list<string> */
     private const QUANTITY_COMMANDS = ['build_farm', 'build_factory', 'build_mine'];
 
+    /** @var list<string> */
+    private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate'];
+
     public function __construct(
         private readonly MapCellStateService $cells,
         private readonly NationCapacityResolver $capacities,
@@ -170,6 +173,10 @@ final class DomesticCommandExecutor
         }
         if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
             return ['code' => 'invalid_terrain', 'message' => 'Target terrain is no longer valid.'];
+        }
+        if ($cell->facility?->key === 'capital'
+            && in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)) {
+            return ['code' => 'capital_protected', 'message' => 'Terrain commands cannot remove the Nation Capital.'];
         }
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
             if (! $this->isMatchingQuantityFacility($definition, $cell)) {
