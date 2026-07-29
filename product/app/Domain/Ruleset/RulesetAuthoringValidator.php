@@ -522,8 +522,7 @@ final class RulesetAuthoringValidator
         array $settings,
         array $resourceKeys,
         int $reservationRadius,
-    ): void
-    {
+    ): void {
         if (array_key_exists('development_plan_quantity', $settings)
             && ! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'])) {
             throw new DomainException('ruleset.development_plan_quantity does not match the canonical quantity contract.');
