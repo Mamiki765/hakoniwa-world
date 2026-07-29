@@ -274,6 +274,7 @@ final class DomesticCommandExecutor
             $cell->population = 0;
             $cell->version++;
             $cell->save();
+            $context->state->markMapChunkChanged($cell->map_chunk_id);
             $this->events->record($context, 'terrain.changed', $cell, [
                 'nation_id' => $nation->id,
                 'command_key' => $definition->key,
@@ -308,6 +309,7 @@ final class DomesticCommandExecutor
         $cell->population = 0;
         $cell->version++;
         $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
         $this->events->record($context, $expanded ? 'facility.expanded' : 'facility.constructed', $cell, [
             'nation_id' => $nation->id,
             'command_key' => $definition->key,

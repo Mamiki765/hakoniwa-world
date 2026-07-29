@@ -21,6 +21,9 @@ final class TurnState
     /** @var array<int, true> */
     private array $famineNationIds = [];
 
+    /** @var array<int, true> */
+    private array $changedMapChunkIds = [];
+
     /** @var array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int}> */
     private array $nationAggregates = [];
 
@@ -102,6 +105,23 @@ final class TurnState
     public function famineNationIds(): array
     {
         return array_map('intval', array_keys($this->famineNationIds));
+    }
+
+    public function markMapChunkChanged(int $mapChunkId): void
+    {
+        if ($mapChunkId < 1) {
+            throw new InvalidArgumentException('Changed MapChunk ID must be positive.');
+        }
+        $this->changedMapChunkIds[$mapChunkId] = true;
+    }
+
+    /** @return list<int> */
+    public function changedMapChunkIds(): array
+    {
+        $ids = array_map('intval', array_keys($this->changedMapChunkIds));
+        sort($ids, SORT_NUMERIC);
+
+        return $ids;
     }
 
     /**

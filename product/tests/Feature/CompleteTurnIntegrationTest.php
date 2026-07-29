@@ -101,6 +101,7 @@ class CompleteTurnIntegrationTest extends TestCase
         $populationBefore = (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population');
         $wheatBefore = (int) NationResource::query()->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('key', 'wheat'))->value('amount');
+        $chunkVersionsBefore = DB::table('map_chunks')->orderBy('id')->pluck('version', 'id');
 
         $run = app(TurnRunner::class)->run($world);
 
@@ -143,6 +144,23 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')
             ->whereRaw("metadata->>'resource_key' = ?", ['industrial_goods'])
             ->whereRaw("(metadata->>'sold')::integer = ?", [1_000])->count());
+        $mutatedCellIds = DB::table('audit_events')
+            ->where('subject_type', (new MapCell)->getMorphClass())
+            ->whereNotNull('subject_id')->distinct()->pluck('subject_id');
+        $changedChunkIds = MapCell::query()->whereIn('id', $mutatedCellIds)
+            ->distinct()->orderBy('map_chunk_id')->pluck('map_chunk_id');
+        $this->assertNotEmpty($changedChunkIds);
+        $maximumMutationsInOneChunk = (int) MapCell::query()->whereIn('id', $mutatedCellIds)
+            ->selectRaw('count(*) as mutation_count')->groupBy('map_chunk_id')
+            ->orderByDesc('mutation_count')->value('mutation_count');
+        $this->assertGreaterThan(1, $maximumMutationsInOneChunk);
+        $chunkVersionsAfter = DB::table('map_chunks')->orderBy('id')->pluck('version', 'id');
+        foreach ($chunkVersionsBefore as $chunkId => $beforeVersion) {
+            $expected = (int) $beforeVersion + ($changedChunkIds->contains($chunkId) ? 1 : 0);
+            $this->assertSame($expected, (int) $chunkVersionsAfter[$chunkId]);
+        }
+        $aggregateMetrics = collect($run->phase_results)->firstWhere('phase', 'aggregate_nations')['metrics'];
+        $this->assertSame($changedChunkIds->count(), $aggregateMetrics['map_chunks_updated']);
         $this->assertSame([], $run->failure_context);
     }
 
@@ -222,6 +240,9 @@ class CompleteTurnIntegrationTest extends TestCase
                 'status', 'queue_position', 'quantity', 'execution_started_at', 'execution_completed_at',
                 'execution_failed_at', 'failure_code', 'failure_metadata',
             ]),
+            'chunk_versions' => DB::table('map_chunks')
+                ->whereIn('map_space_id', DB::table('map_spaces')->where('world_id', $world->id)->select('id'))
+                ->orderBy('id')->pluck('version', 'id')->all(),
             'audit_count' => DB::table('audit_events')->count(),
         ];
     }
@@ -240,6 +261,9 @@ class CompleteTurnIntegrationTest extends TestCase
             'command' => NationCommandQueueItem::query()->findOrFail($itemId)->only([
                 'status', 'queue_position', 'quantity', 'failure_code', 'failure_metadata',
             ]),
+            'chunk_versions' => DB::table('map_chunks')
+                ->whereIn('map_space_id', DB::table('map_spaces')->where('world_id', $world->id)->select('id'))
+                ->orderBy('id')->pluck('version', 'id')->all(),
             'events' => DB::table('audit_events')->orderBy('id')->get([
                 'event_type', 'subject_type', 'subject_id', 'metadata',
             ])->map(static fn (object $event): array => [

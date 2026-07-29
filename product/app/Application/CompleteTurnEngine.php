@@ -13,6 +13,7 @@ use App\Domain\Turn\TurnPhaseResult;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
+use App\Models\MapChunk;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationResource;
@@ -227,6 +228,7 @@ final class CompleteTurnEngine
     /** @return array<string, int> */
     private function aggregateNations(TurnContext $context): array
     {
+        $changedChunks = $this->updateChangedMapChunkVersions($context);
         $population = 0;
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->findOrFail($nationId);
@@ -235,7 +237,30 @@ final class CompleteTurnEngine
             $population += $aggregate['population'];
         }
 
-        return ['nations' => count($context->state->nationAggregates()), 'population' => $population];
+        return [
+            'nations' => count($context->state->nationAggregates()),
+            'population' => $population,
+            'map_chunks_updated' => $changedChunks,
+        ];
+    }
+
+    private function updateChangedMapChunkVersions(TurnContext $context): int
+    {
+        $ids = $context->state->changedMapChunkIds();
+        if ($ids === []) {
+            return 0;
+        }
+        $chunks = MapChunk::query()->whereIn('id', $ids)
+            ->orderBy('map_space_id')->orderBy('chunk_y')->orderBy('chunk_x')
+            ->lockForUpdate()->get();
+        if ($chunks->count() !== count($ids)) {
+            throw new DomainException('A changed MapCell references a missing MapChunk.');
+        }
+        foreach ($chunks as $chunk) {
+            $chunk->increment('version');
+        }
+
+        return $chunks->count();
     }
 
     /** @return array<string, int> */
@@ -487,7 +512,7 @@ final class CompleteTurnEngine
         $this->cells->transitionTerrain($cell, $wasteland);
         $cell->population = 0;
         $cell->version++;
-        $cell->save();
+        $this->saveChangedCell($context, $cell);
         $this->events->record($context, 'facility.riot', $cell, [
             'nation_id' => $cell->owner_nation_id, 'facility_key' => $facilityKey,
             'draw' => $draw, 'numerator' => $rules['probability']['numerator'],
@@ -511,7 +536,7 @@ final class CompleteTurnEngine
         $before = $cell->terrain_quantity;
         $cell->terrain_quantity = $after;
         $cell->version++;
-        $cell->save();
+        $this->saveChangedCell($context, $cell);
         $this->events->record($context, 'forest.grown', $cell, [
             'before' => $before, 'increment' => $after - $before, 'after' => $after,
             'maximum' => $forest['maximum_quantity'],
@@ -544,7 +569,7 @@ final class CompleteTurnEngine
         $this->cells->setFacility($cell, $village);
         $cell->population = $rules['initial_population'];
         $cell->version++;
-        $cell->save();
+        $this->saveChangedCell($context, $cell);
         $this->events->record($context, 'settlement.appeared', $cell, [
             'nation_id' => $cell->owner_nation_id, 'population' => $cell->population,
             'facility_key' => $villageKey, 'draw' => $draw,
@@ -586,7 +611,7 @@ final class CompleteTurnEngine
             $this->cells->transitionTerrain($cell, $plain);
         }
         $cell->version++;
-        $cell->save();
+        $this->saveChangedCell($context, $cell);
         $actualLoss = $before - $cell->population;
         $this->events->record($context, 'famine.applied', $cell, [
             'nation_id' => $cell->owner_nation_id, 'before' => $before,
@@ -629,7 +654,7 @@ final class CompleteTurnEngine
         $transition = $this->syncSettlementStage($context, $cell);
         if ($increase > 0) {
             $cell->version++;
-            $cell->save();
+            $this->saveChangedCell($context, $cell);
             $this->events->record($context, 'population.increased', $cell, [
                 'nation_id' => $cell->owner_nation_id, 'before' => $before,
                 'increase' => $increase, 'after' => $cell->population, 'sea_edge' => $seaEdge,
@@ -661,12 +686,18 @@ final class CompleteTurnEngine
         $facility = FacilityDefinition::query()->where('key', $targetKey)->firstOrFail();
         $this->cells->setFacility($cell, $facility);
         $cell->version++;
-        $cell->save();
+        $this->saveChangedCell($context, $cell);
         $this->events->record($context, 'settlement.stage_transitioned', $cell, [
             'nation_id' => $cell->owner_nation_id, 'population' => $cell->population,
             'from_facility_key' => $before, 'to_facility_key' => $targetKey,
         ]);
 
         return 1;
+    }
+
+    private function saveChangedCell(TurnContext $context, MapCell $cell): void
+    {
+        $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
     }
 }
