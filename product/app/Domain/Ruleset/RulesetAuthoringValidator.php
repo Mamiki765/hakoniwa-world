@@ -213,7 +213,7 @@ final class RulesetAuthoringValidator
         $this->validateFacilities($settings, $commandKeys, $productionKeys);
         $this->validateCommands($settings, $resourceKeys, $facilityKeys);
         $this->validateProduction($settings, $resourceKeys, $facilityKeys);
-        $this->validateVersionAdditions($settings, $resourceKeys, $reservationRadius);
+        $this->validateVersionAdditions($settings, $resourceKeys, $reservationRadius, $landRadius);
 
         return [
             'key' => $key,
@@ -522,6 +522,7 @@ final class RulesetAuthoringValidator
         array $settings,
         array $resourceKeys,
         int $reservationRadius,
+        int $landRadius,
     ): void {
         if (array_key_exists('development_plan_quantity', $settings)
             && ! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'])) {
@@ -534,10 +535,12 @@ final class RulesetAuthoringValidator
                 0,
             );
             $reservationCellCount = 1 + (3 * $reservationRadius * ($reservationRadius + 1));
-            if ($minimumShallowCells > $reservationCellCount) {
+            $permanentLandCellCount = 1 + (3 * $landRadius * ($landRadius + 1));
+            $maximumShallowCells = $reservationCellCount - $permanentLandCellCount;
+            if ($minimumShallowCells > $maximumShallowCells) {
                 throw new DomainException(
                     'ruleset.initial_island_minimum_shallow_cells cannot exceed '
-                    ."the reservation cell count {$reservationCellCount}.",
+                    ."the reservation water-cell capacity {$maximumShallowCells}.",
                 );
             }
         }
