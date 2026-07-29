@@ -6,7 +6,9 @@ use App\Domain\Turn\TurnAlreadyAppliedException;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnPipeline;
+use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnSeedGenerator;
+use App\Domain\Turn\TurnState;
 use App\Domain\Turn\WorldTurnLock;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
@@ -196,6 +198,8 @@ class TurnRunner
                     ruleset: $ruleset,
                     targetTurn: $run->target_turn,
                     randomSeed: $run->random_seed,
+                    random: new TurnRandomStreamFactory($run->random_seed),
+                    state: new TurnState,
                 );
                 $results = [];
                 foreach ($this->pipeline->phases() as $phase) {

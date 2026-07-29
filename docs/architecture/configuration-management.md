@@ -24,6 +24,10 @@ ruleset versionは公開後に不変とし、変更は新しい一意なkey/vers
 
 公開payloadはsettings全体と、その`ruleset_version_id`に属するcommand definitionsおよびproduction definitionsから成る。同じkeyがすでに存在するときは、payloadと関連定義が完全一致する場合だけ冪等に再利用する。不一致をupdateで合わせず、例外で停止して新しいkey/versionの公開を要求する。
 
+repository内のauthoring sourceは`product/config/hakoniwa/rulesets/<version-key>.php`のPHP arrayとする。`product/config/hakoniwa.php`がversion fileを明示順でassembleし、filesystem globや暗黙順には依存しない。空keyと重複keyはconfig assembly時に拒否する。既存version fileを上書きせず、balance変更はlatest fileを新しいversion keyへcopyして行う。
+
+`php artisan hakoniwa:ruleset:validate --key=<version-key>`はpublisherと同じschema validatorを使い、required key、strict integer type/range、catalog/definition reference、相互条件をDB mutationなしで検証する。このcommandはsnapshotをpublishせず、Worldの`ruleset_version_id`も変更しない。review後のpublishはimmutable snapshot作成、World切替は別の明示的operationであり、このauthoring境界にapply/switch機能を含めない。
+
 `OceanWorldGenerator::initialize()`は、configured rulesetが存在しない場合だけpublisherを通して作成し、存在する場合は保存済みsnapshotとの完全一致を確認する。新規Worldだけをconfigured rulesetへ関連付け、既存Worldの`ruleset_version_id`を変更しない。既存Worldを新rulesetへ移す操作は、対象Worldと旧ruleset IDを限定したdata-preserving migrationで行う。
 
 Roadmap PR6は`roadmap-pr2-v1`を更新せず、`roadmap-pr6-v1`を新規公開する。forward-only migrationは`shared-world`が旧rulesetを参照している場合だけ新rulesetへ移し、queue itemのcommand definition参照を同じcommand keyの新定義へ付け替える。既適用migrationのrollbackやWorld再初期化を移行手段にしない。

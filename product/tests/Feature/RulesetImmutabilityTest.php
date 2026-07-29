@@ -148,6 +148,34 @@ class RulesetImmutabilityTest extends TestCase
         $this->assertSame(123.0, $production->fresh()->production_per_scale);
     }
 
+    public function test_ruleset_publisher_preserves_exact_four_decimal_production_rates(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings['key'] = 'test-production-decimal-v1';
+        $settings['production_definitions'][0]['production_per_scale'] = 1.2345;
+        $settings['production_definitions'][1]['production_per_scale'] = 999_999_999_999.9999;
+        $publisher = app(RulesetPublisher::class);
+
+        $published = $publisher->publish($settings);
+        $farmProduction = ProductionDefinition::query()
+            ->where('ruleset_version_id', $published->id)
+            ->where('key', 'farm_wheat')
+            ->firstOrFail();
+        $factoryProduction = ProductionDefinition::query()
+            ->where('ruleset_version_id', $published->id)
+            ->where('key', 'factory_industrial_goods')
+            ->firstOrFail();
+
+        $this->assertSame(1.2345, $farmProduction->production_per_scale);
+        $this->assertSame(999_999_999_999.9999, $factoryProduction->production_per_scale);
+        $this->assertSame(1.2345, $published->settings['production_definitions'][0]['production_per_scale']);
+        $this->assertSame(
+            999_999_999_999.9999,
+            $published->settings['production_definitions'][1]['production_per_scale'],
+        );
+        $this->assertSame($published->id, $publisher->publish($settings)->id);
+    }
+
     /** @return list<array<string, mixed>> */
     private function commandSnapshot(int $rulesetVersionId): array
     {

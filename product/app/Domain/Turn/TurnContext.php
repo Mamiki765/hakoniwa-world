@@ -14,5 +14,7 @@ final readonly class TurnContext
         public RulesetVersion $ruleset,
         public int $targetTurn,
         public string $randomSeed,
+        public TurnRandomStreamFactory $random,
+        public TurnState $state,
     ) {}
 }

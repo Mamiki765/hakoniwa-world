@@ -114,12 +114,13 @@ class NationCreationTest extends TestCase
         $this->assertSame($firstCoordinates, $secondCoordinates);
     }
 
-    public function test_initial_island_completes_when_fewer_coastal_candidates_exist_than_the_configured_minimum(): void
+    public function test_initial_island_meets_the_guaranteed_coastal_candidate_capacity(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
-        $settings['key'] = 'test-shallow-candidate-shortage-v1';
-        $settings['initial_island_minimum_shallow_cells'] = 1000;
+        $settings['key'] = 'test-shallow-candidate-capacity-v1';
+        $settings['initial_island_growth_steps'] = 0;
+        $settings['initial_island_minimum_shallow_cells'] = 18;
         $ruleset = app(RulesetPublisher::class)->publish($settings);
         $world->update(['ruleset_version_id' => $ruleset->id]);
 
@@ -127,7 +128,7 @@ class NationCreationTest extends TestCase
 
         $this->assertNotNull($nation->capital);
         $this->assertSame(19, MapCell::query()->where('owner_nation_id', $nation->id)->count());
-        $this->assertLessThan(1000, $this->terrainCount('shallow'));
+        $this->assertSame(18, $this->terrainCount('shallow'));
     }
 
     public function test_generator_failure_rolls_back_nation_island_capital_membership_and_request(): void

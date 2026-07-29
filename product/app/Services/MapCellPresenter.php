@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Models\MapCell;
 use App\Models\TerrainDefinition;
@@ -21,7 +22,8 @@ final class MapCellPresenter
     public function present(MapCell $cell, ?int $viewerNationId): array
     {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
-        $isDisguised = $cell->facility?->visibility_policy === 'disguised' && ! $isOwner;
+        $isDisguised = $cell->facility?->visibility_policy === FacilityVisibilityPolicy::Disguised->value
+            && ! $isOwner;
         $terrain = $isDisguised ? $this->forest() : $cell->terrain;
         $facility = $isDisguised ? null : $cell->facility;
         $displayDefinition = $facility ?? $terrain;
