@@ -6,6 +6,7 @@ use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use DomainException;
+use JsonException;
 
 final class RulesetAuthoringValidator
 {
@@ -24,6 +25,8 @@ final class RulesetAuthoringValidator
     private const PRODUCTION_DECIMAL_INTEGER_DIGITS = 12;
 
     private const PRODUCTION_DECIMAL_SCALE = 4;
+
+    private const POSTGRESQL_DEFAULT_VARCHAR_MAX_CHARACTERS = 255;
 
     /** @var list<string> */
     private const FACILITY_SCALE_FIELDS = [
@@ -75,9 +78,16 @@ final class RulesetAuthoringValidator
      */
     public function validate(array $settings): array
     {
+        $this->validateJsonAuthoredValue($settings, 'ruleset');
+        try {
+            json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+        } catch (JsonException $exception) {
+            throw new DomainException('ruleset must be JSON encodable.', previous: $exception);
+        }
+
         $this->requireKeys($settings, self::REQUIRED_TOP_LEVEL_KEYS, 'ruleset');
 
-        $key = $this->string($settings['key'], 'ruleset.key');
+        $key = $this->persistedString($settings['key'], 'ruleset.key');
         $version = $this->integer($settings['version'], 'ruleset.version', 1);
         $chunkSize = $this->integer($settings['chunk_size'], 'ruleset.chunk_size', 1);
         if ($chunkSize !== self::ARCHITECTURE_CHUNK_SIZE) {
@@ -118,7 +128,11 @@ final class RulesetAuthoringValidator
             );
         }
         $this->integer($settings['command_queue_limit'], 'ruleset.command_queue_limit', 1);
-        $this->integer($settings['initial_territory_radius'], 'ruleset.initial_territory_radius', 0);
+        $territoryRadius = $this->integer(
+            $settings['initial_territory_radius'],
+            'ruleset.initial_territory_radius',
+            0,
+        );
         $landRadius = $this->integer(
             $settings['initial_island_land_radius'],
             'ruleset.initial_island_land_radius',
@@ -135,6 +149,16 @@ final class RulesetAuthoringValidator
             0,
         );
         $this->integer($settings['initial_island_growth_steps'], 'ruleset.initial_island_growth_steps', 0);
+        if ($landRadius < 2) {
+            throw new DomainException(
+                'ruleset.initial_island_land_radius must be at least 2 to contain starter cells.',
+            );
+        }
+        if ($landRadius < $territoryRadius) {
+            throw new DomainException(
+                'ruleset.initial_island_land_radius must be at least initial_territory_radius.',
+            );
+        }
         if ($reservationRadius < max($landRadius, $growthRadius, 2)) {
             throw new DomainException(
                 'ruleset.initial_island_reservation_radius must be at least '
@@ -206,23 +230,23 @@ final class RulesetAuthoringValidator
                 'key', 'name', 'category', 'unit', 'nutrition_per_unit', 'storable', 'tradable',
                 'sale_price_key', 'sort_order', 'metadata',
             ], $path);
-            $this->string($definition['key'], "{$path}.key");
-            $this->string($definition['name'], "{$path}.name");
-            $this->string($definition['category'], "{$path}.category");
-            $this->string($definition['unit'], "{$path}.unit");
+            $this->persistedString($definition['key'], "{$path}.key");
+            $this->persistedString($definition['name'], "{$path}.name");
+            $this->persistedString($definition['category'], "{$path}.category");
+            $this->persistedString($definition['unit'], "{$path}.unit");
             if ($definition['nutrition_per_unit'] !== null) {
                 $this->integer($definition['nutrition_per_unit'], "{$path}.nutrition_per_unit", 0);
             }
             $this->boolean($definition['storable'], "{$path}.storable");
             $this->boolean($definition['tradable'], "{$path}.tradable");
-            $priceKey = $this->string($definition['sale_price_key'], "{$path}.sale_price_key");
+            $priceKey = $this->persistedString($definition['sale_price_key'], "{$path}.sale_price_key");
             if (! array_key_exists($priceKey, $salePrices)) {
                 throw new DomainException("{$path}.sale_price_key references missing price {$priceKey}.");
             }
             $this->integer($definition['sort_order'], "{$path}.sort_order", 0);
             $this->map($definition['metadata'], "{$path}.metadata");
             if (array_key_exists('unit_label', $definition) && $definition['unit_label'] !== null) {
-                $this->string($definition['unit_label'], "{$path}.unit_label");
+                $this->persistedString($definition['unit_label'], "{$path}.unit_label");
             }
         }
 
@@ -255,14 +279,14 @@ final class RulesetAuthoringValidator
                 'key', 'label', 'unit', 'initial_quantity', 'minimum_quantity',
                 'maximum_quantity', 'growth_increment', 'growth_rule_key',
             ], $path);
-            $this->string($quantity['key'], "{$path}.key");
-            $this->string($quantity['label'], "{$path}.label");
-            $this->string($quantity['unit'], "{$path}.unit");
+            $this->persistedString($quantity['key'], "{$path}.key");
+            $this->persistedString($quantity['label'], "{$path}.label");
+            $this->persistedString($quantity['unit'], "{$path}.unit");
             $initial = $this->integer($quantity['initial_quantity'], "{$path}.initial_quantity", 0);
             $minimum = $this->integer($quantity['minimum_quantity'], "{$path}.minimum_quantity", 0);
             $maximum = $this->integer($quantity['maximum_quantity'], "{$path}.maximum_quantity", 0);
             $this->integer($quantity['growth_increment'], "{$path}.growth_increment", 0);
-            $this->string($quantity['growth_rule_key'], "{$path}.growth_rule_key");
+            $this->persistedString($quantity['growth_rule_key'], "{$path}.growth_rule_key");
             if ($minimum > $initial || $initial > $maximum) {
                 throw new DomainException("{$path} requires minimum <= initial <= maximum.");
             }
@@ -316,9 +340,13 @@ final class RulesetAuthoringValidator
                 'initial_scale', 'scale_increment', 'maximum_scale', 'workforce_per_scale_people',
                 'production_definition_key', 'buildable_terrain_keys',
             ], $path);
-            $this->string($definition['name'], "{$path}.name");
-            $this->string($definition['asset_key'], "{$path}.asset_key");
-            $visibilityPolicy = $this->string($definition['visibility_policy'], "{$path}.visibility_policy");
+            $this->persistedString($key, "{$path} key");
+            $this->persistedString($definition['name'], "{$path}.name");
+            $this->persistedString($definition['asset_key'], "{$path}.asset_key");
+            $visibilityPolicy = $this->persistedString(
+                $definition['visibility_policy'],
+                "{$path}.visibility_policy",
+            );
             if (! FacilityVisibilityPolicy::isSupported($visibilityPolicy)) {
                 throw new DomainException(
                     "{$path}.visibility_policy must be one of "
@@ -350,7 +378,7 @@ final class RulesetAuthoringValidator
                 );
             }
             if (array_key_exists('disguise_asset_key', $definition) && $definition['disguise_asset_key'] !== null) {
-                $this->string($definition['disguise_asset_key'], "{$path}.disguise_asset_key");
+                $this->persistedString($definition['disguise_asset_key'], "{$path}.disguise_asset_key");
             }
             if (array_key_exists('level_thresholds', $definition)) {
                 foreach ($this->list($definition['level_thresholds'], "{$path}.level_thresholds") as $index => $value) {
@@ -383,9 +411,11 @@ final class RulesetAuthoringValidator
                 'target_facility_keys', 'requires_empty_facility', 'cost_money', 'required_resources',
                 'execution_phase', 'result_terrain_key', 'result_facility_key', 'sort_order', 'metadata',
             ], $path);
-            foreach (['key', 'name', 'description', 'target_type', 'execution_phase'] as $field) {
-                $this->string($definition[$field], "{$path}.{$field}");
-            }
+            $this->persistedString($definition['key'], "{$path}.key");
+            $this->persistedString($definition['name'], "{$path}.name");
+            $this->string($definition['description'], "{$path}.description");
+            $this->persistedString($definition['target_type'], "{$path}.target_type");
+            $this->persistedString($definition['execution_phase'], "{$path}.execution_phase");
             foreach ($this->list($definition['target_terrain_keys'], "{$path}.target_terrain_keys") as $terrainKey) {
                 $this->reference($terrainKey, self::TERRAIN_KEYS, "{$path}.target_terrain_keys");
             }
@@ -421,7 +451,7 @@ final class RulesetAuthoringValidator
                 'key', 'facility_key', 'output_resource_key', 'production_per_scale',
                 'required_workforce_per_scale', 'operating_condition', 'price_reference', 'metadata',
             ], $path);
-            $this->string($definition['key'], "{$path}.key");
+            $this->persistedString($definition['key'], "{$path}.key");
             $facilityKey = $this->reference(
                 $definition['facility_key'],
                 $facilityKeys,
@@ -440,8 +470,11 @@ final class RulesetAuthoringValidator
                 "{$path}.required_workforce_per_scale",
                 0,
             );
-            $this->string($definition['operating_condition'], "{$path}.operating_condition");
-            $priceReference = $this->string($definition['price_reference'], "{$path}.price_reference");
+            $this->persistedString($definition['operating_condition'], "{$path}.operating_condition");
+            $priceReference = $this->persistedString(
+                $definition['price_reference'],
+                "{$path}.price_reference",
+            );
             if (! array_key_exists($priceReference, $salePrices)) {
                 throw new DomainException("{$path}.price_reference references missing price {$priceReference}.");
             }
@@ -459,9 +492,53 @@ final class RulesetAuthoringValidator
             && ! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'])) {
             throw new DomainException('ruleset.development_plan_quantity does not match the canonical quantity contract.');
         }
-        foreach (['initial_island_minimum_shallow_cells', 'base_money_capacity', 'base_food_capacity_tons'] as $field) {
-            if (array_key_exists($field, $settings)) {
-                $this->integer($settings[$field], "ruleset.{$field}", 0);
+        if (array_key_exists('initial_island_minimum_shallow_cells', $settings)) {
+            $this->integer(
+                $settings['initial_island_minimum_shallow_cells'],
+                'ruleset.initial_island_minimum_shallow_cells',
+                0,
+            );
+        }
+        if (array_key_exists('base_money_capacity', $settings)) {
+            $moneyCapacity = $this->integer(
+                $settings['base_money_capacity'],
+                'ruleset.base_money_capacity',
+                0,
+            );
+            $initialMoney = $this->integer($settings['initial_money'], 'ruleset.initial_money', 0);
+            if ($initialMoney > $moneyCapacity) {
+                throw new DomainException(
+                    'ruleset.initial_money cannot exceed ruleset.base_money_capacity.',
+                );
+            }
+        }
+        if (array_key_exists('base_food_capacity_tons', $settings)) {
+            $foodCapacity = $this->integer(
+                $settings['base_food_capacity_tons'],
+                'ruleset.base_food_capacity_tons',
+                0,
+            );
+            $initialResources = $this->map($settings['initial_resources'], 'ruleset.initial_resources');
+            foreach ($this->list($settings['resource_definitions'], 'ruleset.resource_definitions') as $definition) {
+                $definition = $this->map($definition, 'ruleset.resource_definitions entry');
+                if ($definition['category'] !== 'food') {
+                    continue;
+                }
+                $resourceKey = $this->string(
+                    $definition['key'],
+                    'ruleset.resource_definitions entry.key',
+                );
+                $amount = $this->integer(
+                    $initialResources[$resourceKey],
+                    "ruleset.initial_resources.{$resourceKey}",
+                    0,
+                );
+                if ($amount > $foodCapacity) {
+                    throw new DomainException(
+                        'ruleset initial food total cannot exceed ruleset.base_food_capacity_tons.',
+                    );
+                }
+                $foodCapacity -= $amount;
             }
         }
         if (array_key_exists('inventory_sale_rates', $settings)) {
@@ -485,14 +562,14 @@ final class RulesetAuthoringValidator
         $keys = [];
         foreach ($definitions as $index => $definition) {
             if ($associative) {
-                $key = $this->string($index, "{$path} key");
+                $key = $this->persistedString($index, "{$path} key");
                 $this->map($definition, "{$path}.{$key}");
             } else {
                 $definition = $this->map($definition, "{$path}.{$index}");
                 if (! array_key_exists('key', $definition)) {
                     throw new DomainException("{$path}.{$index} is missing required key.");
                 }
-                $key = $this->string($definition['key'], "{$path}.{$index}.key");
+                $key = $this->persistedString($definition['key'], "{$path}.{$index}.key");
             }
             if (in_array($key, $keys, true)) {
                 throw new DomainException("{$path} contains duplicate definition key {$key}.");
@@ -633,6 +710,42 @@ final class RulesetAuthoringValidator
         }
 
         return $value;
+    }
+
+    private function persistedString(mixed $value, string $path): string
+    {
+        $value = $this->string($value, $path);
+        $characters = preg_match_all('/./us', $value);
+        if ($characters === false || $characters > self::POSTGRESQL_DEFAULT_VARCHAR_MAX_CHARACTERS) {
+            throw new DomainException(
+                "{$path} must be at most "
+                .self::POSTGRESQL_DEFAULT_VARCHAR_MAX_CHARACTERS
+                .' characters.',
+            );
+        }
+
+        return $value;
+    }
+
+    private function validateJsonAuthoredValue(mixed $value, string $path): void
+    {
+        if (is_string($value)) {
+            if (preg_match('//u', $value) !== 1) {
+                throw new DomainException("{$path} must contain valid UTF-8.");
+            }
+
+            return;
+        }
+        if (! is_array($value)) {
+            return;
+        }
+
+        foreach ($value as $key => $nested) {
+            if (is_string($key) && preg_match('//u', $key) !== 1) {
+                throw new DomainException("{$path} contains a key that must contain valid UTF-8.");
+            }
+            $this->validateJsonAuthoredValue($nested, "{$path}.{$key}");
+        }
     }
 
     private function string(mixed $value, string $path): string

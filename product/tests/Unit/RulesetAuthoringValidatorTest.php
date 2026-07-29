@@ -439,6 +439,7 @@ class RulesetAuthoringValidatorTest extends TestCase
     public function test_equal_initial_island_radius_boundary_is_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_territory_radius'] = 2;
         $settings['initial_island_land_radius'] = 2;
         $settings['initial_island_growth_radius'] = 2;
         $settings['initial_island_reservation_radius'] = 2;
@@ -446,6 +447,38 @@ class RulesetAuthoringValidatorTest extends TestCase
         $summary = app(RulesetAuthoringValidator::class)->validate($settings);
 
         $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_initial_island_land_radius_must_contain_fixed_starter_cells(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_territory_radius'] = 1;
+        $settings['initial_island_land_radius'] = 1;
+        $settings['initial_island_growth_radius'] = 1;
+        $settings['initial_island_reservation_radius'] = 2;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.initial_island_land_radius must be at least 2 to contain starter cells',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_initial_territory_radius_cannot_exceed_land_radius(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['initial_territory_radius'] = 3;
+        $settings['initial_island_land_radius'] = 2;
+        $settings['initial_island_growth_radius'] = 2;
+        $settings['initial_island_reservation_radius'] = 3;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.initial_island_land_radius must be at least initial_territory_radius',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
     #[DataProvider('invalidInitialIslandRadiusProvider')]
@@ -476,11 +509,6 @@ class RulesetAuthoringValidatorTest extends TestCase
                 'initial_island_land_radius' => 2,
                 'initial_island_growth_radius' => 3,
                 'initial_island_reservation_radius' => 2,
-            ]],
-            'reservation below fixed placement radius' => [[
-                'initial_island_land_radius' => 1,
-                'initial_island_growth_radius' => 1,
-                'initial_island_reservation_radius' => 1,
             ]],
         ];
     }
@@ -588,6 +616,206 @@ class RulesetAuthoringValidatorTest extends TestCase
         );
 
         app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_nested_json_authored_values_accept_valid_utf_8(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_definitions'][0]['metadata']['utf8'] = [
+            '日本語' => ['emoji' => '🏝️', 'ascii' => 'hakoniwa'],
+            'list' => ['平和', 'turn-1'],
+        ];
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_nested_json_authored_string_values_must_contain_valid_utf_8(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_definitions'][0]['metadata']['nested']['invalid'] = "\xC3\x28";
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.command_definitions.0.metadata.nested.invalid must contain valid UTF-8',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_nested_json_authored_string_keys_must_contain_valid_utf_8(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_definitions'][0]['metadata']['nested']["\xC3\x28"] = 'value';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.command_definitions.0.metadata.nested contains a key that must contain valid UTF-8',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_final_authored_payload_must_be_json_encodable(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_definitions'][0]['metadata']['not_finite'] = INF;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('ruleset must be JSON encodable');
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    #[DataProvider('persistedVarcharFieldProvider')]
+    public function test_persisted_varchar_fields_accept_255_characters(
+        callable $mutate,
+        string $_path,
+    ): void {
+        $settings = $mutate(
+            config('hakoniwa.published_rulesets.roadmap-pr7-v1'),
+            str_repeat('界', 255),
+        );
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame(7, $summary['commands']);
+    }
+
+    #[DataProvider('persistedVarcharFieldProvider')]
+    public function test_persisted_varchar_fields_reject_256_characters(
+        callable $mutate,
+        string $path,
+    ): void {
+        $settings = $mutate(
+            config('hakoniwa.published_rulesets.roadmap-pr7-v1'),
+            str_repeat('界', 256),
+        );
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage("{$path} must be at most 255 characters");
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /**
+     * @return array<string, array{
+     *     callable(array<string, mixed>, string): array<string, mixed>,
+     *     string
+     * }>
+     */
+    public static function persistedVarcharFieldProvider(): array
+    {
+        return [
+            'ruleset key' => [
+                static function (array $settings, string $value): array {
+                    $settings['key'] = $value;
+
+                    return $settings;
+                },
+                'ruleset.key',
+            ],
+            'resource name' => [
+                static function (array $settings, string $value): array {
+                    $settings['resource_definitions'][0]['name'] = $value;
+
+                    return $settings;
+                },
+                'ruleset.resource_definitions.0.name',
+            ],
+            'terrain quantity label' => [
+                static function (array $settings, string $value): array {
+                    $settings['terrain_quantities']['forest']['label'] = $value;
+
+                    return $settings;
+                },
+                'ruleset.terrain_quantities.forest.label',
+            ],
+            'facility name' => [
+                static function (array $settings, string $value): array {
+                    $settings['facility_definitions']['village']['name'] = $value;
+
+                    return $settings;
+                },
+                'ruleset.facility_definitions.village.name',
+            ],
+            'command name' => [
+                static function (array $settings, string $value): array {
+                    $settings['command_definitions'][0]['name'] = $value;
+
+                    return $settings;
+                },
+                'ruleset.command_definitions.0.name',
+            ],
+            'production operating condition' => [
+                static function (array $settings, string $value): array {
+                    $settings['production_definitions'][0]['operating_condition'] = $value;
+
+                    return $settings;
+                },
+                'ruleset.production_definitions.0.operating_condition',
+            ],
+        ];
+    }
+
+    public function test_text_and_jsonb_strings_are_not_limited_to_varchar_width(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['command_definitions'][0]['description'] = str_repeat('説', 256);
+        $settings['command_definitions'][0]['metadata']['long_text'] = str_repeat('明', 256);
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_initial_balances_may_equal_base_capacities(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['base_money_capacity'] = $settings['initial_money'];
+        $settings['base_food_capacity_tons'] = 10_000;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_initial_money_cannot_exceed_base_capacity(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['base_money_capacity'] = $settings['initial_money'] - 1;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.initial_money cannot exceed ruleset.base_money_capacity',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_initial_food_total_cannot_exceed_base_capacity(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['base_food_capacity_tons'] = 9_999;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset initial food total cannot exceed ruleset.base_food_capacity_tons',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_legacy_authoring_version_without_capacity_keys_remains_valid(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $this->assertArrayNotHasKey('base_money_capacity', $settings);
+        $this->assertArrayNotHasKey('base_food_capacity_tons', $settings);
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr6-v1', $summary['key']);
     }
 
     public function test_duplicate_authoring_version_keys_are_rejected(): void
