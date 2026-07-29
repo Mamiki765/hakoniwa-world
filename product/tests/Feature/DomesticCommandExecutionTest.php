@@ -94,6 +94,7 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('failed', $farmItem->fresh()->status);
         $this->assertSame('facility_not_empty', $farmItem->fresh()->failure_code);
         $this->assertSame('wasteland', $reclaimTarget->fresh()->terrain()->value('key'));
+        $this->assertSame($first->id, $reclaimTarget->fresh()->owner_nation_id);
 
         $executor->execute($context);
         $this->assertSame('factory', $factoryTarget->fresh()->facility()->value('key'));
@@ -353,6 +354,7 @@ class DomesticCommandExecutionTest extends TestCase
     private function reclaimTarget(Nation $nation, MapSpace $space): MapCell
     {
         $shallowCells = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'shallow'))->orderBy('id')->get();
         foreach ($shallowCells as $cell) {
             foreach ((new GridCoordinate($cell->x, $cell->y))->radius(1) as $coordinate) {
