@@ -97,17 +97,14 @@ base_food_capacity_tons = 999,900 (food unit: 1 ton)
 
 Only `shared-world` is moved from the exact expected PR6 ruleset by a data-preserving migration. Queue definition foreign keys are remapped by command key. The initializer associates new Worlds with PR7 but never moves an existing World.
 
-`NationCapacityResolver` reads the World's published snapshot and applies zero or more future `CapacityModifier` implementations. PR #7 registers no modifiers.
+`NationCapacityResolver` currently returns only the World's published base capacities. `CapacityModifier` is deliberately a marker boundary: if any modifier is supplied, resolution fails closed until E-04 decides addition, multiplication, caps, priority, and cycle prevention.
 
 ```text
-effective capacity
-= published base capacity
-+ future capital modifiers
-+ future facility modifiers
-+ future item/effect modifiers
+current effective capacity = published base capacity
+future effective capacity = E-04-defined composition(base, modifiers)
 ```
 
-No fixed capacity is placed in a DB CHECK constraint. Existing balances are not migrated or clamped.
+PR #7 therefore does not encode additive modifier arithmetic or ordering. No fixed capacity is placed in a DB CHECK constraint. Existing balances are not migrated or clamped.
 
 ## Capacity-bounded additions
 
