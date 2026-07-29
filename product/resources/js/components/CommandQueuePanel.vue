@@ -313,7 +313,7 @@ onBeforeUnmount(() => {
 
         <aside class="plan-panel" :class="{ expanded: mobilePlanExpanded }" aria-label="開発計画">
             <button class="mobile-panel-toggle" type="button" @click="togglePlanDrawer">
-                開発計画 20枠 <span>{{ mobilePlanExpanded ? '閉じる' : '開く' }}</span>
+                開発計画 {{ queue.limit }}枠 <span>{{ mobilePlanExpanded ? '閉じる' : '開く' }}</span>
             </button>
             <div class="plan-panel-body">
                 <div class="plan-heading">

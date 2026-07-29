@@ -186,32 +186,46 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'command_key' => 'land_clear',
             'target_x' => $target->x,
             'target_y' => $target->y,
-            'position' => 5,
+            'position' => 30,
             'request_key' => (string) Str::uuid(),
             'expected_version' => 1,
         ])->assertCreated()
-            ->assertJsonPath('data.queue.plan.4.kind', 'explicit')
-            ->assertJsonPath('data.queue.plan.4.command_name', '整地')
+            ->assertJsonPath('data.queue.plan.29.kind', 'explicit')
+            ->assertJsonPath('data.queue.plan.29.command_name', '整地')
             ->assertJsonCount(30, 'data.queue.plan');
 
         $inserted = $this->postJson($path, [
             'command_key' => 'land_clear',
             'target_x' => $target->x,
             'target_y' => $target->y,
-            'position' => 5,
+            'position' => 29,
             'request_key' => (string) Str::uuid(),
             'expected_version' => 2,
         ])->assertCreated()
-            ->assertJsonPath('data.queue.plan.4.kind', 'explicit')
-            ->assertJsonPath('data.queue.plan.5.kind', 'explicit')
+            ->assertJsonPath('data.queue.plan.28.kind', 'explicit')
+            ->assertJsonPath('data.queue.plan.29.kind', 'explicit')
             ->assertJsonCount(30, 'data.queue.plan');
 
-        $firstId = $inserted->json('data.queue.plan.4.id');
+        $firstId = $inserted->json('data.queue.plan.29.id');
         $this->deleteJson($path."/{$firstId}", ['expected_version' => 3])
             ->assertOk()
             ->assertJsonPath('data.plan.0.kind', 'explicit')
             ->assertJsonPath('data.plan.1.kind', 'automatic_finance')
             ->assertJsonCount(30, 'data.plan');
+
+        foreach ([4, 5] as $expectedVersion) {
+            $inserted = $this->postJson($path, [
+                'command_key' => 'land_clear',
+                'target_x' => $target->x,
+                'target_y' => $target->y,
+                'position' => 5,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => $expectedVersion,
+            ])->assertCreated();
+        }
+        $inserted->assertJsonPath('data.queue.plan.4.kind', 'explicit')
+            ->assertJsonPath('data.queue.plan.5.kind', 'explicit')
+            ->assertJsonCount(30, 'data.queue.plan');
     }
 
     public function test_universal_quantity_contract_validation_storage_editing_response_and_audit(): void
@@ -418,10 +432,23 @@ class CommandQueueAndSalePolicyTest extends TestCase
             $before,
             NationCommandQueueItem::query()->where('status', 'queued')->orderBy('queue_position')->pluck('id')->all(),
         );
+        $reversed = array_reverse($before);
+        $this->putJson($path.'/reorder', [
+            'ordered_ids' => $reversed,
+            'expected_version' => 31,
+        ])->assertOk()
+            ->assertJsonPath('data.items.0.id', $reversed[0])
+            ->assertJsonCount(30, 'data.items');
+        $this->deleteJson($path.'/'.$reversed[0], ['expected_version' => 32])
+            ->assertOk()
+            ->assertJsonPath('data.items.0.id', $reversed[1])
+            ->assertJsonPath('data.items.0.queue_position', 1)
+            ->assertJsonPath('data.explicit_count', 29)
+            ->assertJsonCount(30, 'data.plan');
         $this->actingAs($owner)->getJson($path)
             ->assertOk()
             ->assertJsonCount(30, 'data.plan')
-            ->assertJsonPath('data.explicit_count', 30);
+            ->assertJsonPath('data.explicit_count', 29);
     }
 
     public function test_sale_policy_validation_authorization_audit_and_concurrency(): void
