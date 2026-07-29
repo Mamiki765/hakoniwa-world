@@ -81,13 +81,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        $sourceId = DB::table('ruleset_versions')->where('key', self::SOURCE_KEY)->value('id');
-        $targetId = DB::table('ruleset_versions')->where('key', self::TARGET_KEY)->value('id');
-        if ($sourceId === null || $targetId === null) {
-            throw new RuntimeException('Cannot roll back the shared-world ruleset migration because a published ruleset is missing.');
-        }
-
-        DB::transaction(fn () => $this->moveWorldAndQueueItems((int) $targetId, (int) $sourceId));
+        throw new RuntimeException(
+            'The shared-world roadmap-pr11-v1 migration is forward-only; restore from an explicit backup instead.',
+        );
     }
 
     private function moveWorldAndQueueItems(int $fromRulesetId, int $toRulesetId): void

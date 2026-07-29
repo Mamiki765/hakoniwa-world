@@ -16,11 +16,12 @@ class RulesetImmutabilityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_clean_database_publishes_immutable_pr2_pr6_and_pr7_snapshots_and_initializer_is_idempotent(): void
+    public function test_clean_database_publishes_immutable_legacy_snapshots_and_initializer_is_idempotent(): void
     {
         $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
         $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
         $target = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
+        $current = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
         $sourceSnapshot = $source->settings;
         $sourceCommands = $this->commandSnapshot($source->id);
         $sourceProduction = $this->productionSnapshot($source->id);
@@ -45,7 +46,7 @@ class RulesetImmutabilityTest extends TestCase
         $this->assertSame(999_900, $target->settings['base_food_capacity_tons']);
 
         $world = app(OceanWorldGenerator::class)->initialize();
-        $this->assertSame($target->id, $world->ruleset_version_id);
+        $this->assertSame($current->id, $world->ruleset_version_id);
         app(OceanWorldGenerator::class)->initialize();
 
         $this->assertSame($sourceSnapshot, $source->fresh()->settings);
@@ -61,7 +62,7 @@ class RulesetImmutabilityTest extends TestCase
 
     public function test_initializer_rejects_same_key_with_different_payload_without_mutating_published_ruleset(): void
     {
-        $published = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
+        $published = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
         $before = $this->rulesetSnapshot($published);
         config(['hakoniwa.ruleset.initial_money' => 999]);
 
@@ -174,6 +175,37 @@ class RulesetImmutabilityTest extends TestCase
             $published->settings['production_definitions'][1]['production_per_scale'],
         );
         $this->assertSame($published->id, $publisher->publish($settings)->id);
+    }
+
+    public function test_pr11_ruleset_is_idempotent_and_preserves_all_older_snapshots(): void
+    {
+        $older = RulesetVersion::query()->whereIn('key', [
+            'roadmap-pr2-v1', 'roadmap-pr6-v1', 'roadmap-pr7-v1',
+        ])->orderBy('key')->get()->mapWithKeys(fn (RulesetVersion $ruleset): array => [
+            $ruleset->key => $this->rulesetSnapshot($ruleset),
+        ])->all();
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr11-v1');
+        $published = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
+        $snapshot = $this->rulesetSnapshot($published);
+
+        $republished = app(RulesetPublisher::class)->publish($settings);
+
+        $this->assertSame($published->id, $republished->id);
+        $this->assertSame($snapshot, $this->rulesetSnapshot($published->fresh()));
+        $this->assertSame(30, $published->settings['command_queue_limit']);
+        $this->assertSame(10_000, $published->settings['initial_resources']['wheat']);
+        $landLevel = CommandDefinition::query()->where('ruleset_version_id', $published->id)
+            ->where('key', 'land_level')->firstOrFail();
+        $this->assertFalse($landLevel->metadata['execution_deferred']);
+        $this->assertArrayNotHasKey('earthquake_check_deferred', $landLevel->metadata);
+        $this->assertArrayNotHasKey('earthquake_side_effect_deferred', $landLevel->metadata);
+        $this->assertSame(
+            $older,
+            RulesetVersion::query()->whereIn('key', array_keys($older))->orderBy('key')->get()
+                ->mapWithKeys(fn (RulesetVersion $ruleset): array => [
+                    $ruleset->key => $this->rulesetSnapshot($ruleset),
+                ])->all(),
+        );
     }
 
     /** @return list<array<string, mixed>> */

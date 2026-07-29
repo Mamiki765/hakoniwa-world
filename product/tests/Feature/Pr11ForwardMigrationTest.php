@@ -14,6 +14,7 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\TestCase;
 
 class Pr11ForwardMigrationTest extends TestCase
@@ -25,6 +26,9 @@ class Pr11ForwardMigrationTest extends TestCase
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, 'PR11移行国');
+        $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
+        $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
+        $world->update(['ruleset_version_id' => $pr7->id]);
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $target = MapCell::query()
             ->where('owner_nation_id', $nation->id)
@@ -43,8 +47,6 @@ class Pr11ForwardMigrationTest extends TestCase
             quantity: 30,
         )['item'];
 
-        $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
-        $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
         $unrelated = World::query()->create([
             'key' => 'unrelated-world',
             'name' => '無関係世界',
@@ -70,7 +72,6 @@ class Pr11ForwardMigrationTest extends TestCase
         ];
         $migration = require database_path('migrations/2026_07_30_000000_publish_roadmap_pr11_ruleset.php');
 
-        $migration->down();
         $this->assertSame($pr7->id, $world->fresh()->ruleset_version_id);
         app(OceanWorldGenerator::class)->initialize();
         $this->assertSame($pr7->id, $world->fresh()->ruleset_version_id);
@@ -109,5 +110,14 @@ class Pr11ForwardMigrationTest extends TestCase
 
         $migration->up();
         $this->assertSame($pr11->id, $world->fresh()->ruleset_version_id);
+    }
+
+    public function test_shared_world_ruleset_migration_is_forward_only(): void
+    {
+        $migration = require database_path('migrations/2026_07_30_000000_publish_roadmap_pr11_ruleset.php');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('forward-only');
+        $migration->down();
     }
 }

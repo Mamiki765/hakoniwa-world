@@ -195,6 +195,132 @@ class RulesetAuthoringValidatorTest extends TestCase
         $validator->validate($settings);
     }
 
+    /**
+     * @param  callable(array<string, mixed>): array<string, mixed>  $mutate
+     */
+    #[DataProvider('invalidPr11TurnContractProvider')]
+    public function test_pr11_turn_contract_rejects_incompatible_authored_values(
+        callable $mutate,
+        string $message,
+    ): void {
+        $settings = $mutate(config('hakoniwa.published_rulesets.roadmap-pr11-v1'));
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage($message);
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{callable(array<string, mixed>): array<string, mixed>, string}> */
+    public static function invalidPr11TurnContractProvider(): array
+    {
+        return [
+            'food must use canonical tons' => [
+                static function (array $settings): array {
+                    $settings['resource_definitions'][0]['unit'] = 'legacy_unit';
+
+                    return $settings;
+                },
+                'canonical ton units',
+            ],
+            'automatic finance must be nonnegative' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['automatic_finance_money'] = -1;
+
+                    return $settings;
+                },
+                'automatic_finance_money must be at least 0',
+            ],
+            'food nutrition must be integer' => [
+                static function (array $settings): array {
+                    $settings['resource_definitions'][0]['nutrition_per_unit'] = 1.5;
+
+                    return $settings;
+                },
+                'nutrition_per_unit must be an integer',
+            ],
+            'food priority is canonical' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['food']['consumption_priority'] = ['fish', 'wheat', 'monster_meat'];
+
+                    return $settings;
+                },
+                'must be wheat, fish, monster_meat',
+            ],
+            'worker output must match production scale' => [
+                static function (array $settings): array {
+                    $settings['production_definitions'][0]['production_per_scale'] = 999;
+
+                    return $settings;
+                },
+                'farm output must match production per scale',
+            ],
+            'production output mapping is canonical' => [
+                static function (array $settings): array {
+                    $settings['production_definitions'][1]['output_resource_key'] = 'minerals';
+
+                    return $settings;
+                },
+                'factory production mapping is incompatible',
+            ],
+            'production workforce units match facility scale' => [
+                static function (array $settings): array {
+                    $settings['facility_definitions']['mine']['workforce_per_scale_people'] = 999;
+
+                    return $settings;
+                },
+                'mine scale and workforce units must match',
+            ],
+            'all tradable resources require a sale rate' => [
+                static function (array $settings): array {
+                    unset($settings['inventory_sale_rates']['fish']);
+
+                    return $settings;
+                },
+                'missing tradable resource fish',
+            ],
+            'sale revenue rate must be positive' => [
+                static function (array $settings): array {
+                    $settings['inventory_sale_rates']['wheat']['money_units'] = 0;
+
+                    return $settings;
+                },
+                'money_units must be at least 1',
+            ],
+            'wheat sell all must be forbidden' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'] = [];
+
+                    return $settings;
+                },
+                'must forbid sell_all for wheat',
+            ],
+            'wheat safe default is stockpile' => [
+                static function (array $settings): array {
+                    $settings['default_sale_policy'] = 'sell_all';
+
+                    return $settings;
+                },
+                'requires stockpile as the wheat-safe default',
+            ],
+            'sea edge bands must be descending' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['settlement']['sea_edge_bands'][1]['minimum_sea_cells'] = 25;
+
+                    return $settings;
+                },
+                'must use descending minimums',
+            ],
+            'settlement stage facility cannot use workforce scale' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['settlement']['stages']['village']['facility_key'] = 'farm';
+
+                    return $settings;
+                },
+                'must be population-derived',
+            ],
+        ];
+    }
+
     #[DataProvider('invalidInitialBoundsProvider')]
     public function test_noncanonical_initial_bounds_are_rejected(array $bounds): void
     {

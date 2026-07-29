@@ -5,6 +5,13 @@ $ruleset = require __DIR__.'/roadmap-pr7-v1.php';
 $ruleset['key'] = 'roadmap-pr11-v1';
 $ruleset['version'] = 1;
 $ruleset['command_queue_limit'] = 30;
+$ruleset['inventory_sale_rates'] = [
+    'wheat' => ['inventory_units' => 1_000, 'money_units' => 1],
+    'fish' => ['inventory_units' => 1_000, 'money_units' => 1],
+    'monster_meat' => ['inventory_units' => 1_000, 'money_units' => 2],
+    'industrial_goods' => ['inventory_units' => 1_000, 'money_units' => 1],
+    'minerals' => ['inventory_units' => 1_000, 'money_units' => 1],
+];
 $ruleset['facility_definitions']['town'] = [
     'name' => '町', 'asset_key' => 'tile.town', 'visibility_policy' => 'public',
     'build_command_key' => null, 'scale_unit_people' => null, 'initial_scale' => null,
@@ -21,7 +28,7 @@ $ruleset['facility_definitions']['city'] = [
 foreach ($ruleset['command_definitions'] as &$commandDefinition) {
     $commandDefinition['metadata']['execution_deferred'] = false;
     if ($commandDefinition['key'] === 'land_level') {
-        $commandDefinition['metadata']['earthquake_side_effect_deferred'] = 'CMD-02';
+        unset($commandDefinition['metadata']['earthquake_check_deferred']);
     }
 }
 unset($commandDefinition);
@@ -33,6 +40,7 @@ $ruleset['production_definitions'] = [
 ];
 
 $ruleset['turn_processing'] = [
+    'automatic_finance_money' => 10,
     'food' => [
         'population_per_nutrition' => 5,
         'consumption_priority' => ['wheat', 'fish', 'monster_meat'],
@@ -59,11 +67,11 @@ $ruleset['turn_processing'] = [
             ['minimum_sea_cells' => 12, 'maximum_population' => 5000, 'growth_multiplier' => 2],
             ['minimum_sea_cells' => 0, 'maximum_population' => 2000, 'growth_multiplier' => 1],
         ],
-        'ordinary_growth' => ['minimum' => 1, 'maximum' => 3, 'unit_people' => 100],
-        'attraction_growth' => ['minimum' => 1, 'maximum' => 10, 'unit_people' => 100],
+        'ordinary_growth' => ['minimum' => 100, 'maximum' => 300, 'unit_people' => 1],
+        'attraction_growth' => ['minimum' => 100, 'maximum' => 1000, 'unit_people' => 1],
         'attraction_maximum_population' => 20000,
     ],
-    'famine' => ['loss_minimum' => 1, 'loss_maximum' => 30, 'loss_unit_people' => 100],
+    'famine' => ['loss_minimum' => 100, 'loss_maximum' => 3000, 'loss_unit_people' => 1],
     'riot' => [
         'probability' => ['numerator' => 1, 'denominator' => 4],
         'facility_keys' => ['farm', 'factory', 'missile_base'],

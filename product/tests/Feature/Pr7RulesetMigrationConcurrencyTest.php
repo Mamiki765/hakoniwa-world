@@ -16,11 +16,15 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Concerns\UsesForwardOnlyDatabaseMigrations;
 use Tests\TestCase;
 
 class Pr7RulesetMigrationConcurrencyTest extends TestCase
 {
-    use DatabaseMigrations;
+    use DatabaseMigrations, UsesForwardOnlyDatabaseMigrations {
+        UsesForwardOnlyDatabaseMigrations::runDatabaseMigrations insteadof DatabaseMigrations;
+        UsesForwardOnlyDatabaseMigrations::refreshTestDatabase insteadof DatabaseMigrations;
+    }
 
     private const PROBE_CONNECTION = 'pgsql-pr7-migration-probe';
 
@@ -154,6 +158,9 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
     private function fixtureOnPr6(): array
     {
         $world = app(OceanWorldGenerator::class)->initialize();
+        $world->update([
+            'ruleset_version_id' => RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->valueOrFail('id'),
+        ]);
         $migration = $this->migration();
         $this->runMigration($this->primaryConnection, $migration, 'down');
 
