@@ -12,10 +12,12 @@ use App\Domain\Map\ChunkCoordinateService;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
+use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -130,6 +132,50 @@ class WorldResetCommandTest extends TestCase
         $this->assertSame(3600, MapCell::query()->count());
     }
 
+    public function test_reset_reports_and_cascades_only_the_target_world_turn_runs(): void
+    {
+        [$world] = $this->populatedWorld();
+        $otherWorld = World::query()->create([
+            'key' => 'other-turn-history-world',
+            'name' => '別ターン履歴世界',
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'current_turn' => 0,
+        ]);
+        $targetRuns = collect([
+            $this->createTurnRun($world, 1),
+            $this->createTurnRun($world, 2),
+        ]);
+        $otherRun = $this->createTurnRun($otherWorld, 1);
+        $userCount = User::query()->count();
+        $identityCount = DB::table('auth_identities')->count();
+
+        $this->assertSame(0, Artisan::call('hakoniwa:world:reset', [
+            '--world' => $world->key,
+            '--dry-run' => true,
+        ]));
+        $this->assertMatchesRegularExpression(
+            '/\|\s*turn_runs\s*\|\s*2\s*\|/',
+            Artisan::output(),
+        );
+        $this->assertNotNull(World::query()->find($world->id));
+        $this->assertSame(
+            $targetRuns->pluck('id')->all(),
+            TurnRun::query()->where('world_id', $world->id)->orderBy('id')->pluck('id')->all(),
+        );
+        $this->assertNotNull(TurnRun::query()->find($otherRun->id));
+
+        $this->assertSame(0, Artisan::call('hakoniwa:world:reset', [
+            '--world' => $world->key,
+            '--confirm' => 'RESET-'.$world->key,
+        ]));
+        $this->assertNull(World::query()->find($world->id));
+        $this->assertSame(0, TurnRun::query()->where('world_id', $world->id)->count());
+        $this->assertNotNull(World::query()->find($otherWorld->id));
+        $this->assertNotNull(TurnRun::query()->find($otherRun->id));
+        $this->assertSame($userCount, User::query()->count());
+        $this->assertSame($identityCount, DB::table('auth_identities')->count());
+    }
+
     /** @return array{World, User} */
     private function populatedWorld(): array
     {
@@ -159,5 +205,24 @@ class WorldResetCommandTest extends TestCase
         );
 
         return [$world, $user];
+    }
+
+    private function createTurnRun(World $world, int $targetTurn): TurnRun
+    {
+        return TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $targetTurn,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'random_seed' => str_pad(dechex($targetTurn), 64, '0', STR_PAD_LEFT),
+            'source' => 'manual',
+            'is_dry_run' => false,
+            'status' => TurnRun::STATUS_COMPLETED,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'started_at' => now(),
+            'completed_at' => now(),
+            'failure_context' => [],
+        ]);
     }
 }

@@ -108,6 +108,7 @@ final class ResetWorld extends Command
 
         return [
             'audit_events' => $this->worldAuditEvents($world)->count(),
+            'turn_runs' => DB::table('turn_runs')->where('world_id', $world->id)->count(),
             'nation_memberships' => DB::table('nation_memberships')->where('world_id', $world->id)->count(),
             'nation_resources' => DB::table('nation_resources')->whereIn('nation_id', $nationIds)->count(),
             'nation_resource_sale_policies' => DB::table('nation_resource_sale_policies')->whereIn('nation_id', $nationIds)->count(),
