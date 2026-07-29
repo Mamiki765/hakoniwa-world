@@ -82,6 +82,29 @@ class RulesetAuthoringValidatorTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
+    public function test_nutrition_accepts_decimal_12_4_integer_boundary(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['resource_definitions'][0]['nutrition_per_unit'] = 99_999_999;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    public function test_nutrition_rejects_values_outside_decimal_12_4(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings['resource_definitions'][0]['nutrition_per_unit'] = 100_000_000;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage(
+            'ruleset.resource_definitions.0.nutrition_per_unit must fit decimal(12,4) without rounding',
+        );
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     #[DataProvider('invalidChunkSizeProvider')]
     public function test_non_architecture_chunk_sizes_are_rejected(int $chunkSize): void
     {
@@ -649,6 +672,65 @@ class RulesetAuthoringValidatorTest extends TestCase
         );
 
         app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    #[DataProvider('persistedSortOrderProvider')]
+    public function test_definition_sort_orders_accept_postgresql_integer_maximum(
+        callable $mutate,
+        string $_path,
+    ): void {
+        $settings = $mutate(
+            config('hakoniwa.published_rulesets.roadmap-pr7-v1'),
+            2_147_483_647,
+        );
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('roadmap-pr7-v1', $summary['key']);
+    }
+
+    #[DataProvider('persistedSortOrderProvider')]
+    public function test_definition_sort_orders_reject_values_above_postgresql_integer_maximum(
+        callable $mutate,
+        string $path,
+    ): void {
+        $settings = $mutate(
+            config('hakoniwa.published_rulesets.roadmap-pr7-v1'),
+            2_147_483_648,
+        );
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage("{$path} must fit the PostgreSQL integer range");
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /**
+     * @return array<string, array{
+     *     callable(array<string, mixed>, int): array<string, mixed>,
+     *     string
+     * }>
+     */
+    public static function persistedSortOrderProvider(): array
+    {
+        return [
+            'resource definition' => [
+                static function (array $settings, int $value): array {
+                    $settings['resource_definitions'][0]['sort_order'] = $value;
+
+                    return $settings;
+                },
+                'ruleset.resource_definitions.0.sort_order',
+            ],
+            'command definition' => [
+                static function (array $settings, int $value): array {
+                    $settings['command_definitions'][0]['sort_order'] = $value;
+
+                    return $settings;
+                },
+                'ruleset.command_definitions.0.sort_order',
+            ],
+        ];
     }
 
     public function test_each_facility_can_have_only_one_production_definition_per_ruleset(): void

@@ -26,6 +26,8 @@ final class RulesetAuthoringValidator
 
     private const PRODUCTION_DECIMAL_SCALE = 4;
 
+    private const NUTRITION_DECIMAL_MAX_INTEGER = 99_999_999;
+
     private const POSTGRESQL_DEFAULT_VARCHAR_MAX_CHARACTERS = 255;
 
     /** @var list<string> */
@@ -241,7 +243,16 @@ final class RulesetAuthoringValidator
             $this->persistedString($definition['category'], "{$path}.category");
             $this->persistedString($definition['unit'], "{$path}.unit");
             if ($definition['nutrition_per_unit'] !== null) {
-                $this->integer($definition['nutrition_per_unit'], "{$path}.nutrition_per_unit", 0);
+                $nutrition = $this->integer(
+                    $definition['nutrition_per_unit'],
+                    "{$path}.nutrition_per_unit",
+                    0,
+                );
+                if ($nutrition > self::NUTRITION_DECIMAL_MAX_INTEGER) {
+                    throw new DomainException(
+                        "{$path}.nutrition_per_unit must fit decimal(12,4) without rounding.",
+                    );
+                }
             }
             $this->boolean($definition['storable'], "{$path}.storable");
             $this->boolean($definition['tradable'], "{$path}.tradable");
@@ -249,7 +260,7 @@ final class RulesetAuthoringValidator
             if (! array_key_exists($priceKey, $salePrices)) {
                 throw new DomainException("{$path}.sale_price_key references missing price {$priceKey}.");
             }
-            $this->integer($definition['sort_order'], "{$path}.sort_order", 0);
+            $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
             $this->map($definition['metadata'], "{$path}.metadata");
             if (array_key_exists('unit_label', $definition) && $definition['unit_label'] !== null) {
                 $this->persistedString($definition['unit_label'], "{$path}.unit_label");
@@ -443,7 +454,7 @@ final class RulesetAuthoringValidator
                 $this->reference($resourceKey, $resourceKeys, "{$path}.required_resources");
                 $this->integer($amount, "{$path}.required_resources.{$resourceKey}", 0);
             }
-            $this->integer($definition['sort_order'], "{$path}.sort_order", 0);
+            $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
             $this->map($definition['metadata'], "{$path}.metadata");
         }
     }
