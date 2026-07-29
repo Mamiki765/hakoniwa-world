@@ -42,6 +42,8 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
         ]);
         DB::connection($this->primaryConnection)->statement("SET lock_timeout TO '300ms'");
         DB::connection(self::PROBE_CONNECTION)->statement("SET lock_timeout TO '300ms'");
+        DB::connection($this->primaryConnection)->statement("SET statement_timeout TO '5s'");
+        DB::connection(self::PROBE_CONNECTION)->statement("SET statement_timeout TO '5s'");
     }
 
     protected function tearDown(): void
@@ -54,6 +56,7 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
                 $connection->rollBack();
             }
             $connection->statement('SET lock_timeout TO DEFAULT');
+            $connection->statement('SET statement_timeout TO DEFAULT');
         }
 
         DB::purge(self::PROBE_CONNECTION);
