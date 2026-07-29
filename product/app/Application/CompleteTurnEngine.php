@@ -208,7 +208,9 @@ final class CompleteTurnEngine
             }
             if ($this->isSettlement($cell)) {
                 if ($famine) {
-                    $metrics['population_decreased'] += $this->applyFamine($context, $cell);
+                    $loss = $this->applyFamine($context, $cell);
+                    $metrics['population_decreased'] += $loss['decrease'];
+                    $metrics['stage_transitions'] += $loss['stage_transition'];
                 } else {
                     $growth = $this->growPopulation($context, $cell);
                     $metrics['population_increased'] += $growth['increase'];
@@ -597,7 +599,8 @@ final class CompleteTurnEngine
         return false;
     }
 
-    private function applyFamine(TurnContext $context, MapCell $cell): int
+    /** @return array{decrease: int, stage_transition: int} */
+    private function applyFamine(TurnContext $context, MapCell $cell): array
     {
         $rules = $context->ruleset->settings['turn_processing']['famine'];
         $loss = $context->random->stream(TurnRandomStreamFactory::FAMINE_POPULATION_LOSS)
@@ -623,8 +626,11 @@ final class CompleteTurnEngine
             'drawn_loss' => $loss, 'actual_loss' => $actualLoss, 'after' => $cell->population,
             'facility_key_before' => $facilityKey, 'capital_identity_preserved' => $facilityKey === 'capital',
         ]);
+        $stageTransition = $cell->population > 0
+            ? $this->syncSettlementStage($context, $cell)
+            : 0;
 
-        return $actualLoss;
+        return ['decrease' => $actualLoss, 'stage_transition' => $stageTransition];
     }
 
     /** @return array{increase: int, stage_transition: int} */

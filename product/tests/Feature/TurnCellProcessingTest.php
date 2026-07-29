@@ -177,6 +177,22 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
 
         $lossSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::FAMINE_POPULATION_LOSS, 100, 3_000, 100);
+        $this->settlement($firstCandidate, 'city', 10_050);
+        [$famineStageContext, $famineStageRun] = $this->context(
+            $world,
+            $nation,
+            [$firstCandidate->id],
+            $lossSeed,
+            [$firstCandidate->id => 0],
+            true,
+        );
+        $famineStage = $engine->execute('process_cells', $famineStageContext);
+        $this->assertSame(100, $famineStage->metrics['population_decreased']);
+        $this->assertSame(1, $famineStage->metrics['stage_transitions']);
+        $this->assertSame(9_950, $firstCandidate->fresh()->population);
+        $this->assertSame('town', $firstCandidate->fresh()->facility()->value('key'));
+        $this->assertSame('town', $this->event($famineStageRun, 'settlement.stage_transitioned')['to_facility_key']);
+
         $this->settlement($firstCandidate, 'village', 100);
         [$famineContext, $famineRun] = $this->context(
             $world,
