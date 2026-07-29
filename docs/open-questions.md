@@ -216,10 +216,10 @@
 
 ### A-07 1ターンのtransaction規模
 
-- Status: Open
+- Status: Decided
 - Required before: ターン処理実装前
-- 単一transaction、phase checkpoint、公開境界を負荷試験後に決める。
-- PR #7 checkpoint: 単一World・単一turn transactionを安全なscaffoldとして実装した。実phaseを有効化する前に実データ規模のlock時間を測定し、checkpointが必要なら別途決定する。
+- Decision: 同じWorldの1ターンは1つのPostgreSQL transactionで処理し、ゲーム状態の全phaseと`current_turn`更新を含める。全phase成功時だけcommitし、途中失敗時はそのターンのゲーム状態をすべてrollbackする。World単位のadvisory lockをturn実行全体で保持する。`turn_runs`の開始・失敗記録はゲーム状態transactionから分離して監査可能にする。transaction内では外部HTTP通信、通知送信、長時間の外部I/Oを行わず、notification等はcommit後の別境界とする。phaseごとの処理時間を`turn_runs.phase_results`へ記録する。実command、全cell処理、災害等を追加後にlock時間を計測し、実運用で許容できない長時間transactionになった場合だけcheckpoint方式を別ADRで再検討する。現時点では部分commitやphase checkpointを実装しない。
+- Decision record: `docs/architecture/turn-runner-scaffold.md`、`docs/architecture/turn-pipeline.md`
 
 ### B-09 災害抽選単位
 
