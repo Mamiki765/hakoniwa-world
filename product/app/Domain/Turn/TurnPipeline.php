@@ -4,6 +4,21 @@ namespace App\Domain\Turn;
 
 final class TurnPipeline
 {
+    /** @var list<string> */
+    public const CANONICAL_PHASE_KEYS = [
+        'prepare_turn',
+        'calculate_terrain_context',
+        'resolve_territory_influence',
+        'nation_economy',
+        'development_commands',
+        'process_cells',
+        'settle_deferred_effects',
+        'global_disasters',
+        'aggregate_nations',
+        'enforce_capacities',
+        'finalize_turn',
+    ];
+
     /** @var list<TurnPhase> */
     private array $phases;
 
@@ -29,6 +44,66 @@ final class TurnPipeline
                 static fn (TurnPhase $phase): bool => $phase->required() && ! $phase->implemented(),
             ),
         ));
+    }
+
+    /**
+     * @return array{
+     *     valid: bool,
+     *     expected_phase_order: list<string>,
+     *     actual_phase_order: list<string>,
+     *     missing_phases: list<string>,
+     *     duplicated_phases: list<string>,
+     *     unexpected_phases: list<string>,
+     *     out_of_order_phases: list<array{position: int, expected: string|null, actual: string|null}>
+     * }
+     */
+    public function canonicalValidation(): array
+    {
+        $actual = array_map(
+            static fn (TurnPhase $phase): string => $phase->key(),
+            $this->phases,
+        );
+        $counts = array_count_values($actual);
+        $duplicated = [];
+        foreach ($actual as $key) {
+            if (($counts[$key] ?? 0) > 1 && ! in_array($key, $duplicated, true)) {
+                $duplicated[] = $key;
+            }
+        }
+        $missing = array_values(array_filter(
+            self::CANONICAL_PHASE_KEYS,
+            static fn (string $key): bool => ! in_array($key, $actual, true),
+        ));
+        $unexpected = [];
+        foreach ($actual as $key) {
+            if (! in_array($key, self::CANONICAL_PHASE_KEYS, true)
+                && ! in_array($key, $unexpected, true)) {
+                $unexpected[] = $key;
+            }
+        }
+        $outOfOrder = [];
+        $positions = max(count(self::CANONICAL_PHASE_KEYS), count($actual));
+        for ($index = 0; $index < $positions; $index++) {
+            $expected = self::CANONICAL_PHASE_KEYS[$index] ?? null;
+            $supplied = $actual[$index] ?? null;
+            if ($expected !== $supplied) {
+                $outOfOrder[] = [
+                    'position' => $index + 1,
+                    'expected' => $expected,
+                    'actual' => $supplied,
+                ];
+            }
+        }
+
+        return [
+            'valid' => $actual === self::CANONICAL_PHASE_KEYS,
+            'expected_phase_order' => self::CANONICAL_PHASE_KEYS,
+            'actual_phase_order' => $actual,
+            'missing_phases' => $missing,
+            'duplicated_phases' => $duplicated,
+            'unexpected_phases' => $unexpected,
+            'out_of_order_phases' => $outOfOrder,
+        ];
     }
 
     /** @return list<array{key: string, required: bool, implemented: bool, legacy_reference: string|null}> */

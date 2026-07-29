@@ -18,6 +18,7 @@ use App\Models\World;
 use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -28,19 +29,7 @@ class TurnRunnerTest extends TestCase
     private const SEED = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
     /** @var list<string> */
-    private const PHASES = [
-        'prepare_turn',
-        'calculate_terrain_context',
-        'resolve_territory_influence',
-        'nation_economy',
-        'development_commands',
-        'process_cells',
-        'settle_deferred_effects',
-        'global_disasters',
-        'aggregate_nations',
-        'enforce_capacities',
-        'finalize_turn',
-    ];
+    private const PHASES = TurnPipeline::CANONICAL_PHASE_KEYS;
 
     public function test_dry_run_records_snapshot_without_changing_game_state_or_ruleset(): void
     {
@@ -72,6 +61,59 @@ class TurnRunnerTest extends TestCase
         $this->assertSame(0, $world->fresh()->current_turn);
         $this->assertNotNull($run->started_at);
         $this->assertNotNull($run->completed_at);
+    }
+
+    /**
+     * @param  list<string>  $phaseKeys
+     */
+    #[DataProvider('invalidPipelineProvider')]
+    public function test_invalid_pipeline_shape_is_blocked_before_any_phase_runs(
+        array $phaseKeys,
+        string $diagnosticKey,
+    ): void {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $observed = [];
+        $pipeline = $this->pipelineForKeys(
+            $phaseKeys,
+            static function (TurnContext $context, string $phase) use (&$observed): void {
+                $observed[] = $phase;
+            },
+        );
+
+        $run = $this->runner($pipeline)->run($world);
+
+        $this->assertSame(TurnRun::STATUS_BLOCKED, $run->status);
+        $this->assertSame('pipeline_invalid', $run->failure_code);
+        $this->assertSame(self::PHASES, $run->failure_context['expected_phase_order']);
+        $this->assertSame($phaseKeys, $run->failure_context['actual_phase_order']);
+        $this->assertNotEmpty($run->failure_context[$diagnosticKey]);
+        $this->assertSame([], $run->phase_results);
+        $this->assertSame([], $observed);
+        $this->assertSame(0, $world->fresh()->current_turn);
+    }
+
+    /**
+     * @return array<string, array{list<string>, string}>
+     */
+    public static function invalidPipelineProvider(): array
+    {
+        $missing = array_values(array_filter(
+            self::PHASES,
+            static fn (string $key): bool => $key !== 'global_disasters',
+        ));
+        $swapped = self::PHASES;
+        [$swapped[7], $swapped[8]] = [$swapped[8], $swapped[7]];
+        $duplicated = self::PHASES;
+        array_splice($duplicated, 8, 0, ['global_disasters']);
+        $unexpected = self::PHASES;
+        array_splice($unexpected, 8, 0, ['unknown_phase']);
+
+        return [
+            'missing canonical phase' => [$missing, 'missing_phases'],
+            'canonical phases swapped' => [$swapped, 'out_of_order_phases'],
+            'canonical phase duplicated' => [$duplicated, 'duplicated_phases'],
+            'unknown phase added' => [$unexpected, 'unexpected_phases'],
+        ];
     }
 
     public function test_complete_pipeline_runs_in_source_order_and_advances_only_after_all_phases(): void
@@ -210,9 +252,17 @@ class TurnRunnerTest extends TestCase
 
     private function pipeline(?Closure $effect = null): TurnPipeline
     {
+        return $this->pipelineForKeys(self::PHASES, $effect);
+    }
+
+    /**
+     * @param  list<string>  $phaseKeys
+     */
+    private function pipelineForKeys(array $phaseKeys, ?Closure $effect = null): TurnPipeline
+    {
         return new TurnPipeline(array_map(
             static fn (string $key): TurnPhase => new RecordingTurnPhase($key, $effect),
-            self::PHASES,
+            $phaseKeys,
         ));
     }
 }

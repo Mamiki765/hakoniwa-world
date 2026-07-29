@@ -14,6 +14,7 @@ use App\Models\World;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Throwable;
 
 class TurnRunner
@@ -44,6 +45,23 @@ class TurnRunner
             }
 
             $run = $this->prepareRun($world, $ruleset, $targetTurn, $source);
+            $validation = $this->pipeline->canonicalValidation();
+            if (! $validation['valid']) {
+                $now = now();
+                $run->update([
+                    'status' => TurnRun::STATUS_BLOCKED,
+                    'pipeline' => $this->pipeline->snapshot(),
+                    'phase_results' => [],
+                    'started_at' => $now,
+                    'completed_at' => $now,
+                    'failure_code' => 'pipeline_invalid',
+                    'failure_message' => 'Turn pipeline does not match the canonical phase contract.',
+                    'failure_context' => $validation,
+                ]);
+
+                return $run->fresh();
+            }
+
             $missing = $this->pipeline->missingRequiredPhases();
             if ($missing !== []) {
                 $now = now();
@@ -90,6 +108,7 @@ class TurnRunner
             'completed_at' => $now,
             'failure_context' => [
                 'missing_phases' => $this->pipeline->missingRequiredPhases(),
+                'pipeline_validation' => $this->pipeline->canonicalValidation(),
             ],
         ]);
     }
@@ -217,6 +236,13 @@ class TurnRunner
             throw $exception;
         }
 
-        return $run->fresh();
+        $completedRun = $run->fresh();
+        if (! $completedRun instanceof TurnRun) {
+            throw new RuntimeException(
+                "Turn run {$run->id} disappeared before post-commit state could be confirmed.",
+            );
+        }
+
+        return $completedRun;
     }
 }

@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Application\OceanWorldGenerator;
+use App\Domain\Turn\TurnAlreadyRunningException;
+use App\Domain\Turn\WorldTurnLock;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
@@ -26,7 +28,7 @@ final class ResetWorld extends Command
 
     protected $description = 'Safely reset one configured world while preserving users and authentication identities.';
 
-    public function handle(OceanWorldGenerator $generator): int
+    public function handle(OceanWorldGenerator $generator, WorldTurnLock $turnLock): int
     {
         $worldKey = (string) $this->option('world');
         $configuredWorldKey = (string) config('hakoniwa.world.key');
@@ -43,6 +45,26 @@ final class ResetWorld extends Command
             return self::FAILURE;
         }
 
+        try {
+            $turnLock->acquire($world);
+        } catch (TurnAlreadyRunningException) {
+            $this->error("World '{$worldKey}' is currently processing a turn. Reset was not started.");
+
+            return self::FAILURE;
+        }
+
+        try {
+            return $this->handleLockedWorld($world, $worldKey, $generator);
+        } finally {
+            $turnLock->release($world);
+        }
+    }
+
+    private function handleLockedWorld(
+        World $world,
+        string $worldKey,
+        OceanWorldGenerator $generator,
+    ): int {
         $counts = $this->affectedCounts($world);
         $this->table(['target', 'rows'], array_map(
             static fn (string $target, int $rows): array => [$target, $rows],
