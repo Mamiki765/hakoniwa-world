@@ -24,6 +24,11 @@ class Pr6ForwardMigrationTest extends TestCase
     public function test_pr5_shaped_database_is_forward_migrated_without_rewriting_source_ruleset_or_losing_game_data(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
+        $world->update([
+            'ruleset_version_id' => DB::table('ruleset_versions')
+                ->where('key', 'roadmap-pr7-v1')
+                ->value('id'),
+        ]);
         $pr7Migration = require database_path('migrations/2026_07_29_000000_publish_roadmap_pr7_ruleset.php');
         $consistencyMigration = require database_path('migrations/2026_07_28_999999_enforce_queue_item_ruleset_consistency.php');
         $pr7Migration->down();
