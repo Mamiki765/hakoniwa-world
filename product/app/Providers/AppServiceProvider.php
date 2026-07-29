@@ -2,10 +2,13 @@
 
 namespace App\Providers;
 
+use App\Application\CompleteTurnEngine;
 use App\Application\InitialIslandGenerator;
 use App\Application\LegacyInspiredInitialIslandGenerator;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\Turn\GameplayTurnPhase;
 use App\Domain\Turn\RandomTurnSeedGenerator;
+use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnSeedGenerator;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -24,6 +27,14 @@ class AppServiceProvider extends ServiceProvider
         ));
         $this->app->bind(InitialIslandGenerator::class, LegacyInspiredInitialIslandGenerator::class);
         $this->app->bind(TurnSeedGenerator::class, RandomTurnSeedGenerator::class);
+        $this->app->bind(TurnPipeline::class, function ($app): TurnPipeline {
+            $engine = $app->make(CompleteTurnEngine::class);
+
+            return new TurnPipeline(array_map(
+                static fn (string $key): GameplayTurnPhase => new GameplayTurnPhase($key, $engine),
+                TurnPipeline::CANONICAL_PHASE_KEYS,
+            ));
+        });
     }
 
     /**
