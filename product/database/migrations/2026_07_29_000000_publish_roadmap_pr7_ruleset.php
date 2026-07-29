@@ -52,14 +52,15 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('LOCK TABLE nation_command_queue_items IN SHARE ROW EXCLUSIVE MODE');
-        DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' DEFERRED');
-
+        DB::statement('LOCK TABLE nation_command_queues IN SHARE ROW EXCLUSIVE MODE');
         $queueIds = DB::table('nation_command_queues')
             ->whereIn('nation_id', DB::table('nations')->where('world_id', $world->id)->select('id'))
             ->orderBy('id')
             ->lockForUpdate()
             ->pluck('id');
+
+        DB::statement('LOCK TABLE nation_command_queue_items IN SHARE ROW EXCLUSIVE MODE');
+        DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' DEFERRED');
         $items = DB::table('nation_command_queue_items')
             ->whereIn('nation_command_queue_id', $queueIds)
             ->orderBy('id')

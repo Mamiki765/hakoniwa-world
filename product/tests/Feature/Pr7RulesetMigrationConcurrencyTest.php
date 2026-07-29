@@ -101,6 +101,7 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
 
         $probe->beginTransaction();
         $probe->table('worlds')->where('id', $world->id)->lockForUpdate()->first();
+        $probe->statement('LOCK TABLE nation_command_queues IN SHARE ROW EXCLUSIVE MODE');
         $probe->statement('LOCK TABLE nation_command_queue_items IN SHARE ROW EXCLUSIVE MODE');
 
         try {
