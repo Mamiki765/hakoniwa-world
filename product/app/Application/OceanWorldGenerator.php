@@ -34,7 +34,7 @@ class OceanWorldGenerator
                     'key' => $worldConfig['key'],
                     'name' => $worldConfig['name'],
                     'ruleset_version_id' => $ruleset->id,
-                    'current_turn' => 0,
+                    'current_turn' => 1,
                 ]);
             }
             $worldRules = $world->rulesetVersion()->firstOrFail()->settings;

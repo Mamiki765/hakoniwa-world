@@ -139,13 +139,14 @@ class WorldResetCommandTest extends TestCase
             'key' => 'other-turn-history-world',
             'name' => '別ターン履歴世界',
             'ruleset_version_id' => $world->ruleset_version_id,
-            'current_turn' => 0,
+            'current_turn' => 2,
         ]);
         $targetRuns = collect([
-            $this->createTurnRun($world, 1),
             $this->createTurnRun($world, 2),
+            $this->createTurnRun($world, 3),
         ]);
-        $otherRun = $this->createTurnRun($otherWorld, 1);
+        $world->update(['current_turn' => 3]);
+        $otherRun = $this->createTurnRun($otherWorld, 2);
         $userCount = User::query()->count();
         $identityCount = DB::table('auth_identities')->count();
 

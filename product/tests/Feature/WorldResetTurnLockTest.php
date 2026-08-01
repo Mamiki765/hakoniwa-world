@@ -77,9 +77,9 @@ class WorldResetTurnLockTest extends TestCase
             'key' => 'reset-lock-other-world',
             'name' => 'Reset lock other World',
             'ruleset_version_id' => $world->ruleset_version_id,
-            'current_turn' => 0,
+            'current_turn' => 2,
         ]);
-        $otherRun = $this->createTurnRun($otherWorld, 1);
+        $otherRun = $this->createTurnRun($otherWorld, 2);
         $this->acquireAdvisoryLock(self::PROBE_CONNECTION, $world);
 
         try {
@@ -130,7 +130,7 @@ class WorldResetTurnLockTest extends TestCase
             $this->releaseAdvisoryLock($this->primaryConnection, $world);
         }
 
-        $this->assertSame(0, World::query()->findOrFail($world->id)->current_turn);
+        $this->assertSame(1, World::query()->findOrFail($world->id)->current_turn);
         $this->assertSame(0, TurnRun::query()->where('world_id', $world->id)->count());
     }
 
@@ -176,7 +176,7 @@ class WorldResetTurnLockTest extends TestCase
         $this->assertSame(1, $resetExit);
         $this->assertStringContainsString('currently processing a turn', (string) $resetOutput);
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
-        $this->assertSame(1, World::query()->findOrFail($world->id)->current_turn);
+        $this->assertSame(2, World::query()->findOrFail($world->id)->current_turn);
         $this->assertNotNull(TurnRun::query()->find($run->id));
     }
 
@@ -208,7 +208,10 @@ class WorldResetTurnLockTest extends TestCase
             1,
         )['item'];
 
-        return [$world, $queueItem, $this->createTurnRun($world, 1), $user];
+        $run = $this->createTurnRun($world, 2);
+        $world->update(['current_turn' => 2]);
+
+        return [$world, $queueItem, $run, $user];
     }
 
     private function createTurnRun(World $world, int $targetTurn): TurnRun

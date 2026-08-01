@@ -46,7 +46,7 @@ class TurnRunnerTest extends TestCase
         $run = app(TurnRunner::class)->run($world, true, 'manual');
 
         $this->assertSame(TurnRun::STATUS_DRY_RUN, $run->status);
-        $this->assertSame(1, $run->target_turn);
+        $this->assertSame(2, $run->target_turn);
         $this->assertSame($world->ruleset_version_id, $run->ruleset_version_id);
         $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $run->random_seed);
         $this->assertSame(self::PHASES, collect($run->pipeline)->pluck('key')->all());
@@ -64,7 +64,7 @@ class TurnRunnerTest extends TestCase
 
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
         $this->assertNull($run->failure_code);
-        $this->assertSame(1, $world->fresh()->current_turn);
+        $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame(self::PHASES, collect($run->phase_results)->pluck('phase')->all());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
         $this->assertNotNull($run->started_at);
@@ -97,7 +97,7 @@ class TurnRunnerTest extends TestCase
         $this->assertNotEmpty($run->failure_context[$diagnosticKey]);
         $this->assertSame([], $run->phase_results);
         $this->assertSame([], $observed);
-        $this->assertSame(0, $world->fresh()->current_turn);
+        $this->assertSame(1, $world->fresh()->current_turn);
     }
 
     /**
@@ -147,7 +147,7 @@ class TurnRunnerTest extends TestCase
         $this->assertSame(['global_disasters'], $run->failure_context['non_required_phases']);
         $this->assertSame([], $run->phase_results);
         $this->assertSame([], $observed);
-        $this->assertSame(0, $world->fresh()->current_turn);
+        $this->assertSame(1, $world->fresh()->current_turn);
     }
 
     public function test_complete_pipeline_runs_in_source_order_and_advances_only_after_all_phases(): void
@@ -155,8 +155,8 @@ class TurnRunnerTest extends TestCase
         $world = app(OceanWorldGenerator::class)->initialize();
         $observed = [];
         $runner = $this->runner($this->pipeline(function (TurnContext $context, string $phase) use (&$observed): void {
-            $this->assertSame(0, $context->world->current_turn);
-            $this->assertSame(1, $context->targetTurn);
+            $this->assertSame(1, $context->world->current_turn);
+            $this->assertSame(2, $context->targetTurn);
             $this->assertSame(self::SEED, $context->randomSeed);
             $this->assertInstanceOf(TurnRandomStreamFactory::class, $context->random);
             $this->assertSame(self::SEED, $context->random->masterSeed);
@@ -168,7 +168,7 @@ class TurnRunnerTest extends TestCase
 
         $this->assertSame(self::PHASES, $observed);
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
-        $this->assertSame(1, $world->fresh()->current_turn);
+        $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame(self::PHASES, collect($run->phase_results)->pluck('phase')->all());
     }
 
@@ -197,14 +197,14 @@ class TurnRunnerTest extends TestCase
         $this->assertSame('development_commands', $failed->failure_context['phase']);
         $this->assertSame(self::SEED, $failed->random_seed);
         $this->assertSame($originalName, $world->fresh()->name);
-        $this->assertSame(0, $world->fresh()->current_turn);
+        $this->assertSame(1, $world->fresh()->current_turn);
 
         $completed = $this->runner($this->pipeline())->run($world->fresh(), source: 'cron');
         $this->assertSame($failed->id, $completed->id);
         $this->assertSame(self::SEED, $completed->random_seed);
         $this->assertSame(2, $completed->attempt_count);
         $this->assertSame('cron', $completed->source);
-        $this->assertSame(1, $world->fresh()->current_turn);
+        $this->assertSame(2, $world->fresh()->current_turn);
     }
 
     public function test_retry_reconstructs_random_orders_and_discards_failed_attempt_state(): void
@@ -265,7 +265,7 @@ class TurnRunnerTest extends TestCase
         $world = app(OceanWorldGenerator::class)->initialize();
         $runner = $this->runner($this->pipeline());
         $runner->run($world);
-        $world->fresh()->update(['current_turn' => 0]);
+        $world->fresh()->update(['current_turn' => 1]);
 
         $this->expectException(TurnAlreadyAppliedException::class);
         $runner->run($world->fresh());
@@ -282,7 +282,7 @@ class TurnRunnerTest extends TestCase
             'key' => 'second-world',
             'name' => 'Second World',
             'ruleset_version_id' => $first->ruleset_version_id,
-            'current_turn' => 0,
+            'current_turn' => 1,
         ]);
         $connectionName = 'pgsql-turn-lock-probe';
         config(["database.connections.{$connectionName}" => config('database.connections.pgsql')]);
@@ -328,11 +328,11 @@ class TurnRunnerTest extends TestCase
             '--source' => 'cron',
         ])->assertSuccessful();
         $this->artisan('hakoniwa:turn:status', ['--world' => $world->key])
-            ->expectsOutputToContain('current_turn=0')
+            ->expectsOutputToContain('current_turn=1')
             ->assertSuccessful();
 
         $this->assertSame(['manual', 'cron'], TurnRun::query()->orderBy('id')->pluck('source')->all());
-        $this->assertSame(0, $world->fresh()->current_turn);
+        $this->assertSame(1, $world->fresh()->current_turn);
     }
 
     private function runner(TurnPipeline $pipeline): TurnRunner

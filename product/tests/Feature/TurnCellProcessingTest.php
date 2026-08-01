@@ -420,7 +420,7 @@ class TurnCellProcessingTest extends TestCase
         $ruleset ??= $world->rulesetVersion()->firstOrFail();
         $run = TurnRun::query()->create([
             'world_id' => $world->id,
-            'target_turn' => 1,
+            'target_turn' => 2,
             'ruleset_version_id' => $ruleset->id,
             'random_seed' => $seed,
             'source' => 'manual',

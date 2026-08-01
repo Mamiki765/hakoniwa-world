@@ -4,6 +4,7 @@ import { ApiError, api } from './api/client';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import HexMap from './components/HexMap.vue';
+import IslandEventLog from './components/IslandEventLog.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
@@ -172,7 +173,7 @@ async function createNation(): Promise<void> {
             </div>
 
             <dl class="world-stats">
-                <div><dt>現在turn</dt><dd>{{ worldSummary?.current_turn ?? 0 }}</dd></div>
+                <div><dt>現在turn</dt><dd>{{ worldSummary?.current_turn ?? 1 }}</dd></div>
                 <div><dt>国家数</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
                 <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
             </dl>
@@ -230,22 +231,27 @@ async function createNation(): Promise<void> {
                     <div><dt>turn</dt><dd>{{ nation.current_turn }}</dd></div>
                     <div class="hud-money">
                         <dt>資金</dt>
-                        <dd>{{ formatExactMoney(nation.money) }} / {{ formatExactMoney(nation.money_capacity) }}</dd>
+                        <dd class="hud-capacity-value">
+                            <strong class="hud-current-value">{{ formatExactMoney(nation.money) }}</strong>
+                            <span class="hud-capacity-limit">上限 {{ formatExactMoney(nation.money_capacity) }}</span>
+                        </dd>
                     </div>
                     <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
                     <div class="hud-food">
                         <dt>食料</dt>
-                        <dd>
-                            {{ formatResource(nation.total_food_tons, 'トン') }}
-                            / {{ formatResource(nation.food_capacity_tons, 'トン') }}
-                            <button
-                                class="food-detail-toggle"
-                                type="button"
-                                :aria-expanded="foodDetailOpen"
-                                @click="foodDetailOpen = !foodDetailOpen"
-                            >
-                                詳細
-                            </button>
+                        <dd class="hud-capacity-value">
+                            <span class="hud-value-line">
+                                <strong class="hud-current-value">{{ formatResource(nation.total_food_tons, 'トン') }}</strong>
+                                <button
+                                    class="food-detail-toggle"
+                                    type="button"
+                                    :aria-expanded="foodDetailOpen"
+                                    @click="foodDetailOpen = !foodDetailOpen"
+                                >
+                                    詳細
+                                </button>
+                            </span>
+                            <span class="hud-capacity-limit">上限 {{ formatResource(nation.food_capacity_tons, 'トン') }}</span>
                         </dd>
                         <div v-if="foodDetailOpen" class="hud-food-detail" role="dialog" aria-label="食料の内訳">
                             <strong>食料の内訳</strong>
@@ -260,13 +266,17 @@ async function createNation(): Promise<void> {
                     </div>
                     <div v-for="resource in nonFoodResources" :key="resource.key">
                         <dt>{{ resource.name }}</dt>
-                        <dd>{{ formatResource(resource.amount, resource.unit_label) }}</dd>
+                        <dd v-if="resource.capacity !== undefined && resource.capacity !== null" class="hud-capacity-value">
+                            <strong class="hud-current-value">{{ formatResource(resource.amount, resource.unit_label) }}</strong>
+                            <span class="hud-capacity-limit">上限 {{ formatResource(resource.capacity, resource.unit_label) }}</span>
+                        </dd>
+                        <dd v-else>{{ formatResource(resource.amount, resource.unit_label) }}</dd>
                     </div>
                 </dl>
                 <details class="hud-more">
                     <summary>追加統計</summary>
                     <span>領土 {{ nation.territory_cell_count }}セル</span>
-                    <span>turn runner未実装</span>
+                    <span>出来事は24ターンごとに表示</span>
                 </details>
             </header>
             <div class="island-grid">
@@ -288,6 +298,7 @@ async function createNation(): Promise<void> {
                     />
                 </div>
             </div>
+            <IslandEventLog :nation-id="nation.id" />
         </section>
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">

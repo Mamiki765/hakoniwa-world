@@ -15,6 +15,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class World extends Model
 {
+    /** @var array<string, mixed> */
+    protected $attributes = ['current_turn' => 1];
+
     protected $fillable = ['key', 'name', 'ruleset_version_id', 'current_turn'];
 
     /** @return BelongsTo<RulesetVersion, $this> */

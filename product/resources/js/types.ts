@@ -75,6 +75,31 @@ export interface PublicNationDetail extends PublicNationSummary {
     map_space: MapSpace;
 }
 
+export interface PlayerIslandEvent {
+    id: number;
+    type: string;
+    message: string;
+    importance: 'info' | 'notable' | 'warning';
+    target_turn: number;
+    coordinate: { x: number; y: number } | null;
+    occurred_at: string;
+}
+
+export interface PlayerIslandEventGroup {
+    target_turn: number;
+    events: PlayerIslandEvent[];
+}
+
+export interface PlayerIslandEventPage {
+    groups: PlayerIslandEventGroup[];
+    page: number;
+    anchor_turn: number;
+    turn_range: { start: number; end: number } | null;
+    turns_per_page: 24;
+    has_newer_page: boolean;
+    has_older_page: boolean;
+}
+
 export interface NationResource {
     key: string;
     name: string;
@@ -85,6 +110,7 @@ export interface NationResource {
     storable: boolean;
     tradable: boolean;
     amount: number;
+    capacity?: number | null;
 }
 
 export interface FoodResource {

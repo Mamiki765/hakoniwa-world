@@ -137,7 +137,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
 
         $otherWorld = World::query()->create([
             'key' => 'other-world', 'name' => '別世界',
-            'ruleset_version_id' => $nation->world()->value('ruleset_version_id'), 'current_turn' => 0,
+            'ruleset_version_id' => $nation->world()->value('ruleset_version_id'), 'current_turn' => 1,
         ]);
         $otherSpace = MapSpace::query()->create([
             'world_id' => $otherWorld->id, 'key' => 'surface', 'name' => '別地上',

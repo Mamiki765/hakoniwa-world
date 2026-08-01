@@ -14,12 +14,12 @@ const emptyChunk: MapChunk = {
 };
 
 function publicResponse(path: string): Response | null {
-    if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '共有世界', turn: 0 }]);
-    if (path.endsWith('/summary')) return response({ id: 1, key: 'shared-world', name: '共有世界', current_turn: 0, nation_count: 1, total_population: 1000 });
+    if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '共有世界', turn: 1 }]);
+    if (path.endsWith('/summary')) return response({ id: 1, key: 'shared-world', name: '共有世界', current_turn: 1, nation_count: 1, total_population: 1000 });
     if (path.endsWith('/rankings')) return response([{
         rank: 1, id: 7, world_id: 1, name: '公開島', state: 'active', total_population: 1000,
         territory_cell_count: 19, money_display: '約500億円', money_bucket: '500',
-        last_updated_turn: 0, comment: null,
+        last_updated_turn: 1, comment: null,
     }]);
     if (path.endsWith('/events')) return response([]);
     return null;
@@ -48,7 +48,7 @@ describe('application lobby and island entry', () => {
         const detail: PublicNationDetail = {
             id: 7, world_id: 1, name: '公開島', state: 'active', total_population: 1000,
             territory_cell_count: 19, money_display: '約500億円', money_bucket: '500',
-            last_updated_turn: 0, comment: null, world: { id: 1, name: '共有世界', current_turn: 0 },
+            last_updated_turn: 1, comment: null, world: { id: 1, name: '共有世界', current_turn: 1 },
             capital: { x: 12, y: 8 },
             map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
         };
@@ -84,13 +84,13 @@ describe('application lobby and island entry', () => {
                 { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },
                 { key: 'monster_meat', name: '怪獣肉', balance: 0, unit: 'ton', unit_label: 'トン' },
             ],
-            state: 'active', current_turn: 0, total_population: 1000, territory_cell_count: 19,
+            state: 'active', current_turn: 1, total_population: 1000, territory_cell_count: 19,
             capital: { x: 12, y: 8 },
             resources: [
                 { key: 'wheat', name: '小麦', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 1, storable: true, tradable: true, amount: 10000 },
                 { key: 'fish', name: '魚', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 1, storable: true, tradable: true, amount: 0 },
                 { key: 'monster_meat', name: '怪獣肉', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 2, storable: true, tradable: true, amount: 0 },
-                { key: 'industrial_goods', name: '工業品', category: 'industry', unit: 'unit', unit_label: null, nutrition_per_unit: null, storable: true, tradable: true, amount: 0 },
+                { key: 'industrial_goods', name: '工業品', category: 'industry', unit: 'unit', unit_label: null, nutrition_per_unit: null, storable: true, tradable: true, amount: 1200, capacity: 5000 },
                 { key: 'minerals', name: '鉱物', category: 'material', unit: 'unit', unit_label: null, nutrition_per_unit: null, storable: true, tradable: true, amount: 0 },
             ],
         };
@@ -104,6 +104,10 @@ describe('application lobby and island entry', () => {
                 id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
             }]);
             if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
+            if (path === '/api/v1/nations/3/events?page=1') return response({
+                groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
+                turns_per_page: 24, has_newer_page: false, has_older_page: false,
+            });
             if (path.includes('command-definitions')) return response({
                 commands: [],
                 quantity_contract: { type: 'integer', minimum: 1, maximum: 99, default: 1, quick_presets: [1, 5, 10, 25, 50, 99] },
@@ -125,6 +129,15 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud').text()).toContain('62,728億円');
         expect(wrapper.find('.nation-hud').text()).toContain('食料');
         expect(wrapper.find('.nation-hud').text()).toContain('10,000トン');
+        expect(wrapper.find('.hud-money .hud-current-value').text()).toBe('62,728億円');
+        expect(wrapper.find('.hud-money .hud-capacity-limit').text()).toBe('上限 9,999億円');
+        expect(wrapper.find('.hud-food .hud-capacity-limit').text()).toBe('上限 999,900トン');
+        expect(wrapper.find('.hud-money').text()).not.toContain('/');
+        const industrialHud = wrapper.findAll('.hud-primary > div').find((item) => item.text().includes('工業品'))!;
+        const mineralHud = wrapper.findAll('.hud-primary > div').find((item) => item.text().includes('鉱物'))!;
+        expect(industrialHud.find('.hud-current-value').text()).toBe('1,200');
+        expect(industrialHud.find('.hud-capacity-limit').text()).toBe('上限 5,000');
+        expect(mineralHud.find('.hud-capacity-limit').exists()).toBe(false);
         expect(wrapper.find('.hud-food-detail').exists()).toBe(false);
         await wrapper.find('.food-detail-toggle').trigger('click');
         expect(wrapper.find('.hud-food-detail').text()).toContain('小麦');
@@ -134,6 +147,7 @@ describe('application lobby and island entry', () => {
         await wrapper.find('.hud-food-detail > button').trigger('click');
         expect(wrapper.find('.hud-food-detail').exists()).toBe(false);
         expect(wrapper.find('.island-grid').exists()).toBe(true);
+        expect(wrapper.find('.island-events-panel').text()).toContain('島の出来事');
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
     });
