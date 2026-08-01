@@ -11,8 +11,7 @@ export interface CurrentUser {
 }
 
 export interface World { id: number; key: string; name: string; turn: number }
-export interface MapBounds { min_x: number; max_x: number; min_y: number; max_y: number }
-export interface MapSpace { id: number; world_id: number; key: string; name: string; bounds: MapBounds }
+export interface MapSpace { id: number; world_id: number; key: string; name: string }
 
 export interface Nation {
     id: number;
