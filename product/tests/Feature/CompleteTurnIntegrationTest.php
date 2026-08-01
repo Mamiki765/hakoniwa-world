@@ -106,7 +106,7 @@ class CompleteTurnIntegrationTest extends TestCase
         $run = app(TurnRunner::class)->run($world);
 
         $this->assertSame('completed', $run->status);
-        $this->assertSame(1, $world->fresh()->current_turn);
+        $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertCount(11, $run->phase_results);
         $this->assertSame(3600, collect($run->phase_results)->firstWhere('phase', 'process_cells')['metrics']['processed']);
         $this->assertGreaterThan(0, $populationBefore);
@@ -216,7 +216,7 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame($failed->id, $completed->id);
         $this->assertSame($seed, $completed->random_seed);
         $this->assertSame(2, $completed->attempt_count);
-        $this->assertSame(1, $world->fresh()->current_turn);
+        $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame('completed', $item->fresh()->status);
         $this->assertSame('plain', $target->fresh()->terrain()->value('key'));
         $this->assertGreaterThan($snapshot['audit_count'], DB::table('audit_events')->count());

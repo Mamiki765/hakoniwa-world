@@ -142,9 +142,23 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .hud-primary > div { min-width: 0; padding: 6px 8px; border-left: 1px solid rgba(255,255,255,.16); }
 .hud-primary dt { color: #b9d2d2; font-size: .64rem; }
 .hud-primary dd { margin: 2px 0 0; font-size: .83rem; font-weight: 850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hud-money { min-width: 124px !important; }
+.hud-money { min-width: 0; }
+.hud-capacity-value { display: grid; gap: 1px; min-width: 0; }
+.hud-current-value, .hud-capacity-limit {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.hud-current-value { font-size: clamp(.68rem, .76vw, .86rem); font-weight: 900; }
+.hud-capacity-limit { color: #b9d2d2; font-size: clamp(.52rem, .58vw, .64rem); font-weight: 650; }
+.hud-value-line { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; }
+.hud-value-line .hud-current-value { flex: 1 1 auto; }
 .hud-food { position: relative; overflow: visible !important; }
-.hud-food dd { display: flex; align-items: center; gap: 6px; overflow: visible; }
+.hud-food dd { overflow: hidden; }
 .food-detail-toggle {
     min-height: 26px;
     padding: 2px 6px;
@@ -188,6 +202,42 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .plan-panel { grid-area: plan; min-width: 0; border-left: 1px solid var(--line); background: var(--paper); overflow: hidden; }
 .plan-panel-body { position: relative; display: flex; flex-direction: column; height: 100%; overflow: hidden; padding: 14px 12px; }
 .map-column { grid-area: map; min-width: 0; min-height: 0; }
+.island-events-panel {
+    min-width: 0;
+    margin-top: 16px;
+    padding: clamp(16px, 2vw, 24px);
+    border: 1px solid var(--line);
+    background: var(--paper);
+    box-shadow: var(--shadow);
+}
+.island-events-heading { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+.island-events-heading h2 { margin: 0; font-size: 1.25rem; }
+.island-events-heading > span { color: var(--muted); font-size: .76rem; white-space: nowrap; }
+.island-events-status { color: var(--muted); }
+.island-events-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #962f27; }
+.island-events-error p { margin: 0; }
+.island-events-error button, .island-event-pagination button {
+    min-height: 38px;
+    padding: 6px 11px;
+    border: 1px solid var(--line);
+    background: white;
+    color: var(--ink);
+    cursor: pointer;
+}
+.island-events-error button:disabled, .island-event-pagination button:disabled { opacity: .5; cursor: default; }
+.island-event-groups { display: grid; gap: 18px; margin-top: 18px; }
+.island-event-group { min-width: 0; }
+.island-event-group h3 { margin: 0 0 8px; color: var(--navy); font-size: .92rem; }
+.island-event-group ol { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.island-event-group li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 9px; padding: 9px 10px; border: 1px solid #d9e1dd; background: #fff; }
+.island-event-mark { width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: #6a8c86; }
+.importance-notable .island-event-mark { background: var(--coral); }
+.importance-warning .island-event-mark { background: #aa3f32; }
+.island-event-group p { margin: 0; line-height: 1.55; overflow-wrap: anywhere; }
+.island-event-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; color: var(--muted); font-size: .72rem; }
+.island-event-meta span { white-space: nowrap; }
+.island-event-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 18px; }
+.island-event-pagination > span { color: var(--muted); font-size: .76rem; white-space: nowrap; }
 .mobile-panel-toggle { display: none; }
 .selected-cell h3 { margin: 0 0 12px; }
 .selected-cell dl { display: grid; grid-template-columns: 66px 1fr; gap: 8px 10px; font-size: .83rem; }
@@ -346,7 +396,9 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .hud-primary > div { padding: 3px 5px; }
     .hud-primary > div:nth-child(n+5) { display: none; }
     .hud-primary dd { font-size: .75rem; }
-    .hud-food dd { gap: 3px; }
+    .hud-current-value { font-size: clamp(.62rem, 2.6vw, .75rem); }
+    .hud-capacity-limit { font-size: clamp(.5rem, 2.1vw, .6rem); }
+    .hud-value-line { gap: 2px; }
     .food-detail-toggle { min-height: 30px; padding: 2px 4px; }
     .hud-more { position: absolute; right: 20px; top: 119px; color: white; z-index: 2; }
 
@@ -356,6 +408,11 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .map-viewport { min-height: 370px; }
     .map-toolbar button { min-width: 44px; min-height: 44px; }
     .map-cell-count { display: none; }
+    .island-events-panel { margin-top: 12px; padding: 14px 12px; }
+    .island-events-heading { align-items: baseline; }
+    .island-events-error { align-items: stretch; flex-direction: column; }
+    .island-event-pagination { justify-content: space-between; gap: 6px; }
+    .island-event-pagination button { min-width: 0; padding: 6px 8px; }
     .mobile-panel-toggle {
         display: flex;
         align-items: center;

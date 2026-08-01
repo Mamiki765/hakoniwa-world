@@ -29,6 +29,7 @@ class WorldInitializationTest extends TestCase
         $generator->initialize();
 
         $this->assertSame(1, World::query()->count());
+        $this->assertSame(1, World::query()->value('current_turn'));
         $this->assertSame(1, MapSpace::query()->count());
         $this->assertSame(3600, MapCell::query()->count());
         $this->assertSame('staggered_square_offset', MapSpace::query()->value('coordinate_system'));

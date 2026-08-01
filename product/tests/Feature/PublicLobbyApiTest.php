@@ -31,7 +31,7 @@ class PublicLobbyApiTest extends TestCase
 
         $summary = $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
             ->assertOk()
-            ->assertJsonPath('data.current_turn', 0)
+            ->assertJsonPath('data.current_turn', 1)
             ->assertJsonPath('data.nation_count', 2)
             ->assertJsonPath('data.total_population', 2000);
         $this->assertStringContainsString('public', (string) $summary->headers->get('Cache-Control'));

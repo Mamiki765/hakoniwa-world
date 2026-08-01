@@ -34,7 +34,7 @@ return new class extends Migration
             $table->string('key')->unique();
             $table->string('name');
             $table->foreignId('ruleset_version_id')->constrained();
-            $table->unsignedBigInteger('current_turn')->default(0);
+            $table->unsignedBigInteger('current_turn')->default(1);
             $table->timestamps();
         });
 
