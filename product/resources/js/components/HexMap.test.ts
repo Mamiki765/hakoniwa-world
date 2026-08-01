@@ -168,6 +168,26 @@ describe('staggered square-image map', () => {
         expect(viewport.classes()).not.toContain('is-dragging');
     });
 
+    it('selects the next normally clicked cell after a threshold drag is cancelled', async () => {
+        const cell = mapCell();
+        const wrapper = mount(HexMap, { props: {
+            cells: [cell], selected: null, capital: { x: 0, y: 0 }, bounds: worldBounds,
+            loading: false, error: null, emptyChunks: [],
+        } });
+        await flushPromises();
+
+        const viewport = wrapper.find('.map-viewport');
+        const tile = wrapper.find('.map-cell');
+        dispatchPointer(tile.element, 'pointerdown', { pointerId: 4, pointerType: 'touch', button: 0, clientX: 10, clientY: 10 });
+        dispatchPointer(viewport.element, 'pointermove', { pointerId: 4, pointerType: 'touch', clientX: 18, clientY: 10 });
+        dispatchPointer(viewport.element, 'pointercancel', { pointerId: 4, pointerType: 'touch', button: 0, clientX: 18, clientY: 10 });
+        tile.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+        await flushPromises();
+
+        expect(wrapper.emitted('select')).toEqual([[cell]]);
+        expect(viewport.classes()).not.toContain('is-dragging');
+    });
+
     it('does not start map panning from toolbar controls', async () => {
         const cell = mapCell();
         const wrapper = mount(HexMap, { props: {

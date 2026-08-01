@@ -210,14 +210,23 @@ function updatePan(event: PointerEvent): void {
     requestVisibleChunks();
 }
 
-function endPan(event: PointerEvent): void {
+function finishPan(event: PointerEvent, cancelled: boolean): void {
     if (activePointer === null || activePointer.id !== event.pointerId) return;
 
+    if (cancelled) suppressNextCellClick = false;
     activePointer = null;
     dragging.value = false;
     if (viewport.value?.hasPointerCapture?.(event.pointerId)) {
         viewport.value.releasePointerCapture?.(event.pointerId);
     }
+}
+
+function endPan(event: PointerEvent): void {
+    finishPan(event, false);
+}
+
+function cancelPan(event: PointerEvent): void {
+    finishPan(event, true);
 }
 
 function suppressDraggedCellClick(event: MouseEvent): void {
@@ -296,7 +305,7 @@ function showTooltip(cell: MapCell, event: Event): void {
             @pointerdown="beginPan"
             @pointermove="updatePan"
             @pointerup="endPan"
-            @pointercancel="endPan"
+            @pointercancel="cancelPan"
             @click.capture="suppressDraggedCellClick"
         >
             <div class="map-plane" :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }">
