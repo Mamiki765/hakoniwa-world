@@ -73,6 +73,20 @@
 
 ミサイルコマンドはこの時点では国家一時状態 `tx`, `ty`, `command`, `amount` を設定するだけで、各ミサイル基地セルの処理時に実射する（`command.c:535-548`; `Map::process`, `map.c:411-641`）。怪獣派遣も対象国の `amonster` を増やし、対象国の有人口町セルが処理された時点で出現する（`command.c:550-564`; `map.c:295-304`）。
 
+### 整地の埋蔵金
+
+`Prepare`（新作の`land_clear`）は所有・資金・対象地形の検証に成功した後、費用5を差し引き、対象を人口0の平地へ変更してcommand成功logを記録する。その直後に`dice(1000) < disMaizo`を1回判定する（`command.c:205-245`）。同梱設定は`disMaizo=10`なので、draw 0–9が成功、10–999が失敗となる正確な10/1000である。成功時の報酬は`100 + dice(901)`、すなわち100–1,000億円inclusiveで、直ちにmoneyへ加算し、金額を含む通常公開log 211を記録する。invalid target、ownership failure、insufficient moneyでは費用控除、地形変更、抽選、報酬のいずれも発生しない。`Prepare2`では埋蔵金を抽選しない。
+
+旧作は埋蔵金を含む途中収入にcapacityを適用せず、turn末にmoneyを9,999へhard truncationする。新作はowner決定済みのcapacity安全境界を優先し、同じ抽選と報酬rangeをcommand-owned labelled streamで再現した上で、受取可能額とoverflowをstructured resultへ記録する。stream labelは`development_commands:land_clear:buried_treasure`とし、別用途のdraw位置を進めない。
+
+### 地ならし由来の即時地震
+
+`Prepare2`（新作の`land_level`）も共通検証成功後に費用100を差し引き、対象を人口0の平地へ変更してcommand成功logを記録する。その後、同じcommand call内で`dice(1000) < disEarthquake2`を独立に1回判定する（`command.c:205-236`）。同梱設定は`disEarthquake2=5`であり、successful `Prepare2`ごとの正確な5/1000である。invalid target、ownership failure、insufficient moneyでは抽選しない。`Prepare2`はturn非消費なので、失敗時だけでなく成功時もqueueから除去した後に同じturnの次itemへ進む。
+
+当選時はcounterやmodifierを蓄積せず、その場で`Map::disEarthquake(x, y)`を呼ぶ。震源半径10の331候補から範囲内cellを走査し、人口100 legacy単位以上（canonical 10,000人以上）の都市、工場、ハリボテを対象として、それぞれ`dice(4) == 0`なら荒地化する（`map.c:870-903`）。地震発生と各崩壊は通常公開logである。後の`Map::globalDisaster`が行う通常地震80/1000とは独立し、基礎確率への加算、counter、clampは存在しない。
+
+Owner decisionにより、PR #11は`land_level`本体の検証、費用控除、平地化、turn非消費queue制御、structured event、transaction rollbackだけを実装する。このcommand-time earthquakeは抽選とdamageを分離できず、Capital被災時の新作invariantも未決定なため全体を延期する。架空の`TurnState`、未使用flag、`global_disasters`へのmodifier境界は追加しない。通常global disasterのB-09とは別に`docs/open-questions.md`のCMD-02を再開gateとする。
+
 ### 戻り値とturn消費
 
 `Com::exec`の戻り値はqueue制御でもある。
@@ -98,6 +112,8 @@
 | 資金・食料援助、食料輸出 | 100保存単位の倍数。0でも残高があれば最低100単位 | `command.c:566-603` | handlerが送付・売却単位とcapacityを判断 |
 
 このため新作の`CommandQueueService`へdecrement、一括使用、design番号、費用倍率を戻してはならない。
+
+農場・工場は平地なら初期規模で建設し、同じ種類の既存施設なら各成功ごとに規模をdefinitionの増分だけ加算してmaximumでclampする（`Com::buildCommand`, `command.c:626-697`）。採掘場も山セルの規模へ5ずつ加算して200でclampする。同じtargetへ残したquantityは次turnにこの増築経路を通り、maximum到達後も旧作は費用を引いて成功としてquantityを消費する。
 
 ## 保存単位、表示桁、整数演算
 
@@ -189,6 +205,20 @@ inventory 1,000単位 → 売却可能額1億円
 - 町は海際度に応じ20/50/100まで成長し、誘致中はその上も200まで成長する（`343-377`）。
 - 通常ミサイルで他国都市を破壊すると人口を難民候補へ加算し、後で半数だけを攻撃国中心半径5の既存町へ1セル最大50、町上限200で収容する（`map.c:610-621,1075-1105`）。
 - 火災・災害・ミサイル等は町を荒地または海へ変え、セル人口を全損させる。割合減少や最低保証はない。
+
+### B-16 settlement appearance・成長のexact境界
+
+人口0の`Land::Town`はlegacy上の平地であり、ownerが0なら`Map::process`冒頭で島を解決できず処理を終了する。このため候補は所有された人口0の平地である。legacyの単一`kind`表現では施設なしも暗黙に保証される。候補はまず`dice(100) < 20`を引き、その後に隣接6セルの農場数と人口1 legacy単位以上の`Land::Town`数を数える。合計が1以上なら`param`を0から1へ増やす（`map.c:321-341`）。隣接cellのownerは検査しない。海際度から算出した未使用のappearance用`ratio`は結果へ影響せず、確率は全候補で20/100である。drawが隣接条件より先なので、eligible plainは隣接対象がなくてもappearance streamを1回消費する。
+
+発生人口1 legacy単位はcanonical 100人である。cellはrandomized orderでその場更新されるため、先に発生した村は同じturnの後続cellにとって人口ありの隣接集落となる。完全なsimultaneous candidate snapshotへ置き換えてはならない。
+
+海際度はcell processing前に、海、海底基地、範囲外海から半径4の各cellへ加算する（`Turn::main`, `turn.c:26-31`; `Map::calcSea`, `map.c:191-209`）。`SeaLevel2=24`以上、`SeaLevel1=12`以上24未満、12未満について、通常上限とlegacy growth ratioはそれぞれ100/3、50/2、20/1である（`map.h:166-168`; `map.c:343-377`）。canonical populationへ展開すると通常上限は10,000/5,000/2,000人、通常成長rangeはinclusive 100–900/100–600/100–300人となる。POP-01に従って100人刻みを保存せず、同じminimum、maximum、expected valueを持つ1人単位のinteger rangeを使う。上限到達後の通常成長はない。
+
+誘致中は通常上限未満でinclusive 100–3,000/100–2,000/100–1,000人、到達後は100–300/100–200/100人ずつ成長し、20,000人でclampする。PR #11対象commandには誘致がないため、この式は将来stateを接続できるruleset境界として残し、常時有効化しない。
+
+presentation stageはlegacy表示と`Land::landValue`から、人口1–2,999人をvillage、3,000–9,999人をtown、10,000人以上をcityとする（`hakow.js:536-551`; `map.c:1336-1345`）。人口は正本であり、stageは閾値から決まる。飢餓時はappearanceとgrowthの分岐へ入らず、各`Land::Town`からlegacy 1–30単位を減らして0でclampする（`map.c:313-320`）。canonical rangeはinclusive 100–3,000人である。0になったcellは人口0の平地へ戻る。
+
+legacyはNation center x/yを持つだけでCapital facility identityを持たない。新作ではowner decisionにより、Capitalはidentityを維持したまま同じ通常growthとfamine lossを受け、village/town/city facilityへ置換しない。Capital固有のdamage、最低人口、機能停止は戦闘・災害gateを越えて先行決定しない。
 
 ## ミサイル
 

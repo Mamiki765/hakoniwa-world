@@ -12,6 +12,16 @@ final class TurnRandomStreamFactory
 
     public const SURFACE_CELL_ORDER = 'process_cells:surface_cell_order';
 
+    public const LAND_CLEAR_BURIED_TREASURE = 'development_commands:land_clear:buried_treasure';
+
+    public const SETTLEMENT_APPEARANCE = 'process_cells:settlement_appearance';
+
+    public const POPULATION_GROWTH = 'process_cells:population_growth';
+
+    public const FAMINE_POPULATION_LOSS = 'process_cells:famine_population_loss';
+
+    public const FACILITY_RIOT = 'process_cells:facility_riot';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 

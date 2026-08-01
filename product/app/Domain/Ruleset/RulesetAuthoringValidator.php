@@ -2,6 +2,7 @@
 
 namespace App\Domain\Ruleset;
 
+use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
@@ -12,8 +13,6 @@ use JsonException;
 final class RulesetAuthoringValidator
 {
     private const ARCHITECTURE_CHUNK_SIZE = 16;
-
-    private const ARCHITECTURE_COMMAND_QUEUE_LIMIT = 20;
 
     private const INITIAL_X_MIN = 0;
 
@@ -147,8 +146,11 @@ final class RulesetAuthoringValidator
             'ruleset.command_queue_limit',
             1,
         );
-        if ($commandQueueLimit !== self::ARCHITECTURE_COMMAND_QUEUE_LIMIT) {
-            throw new DomainException('ruleset.command_queue_limit must be exactly 20.');
+        if ($commandQueueLimit > CommandQueueLimit::MAXIMUM) {
+            throw new DomainException(
+                'ruleset.command_queue_limit must be between 1 and '
+                .CommandQueueLimit::MAXIMUM.'.',
+            );
         }
         $territoryRadius = $this->integer(
             $settings['initial_territory_radius'],
@@ -231,7 +233,13 @@ final class RulesetAuthoringValidator
         $this->validateFacilities($settings, $commandKeys, $productionKeys);
         $this->validateCommands($settings, $resourceKeys, $facilityKeys);
         $this->validateProduction($settings, $resourceKeys, $facilityKeys);
-        $this->validateVersionAdditions($settings, $resourceKeys, $reservationRadius, $landRadius);
+        $this->validateVersionAdditions(
+            $settings,
+            $resourceKeys,
+            $facilityKeys,
+            $reservationRadius,
+            $landRadius,
+        );
 
         return [
             'key' => $key,
@@ -574,10 +582,12 @@ final class RulesetAuthoringValidator
     /**
      * @param  array<string, mixed>  $settings
      * @param  list<string>  $resourceKeys
+     * @param  list<string>  $facilityKeys
      */
     private function validateVersionAdditions(
         array $settings,
         array $resourceKeys,
+        array $facilityKeys,
         int $reservationRadius,
         int $landRadius,
     ): void {
@@ -654,8 +664,238 @@ final class RulesetAuthoringValidator
                 $rate = $this->map($rate, $path);
                 $this->requireKeys($rate, ['inventory_units', 'money_units'], $path);
                 $this->integer($rate['inventory_units'], "{$path}.inventory_units", 1);
-                $this->integer($rate['money_units'], "{$path}.money_units", 0);
+                $this->integer($rate['money_units'], "{$path}.money_units", 1);
             }
+        }
+        if (array_key_exists('turn_processing', $settings)) {
+            $this->validateTurnProcessing($settings['turn_processing'], $resourceKeys, $facilityKeys, $settings);
+        }
+    }
+
+    /**
+     * @param  list<string>  $resourceKeys
+     * @param  list<string>  $facilityKeys
+     * @param  array<string, mixed>  $settings
+     */
+    private function validateTurnProcessing(
+        mixed $authored,
+        array $resourceKeys,
+        array $facilityKeys,
+        array $settings,
+    ): void {
+        $path = 'ruleset.turn_processing';
+        $turn = $this->map($authored, $path);
+        $this->requireKeys($turn, [
+            'automatic_finance_money', 'food', 'workforce', 'settlement', 'famine', 'riot',
+            'command_random_effects', 'sale_policy',
+        ], $path);
+        $this->integer($turn['automatic_finance_money'], "{$path}.automatic_finance_money", 0);
+
+        $food = $this->map($turn['food'], "{$path}.food");
+        $this->requireKeys($food, ['population_per_nutrition', 'consumption_priority'], "{$path}.food");
+        $this->integer($food['population_per_nutrition'], "{$path}.food.population_per_nutrition", 1);
+        $priority = $this->list($food['consumption_priority'], "{$path}.food.consumption_priority");
+        if ($priority !== ['wheat', 'fish', 'monster_meat']) {
+            throw new DomainException("{$path}.food.consumption_priority must be wheat, fish, monster_meat.");
+        }
+        foreach ($priority as $resourceKey) {
+            $this->reference($resourceKey, $resourceKeys, "{$path}.food.consumption_priority");
+        }
+        $resourceDefinitions = [];
+        foreach ($this->list($settings['resource_definitions'], 'ruleset.resource_definitions') as $definitionValue) {
+            $definition = $this->map($definitionValue, 'ruleset.resource_definitions entry');
+            $resourceDefinitions[$this->string($definition['key'], 'ruleset.resource_definitions entry.key')] = $definition;
+        }
+        foreach ($priority as $resourceKey) {
+            $definition = $resourceDefinitions[$resourceKey];
+            if ($definition['category'] !== 'food' || $definition['unit'] !== 'ton') {
+                throw new DomainException("{$path}.food resource {$resourceKey} must use category food and canonical ton units.");
+            }
+            $this->integer(
+                $definition['nutrition_per_unit'],
+                "ruleset.resource_definitions.{$resourceKey}.nutrition_per_unit",
+                1,
+            );
+        }
+
+        $workforce = $this->map($turn['workforce'], "{$path}.workforce");
+        $this->requireKeys($workforce, [
+            'priority', 'farm_output_per_worker', 'factory_output_per_worker',
+            'mine_output_per_worker', 'allocation_rule',
+        ], "{$path}.workforce");
+        if ($this->list($workforce['priority'], "{$path}.workforce.priority") !== ['farm', 'factory_mine']) {
+            throw new DomainException("{$path}.workforce.priority must be farm, factory_mine.");
+        }
+        foreach (['farm_output_per_worker', 'factory_output_per_worker', 'mine_output_per_worker'] as $key) {
+            $this->integer($workforce[$key], "{$path}.workforce.{$key}", 1);
+        }
+        if ($this->persistedString($workforce['allocation_rule'], "{$path}.workforce.allocation_rule") !== 'capacity_proportional_largest_remainder') {
+            throw new DomainException("{$path}.workforce.allocation_rule must use deterministic largest remainder allocation.");
+        }
+        $productionByFacility = [];
+        foreach ($this->list($settings['production_definitions'], 'ruleset.production_definitions') as $definitionValue) {
+            $definition = $this->map($definitionValue, 'ruleset.production_definitions entry');
+            $productionByFacility[$this->string($definition['facility_key'], 'ruleset.production_definitions entry.facility_key')] = $definition;
+        }
+        foreach (['farm' => 'wheat', 'factory' => 'industrial_goods', 'mine' => 'minerals'] as $facilityKey => $resourceKey) {
+            $definition = $productionByFacility[$facilityKey] ?? null;
+            if (! is_array($definition)) {
+                throw new DomainException("{$path}.workforce requires a production definition for {$facilityKey}.");
+            }
+            $workersPerScale = $this->integer(
+                $definition['required_workforce_per_scale'],
+                "ruleset.production_definitions.{$facilityKey}.required_workforce_per_scale",
+                1,
+            );
+            $outputPerWorker = $this->integer(
+                $workforce[$facilityKey === 'farm' ? 'farm_output_per_worker' : $facilityKey.'_output_per_worker'],
+                "{$path}.workforce.{$facilityKey}_output_per_worker",
+                1,
+            );
+            $productionPerScale = $this->integer(
+                $definition['production_per_scale'],
+                "ruleset.production_definitions.{$facilityKey}.production_per_scale",
+                1,
+            );
+            if ($productionPerScale !== $workersPerScale * $outputPerWorker) {
+                throw new DomainException("{$path}.workforce {$facilityKey} output must match production per scale.");
+            }
+            if ($definition['output_resource_key'] !== $resourceKey
+                || $definition['operating_condition'] !== 'turn_start_workforce_allocation') {
+                throw new DomainException("{$path}.workforce {$facilityKey} production mapping is incompatible.");
+            }
+            $facilityDefinition = $this->map(
+                $settings['facility_definitions'][$facilityKey],
+                "ruleset.facility_definitions.{$facilityKey}",
+            );
+            if ($workersPerScale !== $facilityDefinition['scale_unit_people']
+                || $workersPerScale !== $facilityDefinition['workforce_per_scale_people']) {
+                throw new DomainException("{$path}.workforce {$facilityKey} scale and workforce units must match.");
+            }
+        }
+
+        $settlement = $this->map($turn['settlement'], "{$path}.settlement");
+        $this->requireKeys($settlement, [
+            'appearance_probability', 'initial_population', 'eligible_terrain_key',
+            'adjacent_facility_key', 'stages', 'sea_edge_bands', 'ordinary_growth',
+            'attraction_growth', 'attraction_maximum_population',
+        ], "{$path}.settlement");
+        $this->probability($settlement['appearance_probability'], "{$path}.settlement.appearance_probability");
+        $this->integer($settlement['initial_population'], "{$path}.settlement.initial_population", 1);
+        $this->reference($settlement['eligible_terrain_key'], self::TERRAIN_KEYS, "{$path}.settlement.eligible_terrain_key");
+        $this->reference($settlement['adjacent_facility_key'], $facilityKeys, "{$path}.settlement.adjacent_facility_key");
+        $stages = $this->map($settlement['stages'], "{$path}.settlement.stages");
+        $this->requireKeys($stages, ['village', 'town', 'city'], "{$path}.settlement.stages");
+        $facilityDefinitions = $this->map($settings['facility_definitions'], 'ruleset.facility_definitions');
+        $previousMaximum = 0;
+        foreach (['village', 'town', 'city'] as $stageKey) {
+            $stage = $this->map($stages[$stageKey], "{$path}.settlement.stages.{$stageKey}");
+            $this->requireKeys($stage, ['facility_key', 'minimum_population', 'maximum_population'], "{$path}.settlement.stages.{$stageKey}");
+            $stageFacilityKey = $this->reference($stage['facility_key'], $facilityKeys, "{$path}.settlement.stages.{$stageKey}.facility_key");
+            $stageFacility = $this->map(
+                $facilityDefinitions[$stageFacilityKey],
+                "ruleset.facility_definitions.{$stageFacilityKey}",
+            );
+            if ($stageFacility['build_command_key'] !== null || $stageFacility['scale_unit_people'] !== null) {
+                throw new DomainException("{$path}.settlement stage facility {$stageFacilityKey} must be population-derived.");
+            }
+            $minimum = $this->integer($stage['minimum_population'], "{$path}.settlement.stages.{$stageKey}.minimum_population", 1);
+            $maximum = $this->integer($stage['maximum_population'], "{$path}.settlement.stages.{$stageKey}.maximum_population", $minimum);
+            if ($minimum !== $previousMaximum + 1) {
+                throw new DomainException("{$path}.settlement.stages must use contiguous population thresholds.");
+            }
+            $previousMaximum = $maximum;
+        }
+        $village = $this->map($stages['village'], "{$path}.settlement.stages.village");
+        $initialSettlementPopulation = $this->integer(
+            $settlement['initial_population'],
+            "{$path}.settlement.initial_population",
+            1,
+        );
+        if ($initialSettlementPopulation < $village['minimum_population']
+            || $initialSettlementPopulation > $village['maximum_population']) {
+            throw new DomainException("{$path}.settlement initial population must be in the village stage.");
+        }
+        $previousMinimumSeaCells = null;
+        $lastMinimumSeaCells = null;
+        $largestOrdinaryMaximum = 0;
+        foreach ($this->list($settlement['sea_edge_bands'], "{$path}.settlement.sea_edge_bands") as $index => $bandValue) {
+            $band = $this->map($bandValue, "{$path}.settlement.sea_edge_bands.{$index}");
+            $this->requireKeys($band, ['minimum_sea_cells', 'maximum_population', 'growth_multiplier'], "{$path}.settlement.sea_edge_bands.{$index}");
+            $minimumSeaCells = $this->integer($band['minimum_sea_cells'], "{$path}.settlement.sea_edge_bands.{$index}.minimum_sea_cells", 0);
+            if ($previousMinimumSeaCells !== null && $minimumSeaCells >= $previousMinimumSeaCells) {
+                throw new DomainException("{$path}.settlement.sea_edge_bands must use descending minimums.");
+            }
+            $previousMinimumSeaCells = $minimumSeaCells;
+            $lastMinimumSeaCells = $minimumSeaCells;
+            $maximumPopulation = $this->integer($band['maximum_population'], "{$path}.settlement.sea_edge_bands.{$index}.maximum_population", 1);
+            $largestOrdinaryMaximum = max($largestOrdinaryMaximum, $maximumPopulation);
+            $this->integer($band['growth_multiplier'], "{$path}.settlement.sea_edge_bands.{$index}.growth_multiplier", 1);
+        }
+        if ($lastMinimumSeaCells !== 0) {
+            throw new DomainException("{$path}.settlement.sea_edge_bands must end at minimum zero.");
+        }
+        foreach (['ordinary_growth', 'attraction_growth'] as $growthKey) {
+            $growth = $this->map($settlement[$growthKey], "{$path}.settlement.{$growthKey}");
+            $this->requireKeys($growth, ['minimum', 'maximum', 'unit_people'], "{$path}.settlement.{$growthKey}");
+            $minimum = $this->integer($growth['minimum'], "{$path}.settlement.{$growthKey}.minimum", 0);
+            $maximum = $this->integer($growth['maximum'], "{$path}.settlement.{$growthKey}.maximum", $minimum);
+            $this->integer($growth['unit_people'], "{$path}.settlement.{$growthKey}.unit_people", 1);
+        }
+        $attractionMaximum = $this->integer($settlement['attraction_maximum_population'], "{$path}.settlement.attraction_maximum_population", 1);
+        if ($attractionMaximum < $largestOrdinaryMaximum) {
+            throw new DomainException("{$path}.settlement attraction maximum cannot be below an ordinary maximum.");
+        }
+
+        $famine = $this->map($turn['famine'], "{$path}.famine");
+        $this->requireKeys($famine, ['loss_minimum', 'loss_maximum', 'loss_unit_people'], "{$path}.famine");
+        $lossMinimum = $this->integer($famine['loss_minimum'], "{$path}.famine.loss_minimum", 0);
+        $this->integer($famine['loss_maximum'], "{$path}.famine.loss_maximum", $lossMinimum);
+        $this->integer($famine['loss_unit_people'], "{$path}.famine.loss_unit_people", 1);
+
+        $riot = $this->map($turn['riot'], "{$path}.riot");
+        $this->requireKeys($riot, ['probability', 'facility_keys'], "{$path}.riot");
+        $this->probability($riot['probability'], "{$path}.riot.probability");
+        foreach ($this->list($riot['facility_keys'], "{$path}.riot.facility_keys") as $facilityKey) {
+            $this->reference($facilityKey, $facilityKeys, "{$path}.riot.facility_keys");
+        }
+
+        $effects = $this->map($turn['command_random_effects'], "{$path}.command_random_effects");
+        $this->requireKeys($effects, ['land_clear_buried_treasure'], "{$path}.command_random_effects");
+        $treasure = $this->map($effects['land_clear_buried_treasure'], "{$path}.command_random_effects.land_clear_buried_treasure");
+        $this->requireKeys($treasure, ['probability', 'reward_minimum_money', 'reward_maximum_money'], "{$path}.command_random_effects.land_clear_buried_treasure");
+        $this->probability($treasure['probability'], "{$path}.command_random_effects.land_clear_buried_treasure.probability");
+        $rewardMinimum = $this->integer($treasure['reward_minimum_money'], "{$path}.command_random_effects.land_clear_buried_treasure.reward_minimum_money", 0);
+        $this->integer($treasure['reward_maximum_money'], "{$path}.command_random_effects.land_clear_buried_treasure.reward_maximum_money", $rewardMinimum);
+
+        $salePolicy = $this->map($turn['sale_policy'], "{$path}.sale_policy");
+        $this->requireKeys($salePolicy, ['sell_all_forbidden_resource_keys'], "{$path}.sale_policy");
+        foreach ($this->list($salePolicy['sell_all_forbidden_resource_keys'], "{$path}.sale_policy.sell_all_forbidden_resource_keys") as $resourceKey) {
+            $this->reference($resourceKey, $resourceKeys, "{$path}.sale_policy.sell_all_forbidden_resource_keys");
+        }
+        if (! in_array('wheat', $salePolicy['sell_all_forbidden_resource_keys'], true)) {
+            throw new DomainException("{$path}.sale_policy must forbid sell_all for wheat.");
+        }
+        if ($settings['default_sale_policy'] !== 'stockpile') {
+            throw new DomainException("{$path}.sale_policy requires stockpile as the wheat-safe default.");
+        }
+
+        $rates = $this->map($settings['inventory_sale_rates'] ?? null, 'ruleset.inventory_sale_rates');
+        foreach ($resourceDefinitions as $resourceKey => $definition) {
+            if ($definition['tradable'] === true && ! array_key_exists($resourceKey, $rates)) {
+                throw new DomainException("ruleset.inventory_sale_rates is missing tradable resource {$resourceKey}.");
+            }
+        }
+    }
+
+    private function probability(mixed $authored, string $path): void
+    {
+        $probability = $this->map($authored, $path);
+        $this->requireKeys($probability, ['numerator', 'denominator'], $path);
+        $numerator = $this->integer($probability['numerator'], "{$path}.numerator", 0);
+        $denominator = $this->integer($probability['denominator'], "{$path}.denominator", 1);
+        if ($numerator > $denominator) {
+            throw new DomainException("{$path}.numerator cannot exceed denominator.");
         }
     }
 

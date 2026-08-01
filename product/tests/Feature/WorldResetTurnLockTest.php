@@ -25,11 +25,15 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Tests\Concerns\UsesForwardOnlyDatabaseMigrations;
 use Tests\TestCase;
 
 class WorldResetTurnLockTest extends TestCase
 {
-    use DatabaseMigrations;
+    use DatabaseMigrations, UsesForwardOnlyDatabaseMigrations {
+        UsesForwardOnlyDatabaseMigrations::runDatabaseMigrations insteadof DatabaseMigrations;
+        UsesForwardOnlyDatabaseMigrations::refreshTestDatabase insteadof DatabaseMigrations;
+    }
 
     private const PROBE_CONNECTION = 'pgsql-world-reset-turn-probe';
 

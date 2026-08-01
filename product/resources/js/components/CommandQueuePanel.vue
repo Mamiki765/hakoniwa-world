@@ -18,14 +18,6 @@ const props = defineProps<{
     selected: MapCell | null;
 }>();
 
-const automaticPlan = (): EffectivePlanSlot[] => Array.from({ length: 20 }, (_, index) => ({
-    position: index + 1,
-    kind: 'automatic_finance' as const,
-    editable: false as const,
-    command_name: '資金繰り' as const,
-    quantity: null,
-}));
-
 const definitions = ref<CommandDefinition[]>([]);
 const quantityContract = ref({
     type: 'integer' as const,
@@ -36,10 +28,10 @@ const quantityContract = ref({
 });
 const queue = ref<CommandQueue>({
     version: 1,
-    limit: 20,
+    limit: 1,
     explicit_count: 0,
     items: [],
-    plan: automaticPlan(),
+    plan: [],
 });
 const refreshing = ref(false);
 const mutating = ref(false);
@@ -321,7 +313,7 @@ onBeforeUnmount(() => {
 
         <aside class="plan-panel" :class="{ expanded: mobilePlanExpanded }" aria-label="開発計画">
             <button class="mobile-panel-toggle" type="button" @click="togglePlanDrawer">
-                開発計画 20枠 <span>{{ mobilePlanExpanded ? '閉じる' : '開く' }}</span>
+                開発計画 {{ queue.limit }}枠 <span>{{ mobilePlanExpanded ? '閉じる' : '開く' }}</span>
             </button>
             <div class="plan-panel-body">
                 <div class="plan-heading">

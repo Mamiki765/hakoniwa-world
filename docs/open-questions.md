@@ -264,7 +264,7 @@
 
 - Status: Decided
 - Required before: コマンド実装前
-- Decision: 旧作と同じ上限20件、1始まりの明示positionとし、追加・全件並べ替え・取消後の左詰めをtransactionで行う。header versionによるoptimistic concurrencyとrequest keyによる重複防止を使う。登録時に資金・資源を予約せず、turn runnerが実行時に再検証する。PR6ではquantityを全command共通のfirst-class column/API fieldとし、整数1–99、default 1、preset 1/5/10/25/50/99で予約・表示・編集・validationだけを実装する。明示的nullは422とし、quantityの実行意味と副作用はturn runnerまで延期する。effective planは20枠を返し、未使用枠をquantity nullかつ永続IDのないautomatic finance placeholderで補完する。
+- Decision: command queue limitはarchitecture invariantではなくruleset-configurableなgameplay valueとする。legacyおよび既存published rulesetは20、`roadmap-pr11-v1`は30とし、authoringではDB互換な整数1–168だけを許可する。runtime、backend、API、frontendはactive Worldの値を使い、20または30をhard-codeしない。positionは1始まりとし、追加・全件並べ替え・取消後の左詰めをtransactionで行う。header versionによるoptimistic concurrencyとrequest keyによる重複防止を使う。登録時に資金・資源を予約せず、turn runnerが実行時に再検証する。quantityは全command共通のfirst-class column/API fieldで、整数1–99、default 1、preset 1/5/10/25/50/99とする。明示的nullは422とし、実行時のdecrement・先頭保持・一括使用はcommand handlerが所有する。effective planはactive limit分の枠を返し、未使用枠をquantity nullかつ永続IDのないautomatic finance placeholderで補完する。
 - Decision record: `docs/architecture/roadmap-pr2-systems.md`
 
 ### RES-01 food生産量のton換算
@@ -281,11 +281,24 @@
 - Decision: PR2では旧作sourceで確認した整地、地ならし、埋め立て、掘削、農場建設、工場建設、採掘場建設を別々のversioned definitionとして採用する。費用と施設scaleは旧作値を維持し、実行、副作用、乱数処理はturn runnerへ延期する。
 - Decision record: `docs/architecture/roadmap-pr2-systems.md`
 
+### CMD-02 地ならし由来の即時地震
+
+- Status: Deferred
+- Required before: land_level earthquake side effect実装前
+- Source-derived behavior: successful `land_level`ごとに5/1000をcommand実行時に即時抽選し、当選時は震源半径10内の人口10,000人以上の都市、工場、ハリボテをそれぞれ独立に1/4で荒地化する。invalid target、ownership failure、insufficient moneyでは抽選しない。通常のglobal earthquakeとは別処理であり、counter/modifier方式ではない。
+- Owner decision: PR #11では`land_level`本体だけを実装し、抽選、earthquake event、damage、地形・施設・人口mutationは延期する。`TurnState`へのmodifier/counter、`global_disasters`への確率加算、代替確率、clamp、抽選だけの半端な移植は行わない。
+- Required decisions before implementation: Capitalが人口10,000人以上の場合の対象可否、Capital cell被災時のCapital identityとNation invariant、新作facility modelにおける都市判定、player/admin event payload。
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+
 ### B-16 settlement_seed
 
-- Status: Open
+- Status: Decided
 - Required before: settlement_seedまたはsettlement growth実装前
-- Owner direction: settlement appearanceとvillage/town/city growthはlegacy基準とする方向とする。Capitalの初期population growthも、当面は通常のvillage/town/cityと同じ式を使う方向とする。exact probability、population threshold、candidate selection、maximum、Capital固有効果との分離はsource調査待ちとする。
+- Decision: randomized sequential cell processingで、所有者がいる人口0・施設なしの平地を候補とする。候補ごとに100面20未満を先に抽選し、その後、隣接6セルに農場または人口1人以上の集落が1つ以上あれば人口100人の村を発生させる。隣接施設・集落のowner一致は要求しない。先に発生した村は同じturnの後続cellから観測できる。
+- Decision: villageは1–2,999人、townは3,000–9,999人、cityは10,000人以上とする。海際度24以上、12–23、0–11で通常人口上限をそれぞれ10,000、5,000、2,000人とし、通常成長のcanonical inclusive integer rangeをそれぞれ100–900、100–600、100–300人とする。上限を超えないようclampする。誘致中は通常上限未満で100–3,000、100–2,000、100–1,000人、通常上限到達後は100–300、100–200、100人ずつ20,000人まで成長する。
+- Decision: 飢餓時は村発生・成長を行わず、各有人口集落をcanonical inclusive integer 100–3,000人だけ減少させ、0未満を0にする。人口0では施設stageを外して所有された平地へ戻す。CapitalはCapital identityを維持し、town/city facilityへ置換せず、同じ海際度・通常成長式と飢餓減少式を適用する。
+- Decision: sea-edge contextはturn開始時点の海、海底基地、範囲外海から半径4へ加算した値をそのturnで固定して使う。PR #11はattractionを発生させるcommandを追加しないが、将来の誘致stateが同じcell processorへ接続できるruleset境界を保持する。
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
 
 ### B-17 緊急農場
 

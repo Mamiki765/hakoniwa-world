@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\CommandQueueService;
+use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
@@ -109,6 +110,7 @@ final class CommandQueueController extends Controller
 
     public function store(Request $request, Nation $nation, MapSpace $mapSpace, CommandQueueService $service): JsonResponse
     {
+        $limit = $this->queueLimit($nation);
         $validated = $request->validate([
             'command_key' => ['required', 'string', 'max:64'],
             'target_x' => ['required', 'integer'],
@@ -117,7 +119,7 @@ final class CommandQueueController extends Controller
             'expected_version' => ['required', 'integer', 'min:1'],
             'quantity' => ['sometimes'],
             'parameters' => ['sometimes', 'array'],
-            'position' => ['sometimes', 'integer', 'min:1', 'max:20'],
+            'position' => ['sometimes', 'integer', 'min:1', "max:{$limit}"],
         ]);
 
         try {
@@ -151,12 +153,13 @@ final class CommandQueueController extends Controller
 
     public function reorder(Request $request, Nation $nation, MapSpace $mapSpace, CommandQueueService $service): JsonResponse
     {
+        $limit = $this->queueLimit($nation);
         $validated = $request->validate([
-            'ordered_ids' => ['required_without:placements', 'array', 'max:20'],
+            'ordered_ids' => ['required_without:placements', 'array', "max:{$limit}"],
             'ordered_ids.*' => ['integer', 'distinct'],
-            'placements' => ['required_without:ordered_ids', 'array', 'max:20'],
+            'placements' => ['required_without:ordered_ids', 'array', "max:{$limit}"],
             'placements.*.id' => ['required_with:placements', 'integer', 'distinct'],
-            'placements.*.position' => ['required_with:placements', 'integer', 'min:1', 'max:20', 'distinct'],
+            'placements.*.position' => ['required_with:placements', 'integer', 'min:1', "max:{$limit}", 'distinct'],
             'expected_version' => ['required', 'integer', 'min:1'],
         ]);
 
@@ -231,12 +234,7 @@ final class CommandQueueController extends Controller
             'queued_at' => $item->queued_at?->toIso8601String(),
         ])->values();
         $byPosition = $items->keyBy('queue_position');
-        $settings = $queue->nation()->firstOrFail()->world()->firstOrFail()
-            ->rulesetVersion()->firstOrFail()->settings;
-        $limit = $settings['command_queue_limit'] ?? null;
-        if (! is_int($limit) || $limit < 1) {
-            throw new DomainException('Worldのcommand queue設定が不正です。');
-        }
+        $limit = $this->queueLimit($queue->nation()->firstOrFail());
         $plan = collect(range(1, $limit))->map(static function (int $position) use ($byPosition): array {
             $item = $byPosition->get($position);
             if ($item === null) {
@@ -272,6 +270,13 @@ final class CommandQueueController extends Controller
             'items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'),
             'items.definition',
         ]);
+    }
+
+    private function queueLimit(Nation $nation): int
+    {
+        $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+
+        return CommandQueueLimit::fromRulesetSettings($settings);
     }
 
     private function domainError(DomainException $exception): JsonResponse

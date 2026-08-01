@@ -22,6 +22,9 @@ class Pr7ForwardMigrationTest extends TestCase
     public function test_shared_world_moves_explicitly_without_data_loss_or_published_ruleset_mutation(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
+        $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
+        $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
+        $world->update(['ruleset_version_id' => $pr7->id]);
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, 'PR7移行国');
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
@@ -44,8 +47,6 @@ class Pr7ForwardMigrationTest extends TestCase
         $item->update(['parameters' => ['future_inventory_item_id' => 12]]);
         $item->refresh();
 
-        $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
-        $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
         $pr6Snapshot = $pr6->settings;
         $pr7Snapshot = $pr7->settings;
         $before = [

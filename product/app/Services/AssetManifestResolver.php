@@ -60,7 +60,7 @@ final class AssetManifestResolver
     }
 
     /**
-     * @param array<int, string> $overlayAssetKeys
+     * @param  array<int, string>  $overlayAssetKeys
      * @return array{completed: array{key: string, url: ?string, available: bool, fallback_label: string, fallback_style: string}, overlays: array<int, array{key: string, url: ?string, available: bool, fallback_label: string, fallback_style: string}>}
      */
     public function resolveLayers(string $completedAssetKey, string $fallbackLabel, array $overlayAssetKeys = []): array
@@ -119,7 +119,7 @@ final class AssetManifestResolver
         }
 
         $allowedMimes = ['image/gif', 'image/png', 'image/webp'];
-        if (! in_array($image['mime'] ?? '', $allowedMimes, true)) {
+        if (! in_array($image['mime'], $allowedMimes, true)) {
             return null;
         }
 

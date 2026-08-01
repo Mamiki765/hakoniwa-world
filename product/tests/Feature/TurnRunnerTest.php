@@ -50,20 +50,23 @@ class TurnRunnerTest extends TestCase
         $this->assertSame($world->ruleset_version_id, $run->ruleset_version_id);
         $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $run->random_seed);
         $this->assertSame(self::PHASES, collect($run->pipeline)->pluck('key')->all());
-        $this->assertNotEmpty($run->failure_context['missing_phases']);
+        $this->assertSame([], $run->failure_context['missing_phases']);
+        $this->assertTrue($run->failure_context['pipeline_validation']['valid']);
         $this->assertSame($worldSnapshot, $world->fresh()->only(array_keys($worldSnapshot)));
         $this->assertSame($rulesetSnapshot, $ruleset->fresh()->settings);
     }
 
-    public function test_incomplete_default_pipeline_records_block_and_never_advances_production_turn(): void
+    public function test_complete_default_pipeline_commits_and_advances_the_world_turn(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
 
         $run = app(TurnRunner::class)->run($world);
 
-        $this->assertSame(TurnRun::STATUS_BLOCKED, $run->status);
-        $this->assertSame('pipeline_incomplete', $run->failure_code);
-        $this->assertSame(0, $world->fresh()->current_turn);
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
+        $this->assertNull($run->failure_code);
+        $this->assertSame(1, $world->fresh()->current_turn);
+        $this->assertSame(self::PHASES, collect($run->phase_results)->pluck('phase')->all());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
         $this->assertNotNull($run->started_at);
         $this->assertNotNull($run->completed_at);
     }

@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Command\CommandParametersValidator;
+use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
@@ -17,6 +18,7 @@ use App\Models\User;
 use App\Models\World;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -99,11 +101,17 @@ final class CommandQueueService
             if ($position < 1 || $position > $limit) {
                 throw new DomainException("挿入位置は1から{$limit}の範囲で指定してください。");
             }
-            $shifted = $activeItems->filter(
-                static fn (NationCommandQueueItem $item): bool => (int) $item->queue_position >= $position,
+            $byPosition = $activeItems->keyBy(
+                static fn (NationCommandQueueItem $item): int => (int) $item->queue_position,
             );
-            if ($shifted->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position >= $limit)) {
-                throw new DomainException('選択した位置へ挿入すると開発計画の末尾を超えます。');
+            /** @var Collection<int, NationCommandQueueItem> $shifted */
+            $shifted = new Collection;
+            for ($shiftPosition = $position; $byPosition->has($shiftPosition); $shiftPosition++) {
+                if ($shiftPosition >= $limit) {
+                    throw new DomainException('選択した位置へ挿入すると開発計画の末尾を超えます。');
+                }
+
+                $shifted->push($byPosition->get($shiftPosition));
             }
             if ($shifted->isNotEmpty()) {
                 NationCommandQueueItem::query()->whereIn('id', $shifted->modelKeys())->increment('queue_position', 1000);
@@ -356,12 +364,8 @@ final class CommandQueueService
     private function queueLimit(World $world): int
     {
         $settings = $world->rulesetVersion()->firstOrFail()->settings;
-        $limit = $settings['command_queue_limit'] ?? null;
-        if (! is_int($limit) || $limit < 1) {
-            throw new DomainException('Worldのcommand queue設定が不正です。');
-        }
 
-        return $limit;
+        return CommandQueueLimit::fromRulesetSettings($settings);
     }
 
     private function assertUniversalQuantityRuleset(World $world): void

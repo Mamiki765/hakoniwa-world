@@ -31,16 +31,16 @@ const item = (id: number, position: number, overrides: Partial<CommandQueueItem>
     ...overrides,
 });
 
-function commandQueue(version = 1, items: CommandQueueItem[] = []): CommandQueue {
+function commandQueue(version = 1, items: CommandQueueItem[] = [], limit = 20): CommandQueue {
     const byPosition = new Map(items.map((entry) => [entry.queue_position, entry]));
-    const plan: EffectivePlanSlot[] = Array.from({ length: 20 }, (_, index) => {
+    const plan: EffectivePlanSlot[] = Array.from({ length: limit }, (_, index) => {
         const position = index + 1;
         const explicit = byPosition.get(position);
         return explicit === undefined
             ? { position, kind: 'automatic_finance', editable: false, command_name: '資金繰り', quantity: null }
             : { ...explicit, position, kind: 'explicit', editable: true };
     });
-    return { version, limit: 20, explicit_count: items.length, items, plan };
+    return { version, limit, explicit_count: items.length, items, plan };
 }
 
 const catalog = (commands: CommandDefinition[]): CommandCatalog => ({
@@ -120,6 +120,27 @@ describe('command plan workspace', () => {
         await wrapper.findAll('.plan-row')[0]!.trigger('keydown', { key: 'ArrowDown', altKey: true });
         await flushPromises();
         expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT').length).toBe(2);
+    });
+
+    it('renders and keyboard-reorders all thirty active-ruleset positions in the scrollable plan region', async () => {
+        const items = Array.from({ length: 30 }, (_, index) => item(index + 1, index + 1));
+        const initial = commandQueue(3, items, 30);
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'PUT') return jsonResponse(commandQueue(4, items, 30));
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : initial);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        expect(wrapper.findAll('.plan-row')).toHaveLength(30);
+        expect(wrapper.find('.plan-list').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel .mobile-panel-toggle').text()).toContain('30');
+        expect(wrapper.findAll('.plan-row')[29]!.attributes('draggable')).toBe('true');
+
+        await wrapper.findAll('.plan-row')[29]!.trigger('keydown', { key: 'ArrowUp', altKey: true });
+        await flushPromises();
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(true);
     });
 
     it('opens the universal quantity editor by double click and keyboard without command schemas', async () => {
@@ -229,6 +250,25 @@ describe('command plan workspace', () => {
 });
 
 describe('sale policy panel', () => {
+    it('does not offer sell_all when wheat capabilities forbid it', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([{
+            resource_id: 10,
+            resource_key: 'wheat',
+            resource_name: '小麦',
+            amount: 100,
+            policy: 'stockpile',
+            keep_amount: null,
+            version: 1,
+            allowed_policies: ['stockpile', 'keep_amount'],
+        }])));
+        const wrapper = mount(SalePolicyPanel, { props: { nationId: 1 } });
+        await flushPromises();
+
+        expect(wrapper.find('option[value="sell_all"]').exists()).toBe(false);
+        expect(wrapper.find('option[value="stockpile"]').exists()).toBe(true);
+        expect(wrapper.find('option[value="keep_amount"]').exists()).toBe(true);
+    });
+
     it('updates keep_amount with the row version and exposes non-negative validation', async () => {
         const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
             const data = init?.method === 'PUT'

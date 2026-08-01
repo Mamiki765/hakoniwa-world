@@ -126,10 +126,23 @@ class RulesetAuthoringValidatorTest extends TestCase
         ];
     }
 
-    public function test_architecture_command_queue_limit_is_valid(): void
+    public function test_existing_and_pr11_command_queue_limits_are_valid(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+
+        $legacy = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $pr11 = config('hakoniwa.published_rulesets.roadmap-pr11-v1');
+
+        $this->assertSame(20, $legacy['command_queue_limit']);
+        $this->assertSame('roadmap-pr7-v1', $validator->validate($legacy)['key']);
+        $this->assertSame(30, $pr11['command_queue_limit']);
+        $this->assertSame('roadmap-pr11-v1', $validator->validate($pr11)['key']);
+    }
+
+    public function test_command_queue_authoring_safety_maximum_is_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
-        $settings['command_queue_limit'] = 20;
+        $settings['command_queue_limit'] = 168;
 
         $summary = app(RulesetAuthoringValidator::class)->validate($settings);
 
@@ -137,24 +150,174 @@ class RulesetAuthoringValidatorTest extends TestCase
     }
 
     #[DataProvider('invalidCommandQueueLimitProvider')]
-    public function test_non_architecture_command_queue_limits_are_rejected(int $limit): void
+    public function test_command_queue_limits_outside_the_authoring_safety_range_are_rejected(mixed $limit): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
         $settings['command_queue_limit'] = $limit;
 
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('ruleset.command_queue_limit must be exactly 20');
+        $this->expectExceptionMessage('ruleset.command_queue_limit');
 
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    /** @return array<string, array{int}> */
+    /** @return array<string, array{mixed}> */
     public static function invalidCommandQueueLimitProvider(): array
     {
         return [
-            'nineteen' => [19],
-            'twenty-one' => [21],
+            'zero' => [0],
+            'negative' => [-1],
+            'one hundred sixty-nine' => [169],
             'postgresql integer overflow' => [2_147_483_648],
+            'numeric string' => ['30'],
+            'float' => [30.0],
+        ];
+    }
+
+    public function test_pr11_turn_processing_rejects_invalid_probability_and_stage_ranges(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr11-v1');
+        $settings['turn_processing']['settlement']['appearance_probability']['numerator'] = 101;
+
+        try {
+            $validator->validate($settings);
+            $this->fail('An invalid probability must be rejected.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('numerator cannot exceed denominator', $exception->getMessage());
+        }
+
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr11-v1');
+        $settings['turn_processing']['settlement']['stages']['town']['minimum_population'] = 3001;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('contiguous population thresholds');
+        $validator->validate($settings);
+    }
+
+    /**
+     * @param  callable(array<string, mixed>): array<string, mixed>  $mutate
+     */
+    #[DataProvider('invalidPr11TurnContractProvider')]
+    public function test_pr11_turn_contract_rejects_incompatible_authored_values(
+        callable $mutate,
+        string $message,
+    ): void {
+        $settings = $mutate(config('hakoniwa.published_rulesets.roadmap-pr11-v1'));
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage($message);
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    /** @return array<string, array{callable(array<string, mixed>): array<string, mixed>, string}> */
+    public static function invalidPr11TurnContractProvider(): array
+    {
+        return [
+            'food must use canonical tons' => [
+                static function (array $settings): array {
+                    $settings['resource_definitions'][0]['unit'] = 'legacy_unit';
+
+                    return $settings;
+                },
+                'canonical ton units',
+            ],
+            'automatic finance must be nonnegative' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['automatic_finance_money'] = -1;
+
+                    return $settings;
+                },
+                'automatic_finance_money must be at least 0',
+            ],
+            'food nutrition must be integer' => [
+                static function (array $settings): array {
+                    $settings['resource_definitions'][0]['nutrition_per_unit'] = 1.5;
+
+                    return $settings;
+                },
+                'nutrition_per_unit must be an integer',
+            ],
+            'food priority is canonical' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['food']['consumption_priority'] = ['fish', 'wheat', 'monster_meat'];
+
+                    return $settings;
+                },
+                'must be wheat, fish, monster_meat',
+            ],
+            'worker output must match production scale' => [
+                static function (array $settings): array {
+                    $settings['production_definitions'][0]['production_per_scale'] = 999;
+
+                    return $settings;
+                },
+                'farm output must match production per scale',
+            ],
+            'production output mapping is canonical' => [
+                static function (array $settings): array {
+                    $settings['production_definitions'][1]['output_resource_key'] = 'minerals';
+
+                    return $settings;
+                },
+                'factory production mapping is incompatible',
+            ],
+            'production workforce units match facility scale' => [
+                static function (array $settings): array {
+                    $settings['facility_definitions']['mine']['workforce_per_scale_people'] = 999;
+
+                    return $settings;
+                },
+                'mine scale and workforce units must match',
+            ],
+            'all tradable resources require a sale rate' => [
+                static function (array $settings): array {
+                    unset($settings['inventory_sale_rates']['fish']);
+
+                    return $settings;
+                },
+                'missing tradable resource fish',
+            ],
+            'sale revenue rate must be positive' => [
+                static function (array $settings): array {
+                    $settings['inventory_sale_rates']['wheat']['money_units'] = 0;
+
+                    return $settings;
+                },
+                'money_units must be at least 1',
+            ],
+            'wheat sell all must be forbidden' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'] = [];
+
+                    return $settings;
+                },
+                'must forbid sell_all for wheat',
+            ],
+            'wheat safe default is stockpile' => [
+                static function (array $settings): array {
+                    $settings['default_sale_policy'] = 'sell_all';
+
+                    return $settings;
+                },
+                'requires stockpile as the wheat-safe default',
+            ],
+            'sea edge bands must be descending' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['settlement']['sea_edge_bands'][1]['minimum_sea_cells'] = 25;
+
+                    return $settings;
+                },
+                'must use descending minimums',
+            ],
+            'settlement stage facility cannot use workforce scale' => [
+                static function (array $settings): array {
+                    $settings['turn_processing']['settlement']['stages']['village']['facility_key'] = 'farm';
+
+                    return $settings;
+                },
+                'must be population-derived',
+            ],
         ];
     }
 
