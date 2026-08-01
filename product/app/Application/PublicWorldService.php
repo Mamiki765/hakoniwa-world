@@ -64,6 +64,12 @@ final class PublicWorldService
                 'world_id' => $mapSpace->world_id,
                 'key' => $mapSpace->key,
                 'name' => $mapSpace->name,
+                'bounds' => [
+                    'min_x' => $mapSpace->min_x,
+                    'max_x' => $mapSpace->max_x,
+                    'min_y' => $mapSpace->min_y,
+                    'max_y' => $mapSpace->max_y,
+                ],
             ],
         ];
     }
