@@ -36,7 +36,8 @@ let activePointer: {
     startY: number;
     lastX: number;
     lastY: number;
-    captureOwner: Element | null;
+    captureOwner: HTMLElement;
+    originCell: HTMLElement | null;
 } | null = null;
 let suppressNextCellClick = false;
 
@@ -174,9 +175,12 @@ function isPanExcludedTarget(target: EventTarget | null): boolean {
 function beginPan(event: PointerEvent): void {
     if (activePointer !== null || event.isPrimary === false || event.button !== 0 || isPanExcludedTarget(event.target)) return;
 
-    const captureOwner = event.target instanceof Element
-        ? event.target.closest('.map-cell') ?? viewport.value
-        : viewport.value;
+    const captureOwner = viewport.value;
+    if (captureOwner === null) return;
+
+    const originCell = event.target instanceof Element
+        ? event.target.closest<HTMLElement>('.map-cell')
+        : null;
     suppressNextCellClick = false;
     activePointer = {
         id: event.pointerId,
@@ -185,8 +189,9 @@ function beginPan(event: PointerEvent): void {
         lastX: event.clientX,
         lastY: event.clientY,
         captureOwner,
+        originCell,
     };
-    captureOwner?.setPointerCapture?.(event.pointerId);
+    captureOwner.setPointerCapture?.(event.pointerId);
 }
 
 function updatePan(event: PointerEvent): void {
@@ -218,15 +223,20 @@ function updatePan(event: PointerEvent): void {
 function finishPan(event: PointerEvent, cancelled: boolean): void {
     if (activePointer === null || activePointer.id !== event.pointerId) return;
 
-    const captureOwner = activePointer.captureOwner;
+    const { captureOwner, originCell } = activePointer;
+    const wasDragging = dragging.value;
     if (cancelled) suppressNextCellClick = false;
     try {
-        if (captureOwner?.hasPointerCapture?.(event.pointerId)) {
+        if (captureOwner.hasPointerCapture?.(event.pointerId)) {
             captureOwner.releasePointerCapture?.(event.pointerId);
         }
     } finally {
         activePointer = null;
         dragging.value = false;
+    }
+    if (!cancelled && !wasDragging && originCell !== null) {
+        originCell.click();
+        suppressNextCellClick = true;
     }
 }
 

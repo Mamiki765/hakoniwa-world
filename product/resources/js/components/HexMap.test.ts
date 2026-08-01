@@ -131,13 +131,15 @@ describe('staggered square-image map', () => {
         } });
         await flushPromises();
 
+        const viewport = wrapper.find('.map-viewport');
         const tile = wrapper.find('.map-cell');
-        const capture = trackPointerCapture(tile.element);
+        const capture = trackPointerCapture(viewport.element);
         dispatchPointer(tile.element, 'pointerdown', { pointerId: 1, pointerType: 'touch', button: 0, clientX: 20, clientY: 20 });
         expect(capture.captured).toEqual([1]);
-        dispatchPointer(tile.element, 'pointermove', { pointerId: 1, pointerType: 'touch', clientX: 23, clientY: 22 });
-        dispatchPointer(tile.element, 'pointerup', { pointerId: 1, pointerType: 'touch', button: 0, clientX: 23, clientY: 22 });
-        await tile.trigger('click');
+        dispatchPointer(viewport.element, 'pointermove', { pointerId: 1, pointerType: 'touch', clientX: 23, clientY: 22 });
+        dispatchPointer(viewport.element, 'pointerup', { pointerId: 1, pointerType: 'touch', button: 0, clientX: 23, clientY: 22 });
+        tile.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+        await flushPromises();
 
         expect(wrapper.emitted('select')).toEqual([[cell]]);
         expect(capture.released).toEqual([1]);
@@ -154,24 +156,24 @@ describe('staggered square-image map', () => {
 
         const viewport = wrapper.find('.map-viewport');
         const tile = wrapper.find('.map-cell');
-        const capture = trackPointerCapture(tile.element);
+        const capture = trackPointerCapture(viewport.element);
         const before = wrapper.find('.map-plane').attributes('style');
         const initialRequestCount = wrapper.emitted('requestRange')?.length ?? 0;
 
         dispatchPointer(tile.element, 'pointerdown', { pointerId: 7, pointerType: 'pen', button: 0, clientX: 30, clientY: 30 });
         expect(capture.captured).toEqual([7]);
-        dispatchPointer(tile.element, 'pointermove', { pointerId: 7, pointerType: 'pen', clientX: 38, clientY: 35 });
+        dispatchPointer(viewport.element, 'pointermove', { pointerId: 7, pointerType: 'pen', clientX: 38, clientY: 35 });
         await flushPromises();
 
         expect(wrapper.find('.map-plane').attributes('style')).not.toBe(before);
         expect(viewport.classes()).toContain('is-dragging');
         expect(wrapper.emitted('requestRange')).toHaveLength(initialRequestCount + 1);
 
-        dispatchPointer(tile.element, 'pointerup', { pointerId: 7, pointerType: 'pen', clientX: 38, clientY: 35 });
+        dispatchPointer(viewport.element, 'pointerup', { pointerId: 7, pointerType: 'pen', clientX: 38, clientY: 35 });
         expect(capture.released).toEqual([7]);
     });
 
-    it('captures at pointerdown so an outside first move cannot strand the active pointer', async () => {
+    it('keeps capture on the persistent viewport after the origin cell is culled', async () => {
         const cell = mapCell();
         const wrapper = mount(HexMap, { props: {
             cells: [cell], selected: null, capital: { x: 0, y: 0 }, bounds: worldBounds,
@@ -181,26 +183,26 @@ describe('staggered square-image map', () => {
 
         const viewport = wrapper.find('.map-viewport');
         const tile = wrapper.find('.map-cell');
-        const capture = trackPointerCapture(tile.element);
+        const capture = trackPointerCapture(viewport.element);
         const beforeFirstPan = wrapper.find('.map-plane').attributes('style');
 
         dispatchPointer(tile.element, 'pointerdown', { pointerId: 8, pointerType: 'mouse', button: 0, clientX: 2, clientY: 20 });
         expect(capture.captured).toEqual([8]);
-        dispatchPointer(tile.element, 'pointermove', { pointerId: 8, pointerType: 'mouse', clientX: -8, clientY: 20 });
-        dispatchPointer(tile.element, 'pointerup', { pointerId: 8, pointerType: 'mouse', clientX: -10, clientY: 20 });
+        dispatchPointer(viewport.element, 'pointermove', { pointerId: 8, pointerType: 'mouse', clientX: -1000, clientY: 20 });
         await flushPromises();
 
         expect(wrapper.find('.map-plane').attributes('style')).not.toBe(beforeFirstPan);
+        expect(wrapper.find('.map-cell').exists()).toBe(false);
+        dispatchPointer(viewport.element, 'pointerup', { pointerId: 8, pointerType: 'mouse', clientX: -1000, clientY: 20 });
+        await flushPromises();
         expect(capture.released).toEqual([8]);
         expect(viewport.classes()).not.toContain('is-dragging');
-        tile.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
         expect(wrapper.emitted('select')).toBeUndefined();
 
         const beforeSecondPan = wrapper.find('.map-plane').attributes('style');
-        dispatchPointer(tile.element, 'pointerdown', { pointerId: 9, pointerType: 'mouse', button: 0, clientX: 20, clientY: 20 });
-        dispatchPointer(tile.element, 'pointermove', { pointerId: 9, pointerType: 'mouse', clientX: 28, clientY: 20 });
-        dispatchPointer(tile.element, 'pointerup', { pointerId: 9, pointerType: 'mouse', clientX: 28, clientY: 20 });
-        tile.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+        dispatchPointer(viewport.element, 'pointerdown', { pointerId: 9, pointerType: 'mouse', button: 0, clientX: 20, clientY: 20 });
+        dispatchPointer(viewport.element, 'pointermove', { pointerId: 9, pointerType: 'mouse', clientX: 28, clientY: 20 });
+        dispatchPointer(viewport.element, 'pointerup', { pointerId: 9, pointerType: 'mouse', clientX: 28, clientY: 20 });
         await flushPromises();
 
         expect(capture.captured).toEqual([8, 9]);
@@ -239,10 +241,10 @@ describe('staggered square-image map', () => {
 
         const viewport = wrapper.find('.map-viewport');
         const tile = wrapper.find('.map-cell');
-        const capture = trackPointerCapture(tile.element);
+        const capture = trackPointerCapture(viewport.element);
         dispatchPointer(tile.element, 'pointerdown', { pointerId: 4, pointerType: 'touch', button: 0, clientX: 10, clientY: 10 });
-        dispatchPointer(tile.element, 'pointermove', { pointerId: 4, pointerType: 'touch', clientX: 18, clientY: 10 });
-        dispatchPointer(tile.element, 'pointercancel', { pointerId: 4, pointerType: 'touch', clientX: 18, clientY: 10 });
+        dispatchPointer(viewport.element, 'pointermove', { pointerId: 4, pointerType: 'touch', clientX: 18, clientY: 10 });
+        dispatchPointer(viewport.element, 'pointercancel', { pointerId: 4, pointerType: 'touch', clientX: 18, clientY: 10 });
         tile.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
         await flushPromises();
 
