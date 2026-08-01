@@ -157,6 +157,33 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
     }
 
+    public function test_water_commands_reject_targets_owned_by_another_nation(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, 'Water command owner');
+        [, $rival] = $this->createNation($world, 'Water command rival');
+        $target = $this->reclaimTarget($nation, $space);
+        $target->update(['owner_nation_id' => $rival->id]);
+        $moneyBefore = $nation->money;
+        $reclaim = $this->queue($user, $nation, $space, 'reclaim', $target, 1, 1);
+        $excavate = $this->queue($user, $nation, $space, 'excavate', $target, 1, 2);
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], str_repeat('8', 64)),
+        );
+
+        $this->assertSame(2, $result['failures']);
+        $this->assertSame(2, $result['removed']);
+        $this->assertSame(1, $result['automatic_finance']);
+        $this->assertSame('ownership_mismatch', $reclaim->fresh()->failure_code);
+        $this->assertSame('ownership_mismatch', $excavate->fresh()->failure_code);
+        $this->assertSame($moneyBefore + 10, $nation->fresh()->money);
+        $this->assertSame($rival->id, $target->fresh()->owner_nation_id);
+        $this->assertSame('shallow', $target->fresh()->terrain()->value('key'));
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
+    }
+
     public function test_buried_treasure_uses_exact_boundaries_capacity_replay_and_rollback(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();

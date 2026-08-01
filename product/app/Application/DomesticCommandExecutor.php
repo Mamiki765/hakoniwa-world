@@ -192,10 +192,16 @@ final class DomesticCommandExecutor
             return ['code' => 'invalid_facility', 'message' => 'Target facility is no longer valid.'];
         }
         if ($definition->key === 'reclaim') {
+            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
+                return ['code' => 'ownership_mismatch', 'message' => 'Reclaim target is owned by another Nation.'];
+            }
             if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
                 return ['code' => 'ownership_mismatch', 'message' => 'Reclaim target has no adjacent owned cell.'];
             }
         } elseif ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true)) {
+            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
+                return ['code' => 'ownership_mismatch', 'message' => 'Excavation target is owned by another Nation.'];
+            }
             if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
                 return ['code' => 'ownership_mismatch', 'message' => 'Excavation target has no owned cell within radius three.'];
             }
