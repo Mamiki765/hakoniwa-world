@@ -36,6 +36,7 @@ let activePointer: {
     startY: number;
     lastX: number;
     lastY: number;
+    captureOwner: Element | null;
 } | null = null;
 let suppressNextCellClick = false;
 
@@ -173,6 +174,9 @@ function isPanExcludedTarget(target: EventTarget | null): boolean {
 function beginPan(event: PointerEvent): void {
     if (activePointer !== null || event.isPrimary === false || event.button !== 0 || isPanExcludedTarget(event.target)) return;
 
+    const captureOwner = event.target instanceof Element
+        ? event.target.closest('.map-cell') ?? viewport.value
+        : viewport.value;
     suppressNextCellClick = false;
     activePointer = {
         id: event.pointerId,
@@ -180,7 +184,9 @@ function beginPan(event: PointerEvent): void {
         startY: event.clientY,
         lastX: event.clientX,
         lastY: event.clientY,
+        captureOwner,
     };
+    captureOwner?.setPointerCapture?.(event.pointerId);
 }
 
 function updatePan(event: PointerEvent): void {
@@ -197,7 +203,6 @@ function updatePan(event: PointerEvent): void {
         wholeWorldView.value = false;
         suppressNextCellClick = true;
         tooltipCell.value = null;
-        viewport.value?.setPointerCapture?.(event.pointerId);
     }
 
     event.preventDefault();
@@ -213,11 +218,15 @@ function updatePan(event: PointerEvent): void {
 function finishPan(event: PointerEvent, cancelled: boolean): void {
     if (activePointer === null || activePointer.id !== event.pointerId) return;
 
+    const captureOwner = activePointer.captureOwner;
     if (cancelled) suppressNextCellClick = false;
-    activePointer = null;
-    dragging.value = false;
-    if (viewport.value?.hasPointerCapture?.(event.pointerId)) {
-        viewport.value.releasePointerCapture?.(event.pointerId);
+    try {
+        if (captureOwner?.hasPointerCapture?.(event.pointerId)) {
+            captureOwner.releasePointerCapture?.(event.pointerId);
+        }
+    } finally {
+        activePointer = null;
+        dragging.value = false;
     }
 }
 
