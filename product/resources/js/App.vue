@@ -81,7 +81,7 @@ async function openOwnIsland(): Promise<void> {
         const spaces = await api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`);
         mapSpace.value = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
         if (mapSpace.value !== null) {
-            await map.loadAround(mapSpace.value.id, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
+            await map.loadAround(mapSpace.value, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
             page.value = 'island';
         }
     } catch (error) {
@@ -99,7 +99,7 @@ async function openPreview(nationId: number): Promise<void> {
         if (detail.capital === null) throw new Error('首都がまだありません。');
         previewNation.value = detail;
         mapSpace.value = detail.map_space;
-        await map.loadAround(detail.map_space.id, detail.capital.x, detail.capital.y, {
+        await map.loadAround(detail.map_space, detail.capital.x, detail.capital.y, {
             kind: 'public',
             nationId: detail.id,
         });
@@ -276,12 +276,15 @@ async function createNation(): Promise<void> {
                         :cells="map.visibleCells.value"
                         :selected="map.selected.value"
                         :capital="nation.capital"
+                        :bounds="mapSpace.bounds"
                         :own-nation-id="nation.id"
                         :loading="map.loading.value"
                         :error="map.error.value"
                         :empty-chunks="map.emptyChunks.value"
                         @select="map.select"
                         @move="map.moveSelection"
+                        @request-range="map.loadVisibleRange"
+                        @request-all="map.loadAllChunks"
                     />
                 </div>
             </div>
@@ -305,11 +308,14 @@ async function createNation(): Promise<void> {
                     :cells="map.visibleCells.value"
                     :selected="map.selected.value"
                     :capital="previewNation.capital"
+                    :bounds="mapSpace.bounds"
                     :loading="map.loading.value"
                     :error="map.error.value"
                     :empty-chunks="map.emptyChunks.value"
                     @select="map.select"
                     @move="map.moveSelection"
+                    @request-range="map.loadVisibleRange"
+                    @request-all="map.loadAllChunks"
                 />
             </div>
         </section>

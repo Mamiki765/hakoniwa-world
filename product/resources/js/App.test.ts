@@ -49,7 +49,8 @@ describe('application lobby and island entry', () => {
             id: 7, world_id: 1, name: '公開島', state: 'active', total_population: 1000,
             territory_cell_count: 19, money_display: '約500億円', money_bucket: '500',
             last_updated_turn: 0, comment: null, world: { id: 1, name: '共有世界', current_turn: 0 },
-            capital: { x: 12, y: 8 }, map_space: { id: 2, world_id: 1, key: 'surface', name: '地上' },
+            capital: { x: 12, y: 8 },
+            map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
@@ -99,7 +100,9 @@ describe('application lobby and island entry', () => {
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
             if (path === '/api/v1/me/nation') return response(nation);
-            if (path === '/api/v1/worlds/1/map-spaces') return response([{ id: 2, world_id: 1, key: 'surface', name: '地上' }]);
+            if (path === '/api/v1/worlds/1/map-spaces') return response([{
+                id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
+            }]);
             if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path.includes('command-definitions')) return response({
                 commands: [],
