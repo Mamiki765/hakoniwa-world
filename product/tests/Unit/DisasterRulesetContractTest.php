@@ -135,12 +135,19 @@ class DisasterRulesetContractTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    public function test_huge_meteor_and_eruption_radii_match_the_implemented_damage_contract(): void
+    public function test_disaster_radii_match_the_implemented_bounded_damage_contract(): void
     {
         $published = config('hakoniwa.published_rulesets');
         $this->assertIsArray($published);
 
-        foreach ([['huge_meteor', 3, 2], ['eruption', 2, 1]] as [$key, $authoredRadius, $expectedRadius]) {
+        foreach ([
+            ['earthquake', 11, 10],
+            ['tsunami', 11, 10],
+            ['typhoon', 11, 10],
+            ['meteor_shower', 11, 10],
+            ['huge_meteor', 3, 2],
+            ['eruption', 2, 1],
+        ] as [$key, $authoredRadius, $expectedRadius]) {
             $settings = $published['roadmap-pr15-v1'];
             $settings['turn_processing']['disasters'][$key]['radius'] = $authoredRadius;
 
@@ -153,6 +160,18 @@ class DisasterRulesetContractTest extends TestCase
                     $exception->getMessage(),
                 );
             }
+        }
+
+        $settings = $published['roadmap-pr15-v1'];
+        $settings['turn_processing']['command_random_effects']['land_level_earthquake']['radius'] = 11;
+        try {
+            app(RulesetAuthoringValidator::class)->validate($settings);
+            $this->fail('land_level earthquake accepted a radius outside the implemented contract.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString(
+                'land_level_earthquake.radius must be 10 for the implemented damage contract',
+                $exception->getMessage(),
+            );
         }
     }
 

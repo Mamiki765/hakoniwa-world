@@ -1058,7 +1058,14 @@ final class RulesetAuthoringValidator
         $this->requireKeys($disasters, [
             'earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption', 'fire',
         ], "{$path}.disasters");
-        foreach (['earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption'] as $key) {
+        foreach ([
+            'earthquake' => 10,
+            'tsunami' => 10,
+            'typhoon' => 10,
+            'meteor_shower' => 10,
+            'huge_meteor' => 2,
+            'eruption' => 1,
+        ] as $key => $expectedRadius) {
             $eventPath = "{$path}.disasters.{$key}";
             $event = $this->map($disasters[$key], $eventPath);
             $this->requireKeys($event, ['probability', 'center_padding', 'radius'], $eventPath);
@@ -1075,7 +1082,10 @@ final class RulesetAuthoringValidator
                     "{$eventPath}.center_padding must be at most {$maximumCenterPadding} so initial center draws fit signed 32-bit bounds.",
                 );
             }
-            $this->integer($event['radius'], "{$eventPath}.radius", 0);
+            $radius = $this->integer($event['radius'], "{$eventPath}.radius", 0);
+            if ($radius !== $expectedRadius) {
+                throw new DomainException("{$eventPath}.radius must be {$expectedRadius} for the implemented damage contract.");
+            }
         }
 
         $earthquake = $this->map($disasters['earthquake'], "{$path}.disasters.earthquake");
@@ -1139,14 +1149,10 @@ final class RulesetAuthoringValidator
             $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$meteorPath}.seabed_facility_keys");
         }
 
-        foreach (['huge_meteor' => 2, 'eruption' => 1] as $key => $expectedRadius) {
+        foreach (['huge_meteor', 'eruption'] as $key) {
             $eventPath = "{$path}.disasters.{$key}";
             $event = $this->map($disasters[$key], $eventPath);
             $this->requireKeys($event, ['seabed_facility_keys'], $eventPath);
-            $radius = $this->integer($event['radius'], "{$eventPath}.radius", 0);
-            if ($radius !== $expectedRadius) {
-                throw new DomainException("{$eventPath}.radius must be {$expectedRadius} for the implemented damage contract.");
-            }
             foreach ($this->list($event['seabed_facility_keys'], "{$eventPath}.seabed_facility_keys") as $facilityKey) {
                 $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$eventPath}.seabed_facility_keys");
             }
@@ -1171,7 +1177,10 @@ final class RulesetAuthoringValidator
             'probability', 'radius', 'minimum_city_population', 'facility_keys', 'damage_probability',
         ], $landPath);
         $this->probability($landEarthquake['probability'], "{$landPath}.probability");
-        $this->integer($landEarthquake['radius'], "{$landPath}.radius", 0);
+        $landRadius = $this->integer($landEarthquake['radius'], "{$landPath}.radius", 0);
+        if ($landRadius !== 10) {
+            throw new DomainException("{$landPath}.radius must be 10 for the implemented damage contract.");
+        }
         $this->validateEarthquakeSettings($landEarthquake, $facilityKeys, $landPath);
 
         $oilPath = "{$path}.oil_field";
