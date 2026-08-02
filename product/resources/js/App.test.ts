@@ -17,7 +17,7 @@ function publicResponse(path: string): Response | null {
     if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '共有世界', turn: 1 }]);
     if (path.endsWith('/summary')) return response({ id: 1, key: 'shared-world', name: '共有世界', current_turn: 1, nation_count: 1, total_population: 1000 });
     if (path.endsWith('/rankings')) return response([{
-        rank: 1, id: 7, world_id: 1, name: '公開島', state: 'active', total_population: 1000,
+        rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
         territory_cell_count: 19, money_display: '約500億円', money_bucket: '500',
         last_updated_turn: 1, comment: null,
     }]);
@@ -46,7 +46,7 @@ describe('application lobby and island entry', () => {
 
     it('opens a guest preview through public-only endpoints', async () => {
         const detail: PublicNationDetail = {
-            id: 7, world_id: 1, name: '公開島', state: 'active', total_population: 1000,
+            id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
             territory_cell_count: 19, money_display: '約500億円', money_bucket: '500',
             last_updated_turn: 1, comment: null, world: { id: 1, name: '共有世界', current_turn: 1 },
             capital: { x: 12, y: 8 },
@@ -75,7 +75,7 @@ describe('application lobby and island entry', () => {
 
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {
         const nation: Nation = {
-            id: 3, world_id: 1, name: '自島', money: 62728, money_display: '62,728億円',
+            id: 3, world_id: 1, nation_number: 1, name: '自島', money: 62728, money_display: '62,728億円',
             money_capacity: 9999, money_remaining_capacity: 0,
             total_food_tons: 10000, food_total_tons: 10000,
             food_capacity_tons: 999900, food_remaining_capacity_tons: 989900,
@@ -127,6 +127,7 @@ describe('application lobby and island entry', () => {
         await wrapper.find('.session-actions button').trigger('click');
         await flushPromises();
         expect(wrapper.find('.nation-hud').text()).toContain('62,728億円');
+        expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
         expect(wrapper.find('.nation-hud').text()).toContain('食料');
         expect(wrapper.find('.nation-hud').text()).toContain('10,000トン');
         expect(wrapper.find('.hud-money .hud-current-value').text()).toBe('62,728億円');

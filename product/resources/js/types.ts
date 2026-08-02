@@ -17,6 +17,7 @@ export interface MapSpace { id: number; world_id: number; key: string; name: str
 export interface Nation {
     id: number;
     world_id: number;
+    nation_number: number;
     name: string;
     money: number;
     money_display: string;
@@ -47,6 +48,7 @@ export interface PublicWorldSummary {
 export interface PublicNationSummary {
     id: number;
     world_id: number;
+    nation_number: number;
     name: string;
     state: string;
     total_population: number;
@@ -147,6 +149,7 @@ export interface MapCell {
     facility_name: string | null;
     display_name: string;
     owner_nation_id: number | null;
+    owner_nation_number: number | null;
     owner_name: string | null;
     details: MapCellDetail[];
     asset: AssetDescriptor;

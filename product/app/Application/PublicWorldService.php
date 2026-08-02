@@ -101,6 +101,7 @@ final class PublicWorldService
                 'audit_events.id',
                 'audit_events.occurred_at',
                 'nations.id as nation_id',
+                'nations.nation_number',
                 'nations.name as nation_name',
             ])
             ->map(static fn (object $event): array => [
@@ -109,6 +110,7 @@ final class PublicWorldService
                 'message' => "{$event->nation_name}が成立しました。",
                 'metadata' => [
                     'nation_id' => (int) $event->nation_id,
+                    'nation_number' => (int) $event->nation_number,
                     'nation_name' => (string) $event->nation_name,
                 ],
                 'occurred_at' => (string) $event->occurred_at,
@@ -201,6 +203,7 @@ final class PublicWorldService
         return [
             'id' => $nation->id,
             'world_id' => $nation->world_id,
+            'nation_number' => $nation->nation_number,
             'name' => $nation->name,
             'state' => $nation->state,
             'total_population' => (int) ($nation->getAttribute('total_population') ?? 0),

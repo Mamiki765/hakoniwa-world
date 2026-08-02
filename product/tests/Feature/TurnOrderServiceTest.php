@@ -22,7 +22,9 @@ class TurnOrderServiceTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         foreach (range(1, 10) as $index) {
-            Nation::query()->create(['world_id' => $world->id, 'name' => "Inserted {$index}"]);
+            Nation::query()->create([
+                'world_id' => $world->id, 'nation_number' => $index, 'name' => "Inserted {$index}",
+            ]);
         }
 
         $orders = app(TurnOrderService::class);

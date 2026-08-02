@@ -39,6 +39,7 @@ final class MapCellPresenter
             'facility_name' => $facility?->name,
             'display_name' => $displayDefinition->name,
             'owner_nation_id' => $cell->owner_nation_id,
+            'owner_nation_number' => $cell->ownerNation?->nation_number,
             'owner_name' => $cell->ownerNation?->name,
             'details' => $details,
             'asset' => $layers['completed'],
@@ -105,7 +106,9 @@ final class MapCellPresenter
         return trim(implode(' ', [
             "x {$cell->x} y {$cell->y}",
             $displayName,
-            '所有 '.($cell->owner_nation_id === null ? '中立' : $cell->ownerNation->name),
+            '所有 '.($cell->owner_nation_id === null
+                ? '中立'
+                : $cell->ownerNation->name.' N'.$cell->ownerNation->nation_number),
             ...$suffix,
         ]));
     }

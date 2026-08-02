@@ -62,7 +62,7 @@ const tooltipDetails = computed(() => {
 
     return [
         `座標 x=${cell.x}, y=${cell.y}`,
-        `所有: ${cell.owner_name ?? '中立'}`,
+        `所有: ${cell.owner_name ?? '中立'}${cell.owner_nation_number === null ? '' : ` (N${cell.owner_nation_number})`}`,
         ...(cell.facility === null ? ['施設: なし'] : []),
         ...cell.details.map((detail) => `${detail.label}: ${detail.formatted}`),
     ];
@@ -355,7 +355,7 @@ function showTooltip(cell: MapCell, event: Event): void {
                         <img v-if="overlay.available && overlay.url" class="tile-overlay" :src="overlay.url" alt="" draggable="false">
                     </template>
                     <span class="tile-label">{{ item.cell.facility === 'capital' ? '首' : item.cell.asset.fallback_label.slice(0, 1) }}</span>
-                    <small v-if="item.cell.owner_nation_id !== null">N{{ item.cell.owner_nation_id }}</small>
+                    <small v-if="item.cell.owner_nation_number !== null">N{{ item.cell.owner_nation_number }}</small>
                 </button>
             </div>
             <div

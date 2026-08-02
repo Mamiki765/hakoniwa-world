@@ -210,8 +210,10 @@ class TurnRunnerTest extends TestCase
     public function test_retry_reconstructs_random_orders_and_discards_failed_attempt_state(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
-        foreach (['One', 'Two', 'Three', 'Four'] as $name) {
-            Nation::query()->create(['world_id' => $world->id, 'name' => $name]);
+        foreach (['One', 'Two', 'Three', 'Four'] as $index => $name) {
+            Nation::query()->create([
+                'world_id' => $world->id, 'nation_number' => $index + 1, 'name' => $name,
+            ]);
         }
         $orders = app(TurnOrderService::class);
         $attemptOrders = [];

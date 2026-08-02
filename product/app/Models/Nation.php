@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 /**
  * @property int $id
  * @property int $world_id
+ * @property int $nation_number
  * @property string $name
  * @property int $money
  * @property string $state
@@ -19,7 +20,13 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 class Nation extends Model
 {
-    protected $fillable = ['world_id', 'name', 'money', 'state'];
+    protected $fillable = ['world_id', 'nation_number', 'name', 'money', 'state'];
+
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return ['nation_number' => 'integer'];
+    }
 
     /** @return BelongsTo<World, $this> */
     public function world(): BelongsTo

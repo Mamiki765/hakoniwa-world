@@ -29,6 +29,7 @@ class NationCreationTest extends TestCase
         $world = app(OceanWorldGenerator::class)->initialize();
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '最初の国');
 
+        $this->assertSame(1, $nation->nation_number);
         $this->assertSame(100, $nation->money);
         $this->assertSame([
             'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0, 'wheat' => 10_000,
@@ -76,6 +77,8 @@ class NationCreationTest extends TestCase
         $a = new GridCoordinate($first->capital->x, $first->capital->y);
         $b = new GridCoordinate($second->capital->x, $second->capital->y);
 
+        $this->assertSame(1, $first->nation_number);
+        $this->assertSame(2, $second->nation_number);
         $this->assertGreaterThanOrEqual(12, $a->distanceTo($b));
         $this->assertNotSame($first->capital->map_cell_id, $second->capital->map_cell_id);
         $this->assertSame(38, MapCell::query()->whereNotNull('owner_nation_id')->count());

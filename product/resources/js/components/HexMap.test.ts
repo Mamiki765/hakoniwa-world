@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 function mapCell(overrides: Partial<MapCell> = {}): MapCell {
     return {
         x: 0, y: 0, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
-        display_name: '平地', owner_nation_id: 1, owner_name: '地図国', details: [],
+        display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '地図国', details: [],
         asset: { key: 'tile.plain', url: '/tiles/plain.gif?v=1-1', available: true, fallback_label: '平地', fallback_style: 'tile-plain' },
         overlays: [{ key: 'overlay.selection', url: '/tiles/selection.png?v=1-1', available: true, fallback_label: '', fallback_style: 'overlay-selection' }],
         aria_label: 'x 0 y 0 平地 所有 地図国', version: 1, updated_at: null,
@@ -62,7 +62,7 @@ describe('staggered square-image map', () => {
             details: [{ key: 'population', label: '人口', value: 1000, unit: '人', formatted: '1,000人', visibility: 'public' }],
         });
         const fallback = mapCell({
-            x: 1, y: 0, terrain: 'forest', terrain_name: '森', display_name: '森', owner_nation_id: null, owner_name: null,
+            x: 1, y: 0, terrain: 'forest', terrain_name: '森', display_name: '森', owner_nation_id: null, owner_nation_number: null, owner_name: null,
             asset: { key: 'tile.forest', url: null, available: false, fallback_label: '森', fallback_style: 'tile-forest' },
             overlays: [], aria_label: 'x 1 y 0 森 所有 中立',
         });
@@ -315,7 +315,7 @@ describe('staggered square-image map', () => {
 
     it('fits distant cells into the viewport and requests every chunk only for the whole-world action', async () => {
         const nearCapital = mapCell({ x: 5, y: 5, aria_label: 'x 5 y 5 首都' });
-        const distantCapital = mapCell({ x: 54, y: 54, owner_nation_id: 2, aria_label: 'x 54 y 54 首都' });
+        const distantCapital = mapCell({ x: 54, y: 54, owner_nation_id: 2, owner_nation_number: 2, aria_label: 'x 54 y 54 首都' });
         const wrapper = mount(HexMap, { props: {
             cells: [nearCapital, distantCapital], selected: nearCapital, capital: { x: 5, y: 5 }, bounds: worldBounds,
             loading: false, error: null, emptyChunks: [],

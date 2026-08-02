@@ -29,7 +29,8 @@ class NationResource extends JsonResource
             : null;
 
         return [
-            'id' => $this->id, 'world_id' => $this->world_id, 'name' => $this->name,
+            'id' => $this->id, 'world_id' => $this->world_id,
+            'nation_number' => $this->nation_number, 'name' => $this->name,
             'money' => $this->when($isOwner, (int) $this->money),
             'money_display' => $this->when($isOwner, app(MoneyFormatter::class)->exact((int) $this->money)),
             'money_capacity' => $this->when($isOwner, $capacities?->money),
