@@ -13,6 +13,7 @@ use App\Models\NationCommandQueueItem;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
+use DomainException;
 use Tests\TestCase;
 
 class DisasterRulesetContractTest extends TestCase
@@ -116,5 +117,20 @@ class DisasterRulesetContractTest extends TestCase
             10,
             10,
         ));
+    }
+
+    public function test_meteor_shower_continuation_must_allow_termination(): void
+    {
+        $published = config('hakoniwa.published_rulesets');
+        $this->assertIsArray($published);
+        $settings = $published['roadmap-pr15-v1'];
+        $settings['turn_processing']['disasters']['meteor_shower']['continuation_probability'] = [
+            'numerator' => 1,
+            'denominator' => 1,
+        ];
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('must allow the meteor shower to terminate');
+        app(RulesetAuthoringValidator::class)->validate($settings);
     }
 }

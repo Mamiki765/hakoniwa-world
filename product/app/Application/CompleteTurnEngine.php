@@ -716,16 +716,21 @@ final class CompleteTurnEngine
         }
         $cell->version++;
         $this->saveChangedCell($context, $cell);
-        $actualLoss = $before - $cell->population;
+        $actualLoss = max(0, $before - $cell->population);
+        $minimumPopulationAdjustment = max(0, $cell->population - $before);
         $this->events->record($context, 'famine.applied', $cell, [
             'nation_id' => $cell->owner_nation_id, 'before' => $before,
             'drawn_loss' => $loss, 'actual_loss' => $actualLoss, 'after' => $cell->population,
             'facility_key_before' => $facilityKey,
+            'minimum_population_applied' => $minimumPopulationAdjustment > 0,
+            'minimum_population_adjustment' => $minimumPopulationAdjustment,
         ]);
         $this->events->record($context, 'population.decreased', $cell, [
             'nation_id' => $cell->owner_nation_id, 'reason' => 'famine', 'before' => $before,
             'drawn_loss' => $loss, 'actual_loss' => $actualLoss, 'after' => $cell->population,
             'facility_key_before' => $facilityKey, 'capital_identity_preserved' => $facilityKey === 'capital',
+            'minimum_population_applied' => $minimumPopulationAdjustment > 0,
+            'minimum_population_adjustment' => $minimumPopulationAdjustment,
         ]);
         $stageTransition = $cell->population > 0
             ? $this->syncSettlementStage($context, $cell)

@@ -1099,7 +1099,12 @@ final class RulesetAuthoringValidator
         $meteorPath = "{$path}.disasters.meteor_shower";
         $meteor = $this->map($disasters['meteor_shower'], $meteorPath);
         $this->requireKeys($meteor, ['continuation_probability', 'seabed_facility_keys'], $meteorPath);
-        $this->probability($meteor['continuation_probability'], "{$meteorPath}.continuation_probability");
+        $continuationPath = "{$meteorPath}.continuation_probability";
+        $continuation = $this->map($meteor['continuation_probability'], $continuationPath);
+        $this->probability($continuation, $continuationPath);
+        if ((int) $continuation['numerator'] >= (int) $continuation['denominator']) {
+            throw new DomainException("{$continuationPath} must allow the meteor shower to terminate.");
+        }
         foreach ($this->list($meteor['seabed_facility_keys'], "{$meteorPath}.seabed_facility_keys") as $facilityKey) {
             $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$meteorPath}.seabed_facility_keys");
         }

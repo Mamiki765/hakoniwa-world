@@ -161,7 +161,21 @@ class DisasterAndOilTurnTest extends TestCase
             $capitalRecord->y,
         ]);
         $this->assertSame('capital', $capital->facility?->key);
-        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'capital.disaster_damaged')->count());
+
+        $capital->update(['population' => 50]);
+        $ruleset = $this->forceGlobal($ruleset, 'eruption');
+        [$minimumContext, $minimumRun] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER, $capital->x, $capital->y),
+            [$nation->id],
+        );
+        app(DisasterTurnService::class)->executeGlobal($minimumContext);
+        $minimumDamage = $this->event($minimumRun, 'capital.disaster_damaged');
+        $this->assertSame(100, $capital->fresh()->population);
+        $this->assertTrue($minimumDamage['minimum_population_applied']);
+        $this->assertSame(50, $minimumDamage['minimum_population_adjustment']);
+        $this->assertSame(5, DB::table('audit_events')->where('event_type', 'capital.disaster_damaged')->count());
     }
 
     public function test_fire_is_prevented_by_forest_then_damages_factory_and_capital(): void

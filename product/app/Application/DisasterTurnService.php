@@ -481,6 +481,7 @@ final class DisasterTurnService
         $before = $cell->population;
         $percentage = $percentages[$percentageKey];
         $cell->population = max($minimum, intdiv($before * (100 - $percentage), 100));
+        $minimumPopulationAdjustment = max(0, $cell->population - $before);
         $cell->version++;
         $this->saveChangedCell($context, $cell);
         $this->events->record($context, 'capital.disaster_damaged', $cell, [
@@ -492,6 +493,8 @@ final class DisasterTurnService
             'before_population' => $before,
             'after_population' => $cell->population,
             'minimum_population' => $minimum,
+            'minimum_population_applied' => $minimumPopulationAdjustment > 0,
+            'minimum_population_adjustment' => $minimumPopulationAdjustment,
             'capital_identity_preserved' => true,
             ...$extra,
         ]);
