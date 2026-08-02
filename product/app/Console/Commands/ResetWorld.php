@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use App\Application\OceanWorldGenerator;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\WorldTurnLock;
+use App\Domain\World\WorldBounds;
+use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
@@ -21,6 +23,7 @@ final class ResetWorld extends Command
 {
     protected $signature = 'hakoniwa:world:reset
         {--world= : Exact world key to reset}
+        {--profile=default : World generation profile: default or debug-32x32}
         {--confirm= : Must equal RESET-<world-key> before any mutation}
         {--dry-run : Show affected row counts without changing data}
         {--preserve-users : Accepted for clarity; users are always preserved}
@@ -31,9 +34,22 @@ final class ResetWorld extends Command
     public function handle(OceanWorldGenerator $generator, WorldTurnLock $turnLock): int
     {
         $worldKey = (string) $this->option('world');
+        $profile = WorldGenerationProfile::tryFrom((string) $this->option('profile'));
         $configuredWorldKey = (string) config('hakoniwa.world.key');
         if ($worldKey === '' || $worldKey !== $configuredWorldKey) {
             $this->error("Only the configured world key '{$configuredWorldKey}' can be reset.");
+
+            return self::FAILURE;
+        }
+        if ($profile === null) {
+            $this->error('World profile must be default or debug-32x32.');
+
+            return self::FAILURE;
+        }
+        try {
+            $profile->assertAvailable(app()->environment());
+        } catch (Throwable $exception) {
+            $this->error($exception->getMessage());
 
             return self::FAILURE;
         }
@@ -54,7 +70,7 @@ final class ResetWorld extends Command
         }
 
         try {
-            return $this->handleLockedWorld($world, $worldKey, $generator);
+            return $this->handleLockedWorld($world, $worldKey, $profile, $generator);
         } finally {
             $turnLock->release($world);
         }
@@ -63,8 +79,10 @@ final class ResetWorld extends Command
     private function handleLockedWorld(
         World $world,
         string $worldKey,
+        WorldGenerationProfile $profile,
         OceanWorldGenerator $generator,
     ): int {
+        $bounds = $profile->bounds(config('hakoniwa.ruleset'));
         $counts = $this->affectedCounts($world);
         $this->table(['target', 'rows'], array_map(
             static fn (string $target, int $rows): array => [$target, $rows],
@@ -90,18 +108,18 @@ final class ResetWorld extends Command
         $identityCount = DB::table('auth_identities')->count();
 
         try {
-            DB::transaction(function () use ($world, $worldKey, $generator, $userCount, $identityCount): void {
+            DB::transaction(function () use ($world, $worldKey, $profile, $bounds, $generator, $userCount, $identityCount): void {
                 $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
                 $this->deleteWorldAuditEvents($lockedWorld);
                 $this->deleteQueueItems($lockedWorld);
                 $lockedWorld->delete();
 
-                $generatedWorld = $generator->initialize();
+                $generatedWorld = $generator->initialize($profile);
                 if ($generatedWorld->key !== $worldKey) {
                     throw new RuntimeException('The generator recreated an unexpected world.');
                 }
 
-                $this->assertGeneratedWorld($generatedWorld);
+                $this->assertGeneratedWorld($generatedWorld, $bounds);
 
                 if (DB::table('users')->count() !== $userCount) {
                     throw new RuntimeException('User count changed during reset.');
@@ -116,7 +134,10 @@ final class ResetWorld extends Command
             return self::FAILURE;
         }
 
-        $this->info("World {$worldKey} was reset to a verified 60 x 60 staggered x/y ocean.");
+        $this->info(
+            "World {$worldKey} was reset to a verified {$bounds->width()} x {$bounds->height()} "
+            ."staggered x/y ocean ({$profile->value}).",
+        );
 
         return self::SUCCESS;
     }
@@ -196,7 +217,7 @@ final class ResetWorld extends Command
             ->delete();
     }
 
-    private function assertGeneratedWorld(World $world): void
+    private function assertGeneratedWorld(World $world, WorldBounds $bounds): void
     {
         $mapSpace = MapSpace::query()
             ->where('world_id', $world->id)
@@ -208,16 +229,28 @@ final class ResetWorld extends Command
             ->groupBy('y')
             ->orderBy('y')
             ->pluck('cell_count', 'y');
+        $columnCounts = DB::table('map_cells')
+            ->where('map_space_id', $mapSpace->id)
+            ->selectRaw('x, COUNT(*) AS cell_count')
+            ->groupBy('x')
+            ->orderBy('x')
+            ->pluck('cell_count', 'x');
 
         $valid = $mapSpace->coordinate_system === 'staggered_square_offset'
-            && $mapSpace->min_x === 0 && $mapSpace->max_x === 59
-            && $mapSpace->min_y === 0 && $mapSpace->max_y === 59
-            && $mapSpace->cells()->count() === 3600
-            && $rowCounts->count() === 60
-            && $rowCounts->keys()->map(static fn (mixed $value): int => (int) $value)->all() === range(0, 59)
-            && $rowCounts->every(static fn (mixed $count): bool => (int) $count === 60)
-            && (int) DB::table('map_cells')->where('map_space_id', $mapSpace->id)->min('x') === 0
-            && (int) DB::table('map_cells')->where('map_space_id', $mapSpace->id)->max('x') === 59;
+            && $mapSpace->min_x === $bounds->minX && $mapSpace->max_x === $bounds->maxX
+            && $mapSpace->min_y === $bounds->minY && $mapSpace->max_y === $bounds->maxY
+            && $mapSpace->cells()->count() === $bounds->cellCount()
+            && $mapSpace->chunks()->count() === $bounds->chunkCount()
+            && $rowCounts->count() === $bounds->rowCount()
+            && $rowCounts->keys()->map(static fn (mixed $value): int => (int) $value)->all() === $bounds->yCoordinates()
+            && $rowCounts->every(static fn (mixed $count): bool => (int) $count === $bounds->columnCount())
+            && $columnCounts->count() === $bounds->columnCount()
+            && $columnCounts->keys()->map(static fn (mixed $value): int => (int) $value)->all() === $bounds->xCoordinates()
+            && $columnCounts->every(static fn (mixed $count): bool => (int) $count === $bounds->rowCount())
+            && (int) $mapSpace->cells()->min('x') === $bounds->minX
+            && (int) $mapSpace->cells()->max('x') === $bounds->maxX
+            && (int) $mapSpace->cells()->min('y') === $bounds->minY
+            && (int) $mapSpace->cells()->max('y') === $bounds->maxY;
 
         if (! $valid) {
             throw new RuntimeException('Generated world verification failed.');

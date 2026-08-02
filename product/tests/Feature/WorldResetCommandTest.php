@@ -9,6 +9,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -116,8 +117,9 @@ class WorldResetCommandTest extends TestCase
         $nationCount = Nation::query()->count();
         $this->app->bind(OceanWorldGenerator::class, fn () => new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class)) extends OceanWorldGenerator
         {
-            public function initialize(): World
-            {
+            public function initialize(
+                WorldGenerationProfile $profile = WorldGenerationProfile::Production,
+            ): World {
                 throw new RuntimeException('injected reset failure');
             }
         });
@@ -175,6 +177,51 @@ class WorldResetCommandTest extends TestCase
         $this->assertNotNull(TurnRun::query()->find($otherRun->id));
         $this->assertSame($userCount, User::query()->count());
         $this->assertSame($identityCount, DB::table('auth_identities')->count());
+    }
+
+    public function test_explicit_debug_profile_resets_to_32_by_32_and_restarts_nation_numbers(): void
+    {
+        [$world, $user] = $this->populatedWorld();
+
+        $this->artisan('hakoniwa:world:reset', [
+            '--world' => $world->key,
+            '--profile' => 'debug-32x32',
+            '--confirm' => 'RESET-'.$world->key,
+        ])->expectsOutputToContain('verified 32 x 32 staggered x/y ocean (debug-32x32)')
+            ->assertSuccessful();
+
+        $resetWorld = World::query()->where('key', $world->key)->firstOrFail();
+        $mapSpace = MapSpace::query()->where('world_id', $resetWorld->id)->firstOrFail();
+        $nation = app(NationCreationService::class)->create($user->fresh(), $resetWorld, 'Debug Nation');
+
+        $this->assertSame(
+            ['min_x' => 0, 'max_x' => 31, 'min_y' => 0, 'max_y' => 31],
+            $mapSpace->only(['min_x', 'max_x', 'min_y', 'max_y']),
+        );
+        $this->assertSame(1024, $mapSpace->cells()->count());
+        $this->assertSame(4, $mapSpace->chunks()->count());
+        $this->assertSame(1, $nation->nation_number);
+    }
+
+    public function test_debug_profile_is_rejected_outside_local_and_testing_without_mutation(): void
+    {
+        [$world] = $this->populatedWorld();
+        $worldId = $world->id;
+        $this->app['env'] = 'production';
+
+        try {
+            $this->artisan('hakoniwa:world:reset', [
+                '--world' => $world->key,
+                '--profile' => 'debug-32x32',
+                '--confirm' => 'RESET-'.$world->key,
+            ])->expectsOutputToContain('restricted to local and testing environments')
+                ->assertFailed();
+        } finally {
+            $this->app['env'] = 'testing';
+        }
+
+        $this->assertSame($worldId, World::query()->where('key', $world->key)->value('id'));
+        $this->assertSame(3600, MapCell::query()->count());
     }
 
     /** @return array{World, User} */
