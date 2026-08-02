@@ -220,6 +220,14 @@ class DisasterAndOilTurnTest extends TestCase
 
         $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
         $capital->update(['population' => 10_000]);
+        foreach ((new GridCoordinate($capital->x, $capital->y))->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        ) as $neighbor) {
+            $this->setCell($this->cellAt($space, $neighbor->x, $neighbor->y), 'sea', null, null, 0);
+        }
         $this->assertTrue(app(DisasterTurnService::class)->processFire($context, $capital->fresh(['terrain', 'facility'])));
         $this->assertSame(9_000, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
