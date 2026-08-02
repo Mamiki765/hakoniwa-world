@@ -245,7 +245,14 @@ final class DomesticCommandExecutor
             return $definition->cost_money;
         }
 
-        return min($definition->cost_money * $item->quantity, (int) $nation->money);
+        if ($definition->cost_money < 1) {
+            throw new DomainException('Seabed oil search requires a positive base cost.');
+        }
+
+        $availableUnits = intdiv((int) $nation->money, $definition->cost_money);
+        $investedUnits = min($item->quantity, $availableUnits);
+
+        return $investedUnits * $definition->cost_money;
     }
 
     private function deductCostAndResources(
@@ -392,7 +399,12 @@ final class DomesticCommandExecutor
             return;
         }
 
-        foreach ($water as $neighbor) {
+        $spreadCandidates = array_filter(
+            $water,
+            static fn (MapCell $neighbor): bool => $neighbor->owner_nation_id === null
+                && $neighbor->facility_definition_id === null,
+        );
+        foreach ($spreadCandidates as $neighbor) {
             $this->changeReclaimCell($context, $nation, $neighbor, 'shallow', null, true);
         }
     }

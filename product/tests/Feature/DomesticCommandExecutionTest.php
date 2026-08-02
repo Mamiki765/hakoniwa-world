@@ -5,12 +5,14 @@ namespace Tests\Feature;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\PlayerIslandEventService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
 use App\Models\CommandDefinition;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -231,9 +233,11 @@ class DomesticCommandExecutionTest extends TestCase
         $nation->update(['money' => 1_000]);
         $target = $this->remoteWaterTarget($space);
         $neighbors = $this->neighborCells($target);
-        foreach (array_slice($neighbors, 0, 3) as $neighbor) {
+        foreach (array_slice($neighbors, 0, 2) as $neighbor) {
             $this->setCellState($neighbor, 'sea', null);
         }
+        $this->setCellState($neighbors[2], 'shallow', null);
+        $unchangedShallowVersion = $neighbors[2]->fresh()->version;
         foreach (array_slice($neighbors, 3) as $index => $neighbor) {
             $this->setCellState($neighbor, 'wasteland', $index === 0 ? $nation->id : null);
         }
@@ -249,10 +253,11 @@ class DomesticCommandExecutionTest extends TestCase
             $this->assertSame('shallow', $neighbor->fresh()->terrain()->value('key'));
             $this->assertNull($neighbor->fresh()->owner_nation_id);
         }
+        $this->assertSame($unchangedShallowVersion, $neighbors[2]->fresh()->version);
         foreach (array_slice($neighbors, 3) as $neighbor) {
             $this->assertSame('wasteland', $neighbor->fresh()->terrain()->value('key'));
         }
-        $expectedChunks = collect([$target, ...array_slice($neighbors, 0, 3)])
+        $expectedChunks = collect([$target, ...array_slice($neighbors, 0, 2)])
             ->pluck('map_chunk_id')->unique()->sort()->values()->all();
         $this->assertSame($expectedChunks, $context->state->changedMapChunkIds());
         $events = DB::table('audit_events')->where('event_type', 'terrain.changed')
@@ -262,9 +267,50 @@ class DomesticCommandExecutionTest extends TestCase
                 512,
                 JSON_THROW_ON_ERROR,
             ))->all();
-        $this->assertCount(4, $events);
+        $this->assertCount(3, $events);
         $this->assertFalse($events[0]['adjacent_effect']);
-        $this->assertSame([true, true, true], array_column(array_slice($events, 1), 'adjacent_effect'));
+        $this->assertSame([true, true], array_column(array_slice($events, 1), 'adjacent_effect'));
+    }
+
+    public function test_reclaim_neighbor_spread_preserves_owned_water_and_seabed_oil_fields(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, 'Reclaim protection owner');
+        [, $rival] = $this->createNation($world, 'Reclaim protection rival');
+        $nation->update(['money' => 1_000]);
+        $target = $this->remoteWaterTarget($space);
+        $neighbors = $this->neighborCells($target);
+        $this->setCellState($neighbors[0], 'wasteland', $nation->id);
+        $this->setCellState($neighbors[1], 'sea', $rival->id);
+        $this->setOilFieldState($neighbors[2], $nation);
+        $this->setOilFieldState($neighbors[3], $rival);
+        foreach (array_slice($neighbors, 4) as $neighbor) {
+            $this->setCellState($neighbor, 'wasteland', null);
+        }
+        $this->setCellState($target, 'shallow', null);
+        $protected = collect(array_slice($neighbors, 1, 3))->mapWithKeys(
+            static fn (MapCell $cell): array => [$cell->id => $cell->fresh()->only([
+                'terrain_definition_id',
+                'facility_definition_id',
+                'owner_nation_id',
+                'version',
+            ])],
+        );
+        $this->queue($user, $nation, $space, 'reclaim', $target);
+        $context = $this->context($world, [$nation->id], str_repeat('a', 64));
+
+        app(DomesticCommandExecutor::class)->execute($context);
+
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        foreach ($protected as $cellId => $state) {
+            $this->assertSame($state, MapCell::query()->findOrFail($cellId)->only(array_keys($state)));
+        }
+        $this->assertSame(
+            [$target->id],
+            DB::table('audit_events')->where('event_type', 'terrain.changed')->pluck('subject_id')->all(),
+        );
+        $this->assertSame([$target->map_chunk_id], $context->state->changedMapChunkIds());
     }
 
     public function test_reclaim_at_world_corner_ignores_out_of_bounds_neighbors(): void
@@ -307,40 +353,66 @@ class DomesticCommandExecutionTest extends TestCase
         $neighbors = $this->neighborCells($target);
         $this->setCellState($neighbors[0], 'wasteland', $nation->id);
         $this->setCellState($target, 'sea', null);
-        Nation::query()->whereKey($nation->id)->update(['money' => 1_000]);
-        $item = $this->queue($user, $nation, $space, 'excavate', $target, 3);
-        $seed = $this->seedWithFirstDraw(TurnRandomStreamFactory::SEABED_OIL_SEARCH, 100, 2);
+        Nation::query()->whereKey($nation->id)->update(['money' => 999]);
+        $item = $this->queue($user, $nation, $space, 'excavate', $target, 5);
+        $seed = $this->seedWithFirstDraw(TurnRandomStreamFactory::SEABED_OIL_SEARCH, 100, 3);
         $context = $this->context($world, [$nation->id], $seed);
 
         app(DomesticCommandExecutor::class)->execute($context);
 
         $this->assertSame('completed', $item->fresh()->status);
-        $this->assertSame(400, $nation->fresh()->money);
+        $this->assertSame(199, $nation->fresh()->money);
         $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
         $this->assertSame('seabed_oil_field', $target->fresh()->facility()->value('key'));
         $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
         $this->assertContains($target->map_chunk_id, $context->state->changedMapChunkIds());
         $oil = $this->eventMetadataForSubject('command.seabed_oil_search', $target->id);
-        $this->assertSame(2, $oil['draw']);
-        $this->assertSame(3, $oil['success_threshold']);
-        $this->assertSame(600, $oil['spent_money']);
+        $this->assertSame(3, $oil['draw']);
+        $this->assertSame(4, $oil['success_threshold']);
+        $this->assertSame(4, $oil['cost_units']);
+        $this->assertSame(800, $oil['spent_money']);
         $this->assertTrue($oil['found']);
         $success = $this->eventMetadataForSubject('command.success', $item->id);
-        $this->assertSame(600, $success['cost_money']);
+        $this->assertSame(800, $success['cost_money']);
+        $world->update(['current_turn' => 2]);
+        $playerEvents = collect(app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 2)['groups'])
+            ->flatMap(static fn (array $group): array => $group['events']);
+        $this->assertStringContainsString(
+            '800',
+            $playerEvents->firstWhere('type', 'command.seabed_oil_search')['message'],
+        );
 
         $version = $target->fresh()->version;
         app(DomesticCommandExecutor::class)->execute($context);
         $this->assertSame($version, $target->fresh()->version);
+        $this->assertSame(209, $nation->fresh()->money);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.seabed_oil_search')->count());
 
         $this->setCellState($target, 'sea', null);
-        Nation::query()->whereKey($nation->id)->update(['money' => 1_000]);
-        $replayItem = $this->queue($user, $nation, $space, 'excavate', $target, 3);
+        Nation::query()->whereKey($nation->id)->update(['money' => 999]);
+        $replayItem = $this->queue($user, $nation, $space, 'excavate', $target, 5);
         app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
         $replay = $this->eventMetadataForSubject('command.seabed_oil_search', $target->id, $replayItem->id);
         $this->assertSame(
             collect($oil)->only(['draw', 'success_threshold', 'denominator', 'found'])->all(),
             collect($replay)->only(['draw', 'success_threshold', 'denominator', 'found'])->all(),
+        );
+
+        $this->setCellState($target, 'sea', null);
+        Nation::query()->whereKey($nation->id)->update(['money' => 999]);
+        $quantityLimitedItem = $this->queue($user, $nation, $space, 'excavate', $target, 2);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
+        $quantityLimited = $this->eventMetadataForSubject(
+            'command.seabed_oil_search',
+            $target->id,
+            $quantityLimitedItem->id,
+        );
+        $this->assertSame(2, $quantityLimited['cost_units']);
+        $this->assertSame(400, $quantityLimited['spent_money']);
+        $this->assertSame(599, $nation->fresh()->money);
+        $this->assertSame(
+            400,
+            $this->eventMetadataForSubject('command.success', $quantityLimitedItem->id)['cost_money'],
         );
     }
 
@@ -664,6 +736,17 @@ class DomesticCommandExecutionTest extends TestCase
     {
         $this->changeTerrain($cell, $terrainKey);
         $cell->fresh()->update(['owner_nation_id' => $ownerNationId]);
+    }
+
+    private function setOilFieldState(MapCell $cell, Nation $owner): void
+    {
+        $this->setCellState($cell, 'sea', $owner->id);
+        $cell = $cell->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'seabed_oil_field')->firstOrFail(),
+        );
+        $cell->save();
     }
 
     private function changeTerrain(MapCell $cell, string $terrainKey): void
