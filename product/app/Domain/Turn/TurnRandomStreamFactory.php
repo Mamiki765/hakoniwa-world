@@ -24,6 +24,50 @@ final class TurnRandomStreamFactory
 
     public const FACILITY_RIOT = 'process_cells:facility_riot';
 
+    public const FIRE = 'process_cells:fire:v1';
+
+    public const OIL_DEPLETION = 'process_cells:oil_depletion:v1';
+
+    public const LAND_LEVEL_EARTHQUAKE_TRIGGER = 'development_commands:land_level:earthquake:trigger:v1';
+
+    public const LAND_LEVEL_EARTHQUAKE_EFFECT = 'development_commands:land_level:earthquake:effect:v1';
+
+    public const GLOBAL_EARTHQUAKE_TRIGGER = 'global_disasters:earthquake:trigger:v1';
+
+    public const GLOBAL_EARTHQUAKE_CENTER = 'global_disasters:earthquake:center:v1';
+
+    public const GLOBAL_EARTHQUAKE_EFFECT = 'global_disasters:earthquake:effect:v1';
+
+    public const GLOBAL_TSUNAMI_TRIGGER = 'global_disasters:tsunami:trigger:v1';
+
+    public const GLOBAL_TSUNAMI_CENTER = 'global_disasters:tsunami:center:v1';
+
+    public const GLOBAL_TSUNAMI_EFFECT = 'global_disasters:tsunami:effect:v1';
+
+    public const GLOBAL_TYPHOON_TRIGGER = 'global_disasters:typhoon:trigger:v1';
+
+    public const GLOBAL_TYPHOON_CENTER = 'global_disasters:typhoon:center:v1';
+
+    public const GLOBAL_TYPHOON_EFFECT = 'global_disasters:typhoon:effect:v1';
+
+    public const GLOBAL_METEOR_SHOWER_TRIGGER = 'global_disasters:meteor_shower:trigger:v1';
+
+    public const GLOBAL_METEOR_SHOWER_CENTER = 'global_disasters:meteor_shower:center:v1';
+
+    public const GLOBAL_METEOR_SHOWER_EFFECT = 'global_disasters:meteor_shower:effect:v1';
+
+    public const GLOBAL_HUGE_METEOR_TRIGGER = 'global_disasters:huge_meteor:trigger:v1';
+
+    public const GLOBAL_HUGE_METEOR_CENTER = 'global_disasters:huge_meteor:center:v1';
+
+    public const GLOBAL_HUGE_METEOR_EFFECT = 'global_disasters:huge_meteor:effect:v1';
+
+    public const GLOBAL_ERUPTION_TRIGGER = 'global_disasters:eruption:trigger:v1';
+
+    public const GLOBAL_ERUPTION_CENTER = 'global_disasters:eruption:center:v1';
+
+    public const GLOBAL_ERUPTION_EFFECT = 'global_disasters:eruption:effect:v1';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 

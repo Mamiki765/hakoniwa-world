@@ -220,7 +220,7 @@ class TurnCellProcessingTest extends TestCase
             true,
         );
         $engine->execute('process_cells', $capitalFamineContext);
-        $this->assertSame(0, $capital->fresh()->population);
+        $this->assertSame(100, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
 
         [$capitalRecoveryContext] = $this->context(
@@ -232,7 +232,20 @@ class TurnCellProcessingTest extends TestCase
         );
         $capitalRecovery = $engine->execute('process_cells', $capitalRecoveryContext);
         $this->assertSame(100, $capitalRecovery->metrics['population_increased']);
-        $this->assertSame(100, $capital->fresh()->population);
+        $this->assertSame(200, $capital->fresh()->population);
+        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+
+        $this->settlement($capital, 'capital', 24_950);
+        [$capitalMaximumContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+            [$capital->id => 0],
+        );
+        $capitalMaximum = $engine->execute('process_cells', $capitalMaximumContext);
+        $this->assertSame(50, $capitalMaximum->metrics['population_increased']);
+        $this->assertSame(25_000, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
 
         $riotCells = [$firstCandidate, $secondCandidate, $this->ownedEmptyCell($nation, [$capital->id, $firstCandidate->id, $secondCandidate->id])];

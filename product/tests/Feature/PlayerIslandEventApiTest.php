@@ -230,6 +230,57 @@ class PlayerIslandEventApiTest extends TestCase
         }
     }
 
+    public function test_disaster_and_oil_projection_shows_only_player_safe_world_and_own_nation_details(): void
+    {
+        [$world, $owner, $nation] = $this->nation('災害ログ国');
+        [, , $rival] = $this->nation('災害競合国', $world);
+        $world->update(['current_turn' => 2]);
+        $ownCell = MapCell::query()->where('owner_nation_id', $nation->id)->firstOrFail();
+        $rivalCell = MapCell::query()->where('owner_nation_id', $rival->id)->firstOrFail();
+        $base = ['world_id' => $world->id, 'target_turn' => 2];
+
+        $this->audit('disaster.triggered', $world, [
+            ...$base, 'disaster_key' => 'earthquake', 'center_x' => 30, 'center_y' => 30,
+            'draw' => 987_661, 'numerator' => 80, 'denominator' => 2_000,
+        ]);
+        $this->audit('capital.disaster_damaged', $ownCell, [
+            ...$base, 'nation_id' => $nation->id, 'disaster_key' => 'earthquake',
+            'damage_percent' => 10, 'after_population' => 9_000, 'raw_draw' => 987_662,
+        ]);
+        $this->audit('disaster.cell_damaged', $rivalCell, [
+            ...$base, 'nation_id' => $rival->id, 'disaster_key' => 'earthquake',
+            'from_terrain_key' => 'plain', 'to_terrain_key' => 'wasteland', 'draw' => 987_663,
+        ]);
+        $this->audit('oil.income', $ownCell, [
+            ...$base, 'nation_id' => $nation->id, 'requested_money' => 1_000,
+            'applied_money' => 499, 'overflow_money' => 501, 'money_capacity' => 9_999,
+        ]);
+        $this->audit('oil.depleted', $ownCell, [
+            ...$base, 'nation_id' => $nation->id, 'result_terrain_key' => 'sea', 'draw' => 987_664,
+        ]);
+        $this->audit('fire.prevented', $ownCell, [
+            ...$base, 'nation_id' => $nation->id, 'protection_count' => 1,
+        ]);
+
+        $response = $this->actingAs($owner)
+            ->getJson("/api/v1/nations/{$nation->id}/events")
+            ->assertOk();
+        $events = collect($response->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        );
+
+        $this->assertSame([
+            'fire.prevented', 'oil.depleted', 'oil.income',
+            'capital.disaster_damaged', 'disaster.triggered',
+        ], $events->pluck('type')->all());
+        $this->assertStringContainsString('収容上限超過 501億円', $events->firstWhere('type', 'oil.income')['message']);
+        $body = (string) $response->getContent();
+        foreach (['987661', '987662', '987663', '987664', 'raw_draw', 'draw', 'metadata'] as $secret) {
+            $this->assertStringNotContainsString($secret, $body);
+        }
+        $this->assertStringNotContainsString('disaster.cell_damaged', $body);
+    }
+
     /** @return array{World, User, Nation} */
     private function nation(string $name, ?World $world = null): array
     {
