@@ -22,6 +22,14 @@ final class PlayerIslandEventService
         'facility.expanded',
         'command.buried_treasure',
         'command.seabed_oil_search',
+        'command.land_level_earthquake',
+        'disaster.triggered',
+        'disaster.cell_damaged',
+        'capital.disaster_damaged',
+        'fire.prevented',
+        'fire.damaged',
+        'oil.income',
+        'oil.depleted',
         'settlement.appeared',
         'settlement.stage_transitioned',
         'population.increased',
@@ -88,7 +96,7 @@ final class PlayerIslandEventService
                         $subject->where('events.subject_type', Nation::class)
                             ->where('events.subject_id', $nation->id);
                     })
-                    ->orWhere('events.event_type', 'turn.completed');
+                    ->orWhereIn('events.event_type', ['turn.completed', 'disaster.triggered']);
             })
             ->where(function (Builder $visible): void {
                 $visible->where('events.event_type', '!=', 'command.buried_treasure')
@@ -200,6 +208,10 @@ final class PlayerIslandEventService
         if (isset($metadata['x'], $metadata['y']) && is_numeric($metadata['x']) && is_numeric($metadata['y'])) {
             return ['x' => (int) $metadata['x'], 'y' => (int) $metadata['y']];
         }
+        if (isset($metadata['center_x'], $metadata['center_y'])
+            && is_numeric($metadata['center_x']) && is_numeric($metadata['center_y'])) {
+            return ['x' => (int) $metadata['center_x'], 'y' => (int) $metadata['center_y']];
+        }
         if ($row->subject_id === null || ! is_string($row->subject_type)) {
             return null;
         }
@@ -243,6 +255,33 @@ final class PlayerIslandEventService
             ),
             'command.buried_treasure' => $this->buriedTreasureMessage($metadata),
             'command.seabed_oil_search' => $this->seabedOilSearchMessage($metadata),
+            'command.land_level_earthquake' => sprintf(
+                '地ならし直後に地震が発生しました（中心 %s, %s）。',
+                number_format($this->integer($metadata, 'center_x')),
+                number_format($this->integer($metadata, 'center_y')),
+            ),
+            'disaster.triggered' => sprintf(
+                '%sが発生しました（中心 %s, %s）。',
+                $this->disasterLabel($metadata['disaster_key'] ?? null),
+                number_format($this->integer($metadata, 'center_x')),
+                number_format($this->integer($metadata, 'center_y')),
+            ),
+            'disaster.cell_damaged' => sprintf(
+                '%sにより%sが%sへ変化しました。',
+                $this->disasterLabel($metadata['disaster_key'] ?? null),
+                $this->terrainLabel($metadata['from_terrain_key'] ?? null),
+                $this->terrainLabel($metadata['to_terrain_key'] ?? null),
+            ),
+            'capital.disaster_damaged' => sprintf(
+                '%sにより首都人口が%s%%減少し、%s人になりました。',
+                $this->disasterLabel($metadata['disaster_key'] ?? null),
+                number_format($this->integer($metadata, 'damage_percent')),
+                number_format($this->integer($metadata, 'after_population')),
+            ),
+            'fire.prevented' => '周囲の森または記念碑が火災を防ぎました。',
+            'fire.damaged' => '火災により施設または都市が荒地になりました。',
+            'oil.income' => $this->oilIncomeMessage($metadata),
+            'oil.depleted' => '海底油田が枯渇し、中立の深海へ戻りました。',
             'settlement.appeared' => sprintf(
                 '村が発生しました（人口%s人）。',
                 number_format($this->integer($metadata, 'population')),
@@ -350,6 +389,34 @@ final class PlayerIslandEventService
     }
 
     /** @param array<string, mixed> $metadata */
+    private function oilIncomeMessage(array $metadata): string
+    {
+        $overflow = $this->integer($metadata, 'overflow_money');
+        $message = sprintf(
+            '海底油田から%s億円の収入を得ました。',
+            number_format($this->integer($metadata, 'applied_money')),
+        );
+
+        return $overflow > 0
+            ? $message.sprintf('（収容上限超過 %s億円）', number_format($overflow))
+            : $message;
+    }
+
+    private function disasterLabel(mixed $key): string
+    {
+        return match ($key) {
+            'earthquake' => '地震',
+            'tsunami' => '津波',
+            'typhoon' => '台風',
+            'meteor_shower' => '流星群',
+            'huge_meteor' => '巨大隕石',
+            'eruption' => '噴火',
+            'fire' => '火災',
+            default => '災害',
+        };
+    }
+
+    /** @param array<string, mixed> $metadata */
     private function commandLabel(array $metadata): string
     {
         return match ($metadata['command_key'] ?? null) {
@@ -409,8 +476,10 @@ final class PlayerIslandEventService
     {
         return match ($eventType) {
             'command.invalid', 'command.insufficient_assets', 'resource.food_shortage',
-            'famine.applied', 'facility.riot', 'capacity.overflow' => 'warning',
+            'famine.applied', 'facility.riot', 'capacity.overflow',
+            'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged', 'oil.depleted' => 'warning',
             'command.buried_treasure', 'command.seabed_oil_search',
+            'command.land_level_earthquake', 'disaster.triggered', 'fire.prevented', 'oil.income',
             'settlement.appeared', 'settlement.stage_transitioned' => 'notable',
             default => 'info',
         };

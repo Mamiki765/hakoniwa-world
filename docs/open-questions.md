@@ -229,10 +229,11 @@
 
 ### B-09 災害抽選単位
 
-- Status: Open
+- Status: Decided
 - Required before: 各disaster handler実装前
-- Owner direction: disasterごとにHakoniwa Islands 2+の抽選母集団と抽選回数を調査する。world-level、Nation-level、cell-level、command-time drawを区別する。chunkはstorage/API boundaryであり、legacy source根拠なしにdisaster draw scopeへ使用しない。
-- PR #7 checkpoint: `global_disasters` phaseは必須stubに留め、抽選単位を暗黙に決めない。
+- Decision: 地震、津波、台風、流星群、巨大隕石、噴火は各World・各turnにそれぞれ1回発生判定する。地ならし即時地震はsuccessful `land_level` commandごと、火災・飢餓暴動・海底油田稼働はrandomized `process_cells`の対象cellごとに判定する。chunkはstorage/API boundaryだけに用い、抽選母集団・抽選回数へ使わない。
+- Decision: 1時間turnの初期balanceとして、legacyの`n / 1000`である6 global disaster trigger、successful `land_level`ごとの5/1000、各対象cellの火災10/1000だけを、整数丸めせずそれぞれ`n / 2000`とする。油田枯渇40/1000、飢餓暴動1/4、災害発生後のcell別被害率、流星群の1/2継続、津波・台風等の内部確率、範囲・対象・被害内容は半減しない。
+- Decision record: `product/docs/disaster-oil-audit-pr15.md`、`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
 
 ### T-01 乱数seedと再現方式
 
@@ -283,12 +284,12 @@
 
 ### CMD-02 地ならし由来の即時地震
 
-- Status: Deferred
+- Status: Decided
 - Required before: land_level earthquake side effect実装前
 - Source-derived behavior: successful `land_level`ごとに5/1000をcommand実行時に即時抽選し、当選時は震源半径10内の人口10,000人以上の都市、工場、ハリボテをそれぞれ独立に1/4で荒地化する。invalid target、ownership failure、insufficient moneyでは抽選しない。通常のglobal earthquakeとは別処理であり、counter/modifier方式ではない。
-- Owner decision: PR #11では`land_level`本体だけを実装し、抽選、earthquake event、damage、地形・施設・人口mutationは延期する。`TurnState`へのmodifier/counter、`global_disasters`への確率加算、代替確率、clamp、抽選だけの半端な移植は行わない。
-- Required decisions before implementation: Capitalが人口10,000人以上の場合の対象可否、Capital cell被災時のCapital identityとNation invariant、新作facility modelにおける都市判定、player/admin event payload。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+- Decision: successful `land_level`だけが5/2000を即時抽選する。invalid target、ownership failure、insufficient money、command実行失敗では抽選しない。通常のglobal earthquakeから独立したversioned labelled streamを使い、当選時は同じcommand call内で発生event、半径10、対象ごと1/4被害まで完結させる。modifier、counter、global発生率加算、抽選だけの実装はしない。
+- Decision: 人口10,000人以上のCapitalは通常都市と同じ対象判定へ参加する。当選時はfacility identity、owner、terrain、Nationのcapital coordinate、territory identityを維持し、人口をeventごとに10%減らして各event後にfloorと最低100人を適用する。player logは該当Nationに座標、災害種別、実被害だけを投影し、seed/raw draw/internal metadataを公開しない。
+- Decision record: `product/docs/disaster-oil-audit-pr15.md`、`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
 
 ### B-16 settlement_seed
 
@@ -296,7 +297,7 @@
 - Required before: settlement_seedまたはsettlement growth実装前
 - Decision: randomized sequential cell processingで、所有者がいる人口0・施設なしの平地を候補とする。候補ごとに100面20未満を先に抽選し、その後、隣接6セルに農場または人口1人以上の集落が1つ以上あれば人口100人の村を発生させる。隣接施設・集落のowner一致は要求しない。先に発生した村は同じturnの後続cellから観測できる。
 - Decision: villageは1–2,999人、townは3,000–9,999人、cityは10,000人以上とする。海際度24以上、12–23、0–11で通常人口上限をそれぞれ10,000、5,000、2,000人とし、通常成長のcanonical inclusive integer rangeをそれぞれ100–900、100–600、100–300人とする。上限を超えないようclampする。誘致中は通常上限未満で100–3,000、100–2,000、100–1,000人、通常上限到達後は100–300、100–200、100人ずつ20,000人まで成長する。
-- Decision: 飢餓時は村発生・成長を行わず、各有人口集落をcanonical inclusive integer 100–3,000人だけ減少させ、0未満を0にする。人口0では施設stageを外して所有された平地へ戻す。CapitalはCapital identityを維持し、town/city facilityへ置換せず、同じ海際度・通常成長式と飢餓減少式を適用する。
+- Decision: 飢餓時は村発生・成長を行わず、各有人口集落をcanonical inclusive integer 100–3,000人だけ減少させ、0未満を0にする。人口0では施設stageを外して所有された平地へ戻す。CapitalはCapital identityを維持し、town/city facilityへ置換せず、同じ海際度bandの通常成長rangeと飢餓減少drawを適用する。Capitalは各飢餓event後に最低100人を維持し、通常成長は25,000人へclampする。attractionは今回追加しない。
 - Decision: sea-edge contextはturn開始時点の海、海底基地、範囲外海から半径4へ加算した値をそのturnで固定して使う。PR #11はattractionを発生させるcommandを追加しないが、将来の誘致stateが同じcell processorへ接続できるruleset境界を保持する。
 - Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
 
@@ -310,9 +311,17 @@
 
 ### B-02 Capitalへの複数被害
 
-- Status: Open
+- Status: Decided
 - Required before: 戦闘実装前
-- eventごとかturn合算か、丸めと最低人口適用順を決める。
+- Decision: 災害・将来の戦闘damageはいずれもeventごとの逐次適用とする。同じturnの複数被害もA-06のrandomized sequential causalityに従い、各event開始時点の現在人口へ割合を適用し、`max(100, floor(old_population * (100 - damage_percent) / 100))`を各event後に確定する。turn合算や最後だけの丸め・最低人口適用は行わない。
+- Decision: 通常cellが荒地化・施設消失となる被害は10%、1段階の掘削・浅瀬化相当は30%、深海化相当は90%、噴火中心の山化は30%とする。Capital facility identity、owner、terrain、Nationのcapital coordinate、territory identityは維持し、population、cell version、chunk invalidation、audit/player logだけを変更する。
+
+### B-19 Capitalと将来の怪獣・戦闘damage
+
+- Status: Decided
+- Required before: 怪獣・戦闘実装前
+- Decision: 怪獣はCapital cellへ侵入・踏み荒らしできず、移動候補からCapitalを除外する。通常・PPミサイル等の荒地化相当はCapital人口10%、地形破壊弾等の1段階掘削相当は30%、深海化相当は90%の逐次damageへ変換する。戦闘damageでもCapital identityと最低人口100人を維持する。
+- Decision: 戦闘damageと怪獣移動のコードは別PRで実装する。災害・油田稼働PRではdecisionと拡張境界だけを記録し、怪獣・ミサイル・地形破壊弾の実行コードを追加しない。
 
 ### B-03 Capital機能停止と復旧
 

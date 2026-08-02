@@ -9,9 +9,9 @@ final class DeterministicRandomStream
 {
     private const UINT32_CARDINALITY = 4_294_967_296;
 
-    private const SIGNED_INT32_MIN = -2_147_483_648;
+    public const MINIMUM_INTEGER = -2_147_483_648;
 
-    private const SIGNED_INT32_MAX = 2_147_483_647;
+    public const MAXIMUM_INTEGER = 2_147_483_647;
 
     private string $counter = "\0\0\0\0\0\0\0\0";
 
@@ -35,7 +35,7 @@ final class DeterministicRandomStream
         if ($minimum > $maximum) {
             throw new InvalidArgumentException('Random integer minimum must not exceed maximum.');
         }
-        if ($minimum < self::SIGNED_INT32_MIN || $maximum > self::SIGNED_INT32_MAX) {
+        if ($minimum < self::MINIMUM_INTEGER || $maximum > self::MAXIMUM_INTEGER) {
             throw new InvalidArgumentException('Random integer bounds must fit signed 32-bit integers.');
         }
 

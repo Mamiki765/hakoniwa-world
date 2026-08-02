@@ -31,6 +31,7 @@ final class DomesticCommandExecutor
         private readonly NationCapacityResolver $capacities,
         private readonly CappedAddition $addition,
         private readonly TurnEventRecorder $events,
+        private readonly DisasterTurnService $disasters,
     ) {}
 
     /** @return array{successes: int, failures: int, removed: int, quantity_decrements: int, automatic_finance: int} */
@@ -334,6 +335,8 @@ final class DomesticCommandExecutor
             ]);
             if ($definition->key === 'land_clear') {
                 $this->buriedTreasure($context, $nation, $item);
+            } elseif ($definition->key === 'land_level') {
+                $this->disasters->landLevelEarthquake($context, $item, $cell->x, $cell->y);
             }
 
             return;

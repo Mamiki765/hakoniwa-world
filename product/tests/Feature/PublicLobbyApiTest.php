@@ -8,6 +8,7 @@ use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PublicLobbyApiTest extends TestCase
@@ -61,13 +62,44 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.0.id', $first->id)
             ->assertJsonPath('data.1.id', $second->id);
 
+        DB::table('audit_events')->insert([
+            'actor_user_id' => null,
+            'event_type' => 'disaster.triggered',
+            'subject_type' => $world->getMorphClass(),
+            'subject_id' => $world->getKey(),
+            'metadata' => json_encode([
+                'world_id' => $world->id,
+                'target_turn' => 2,
+                'disaster_key' => 'earthquake',
+                'center_x' => 30,
+                'center_y' => 31,
+                'draw' => 17,
+                'numerator' => 80,
+                'denominator' => 2_000,
+                'random_seed' => 'must-not-leak',
+            ], JSON_THROW_ON_ERROR),
+            'occurred_at' => now()->addSecond(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $events = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()
-            ->assertJsonPath('data.0.type', 'nation_created')
+            ->assertJsonPath('data.0.type', 'disaster_triggered')
+            ->assertJsonPath('data.0.message', '地震が発生しました（中心 30,31）。')
+            ->assertJsonPath('data.0.metadata', [
+                'target_turn' => 2,
+                'disaster_key' => 'earthquake',
+                'center_x' => 30,
+                'center_y' => 31,
+            ])
+            ->assertJsonPath('data.1.type', 'nation_created')
             ->assertJsonStructure(['data' => [['id', 'type', 'message', 'metadata', 'occurred_at']]]);
         $eventsBody = $events->getContent();
-        $this->assertStringNotContainsString('"x"', $eventsBody);
-        $this->assertStringNotContainsString('"y"', $eventsBody);
+        $this->assertStringNotContainsString('"draw"', $eventsBody);
+        $this->assertStringNotContainsString('"numerator"', $eventsBody);
+        $this->assertStringNotContainsString('"denominator"', $eventsBody);
+        $this->assertStringNotContainsString('must-not-leak', $eventsBody);
         $this->assertStringNotContainsString('stack', $eventsBody);
         $this->assertStringNotContainsString('exception', $eventsBody);
 

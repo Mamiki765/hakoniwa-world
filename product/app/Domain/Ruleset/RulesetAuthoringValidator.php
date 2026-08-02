@@ -7,6 +7,7 @@ use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Turn\DeterministicRandomStream;
 use DomainException;
 use JsonException;
 
@@ -48,6 +49,9 @@ final class RulesetAuthoringValidator
 
     /** @var list<string> */
     private const TERRAIN_KEYS = ['sea', 'shallow', 'wasteland', 'plain', 'forest', 'mountain'];
+
+    /** @var list<string> */
+    private const LEGACY_FUTURE_FACILITY_KEYS = ['decoy', 'monument', 'defense', 'seabed_base'];
 
     /** @var list<string> */
     private const REQUIRED_TOP_LEVEL_KEYS = [
@@ -133,6 +137,39 @@ final class RulesetAuthoringValidator
         );
         if ($minimumPopulation > $initialPopulation) {
             throw new DomainException('Ruleset minimum Capital population cannot exceed its initial population.');
+        }
+        $hasCapitalDisasterSettings = array_key_exists('capital_growth_maximum_population', $settings)
+            || array_key_exists('capital_damage_percentages', $settings);
+        if ($hasCapitalDisasterSettings) {
+            $this->requireKeys(
+                $settings,
+                ['capital_growth_maximum_population', 'capital_damage_percentages'],
+                'ruleset',
+            );
+            $growthMaximum = $this->integer(
+                $settings['capital_growth_maximum_population'],
+                'ruleset.capital_growth_maximum_population',
+                $minimumPopulation,
+            );
+            if ($growthMaximum > self::POSTGRESQL_INTEGER_MAX) {
+                throw new DomainException('ruleset.capital_growth_maximum_population must fit PostgreSQL integer.');
+            }
+            $percentages = $this->map($settings['capital_damage_percentages'], 'ruleset.capital_damage_percentages');
+            $this->requireKeys($percentages, [
+                'facility_or_wasteland', 'excavation_or_shallow', 'deep_sea', 'eruption_center',
+            ], 'ruleset.capital_damage_percentages');
+            foreach ($percentages as $percentageKey => $percentage) {
+                $validated = $this->integer(
+                    $percentage,
+                    "ruleset.capital_damage_percentages.{$percentageKey}",
+                    0,
+                );
+                if ($validated > 100) {
+                    throw new DomainException(
+                        "ruleset.capital_damage_percentages.{$percentageKey} cannot exceed 100.",
+                    );
+                }
+            }
         }
 
         $this->integer($settings['initial_money'], 'ruleset.initial_money', 0);
@@ -872,7 +909,7 @@ final class RulesetAuthoringValidator
         $this->requireKeys($riot, ['probability', 'facility_keys'], "{$path}.riot");
         $this->probability($riot['probability'], "{$path}.riot.probability");
         foreach ($this->list($riot['facility_keys'], "{$path}.riot.facility_keys") as $facilityKey) {
-            $this->reference($facilityKey, $facilityKeys, "{$path}.riot.facility_keys");
+            $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$path}.riot.facility_keys");
         }
 
         $effects = $this->map($turn['command_random_effects'], "{$path}.command_random_effects");
@@ -957,6 +994,11 @@ final class RulesetAuthoringValidator
             }
         }
 
+        if (array_key_exists('disasters', $turn) || array_key_exists('oil_field', $turn)
+            || array_key_exists('land_level_earthquake', $effects)) {
+            $this->validateDisasterProcessing($turn, $effects, $facilityKeys, $settings, $path);
+        }
+
         $salePolicy = $this->map($turn['sale_policy'], "{$path}.sale_policy");
         $this->requireKeys($salePolicy, ['sell_all_forbidden_resource_keys'], "{$path}.sale_policy");
         foreach ($this->list($salePolicy['sell_all_forbidden_resource_keys'], "{$path}.sale_policy.sell_all_forbidden_resource_keys") as $resourceKey) {
@@ -986,6 +1028,197 @@ final class RulesetAuthoringValidator
         if ($numerator > $denominator) {
             throw new DomainException("{$path}.numerator cannot exceed denominator.");
         }
+        if ($denominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+            throw new DomainException("{$path}.denominator exceeds the deterministic random draw range.");
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $turn
+     * @param  array<string, mixed>  $effects
+     * @param  list<string>  $facilityKeys
+     * @param  array<string, mixed>  $settings
+     */
+    private function validateDisasterProcessing(
+        array $turn,
+        array $effects,
+        array $facilityKeys,
+        array $settings,
+        string $path,
+    ): void {
+        $this->requireKeys($turn, ['disasters', 'oil_field'], $path);
+        $this->requireKeys($effects, ['land_level_earthquake'], "{$path}.command_random_effects");
+        $this->requireKeys(
+            $settings,
+            ['capital_growth_maximum_population', 'capital_damage_percentages'],
+            'ruleset',
+        );
+
+        $disasters = $this->map($turn['disasters'], "{$path}.disasters");
+        $this->requireKeys($disasters, [
+            'earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption', 'fire',
+        ], "{$path}.disasters");
+        foreach ([
+            'earthquake' => 10,
+            'tsunami' => 10,
+            'typhoon' => 10,
+            'meteor_shower' => 10,
+            'huge_meteor' => 2,
+            'eruption' => 1,
+        ] as $key => $expectedRadius) {
+            $eventPath = "{$path}.disasters.{$key}";
+            $event = $this->map($disasters[$key], $eventPath);
+            $this->requireKeys($event, ['probability', 'center_padding', 'radius'], $eventPath);
+            $this->probability($event['probability'], "{$eventPath}.probability");
+            $centerPadding = $this->integer($event['center_padding'], "{$eventPath}.center_padding", 0);
+            $maximumCenterPadding = min(
+                self::INITIAL_X_MIN - DeterministicRandomStream::MINIMUM_INTEGER,
+                DeterministicRandomStream::MAXIMUM_INTEGER - self::INITIAL_X_MAX,
+                self::INITIAL_Y_MIN - DeterministicRandomStream::MINIMUM_INTEGER,
+                DeterministicRandomStream::MAXIMUM_INTEGER - self::INITIAL_Y_MAX,
+            );
+            if ($centerPadding > $maximumCenterPadding) {
+                throw new DomainException(
+                    "{$eventPath}.center_padding must be at most {$maximumCenterPadding} so initial center draws fit signed 32-bit bounds.",
+                );
+            }
+            $radius = $this->integer($event['radius'], "{$eventPath}.radius", 0);
+            if ($radius !== $expectedRadius) {
+                throw new DomainException("{$eventPath}.radius must be {$expectedRadius} for the implemented damage contract.");
+            }
+        }
+
+        $earthquake = $this->map($disasters['earthquake'], "{$path}.disasters.earthquake");
+        $this->validateEarthquakeSettings($earthquake, $facilityKeys, "{$path}.disasters.earthquake");
+
+        $tsunamiPath = "{$path}.disasters.tsunami";
+        $tsunami = $this->map($disasters['tsunami'], $tsunamiPath);
+        $this->requireKeys($tsunami, [
+            'settlement_facility_keys', 'facility_keys', 'excluded_facility_keys', 'water_facility_keys',
+            'internal_denominator', 'adjacent_water_offset',
+        ], $tsunamiPath);
+        foreach (['settlement_facility_keys', 'facility_keys', 'excluded_facility_keys', 'water_facility_keys'] as $listKey) {
+            foreach ($this->list($tsunami[$listKey], "{$tsunamiPath}.{$listKey}") as $facilityKey) {
+                $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$tsunamiPath}.{$listKey}");
+            }
+        }
+        $tsunamiDenominator = $this->integer(
+            $tsunami['internal_denominator'],
+            "{$tsunamiPath}.internal_denominator",
+            1,
+        );
+        if ($tsunamiDenominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+            throw new DomainException(
+                "{$tsunamiPath}.internal_denominator must be at most ".self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX.'.',
+            );
+        }
+        $this->integer($tsunami['adjacent_water_offset'], "{$tsunamiPath}.adjacent_water_offset", 0);
+
+        $typhoonPath = "{$path}.disasters.typhoon";
+        $typhoon = $this->map($disasters['typhoon'], $typhoonPath);
+        $this->requireKeys($typhoon, [
+            'facility_keys', 'internal_denominator', 'base_damage_threshold', 'protection_facility_keys',
+        ], $typhoonPath);
+        foreach (['facility_keys', 'protection_facility_keys'] as $listKey) {
+            foreach ($this->list($typhoon[$listKey], "{$typhoonPath}.{$listKey}") as $facilityKey) {
+                $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$typhoonPath}.{$listKey}");
+            }
+        }
+        $typhoonDenominator = $this->integer(
+            $typhoon['internal_denominator'],
+            "{$typhoonPath}.internal_denominator",
+            1,
+        );
+        if ($typhoonDenominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+            throw new DomainException(
+                "{$typhoonPath}.internal_denominator must be at most ".self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX.'.',
+            );
+        }
+        $this->integer($typhoon['base_damage_threshold'], "{$typhoonPath}.base_damage_threshold", 0);
+
+        $meteorPath = "{$path}.disasters.meteor_shower";
+        $meteor = $this->map($disasters['meteor_shower'], $meteorPath);
+        $this->requireKeys($meteor, ['continuation_probability', 'seabed_facility_keys'], $meteorPath);
+        $continuationPath = "{$meteorPath}.continuation_probability";
+        $continuation = $this->map($meteor['continuation_probability'], $continuationPath);
+        $this->probability($continuation, $continuationPath);
+        if ((int) $continuation['numerator'] >= (int) $continuation['denominator']) {
+            throw new DomainException("{$continuationPath} must allow the meteor shower to terminate.");
+        }
+        foreach ($this->list($meteor['seabed_facility_keys'], "{$meteorPath}.seabed_facility_keys") as $facilityKey) {
+            $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$meteorPath}.seabed_facility_keys");
+        }
+
+        foreach (['huge_meteor', 'eruption'] as $key) {
+            $eventPath = "{$path}.disasters.{$key}";
+            $event = $this->map($disasters[$key], $eventPath);
+            $this->requireKeys($event, ['seabed_facility_keys'], $eventPath);
+            foreach ($this->list($event['seabed_facility_keys'], "{$eventPath}.seabed_facility_keys") as $facilityKey) {
+                $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$eventPath}.seabed_facility_keys");
+            }
+        }
+
+        $firePath = "{$path}.disasters.fire";
+        $fire = $this->map($disasters['fire'], $firePath);
+        $this->requireKeys($fire, [
+            'probability', 'minimum_city_population', 'facility_keys', 'protection_facility_keys',
+        ], $firePath);
+        $this->probability($fire['probability'], "{$firePath}.probability");
+        $this->integer($fire['minimum_city_population'], "{$firePath}.minimum_city_population", 1);
+        foreach (['facility_keys', 'protection_facility_keys'] as $listKey) {
+            foreach ($this->list($fire[$listKey], "{$firePath}.{$listKey}") as $facilityKey) {
+                $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$firePath}.{$listKey}");
+            }
+        }
+
+        $landPath = "{$path}.command_random_effects.land_level_earthquake";
+        $landEarthquake = $this->map($effects['land_level_earthquake'], $landPath);
+        $this->requireKeys($landEarthquake, [
+            'probability', 'radius', 'minimum_city_population', 'facility_keys', 'damage_probability',
+        ], $landPath);
+        $this->probability($landEarthquake['probability'], "{$landPath}.probability");
+        $landRadius = $this->integer($landEarthquake['radius'], "{$landPath}.radius", 0);
+        if ($landRadius !== 10) {
+            throw new DomainException("{$landPath}.radius must be 10 for the implemented damage contract.");
+        }
+        $this->validateEarthquakeSettings($landEarthquake, $facilityKeys, $landPath);
+
+        $oilPath = "{$path}.oil_field";
+        $oil = $this->map($turn['oil_field'], $oilPath);
+        $this->requireKeys($oil, [
+            'facility_key', 'income_money', 'depletion_probability', 'depleted_terrain_key',
+        ], $oilPath);
+        $this->reference($oil['facility_key'], $facilityKeys, "{$oilPath}.facility_key");
+        $this->integer($oil['income_money'], "{$oilPath}.income_money", 0);
+        $this->probability($oil['depletion_probability'], "{$oilPath}.depletion_probability");
+        $this->reference($oil['depleted_terrain_key'], self::TERRAIN_KEYS, "{$oilPath}.depleted_terrain_key");
+    }
+
+    /** @param array<string, mixed> $settings
+     * @param  list<string>  $facilityKeys
+     */
+    private function validateEarthquakeSettings(array $settings, array $facilityKeys, string $path): void
+    {
+        $this->requireKeys($settings, [
+            'minimum_city_population', 'facility_keys', 'damage_probability',
+        ], $path);
+        $this->integer($settings['minimum_city_population'], "{$path}.minimum_city_population", 1);
+        $this->probability($settings['damage_probability'], "{$path}.damage_probability");
+        foreach ($this->list($settings['facility_keys'], "{$path}.facility_keys") as $facilityKey) {
+            $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$path}.facility_keys");
+        }
+    }
+
+    /** @param list<string> $facilityKeys */
+    private function facilityReferenceOrFuture(mixed $value, array $facilityKeys, string $path): string
+    {
+        $key = $this->persistedString($value, $path);
+        if (! in_array($key, $facilityKeys, true)
+            && ! in_array($key, self::LEGACY_FUTURE_FACILITY_KEYS, true)) {
+            throw new DomainException("{$path} references unknown facility semantic key {$key}.");
+        }
+
+        return $key;
     }
 
     /**

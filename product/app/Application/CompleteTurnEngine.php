@@ -34,6 +34,7 @@ final class CompleteTurnEngine
         private readonly NationCapacityResolver $capacities,
         private readonly MapCellStateService $cells,
         private readonly TurnEventRecorder $events,
+        private readonly DisasterTurnService $disasters,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -46,7 +47,7 @@ final class CompleteTurnEngine
             'development_commands' => $this->commands->execute($context),
             'process_cells' => $this->processCells($context),
             'settle_deferred_effects' => ['settled_effects' => 0, 'extension_boundary' => true],
-            'global_disasters' => ['executed_disasters' => 0, 'extension_boundary' => true],
+            'global_disasters' => $this->disasters->executeGlobal($context),
             'aggregate_nations' => $this->aggregateNations($context),
             'enforce_capacities' => $this->sellAndEnforceCapacities($context),
             'finalize_turn' => $this->finalizeTurn($context),
@@ -182,7 +183,8 @@ final class CompleteTurnEngine
         $metrics = [
             'processed' => 0, 'forest_growth' => 0, 'settlements_appeared' => 0,
             'population_increased' => 0, 'population_decreased' => 0,
-            'stage_transitions' => 0, 'riots' => 0,
+            'stage_transitions' => 0, 'riots' => 0, 'fires' => 0,
+            'oil_income' => 0, 'oil_depleted' => 0,
         ];
         $activeNations = Nation::query()->where('world_id', $context->world->id)->where('state', 'active')
             ->pluck('id')->map(static fn ($id): int => (int) $id)->flip();
@@ -194,19 +196,20 @@ final class CompleteTurnEngine
                 continue;
             }
             $famine = $context->state->isFamine($cell->owner_nation_id);
-            if ($this->processRiot($context, $cell, $famine)) {
-                $metrics['riots']++;
+            if ($cell->facility?->key === ($context->ruleset->settings['turn_processing']['oil_field']['facility_key'] ?? null)) {
+                $oil = $this->processOilField($context, $cell);
+                $metrics['oil_income'] += $oil['income'];
+                $metrics['oil_depleted'] += $oil['depleted'];
 
                 continue;
             }
-            if ($cell->terrain->key === 'forest') {
-                if ($this->growForest($context, $cell)) {
-                    $metrics['forest_growth']++;
-                }
-
-                continue;
-            }
+            $facilityKey = $cell->facility?->key;
             if ($this->isSettlement($cell)) {
+                if ($this->disasters->processFire($context, $cell)) {
+                    $metrics['fires']++;
+
+                    continue;
+                }
                 if ($famine) {
                     $loss = $this->applyFamine($context, $cell);
                     $metrics['population_decreased'] += $loss['decrease'];
@@ -215,6 +218,42 @@ final class CompleteTurnEngine
                     $growth = $this->growPopulation($context, $cell);
                     $metrics['population_increased'] += $growth['increase'];
                     $metrics['stage_transitions'] += $growth['stage_transition'];
+                }
+
+                continue;
+            }
+            if ($facilityKey === 'factory') {
+                if ($this->disasters->processFire($context, $cell)) {
+                    $metrics['fires']++;
+
+                    continue;
+                }
+                if ($this->processRiot($context, $cell, $famine)) {
+                    $metrics['riots']++;
+                }
+
+                continue;
+            }
+            if ($facilityKey === 'decoy') {
+                if ($this->processRiot($context, $cell, $famine)) {
+                    $metrics['riots']++;
+
+                    continue;
+                }
+                if ($this->disasters->processFire($context, $cell)) {
+                    $metrics['fires']++;
+                }
+
+                continue;
+            }
+            if ($this->processRiot($context, $cell, $famine)) {
+                $metrics['riots']++;
+
+                continue;
+            }
+            if ($cell->terrain->key === 'forest') {
+                if ($this->growForest($context, $cell)) {
+                    $metrics['forest_growth']++;
                 }
 
                 continue;
@@ -524,6 +563,64 @@ final class CompleteTurnEngine
         return true;
     }
 
+    /** @return array{income: int, depleted: int} */
+    private function processOilField(TurnContext $context, MapCell $cell): array
+    {
+        $rules = $context->ruleset->settings['turn_processing']['oil_field'];
+        $nation = Nation::query()->whereKey($cell->owner_nation_id)->lockForUpdate()->firstOrFail();
+        $income = $this->boundedAssets->creditMoney($nation, $rules['income_money'], $context->ruleset);
+        $this->events->record($context, 'oil.income', $cell, [
+            'nation_id' => $nation->id,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'requested_money' => $income->requested,
+            'applied_money' => $income->applied,
+            'overflow_money' => $income->overflow,
+            'money_capacity' => $income->capacity,
+        ]);
+        if ($income->overflow > 0) {
+            $this->events->record($context, 'capacity.overflow', $nation, [
+                'nation_id' => $nation->id,
+                'asset' => 'money',
+                'requested' => $income->requested,
+                'applied' => $income->applied,
+                'overflow' => $income->overflow,
+                'capacity' => $income->capacity,
+                'source' => 'seabed_oil_field',
+            ]);
+        }
+
+        $probability = $rules['depletion_probability'];
+        $draw = $context->random->stream(TurnRandomStreamFactory::OIL_DEPLETION)
+            ->integer(0, $probability['denominator'] - 1);
+        if ($draw >= $probability['numerator']) {
+            return ['income' => $income->applied, 'depleted' => 0];
+        }
+
+        $beforeFacility = $cell->facility?->key;
+        $this->cells->setFacility($cell, null);
+        $terrain = TerrainDefinition::query()->where('key', $rules['depleted_terrain_key'])->firstOrFail();
+        $this->cells->transitionTerrain($cell, $terrain);
+        $cell->owner_nation_id = null;
+        $cell->population = 0;
+        $cell->version++;
+        $this->saveChangedCell($context, $cell);
+        $this->events->record($context, 'oil.depleted', $cell, [
+            'nation_id' => $nation->id,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'facility_key' => $beforeFacility,
+            'result_terrain_key' => $terrain->key,
+            'owner_nation_id_after' => null,
+            'draw' => $draw,
+            'numerator' => $probability['numerator'],
+            'denominator' => $probability['denominator'],
+            'income_applied_first' => true,
+        ]);
+
+        return ['income' => $income->applied, 'depleted' => 1];
+    }
+
     private function growForest(TurnContext $context, MapCell $cell): bool
     {
         $forest = $context->ruleset->settings['terrain_quantities']['forest'];
@@ -607,8 +704,11 @@ final class CompleteTurnEngine
         $loss = $context->random->stream(TurnRandomStreamFactory::FAMINE_POPULATION_LOSS)
             ->integer($rules['loss_minimum'], $rules['loss_maximum']);
         $before = $cell->population;
-        $cell->population = max(0, $before - $loss);
         $facilityKey = $cell->facility?->key;
+        $minimumPopulation = $facilityKey === 'capital'
+            ? $context->ruleset->settings['capital_minimum_population']
+            : 0;
+        $cell->population = max($minimumPopulation, $before - $loss);
         if ($cell->population === 0 && $facilityKey !== 'capital') {
             $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
             $this->cells->setFacility($cell, null);
@@ -616,16 +716,21 @@ final class CompleteTurnEngine
         }
         $cell->version++;
         $this->saveChangedCell($context, $cell);
-        $actualLoss = $before - $cell->population;
+        $actualLoss = max(0, $before - $cell->population);
+        $minimumPopulationAdjustment = max(0, $cell->population - $before);
         $this->events->record($context, 'famine.applied', $cell, [
             'nation_id' => $cell->owner_nation_id, 'before' => $before,
             'drawn_loss' => $loss, 'actual_loss' => $actualLoss, 'after' => $cell->population,
             'facility_key_before' => $facilityKey,
+            'minimum_population_applied' => $minimumPopulationAdjustment > 0,
+            'minimum_population_adjustment' => $minimumPopulationAdjustment,
         ]);
         $this->events->record($context, 'population.decreased', $cell, [
             'nation_id' => $cell->owner_nation_id, 'reason' => 'famine', 'before' => $before,
             'drawn_loss' => $loss, 'actual_loss' => $actualLoss, 'after' => $cell->population,
             'facility_key_before' => $facilityKey, 'capital_identity_preserved' => $facilityKey === 'capital',
+            'minimum_population_applied' => $minimumPopulationAdjustment > 0,
+            'minimum_population_adjustment' => $minimumPopulationAdjustment,
         ]);
         $stageTransition = $cell->population > 0
             ? $this->syncSettlementStage($context, $cell)
@@ -650,12 +755,15 @@ final class CompleteTurnEngine
             throw new DomainException("Settlement sea-edge band is missing for cell {$cell->id}.");
         }
         $before = $cell->population;
-        if ($before < $band['maximum_population']) {
+        $maximumPopulation = $cell->facility?->key === 'capital'
+            ? $context->ruleset->settings['capital_growth_maximum_population']
+            : $band['maximum_population'];
+        if ($before < $maximumPopulation) {
             $growthRules = $rules['ordinary_growth'];
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'] * $band['growth_multiplier'],
             );
-            $cell->population = min($band['maximum_population'], $before + $growth);
+            $cell->population = min($maximumPopulation, $before + $growth);
         }
         $increase = $cell->population - $before;
         $transition = $this->syncSettlementStage($context, $cell);
@@ -665,7 +773,7 @@ final class CompleteTurnEngine
             $this->events->record($context, 'population.increased', $cell, [
                 'nation_id' => $cell->owner_nation_id, 'before' => $before,
                 'increase' => $increase, 'after' => $cell->population, 'sea_edge' => $seaEdge,
-                'ordinary_maximum' => $band['maximum_population'],
+                'ordinary_maximum' => $maximumPopulation,
             ]);
         }
 
