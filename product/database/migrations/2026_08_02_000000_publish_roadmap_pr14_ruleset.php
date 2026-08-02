@@ -88,9 +88,25 @@ return new class extends Migration
 
     private function moveWorldAndQueueItems(int $fromRulesetId, int $toRulesetId): void
     {
-        $world = DB::table('worlds')->where('key', self::WORLD_KEY)->lockForUpdate()->first(['id', 'ruleset_version_id']);
+        $worldIdentity = DB::table('worlds')->where('key', self::WORLD_KEY)->first(['id', 'key']);
+        if ($worldIdentity === null) {
+            return;
+        }
+
+        $this->acquireWorldTurnMigrationLock($worldIdentity);
+        $world = DB::table('worlds')->where('id', $worldIdentity->id)->lockForUpdate()
+            ->first(['id', 'key', 'current_turn', 'ruleset_version_id']);
         if ($world === null) {
             return;
+        }
+
+        if (! in_array((int) $world->ruleset_version_id, [$fromRulesetId, $toRulesetId], true)) {
+            throw new RuntimeException(
+                'shared-world is attached to an unexpected ruleset; refusing an implicit ruleset migration.',
+            );
+        }
+        if ((int) $world->ruleset_version_id === $fromRulesetId) {
+            $this->assertNoNextTurnRun($world);
         }
 
         DB::statement('LOCK TABLE nation_command_queues IN SHARE ROW EXCLUSIVE MODE');
@@ -113,11 +129,6 @@ return new class extends Migration
             DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' IMMEDIATE');
 
             return;
-        }
-        if ((int) $world->ruleset_version_id !== $fromRulesetId) {
-            throw new RuntimeException(
-                'shared-world is attached to an unexpected ruleset; refusing an implicit ruleset migration.',
-            );
         }
         $this->assertQueueItemsUseRuleset((int) $world->id, $fromRulesetId, 'before migration');
 
@@ -146,6 +157,43 @@ return new class extends Migration
 
         $this->assertQueueItemsUseRuleset((int) $world->id, $toRulesetId, 'after migration');
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' IMMEDIATE');
+    }
+
+    private function acquireWorldTurnMigrationLock(object $world): void
+    {
+        $lockKey = "hakoniwa.turn.world.{$world->id}";
+        $lock = DB::selectOne(
+            'SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0)) AS acquired',
+            [$lockKey],
+        );
+        if (! in_array($lock?->acquired, [true, 1, '1', 't'], true)) {
+            throw new RuntimeException(
+                "Refusing to migrate shared-world {$world->id} ({$world->key}) while a turn operation "
+                .'holds its advisory lock.',
+            );
+        }
+    }
+
+    private function assertNoNextTurnRun(object $world): void
+    {
+        DB::statement('LOCK TABLE turn_runs IN SHARE ROW EXCLUSIVE MODE');
+        $targetTurn = (int) $world->current_turn + 1;
+        $run = DB::table('turn_runs')
+            ->where('world_id', $world->id)
+            ->where('target_turn', $targetTurn)
+            ->where('is_dry_run', false)
+            ->orderBy('id')
+            ->first(['id', 'target_turn', 'status']);
+
+        if ($run === null) {
+            return;
+        }
+
+        throw new RuntimeException(
+            "Refusing to migrate shared-world {$world->id} ({$world->key}) with non-dry-run "
+            ."turn run {$run->id}, target_turn={$run->target_turn}, status={$run->status}. "
+            .'Resolve or retry the recorded run under roadmap-pr11-v1 before retrying this migration.',
+        );
     }
 
     private function assertQueueItemsUseRuleset(int $worldId, int $rulesetId, string $stage): void
