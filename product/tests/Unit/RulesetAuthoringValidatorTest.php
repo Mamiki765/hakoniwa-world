@@ -172,6 +172,49 @@ class RulesetAuthoringValidatorTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
+    public function test_pr14_reclaim_spread_contract_rejects_invalid_maximum_metadata(): void
+    {
+        foreach (['3', -1] as $invalidMaximum) {
+            $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+            foreach ($settings['command_definitions'] as &$definition) {
+                if ($definition['key'] === 'reclaim') {
+                    $definition['metadata']['adjacent_water_spread_maximum'] = $invalidMaximum;
+                }
+            }
+            unset($definition);
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail('Invalid reclaim spread metadata must be rejected.');
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString(
+                    'metadata.adjacent_water_spread_maximum',
+                    $exception->getMessage(),
+                );
+            }
+        }
+    }
+
+    public function test_pr14_seabed_oil_command_rejects_missing_or_unvalidated_effect_references(): void
+    {
+        foreach (['missing-effect', 'land_clear_buried_treasure'] as $invalidEffectKey) {
+            $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+            foreach ($settings['command_definitions'] as &$definition) {
+                if ($definition['key'] === 'excavate') {
+                    $definition['metadata']['oil_search_effect_key'] = $invalidEffectKey;
+                }
+            }
+            unset($definition);
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail('Invalid seabed oil effect references must be rejected.');
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString('metadata.oil_search_effect_key', $exception->getMessage());
+            }
+        }
+    }
+
     public function test_command_queue_authoring_safety_maximum_is_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');

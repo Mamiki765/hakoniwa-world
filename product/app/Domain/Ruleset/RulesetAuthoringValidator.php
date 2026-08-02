@@ -509,7 +509,7 @@ final class RulesetAuthoringValidator
                 'target_facility_keys', 'requires_empty_facility', 'cost_money', 'required_resources',
                 'execution_phase', 'result_terrain_key', 'result_facility_key', 'sort_order', 'metadata',
             ], $path);
-            $this->persistedString($definition['key'], "{$path}.key");
+            $commandKey = $this->persistedString($definition['key'], "{$path}.key");
             $this->persistedString($definition['name'], "{$path}.name");
             $this->string($definition['description'], "{$path}.description");
             $this->persistedString($definition['target_type'], "{$path}.target_type");
@@ -529,7 +529,20 @@ final class RulesetAuthoringValidator
                 $this->integer($amount, "{$path}.required_resources.{$resourceKey}", 0);
             }
             $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
-            $this->map($definition['metadata'], "{$path}.metadata");
+            $metadata = $this->map($definition['metadata'], "{$path}.metadata");
+            if ($commandKey === 'reclaim' && array_key_exists('adjacent_water_spread_maximum', $metadata)) {
+                $this->integer(
+                    $metadata['adjacent_water_spread_maximum'],
+                    "{$path}.metadata.adjacent_water_spread_maximum",
+                    0,
+                );
+            }
+            if ($commandKey === 'excavate' && array_key_exists('oil_search_effect_key', $metadata)) {
+                $this->persistedString(
+                    $metadata['oil_search_effect_key'],
+                    "{$path}.metadata.oil_search_effect_key",
+                );
+            }
         }
     }
 
@@ -867,6 +880,33 @@ final class RulesetAuthoringValidator
         $this->probability($treasure['probability'], "{$path}.command_random_effects.land_clear_buried_treasure.probability");
         $rewardMinimum = $this->integer($treasure['reward_minimum_money'], "{$path}.command_random_effects.land_clear_buried_treasure.reward_minimum_money", 0);
         $this->integer($treasure['reward_maximum_money'], "{$path}.command_random_effects.land_clear_buried_treasure.reward_maximum_money", $rewardMinimum);
+
+        foreach ($this->list($settings['command_definitions'], 'ruleset.command_definitions') as $index => $definitionValue) {
+            $commandPath = "ruleset.command_definitions.{$index}";
+            $definition = $this->map($definitionValue, $commandPath);
+            if (($definition['key'] ?? null) !== 'excavate') {
+                continue;
+            }
+            $metadata = $this->map($definition['metadata'] ?? null, "{$commandPath}.metadata");
+            if (! array_key_exists('oil_search_effect_key', $metadata)) {
+                break;
+            }
+            $effectKey = $this->persistedString(
+                $metadata['oil_search_effect_key'],
+                "{$commandPath}.metadata.oil_search_effect_key",
+            );
+            if (! array_key_exists($effectKey, $effects)) {
+                throw new DomainException(
+                    "{$commandPath}.metadata.oil_search_effect_key references missing command random effect {$effectKey}.",
+                );
+            }
+            if ($effectKey !== 'seabed_oil_search') {
+                throw new DomainException(
+                    "{$commandPath}.metadata.oil_search_effect_key must reference the validated seabed_oil_search effect.",
+                );
+            }
+            break;
+        }
 
         if (array_key_exists('seabed_oil_search', $effects)) {
             $oilPath = "{$path}.command_random_effects.seabed_oil_search";
