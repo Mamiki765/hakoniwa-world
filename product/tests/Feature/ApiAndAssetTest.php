@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
-use App\Application\OceanWorldGenerator;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\NationResource;
@@ -13,10 +12,12 @@ use App\Models\User;
 use App\Services\AssetManifestResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class ApiAndAssetTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_api_requires_auth_and_never_exposes_provider_user_id(): void
@@ -31,7 +32,7 @@ class ApiAndAssetTest extends TestCase
 
     public function test_xy_chunk_coordinates_and_nation_endpoints(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $mapSpace = MapSpace::query()->firstOrFail();
         DB::statement("SELECT setval(pg_get_serial_sequence('nations', 'id'), 18, false)");

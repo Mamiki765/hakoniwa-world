@@ -6,7 +6,6 @@ use App\Application\CompleteTurnEngine;
 use App\Application\DisasterTurnService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\DeterministicRandomStream;
@@ -31,10 +30,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class DisasterAndOilTurnTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     /** @var list<string> */
@@ -45,7 +46,8 @@ class DisasterAndOilTurnTest extends TestCase
     public function test_each_global_disaster_applies_its_normal_cell_contract_at_a_fixed_center(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('通常災害国');
-        $target = $this->cellAt($space, 30, 30);
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
         $cases = [
             'earthquake' => ['plain', 'city', 10_000, 'wasteland', $nation->id],
             'tsunami' => ['plain', 'factory', 0, 'wasteland', $nation->id],
@@ -58,7 +60,7 @@ class DisasterAndOilTurnTest extends TestCase
         foreach ($cases as $key => [$terrain, $facility, $population, $expectedTerrain, $expectedOwner]) {
             $this->setCell($target, $terrain, $facility, $nation->id, $population);
             $ruleset = $this->forceGlobal($ruleset, $key);
-            $seed = $this->seedForCenter($this->centerLabel($key), 30, 30);
+            $seed = $this->seedForCenter($this->centerLabel($key), $center->x, $center->y, $space);
             [$context, $run] = $this->context($world, $ruleset, $seed, [$nation->id]);
 
             $result = app(DisasterTurnService::class)->executeGlobal($context);
@@ -72,8 +74,8 @@ class DisasterAndOilTurnTest extends TestCase
                 ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count(), $key);
             $metadata = $this->event($run, 'disaster.triggered');
             $this->assertSame($key, $metadata['disaster_key']);
-            $this->assertSame(30, $metadata['center_x']);
-            $this->assertSame(30, $metadata['center_y']);
+            $this->assertSame($center->x, $metadata['center_x']);
+            $this->assertSame($center->y, $metadata['center_y']);
         }
     }
 
@@ -87,7 +89,7 @@ class DisasterAndOilTurnTest extends TestCase
         [$context] = $this->context(
             $world,
             $ruleset,
-            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER, 0, 0),
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER, 0, 0, $space),
             [$nation->id],
         );
 
@@ -97,10 +99,11 @@ class DisasterAndOilTurnTest extends TestCase
         foreach ([[1, 0], [0, 1], [1, 1]] as [$x, $y]) {
             $this->assertSame('shallow', $this->cellAt($space, $x, $y)->terrain()->value('key'));
         }
-        $this->assertSame(3_600, MapCell::query()->where('map_space_id', $space->id)->count());
+        $bounds = $this->boundsFor($world);
+        $this->assertSame($bounds->cellCount(), MapCell::query()->where('map_space_id', $space->id)->count());
         $this->assertFalse(MapCell::query()->where('map_space_id', $space->id)
             ->where(fn ($query) => $query->where('x', '<', 0)->orWhere('y', '<', 0)
-                ->orWhere('x', '>', 59)->orWhere('y', '>', 59))->exists());
+                ->orWhere('x', '>', $bounds->maxX)->orWhere('y', '>', $bounds->maxY))->exists());
         $this->assertSame(
             [
                 GridCoordinate::EAST => [1, 0],
@@ -138,6 +141,7 @@ class DisasterAndOilTurnTest extends TestCase
     {
         [$world, $nation, $ruleset] = $this->worldAndNation('首都災害国');
         $capitalRecord = $nation->capital()->firstOrFail();
+        $space = $this->surfaceMapSpace($world);
         $capital = $capitalRecord->cell()->with(['terrain', 'facility'])->firstOrFail();
         $capital->update(['population' => 10_000]);
         $identity = [
@@ -161,7 +165,7 @@ class DisasterAndOilTurnTest extends TestCase
             [$context] = $this->context(
                 $world,
                 $ruleset,
-                $this->seedForCenter($this->centerLabel($key), $capital->x, $capital->y),
+                $this->seedForCenter($this->centerLabel($key), $capital->x, $capital->y, $space),
                 [$nation->id],
             );
             app(DisasterTurnService::class)->executeGlobal($context);
@@ -185,7 +189,7 @@ class DisasterAndOilTurnTest extends TestCase
         [$minimumContext, $minimumRun] = $this->context(
             $world,
             $ruleset,
-            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER, $capital->x, $capital->y),
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER, $capital->x, $capital->y, $space),
             [$nation->id],
         );
         app(DisasterTurnService::class)->executeGlobal($minimumContext);
@@ -202,8 +206,9 @@ class DisasterAndOilTurnTest extends TestCase
         $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
             $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
         });
-        $factory = $this->cellAt($space, 30, 30);
-        $forest = $this->cellAt($space, 31, 30);
+        $center = $this->boundsFor($world)->center();
+        $factory = $this->cellAt($space, $center->x, $center->y);
+        $forest = $this->cellAt($space, $center->x + 1, $center->y);
         $this->setCell($factory, 'plain', 'factory', $nation->id, 0);
         $this->setCell($forest, 'forest', null, $nation->id, 0);
         [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'fire-protection'), [$nation->id]);
@@ -239,7 +244,8 @@ class DisasterAndOilTurnTest extends TestCase
         $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
             $settings['turn_processing']['oil_field']['depletion_probability'] = ['numerator' => 1, 'denominator' => 1];
         });
-        $oil = $this->cellAt($space, 30, 30);
+        $center = $this->boundsFor($world)->center();
+        $oil = $this->cellAt($space, $center->x, $center->y);
         $this->setCell($oil, 'sea', 'seabed_oil_field', $nation->id, 0);
         $nation->update(['money' => 9_500]);
         $seed = hash('sha256', 'oil-rollback-replay');
@@ -342,7 +348,7 @@ class DisasterAndOilTurnTest extends TestCase
     /** @return array{World, Nation, RulesetVersion, MapSpace, User} */
     private function worldAndNation(string $name): array
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, $name);
         $ruleset = $world->rulesetVersion()->firstOrFail();
@@ -460,12 +466,13 @@ class DisasterAndOilTurnTest extends TestCase
         };
     }
 
-    private function seedForCenter(string $label, int $x, int $y): string
+    private function seedForCenter(string $label, int $x, int $y, MapSpace $space): string
     {
         for ($candidate = 0; $candidate < 100_000; $candidate++) {
             $seed = hash('sha256', "{$label}:{$x}:{$y}:{$candidate}");
             $stream = (new TurnRandomStreamFactory($seed))->stream($label);
-            if ($stream->integer(0, 59) === $x && $stream->integer(0, 59) === $y) {
+            if ($stream->integer($space->min_x, $space->max_x) === $x
+                && $stream->integer($space->min_y, $space->max_y) === $y) {
                 return $seed;
             }
         }

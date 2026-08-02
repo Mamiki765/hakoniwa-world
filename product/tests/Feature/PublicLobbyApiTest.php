@@ -3,21 +3,22 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class PublicLobbyApiTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_guest_can_read_world_summary_rankings_and_safe_public_events(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $firstUser = User::factory()->create();
         $first = app(NationCreationService::class)->create($firstUser, $world, '第一国');
         $second = app(NationCreationService::class)->create(User::factory()->create(), $world, '第二国');
@@ -116,7 +117,7 @@ class PublicLobbyApiTest extends TestCase
 
     public function test_public_events_have_an_empty_boundary_when_nothing_is_publishable(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
 
         $this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()
@@ -125,7 +126,7 @@ class PublicLobbyApiTest extends TestCase
 
     public function test_guest_nation_preview_uses_viewer_safe_cells_and_never_leaks_exact_money(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $owner = User::factory()->create();
         $nation = app(NationCreationService::class)->create($owner, $world, '秘匿国');
         $nation->update(['money' => 62728]);

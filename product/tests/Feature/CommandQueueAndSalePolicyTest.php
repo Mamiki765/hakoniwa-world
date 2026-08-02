@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
 use App\Models\FacilityDefinition;
@@ -19,10 +18,12 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class CommandQueueAndSalePolicyTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_queue_read_validates_ruleset_without_locking_the_shared_world(): void
@@ -558,7 +559,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
     /** @return array{User, Nation, MapSpace} */
     private function nation(string $name): array
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, $name);
 

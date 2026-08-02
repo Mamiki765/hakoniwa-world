@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Application\PlayerIslandEventService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -28,15 +27,17 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class DomesticCommandExecutionTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_domestic_commands_revalidate_mutate_queue_and_honor_turn_consumption(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         [$firstUser, $first] = $this->createNation($world, '開発一号');
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         $first->update(['money' => 2_000]);
@@ -129,7 +130,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_terrain_commands_cannot_remove_the_nation_capital(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, 'Capital guard');
         $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
@@ -161,7 +162,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_water_commands_reject_targets_owned_by_another_nation(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, 'Water command owner');
         [, $rival] = $this->createNation($world, 'Water command rival');
@@ -188,7 +189,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_reclaim_applies_sea_and_shallow_steps_in_queue_order_and_charges_each_success(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, '埋め立て順序国');
         $nation->update(['money' => 1_000]);
@@ -227,7 +228,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_shallow_reclaim_spreads_to_the_six_direction_water_neighbors_and_marks_their_chunks(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, '埋め立て波及国');
         $nation->update(['money' => 1_000]);
@@ -274,7 +275,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_reclaim_neighbor_spread_preserves_owned_water_and_seabed_oil_fields(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, 'Reclaim protection owner');
         [, $rival] = $this->createNation($world, 'Reclaim protection rival');
@@ -315,7 +316,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_reclaim_at_world_corner_ignores_out_of_bounds_neighbors(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, '埋め立て境界国');
         $nation->update(['money' => 1_000]);
@@ -333,7 +334,10 @@ class DomesticCommandExecutionTest extends TestCase
             $this->context($world, [$nation->id], str_repeat('f', 64)),
         );
 
-        $this->assertSame(3_600, MapCell::query()->where('map_space_id', $space->id)->count());
+        $this->assertSame(
+            $this->boundsFor($world)->cellCount(),
+            MapCell::query()->where('map_space_id', $space->id)->count(),
+        );
         $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
         foreach (array_slice($neighbors, 1) as $neighbor) {
             $this->assertSame('shallow', $neighbor->fresh()->terrain()->value('key'));
@@ -346,7 +350,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_pr11_reclaim_and_deep_sea_oil_keep_their_previous_execution_contracts(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, 'PR11 command compatibility');
         $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
@@ -395,7 +399,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_seabed_oil_search_is_deterministic_spends_the_investment_and_is_not_applied_twice(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, '海底油田国');
         $target = $this->remoteWaterTarget($space);
@@ -467,7 +471,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_seabed_oil_search_failure_and_invalid_execution_have_explicit_cost_and_queue_results(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, '海底油田失敗国');
         $target = $this->remoteWaterTarget($space);
@@ -500,7 +504,7 @@ class DomesticCommandExecutionTest extends TestCase
 
     public function test_buried_treasure_uses_exact_boundaries_capacity_replay_and_rollback(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         [$user, $nation] = $this->createNation($world, '埋蔵検証');
         $target = $this->ownedTerrain($nation, 'forest');

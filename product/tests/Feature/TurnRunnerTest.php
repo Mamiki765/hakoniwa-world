@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
 use App\Domain\Turn\ScaffoldTurnPhase;
 use App\Domain\Turn\TurnAlreadyAppliedException;
@@ -25,10 +24,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class TurnRunnerTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     private const SEED = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -38,7 +39,7 @@ class TurnRunnerTest extends TestCase
 
     public function test_dry_run_records_snapshot_without_changing_game_state_or_ruleset(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $rulesetSnapshot = $ruleset->settings;
         $worldSnapshot = $world->only(['name', 'current_turn', 'ruleset_version_id']);
@@ -58,7 +59,7 @@ class TurnRunnerTest extends TestCase
 
     public function test_complete_default_pipeline_commits_and_advances_the_world_turn(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
 
         $run = app(TurnRunner::class)->run($world);
 
@@ -79,7 +80,7 @@ class TurnRunnerTest extends TestCase
         array $phaseKeys,
         string $diagnosticKey,
     ): void {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $observed = [];
         $pipeline = $this->pipelineForKeys(
             $phaseKeys,
@@ -126,7 +127,7 @@ class TurnRunnerTest extends TestCase
 
     public function test_canonical_phase_cannot_be_downgraded_to_optional(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $observed = [];
         $pipeline = new TurnPipeline(array_map(
             static fn (string $key): TurnPhase => $key === 'global_disasters'
@@ -152,7 +153,7 @@ class TurnRunnerTest extends TestCase
 
     public function test_complete_pipeline_runs_in_source_order_and_advances_only_after_all_phases(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $observed = [];
         $runner = $this->runner($this->pipeline(function (TurnContext $context, string $phase) use (&$observed): void {
             $this->assertSame(1, $context->world->current_turn);
@@ -174,7 +175,7 @@ class TurnRunnerTest extends TestCase
 
     public function test_phase_failure_rolls_back_state_records_failure_and_retries_same_run_and_seed(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $originalName = $world->name;
         $failing = $this->pipeline(function (TurnContext $context, string $phase): void {
             if ($phase !== 'development_commands') {
@@ -209,7 +210,7 @@ class TurnRunnerTest extends TestCase
 
     public function test_retry_reconstructs_random_orders_and_discards_failed_attempt_state(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         foreach (['One', 'Two', 'Three', 'Four'] as $index => $name) {
             Nation::query()->create([
                 'world_id' => $world->id, 'nation_number' => $index + 1, 'name' => $name,
@@ -264,7 +265,7 @@ class TurnRunnerTest extends TestCase
 
     public function test_completed_world_target_cannot_be_applied_twice(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $runner = $this->runner($this->pipeline());
         $runner->run($world);
         $world->fresh()->update(['current_turn' => 1]);
@@ -279,7 +280,7 @@ class TurnRunnerTest extends TestCase
             $this->markTestSkipped('PostgreSQL-specific advisory lock test.');
         }
 
-        $first = app(OceanWorldGenerator::class)->initialize();
+        $first = $this->lightweightWorld();
         $second = World::query()->create([
             'key' => 'second-world',
             'name' => 'Second World',
@@ -317,7 +318,7 @@ class TurnRunnerTest extends TestCase
 
     public function test_artisan_manual_and_cron_invocations_use_the_same_runner_and_status_history(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
 
         $this->artisan('hakoniwa:turn:run', [
             '--world' => $world->key,

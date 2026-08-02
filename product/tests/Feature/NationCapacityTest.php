@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\CapacityModifier;
 use App\Domain\Economy\NationCapacityResolver;
@@ -13,10 +12,12 @@ use App\Models\ResourceDefinition;
 use App\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class NationCapacityTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_resolver_uses_published_base_capacities_without_modifiers(): void
@@ -114,7 +115,7 @@ class NationCapacityTest extends TestCase
     /** @return array{User, Nation} */
     private function nation(string $name): array
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, $name);
 

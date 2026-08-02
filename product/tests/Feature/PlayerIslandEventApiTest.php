@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\User;
@@ -11,10 +10,12 @@ use App\Models\World;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class PlayerIslandEventApiTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_owner_receives_only_allowlisted_projected_events_for_their_nation_and_world(): void
@@ -284,7 +285,7 @@ class PlayerIslandEventApiTest extends TestCase
     /** @return array{World, User, Nation} */
     private function nation(string $name, ?World $world = null): array
     {
-        $world ??= app(OceanWorldGenerator::class)->initialize();
+        $world ??= $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, $name);
 

@@ -3,15 +3,16 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesForwardOnlyDatabaseMigrations;
 use Tests\TestCase;
 
 class PostgresRegistrationLockTest extends TestCase
 {
+    use CreatesTestWorlds;
     use DatabaseMigrations, UsesForwardOnlyDatabaseMigrations {
         UsesForwardOnlyDatabaseMigrations::runDatabaseMigrations insteadof DatabaseMigrations;
         UsesForwardOnlyDatabaseMigrations::refreshTestDatabase insteadof DatabaseMigrations;
@@ -50,7 +51,7 @@ class PostgresRegistrationLockTest extends TestCase
 
     public function test_second_connection_cannot_acquire_the_same_world_registration_lock(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $primary = DB::connection($this->primaryConnection);
         $primary->beginTransaction();
         $primary->select('SELECT pg_advisory_xact_lock(?, ?)', [NationCreationService::REGISTRATION_LOCK_NAMESPACE, $world->id]);
@@ -69,7 +70,7 @@ class PostgresRegistrationLockTest extends TestCase
 
     public function test_serialized_concurrent_registration_allocates_distinct_per_world_numbers(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $primary = DB::connection($this->primaryConnection);
         $probe = DB::connection(self::PROBE_CONNECTION);
         $now = now();
