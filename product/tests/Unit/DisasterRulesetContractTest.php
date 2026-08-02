@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Application\CompleteTurnEngine;
 use App\Application\DisasterTurnService;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
+use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -176,6 +177,34 @@ class DisasterRulesetContractTest extends TestCase
             } catch (DomainException $exception) {
                 $this->assertStringContainsString(
                     "{$key}.internal_denominator must be at most {$maximum}",
+                    $exception->getMessage(),
+                );
+            }
+        }
+    }
+
+    public function test_disaster_center_padding_keeps_initial_draw_bounds_in_the_stream_range(): void
+    {
+        $published = config('hakoniwa.published_rulesets');
+        $this->assertIsArray($published);
+        $maximum = DeterministicRandomStream::MAXIMUM_INTEGER - 59;
+
+        $boundary = $published['roadmap-pr15-v1'];
+        foreach (['earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption'] as $key) {
+            $boundary['turn_processing']['disasters'][$key]['center_padding'] = $maximum;
+        }
+        $this->assertSame('roadmap-pr15-v1', app(RulesetAuthoringValidator::class)->validate($boundary)['key']);
+
+        foreach (['earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption'] as $key) {
+            $settings = $published['roadmap-pr15-v1'];
+            $settings['turn_processing']['disasters'][$key]['center_padding'] = $maximum + 1;
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail("{$key} accepted center padding outside the deterministic stream range.");
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString(
+                    "{$key}.center_padding must be at most {$maximum}",
                     $exception->getMessage(),
                 );
             }

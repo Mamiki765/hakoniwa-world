@@ -9,6 +9,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -25,6 +26,7 @@ use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -114,6 +116,22 @@ class DisasterAndOilTurnTest extends TestCase
                 return [$direction => [$neighbor->x, $neighbor->y]];
             })->all(),
         );
+    }
+
+    public function test_expanded_world_center_bounds_must_fit_the_deterministic_stream_range(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('拡張境界国');
+        $ruleset = $this->forceGlobal($ruleset, 'earthquake');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['earthquake']['center_padding'] = 1;
+        });
+        $space->update(['max_x' => DeterministicRandomStream::MAXIMUM_INTEGER]);
+        [$context] = $this->context($world, $ruleset, hash('sha256', 'expanded-center-bound'), [$nation->id]);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Disaster center draw bounds must fit signed 32-bit integers after World expansion.');
+
+        app(DisasterTurnService::class)->executeGlobal($context);
     }
 
     public function test_capital_damage_is_sequential_clamped_and_identity_preserving(): void

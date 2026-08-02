@@ -7,6 +7,7 @@ use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Turn\DeterministicRandomStream;
 use DomainException;
 use JsonException;
 
@@ -1062,7 +1063,18 @@ final class RulesetAuthoringValidator
             $event = $this->map($disasters[$key], $eventPath);
             $this->requireKeys($event, ['probability', 'center_padding', 'radius'], $eventPath);
             $this->probability($event['probability'], "{$eventPath}.probability");
-            $this->integer($event['center_padding'], "{$eventPath}.center_padding", 0);
+            $centerPadding = $this->integer($event['center_padding'], "{$eventPath}.center_padding", 0);
+            $maximumCenterPadding = min(
+                self::INITIAL_X_MIN - DeterministicRandomStream::MINIMUM_INTEGER,
+                DeterministicRandomStream::MAXIMUM_INTEGER - self::INITIAL_X_MAX,
+                self::INITIAL_Y_MIN - DeterministicRandomStream::MINIMUM_INTEGER,
+                DeterministicRandomStream::MAXIMUM_INTEGER - self::INITIAL_Y_MAX,
+            );
+            if ($centerPadding > $maximumCenterPadding) {
+                throw new DomainException(
+                    "{$eventPath}.center_padding must be at most {$maximumCenterPadding} so initial center draws fit signed 32-bit bounds.",
+                );
+            }
             $this->integer($event['radius'], "{$eventPath}.radius", 0);
         }
 

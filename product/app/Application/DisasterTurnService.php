@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -606,11 +607,21 @@ final class DisasterTurnService
         int $padding,
         string $label,
     ): GridCoordinate {
+        $minimumX = $space->min_x - $padding;
+        $maximumX = $space->max_x + $padding;
+        $minimumY = $space->min_y - $padding;
+        $maximumY = $space->max_y + $padding;
+        if ($minimumX < DeterministicRandomStream::MINIMUM_INTEGER
+            || $maximumX > DeterministicRandomStream::MAXIMUM_INTEGER
+            || $minimumY < DeterministicRandomStream::MINIMUM_INTEGER
+            || $maximumY > DeterministicRandomStream::MAXIMUM_INTEGER) {
+            throw new DomainException('Disaster center draw bounds must fit signed 32-bit integers after World expansion.');
+        }
         $stream = $context->random->stream($label);
 
         return new GridCoordinate(
-            $stream->integer($space->min_x - $padding, $space->max_x + $padding),
-            $stream->integer($space->min_y - $padding, $space->max_y + $padding),
+            $stream->integer($minimumX, $maximumX),
+            $stream->integer($minimumY, $maximumY),
         );
     }
 }
