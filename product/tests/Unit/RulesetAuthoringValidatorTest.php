@@ -215,6 +215,35 @@ class RulesetAuthoringValidatorTest extends TestCase
         }
     }
 
+    public function test_pr14_seabed_oil_command_requires_a_positive_base_cost(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        foreach ($settings['command_definitions'] as &$definition) {
+            if ($definition['key'] === 'excavate') {
+                $definition['cost_money'] = 0;
+            }
+        }
+        unset($definition);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('cost_money must be at least 1');
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_pr14_seabed_oil_draw_denominator_fits_the_deterministic_stream_range(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['draw_denominator'] = 2_147_483_648;
+
+        $this->assertSame('roadmap-pr14-v1', $validator->validate($settings)['key']);
+
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['draw_denominator'] = 2_147_483_649;
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('draw_denominator must be at most 2147483648');
+        $validator->validate($settings);
+    }
+
     public function test_command_queue_authoring_safety_maximum_is_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');

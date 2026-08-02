@@ -24,6 +24,8 @@ final class RulesetAuthoringValidator
 
     private const POSTGRESQL_INTEGER_MAX = 2_147_483_647;
 
+    private const DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX = 2_147_483_648;
+
     private const PRODUCTION_DECIMAL_INTEGER_DIGITS = 12;
 
     private const PRODUCTION_DECIMAL_SCALE = 4;
@@ -905,6 +907,7 @@ final class RulesetAuthoringValidator
                     "{$commandPath}.metadata.oil_search_effect_key must reference the validated seabed_oil_search effect.",
                 );
             }
+            $this->integer($definition['cost_money'] ?? null, "{$commandPath}.cost_money", 1);
             break;
         }
 
@@ -931,6 +934,11 @@ final class RulesetAuthoringValidator
                 );
             }
             $denominator = $this->integer($oil['draw_denominator'], "{$oilPath}.draw_denominator", 1);
+            if ($denominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+                throw new DomainException(
+                    "{$oilPath}.draw_denominator must be at most ".self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX.'.',
+                );
+            }
             $thresholdPerUnit = $this->integer(
                 $oil['success_threshold_per_cost_unit'],
                 "{$oilPath}.success_threshold_per_cost_unit",
