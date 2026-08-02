@@ -162,6 +162,16 @@ class RulesetAuthoringValidatorTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
+    public function test_pr14_seabed_oil_contract_rejects_a_facility_that_is_not_buildable_on_sea(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['facility_key'] = 'farm';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('must reference a facility buildable on sea terrain');
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     public function test_command_queue_authoring_safety_maximum_is_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');

@@ -876,7 +876,20 @@ final class RulesetAuthoringValidator
                 ['facility_key', 'draw_denominator', 'success_threshold_per_cost_unit'],
                 $oilPath,
             );
-            $this->reference($oil['facility_key'], $facilityKeys, "{$oilPath}.facility_key");
+            $facilityKey = $this->reference($oil['facility_key'], $facilityKeys, "{$oilPath}.facility_key");
+            $facility = $this->map(
+                $settings['facility_definitions'][$facilityKey],
+                "ruleset.facility_definitions.{$facilityKey}",
+            );
+            $buildableTerrainKeys = $this->list(
+                $facility['buildable_terrain_keys'] ?? null,
+                "ruleset.facility_definitions.{$facilityKey}.buildable_terrain_keys",
+            );
+            if (! in_array('sea', $buildableTerrainKeys, true)) {
+                throw new DomainException(
+                    "{$oilPath}.facility_key must reference a facility buildable on sea terrain.",
+                );
+            }
             $denominator = $this->integer($oil['draw_denominator'], "{$oilPath}.draw_denominator", 1);
             $thresholdPerUnit = $this->integer(
                 $oil['success_threshold_per_cost_unit'],
