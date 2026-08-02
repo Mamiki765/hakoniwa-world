@@ -14,6 +14,8 @@ final class TurnRandomStreamFactory
 
     public const LAND_CLEAR_BURIED_TREASURE = 'development_commands:land_clear:buried_treasure';
 
+    public const SEABED_OIL_SEARCH = 'development_commands:excavate:seabed_oil_search';
+
     public const SETTLEMENT_APPEARANCE = 'process_cells:settlement_appearance';
 
     public const POPULATION_GROWTH = 'process_cells:population_growth';

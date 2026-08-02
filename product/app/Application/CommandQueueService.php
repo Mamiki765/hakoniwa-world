@@ -314,6 +314,9 @@ final class CommandQueueService
         }
 
         if (in_array($definition->key, ['reclaim'], true)) {
+            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
+                throw new DomainException('他国所有の水域は埋め立てできません。');
+            }
             if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false)) {
                 throw new DomainException('埋め立て対象の隣に自国領がありません。');
             }
@@ -321,6 +324,12 @@ final class CommandQueueService
             return;
         }
         if ($definition->key === 'excavate' && in_array($terrainKey, ['sea', 'shallow'], true)) {
+            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
+                throw new DomainException('他国所有の水域は掘削できません。');
+            }
+            if ($terrainKey === 'sea' && $cell->facility_definition_id !== null) {
+                throw new DomainException('施設のある海では油田探索できません。');
+            }
             if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 3)) {
                 throw new DomainException('掘削対象の3hex以内に自国領がありません。');
             }

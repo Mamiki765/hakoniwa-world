@@ -88,8 +88,9 @@ final class DomesticCommandExecutor
                     ->firstOrFail();
                 $definition = $item->definition;
                 $before = $this->cellSnapshot($cell);
-                $this->deductCostAndResources($nation, $definition);
-                $this->apply($context, $nation, $item, $definition, $cell);
+                $executionCost = $this->executionCost($nation, $item, $definition, $cell);
+                $this->deductCostAndResources($nation, $definition, $executionCost);
+                $this->apply($context, $nation, $item, $definition, $cell, $executionCost);
                 $after = $this->cellSnapshot($cell->fresh(['terrain', 'facility']));
 
                 $consumedTurn = (bool) ($definition->metadata['consumes_turn'] ?? true);
@@ -131,7 +132,7 @@ final class DomesticCommandExecutor
                 $this->events->record($context, 'command.success', $item, [
                     'nation_id' => $nation->id,
                     'command_key' => $definition->key,
-                    'cost_money' => $definition->cost_money,
+                    'cost_money' => $executionCost,
                     'consumes_turn' => $consumedTurn,
                     'remaining_quantity' => $remainingQuantity,
                     'before' => $before,
@@ -205,8 +206,11 @@ final class DomesticCommandExecutor
             if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
                 return ['code' => 'ownership_mismatch', 'message' => 'Excavation target has no owned cell within radius three.'];
             }
-            if ($cell->terrain->key === 'sea') {
+            if ($cell->terrain->key === 'sea' && ! $this->isSeabedOilSearch($definition, $cell)) {
                 return ['code' => 'oil_search_deferred', 'message' => 'Deep-sea oil search remains deferred.'];
+            }
+            if ($cell->terrain->key === 'sea' && $cell->facility_definition_id !== null) {
+                return ['code' => 'facility_not_empty', 'message' => 'Deep-sea oil search requires an empty cell.'];
             }
         } elseif ($cell->owner_nation_id !== $nation->id) {
             return ['code' => 'ownership_mismatch', 'message' => 'Target cell is no longer owned by the Nation.'];
@@ -234,13 +238,36 @@ final class DomesticCommandExecutor
             && $cell->facility?->key === $definition->result_facility_key;
     }
 
-    private function deductCostAndResources(Nation $nation, CommandDefinition $definition): void
-    {
-        if ((int) $nation->money < $definition->cost_money) {
+    private function executionCost(
+        Nation $nation,
+        NationCommandQueueItem $item,
+        CommandDefinition $definition,
+        MapCell $cell,
+    ): int {
+        if (! $this->isSeabedOilSearch($definition, $cell)) {
+            return $definition->cost_money;
+        }
+
+        if ($definition->cost_money < 1) {
+            throw new DomainException('Seabed oil search requires a positive base cost.');
+        }
+
+        $availableUnits = intdiv((int) $nation->money, $definition->cost_money);
+        $investedUnits = min($item->quantity, $availableUnits);
+
+        return $investedUnits * $definition->cost_money;
+    }
+
+    private function deductCostAndResources(
+        Nation $nation,
+        CommandDefinition $definition,
+        int $executionCost,
+    ): void {
+        if ((int) $nation->money < $executionCost) {
             throw new DomainException('Command money validation changed while the World transaction was locked.');
         }
-        if ($definition->cost_money > 0) {
-            $nation->decrement('money', $definition->cost_money);
+        if ($executionCost > 0) {
+            $nation->decrement('money', $executionCost);
             $nation->refresh();
         }
         foreach ($definition->required_resources as $resourceKey => $required) {
@@ -262,10 +289,21 @@ final class DomesticCommandExecutor
         NationCommandQueueItem $item,
         CommandDefinition $definition,
         MapCell $cell,
+        int $executionCost,
     ): void {
+        if ($definition->key === 'reclaim') {
+            $this->applyReclaim($context, $nation, $definition, $cell);
+
+            return;
+        }
+        if ($this->isSeabedOilSearch($definition, $cell)) {
+            $this->applySeabedOilSearch($context, $nation, $item, $definition, $cell, $executionCost);
+
+            return;
+        }
+
         $terrainKey = match ($definition->key) {
             'land_clear', 'land_level' => 'plain',
-            'reclaim' => $cell->terrain->key === 'sea' ? 'shallow' : 'wasteland',
             'excavate' => match ($cell->terrain->key) {
                 'shallow' => 'sea',
                 'mountain' => 'wasteland',
@@ -281,9 +319,6 @@ final class DomesticCommandExecutor
             $this->cells->setFacility($cell, null);
             $terrain = TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail();
             $this->cells->transitionTerrain($cell, $terrain);
-            if ($definition->key === 'reclaim') {
-                $cell->owner_nation_id = $nation->id;
-            }
             $cell->population = 0;
             $cell->version++;
             $cell->save();
@@ -332,6 +367,183 @@ final class DomesticCommandExecutor
             'scale_increment' => $expanded ? $facility->scale_increment : null,
             'x' => $cell->x,
             'y' => $cell->y,
+        ]);
+    }
+
+    private function applyReclaim(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $cell,
+    ): void {
+        $wasShallow = $cell->terrain->key === 'shallow';
+        $this->changeReclaimCell(
+            $context,
+            $nation,
+            $cell,
+            $wasShallow ? 'wasteland' : 'shallow',
+            $wasShallow ? $nation->id : null,
+            false,
+        );
+        if (! $wasShallow) {
+            return;
+        }
+        if (! array_key_exists('adjacent_water_spread_maximum', $definition->metadata)) {
+            return;
+        }
+
+        $neighbors = $this->adjacentCells($cell);
+        $water = array_values(array_filter(
+            $neighbors,
+            static fn (MapCell $neighbor): bool => in_array($neighbor->terrain->key, ['sea', 'shallow'], true),
+        ));
+        $spreadMaximum = $definition->metadata['adjacent_water_spread_maximum'] ?? null;
+        if (! is_int($spreadMaximum) || $spreadMaximum < 0) {
+            throw new DomainException('Reclaim adjacent water spread settings are invalid.');
+        }
+        if (count($water) > $spreadMaximum) {
+            return;
+        }
+
+        $spreadCandidates = array_filter(
+            $water,
+            static fn (MapCell $neighbor): bool => $neighbor->owner_nation_id === null
+                && $neighbor->facility_definition_id === null,
+        );
+        foreach ($spreadCandidates as $neighbor) {
+            $this->changeReclaimCell($context, $nation, $neighbor, 'shallow', null, true);
+        }
+    }
+
+    private function changeReclaimCell(
+        TurnContext $context,
+        Nation $nation,
+        MapCell $cell,
+        string $terrainKey,
+        ?int $ownerNationId,
+        bool $adjacentEffect,
+    ): void {
+        $oldTerrain = $cell->terrain->key;
+        $oldFacility = $cell->facility?->key;
+        $oldOwner = $cell->owner_nation_id;
+        if ($oldTerrain === $terrainKey
+            && $oldFacility === null
+            && $oldOwner === $ownerNationId
+            && $cell->population === 0) {
+            return;
+        }
+
+        $this->cells->setFacility($cell, null);
+        $terrain = TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail();
+        $this->cells->transitionTerrain($cell, $terrain);
+        $cell->owner_nation_id = $ownerNationId;
+        $cell->population = 0;
+        $cell->version++;
+        $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+        $this->events->record($context, 'terrain.changed', $cell, [
+            'nation_id' => $nation->id,
+            'command_key' => 'reclaim',
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'from_terrain_key' => $oldTerrain,
+            'to_terrain_key' => $terrainKey,
+            'from_owner_nation_id' => $oldOwner,
+            'to_owner_nation_id' => $ownerNationId,
+            'removed_facility_key' => $oldFacility,
+            'adjacent_effect' => $adjacentEffect,
+        ]);
+    }
+
+    /** @return list<MapCell> */
+    private function adjacentCells(MapCell $cell): array
+    {
+        $origin = new GridCoordinate($cell->x, $cell->y);
+        $neighbors = [];
+        foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
+            $coordinate = $origin->neighbor($direction);
+            $neighbor = MapCell::query()
+                ->where('map_space_id', $cell->map_space_id)
+                ->where('x', $coordinate->x)
+                ->where('y', $coordinate->y)
+                ->lockForUpdate()
+                ->with(['terrain', 'facility'])
+                ->first();
+            if ($neighbor !== null) {
+                $neighbors[] = $neighbor;
+            }
+        }
+
+        return $neighbors;
+    }
+
+    private function isSeabedOilSearch(CommandDefinition $definition, MapCell $cell): bool
+    {
+        $effectKey = $definition->metadata['oil_search_effect_key'] ?? null;
+
+        return $definition->key === 'excavate'
+            && $cell->terrain->key === 'sea'
+            && is_string($effectKey)
+            && $effectKey !== '';
+    }
+
+    private function applySeabedOilSearch(
+        TurnContext $context,
+        Nation $nation,
+        NationCommandQueueItem $item,
+        CommandDefinition $definition,
+        MapCell $cell,
+        int $executionCost,
+    ): void {
+        if ($definition->cost_money < 1) {
+            throw new DomainException('Seabed oil search requires a positive base cost.');
+        }
+        $effectKey = $definition->metadata['oil_search_effect_key'] ?? null;
+        $effects = $context->ruleset->settings['turn_processing']['command_random_effects'] ?? null;
+        $settings = is_string($effectKey) && is_array($effects) ? ($effects[$effectKey] ?? null) : null;
+        if (! is_array($settings)) {
+            throw new DomainException('Seabed oil search rules are missing from the active ruleset.');
+        }
+        $denominator = $settings['draw_denominator'] ?? null;
+        $thresholdPerCostUnit = $settings['success_threshold_per_cost_unit'] ?? null;
+        $facilityKey = $settings['facility_key'] ?? null;
+        if (! is_int($denominator) || $denominator < 1
+            || ! is_int($thresholdPerCostUnit) || $thresholdPerCostUnit < 1
+            || ! is_string($facilityKey) || $facilityKey === '') {
+            throw new DomainException('Seabed oil search rules are invalid.');
+        }
+
+        $costUnits = intdiv($executionCost, $definition->cost_money);
+        $threshold = min($denominator, $costUnits * $thresholdPerCostUnit);
+        $draw = $context->random->stream(TurnRandomStreamFactory::SEABED_OIL_SEARCH)
+            ->integer(0, $denominator - 1);
+        $found = $draw < $threshold;
+        if ($found) {
+            $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
+            if (! in_array('sea', $facility->buildable_terrain_keys, true)) {
+                throw new DomainException('Seabed oil field facility is not buildable on sea terrain.');
+            }
+            $this->cells->setFacility($cell, $facility);
+            $cell->owner_nation_id = $nation->id;
+            $cell->population = 0;
+            $cell->version++;
+            $cell->save();
+            $context->state->markMapChunkChanged($cell->map_chunk_id);
+        }
+
+        $this->events->record($context, 'command.seabed_oil_search', $cell, [
+            'nation_id' => $nation->id,
+            'queue_item_id' => $item->id,
+            'command_key' => $definition->key,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'spent_money' => $executionCost,
+            'cost_units' => $costUnits,
+            'draw' => $draw,
+            'success_threshold' => $threshold,
+            'denominator' => $denominator,
+            'found' => $found,
+            'facility_key' => $found ? $facilityKey : null,
         ]);
     }
 
@@ -473,6 +685,7 @@ final class DomesticCommandExecutor
             'population' => $cell->population,
             'facility_scale' => $cell->facility_scale,
             'terrain_quantity' => $cell->terrain_quantity,
+            'owner_nation_id' => $cell->owner_nation_id,
         ];
     }
 }

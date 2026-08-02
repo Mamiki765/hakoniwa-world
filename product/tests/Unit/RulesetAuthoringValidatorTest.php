@@ -139,6 +139,111 @@ class RulesetAuthoringValidatorTest extends TestCase
         $this->assertSame('roadmap-pr11-v1', $validator->validate($pr11)['key']);
     }
 
+    public function test_pr14_seabed_oil_contract_is_valid_and_bounded_by_universal_quantity(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+
+        $this->assertSame('roadmap-pr14-v1', $validator->validate($settings)['key']);
+
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['success_threshold_per_cost_unit'] = 2;
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('maximum quantity threshold cannot exceed draw_denominator');
+        $validator->validate($settings);
+    }
+
+    public function test_pr14_seabed_oil_contract_rejects_an_unknown_facility(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['facility_key'] = 'missing-oil';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('references missing catalog or definition missing-oil');
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_pr14_seabed_oil_contract_rejects_a_facility_that_is_not_buildable_on_sea(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['facility_key'] = 'farm';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('must reference a facility buildable on sea terrain');
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_pr14_reclaim_spread_contract_rejects_invalid_maximum_metadata(): void
+    {
+        foreach (['3', -1] as $invalidMaximum) {
+            $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+            foreach ($settings['command_definitions'] as &$definition) {
+                if ($definition['key'] === 'reclaim') {
+                    $definition['metadata']['adjacent_water_spread_maximum'] = $invalidMaximum;
+                }
+            }
+            unset($definition);
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail('Invalid reclaim spread metadata must be rejected.');
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString(
+                    'metadata.adjacent_water_spread_maximum',
+                    $exception->getMessage(),
+                );
+            }
+        }
+    }
+
+    public function test_pr14_seabed_oil_command_rejects_missing_or_unvalidated_effect_references(): void
+    {
+        foreach (['missing-effect', 'land_clear_buried_treasure'] as $invalidEffectKey) {
+            $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+            foreach ($settings['command_definitions'] as &$definition) {
+                if ($definition['key'] === 'excavate') {
+                    $definition['metadata']['oil_search_effect_key'] = $invalidEffectKey;
+                }
+            }
+            unset($definition);
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail('Invalid seabed oil effect references must be rejected.');
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString('metadata.oil_search_effect_key', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_pr14_seabed_oil_command_requires_a_positive_base_cost(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        foreach ($settings['command_definitions'] as &$definition) {
+            if ($definition['key'] === 'excavate') {
+                $definition['cost_money'] = 0;
+            }
+        }
+        unset($definition);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('cost_money must be at least 1');
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_pr14_seabed_oil_draw_denominator_fits_the_deterministic_stream_range(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['draw_denominator'] = 2_147_483_648;
+
+        $this->assertSame('roadmap-pr14-v1', $validator->validate($settings)['key']);
+
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['draw_denominator'] = 2_147_483_649;
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('draw_denominator must be at most 2147483648');
+        $validator->validate($settings);
+    }
+
     public function test_command_queue_authoring_safety_maximum_is_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');

@@ -24,6 +24,8 @@ final class RulesetAuthoringValidator
 
     private const POSTGRESQL_INTEGER_MAX = 2_147_483_647;
 
+    private const DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX = 2_147_483_648;
+
     private const PRODUCTION_DECIMAL_INTEGER_DIGITS = 12;
 
     private const PRODUCTION_DECIMAL_SCALE = 4;
@@ -509,7 +511,7 @@ final class RulesetAuthoringValidator
                 'target_facility_keys', 'requires_empty_facility', 'cost_money', 'required_resources',
                 'execution_phase', 'result_terrain_key', 'result_facility_key', 'sort_order', 'metadata',
             ], $path);
-            $this->persistedString($definition['key'], "{$path}.key");
+            $commandKey = $this->persistedString($definition['key'], "{$path}.key");
             $this->persistedString($definition['name'], "{$path}.name");
             $this->string($definition['description'], "{$path}.description");
             $this->persistedString($definition['target_type'], "{$path}.target_type");
@@ -529,7 +531,20 @@ final class RulesetAuthoringValidator
                 $this->integer($amount, "{$path}.required_resources.{$resourceKey}", 0);
             }
             $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
-            $this->map($definition['metadata'], "{$path}.metadata");
+            $metadata = $this->map($definition['metadata'], "{$path}.metadata");
+            if ($commandKey === 'reclaim' && array_key_exists('adjacent_water_spread_maximum', $metadata)) {
+                $this->integer(
+                    $metadata['adjacent_water_spread_maximum'],
+                    "{$path}.metadata.adjacent_water_spread_maximum",
+                    0,
+                );
+            }
+            if ($commandKey === 'excavate' && array_key_exists('oil_search_effect_key', $metadata)) {
+                $this->persistedString(
+                    $metadata['oil_search_effect_key'],
+                    "{$path}.metadata.oil_search_effect_key",
+                );
+            }
         }
     }
 
@@ -867,6 +882,80 @@ final class RulesetAuthoringValidator
         $this->probability($treasure['probability'], "{$path}.command_random_effects.land_clear_buried_treasure.probability");
         $rewardMinimum = $this->integer($treasure['reward_minimum_money'], "{$path}.command_random_effects.land_clear_buried_treasure.reward_minimum_money", 0);
         $this->integer($treasure['reward_maximum_money'], "{$path}.command_random_effects.land_clear_buried_treasure.reward_maximum_money", $rewardMinimum);
+
+        foreach ($this->list($settings['command_definitions'], 'ruleset.command_definitions') as $index => $definitionValue) {
+            $commandPath = "ruleset.command_definitions.{$index}";
+            $definition = $this->map($definitionValue, $commandPath);
+            if (($definition['key'] ?? null) !== 'excavate') {
+                continue;
+            }
+            $metadata = $this->map($definition['metadata'] ?? null, "{$commandPath}.metadata");
+            if (! array_key_exists('oil_search_effect_key', $metadata)) {
+                break;
+            }
+            $effectKey = $this->persistedString(
+                $metadata['oil_search_effect_key'],
+                "{$commandPath}.metadata.oil_search_effect_key",
+            );
+            if (! array_key_exists($effectKey, $effects)) {
+                throw new DomainException(
+                    "{$commandPath}.metadata.oil_search_effect_key references missing command random effect {$effectKey}.",
+                );
+            }
+            if ($effectKey !== 'seabed_oil_search') {
+                throw new DomainException(
+                    "{$commandPath}.metadata.oil_search_effect_key must reference the validated seabed_oil_search effect.",
+                );
+            }
+            $this->integer($definition['cost_money'] ?? null, "{$commandPath}.cost_money", 1);
+            break;
+        }
+
+        if (array_key_exists('seabed_oil_search', $effects)) {
+            $oilPath = "{$path}.command_random_effects.seabed_oil_search";
+            $oil = $this->map($effects['seabed_oil_search'], $oilPath);
+            $this->requireKeys(
+                $oil,
+                ['facility_key', 'draw_denominator', 'success_threshold_per_cost_unit'],
+                $oilPath,
+            );
+            $facilityKey = $this->reference($oil['facility_key'], $facilityKeys, "{$oilPath}.facility_key");
+            $facility = $this->map(
+                $settings['facility_definitions'][$facilityKey],
+                "ruleset.facility_definitions.{$facilityKey}",
+            );
+            $buildableTerrainKeys = $this->list(
+                $facility['buildable_terrain_keys'] ?? null,
+                "ruleset.facility_definitions.{$facilityKey}.buildable_terrain_keys",
+            );
+            if (! in_array('sea', $buildableTerrainKeys, true)) {
+                throw new DomainException(
+                    "{$oilPath}.facility_key must reference a facility buildable on sea terrain.",
+                );
+            }
+            $denominator = $this->integer($oil['draw_denominator'], "{$oilPath}.draw_denominator", 1);
+            if ($denominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+                throw new DomainException(
+                    "{$oilPath}.draw_denominator must be at most ".self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX.'.',
+                );
+            }
+            $thresholdPerUnit = $this->integer(
+                $oil['success_threshold_per_cost_unit'],
+                "{$oilPath}.success_threshold_per_cost_unit",
+                1,
+            );
+            $quantity = $this->map($settings['development_plan_quantity'], 'ruleset.development_plan_quantity');
+            $maximumQuantity = $this->integer(
+                $quantity['maximum'] ?? null,
+                'ruleset.development_plan_quantity.maximum',
+                1,
+            );
+            if ($maximumQuantity * $thresholdPerUnit > $denominator) {
+                throw new DomainException(
+                    "{$oilPath} maximum quantity threshold cannot exceed draw_denominator.",
+                );
+            }
+        }
 
         $salePolicy = $this->map($turn['sale_policy'], "{$path}.sale_policy");
         $this->requireKeys($salePolicy, ['sell_all_forbidden_resource_keys'], "{$path}.sale_policy");

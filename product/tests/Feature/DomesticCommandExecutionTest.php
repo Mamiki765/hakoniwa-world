@@ -5,12 +5,14 @@ namespace Tests\Feature;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\PlayerIslandEventService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
 use App\Models\CommandDefinition;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -182,6 +184,318 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame($rival->id, $target->fresh()->owner_nation_id);
         $this->assertSame('shallow', $target->fresh()->terrain()->value('key'));
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
+    }
+
+    public function test_reclaim_applies_sea_and_shallow_steps_in_queue_order_and_charges_each_success(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, '埋め立て順序国');
+        $nation->update(['money' => 1_000]);
+        $target = $this->remoteWaterTarget($space);
+        $neighbors = $this->neighborCells($target);
+        $this->setCellState($neighbors[0], 'wasteland', $nation->id);
+        foreach (array_slice($neighbors, 1) as $neighbor) {
+            $this->setCellState($neighbor, 'sea', null);
+        }
+        $this->setCellState($target, 'sea', null);
+
+        $first = $this->queue($user, $nation, $space, 'reclaim', $target, 1, 1);
+        $second = $this->queue($user, $nation, $space, 'reclaim', $target, 1, 2);
+        $context = $this->context($world, [$nation->id], str_repeat('d', 64));
+        $executor = app(DomesticCommandExecutor::class);
+
+        $firstResult = $executor->execute($context);
+        $this->assertSame(1, $firstResult['successes']);
+        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame('queued', $second->fresh()->status);
+        $this->assertSame('shallow', $target->fresh()->terrain()->value('key'));
+        $this->assertNull($target->fresh()->owner_nation_id);
+        $this->assertSame(850, $nation->fresh()->money);
+
+        $secondResult = $executor->execute($context);
+        $this->assertSame(1, $secondResult['successes']);
+        $this->assertSame('completed', $second->fresh()->status);
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        $this->assertSame(700, $nation->fresh()->money);
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'command.success')
+            ->whereRaw("metadata->>'command_key' = ?", ['reclaim'])->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'terrain.changed')
+            ->where('subject_id', $target->id)->count());
+    }
+
+    public function test_shallow_reclaim_spreads_to_the_six_direction_water_neighbors_and_marks_their_chunks(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, '埋め立て波及国');
+        $nation->update(['money' => 1_000]);
+        $target = $this->remoteWaterTarget($space);
+        $neighbors = $this->neighborCells($target);
+        foreach (array_slice($neighbors, 0, 2) as $neighbor) {
+            $this->setCellState($neighbor, 'sea', null);
+        }
+        $this->setCellState($neighbors[2], 'shallow', null);
+        $unchangedShallowVersion = $neighbors[2]->fresh()->version;
+        foreach (array_slice($neighbors, 3) as $index => $neighbor) {
+            $this->setCellState($neighbor, 'wasteland', $index === 0 ? $nation->id : null);
+        }
+        $this->setCellState($target, 'shallow', null);
+        $this->queue($user, $nation, $space, 'reclaim', $target);
+        $context = $this->context($world, [$nation->id], str_repeat('e', 64));
+
+        app(DomesticCommandExecutor::class)->execute($context);
+
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        foreach (array_slice($neighbors, 0, 3) as $neighbor) {
+            $this->assertSame('shallow', $neighbor->fresh()->terrain()->value('key'));
+            $this->assertNull($neighbor->fresh()->owner_nation_id);
+        }
+        $this->assertSame($unchangedShallowVersion, $neighbors[2]->fresh()->version);
+        foreach (array_slice($neighbors, 3) as $neighbor) {
+            $this->assertSame('wasteland', $neighbor->fresh()->terrain()->value('key'));
+        }
+        $expectedChunks = collect([$target, ...array_slice($neighbors, 0, 2)])
+            ->pluck('map_chunk_id')->unique()->sort()->values()->all();
+        $this->assertSame($expectedChunks, $context->state->changedMapChunkIds());
+        $events = DB::table('audit_events')->where('event_type', 'terrain.changed')
+            ->orderBy('id')->get()->map(static fn ($event): array => json_decode(
+                (string) $event->metadata,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            ))->all();
+        $this->assertCount(3, $events);
+        $this->assertFalse($events[0]['adjacent_effect']);
+        $this->assertSame([true, true], array_column(array_slice($events, 1), 'adjacent_effect'));
+    }
+
+    public function test_reclaim_neighbor_spread_preserves_owned_water_and_seabed_oil_fields(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, 'Reclaim protection owner');
+        [, $rival] = $this->createNation($world, 'Reclaim protection rival');
+        $nation->update(['money' => 1_000]);
+        $target = $this->remoteWaterTarget($space);
+        $neighbors = $this->neighborCells($target);
+        $this->setCellState($neighbors[0], 'wasteland', $nation->id);
+        $this->setCellState($neighbors[1], 'sea', $rival->id);
+        $this->setOilFieldState($neighbors[2], $nation);
+        $this->setOilFieldState($neighbors[3], $rival);
+        foreach (array_slice($neighbors, 4) as $neighbor) {
+            $this->setCellState($neighbor, 'wasteland', null);
+        }
+        $this->setCellState($target, 'shallow', null);
+        $protected = collect(array_slice($neighbors, 1, 3))->mapWithKeys(
+            static fn (MapCell $cell): array => [$cell->id => $cell->fresh()->only([
+                'terrain_definition_id',
+                'facility_definition_id',
+                'owner_nation_id',
+                'version',
+            ])],
+        );
+        $this->queue($user, $nation, $space, 'reclaim', $target);
+        $context = $this->context($world, [$nation->id], str_repeat('a', 64));
+
+        app(DomesticCommandExecutor::class)->execute($context);
+
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        foreach ($protected as $cellId => $state) {
+            $this->assertSame($state, MapCell::query()->findOrFail($cellId)->only(array_keys($state)));
+        }
+        $this->assertSame(
+            [$target->id],
+            DB::table('audit_events')->where('event_type', 'terrain.changed')->pluck('subject_id')->all(),
+        );
+        $this->assertSame([$target->map_chunk_id], $context->state->changedMapChunkIds());
+    }
+
+    public function test_reclaim_at_world_corner_ignores_out_of_bounds_neighbors(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, '埋め立て境界国');
+        $nation->update(['money' => 1_000]);
+        $target = $this->cellAt($space, 0, 0);
+        $neighbors = $this->neighborCells($target);
+        $this->assertCount(3, $neighbors);
+        $this->setCellState($target, 'shallow', null);
+        $this->setCellState($neighbors[0], 'wasteland', $nation->id);
+        foreach (array_slice($neighbors, 1) as $neighbor) {
+            $this->setCellState($neighbor, 'sea', null);
+        }
+        $this->queue($user, $nation, $space, 'reclaim', $target);
+
+        app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], str_repeat('f', 64)),
+        );
+
+        $this->assertSame(3_600, MapCell::query()->where('map_space_id', $space->id)->count());
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        foreach (array_slice($neighbors, 1) as $neighbor) {
+            $this->assertSame('shallow', $neighbor->fresh()->terrain()->value('key'));
+        }
+        $metadata = DB::table('audit_events')->where('event_type', 'terrain.changed')
+            ->pluck('metadata')->map(static fn (string $json): array => json_decode($json, true, 512, JSON_THROW_ON_ERROR));
+        $this->assertCount(3, $metadata);
+        $this->assertTrue($metadata->every(static fn (array $event): bool => $event['x'] >= 0 && $event['y'] >= 0));
+    }
+
+    public function test_pr11_reclaim_and_deep_sea_oil_keep_their_previous_execution_contracts(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, 'PR11 command compatibility');
+        $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
+        $world->update(['ruleset_version_id' => $pr11->id]);
+        $nation->update(['money' => 1_000]);
+        $reclaimTarget = $this->reclaimTarget($nation, $space);
+        $oilTarget = $this->remoteWaterTarget($space);
+        $oilNeighbors = $this->neighborCells($oilTarget);
+        $oilAnchor = $oilNeighbors[0]->is($reclaimTarget) ? $oilNeighbors[1] : $oilNeighbors[0];
+        $this->setCellState($oilAnchor, 'wasteland', $nation->id);
+        $reclaimNeighbors = collect($this->neighborCells($reclaimTarget))
+            ->filter(static fn (MapCell $cell): bool => in_array($cell->terrain()->value('key'), ['sea', 'shallow'], true))
+            ->mapWithKeys(static fn (MapCell $cell): array => [$cell->id => $cell->fresh()->only([
+                'terrain_definition_id',
+                'facility_definition_id',
+                'owner_nation_id',
+                'version',
+            ])]);
+        $reclaim = $this->queue($user, $nation, $space, 'reclaim', $reclaimTarget, 1, 1);
+        $oil = $this->queue($user, $nation, $space, 'excavate', $oilTarget, 5, 2);
+        $context = $this->context($world, [$nation->id], str_repeat('b', 64), $pr11);
+        $executor = app(DomesticCommandExecutor::class);
+
+        $reclaimResult = $executor->execute($context);
+
+        $this->assertSame(1, $reclaimResult['successes']);
+        $this->assertSame('completed', $reclaim->fresh()->status);
+        $this->assertSame('wasteland', $reclaimTarget->fresh()->terrain()->value('key'));
+        $this->assertSame($nation->id, $reclaimTarget->fresh()->owner_nation_id);
+        foreach ($reclaimNeighbors as $cellId => $state) {
+            $this->assertSame($state, MapCell::query()->findOrFail($cellId)->only(array_keys($state)));
+        }
+        $this->assertSame(850, $nation->fresh()->money);
+
+        $oilResult = $executor->execute($context);
+
+        $this->assertSame(1, $oilResult['failures']);
+        $this->assertSame('failed', $oil->fresh()->status);
+        $this->assertSame('oil_search_deferred', $oil->fresh()->failure_code);
+        $this->assertSame('sea', $oilTarget->fresh()->terrain()->value('key'));
+        $this->assertNull($oilTarget->fresh()->facility_definition_id);
+        $this->assertSame(860, $nation->fresh()->money);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.seabed_oil_search')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
+    }
+
+    public function test_seabed_oil_search_is_deterministic_spends_the_investment_and_is_not_applied_twice(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, '海底油田国');
+        $target = $this->remoteWaterTarget($space);
+        $neighbors = $this->neighborCells($target);
+        $this->setCellState($neighbors[0], 'wasteland', $nation->id);
+        $this->setCellState($target, 'sea', null);
+        Nation::query()->whereKey($nation->id)->update(['money' => 999]);
+        $item = $this->queue($user, $nation, $space, 'excavate', $target, 5);
+        $seed = $this->seedWithFirstDraw(TurnRandomStreamFactory::SEABED_OIL_SEARCH, 100, 3);
+        $context = $this->context($world, [$nation->id], $seed);
+
+        app(DomesticCommandExecutor::class)->execute($context);
+
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame(199, $nation->fresh()->money);
+        $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
+        $this->assertSame('seabed_oil_field', $target->fresh()->facility()->value('key'));
+        $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        $this->assertContains($target->map_chunk_id, $context->state->changedMapChunkIds());
+        $oil = $this->eventMetadataForSubject('command.seabed_oil_search', $target->id);
+        $this->assertSame(3, $oil['draw']);
+        $this->assertSame(4, $oil['success_threshold']);
+        $this->assertSame(4, $oil['cost_units']);
+        $this->assertSame(800, $oil['spent_money']);
+        $this->assertTrue($oil['found']);
+        $success = $this->eventMetadataForSubject('command.success', $item->id);
+        $this->assertSame(800, $success['cost_money']);
+        $world->update(['current_turn' => 2]);
+        $playerEvents = collect(app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 2)['groups'])
+            ->flatMap(static fn (array $group): array => $group['events']);
+        $this->assertStringContainsString(
+            '800',
+            $playerEvents->firstWhere('type', 'command.seabed_oil_search')['message'],
+        );
+
+        $version = $target->fresh()->version;
+        app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame($version, $target->fresh()->version);
+        $this->assertSame(209, $nation->fresh()->money);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.seabed_oil_search')->count());
+
+        $this->setCellState($target, 'sea', null);
+        Nation::query()->whereKey($nation->id)->update(['money' => 999]);
+        $replayItem = $this->queue($user, $nation, $space, 'excavate', $target, 5);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
+        $replay = $this->eventMetadataForSubject('command.seabed_oil_search', $target->id, $replayItem->id);
+        $this->assertSame(
+            collect($oil)->only(['draw', 'success_threshold', 'denominator', 'found'])->all(),
+            collect($replay)->only(['draw', 'success_threshold', 'denominator', 'found'])->all(),
+        );
+
+        $this->setCellState($target, 'sea', null);
+        Nation::query()->whereKey($nation->id)->update(['money' => 999]);
+        $quantityLimitedItem = $this->queue($user, $nation, $space, 'excavate', $target, 2);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
+        $quantityLimited = $this->eventMetadataForSubject(
+            'command.seabed_oil_search',
+            $target->id,
+            $quantityLimitedItem->id,
+        );
+        $this->assertSame(2, $quantityLimited['cost_units']);
+        $this->assertSame(400, $quantityLimited['spent_money']);
+        $this->assertSame(599, $nation->fresh()->money);
+        $this->assertSame(
+            400,
+            $this->eventMetadataForSubject('command.success', $quantityLimitedItem->id)['cost_money'],
+        );
+    }
+
+    public function test_seabed_oil_search_failure_and_invalid_execution_have_explicit_cost_and_queue_results(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, '海底油田失敗国');
+        $target = $this->remoteWaterTarget($space);
+        $neighbors = $this->neighborCells($target);
+        $this->setCellState($neighbors[0], 'wasteland', $nation->id);
+        $this->setCellState($target, 'sea', null);
+        $nation->update(['money' => 1_000]);
+        $failureItem = $this->queue($user, $nation, $space, 'excavate', $target, 3);
+        $failureSeed = $this->seedWithFirstDraw(TurnRandomStreamFactory::SEABED_OIL_SEARCH, 100, 3);
+
+        app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $failureSeed));
+
+        $this->assertSame('completed', $failureItem->fresh()->status);
+        $this->assertSame(400, $nation->fresh()->money);
+        $this->assertNull($target->fresh()->facility_definition_id);
+        $this->assertNull($target->fresh()->owner_nation_id);
+        $failure = $this->eventMetadataForSubject('command.seabed_oil_search', $target->id);
+        $this->assertSame(3, $failure['draw']);
+        $this->assertFalse($failure['found']);
+        $this->assertSame(600, $failure['spent_money']);
+
+        Nation::query()->whereKey($nation->id)->update(['money' => 199]);
+        $insufficient = $this->queue($user, $nation, $space, 'excavate', $target, 99);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $failureSeed));
+        $this->assertSame('failed', $insufficient->fresh()->status);
+        $this->assertSame('insufficient_money', $insufficient->fresh()->failure_code);
+        $this->assertSame(209, $nation->fresh()->money);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.seabed_oil_search')->count());
     }
 
     public function test_buried_treasure_uses_exact_boundaries_capacity_replay_and_rollback(): void
@@ -431,6 +745,59 @@ class DomesticCommandExecutionTest extends TestCase
         $this->fail('Initial island did not provide an adjacent shallow reclaim target.');
     }
 
+    private function remoteWaterTarget(MapSpace $space): MapCell
+    {
+        return MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereBetween('x', [10, 49])
+            ->whereBetween('y', [10, 49])
+            ->whereNull('owner_nation_id')
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')
+            ->firstOrFail();
+    }
+
+    /** @return list<MapCell> */
+    private function neighborCells(MapCell $cell): array
+    {
+        $origin = new GridCoordinate($cell->x, $cell->y);
+        $neighbors = [];
+        foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
+            $coordinate = $origin->neighbor($direction);
+            $neighbor = MapCell::query()->where('map_space_id', $cell->map_space_id)
+                ->where('x', $coordinate->x)->where('y', $coordinate->y)->first();
+            if ($neighbor !== null) {
+                $neighbors[] = $neighbor;
+            }
+        }
+
+        return $neighbors;
+    }
+
+    private function cellAt(MapSpace $space, int $x, int $y): MapCell
+    {
+        return MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $x)->where('y', $y)->firstOrFail();
+    }
+
+    private function setCellState(MapCell $cell, string $terrainKey, ?int $ownerNationId): void
+    {
+        $this->changeTerrain($cell, $terrainKey);
+        $cell->fresh()->update(['owner_nation_id' => $ownerNationId]);
+    }
+
+    private function setOilFieldState(MapCell $cell, Nation $owner): void
+    {
+        $this->setCellState($cell, 'sea', $owner->id);
+        $cell = $cell->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'seabed_oil_field')->firstOrFail(),
+        );
+        $cell->save();
+    }
+
     private function changeTerrain(MapCell $cell, string $terrainKey): void
     {
         $cell = $cell->fresh(['terrain', 'facility']);
@@ -453,10 +820,16 @@ class DomesticCommandExecutionTest extends TestCase
     }
 
     /** @return array<string, mixed> */
-    private function eventMetadataForSubject(string $eventType, int $subjectId): array
-    {
-        return $this->eventMetadata($eventType, static function ($query) use ($subjectId): void {
+    private function eventMetadataForSubject(
+        string $eventType,
+        int $subjectId,
+        ?int $queueItemId = null,
+    ): array {
+        return $this->eventMetadata($eventType, static function ($query) use ($subjectId, $queueItemId): void {
             $query->where('subject_id', $subjectId);
+            if ($queueItemId !== null) {
+                $query->whereRaw("metadata->>'queue_item_id' = ?", [(string) $queueItemId]);
+            }
         });
     }
 }

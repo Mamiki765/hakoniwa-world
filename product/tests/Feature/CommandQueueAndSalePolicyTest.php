@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
+use App\Domain\Map\GridCoordinate;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -144,6 +146,67 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'coordinate_system' => 'staggered_square_offset', 'min_x' => 0, 'max_x' => 1, 'min_y' => 0, 'max_y' => 1,
         ]);
         $this->getJson("/api/v1/nations/{$nation->id}/map-spaces/{$otherSpace->id}/command-queue")->assertUnprocessable();
+    }
+
+    public function test_seabed_oil_search_availability_and_queue_validation_match_terrain_ownership_and_facility_state(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('油田予約国');
+        $nation->update(['money' => 1_000]);
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->whereIn('key', ['plain', 'wasteland', 'forest']))
+            ->orderBy('id')->firstOrFail();
+        $seaId = DB::table('terrain_definitions')->where('key', 'sea')->value('id');
+        $this->assertNotNull($seaId);
+        $target->update([
+            'terrain_definition_id' => $seaId,
+            'facility_definition_id' => null,
+            'owner_nation_id' => null,
+            'population' => 0,
+            'terrain_quantity' => null,
+        ]);
+        $anchorCoordinate = (new GridCoordinate($target->x, $target->y))->neighbor(GridCoordinate::EAST);
+        $anchor = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->where('x', $anchorCoordinate->x)->where('y', $anchorCoordinate->y)->firstOrFail();
+        $anchor->update(['owner_nation_id' => $nation->id]);
+        $definitionsPath = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-definitions"
+            ."?target_x={$target->x}&target_y={$target->y}";
+        $queuePath = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        $definitions = $this->actingAs($owner)->getJson($definitionsPath)->assertOk()->json('data.commands');
+        $excavate = collect($definitions)->firstWhere('key', 'excavate');
+        $this->assertTrue($excavate['applicable']);
+        $this->assertTrue($excavate['available']);
+        $this->assertStringContainsString('海底油田', $excavate['description']);
+        $this->postJson($queuePath, [
+            'command_key' => 'excavate',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+            'quantity' => 3,
+        ])->assertCreated()->assertJsonPath('data.queue.items.0.quantity', 3);
+
+        $oil = FacilityDefinition::query()->where('key', 'seabed_oil_field')->firstOrFail();
+        $target->update(['facility_definition_id' => $oil->id, 'owner_nation_id' => $nation->id]);
+        $occupied = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
+            ->firstWhere('key', 'excavate');
+        $this->assertFalse($occupied['applicable']);
+        $this->assertSame('施設のある海では油田探索できません。', $occupied['unavailable_reason']);
+        $this->postJson($queuePath, [
+            'command_key' => 'excavate',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertUnprocessable();
+
+        [, $rival] = $this->nation('油田競合国');
+        $target->update(['facility_definition_id' => null, 'owner_nation_id' => $rival->id]);
+        $rivalOwned = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
+            ->firstWhere('key', 'excavate');
+        $this->assertFalse($rivalOwned['applicable']);
+        $this->assertSame('他国所有の水域は掘削できません。', $rivalOwned['unavailable_reason']);
     }
 
     public function test_queue_limit_is_enforced_from_the_versioned_ruleset_boundary(): void

@@ -176,6 +176,72 @@ describe('command plan workspace', () => {
         expect(wrapper.find('.plan-parameter-popover').exists()).toBe(true);
     });
 
+    it('offers deterministic seabed oil search on an available sea target and submits its investment quantity', async () => {
+        const seaTarget: MapCell = {
+            ...selected,
+            terrain: 'sea',
+            terrain_name: '海',
+            display_name: '海',
+            owner_nation_id: null,
+            owner_name: null,
+        };
+        const excavate = definition({
+            key: 'excavate',
+            name: '掘削',
+            description: '海ではquantityに応じて海底油田を探索します。',
+            cost_money: 200,
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                return jsonResponse({
+                    queue: commandQueue(2, [item(10, 1, {
+                        command_key: 'excavate', command_name: '掘削', quantity: 3,
+                    })]),
+                    message: '開発計画に登録されました。',
+                }, 201);
+            }
+            return jsonResponse(String(input).includes('command-definitions')
+                ? catalog([excavate])
+                : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, {
+            props: { nationId: 1, mapSpaceId: 2, selected: seaTarget },
+        });
+        await flushPromises();
+
+        const button = wrapper.find('.command-grid button');
+        expect(button.text()).toContain('掘削');
+        expect(button.attributes('title')).toContain('海底油田');
+        await button.trigger('click');
+        await wrapper.find('.parameter-popover input').setValue('3');
+        await wrapper.find('.parameter-popover').trigger('submit');
+        await flushPromises();
+
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+            command_key: 'excavate', target_x: 8, target_y: 7, quantity: 3,
+        });
+    });
+
+    it('does not offer seabed oil search when backend target validation marks it inapplicable', async () => {
+        const unavailable = definition({
+            key: 'excavate',
+            name: '掘削',
+            description: '海底油田を探索します。',
+            applicable: false,
+            available: false,
+            unavailable_reason: '施設のある海では油田探索できません。',
+        });
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
+            String(input).includes('command-definitions') ? catalog([unavailable]) : commandQueue(),
+        )));
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        expect(wrapper.find('.command-grid button').exists()).toBe(false);
+    });
+
     it('shows the same presets for every command and blocks out-of-range custom quantities', async () => {
         const commands = [definition(), definition({ key: 'build_farm', name: '農場建設' })];
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
