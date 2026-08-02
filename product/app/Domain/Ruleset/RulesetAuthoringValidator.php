@@ -868,6 +868,34 @@ final class RulesetAuthoringValidator
         $rewardMinimum = $this->integer($treasure['reward_minimum_money'], "{$path}.command_random_effects.land_clear_buried_treasure.reward_minimum_money", 0);
         $this->integer($treasure['reward_maximum_money'], "{$path}.command_random_effects.land_clear_buried_treasure.reward_maximum_money", $rewardMinimum);
 
+        if (array_key_exists('seabed_oil_search', $effects)) {
+            $oilPath = "{$path}.command_random_effects.seabed_oil_search";
+            $oil = $this->map($effects['seabed_oil_search'], $oilPath);
+            $this->requireKeys(
+                $oil,
+                ['facility_key', 'draw_denominator', 'success_threshold_per_cost_unit'],
+                $oilPath,
+            );
+            $this->reference($oil['facility_key'], $facilityKeys, "{$oilPath}.facility_key");
+            $denominator = $this->integer($oil['draw_denominator'], "{$oilPath}.draw_denominator", 1);
+            $thresholdPerUnit = $this->integer(
+                $oil['success_threshold_per_cost_unit'],
+                "{$oilPath}.success_threshold_per_cost_unit",
+                1,
+            );
+            $quantity = $this->map($settings['development_plan_quantity'], 'ruleset.development_plan_quantity');
+            $maximumQuantity = $this->integer(
+                $quantity['maximum'] ?? null,
+                'ruleset.development_plan_quantity.maximum',
+                1,
+            );
+            if ($maximumQuantity * $thresholdPerUnit > $denominator) {
+                throw new DomainException(
+                    "{$oilPath} maximum quantity threshold cannot exceed draw_denominator.",
+                );
+            }
+        }
+
         $salePolicy = $this->map($turn['sale_policy'], "{$path}.sale_policy");
         $this->requireKeys($salePolicy, ['sell_all_forbidden_resource_keys'], "{$path}.sale_policy");
         foreach ($this->list($salePolicy['sell_all_forbidden_resource_keys'], "{$path}.sale_policy.sell_all_forbidden_resource_keys") as $resourceKey) {

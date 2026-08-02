@@ -139,6 +139,29 @@ class RulesetAuthoringValidatorTest extends TestCase
         $this->assertSame('roadmap-pr11-v1', $validator->validate($pr11)['key']);
     }
 
+    public function test_pr14_seabed_oil_contract_is_valid_and_bounded_by_universal_quantity(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+
+        $this->assertSame('roadmap-pr14-v1', $validator->validate($settings)['key']);
+
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['success_threshold_per_cost_unit'] = 2;
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('maximum quantity threshold cannot exceed draw_denominator');
+        $validator->validate($settings);
+    }
+
+    public function test_pr14_seabed_oil_contract_rejects_an_unknown_facility(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        $settings['turn_processing']['command_random_effects']['seabed_oil_search']['facility_key'] = 'missing-oil';
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('references missing catalog or definition missing-oil');
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     public function test_command_queue_authoring_safety_maximum_is_valid(): void
     {
         $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');

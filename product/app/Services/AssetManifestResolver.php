@@ -20,6 +20,7 @@ final class AssetManifestResolver
         'tile.factory' => 'land8.gif',
         'tile.mine' => 'land15.gif',
         'tile.missile_base' => 'land9.gif',
+        'tile.seabed_oil_field' => 'land16.gif',
         'overlay.ownership' => 'ownership.png',
         'overlay.border' => 'border.png',
         'overlay.command_target' => 'command-target.png',

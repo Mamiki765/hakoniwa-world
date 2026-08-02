@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Models\CommandDefinition;
+use App\Models\FacilityDefinition;
 use App\Models\ProductionDefinition;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
@@ -21,7 +22,7 @@ class RulesetImmutabilityTest extends TestCase
         $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
         $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
         $target = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
-        $current = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
+        $current = RulesetVersion::query()->where('key', 'roadmap-pr14-v1')->firstOrFail();
         $sourceSnapshot = $source->settings;
         $sourceCommands = $this->commandSnapshot($source->id);
         $sourceProduction = $this->productionSnapshot($source->id);
@@ -62,7 +63,7 @@ class RulesetImmutabilityTest extends TestCase
 
     public function test_initializer_rejects_same_key_with_different_payload_without_mutating_published_ruleset(): void
     {
-        $published = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
+        $published = RulesetVersion::query()->where('key', 'roadmap-pr14-v1')->firstOrFail();
         $before = $this->rulesetSnapshot($published);
         config(['hakoniwa.ruleset.initial_money' => 999]);
 
@@ -205,6 +206,32 @@ class RulesetImmutabilityTest extends TestCase
                 ->mapWithKeys(fn (RulesetVersion $ruleset): array => [
                     $ruleset->key => $this->rulesetSnapshot($ruleset),
                 ])->all(),
+        );
+    }
+
+    public function test_pr14_ruleset_is_idempotent_and_preserves_pr11_snapshot(): void
+    {
+        $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
+        $pr11Snapshot = $this->rulesetSnapshot($pr11);
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr14-v1');
+        $published = RulesetVersion::query()->where('key', 'roadmap-pr14-v1')->firstOrFail();
+        $snapshot = $this->rulesetSnapshot($published);
+
+        $republished = app(RulesetPublisher::class)->publish($settings);
+
+        $this->assertSame($published->id, $republished->id);
+        $this->assertSame($snapshot, $this->rulesetSnapshot($published->fresh()));
+        $this->assertSame($pr11Snapshot, $this->rulesetSnapshot($pr11->fresh()));
+        $reclaim = CommandDefinition::query()->where('ruleset_version_id', $published->id)
+            ->where('key', 'reclaim')->firstOrFail();
+        $excavate = CommandDefinition::query()->where('ruleset_version_id', $published->id)
+            ->where('key', 'excavate')->firstOrFail();
+        $this->assertSame(3, $reclaim->metadata['adjacent_water_spread_maximum']);
+        $this->assertSame('seabed_oil_search', $excavate->metadata['oil_search_effect_key']);
+        $this->assertArrayNotHasKey('oil_search_deferred', $excavate->metadata);
+        $this->assertSame(
+            ['sea'],
+            FacilityDefinition::query()->where('key', 'seabed_oil_field')->firstOrFail()->buildable_terrain_keys,
         );
     }
 

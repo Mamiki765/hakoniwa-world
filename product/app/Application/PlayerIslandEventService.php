@@ -21,6 +21,7 @@ final class PlayerIslandEventService
         'facility.constructed',
         'facility.expanded',
         'command.buried_treasure',
+        'command.seabed_oil_search',
         'settlement.appeared',
         'settlement.stage_transitioned',
         'population.increased',
@@ -241,6 +242,7 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'facility_scale')),
             ),
             'command.buried_treasure' => $this->buriedTreasureMessage($metadata),
+            'command.seabed_oil_search' => $this->seabedOilSearchMessage($metadata),
             'settlement.appeared' => sprintf(
                 '村が発生しました（人口%s人）。',
                 number_format($this->integer($metadata, 'population')),
@@ -332,6 +334,22 @@ final class PlayerIslandEventService
     }
 
     /** @param array<string, mixed> $metadata */
+    private function seabedOilSearchMessage(array $metadata): string
+    {
+        $spent = number_format($this->integer($metadata, 'spent_money'));
+        $denominator = max(1, $this->integer($metadata, 'denominator'));
+        $chance = number_format(
+            $this->integer($metadata, 'success_threshold') * 100 / $denominator,
+            2,
+        );
+        $chance = rtrim(rtrim($chance, '0'), '.');
+
+        return ($metadata['found'] ?? false) === true
+            ? "海底油田の探索に成功しました（投入 {$spent}億円、成功率 {$chance}%）。"
+            : "海底油田は発見できませんでした（投入 {$spent}億円、成功率 {$chance}%）。";
+    }
+
+    /** @param array<string, mixed> $metadata */
     private function commandLabel(array $metadata): string
     {
         return match ($metadata['command_key'] ?? null) {
@@ -370,6 +388,7 @@ final class PlayerIslandEventService
             'factory' => '工場',
             'mine' => '採掘場',
             'missile_base' => 'ミサイル基地',
+            'seabed_oil_field' => '海底油田',
             default => $fallback,
         };
     }
@@ -391,7 +410,8 @@ final class PlayerIslandEventService
         return match ($eventType) {
             'command.invalid', 'command.insufficient_assets', 'resource.food_shortage',
             'famine.applied', 'facility.riot', 'capacity.overflow' => 'warning',
-            'command.buried_treasure', 'settlement.appeared', 'settlement.stage_transitioned' => 'notable',
+            'command.buried_treasure', 'command.seabed_oil_search',
+            'settlement.appeared', 'settlement.stage_transitioned' => 'notable',
             default => 'info',
         };
     }

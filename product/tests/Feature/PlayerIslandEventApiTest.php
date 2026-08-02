@@ -185,6 +185,51 @@ class PlayerIslandEventApiTest extends TestCase
         );
     }
 
+    public function test_seabed_oil_search_logs_success_and_failure_without_exposing_random_draws(): void
+    {
+        [$world, $owner, $nation] = $this->nation('油田ログ国');
+        $world->update(['current_turn' => 2]);
+        $cell = MapCell::query()->where('owner_nation_id', $nation->id)->firstOrFail();
+        $base = [
+            'world_id' => $world->id,
+            'target_turn' => 2,
+            'nation_id' => $nation->id,
+            'command_key' => 'excavate',
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'spent_money' => 600,
+            'success_threshold' => 3,
+            'denominator' => 100,
+        ];
+        $successId = $this->audit('command.seabed_oil_search', $cell, [
+            ...$base,
+            'draw' => 987_650,
+            'found' => true,
+            'facility_key' => 'seabed_oil_field',
+        ]);
+        $failureId = $this->audit('command.seabed_oil_search', $cell, [
+            ...$base,
+            'draw' => 987_651,
+            'found' => false,
+            'facility_key' => null,
+        ]);
+
+        $response = $this->actingAs($owner)
+            ->getJson("/api/v1/nations/{$nation->id}/events")
+            ->assertOk();
+        $events = collect($response->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        );
+
+        $this->assertSame([$failureId, $successId], $events->pluck('id')->all());
+        $this->assertStringContainsString('海底油田は発見できませんでした', $events[0]['message']);
+        $this->assertStringContainsString('投入 600億円、成功率 3%', $events[0]['message']);
+        $this->assertStringContainsString('海底油田の探索に成功しました', $events[1]['message']);
+        foreach (['987650', '987651', 'draw', 'metadata'] as $secret) {
+            $this->assertStringNotContainsString($secret, (string) $response->getContent());
+        }
+    }
+
     /** @return array{World, User, Nation} */
     private function nation(string $name, ?World $world = null): array
     {
