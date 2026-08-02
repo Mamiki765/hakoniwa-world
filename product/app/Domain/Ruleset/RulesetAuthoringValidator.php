@@ -1109,10 +1109,14 @@ final class RulesetAuthoringValidator
             $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$meteorPath}.seabed_facility_keys");
         }
 
-        foreach (['huge_meteor', 'eruption'] as $key) {
+        foreach (['huge_meteor' => 2, 'eruption' => 1] as $key => $expectedRadius) {
             $eventPath = "{$path}.disasters.{$key}";
             $event = $this->map($disasters[$key], $eventPath);
             $this->requireKeys($event, ['seabed_facility_keys'], $eventPath);
+            $radius = $this->integer($event['radius'], "{$eventPath}.radius", 0);
+            if ($radius !== $expectedRadius) {
+                throw new DomainException("{$eventPath}.radius must be {$expectedRadius} for the implemented damage contract.");
+            }
             foreach ($this->list($event['seabed_facility_keys'], "{$eventPath}.seabed_facility_keys") as $facilityKey) {
                 $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$eventPath}.seabed_facility_keys");
             }

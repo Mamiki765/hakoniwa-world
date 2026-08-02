@@ -12,6 +12,16 @@ use Illuminate\Support\Facades\DB;
 
 final class PublicWorldService
 {
+    /** @var array<string, string> */
+    private const DISASTER_LABELS = [
+        'earthquake' => '地震',
+        'tsunami' => '津波',
+        'typhoon' => '台風',
+        'meteor_shower' => '流星群',
+        'huge_meteor' => '巨大隕石',
+        'eruption' => '噴火',
+    ];
+
     public function __construct(private readonly MoneyFormatter $money) {}
 
     /** @return array<string, mixed> */
@@ -74,10 +84,10 @@ final class PublicWorldService
         ];
     }
 
-    /** @return Collection<int, array{id: int, type: string, message: string, metadata: array{nation_id: int, nation_name: string}, occurred_at: string}> */
+    /** @return Collection<int, array{id: int, type: string, message: string, metadata: array<string, int|string>, occurred_at: string}> */
     public function recentEvents(World $world, int $limit = 12): Collection
     {
-        return DB::table('audit_events')
+        $nationEvents = DB::table('audit_events')
             ->join('nations', function ($join): void {
                 $join->on('nations.id', '=', 'audit_events.subject_id')
                     ->where('audit_events.subject_type', '=', Nation::class);
@@ -103,6 +113,60 @@ final class PublicWorldService
                 ],
                 'occurred_at' => (string) $event->occurred_at,
             ]);
+
+        $disasterEvents = DB::table('audit_events')
+            ->where('subject_type', $world->getMorphClass())
+            ->where('subject_id', $world->getKey())
+            ->where('event_type', 'disaster.triggered')
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get(['id', 'occurred_at', 'metadata'])
+            ->map(fn (object $event): ?array => $this->publicDisasterEvent($event))
+            ->filter(static fn (?array $event): bool => $event !== null)
+            ->values();
+
+        return $nationEvents
+            ->concat($disasterEvents)
+            ->sort(static function (array $left, array $right): int {
+                $byTime = strcmp($right['occurred_at'], $left['occurred_at']);
+
+                return $byTime !== 0 ? $byTime : $right['id'] <=> $left['id'];
+            })
+            ->take($limit)
+            ->values();
+    }
+
+    /** @return array{id: int, type: string, message: string, metadata: array<string, int|string>, occurred_at: string}|null */
+    private function publicDisasterEvent(object $event): ?array
+    {
+        $metadata = json_decode((string) $event->metadata, true);
+        if (! is_array($metadata)) {
+            return null;
+        }
+
+        $key = $metadata['disaster_key'] ?? null;
+        if (! is_string($key) || ! isset(self::DISASTER_LABELS[$key])) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $event->id,
+            'type' => 'disaster_triggered',
+            'message' => sprintf(
+                '%sが発生しました（中心 %d,%d）。',
+                self::DISASTER_LABELS[$key],
+                (int) ($metadata['center_x'] ?? 0),
+                (int) ($metadata['center_y'] ?? 0),
+            ),
+            'metadata' => [
+                'target_turn' => (int) ($metadata['target_turn'] ?? 0),
+                'disaster_key' => $key,
+                'center_x' => (int) ($metadata['center_x'] ?? 0),
+                'center_y' => (int) ($metadata['center_y'] ?? 0),
+            ],
+            'occurred_at' => (string) $event->occurred_at,
+        ];
     }
 
     /** @return Collection<int, Nation> */

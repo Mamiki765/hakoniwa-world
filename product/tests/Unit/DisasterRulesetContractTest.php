@@ -133,4 +133,25 @@ class DisasterRulesetContractTest extends TestCase
         $this->expectExceptionMessage('must allow the meteor shower to terminate');
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
+
+    public function test_huge_meteor_and_eruption_radii_match_the_implemented_damage_contract(): void
+    {
+        $published = config('hakoniwa.published_rulesets');
+        $this->assertIsArray($published);
+
+        foreach ([['huge_meteor', 3, 2], ['eruption', 2, 1]] as [$key, $authoredRadius, $expectedRadius]) {
+            $settings = $published['roadmap-pr15-v1'];
+            $settings['turn_processing']['disasters'][$key]['radius'] = $authoredRadius;
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail("{$key} accepted a radius that the implementation does not honor.");
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString(
+                    "radius must be {$expectedRadius} for the implemented damage contract",
+                    $exception->getMessage(),
+                );
+            }
+        }
+    }
 }
