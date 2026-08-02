@@ -154,4 +154,31 @@ class DisasterRulesetContractTest extends TestCase
             }
         }
     }
+
+    public function test_internal_disaster_denominators_fit_the_deterministic_stream_range(): void
+    {
+        $published = config('hakoniwa.published_rulesets');
+        $this->assertIsArray($published);
+        $maximum = 2_147_483_648;
+
+        $boundary = $published['roadmap-pr15-v1'];
+        $boundary['turn_processing']['disasters']['tsunami']['internal_denominator'] = $maximum;
+        $boundary['turn_processing']['disasters']['typhoon']['internal_denominator'] = $maximum;
+        $this->assertSame('roadmap-pr15-v1', app(RulesetAuthoringValidator::class)->validate($boundary)['key']);
+
+        foreach (['tsunami', 'typhoon'] as $key) {
+            $settings = $published['roadmap-pr15-v1'];
+            $settings['turn_processing']['disasters'][$key]['internal_denominator'] = $maximum + 1;
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail("{$key} accepted an internal denominator outside the deterministic stream range.");
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString(
+                    "{$key}.internal_denominator must be at most {$maximum}",
+                    $exception->getMessage(),
+                );
+            }
+        }
+    }
 }

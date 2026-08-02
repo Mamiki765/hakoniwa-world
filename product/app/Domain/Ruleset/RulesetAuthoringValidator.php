@@ -1080,7 +1080,16 @@ final class RulesetAuthoringValidator
                 $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$tsunamiPath}.{$listKey}");
             }
         }
-        $this->integer($tsunami['internal_denominator'], "{$tsunamiPath}.internal_denominator", 1);
+        $tsunamiDenominator = $this->integer(
+            $tsunami['internal_denominator'],
+            "{$tsunamiPath}.internal_denominator",
+            1,
+        );
+        if ($tsunamiDenominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+            throw new DomainException(
+                "{$tsunamiPath}.internal_denominator must be at most ".self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX.'.',
+            );
+        }
         $this->integer($tsunami['adjacent_water_offset'], "{$tsunamiPath}.adjacent_water_offset", 0);
 
         $typhoonPath = "{$path}.disasters.typhoon";
@@ -1093,7 +1102,16 @@ final class RulesetAuthoringValidator
                 $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$typhoonPath}.{$listKey}");
             }
         }
-        $this->integer($typhoon['internal_denominator'], "{$typhoonPath}.internal_denominator", 1);
+        $typhoonDenominator = $this->integer(
+            $typhoon['internal_denominator'],
+            "{$typhoonPath}.internal_denominator",
+            1,
+        );
+        if ($typhoonDenominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+            throw new DomainException(
+                "{$typhoonPath}.internal_denominator must be at most ".self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX.'.',
+            );
+        }
         $this->integer($typhoon['base_damage_threshold'], "{$typhoonPath}.base_damage_threshold", 0);
 
         $meteorPath = "{$path}.disasters.meteor_shower";
