@@ -137,4 +137,18 @@ class WorldInitializationTest extends TestCase
                 ->firstOrFail()->only(['chunk_x', 'chunk_y', 'local_x', 'local_y']),
         );
     }
+
+    public function test_standard_world_init_remains_idempotent_for_an_existing_debug_world(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
+        $generationRunCount = DB::table('world_generation_runs')->count();
+
+        $this->artisan('hakoniwa:world:init')
+            ->expectsOutputToContain('ready with 1024 ocean cells')
+            ->assertSuccessful();
+
+        $this->assertSame($world->id, World::query()->where('key', $world->key)->value('id'));
+        $this->assertSame(1024, MapCell::query()->count());
+        $this->assertSame($generationRunCount, DB::table('world_generation_runs')->count());
+    }
 }

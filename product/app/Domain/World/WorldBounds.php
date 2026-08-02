@@ -89,4 +89,13 @@ final readonly class WorldBounds
             $this->minY + intdiv($this->height(), 2),
         );
     }
+
+    public function equals(self $other): bool
+    {
+        return $this->minX === $other->minX
+            && $this->maxX === $other->maxX
+            && $this->minY === $other->minY
+            && $this->maxY === $other->maxY
+            && $this->chunkSize === $other->chunkSize;
+    }
 }

@@ -25,6 +25,8 @@ docker compose exec hakoniwa-web php artisan migrate --force
 docker compose exec hakoniwa-web php artisan hakoniwa:world:init
 ```
 
+`debug-32x32`へresetしたlocal Worldでも、通常の`hakoniwa:world:init`は既存boundsからprofileを判定して冪等に動作する。新規Worldの既定は引き続き60×60である。
+
 `http://127.0.0.1:8080`を開く。世界初期化commandは二重実行してもWorldやCellを増やさない。
 
 ## 検証

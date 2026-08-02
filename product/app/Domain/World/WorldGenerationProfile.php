@@ -18,6 +18,18 @@ enum WorldGenerationProfile: string
         };
     }
 
+    /** @param array<string, mixed> $rules */
+    public static function matchingBounds(WorldBounds $bounds, array $rules): ?self
+    {
+        foreach (self::cases() as $profile) {
+            if ($profile->bounds($rules)->equals($bounds)) {
+                return $profile;
+            }
+        }
+
+        return null;
+    }
+
     public function assertAvailable(string $environment): void
     {
         if ($this === self::Debug32x32 && ! in_array($environment, ['local', 'testing'], true)) {
