@@ -165,7 +165,7 @@ final class CommandQueueController extends Controller
         ]);
 
         try {
-            $service->queueFor($request->user(), $nation, $mapSpace);
+            $service->queueFor($request->user(), $nation, $mapSpace, mutationPreflight: true);
             $queue = isset($validated['placements'])
                 ? $service->reposition($request->user(), $nation, $validated['placements'], $validated['expected_version'])
                 : $service->reorder($request->user(), $nation, $validated['ordered_ids'], $validated['expected_version']);
@@ -181,7 +181,7 @@ final class CommandQueueController extends Controller
         $validated = $request->validate(['expected_version' => ['required', 'integer', 'min:1']]);
 
         try {
-            $service->queueFor($request->user(), $nation, $mapSpace);
+            $service->queueFor($request->user(), $nation, $mapSpace, mutationPreflight: true);
             $queue = $service->cancel($request->user(), $nation, $item, $validated['expected_version']);
 
             return response()->json(['data' => $this->serializeQueue($this->loadQueue($queue))]);
@@ -204,7 +204,7 @@ final class CommandQueueController extends Controller
         ]);
 
         try {
-            $service->queueFor($request->user(), $nation, $mapSpace);
+            $service->queueFor($request->user(), $nation, $mapSpace, mutationPreflight: true);
             $queue = $service->updateQuantity(
                 $request->user(),
                 $nation,

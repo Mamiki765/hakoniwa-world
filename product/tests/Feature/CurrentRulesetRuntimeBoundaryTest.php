@@ -104,7 +104,7 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
             ->where('nation_id', $nation->id)
             ->where('resource_definition_id', $resource->id)
             ->firstOrFail();
-        $historical = RulesetVersion::query()->where('key', 'roadmap-pr14-v1')->firstOrFail();
+        $historical = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $historical->id]);
         $before = $this->gameState($world, $nation, $item, $policy);
 

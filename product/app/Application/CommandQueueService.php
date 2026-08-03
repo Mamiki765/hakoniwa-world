@@ -289,11 +289,19 @@ final class CommandQueueService
         }, 3);
     }
 
-    public function queueFor(User $user, Nation $nation, MapSpace $mapSpace): NationCommandQueue
+    public function queueFor(
+        User $user,
+        Nation $nation,
+        MapSpace $mapSpace,
+        bool $mutationPreflight = false,
+    ): NationCommandQueue
     {
         $this->membership($user, $nation);
         $this->assertMapSpace($nation, $mapSpace);
         $world = World::query()->whereKey($nation->world_id)->with('rulesetVersion')->firstOrFail();
+        if ($mutationPreflight) {
+            $this->rulesetGuard->assertMutable($world, $world->rulesetVersion);
+        }
         $this->assertUniversalQuantityRuleset($world);
 
         $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->first();
