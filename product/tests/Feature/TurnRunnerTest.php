@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\TurnRunner;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\ScaffoldTurnPhase;
 use App\Domain\Turn\TurnAlreadyAppliedException;
 use App\Domain\Turn\TurnAlreadyRunningException;
@@ -340,7 +341,12 @@ class TurnRunnerTest extends TestCase
 
     private function runner(TurnPipeline $pipeline): TurnRunner
     {
-        return new TurnRunner($pipeline, new WorldTurnLock, new FixedTurnSeedGenerator(self::SEED));
+        return new TurnRunner(
+            $pipeline,
+            new WorldTurnLock,
+            new FixedTurnSeedGenerator(self::SEED),
+            app(CurrentRulesetGuard::class),
+        );
     }
 
     private function pipeline(?Closure $effect = null): TurnPipeline

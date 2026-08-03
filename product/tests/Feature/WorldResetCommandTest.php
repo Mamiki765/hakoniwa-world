@@ -9,6 +9,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -116,7 +117,7 @@ class WorldResetCommandTest extends TestCase
         [$world] = $this->populatedWorld();
         $nationCount = Nation::query()->count();
         $cellCount = MapCell::query()->count();
-        $this->app->bind(OceanWorldGenerator::class, fn () => new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class)) extends OceanWorldGenerator
+        $this->app->bind(OceanWorldGenerator::class, fn () => new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class)) extends OceanWorldGenerator
         {
             public function initialize(
                 WorldGenerationProfile $profile = WorldGenerationProfile::Production,

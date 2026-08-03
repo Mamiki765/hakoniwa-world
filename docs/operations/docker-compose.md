@@ -42,9 +42,11 @@ services:
 
 既存deploy向けの`HAKONIWA_ORIGINAL_ASSET_PATH`と`HAKONIWA_ORIGINAL_ASSET_BASE_URL`も当面転送する。新変数が未設定の場合だけ旧変数をfallbackとして使用し、新変数を優先する。新規設定では`HAKONIWA_TILE_ASSET_*`を使用する。
 
-## Roadmap PR2 migration
+## Pre-release ruleset update
 
-既存データへ適用する前にPostgreSQL backupを取得し、明示的な`*_test` DBでrollback/remigrateとtestを確認する。本番反映は新しいapplication codeとともに`php artisan migrate --force`を実行するだけで、world init、container volume再作成、`docker compose down -v`は行わない。追加stateのbackfillとrollback方針は`docs/architecture/roadmap-pr2-systems.md`を参照する。
+既存migration chainはcanonical schema rebaselineまで維持し、application更新時は先にPostgreSQL backupと明示的な`*_test` DBで`php artisan migrate --force`を検証する。ただしmigration適用後もhistorical ruleset Worldの継続実行は行わない。read-only表示を確認し、`docs/operations/world-reset.md`のbackup-first手順でconfigured Worldをcurrent rulesetへresetする。
+
+World更新のためにcontainer volumeを再作成したり、`docker compose down -v`を実行したりしない。published historical ruleset recordsは監査用に保持する。
 
 ## 将来の本番統合
 

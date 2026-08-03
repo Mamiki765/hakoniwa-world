@@ -7,6 +7,7 @@ use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
@@ -281,9 +282,14 @@ final class CommandQueueController extends Controller
 
     private function domainError(DomainException $exception): JsonResponse
     {
+        $payload = ['message' => $exception->getMessage()];
+        if ($exception instanceof ResetRequiredException) {
+            $payload['code'] = ResetRequiredException::ERROR_CODE;
+        }
+
         return response()->json(
-            ['message' => $exception->getMessage()],
-            $exception instanceof OptimisticLockException ? 409 : 422,
+            $payload,
+            $exception instanceof OptimisticLockException || $exception instanceof ResetRequiredException ? 409 : 422,
         );
     }
 }

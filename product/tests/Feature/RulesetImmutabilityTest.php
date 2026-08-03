@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
+use App\Domain\Ruleset\ResetRequiredException;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\ProductionDefinition;
@@ -77,15 +78,22 @@ class RulesetImmutabilityTest extends TestCase
         $this->assertSame($before, $this->rulesetSnapshot($published->fresh()));
     }
 
-    public function test_initializer_never_repoints_an_existing_world_or_repairs_catalog_drift_silently(): void
+    public function test_initializer_rejects_a_historical_world_without_repointing_or_repairing_catalog_drift(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $source->id]);
 
-        app(OceanWorldGenerator::class)->initialize();
+        try {
+            app(OceanWorldGenerator::class)->initialize();
+            $this->fail('Expected the historical World to require a reset.');
+        } catch (ResetRequiredException $exception) {
+            $this->assertStringContainsString('reset_required', $exception->getMessage());
+        }
         $this->assertSame($source->id, $world->fresh()->ruleset_version_id);
 
+        $current = RulesetVersion::query()->where('key', 'roadmap-pr15-v1')->firstOrFail();
+        $world->update(['ruleset_version_id' => $current->id]);
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
         $wheat->update(['name' => 'drifted-name']);
         try {

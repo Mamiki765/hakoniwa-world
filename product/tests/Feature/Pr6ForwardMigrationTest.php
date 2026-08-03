@@ -34,6 +34,7 @@ class Pr6ForwardMigrationTest extends TestCase
         $pr7Migration->down();
         $consistencyMigration->down();
         $world->refresh();
+        $this->useRulesetAsCurrent('roadmap-pr6-v1');
         $user = app(AuthIdentityService::class)->authenticate(
             'discord',
             new ExternalIdentityData('forward-user', 'Forward User'),

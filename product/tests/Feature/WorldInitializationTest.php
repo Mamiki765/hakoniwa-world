@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapChunk;
@@ -69,7 +70,7 @@ class WorldInitializationTest extends TestCase
 
     public function test_failure_rolls_back_world_and_cells(): void
     {
-        $generator = new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class)) extends OceanWorldGenerator
+        $generator = new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class)) extends OceanWorldGenerator
         {
             protected function afterBatchInserted(int $inserted): void
             {

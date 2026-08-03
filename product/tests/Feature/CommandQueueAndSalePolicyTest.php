@@ -428,6 +428,10 @@ class CommandQueueAndSalePolicyTest extends TestCase
         }
         unset($definition);
         $ruleset = app(RulesetPublisher::class)->publish($settings);
+        config([
+            'hakoniwa.ruleset.key' => $settings['key'],
+            'hakoniwa.ruleset.version' => $settings['version'],
+        ]);
         $nation->world()->update(['ruleset_version_id' => $ruleset->id]);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();

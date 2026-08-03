@@ -100,6 +100,7 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
     public function test_queue_add_waits_for_migration_then_reloads_the_pr7_definition(): void
     {
         [$world, $user, $nation, $mapSpace, $target] = $this->fixtureOnPr6();
+        $this->useRulesetAsCurrent('roadmap-pr7-v1');
         $migration = $this->migration();
         $probe = DB::connection(self::PROBE_CONNECTION);
 
@@ -163,6 +164,7 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
         ]);
         $migration = $this->migration();
         $this->runMigration($this->primaryConnection, $migration, 'down');
+        $this->useRulesetAsCurrent('roadmap-pr6-v1');
 
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world->fresh(), 'PR7 concurrency');

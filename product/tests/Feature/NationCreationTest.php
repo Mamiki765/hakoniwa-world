@@ -127,6 +127,10 @@ class NationCreationTest extends TestCase
         $settings['initial_island_growth_steps'] = 0;
         $settings['initial_island_minimum_shallow_cells'] = 18;
         $ruleset = app(RulesetPublisher::class)->publish($settings);
+        config([
+            'hakoniwa.ruleset.key' => $settings['key'],
+            'hakoniwa.ruleset.version' => $settings['version'],
+        ]);
         $world->update(['ruleset_version_id' => $ruleset->id]);
 
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '候補不足国');

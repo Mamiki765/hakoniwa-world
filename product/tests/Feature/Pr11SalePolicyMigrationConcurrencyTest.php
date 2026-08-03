@@ -68,6 +68,7 @@ class Pr11SalePolicyMigrationConcurrencyTest extends TestCase
     public function test_wheat_policy_update_waits_for_migration_and_revalidates_against_pr11(): void
     {
         [$world, $user, $nation, $wheat, $policy] = $this->fixtureOnPr7();
+        $this->useRulesetAsCurrent('roadmap-pr11-v1');
         $migration = require database_path('migrations/2026_07_30_000000_publish_roadmap_pr11_ruleset.php');
         $probe = DB::connection(self::PROBE_CONNECTION);
 
@@ -125,6 +126,7 @@ class Pr11SalePolicyMigrationConcurrencyTest extends TestCase
         $world->update([
             'ruleset_version_id' => RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->valueOrFail('id'),
         ]);
+        $this->useRulesetAsCurrent('roadmap-pr7-v1');
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world->fresh(), 'PR11 sale-policy concurrency');
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();

@@ -42,4 +42,4 @@ World 初期化と Nation 作成はそれぞれ transaction で囲む。途中�
 
 ## Existing-world transition
 
-座標 migration は既存 world を削除しない。表示互換の x/y へ backfill した後、運用者が `hakoniwa:world:reset` を明示実行する。reset は対象 world の game data だけを再作成し、users と auth identities を保持する。
+historical ruleset Worldは既存地図と監査情報をread-onlyで表示できる。standalone initやgame-state mutationで暗黙にcurrent rulesetへ移行せず、`reset_required`で停止する。運用者が`hakoniwa:world:reset`を明示実行した場合だけ、対象Worldの開発game dataをcurrent rulesetで再作成し、usersとauth identitiesを保持する。

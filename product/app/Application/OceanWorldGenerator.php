@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\FacilityDefinition;
 use App\Models\MapSpace;
@@ -17,6 +18,7 @@ class OceanWorldGenerator
     public function __construct(
         private readonly ChunkCoordinateService $chunks,
         private readonly RulesetPublisher $rulesets,
+        private readonly CurrentRulesetGuard $rulesetGuard,
     ) {}
 
     public function initialize(
@@ -30,10 +32,15 @@ class OceanWorldGenerator
             $generationSeed = $profile->seed((string) $worldConfig['seed']);
             $now = now();
 
+            $world = World::query()->where('key', $worldConfig['key'])->lockForUpdate()->first();
+            $worldRuleset = null;
+            if ($world !== null) {
+                $worldRuleset = $world->rulesetVersion()->firstOrFail();
+                $this->rulesetGuard->assertMutable($world, $worldRuleset);
+            }
+
             $this->ensureCatalogs($rules);
             $ruleset = $this->rulesets->publish($rules);
-
-            $world = World::query()->where('key', $worldConfig['key'])->lockForUpdate()->first();
             if ($world === null) {
                 $world = World::query()->create([
                     'key' => $worldConfig['key'],
@@ -41,8 +48,9 @@ class OceanWorldGenerator
                     'ruleset_version_id' => $ruleset->id,
                     'current_turn' => 1,
                 ]);
+                $worldRuleset = $ruleset;
             }
-            $bounds = $profile->bounds($world->rulesetVersion()->firstOrFail()->settings);
+            $bounds = $profile->bounds($worldRuleset->settings);
             $mapSpace = MapSpace::query()->firstOrCreate(
                 ['world_id' => $world->id, 'key' => $worldConfig['map_space_key']],
                 [

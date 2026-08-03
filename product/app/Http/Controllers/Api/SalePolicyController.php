@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Application\SalePolicyService;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Economy\SalePolicy;
+use App\Domain\Economy\SalePolicyRules;
+use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Models\Nation;
 use App\Models\NationMembership;
@@ -29,17 +31,16 @@ final class SalePolicyController extends Controller
             ->get();
         $policies = NationResourceSalePolicy::query()->where('nation_id', $nation->id)->get()->keyBy('resource_definition_id');
         $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
-        $defaultPolicy = $rules['default_sale_policy'] ?? null;
-        if (! SalePolicy::isSupportedRulesetDefault($defaultPolicy)) {
-            throw new DomainException('Worldのdefault sale policy設定が不正です。');
+        try {
+            $policyRules = SalePolicyRules::fromSettings($rules);
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
         }
 
-        $forbiddenSellAll = $rules['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'] ?? [];
-
-        return response()->json(['data' => $resources->map(function (ResourceDefinition $resource) use ($policies, $defaultPolicy, $forbiddenSellAll): array {
+        return response()->json(['data' => $resources->map(function (ResourceDefinition $resource) use ($policies, $policyRules): array {
             $policy = $policies->get($resource->id);
             $allowedPolicies = SalePolicy::values();
-            if (is_array($forbiddenSellAll) && in_array($resource->key, $forbiddenSellAll, true)) {
+            if (in_array($resource->key, $policyRules->sellAllForbiddenResourceKeys, true)) {
                 $allowedPolicies = array_values(array_diff($allowedPolicies, [SalePolicy::SellAll->value]));
             }
 
@@ -48,7 +49,7 @@ final class SalePolicyController extends Controller
                 'resource_key' => $resource->key,
                 'resource_name' => $resource->name,
                 'amount' => (int) ($resource->nationBalances->first()->amount ?? 0),
-                'policy' => $policy->policy ?? $defaultPolicy,
+                'policy' => $policy->policy ?? $policyRules->defaultPolicy,
                 'keep_amount' => $policy?->keep_amount,
                 'version' => $policy->version ?? 1,
                 'allowed_policies' => $allowedPolicies,
@@ -79,10 +80,20 @@ final class SalePolicyController extends Controller
                 'version' => $policy->version,
             ]]);
         } catch (DomainException $exception) {
-            return response()->json(
-                ['message' => $exception->getMessage()],
-                $exception instanceof OptimisticLockException ? 409 : 422,
-            );
+            return $this->domainError($exception);
         }
+    }
+
+    private function domainError(DomainException $exception): JsonResponse
+    {
+        $payload = ['message' => $exception->getMessage()];
+        if ($exception instanceof ResetRequiredException) {
+            $payload['code'] = ResetRequiredException::ERROR_CODE;
+        }
+
+        return response()->json(
+            $payload,
+            $exception instanceof OptimisticLockException || $exception instanceof ResetRequiredException ? 409 : 422,
+        );
     }
 }

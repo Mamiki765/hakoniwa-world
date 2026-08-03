@@ -64,7 +64,7 @@ The legacy code randomises the command Nation order and cell order, while econom
 
 A PostgreSQL partial unique index on `(world_id, target_turn)` for non-dry runs prevents the same turn from being applied twice. Dry runs remain history records without occupying the application slot.
 
-The run snapshots the exact `ruleset_version_id` referenced by the World. The transaction rechecks both the World target turn and ruleset ID before executing. It never resolves current deployment config as an existing World's rules.
+The run snapshots the exact `ruleset_version_id` referenced by the World. Before creating or retrying a run, `CurrentRulesetGuard` compares the already-loaded World ruleset ID with the configured current ruleset identity and rejects a historical World with `reset_required`. The transaction rechecks both the World target turn and ruleset ID before executing; deployment config is never substituted for the World's snapshot.
 
 ## Lock and transaction
 
@@ -99,7 +99,7 @@ base_money_capacity = 9,999       (money unit: 1億円)
 base_food_capacity_tons = 999,900 (food unit: 1 ton)
 ```
 
-Only `shared-world` is moved from the exact expected PR6 ruleset by a data-preserving migration. Queue definition foreign keys are remapped by command key. The initializer associates new Worlds with PR7 but never moves an existing World.
+Historically, only `shared-world` was moved from the exact expected PR6 ruleset by a data-preserving migration. Queue definition foreign keys were remapped by command key. This migration record remains until the canonical schema rebaseline; it is not a current procedure for continuing a historical World.
 
 `NationCapacityResolver` currently returns only the World's published base capacities. `CapacityModifier` is deliberately a marker boundary: if any modifier is supplied, resolution fails closed until E-04 decides addition, multiplication, caps, priority, and cycle prevention.
 

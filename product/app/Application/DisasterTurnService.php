@@ -26,9 +26,6 @@ final class DisasterTurnService
     {
         $rules = $this->rules($context);
         $metrics = ['executed_disasters' => 0, 'damaged_cells' => 0];
-        if ($rules === null) {
-            return $metrics;
-        }
         $space = $this->surfaceSpace($context);
 
         $definitions = [
@@ -83,9 +80,6 @@ final class DisasterTurnService
         int $y,
     ): bool {
         $settings = $context->ruleset->settings['turn_processing']['command_random_effects']['land_level_earthquake'] ?? null;
-        if ($settings === null) {
-            return false;
-        }
         if (! is_array($settings)) {
             throw new DomainException('The active ruleset is missing land_level earthquake settings.');
         }
@@ -123,9 +117,6 @@ final class DisasterTurnService
     public function processFire(TurnContext $context, MapCell $cell): bool
     {
         $rules = $this->rules($context);
-        if ($rules === null) {
-            return false;
-        }
         $settings = $rules['fire'];
         $facilityKey = $cell->facility?->key;
         $settlement = in_array($facilityKey, ['village', 'town', 'city', 'capital'], true)
@@ -576,12 +567,12 @@ final class DisasterTurnService
             ->lockForUpdate()->with(['terrain', 'facility'])->first();
     }
 
-    /** @return array<string, array<string, mixed>>|null */
-    private function rules(TurnContext $context): ?array
+    /** @return array<string, array<string, mixed>> */
+    private function rules(TurnContext $context): array
     {
         $turnProcessing = $context->ruleset->settings['turn_processing'] ?? null;
         if (! is_array($turnProcessing) || ! array_key_exists('disasters', $turnProcessing)) {
-            return null;
+            throw new DomainException('The active ruleset is missing disaster settings.');
         }
         $rules = $turnProcessing['disasters'];
         if (! is_array($rules)) {

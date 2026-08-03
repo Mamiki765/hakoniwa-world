@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\TurnAlreadyAppliedException;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\TurnContext;
@@ -27,6 +28,7 @@ class TurnRunner
         private readonly TurnPipeline $pipeline,
         private readonly WorldTurnLock $lock,
         private readonly TurnSeedGenerator $seeds,
+        private readonly CurrentRulesetGuard $rulesetGuard,
     ) {}
 
     public function run(World $world, bool $dryRun = false, string $source = 'manual'): TurnRun
@@ -40,6 +42,7 @@ class TurnRunner
         try {
             $world = World::query()->findOrFail($world->id);
             $ruleset = $world->rulesetVersion()->firstOrFail();
+            $this->rulesetGuard->assertMutable($world, $ruleset);
             $targetTurn = $world->current_turn + 1;
 
             if ($dryRun) {
