@@ -4,6 +4,8 @@ namespace App\Application;
 
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Economy\SalePolicy;
+use App\Domain\Economy\SalePolicyRules;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\NationResourceSalePolicy;
@@ -16,6 +18,8 @@ use Illuminate\Support\Facades\DB;
 
 final class SalePolicyService
 {
+    public function __construct(private readonly CurrentRulesetGuard $rulesetGuard) {}
+
     public function update(
         User $user,
         Nation $nation,
@@ -27,13 +31,16 @@ final class SalePolicyService
         return DB::transaction(function () use ($user, $nation, $resource, $policy, $keepAmount, $expectedVersion): NationResourceSalePolicy {
             $this->authorize($user, $nation);
             $world = World::query()->whereKey($nation->world_id)->lockForUpdate()->firstOrFail();
+            $ruleset = $world->rulesetVersion()->firstOrFail();
+            $this->rulesetGuard->assertMutable($world, $ruleset);
+            $policyRules = SalePolicyRules::fromSettings($ruleset->settings);
             if (! $resource->tradable) {
                 throw new DomainException('売却できないresourceです。');
             }
             if (! SalePolicy::isSupported($policy)) {
                 throw new DomainException('sale policyが不正です。');
             }
-            $this->assertResourceCapability($world, $resource, $policy);
+            $policyRules->assertAllowed($resource, $policy);
             if ($policy === SalePolicy::KeepAmount->value && ($keepAmount === null || $keepAmount < 0)) {
                 throw new DomainException('keep_amountには0以上の保持数量が必要です。');
             }
@@ -43,7 +50,7 @@ final class SalePolicyService
 
             $record = NationResourceSalePolicy::query()->firstOrCreate(
                 ['nation_id' => $nation->id, 'resource_definition_id' => $resource->id],
-                ['policy' => $this->defaultPolicy($world), 'keep_amount' => null, 'version' => 1],
+                ['policy' => $policyRules->defaultPolicy, 'keep_amount' => null, 'version' => 1],
             );
             $record = NationResourceSalePolicy::query()->whereKey($record->id)->lockForUpdate()->firstOrFail();
             if ($record->version !== $expectedVersion) {
@@ -67,32 +74,6 @@ final class SalePolicyService
     {
         if (! NationMembership::query()->where('user_id', $user->id)->where('nation_id', $nation->id)->exists()) {
             throw new AuthorizationException('自国のsale policyだけを変更できます。');
-        }
-    }
-
-    private function defaultPolicy(World $world): string
-    {
-        $settings = $world->rulesetVersion()->firstOrFail()->settings;
-        $policy = $settings['default_sale_policy'] ?? null;
-        if (! SalePolicy::isSupportedRulesetDefault($policy)) {
-            throw new DomainException('Worldのdefault sale policy設定が不正です。');
-        }
-
-        return $policy;
-    }
-
-    private function assertResourceCapability(
-        World $world,
-        ResourceDefinition $resource,
-        string $policy,
-    ): void {
-        if ($policy !== SalePolicy::SellAll->value) {
-            return;
-        }
-        $settings = $world->rulesetVersion()->firstOrFail()->settings;
-        $forbidden = $settings['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'] ?? [];
-        if (is_array($forbidden) && in_array($resource->key, $forbidden, true)) {
-            throw new DomainException("{$resource->name}ではsell_allを使用できません。");
         }
     }
 }

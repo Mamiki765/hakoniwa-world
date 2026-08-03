@@ -29,6 +29,7 @@ class Pr11ForwardMigrationTest extends TestCase
         $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
         $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $pr7->id]);
+        $this->useRulesetAsCurrent('roadmap-pr7-v1');
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $target = MapCell::query()
             ->where('owner_nation_id', $nation->id)
@@ -73,9 +74,6 @@ class Pr11ForwardMigrationTest extends TestCase
         $migration = require database_path('migrations/2026_07_30_000000_publish_roadmap_pr11_ruleset.php');
 
         $this->assertSame($pr7->id, $world->fresh()->ruleset_version_id);
-        app(OceanWorldGenerator::class)->initialize();
-        $this->assertSame($pr7->id, $world->fresh()->ruleset_version_id);
-
         $migration->up();
 
         $this->assertSame($pr11->id, $world->fresh()->ruleset_version_id);

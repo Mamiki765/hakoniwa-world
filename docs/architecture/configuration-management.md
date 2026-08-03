@@ -28,11 +28,21 @@ repository内のauthoring sourceは`product/config/hakoniwa/rulesets/<version-ke
 
 `php artisan hakoniwa:ruleset:validate --key=<version-key>`はpublisherと同じschema validatorを使い、required key、strict integer type/range、catalog/definition reference、相互条件をDB mutationなしで検証する。このcommandはsnapshotをpublishせず、Worldの`ruleset_version_id`も変更しない。review後のpublishはimmutable snapshot作成、World切替は別の明示的operationであり、このauthoring境界にapply/switch機能を含めない。
 
-`OceanWorldGenerator::initialize()`は、configured rulesetが存在しない場合だけpublisherを通して作成し、存在する場合は保存済みsnapshotとの完全一致を確認する。新規Worldだけをconfigured rulesetへ関連付け、既存Worldの`ruleset_version_id`を変更しない。既存Worldを新rulesetへ移す操作は、対象Worldと旧ruleset IDを限定したdata-preserving migrationで行う。
+`OceanWorldGenerator::initialize()`は、configured rulesetが存在しない場合だけpublisherを通して作成し、存在する場合は保存済みsnapshotとの完全一致を確認する。新規Worldだけをconfigured rulesetへ関連付け、既存Worldの`ruleset_version_id`を変更しない。historical ruleset Worldに対するstandalone initは`reset_required`で停止し、明示的なWorld resetだけが開発game dataを破棄してcurrent rulesetへ再作成できる。
 
-Roadmap PR6は`roadmap-pr2-v1`を更新せず、`roadmap-pr6-v1`を新規公開する。forward-only migrationは`shared-world`が旧rulesetを参照している場合だけ新rulesetへ移し、queue itemのcommand definition参照を同じcommand keyの新定義へ付け替える。既適用migrationのrollbackやWorld再初期化を移行手段にしない。
+## Pre-release runtime boundary
 
-Roadmap PR7も既存snapshotを更新せず、基礎資金上限と基礎食料上限を含む`roadmap-pr7-v1`を新規公開する。`shared-world`の移行はWorld行を`SELECT FOR UPDATE`してから、Nation queue、queue itemの順にlockする。migration中は旧application processによる遅延insertも直列化するため、queue tableとqueue item tableへ同じ順序で短時間の`SHARE ROW EXCLUSIVE` lockを取得する。DBのdeferred constraint triggerは、queue itemが参照するcommand definitionとWorldの`ruleset_version_id`一致を通常書込み時にも強制する。移行前後に全queue itemを検証し、不一致が1件でもあればtransaction全体をrollbackする。`CommandQueueService`のitem変更もWorld、Nation queue、queue itemの順にlockし、追加時はlock済みWorldからdefinitionを解決してinsert直前にruleset一致を再確認する。queue読取はdefinition-bearing itemを追加しないためWorldを排他lockせず、published ruleset契約の検証だけを行う。
+正式公開前のruntime mutationはconfigured current rulesetだけを対象とする。`CurrentRulesetGuard`は既に読み込んだWorldの`ruleset_version_id`とimmutableなruleset key/versionから確定したcurrent ruleset row IDを比較し、`ruleset_versions.is_active`の意味を変更せず、guard専用SQLを追加しない。
+
+historical ruleset Worldの地図、audit/player event、TurnRun、ruleset snapshotはread-onlyで閲覧できる。turn、dry-run TurnRun作成、command queue追加・数量更新・並べ替え・取消、Nation作成、sale policy更新、standalone initはHTTPでは409 `reset_required`、console/application境界では同じcodeを含むexceptionで拒否する。拒否前後でgame stateとaudit eventを変更しない。World resetそのものは復旧境界なので許可する。
+
+latest rulesetの必須runtime metadataが欠落している場合もhistorical behaviorへfallbackせず、transactionを失敗させてgame stateをrollbackする。advisory lock、World row lock、TurnRun retry、queue consistency trigger、unique/FK/check constraint、published payload immutabilityはこの期間も維持する。
+
+以下のRoadmap PR6/PR7 migration記録は既適用schema履歴としてcanonical schema rebaselineまで保持するものであり、historical World継続運用の現行手順ではない。
+
+Roadmap PR6は`roadmap-pr2-v1`を更新せず、`roadmap-pr6-v1`を新規公開した。当時のforward-only migrationは`shared-world`が旧rulesetを参照している場合だけ新rulesetへ移し、queue itemのcommand definition参照を同じcommand keyの新定義へ付け替えた。
+
+Roadmap PR7も既存snapshotを更新せず、基礎資金上限と基礎食料上限を含む`roadmap-pr7-v1`を新規公開した。当時の`shared-world` migrationはWorld、Nation queue、queue itemの順にlockし、旧application processとの競合を直列化した。DBのdeferred constraint triggerはmigration履歴から独立したcurrent integrity constraintとして維持し、queue itemが参照するcommand definitionとWorldの`ruleset_version_id`一致を通常書込み時にも強制する。`CommandQueueService`のcurrent mutationもWorld、Nation queue、queue itemの順にlockする。queue読取はrowを作成せず、Worldを排他lockしない。
 
 global catalogである`TerrainDefinition`、`FacilityDefinition`、`ResourceDefinition`もinitializerから上書きしない。欠けているrowだけ作成し、既存値がconfigと異なる場合は明示的migrationを要求して停止する。PR6のfood単位変更は専用migrationが既存food balanceを100倍し、catalogの単位を`ton`へ変更する。
 

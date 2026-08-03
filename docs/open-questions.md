@@ -63,6 +63,8 @@
 - Decision: 各Worldは不変の`ruleset_version_id`を参照する。一度公開したruleset row、settings、そのrulesetに属するcommand definitionsおよびproduction definitionsをinitializerや通常application codeから更新しない。変更はsettings全体と関連定義を持つ新しい一意なkey/versionとして公開し、同じkeyの完全一致だけを冪等に再利用する。不一致は例外で停止する。既存Worldの移行は対象Worldと旧ruleset IDを限定したdata-preserving migrationで行い、initializerは既存Worldを自動移行しない。Roadmap PR6は`roadmap-pr2-v1`を変更せず`roadmap-pr6-v1`を公開し、forward-only migrationで`shared-world`だけを明示的に移す。
 - Pre-release decision: 現在は本公開前の開発期間であり、更新ごとに開発用Worldをresetしてよい。resetではNation、cell、command queue、TurnRunを含む開発データを破棄してよい。公開済みruleset row、settings、command definitions、production definitionsは監査用の不変recordとして維持し、payloadを直接書き換えない。
 - Pre-release runtime boundary: runtimeで保証するのは最新のactive rulesetだけとする。過去ruleset上のWorldを継続実行できる後方互換性、過去ruleset用fallback、過去rulesetでのTurnRunner実行test、failed/pending runのruleset更新後retry互換は、repository ownerが個別に要求しない限り追加しない。これは公開payloadのimmutability契約を弱めず、A-09のmigration境界を破壊しない期間限定の運用decisionである。
+- Pre-release read boundary: 過去rulesetを参照するWorldの地図、audit、TurnRun、ruleset snapshotはread-onlyで閲覧できる。game state mutationは、既にロードしたWorldの`ruleset_version_id`とcurrent ruleset IDを比較する共通`CurrentRulesetGuard`で`reset_required`として拒否する。`ruleset_versions.is_active`の意味は変更しない。
+- Pre-release cleanup plan: PR17ではschemaを変更せずruntime fallbackだけを削除する。migration chain、historical ruleset publication、current validatorとhistorical audit verificationの分離は変更せず、PR19完了後かつ正式公開前のPR20でcanonical schema rebaselineとして扱う。
 - Required before: 本公開準備へ移行する前に、正式なdata migration方針、runtime後方互換性範囲、failed/pending runの扱いを改めて決定する。
 - Decision record: `docs/architecture/configuration-management.md`、`docs/architecture/target-architecture.md`
 - `chunk_size = 16`と座標方式は既存worldの互換性に関わるarchitecture invariantであり、通常のバランス設定として変更しない。

@@ -74,6 +74,6 @@ tile width/heightとvertical stepは32、half offsetは16で一元管理する�
 
 ## Migrationとrollback
 
-`2026_07_26_010000_add_roadmap_pr2_systems.php`は既存users、identity、nation、world、3,600 cells、capitalを再生成せず列・catalog・queue/policy tableを追加する。既存worldは旧`mvp-v1`を上書きせず新しい`roadmap-pr2-v1`へ付け替える。既存forestへ500本、基地へ経験値0、既存scale施設へ各definitionの初期scaleをnull行だけbackfillする。追加resource残高とdefault policyは不足行だけ作成する。
+この節は既適用migrationのhistorical recordであり、pre-releaseの現行World更新手順ではない。`2026_07_26_010000_add_roadmap_pr2_systems.php`は当時の既存users、identity、nation、world、3,600 cells、capitalを再生成せず列・catalog・queue/policy tableを追加し、既存forest、基地、scale施設、resource残高、default policyをbackfillした。
 
-既存OCIへ適用するときはDB backup後、明示的なtest DBで先に検証し、アプリ更新時に`php artisan migrate --force`を一度実行する。world init、volume削除、`down -v`は不要である。rollbackは追加table・列を落とすため、データ保持が必要な運用環境ではbackup復元または前進migrationを優先する。
+現在のpre-release更新では既存migration chainを適用した後、historical Worldを継続実行せず、`docs/operations/world-reset.md`のbackup-first手順でconfigured Worldをresetする。volume削除と`down -v`は行わず、published historical ruleset recordsを保持する。

@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationMembership;
@@ -19,14 +20,17 @@ final class NationCreationService
         private readonly CapitalPlacementService $placement,
         private readonly InitialIslandGenerator $islands,
         private readonly NationResourceService $resources,
+        private readonly CurrentRulesetGuard $rulesetGuard,
     ) {}
 
     public function create(User $user, World $world, string $name): Nation
     {
         return DB::transaction(function () use ($user, $world, $name): Nation {
             $world = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+            $ruleset = $world->rulesetVersion()->firstOrFail();
+            $this->rulesetGuard->assertMutable($world, $ruleset);
             $this->lockRegistration($world);
-            $rules = $world->rulesetVersion()->firstOrFail()->settings;
+            $rules = $ruleset->settings;
 
             if (NationMembership::query()->where('user_id', $user->id)->where('world_id', $world->id)->exists()) {
                 throw new DomainException('このWorldにはすでにNationがあります。');

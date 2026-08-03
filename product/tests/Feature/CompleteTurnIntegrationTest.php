@@ -8,6 +8,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\GameplayTurnPhase;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnPhase;
@@ -109,6 +110,7 @@ class CompleteTurnIntegrationTest extends TestCase
             app(TurnPipeline::class),
             new WorldTurnLock,
             new Pr11FixedTurnSeedGenerator(str_repeat('7', 64)),
+            app(CurrentRulesetGuard::class),
         ))->run($world);
 
         $this->assertSame('completed', $run->status);
@@ -201,7 +203,12 @@ class CompleteTurnIntegrationTest extends TestCase
             TurnPipeline::CANONICAL_PHASE_KEYS,
         ));
         $seed = str_repeat('7', 64);
-        $runner = new TurnRunner($pipeline, new WorldTurnLock, new Pr11FixedTurnSeedGenerator($seed));
+        $runner = new TurnRunner(
+            $pipeline,
+            new WorldTurnLock,
+            new Pr11FixedTurnSeedGenerator($seed),
+            app(CurrentRulesetGuard::class),
+        );
 
         try {
             $runner->run($world);

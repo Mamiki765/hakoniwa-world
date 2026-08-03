@@ -9,6 +9,19 @@ use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
 {
+    protected function useRulesetAsCurrent(string $key): void
+    {
+        $ruleset = config("hakoniwa.published_rulesets.{$key}");
+        if (! is_array($ruleset) || ! is_string($ruleset['key'] ?? null) || ! is_int($ruleset['version'] ?? null)) {
+            throw new RuntimeException("Test ruleset {$key} is not configured.");
+        }
+
+        config([
+            'hakoniwa.ruleset.key' => $ruleset['key'],
+            'hakoniwa.ruleset.version' => $ruleset['version'],
+        ]);
+    }
+
     protected function setUp(): void
     {
         $connection = (string) ($_SERVER['DB_CONNECTION'] ?? getenv('DB_CONNECTION'));

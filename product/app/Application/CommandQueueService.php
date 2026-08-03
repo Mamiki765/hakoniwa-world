@@ -7,6 +7,7 @@ use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -14,6 +15,7 @@ use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
+use App\Models\RulesetVersion;
 use App\Models\User;
 use App\Models\World;
 use DomainException;
@@ -24,7 +26,10 @@ use Illuminate\Support\Facades\DB;
 
 final class CommandQueueService
 {
-    public function __construct(private readonly CommandParametersValidator $parameters) {}
+    public function __construct(
+        private readonly CommandParametersValidator $parameters,
+        private readonly CurrentRulesetGuard $rulesetGuard,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $parameters
@@ -284,19 +289,36 @@ final class CommandQueueService
         }, 3);
     }
 
-    public function queueFor(User $user, Nation $nation, MapSpace $mapSpace): NationCommandQueue
-    {
-        return DB::transaction(function () use ($user, $nation, $mapSpace): NationCommandQueue {
-            $this->membership($user, $nation);
-            $this->assertMapSpace($nation, $mapSpace);
-            $world = World::query()->whereKey($nation->world_id)->firstOrFail();
-            $this->assertUniversalQuantityRuleset($world);
+    public function queueFor(
+        User $user,
+        Nation $nation,
+        MapSpace $mapSpace,
+        bool $mutationPreflight = false,
+    ): NationCommandQueue {
+        $this->membership($user, $nation);
+        $this->assertMapSpace($nation, $mapSpace);
+        $world = World::query()->whereKey($nation->world_id)->with('rulesetVersion')->firstOrFail();
+        if ($mutationPreflight) {
+            $this->rulesetGuard->assertMutable($world, $world->rulesetVersion);
+        }
+        $this->assertUniversalQuantityRuleset($world);
 
-            return NationCommandQueue::query()->firstOrCreate(
-                ['nation_id' => $nation->id],
-                ['map_space_id' => $mapSpace->id, 'version' => 1],
-            )->load(['items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'), 'items.definition']);
-        }, 3);
+        $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->first();
+        if ($queue === null) {
+            $queue = new NationCommandQueue([
+                'nation_id' => $nation->id,
+                'map_space_id' => $mapSpace->id,
+                'version' => 1,
+            ]);
+            $queue->setRelation('items', new Collection);
+
+            return $queue;
+        }
+
+        return $queue->load([
+            'items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'),
+            'items.definition',
+        ]);
     }
 
     public function validateTarget(Nation $nation, MapSpace $mapSpace, CommandDefinition $definition, MapCell $cell): void
@@ -365,6 +387,9 @@ final class CommandQueueService
     private function lockWorldForQueue(Nation $nation): World
     {
         $world = World::query()->whereKey($nation->world_id)->lockForUpdate()->firstOrFail();
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $this->rulesetGuard->assertMutable($world, $ruleset);
+        $world->setRelation('rulesetVersion', $ruleset);
         $this->assertUniversalQuantityRuleset($world);
 
         return $world;
@@ -372,17 +397,30 @@ final class CommandQueueService
 
     private function queueLimit(World $world): int
     {
-        $settings = $world->rulesetVersion()->firstOrFail()->settings;
+        $settings = $this->rulesetSettings($world);
 
         return CommandQueueLimit::fromRulesetSettings($settings);
     }
 
     private function assertUniversalQuantityRuleset(World $world): void
     {
-        $settings = $world->rulesetVersion()->firstOrFail()->settings;
+        $settings = $this->rulesetSettings($world);
         if (! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'] ?? null)) {
             throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');
         }
+    }
+
+    /** @return array<string, mixed> */
+    private function rulesetSettings(World $world): array
+    {
+        $ruleset = $world->relationLoaded('rulesetVersion')
+            ? $world->getRelation('rulesetVersion')
+            : $world->rulesetVersion()->firstOrFail();
+        if (! $ruleset instanceof RulesetVersion) {
+            throw new DomainException('World ruleset relation is invalid.');
+        }
+
+        return $ruleset->settings;
     }
 
     private function targetCell(MapSpace $mapSpace, int $x, int $y): MapCell

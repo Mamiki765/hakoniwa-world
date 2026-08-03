@@ -2,7 +2,9 @@
 
 ## Purpose
 
-PR #4 の coordinate migration は既存 world を削除せず、旧表示と同じ形へ x/y backfill する。正しい0..59×0..59の長方形 world へ切り替えるには migration 後に専用 command を実行する。
+正式公開前はapplication更新ごとに開発Worldをresetし、configured current rulesetで再作成する。historical rulesetを参照するWorldは地図、event、TurnRun、ruleset snapshotをread-onlyで閲覧できるが、turn、command queue、Nation作成、sale policy更新その他のgame-state mutationは`reset_required`で拒否される。
+
+既存Worldの`ruleset_version_id`をapplication codeで付け替えない。更新時はbackupとdry runを確認し、この専用commandで対象Worldの開発game dataを破棄してcurrent rulesetへ再初期化する。published ruleset rows、settings、command definitions、production definitionsは削除・上書きしない。
 
 ## Safety
 
@@ -12,6 +14,7 @@ PR #4 の coordinate migration は既存 world を削除せず、旧表示と同
 - production data を test に使わない
 - `migrate:fresh`、`db:wipe`、`docker compose down -v`、volume 削除は禁止
 - mutation は transaction 内で行い、検証失敗時は rollback
+- historical Worldのread-only確認後も、mutation再開にはこのresetを必須とする
 
 ## Dry run
 

@@ -2,18 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Application\CompleteTurnEngine;
-use App\Application\DisasterTurnService;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use App\Domain\Turn\DeterministicRandomStream;
-use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
-use App\Domain\Turn\TurnState;
-use App\Models\MapCell;
-use App\Models\NationCommandQueueItem;
-use App\Models\RulesetVersion;
-use App\Models\TurnRun;
-use App\Models\World;
 use DomainException;
 use Tests\TestCase;
 
@@ -84,40 +75,6 @@ class DisasterRulesetContractTest extends TestCase
         );
         $this->assertNotSame(TurnRandomStreamFactory::FIRE, TurnRandomStreamFactory::FACILITY_RIOT);
         $this->assertNotSame(TurnRandomStreamFactory::FIRE, TurnRandomStreamFactory::OIL_DEPLETION);
-    }
-
-    public function test_pre_pr15_rulesets_leave_new_disaster_hooks_as_no_ops(): void
-    {
-        $published = config('hakoniwa.published_rulesets');
-        $this->assertIsArray($published);
-        $settings = $published['roadmap-pr14-v1'];
-        $ruleset = (new RulesetVersion)->forceFill([
-            'key' => 'roadmap-pr14-v1',
-            'settings' => $settings,
-        ]);
-        $seed = hash('sha256', 'pr14-disaster-compatibility');
-        $context = new TurnContext(
-            (new World)->forceFill(['id' => 101]),
-            (new TurnRun)->forceFill(['id' => 202]),
-            $ruleset,
-            2,
-            $seed,
-            new TurnRandomStreamFactory($seed),
-            new TurnState,
-        );
-        $service = app(DisasterTurnService::class);
-
-        $this->assertSame(
-            ['executed_disasters' => 0, 'damaged_cells' => 0],
-            app(CompleteTurnEngine::class)->execute('global_disasters', $context)->metrics,
-        );
-        $this->assertFalse($service->processFire($context, new MapCell));
-        $this->assertFalse($service->landLevelEarthquake(
-            $context,
-            new NationCommandQueueItem,
-            10,
-            10,
-        ));
     }
 
     public function test_meteor_shower_continuation_must_allow_termination(): void

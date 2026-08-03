@@ -207,8 +207,8 @@ final class DomesticCommandExecutor
             if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
                 return ['code' => 'ownership_mismatch', 'message' => 'Excavation target has no owned cell within radius three.'];
             }
-            if ($cell->terrain->key === 'sea' && ! $this->isSeabedOilSearch($definition, $cell)) {
-                return ['code' => 'oil_search_deferred', 'message' => 'Deep-sea oil search remains deferred.'];
+            if ($cell->terrain->key === 'sea') {
+                $this->isSeabedOilSearch($definition, $cell);
             }
             if ($cell->terrain->key === 'sea' && $cell->facility_definition_id !== null) {
                 return ['code' => 'facility_not_empty', 'message' => 'Deep-sea oil search requires an empty cell.'];
@@ -391,10 +391,6 @@ final class DomesticCommandExecutor
         if (! $wasShallow) {
             return;
         }
-        if (! array_key_exists('adjacent_water_spread_maximum', $definition->metadata)) {
-            return;
-        }
-
         $neighbors = $this->adjacentCells($cell);
         $water = array_values(array_filter(
             $neighbors,
@@ -482,12 +478,16 @@ final class DomesticCommandExecutor
 
     private function isSeabedOilSearch(CommandDefinition $definition, MapCell $cell): bool
     {
-        $effectKey = $definition->metadata['oil_search_effect_key'] ?? null;
+        if ($definition->key !== 'excavate' || $cell->terrain->key !== 'sea') {
+            return false;
+        }
 
-        return $definition->key === 'excavate'
-            && $cell->terrain->key === 'sea'
-            && is_string($effectKey)
-            && $effectKey !== '';
+        $effectKey = $definition->metadata['oil_search_effect_key'] ?? null;
+        if (! is_string($effectKey) || $effectKey === '') {
+            throw new DomainException('Seabed oil search metadata is missing from the active ruleset.');
+        }
+
+        return true;
     }
 
     private function applySeabedOilSearch(

@@ -32,6 +32,7 @@ class Pr14ForwardMigrationTest extends TestCase
         $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
         $pr14 = RulesetVersion::query()->where('key', 'roadmap-pr14-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $pr11->id]);
+        $this->useRulesetAsCurrent('roadmap-pr11-v1');
         $space = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\MapChunkService;
 use App\Application\NationCreationService;
+use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateNationRequest;
 use App\Http\Resources\MapChunkResource;
@@ -57,6 +58,11 @@ class ApiController extends Controller
     {
         try {
             $nation = $service->create($request->user(), World::query()->findOrFail($request->integer('world_id')), $request->string('name')->trim()->value());
+        } catch (ResetRequiredException $exception) {
+            return response()->json([
+                'code' => ResetRequiredException::ERROR_CODE,
+                'message' => $exception->getMessage(),
+            ], 409);
         } catch (DomainException $exception) {
             throw ValidationException::withMessages(['name' => $exception->getMessage()]);
         }

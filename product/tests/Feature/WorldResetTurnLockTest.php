@@ -7,6 +7,7 @@ use App\Application\CommandQueueService;
 use App\Application\ExternalIdentityData;
 use App\Application\NationCreationService;
 use App\Application\TurnRunner;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\ScaffoldTurnPhase;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\TurnPipeline;
@@ -248,7 +249,7 @@ class WorldResetTurnLockTest extends TestCase
             }
         };
 
-        return new TurnRunner($pipeline, new WorldTurnLock, $seeds);
+        return new TurnRunner($pipeline, new WorldTurnLock, $seeds, app(CurrentRulesetGuard::class));
     }
 
     private function acquireAdvisoryLock(string $connectionName, World $world): void

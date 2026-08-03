@@ -25,6 +25,7 @@ class Pr7ForwardMigrationTest extends TestCase
         $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
         $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $pr7->id]);
+        $this->useRulesetAsCurrent('roadmap-pr7-v1');
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, 'PR7移行国');
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
@@ -64,13 +65,6 @@ class Pr7ForwardMigrationTest extends TestCase
 
         $migration->down();
         $this->assertSame($pr6->id, $world->fresh()->ruleset_version_id);
-
-        app(OceanWorldGenerator::class)->initialize();
-        $this->assertSame(
-            $pr6->id,
-            $world->fresh()->ruleset_version_id,
-            'Initializer must not migrate an existing World to the deployment ruleset.',
-        );
 
         $migration->up();
 
