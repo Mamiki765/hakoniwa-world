@@ -294,8 +294,7 @@ final class CommandQueueService
         Nation $nation,
         MapSpace $mapSpace,
         bool $mutationPreflight = false,
-    ): NationCommandQueue
-    {
+    ): NationCommandQueue {
         $this->membership($user, $nation);
         $this->assertMapSpace($nation, $mapSpace);
         $world = World::query()->whereKey($nation->world_id)->with('rulesetVersion')->firstOrFail();
