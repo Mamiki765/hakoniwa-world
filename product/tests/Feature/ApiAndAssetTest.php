@@ -4,17 +4,20 @@ namespace Tests\Feature;
 
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
-use App\Application\OceanWorldGenerator;
+use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\User;
 use App\Services\AssetManifestResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class ApiAndAssetTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_api_requires_auth_and_never_exposes_provider_user_id(): void
@@ -29,9 +32,10 @@ class ApiAndAssetTest extends TestCase
 
     public function test_xy_chunk_coordinates_and_nation_endpoints(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $mapSpace = MapSpace::query()->firstOrFail();
+        DB::statement("SELECT setval(pg_get_serial_sequence('nations', 'id'), 18, false)");
 
         $this->actingAs($user)->getJson("/api/v1/map-spaces/{$mapSpace->id}/chunks/-1/-1")
             ->assertOk()->assertJsonPath('data.chunk_x', -1)->assertJsonPath('data.chunk_y', -1)
@@ -42,6 +46,8 @@ class ApiAndAssetTest extends TestCase
 
         $nation = $this->actingAs($user)->postJson('/api/v1/nations', ['world_id' => $world->id, 'name' => 'API国'])
             ->assertCreated()
+            ->assertJsonPath('data.id', 18)
+            ->assertJsonPath('data.nation_number', 1)
             ->assertJsonMissingPath('data.food')
             ->assertJsonPath('data.resources.0.key', 'wheat')
             ->assertJsonPath('data.resources.0.amount', 10_000)
@@ -54,6 +60,16 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.food_resources.0.balance', 10_000)
             ->json('data');
         $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->assertJsonPath('data.id', $nation['id']);
+        $ownedCell = MapCell::query()->where('owner_nation_id', $nation['id'])->firstOrFail();
+        $ownedChunk = $this->actingAs($user)->getJson(
+            "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$ownedCell->chunk_x}/{$ownedCell->chunk_y}",
+        )->assertOk();
+        $presentedOwnedCell = collect($ownedChunk->json('data.cells'))->first(
+            fn (array $cell): bool => $cell['x'] === $ownedCell->x && $cell['y'] === $ownedCell->y,
+        );
+        $this->assertSame(18, $presentedOwnedCell['owner_nation_id']);
+        $this->assertSame(1, $presentedOwnedCell['owner_nation_number']);
+        $this->assertSame(18, $ownedCell->owner_nation_id);
 
         $customFood = ResourceDefinition::query()->create([
             'key' => 'seaweed',

@@ -29,6 +29,7 @@ function chunkFromPath(path: string, state: MapChunk['state'] = 'generated'): Ma
         facility_name: null,
         display_name: '平地',
         owner_nation_id: null,
+        owner_nation_number: null,
         owner_name: null,
         details: [],
         asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平', fallback_style: 'tile-plain' },

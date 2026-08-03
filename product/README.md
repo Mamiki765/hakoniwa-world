@@ -5,6 +5,7 @@ Laravel API、OAuth callback、Vue 3 UI、世界・島生成、command queue、�
 主要な入口:
 
 - `php artisan hakoniwa:world:init`: 全面海の共有Worldを冪等初期化
+- `php artisan hakoniwa:world:reset --world=shared-world --profile=debug-32x32 --confirm=RESET-shared-world`: `local` / `testing` 専用の32×32開発Worldへ明示的にreset（既定の`default`は60×60）
 - `php artisan hakoniwa:turn:run --world=shared-world --dry-run`: turn pipelineとruleset snapshotを確認
 - `php artisan hakoniwa:turn:status --world=shared-world`: Worldとturn run履歴を確認
 - `/api/v1`: 認証済みJSON API

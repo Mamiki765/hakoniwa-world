@@ -32,6 +32,14 @@ final class NationCreationService
                 throw new DomainException('このWorldにはすでにNationがあります。');
             }
 
+            $largestNationNumber = (int) Nation::query()
+                ->where('world_id', $world->id)
+                ->max('nation_number');
+            if ($largestNationNumber >= 2_147_483_647) {
+                throw new DomainException('このWorldではこれ以上Nation番号を採番できません。');
+            }
+            $nationNumber = $largestNationNumber + 1;
+
             $mapSpace = MapSpace::query()
                 ->where('world_id', $world->id)
                 ->where('key', config('hakoniwa.world.map_space_key'))
@@ -53,7 +61,7 @@ final class NationCreationService
             ]);
 
             $nation = Nation::query()->create([
-                'world_id' => $world->id, 'name' => $name,
+                'world_id' => $world->id, 'nation_number' => $nationNumber, 'name' => $name,
                 'money' => $rules['initial_money'],
                 'state' => 'active',
             ]);
@@ -70,7 +78,12 @@ final class NationCreationService
             DB::table('audit_events')->insert([
                 'actor_user_id' => $user->id, 'event_type' => 'nation.created',
                 'subject_type' => Nation::class, 'subject_id' => $nation->id,
-                'metadata' => json_encode(['world_id' => $world->id, 'x' => $center->x, 'y' => $center->y], JSON_THROW_ON_ERROR),
+                'metadata' => json_encode([
+                    'world_id' => $world->id,
+                    'nation_number' => $nation->nation_number,
+                    'x' => $center->x,
+                    'y' => $center->y,
+                ], JSON_THROW_ON_ERROR),
                 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
 

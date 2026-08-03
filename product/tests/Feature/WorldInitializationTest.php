@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapChunk;
 use App\Models\MapSpace;
@@ -85,5 +86,69 @@ class WorldInitializationTest extends TestCase
 
         $this->assertSame(0, World::query()->count());
         $this->assertSame(0, MapCell::query()->count());
+    }
+
+    public function test_debug_profile_generates_32_by_32_without_changing_published_ruleset_settings(): void
+    {
+        $configuredRuleset = config('hakoniwa.ruleset');
+        $published = app(RulesetPublisher::class)->publish($configuredRuleset);
+        $settingsFingerprint = hash('sha256', (string) $published->getRawOriginal('settings'));
+        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
+        $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
+        $worldRuleset = $world->rulesetVersion()->firstOrFail();
+
+        $this->assertSame($published->id, $worldRuleset->id);
+        $this->assertSame('roadmap-pr15-v1', $worldRuleset->key);
+        $this->assertSame($settingsFingerprint, hash('sha256', (string) $worldRuleset->getRawOriginal('settings')));
+        $this->assertSame(59, $worldRuleset->settings['initial_x_max']);
+        $this->assertSame(59, $worldRuleset->settings['initial_y_max']);
+        $this->assertArrayNotHasKey('generation_profile', $worldRuleset->settings);
+        $this->assertSame(
+            ['min_x' => 0, 'max_x' => 31, 'min_y' => 0, 'max_y' => 31],
+            $mapSpace->only(['min_x', 'max_x', 'min_y', 'max_y']),
+        );
+        $this->assertSame(1024, $mapSpace->cells()->count());
+        $this->assertSame(4, $mapSpace->chunks()->count());
+        $this->assertSame(range(0, 31), $mapSpace->cells()->distinct()->orderBy('x')->pluck('x')->all());
+        $this->assertSame(range(0, 31), $mapSpace->cells()->distinct()->orderBy('y')->pluck('y')->all());
+        $this->assertSame(
+            [256, 256, 256, 256],
+            DB::table('map_cells')->where('map_space_id', $mapSpace->id)
+                ->selectRaw('map_chunk_id, COUNT(*) AS cell_count')
+                ->groupBy('map_chunk_id')
+                ->orderBy('map_chunk_id')
+                ->pluck('cell_count')
+                ->map(static fn (mixed $count): int => (int) $count)
+                ->all(),
+        );
+        $this->assertSame(
+            ['chunk_x' => 0, 'chunk_y' => 0, 'local_x' => 15, 'local_y' => 15],
+            MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', 15)->where('y', 15)
+                ->firstOrFail()->only(['chunk_x', 'chunk_y', 'local_x', 'local_y']),
+        );
+        $this->assertSame(
+            ['chunk_x' => 1, 'chunk_y' => 1, 'local_x' => 0, 'local_y' => 0],
+            MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', 16)->where('y', 16)
+                ->firstOrFail()->only(['chunk_x', 'chunk_y', 'local_x', 'local_y']),
+        );
+        $this->assertSame(
+            ['chunk_x' => 1, 'chunk_y' => 1, 'local_x' => 15, 'local_y' => 15],
+            MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', 31)->where('y', 31)
+                ->firstOrFail()->only(['chunk_x', 'chunk_y', 'local_x', 'local_y']),
+        );
+    }
+
+    public function test_standard_world_init_remains_idempotent_for_an_existing_debug_world(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
+        $generationRunCount = DB::table('world_generation_runs')->count();
+
+        $this->artisan('hakoniwa:world:init')
+            ->expectsOutputToContain('ready with 1024 ocean cells')
+            ->assertSuccessful();
+
+        $this->assertSame($world->id, World::query()->where('key', $world->key)->value('id'));
+        $this->assertSame(1024, MapCell::query()->count());
+        $this->assertSame($generationRunCount, DB::table('world_generation_runs')->count());
     }
 }

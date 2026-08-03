@@ -9,6 +9,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -49,7 +50,7 @@ class WorldResetCommandTest extends TestCase
 
     public function test_reset_isolated_world_preserves_users_identities_and_other_worlds(): void
     {
-        [$world, $user] = $this->populatedWorld();
+        [$world, $user] = $this->populatedWorld(WorldGenerationProfile::Production);
         $otherWorld = World::query()->create([
             'key' => 'other-world',
             'name' => '別世界',
@@ -114,10 +115,12 @@ class WorldResetCommandTest extends TestCase
     {
         [$world] = $this->populatedWorld();
         $nationCount = Nation::query()->count();
+        $cellCount = MapCell::query()->count();
         $this->app->bind(OceanWorldGenerator::class, fn () => new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class)) extends OceanWorldGenerator
         {
-            public function initialize(): World
-            {
+            public function initialize(
+                WorldGenerationProfile $profile = WorldGenerationProfile::Production,
+            ): World {
                 throw new RuntimeException('injected reset failure');
             }
         });
@@ -129,7 +132,7 @@ class WorldResetCommandTest extends TestCase
 
         $this->assertNotNull(World::query()->find($world->id));
         $this->assertSame($nationCount, Nation::query()->count());
-        $this->assertSame(3600, MapCell::query()->count());
+        $this->assertSame($cellCount, MapCell::query()->count());
     }
 
     public function test_reset_reports_and_cascades_only_the_target_world_turn_runs(): void
@@ -167,6 +170,7 @@ class WorldResetCommandTest extends TestCase
 
         $this->assertSame(0, Artisan::call('hakoniwa:world:reset', [
             '--world' => $world->key,
+            '--profile' => 'debug-32x32',
             '--confirm' => 'RESET-'.$world->key,
         ]));
         $this->assertNull(World::query()->find($world->id));
@@ -177,10 +181,57 @@ class WorldResetCommandTest extends TestCase
         $this->assertSame($identityCount, DB::table('auth_identities')->count());
     }
 
-    /** @return array{World, User} */
-    private function populatedWorld(): array
+    public function test_explicit_debug_profile_resets_to_32_by_32_and_restarts_nation_numbers(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        [$world, $user] = $this->populatedWorld(WorldGenerationProfile::Production);
+
+        $this->artisan('hakoniwa:world:reset', [
+            '--world' => $world->key,
+            '--profile' => 'debug-32x32',
+            '--confirm' => 'RESET-'.$world->key,
+        ])->expectsOutputToContain('verified 32 x 32 staggered x/y ocean (debug-32x32)')
+            ->assertSuccessful();
+
+        $resetWorld = World::query()->where('key', $world->key)->firstOrFail();
+        $mapSpace = MapSpace::query()->where('world_id', $resetWorld->id)->firstOrFail();
+        $nation = app(NationCreationService::class)->create($user->fresh(), $resetWorld, 'Debug Nation');
+
+        $this->assertSame(
+            ['min_x' => 0, 'max_x' => 31, 'min_y' => 0, 'max_y' => 31],
+            $mapSpace->only(['min_x', 'max_x', 'min_y', 'max_y']),
+        );
+        $this->assertSame(1024, $mapSpace->cells()->count());
+        $this->assertSame(4, $mapSpace->chunks()->count());
+        $this->assertSame(1, $nation->nation_number);
+    }
+
+    public function test_debug_profile_is_rejected_outside_local_and_testing_without_mutation(): void
+    {
+        [$world] = $this->populatedWorld();
+        $worldId = $world->id;
+        $cellCount = MapCell::query()->count();
+        $this->app['env'] = 'production';
+
+        try {
+            $this->artisan('hakoniwa:world:reset', [
+                '--world' => $world->key,
+                '--profile' => 'debug-32x32',
+                '--confirm' => 'RESET-'.$world->key,
+            ])->expectsOutputToContain('restricted to local and testing environments')
+                ->assertFailed();
+        } finally {
+            $this->app['env'] = 'testing';
+        }
+
+        $this->assertSame($worldId, World::query()->where('key', $world->key)->value('id'));
+        $this->assertSame($cellCount, MapCell::query()->count());
+    }
+
+    /** @return array{World, User} */
+    private function populatedWorld(
+        WorldGenerationProfile $profile = WorldGenerationProfile::Debug32x32,
+    ): array {
+        $world = app(OceanWorldGenerator::class)->initialize($profile);
         $user = app(AuthIdentityService::class)->authenticate(
             'discord',
             new ExternalIdentityData('reset-user', 'Reset User'),

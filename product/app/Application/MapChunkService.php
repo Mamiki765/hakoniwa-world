@@ -18,7 +18,7 @@ final class MapChunkService
             ->where('map_space_id', $mapSpace->id)
             ->where('chunk_x', $chunkX)
             ->where('chunk_y', $chunkY)
-            ->with(['terrain', 'facility', 'ownerNation:id,name'])
+            ->with(['terrain', 'facility', 'ownerNation:id,nation_number,name'])
             ->orderBy('y')
             ->orderBy('x')
             ->get();

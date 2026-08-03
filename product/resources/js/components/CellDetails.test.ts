@@ -10,7 +10,7 @@ const detail = (key: string, label: string, value: number | string, formatted: s
 function cell(overrides: Partial<MapCell> = {}): MapCell {
     return {
         x: 3, y: -2, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
-        display_name: '平地', owner_nation_id: 1, owner_name: '試験国', details: [],
+        display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '試験国', details: [],
         asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平地', fallback_style: 'tile-plain' },
         overlays: [], aria_label: 'x 3 y -2 平地 所有 試験国', version: 1, updated_at: null,
         ...overrides,
@@ -18,6 +18,13 @@ function cell(overrides: Partial<MapCell> = {}): MapCell {
 }
 
 describe('viewer-safe cell details', () => {
+    it('shows the per-World nation number instead of the internal database id', () => {
+        const wrapper = mount(CellDetails, { props: { cell: cell() } });
+
+        expect(wrapper.text()).toContain('N1');
+        expect(wrapper.text()).not.toContain('N18');
+    });
+
     it.each([
         ['村', 'village'], ['首都', 'capital'],
     ])('shows settlement population for %s', (name, facility) => {

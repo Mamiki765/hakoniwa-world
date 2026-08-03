@@ -18,17 +18,20 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class NationCreationTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_nation_creation_generates_legacy_inspired_island_capital_and_territory(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '最初の国');
 
+        $this->assertSame(1, $nation->nation_number);
         $this->assertSame(100, $nation->money);
         $this->assertSame([
             'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0, 'wheat' => 10_000,
@@ -76,6 +79,8 @@ class NationCreationTest extends TestCase
         $a = new GridCoordinate($first->capital->x, $first->capital->y);
         $b = new GridCoordinate($second->capital->x, $second->capital->y);
 
+        $this->assertSame(1, $first->nation_number);
+        $this->assertSame(2, $second->nation_number);
         $this->assertGreaterThanOrEqual(12, $a->distanceTo($b));
         $this->assertNotSame($first->capital->map_cell_id, $second->capital->map_cell_id);
         $this->assertSame(38, MapCell::query()->whereNotNull('owner_nation_id')->count());
@@ -83,7 +88,7 @@ class NationCreationTest extends TestCase
 
     public function test_same_user_cannot_create_two_nations_in_one_world(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $service = app(NationCreationService::class);
         $service->create($user, $world, '一つ目');
@@ -94,7 +99,7 @@ class NationCreationTest extends TestCase
 
     public function test_initial_shallow_coordinates_are_deterministic_for_the_same_seed_and_state(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $service = app(NationCreationService::class);
 
@@ -116,7 +121,7 @@ class NationCreationTest extends TestCase
 
     public function test_initial_island_meets_the_guaranteed_coastal_candidate_capacity(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
         $settings['key'] = 'test-shallow-candidate-capacity-v1';
         $settings['initial_island_growth_steps'] = 0;
@@ -133,7 +138,7 @@ class NationCreationTest extends TestCase
 
     public function test_generator_failure_rolls_back_nation_island_capital_membership_and_request(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $this->app->bind(InitialIslandGenerator::class, fn () => new class implements InitialIslandGenerator
         {
             public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital

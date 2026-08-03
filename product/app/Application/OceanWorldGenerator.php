@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\World\WorldGenerationProfile;
 use App\Models\FacilityDefinition;
 use App\Models\MapSpace;
 use App\Models\ResourceDefinition;
@@ -18,11 +19,15 @@ class OceanWorldGenerator
         private readonly RulesetPublisher $rulesets,
     ) {}
 
-    public function initialize(): World
-    {
-        return DB::transaction(function (): World {
+    public function initialize(
+        WorldGenerationProfile $profile = WorldGenerationProfile::Production,
+    ): World {
+        return DB::transaction(function () use ($profile): World {
             $rules = config('hakoniwa.ruleset');
             $worldConfig = config('hakoniwa.world');
+            $profile->assertAvailable(app()->environment());
+            $generatorVersion = $profile->generatorVersion((string) $worldConfig['generator_version']);
+            $generationSeed = $profile->seed((string) $worldConfig['seed']);
             $now = now();
 
             $this->ensureCatalogs($rules);
@@ -37,23 +42,30 @@ class OceanWorldGenerator
                     'current_turn' => 1,
                 ]);
             }
-            $worldRules = $world->rulesetVersion()->firstOrFail()->settings;
-
+            $bounds = $profile->bounds($world->rulesetVersion()->firstOrFail()->settings);
             $mapSpace = MapSpace::query()->firstOrCreate(
                 ['world_id' => $world->id, 'key' => $worldConfig['map_space_key']],
                 [
                     'name' => $worldConfig['map_space_name'],
                     'coordinate_system' => 'staggered_square_offset',
-                    'min_x' => $worldRules['initial_x_min'], 'max_x' => $worldRules['initial_x_max'],
-                    'min_y' => $worldRules['initial_y_min'], 'max_y' => $worldRules['initial_y_max'],
+                    'min_x' => $bounds->minX, 'max_x' => $bounds->maxX,
+                    'min_y' => $bounds->minY, 'max_y' => $bounds->maxY,
                 ],
             );
+            if ($mapSpace->coordinate_system !== 'staggered_square_offset'
+                || $mapSpace->min_x !== $bounds->minX || $mapSpace->max_x !== $bounds->maxX
+                || $mapSpace->min_y !== $bounds->minY || $mapSpace->max_y !== $bounds->maxY) {
+                throw new DomainException(
+                    "World {$world->key} already uses different map bounds. "
+                    ."Run an explicit World reset before selecting profile {$profile->value}.",
+                );
+            }
 
             $completed = DB::table('world_generation_runs')
                 ->where('map_space_id', $mapSpace->id)
                 ->where('generator_id', $worldConfig['generator_id'])
-                ->where('generator_version', $worldConfig['generator_version'])
-                ->where('seed', $worldConfig['seed'])
+                ->where('generator_version', $generatorVersion)
+                ->where('seed', $generationSeed)
                 ->where('status', 'completed')
                 ->exists();
 
@@ -71,8 +83,8 @@ class OceanWorldGenerator
             $seaId = TerrainDefinition::query()->where('key', 'sea')->valueOrFail('id');
             $chunkRows = [];
 
-            for ($y = $worldRules['initial_y_min']; $y <= $worldRules['initial_y_max']; $y++) {
-                for ($x = $worldRules['initial_x_min']; $x <= $worldRules['initial_x_max']; $x++) {
+            for ($y = $bounds->minY; $y <= $bounds->maxY; $y++) {
+                for ($x = $bounds->minX; $x <= $bounds->maxX; $x++) {
                     $location = $this->chunks->locate($x, $y);
                     $key = $location['chunk_x'].':'.$location['chunk_y'];
                     $chunkRows[$key] = [
@@ -80,8 +92,8 @@ class OceanWorldGenerator
                         'chunk_x' => $location['chunk_x'], 'chunk_y' => $location['chunk_y'],
                         'version' => 1, 'generated_at' => $now,
                         'generator_id' => $worldConfig['generator_id'],
-                        'generator_version' => $worldConfig['generator_version'],
-                        'generation_seed' => $worldConfig['seed'],
+                        'generator_version' => $generatorVersion,
+                        'generation_seed' => $generationSeed,
                         'created_at' => $now, 'updated_at' => $now,
                     ];
                 }
@@ -95,8 +107,8 @@ class OceanWorldGenerator
             $batch = [];
             $inserted = 0;
 
-            for ($y = $worldRules['initial_y_min']; $y <= $worldRules['initial_y_max']; $y++) {
-                for ($x = $worldRules['initial_x_min']; $x <= $worldRules['initial_x_max']; $x++) {
+            for ($y = $bounds->minY; $y <= $bounds->maxY; $y++) {
+                for ($x = $bounds->minX; $x <= $bounds->maxX; $x++) {
                     $location = $this->chunks->locate($x, $y);
                     $chunk = $chunkIds[$location['chunk_x'].':'.$location['chunk_y']];
                     $batch[] = [
@@ -128,8 +140,8 @@ class OceanWorldGenerator
                 [
                     'map_space_id' => $mapSpace->id,
                     'generator_id' => $worldConfig['generator_id'],
-                    'generator_version' => $worldConfig['generator_version'],
-                    'seed' => $worldConfig['seed'],
+                    'generator_version' => $generatorVersion,
+                    'seed' => $generationSeed,
                 ],
                 ['status' => 'completed', 'completed_at' => $now, 'created_at' => $now, 'updated_at' => $now],
             );

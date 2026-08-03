@@ -2,16 +2,17 @@
 
 namespace Tests\Feature;
 
-use App\Application\OceanWorldGenerator;
 use App\Domain\Turn\TurnOrderService;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
 use App\Models\Nation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class TurnOrderServiceTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     private const SEED_A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -20,9 +21,11 @@ class TurnOrderServiceTest extends TestCase
 
     public function test_stable_inputs_and_labelled_shuffles_are_reproducible_and_seed_specific(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         foreach (range(1, 10) as $index) {
-            Nation::query()->create(['world_id' => $world->id, 'name' => "Inserted {$index}"]);
+            Nation::query()->create([
+                'world_id' => $world->id, 'nation_number' => $index, 'name' => "Inserted {$index}",
+            ]);
         }
 
         $orders = app(TurnOrderService::class);

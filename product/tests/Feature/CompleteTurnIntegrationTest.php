@@ -31,10 +31,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class CompleteTurnIntegrationTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_realistic_multi_nation_3600_cell_world_commits_the_complete_non_combat_turn_atomically(): void
@@ -103,7 +105,11 @@ class CompleteTurnIntegrationTest extends TestCase
             ->whereHas('definition', fn ($query) => $query->where('key', 'wheat'))->value('amount');
         $chunkVersionsBefore = DB::table('map_chunks')->orderBy('id')->pluck('version', 'id');
 
-        $run = app(TurnRunner::class)->run($world);
+        $run = (new TurnRunner(
+            app(TurnPipeline::class),
+            new WorldTurnLock,
+            new Pr11FixedTurnSeedGenerator(str_repeat('7', 64)),
+        ))->run($world);
 
         $this->assertSame('completed', $run->status);
         $this->assertSame(2, $world->fresh()->current_turn);
@@ -166,7 +172,7 @@ class CompleteTurnIntegrationTest extends TestCase
 
     public function test_real_gameplay_mutations_roll_back_and_retry_the_same_run_seed(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '原子性国');
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();

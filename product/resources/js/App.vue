@@ -190,7 +190,7 @@ async function createNation(): Promise<void> {
                             <tbody>
                                 <tr v-for="entry in rankings" :key="entry.id">
                                     <td>{{ entry.rank }}</td>
-                                    <td><button type="button" @click="openPreview(entry.id)">{{ entry.name }}</button></td>
+                                    <td><button type="button" @click="openPreview(entry.id)">N{{ entry.nation_number }} {{ entry.name }}</button></td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
                                     <td>{{ entry.territory_cell_count.toLocaleString() }}セル</td>
                                     <td>{{ entry.money_display }}</td>
@@ -226,7 +226,7 @@ async function createNation(): Promise<void> {
 
         <section v-else-if="page === 'island' && nation?.capital && mapSpace" class="island-page">
             <header class="nation-hud">
-                <div class="hud-identity"><p class="eyebrow">MY ISLAND</p><h1>{{ nation.name }}</h1></div>
+                <div class="hud-identity"><p class="eyebrow">MY ISLAND</p><h1>N{{ nation.nation_number }} {{ nation.name }}</h1></div>
                 <dl class="hud-primary">
                     <div><dt>turn</dt><dd>{{ nation.current_turn }}</dd></div>
                     <div class="hud-money">
@@ -303,7 +303,7 @@ async function createNation(): Promise<void> {
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
             <header class="preview-heading">
-                <div><p class="eyebrow">PUBLIC ISLAND PREVIEW</p><h1>{{ previewNation.name }}</h1></div>
+                <div><p class="eyebrow">PUBLIC ISLAND PREVIEW</p><h1>N{{ previewNation.nation_number }} {{ previewNation.name }}</h1></div>
                 <dl>
                     <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
                     <div><dt>領土</dt><dd>{{ previewNation.territory_cell_count }}セル</dd></div>

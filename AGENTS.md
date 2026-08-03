@@ -55,6 +55,22 @@ The shared-world MVP is being implemented through roadmap-scoped pull requests. 
 
 Keep each implementation within its approved roadmap scope. Do not implement a `Deferred` item early without separate explicit approval. The design gates in `docs/open-questions.md` remain in force: when an `Open` item reaches its `Required before` gate, report the options and obtain a decision instead of deciding it implicitly or implementing around it.
 
+## Pre-release ruleset compatibility
+
+The repository is currently in a pre-release development period. During this period,
+development Worlds may be reset for each update, including their Nations, cells,
+command queues, and TurnRun records.
+
+Published ruleset rows, settings, command definitions, and production definitions remain
+immutable audit records. Do not overwrite a published payload. Runtime compatibility is
+guaranteed only for the latest active ruleset: do not add fallback execution for older
+rulesets, older-ruleset TurnRunner tests, or failed/pending-run retry compatibility unless
+the repository owner requests it explicitly.
+
+Before public-release preparation begins, stop and establish a formal data-migration and
+runtime backward-compatibility policy instead of carrying this pre-release exception
+forward implicitly.
+
 ## Design gates
 
 Before starting implementation work, read `docs/open-questions.md`.

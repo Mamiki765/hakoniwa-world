@@ -6,7 +6,6 @@ use App\Application\AuthIdentityService;
 use App\Application\CommandQueueService;
 use App\Application\ExternalIdentityData;
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
 use App\Domain\Turn\ScaffoldTurnPhase;
 use App\Domain\Turn\TurnAlreadyRunningException;
@@ -25,11 +24,13 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesForwardOnlyDatabaseMigrations;
 use Tests\TestCase;
 
 class WorldResetTurnLockTest extends TestCase
 {
+    use CreatesTestWorlds;
     use DatabaseMigrations, UsesForwardOnlyDatabaseMigrations {
         UsesForwardOnlyDatabaseMigrations::runDatabaseMigrations insteadof DatabaseMigrations;
         UsesForwardOnlyDatabaseMigrations::refreshTestDatabase insteadof DatabaseMigrations;
@@ -115,7 +116,7 @@ class WorldResetTurnLockTest extends TestCase
 
     public function test_reset_world_lock_blocks_turn_runner_on_an_independent_connection(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $this->acquireAdvisoryLock($this->primaryConnection, $world);
         $previous = DB::getDefaultConnection();
 
@@ -136,7 +137,7 @@ class WorldResetTurnLockTest extends TestCase
 
     public function test_reset_cannot_interleave_between_turn_commit_and_post_commit_refresh(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $attempted = false;
         $resetExit = null;
         $resetOutput = null;
@@ -185,7 +186,7 @@ class WorldResetTurnLockTest extends TestCase
      */
     private function worldWithQueueAndRun(): array
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = app(AuthIdentityService::class)->authenticate(
             'discord',
             new ExternalIdentityData('reset-turn-lock-user', 'Reset Turn Lock User'),

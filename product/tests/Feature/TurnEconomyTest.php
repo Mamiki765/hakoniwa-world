@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Application\CompleteTurnEngine;
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -22,15 +21,17 @@ use App\Models\World;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 class TurnEconomyTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_integer_workforce_food_sale_and_capacity_contracts(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '経済検証国');
         $engine = app(CompleteTurnEngine::class);
         $farm = $this->facilityCell($nation, 'farm', 1);
