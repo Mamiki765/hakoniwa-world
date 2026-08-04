@@ -150,7 +150,7 @@ def main() -> int:
             errors.append(f"{decision_id} has invalid Status: {status}")
 
         required_before = re.findall(
-            r"^- Required before: ([^\r\n]+)$", body, re.MULTILINE
+            r"^- Required before: (\S[^\r\n]*)$", body, re.MULTILINE
         )
         if status == "Open" and len(required_before) != 1:
             errors.append(
