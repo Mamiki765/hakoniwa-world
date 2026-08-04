@@ -36,9 +36,11 @@ class NationProfileTest extends TestCase
             ['owner_name' => str_repeat('主', 31), 'comment' => '', 'error' => 'owner_name'],
             ['owner_name' => "島主\n名", 'comment' => '', 'error' => 'owner_name'],
             ['owner_name' => "島主\u{0001}", 'comment' => '', 'error' => 'owner_name'],
+            ['owner_name' => "\u{200B}", 'comment' => '', 'error' => 'owner_name'],
             ['owner_name' => '島主', 'comment' => str_repeat('言', 101), 'error' => 'comment'],
             ['owner_name' => '島主', 'comment' => "改行\n不可", 'error' => 'comment'],
             ['owner_name' => '島主', 'comment' => "制御\u{0001}不可", 'error' => 'comment'],
+            ['owner_name' => '島主', 'comment' => "表示\u{202E}反転", 'error' => 'comment'],
         ] as $index => $case) {
             $this->postJson($endpoint, [
                 'world_id' => $world->id,
@@ -91,6 +93,16 @@ class NationProfileTest extends TestCase
             $owner, $world, 'プロフィール島', '旧島主', '旧コメント',
         );
         $endpoint = "/api/v1/nations/{$nation->id}/profile";
+
+        $this->actingAs($owner)->patchJson($endpoint, [
+            'owner_name' => "島\u{200B}主",
+        ])->assertUnprocessable()->assertJsonValidationErrors('owner_name');
+        $this->patchJson($endpoint, [
+            'comment' => "表示\u{202E}反転",
+        ])->assertUnprocessable()->assertJsonValidationErrors('comment');
+        $this->assertSame('旧島主', $nation->fresh()->owner_name);
+        $this->assertSame('旧コメント', $nation->fresh()->profile_comment);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.profile_updated')->count());
 
         $this->actingAs($owner)->patchJson($endpoint, [
             'owner_name' => '　新島主　',

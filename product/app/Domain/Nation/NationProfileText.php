@@ -10,7 +10,7 @@ final class NationProfileText
 
     public const COMMENT_MAX_LENGTH = 100;
 
-    public const SINGLE_LINE_PATTERN = '/^[^\p{Cc}\p{Cs}\p{Zl}\p{Zp}]*$/u';
+    public const SINGLE_LINE_PATTERN = '/^[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]*$/u';
 
     public static function ownerName(string $value): string
     {

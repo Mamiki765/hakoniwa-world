@@ -53,6 +53,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('現在turn');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('島主：公開島主');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('公開コメント');
         expect(wrapper.text()).toContain('公開できる出来事はまだありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
     });

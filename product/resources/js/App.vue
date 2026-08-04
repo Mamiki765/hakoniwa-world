@@ -249,6 +249,7 @@ async function updateProfile(): Promise<void> {
                                     <td>
                                         <button type="button" @click="openPreview(entry.id)">N{{ entry.nation_number }} {{ entry.name }}</button>
                                         <span class="ranking-owner">島主：{{ entry.owner_name }}</span>
+                                        <span v-if="entry.comment" class="ranking-comment">{{ entry.comment }}</span>
                                     </td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
                                     <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
