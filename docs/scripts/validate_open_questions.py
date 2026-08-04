@@ -167,13 +167,29 @@ def main() -> int:
                 f"Open decision line; found {len(open_decisions)}"
             )
 
+        activation_gates = re.findall(
+            r"^- Activation gate: (\S[^\r\n]*)$", body, re.MULTILINE
+        )
+        if status == "Deferred" and len(activation_gates) != 1:
+            errors.append(
+                f"{decision_id} is Deferred and must have exactly one "
+                f"Activation gate line; found {len(activation_gates)}"
+            )
+
+        boundaries = re.findall(r"^- Boundary: (\S[^\r\n]*)$", body, re.MULTILINE)
+        if status == "Deferred" and len(boundaries) != 1:
+            errors.append(
+                f"{decision_id} is Deferred and must have exactly one Boundary line; "
+                f"found {len(boundaries)}"
+            )
+
         record_lines = re.findall(
             r"^- Decision record: ([^\r\n]+)$", body, re.MULTILINE
         )
-        if status == "Open" and len(record_lines) != 1:
+        if status in {"Decided", "Open"} and len(record_lines) != 1:
             errors.append(
-                f"{decision_id} is Open and must have exactly one Decision record line; "
-                f"found {len(record_lines)}"
+                f"{decision_id} is {status} and must have exactly one Decision record "
+                f"line; found {len(record_lines)}"
             )
         elif len(record_lines) > 1:
             errors.append(
