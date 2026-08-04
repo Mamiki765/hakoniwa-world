@@ -770,6 +770,14 @@ class MonsterSystemTest extends TestCase
             $this->assertStringContainsString('monster kill records are immutable', $exception->getMessage());
         }
         $this->assertSame(2, $record->fresh()->target_turn);
+
+        try {
+            DB::transaction(static fn () => $record->delete());
+            $this->fail('Expected immutable kill record deletion rejection.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('monster kill records are immutable', $exception->getMessage());
+        }
+        $this->assertNotNull($record->fresh());
     }
 
     /** @return array{World, Nation, RulesetVersion, MapSpace} */

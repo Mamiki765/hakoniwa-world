@@ -61,12 +61,12 @@ return new class extends Migration
 
         Schema::create('monster_kill_records', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('world_id')->constrained()->restrictOnDelete();
-            $table->foreignId('monster_instance_id')->unique()->constrained()->restrictOnDelete();
+            $table->foreignId('world_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('monster_instance_id')->unique()->constrained()->cascadeOnDelete();
             $table->foreignId('monster_definition_id')->constrained()->restrictOnDelete();
-            $table->foreignId('killer_nation_id')->constrained('nations')->restrictOnDelete();
-            $table->foreignId('host_nation_id')->nullable()->constrained('nations')->restrictOnDelete();
-            $table->foreignId('firing_base_id')->nullable()->constrained('map_cells')->restrictOnDelete();
+            $table->foreignId('killer_nation_id')->constrained('nations')->cascadeOnDelete();
+            $table->foreignId('host_nation_id')->nullable()->constrained('nations')->cascadeOnDelete();
+            $table->foreignId('firing_base_id')->nullable()->constrained('map_cells')->cascadeOnDelete();
             $table->unsignedBigInteger('target_turn');
             $table->string('kill_cause', 64);
             $table->unsignedBigInteger('wreckage_value_money');
@@ -211,6 +211,12 @@ FOR EACH ROW EXECUTE FUNCTION validate_monster_kill_record();
 
 CREATE OR REPLACE FUNCTION reject_monster_kill_record_mutation() RETURNS trigger AS $$
 BEGIN
+    -- A kill fact remains immutable while its World exists. The pre-release
+    -- reset path deletes the World root, so its FK cascades may remove the
+    -- otherwise immutable World-owned graph without a session-level bypass.
+    IF TG_OP = 'DELETE' AND NOT EXISTS (SELECT 1 FROM worlds WHERE id = OLD.world_id) THEN
+        RETURN OLD;
+    END IF;
     RAISE EXCEPTION 'monster kill records are immutable';
 END;
 $$ LANGUAGE plpgsql;
