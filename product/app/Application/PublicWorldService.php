@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonsterKillRecord;
 use App\Models\Nation;
 use App\Models\World;
 use App\Support\MoneyFormatter;
@@ -65,6 +66,27 @@ final class PublicWorldService
             ->where('key', config('hakoniwa.world.map_space_key'))
             ->firstOrFail();
         $capital = $nation->capital()->first();
+        $monsterFinalBlowCount = MonsterKillRecord::query()
+            ->where('world_id', $nation->world_id)
+            ->where('killer_nation_id', $nation->id)
+            ->count();
+        $monsterKillMarks = DB::table('monster_kill_records')
+            ->join('monster_definitions', 'monster_definitions.id', '=', 'monster_kill_records.monster_definition_id')
+            ->where('monster_kill_records.world_id', $nation->world_id)
+            ->where('monster_kill_records.killer_nation_id', $nation->id)
+            ->groupBy('monster_definitions.id', 'monster_definitions.key', 'monster_definitions.name')
+            ->orderBy('monster_definitions.key')
+            ->get([
+                'monster_definitions.key',
+                'monster_definitions.name',
+                DB::raw('MIN(monster_kill_records.target_turn) AS first_kill_turn'),
+            ])
+            ->map(static fn (object $mark): array => [
+                'key' => (string) $mark->key,
+                'name' => (string) $mark->name,
+                'first_kill_turn' => (int) $mark->first_kill_turn,
+            ])
+            ->values();
 
         return [
             ...$this->publicNationFields($nation, $world),
@@ -74,6 +96,8 @@ final class PublicWorldService
                 'current_turn' => $world->current_turn,
             ],
             'capital' => $capital === null ? null : ['x' => $capital->x, 'y' => $capital->y],
+            'monster_final_blow_count' => $monsterFinalBlowCount,
+            'monster_kill_marks' => $monsterKillMarks,
             'map_space' => [
                 'id' => $mapSpace->id,
                 'world_id' => $mapSpace->world_id,

@@ -40,6 +40,17 @@ final class PlayerIslandEventService
         'facility.riot',
         'resource.automatic_sale',
         'capacity.overflow',
+        'monster.spawned',
+        'monster.spawn_failed_no_settlement',
+        'monster.moved',
+        'monster.trampled',
+        'monster.stayed',
+        'monster.damage_blocked',
+        'monster.damaged',
+        'monster.killed',
+        'monster.reward_distributed',
+        'monster.defense_self_destructed',
+        'monster.removed_by_terrain_event',
         'turn.completed',
     ];
 
@@ -93,6 +104,8 @@ final class PlayerIslandEventService
             )
             ->where(function (Builder $audience) use ($nation): void {
                 $audience->whereRaw("events.metadata->>'nation_id' = ?", [(string) $nation->id])
+                    ->orWhereRaw("events.metadata->>'killer_nation_id' = ?", [(string) $nation->id])
+                    ->orWhereRaw("events.metadata->>'host_nation_id' = ?", [(string) $nation->id])
                     ->orWhere(function (Builder $subject) use ($nation): void {
                         $subject->where('events.subject_type', Nation::class)
                             ->where('events.subject_id', $nation->id);
@@ -118,6 +131,13 @@ final class PlayerIslandEventService
             ->where(function (Builder $deduplicated): void {
                 $deduplicated->where('events.event_type', '!=', 'population.decreased')
                     ->orWhereRaw("COALESCE(events.metadata->>'reason', '') <> 'famine'");
+            })
+            ->where(function (Builder $monsterRewardProjection): void {
+                // Attributed kills are represented by one role-aware reward event;
+                // the immutable kill fact remains in audit/storage without tripling
+                // the player log with killed/reward/recorded copies.
+                $monsterRewardProjection->where('events.event_type', '!=', 'monster.killed')
+                    ->orWhereRaw("events.metadata->>'killer_nation_id' IS NULL");
             });
 
         $rows = $query
@@ -132,14 +152,19 @@ final class PlayerIslandEventService
                 'events.occurred_at',
             ]);
         $coordinates = $this->subjectCoordinates($rows->all());
-        $events = $rows->map(function (object $row) use ($coordinates): array {
+        $events = $rows->map(function (object $row) use ($coordinates, $nation): array {
             $metadata = $this->metadata($row->metadata);
             $targetTurn = $this->integer($metadata, 'target_turn');
 
             return [
                 'id' => (int) $row->id,
                 'type' => (string) $row->event_type,
-                'message' => $this->message((string) $row->event_type, $metadata, $targetTurn),
+                'message' => $this->message(
+                    (string) $row->event_type,
+                    $metadata,
+                    $targetTurn,
+                    $nation->id,
+                ),
                 'importance' => $this->importance((string) $row->event_type),
                 'target_turn' => $targetTurn,
                 'coordinate' => $this->coordinate($row, $metadata, $coordinates),
@@ -236,7 +261,7 @@ final class PlayerIslandEventService
     }
 
     /** @param array<string, mixed> $metadata */
-    private function message(string $eventType, array $metadata, int $targetTurn): string
+    private function message(string $eventType, array $metadata, int $targetTurn, int $audienceNationId): string
     {
         return match ($eventType) {
             'command.success' => $this->commandLabel($metadata).'が完了しました。',
@@ -325,6 +350,47 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'revenue')),
             ),
             'capacity.overflow' => $this->capacityOverflowMessage($metadata),
+            'monster.spawned' => sprintf(
+                '%sが出現しました（HP %s）。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+                number_format($this->integer($metadata, 'initial_hp')),
+            ),
+            'monster.spawn_failed_no_settlement' => '怪獣出現判定が発生しましたが、対象となる集落がありませんでした。',
+            'monster.moved' => sprintf(
+                '%sが移動しました。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+            ),
+            'monster.trampled' => sprintf(
+                '%sが土地を踏み荒らし、荒地にしました。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+            ),
+            'monster.stayed' => sprintf(
+                '%sが%sため、その場に留まりました。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+                ($metadata['reason'] ?? null) === 'hardened' ? '硬化している' : '移動できなかった',
+            ),
+            'monster.damage_blocked' => sprintf(
+                '%sは硬化中のため攻撃を防ぎました。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+            ),
+            'monster.damaged' => sprintf(
+                '%sへ攻撃し、HPを%sにしました。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+                number_format($this->integer($metadata, 'after_hp')),
+            ),
+            'monster.killed' => sprintf(
+                '%sが倒されました（撃破報酬の受取国なし）。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+            ),
+            'monster.reward_distributed' => $this->monsterRewardMessage($metadata, $audienceNationId),
+            'monster.defense_self_destructed' => sprintf(
+                '%sが防衛施設へ接触し、施設とともに消滅しました。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+            ),
+            'monster.removed_by_terrain_event' => sprintf(
+                '%sが地形変化により消滅しました（撃破報酬なし）。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+            ),
             'turn.completed' => "第{$targetTurn}ターンが完了しました。",
             default => '島で出来事がありました。',
         };
@@ -494,15 +560,51 @@ final class PlayerIslandEventService
         };
     }
 
+    /** @param array<string, mixed> $metadata */
+    private function monsterRewardMessage(array $metadata, int $audienceNationId): string
+    {
+        $monster = $this->monsterLabel($metadata['monster_key'] ?? null);
+        $isKiller = $this->integer($metadata, 'killer_nation_id') === $audienceNationId;
+        $isHost = $this->integer($metadata, 'host_nation_id') === $audienceNationId;
+        $money = number_format($this->nestedInteger($metadata, 'killer_money', 'applied'));
+        $meat = number_format($this->nestedInteger($metadata, 'host_meat_food', 'applied'));
+
+        if ($isKiller && $isHost) {
+            return "{$monster}を撃破し、賞金{$money}億円と怪獣肉{$meat}トンを受け取りました。";
+        }
+        if ($isHost) {
+            return "{$monster}が倒され、怪獣肉{$meat}トンを受け取りました。";
+        }
+
+        return "{$monster}を撃破し、賞金{$money}億円を受け取りました。";
+    }
+
+    private function monsterLabel(mixed $key): string
+    {
+        return match ($key) {
+            'mecha_inora' => 'メカいのら',
+            'inora' => 'いのら',
+            'sanjira' => 'サンジラ',
+            'red_inora' => 'レッドいのら',
+            'dark_inora' => 'ダークいのら',
+            'inora_ghost' => 'いのらゴースト',
+            'whale' => 'クジラ',
+            'king_inora' => 'キングいのら',
+            default => '怪獣',
+        };
+    }
+
     private function importance(string $eventType): string
     {
         return match ($eventType) {
             'command.invalid', 'command.insufficient_assets', 'resource.food_shortage',
             'famine.applied', 'facility.riot', 'capacity.overflow',
-            'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged', 'oil.depleted' => 'warning',
+            'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged', 'oil.depleted',
+            'monster.damage_blocked', 'monster.damaged', 'monster.defense_self_destructed',
+            'monster.removed_by_terrain_event' => 'warning',
             'command.buried_treasure', 'command.seabed_oil_search',
             'command.land_level_earthquake', 'disaster.triggered', 'fire.prevented', 'oil.income',
-            'land_subsidence.triggered',
+            'land_subsidence.triggered', 'monster.spawned', 'monster.reward_distributed',
             'settlement.appeared', 'settlement.stage_transitioned' => 'notable',
             default => 'info',
         };
@@ -514,5 +616,15 @@ final class PlayerIslandEventService
         $value = $metadata[$key] ?? 0;
 
         return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function nestedInteger(array $metadata, string $key, string $nestedKey): int
+    {
+        $value = $metadata[$key] ?? null;
+
+        return is_array($value) && is_numeric($value[$nestedKey] ?? null)
+            ? (int) $value[$nestedKey]
+            : 0;
     }
 }
