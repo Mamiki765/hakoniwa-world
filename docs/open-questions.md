@@ -62,7 +62,7 @@
 ### A-10 認証方式
 
 - Status: Decided
-- Implemented: Not applicable; the command is intentionally excluded.
+- Implemented: Yes
 - Decision: Discord/Google identity、User、Nationを分離し、provider email一致では自動統合しない。
 - Decision record: `docs/architecture/authentication-and-identities.md`、`docs/decisions/ADR-0005-authentication-identities.md`
 
@@ -244,7 +244,7 @@
 ### B-17 緊急農場
 
 - Status: Decided
-- Implemented: Yes
+- Implemented: Not applicable; the command is intentionally excluded.
 - Decision: emergency farm commandは現行MVPへ導入しない。automatic financeと明示的なabandonment/recreationを立て直し境界とする。
 - Decision record: `docs/architecture/roadmap-pr2-systems.md`
 

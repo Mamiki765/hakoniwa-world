@@ -20,19 +20,80 @@ REQUIRED_SECTIONS = (
     "Deferred post-MVP",
     "Historical initial MVP",
 )
-REQUIRED_IDS = {
-    "B-18",
-    "DISASTER-01",
-    "MONSTER-01",
-    "MONSTER-02",
-    "MONSTER-03",
-    "RELEASE-01",
-}
 EXPECTED_STATUSES = {
+    "A-02": "Decided",
+    "A-03": "Decided",
+    "A-04": "Decided",
+    "A-05": "Decided",
+    "A-06": "Decided",
+    "A-07": "Decided",
+    "A-08": "Decided",
+    "A-09": "Decided",
+    "A-10": "Decided",
+    "A-11": "Decided",
+    "AUTH-01": "Decided",
+    "AUTH-02": "Decided",
+    "AUTH-03": "Decided",
+    "AUTH-04": "Decided",
+    "AUTH-05": "Open",
+    "AUTH-06": "Deferred",
+    "AUTH-07": "Deferred",
+    "AUTH-08": "Deferred",
+    "AUTH-09": "Deferred",
+    "B-01": "Decided",
+    "B-02": "Decided",
+    "B-03": "Open",
+    "B-05": "Open",
+    "B-06": "Decided",
+    "B-07": "Open",
+    "B-08": "Deferred",
+    "B-09": "Decided",
+    "B-10": "Open",
+    "B-12": "Open",
+    "B-13": "Open",
+    "B-14": "Open",
+    "B-15": "Deferred",
+    "B-16": "Decided",
+    "B-17": "Decided",
+    "B-18": "Decided",
+    "B-19": "Decided",
+    "C-01": "Decided",
+    "C-02": "Deferred",
+    "C-03": "Decided",
+    "C-04": "Deferred",
+    "C-05": "Decided",
+    "C-06": "Decided",
+    "C-07": "Decided",
+    "C-08": "Decided",
+    "CMD-01": "Decided",
+    "CMD-02": "Decided",
+    "D-01": "Decided",
+    "D-02": "Open",
+    "D-03": "Open",
+    "D-04": "Open",
+    "D-05": "Open",
+    "D-06": "Deferred",
+    "D-07": "Open",
+    "D-08": "Deferred",
+    "DISASTER-01": "Decided",
+    "E-01": "Deferred",
+    "E-02": "Deferred",
+    "E-03": "Decided",
+    "E-04": "Deferred",
+    "E-05": "Deferred",
+    "E-06": "Deferred",
+    "E-07": "Deferred",
+    "E-08": "Deferred",
+    "E-09": "Deferred",
+    "MISSILE-01": "Decided",
     "MONSTER-01": "Decided",
     "MONSTER-02": "Open",
     "MONSTER-03": "Open",
+    "POP-01": "Decided",
     "RELEASE-01": "Open",
+    "RES-01": "Decided",
+    "T-01": "Decided",
+    "T-02": "Open",
 }
 
 
@@ -60,8 +121,12 @@ def main() -> int:
         if count != 1:
             errors.append(f"duplicate Decision ID {decision_id}: {count} occurrences")
 
-    for decision_id in sorted(REQUIRED_IDS - set(ids)):
-        errors.append(f"missing required Decision ID: {decision_id}")
+    actual_ids = set(ids)
+    expected_ids = set(EXPECTED_STATUSES)
+    for decision_id in sorted(expected_ids - actual_ids):
+        errors.append(f"missing expected Decision ID: {decision_id}")
+    for decision_id in sorted(actual_ids - expected_ids):
+        errors.append(f"unexpected Decision ID: {decision_id}")
 
     if "B-11" in counts:
         errors.append("superseded Decision ID B-11 must not remain")
@@ -122,17 +187,38 @@ def main() -> int:
                 f"{decision_id} must remain {expected_status}; found {status}"
             )
 
-    stale_roadmap = re.compile(r"\bPR\s*#?\s*(?:20|22)\b", re.IGNORECASE)
-    for directory in (ROOT / "docs", ROOT / "product" / "docs"):
-        for markdown in directory.rglob("*.md"):
-            for line_number, line in enumerate(
-                markdown.read_text(encoding="utf-8").splitlines(), start=1
-            ):
-                if stale_roadmap.search(line):
-                    errors.append(
-                        f"stale fixed future PR roadmap in "
-                        f"{markdown.relative_to(ROOT)}:{line_number}"
-                    )
+    numbered_pr = re.compile(r"\bPR\s*#?\s*\d+\b", re.IGNORECASE)
+    future_roadmap_assignment = re.compile(
+        r"(?:"
+        r"\bPR\s*#?\s*\d+\b[^\r\n]{0,40}"
+        r"(?:\bmust\b|\bowns?\b|予定|でcanonical|でrebaseline|として扱う)"
+        r"|"
+        r"(?:canonical|rebaseline|release[- ]freeze)[^\r\n]{0,40}"
+        r"\bPR\s*#?\s*\d+\b[^\r\n]{0,20}(?:前に|後に|完了後|予定)"
+        r")",
+        re.IGNORECASE,
+    )
+    gate_fields = (
+        "- Rebaseline plan:",
+        "- Required before:",
+        "- Open decision:",
+        "- Remaining public-release gate:",
+    )
+    roadmap_documents = (
+        DOCUMENT,
+        ROOT / "product" / "docs" / "resource-profile-audit-pr19.md",
+    )
+    for markdown in roadmap_documents:
+        for line_number, line in enumerate(
+            markdown.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            fixed_gate_field = line.startswith(gate_fields) and numbered_pr.search(line)
+            future_roadmap_prose = future_roadmap_assignment.search(line)
+            if fixed_gate_field or future_roadmap_prose:
+                errors.append(
+                    f"stale fixed future PR roadmap in "
+                    f"{markdown.relative_to(ROOT)}:{line_number}"
+                )
 
     if errors:
         for error in errors:
