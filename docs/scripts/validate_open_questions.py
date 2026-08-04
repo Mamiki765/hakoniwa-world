@@ -158,10 +158,24 @@ def main() -> int:
                 f"found {len(required_before)}"
             )
 
+        open_decisions = re.findall(
+            r"^- Open decision: (\S[^\r\n]*)$", body, re.MULTILINE
+        )
+        if status == "Open" and len(open_decisions) != 1:
+            errors.append(
+                f"{decision_id} is Open and must have exactly one actionable "
+                f"Open decision line; found {len(open_decisions)}"
+            )
+
         record_lines = re.findall(
             r"^- Decision record: ([^\r\n]+)$", body, re.MULTILINE
         )
-        if len(record_lines) > 1:
+        if status == "Open" and len(record_lines) != 1:
+            errors.append(
+                f"{decision_id} is Open and must have exactly one Decision record line; "
+                f"found {len(record_lines)}"
+            )
+        elif len(record_lines) > 1:
             errors.append(
                 f"{decision_id} must have at most one Decision record line; "
                 f"found {len(record_lines)}"
