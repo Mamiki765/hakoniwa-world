@@ -7,6 +7,7 @@ use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnOrderService;
 use App\Domain\Turn\TurnPhaseResult;
@@ -33,6 +34,7 @@ final class CompleteTurnEngine
         private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly NationCapacityResolver $capacities,
         private readonly MapCellStateService $cells,
+        private readonly NationLandAreaCalculator $landArea,
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
     ) {}
@@ -271,16 +273,19 @@ final class CompleteTurnEngine
     {
         $changedChunks = $this->updateChangedMapChunkVersions($context);
         $population = 0;
+        $ownedLandCells = 0;
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->findOrFail($nationId);
             $aggregate = $this->nationAggregate($nation);
             $context->state->setNationAggregate($nationId, $aggregate);
             $population += $aggregate['population'];
+            $ownedLandCells += $aggregate['owned_land_cells'];
         }
 
         return [
             'nations' => count($context->state->nationAggregates()),
             'population' => $population,
+            'owned_land_cells' => $ownedLandCells,
             'map_chunks_updated' => $changedChunks,
         ];
     }
@@ -396,7 +401,7 @@ final class CompleteTurnEngine
         return ['completed' => true, 'target_turn' => $context->targetTurn];
     }
 
-    /** @return array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int} */
+    /** @return array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int} */
     private function nationAggregate(Nation $nation): array
     {
         $population = (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population');
@@ -417,6 +422,7 @@ final class CompleteTurnEngine
         return [
             'population' => $population, 'farm_capacity' => $capacities['farm'],
             'factory_capacity' => $capacities['factory'], 'mine_capacity' => $capacities['mine'],
+            'owned_land_cells' => $this->landArea->forNation($nation),
         ];
     }
 

@@ -1171,6 +1171,47 @@ final class RulesetAuthoringValidator
             }
         }
 
+        if (array_key_exists('land_subsidence', $disasters)) {
+            $subsidencePath = "{$path}.disasters.land_subsidence";
+            $subsidence = $this->map($disasters['land_subsidence'], $subsidencePath);
+            $this->requireKeys($subsidence, [
+                'enabled', 'base_safe_land_cells', 'probability',
+                'affected_shallow_result', 'affected_coastal_land_result',
+                'mountain_immune', 'capital_damage_percentage',
+                'out_of_bounds_is_water', 'stream_version',
+            ], $subsidencePath);
+            $this->boolean($subsidence['enabled'], "{$subsidencePath}.enabled");
+            $this->integer($subsidence['base_safe_land_cells'], "{$subsidencePath}.base_safe_land_cells", 0);
+            $this->probability($subsidence['probability'], "{$subsidencePath}.probability");
+            if ($this->string($subsidence['affected_shallow_result'], "{$subsidencePath}.affected_shallow_result") !== 'sea') {
+                throw new DomainException("{$subsidencePath}.affected_shallow_result must be sea.");
+            }
+            if ($this->string(
+                $subsidence['affected_coastal_land_result'],
+                "{$subsidencePath}.affected_coastal_land_result",
+            ) !== 'shallow') {
+                throw new DomainException("{$subsidencePath}.affected_coastal_land_result must be shallow.");
+            }
+            if (! $this->boolean($subsidence['mountain_immune'], "{$subsidencePath}.mountain_immune")) {
+                throw new DomainException("{$subsidencePath}.mountain_immune must be true.");
+            }
+            $capitalDamage = $this->integer(
+                $subsidence['capital_damage_percentage'],
+                "{$subsidencePath}.capital_damage_percentage",
+                0,
+            );
+            if ($capitalDamage > 100) {
+                throw new DomainException("{$subsidencePath}.capital_damage_percentage cannot exceed 100.");
+            }
+            if (! $this->boolean(
+                $subsidence['out_of_bounds_is_water'],
+                "{$subsidencePath}.out_of_bounds_is_water",
+            )) {
+                throw new DomainException("{$subsidencePath}.out_of_bounds_is_water must be true.");
+            }
+            $this->integer($subsidence['stream_version'], "{$subsidencePath}.stream_version", 1);
+        }
+
         $landPath = "{$path}.command_random_effects.land_level_earthquake";
         $landEarthquake = $this->map($effects['land_level_earthquake'], $landPath);
         $this->requireKeys($landEarthquake, [

@@ -23,7 +23,7 @@ class RulesetImmutabilityTest extends TestCase
         $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
         $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
         $target = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
-        $current = RulesetVersion::query()->where('key', 'roadmap-pr15-v1')->firstOrFail();
+        $current = RulesetVersion::query()->where('key', 'roadmap-pr18-v1')->firstOrFail();
         $sourceSnapshot = $source->settings;
         $sourceCommands = $this->commandSnapshot($source->id);
         $sourceProduction = $this->productionSnapshot($source->id);
@@ -64,7 +64,7 @@ class RulesetImmutabilityTest extends TestCase
 
     public function test_initializer_rejects_same_key_with_different_payload_without_mutating_published_ruleset(): void
     {
-        $published = RulesetVersion::query()->where('key', 'roadmap-pr15-v1')->firstOrFail();
+        $published = RulesetVersion::query()->where('key', 'roadmap-pr18-v1')->firstOrFail();
         $before = $this->rulesetSnapshot($published);
         config(['hakoniwa.ruleset.initial_money' => 999]);
 
@@ -92,7 +92,7 @@ class RulesetImmutabilityTest extends TestCase
         }
         $this->assertSame($source->id, $world->fresh()->ruleset_version_id);
 
-        $current = RulesetVersion::query()->where('key', 'roadmap-pr15-v1')->firstOrFail();
+        $current = RulesetVersion::query()->where('key', 'roadmap-pr18-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $current->id]);
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
         $wheat->update(['name' => 'drifted-name']);

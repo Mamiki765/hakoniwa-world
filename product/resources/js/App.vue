@@ -186,13 +186,13 @@ async function createNation(): Promise<void> {
                     </div>
                     <div class="ranking-scroll">
                         <table>
-                            <thead><tr><th>順位</th><th>国家</th><th>人口</th><th>領土</th><th>推定資金</th><th>更新turn</th></tr></thead>
+                            <thead><tr><th>順位</th><th>国家</th><th>人口</th><th>保有陸地</th><th>推定資金</th><th>更新turn</th></tr></thead>
                             <tbody>
                                 <tr v-for="entry in rankings" :key="entry.id">
                                     <td>{{ entry.rank }}</td>
                                     <td><button type="button" @click="openPreview(entry.id)">N{{ entry.nation_number }} {{ entry.name }}</button></td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
-                                    <td>{{ entry.territory_cell_count.toLocaleString() }}セル</td>
+                                    <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
                                     <td>{{ entry.money_display }}</td>
                                     <td>{{ entry.last_updated_turn }}</td>
                                 </tr>
@@ -275,7 +275,7 @@ async function createNation(): Promise<void> {
                 </dl>
                 <details class="hud-more">
                     <summary>追加統計</summary>
-                    <span>領土 {{ nation.territory_cell_count }}セル</span>
+                    <span>保有陸地：{{ nation.owned_land_cells.toLocaleString() }}セル</span>
                     <span>出来事は24ターンごとに表示</span>
                 </details>
             </header>
@@ -306,7 +306,7 @@ async function createNation(): Promise<void> {
                 <div><p class="eyebrow">PUBLIC ISLAND PREVIEW</p><h1>N{{ previewNation.nation_number }} {{ previewNation.name }}</h1></div>
                 <dl>
                     <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
-                    <div><dt>領土</dt><dd>{{ previewNation.territory_cell_count }}セル</dd></div>
+                    <div><dt>保有陸地</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
                     <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
                 </dl>
             </header>
