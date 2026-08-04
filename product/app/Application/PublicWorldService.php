@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -20,9 +21,13 @@ final class PublicWorldService
         'meteor_shower' => '流星群',
         'huge_meteor' => '巨大隕石',
         'eruption' => '噴火',
+        'land_subsidence' => '地盤沈下',
     ];
 
-    public function __construct(private readonly MoneyFormatter $money) {}
+    public function __construct(
+        private readonly MoneyFormatter $money,
+        private readonly NationLandAreaCalculator $landArea,
+    ) {}
 
     /** @return array<string, mixed> */
     public function summary(World $world): array
@@ -128,8 +133,24 @@ final class PublicWorldService
             ->filter(static fn (?array $event): bool => $event !== null)
             ->values();
 
+        $landSubsidenceEvents = DB::table('audit_events')
+            ->join('nations', function ($join): void {
+                $join->on('nations.id', '=', 'audit_events.subject_id')
+                    ->where('audit_events.subject_type', '=', Nation::class);
+            })
+            ->where('nations.world_id', $world->id)
+            ->where('audit_events.event_type', 'land_subsidence.triggered')
+            ->orderByDesc('audit_events.occurred_at')
+            ->orderByDesc('audit_events.id')
+            ->limit($limit)
+            ->get(['audit_events.id', 'audit_events.occurred_at', 'audit_events.metadata'])
+            ->map(fn (object $event): ?array => $this->publicDisasterEvent($event))
+            ->filter(static fn (?array $event): bool => $event !== null)
+            ->values();
+
         return $nationEvents
             ->concat($disasterEvents)
+            ->concat($landSubsidenceEvents)
             ->sort(static function (array $left, array $right): int {
                 $byTime = strcmp($right['occurred_at'], $left['occurred_at']);
 
@@ -150,6 +171,24 @@ final class PublicWorldService
         $key = $metadata['disaster_key'] ?? null;
         if (! is_string($key) || ! isset(self::DISASTER_LABELS[$key])) {
             return null;
+        }
+
+        if ($key === 'land_subsidence') {
+            $nationNumber = (int) ($metadata['nation_number'] ?? 0);
+
+            return [
+                'id' => (int) $event->id,
+                'type' => 'land_subsidence_triggered',
+                'message' => sprintf('N%dで地盤沈下が発生しました。', $nationNumber),
+                'metadata' => [
+                    'target_turn' => (int) ($metadata['target_turn'] ?? 0),
+                    'disaster_key' => $key,
+                    'nation_number' => $nationNumber,
+                    'changed_to_sea_count' => (int) ($metadata['changed_to_sea_count'] ?? 0),
+                    'changed_to_shallow_count' => (int) ($metadata['changed_to_shallow_count'] ?? 0),
+                ],
+                'occurred_at' => (string) $event->occurred_at,
+            ];
         }
 
         return [
@@ -174,7 +213,8 @@ final class PublicWorldService
     /** @return Collection<int, Nation> */
     private function rankedNations(World $world): Collection
     {
-        return Nation::query()
+        $areas = $this->landArea->forWorld($world);
+        $nations = Nation::query()
             ->where('world_id', $world->id)
             ->with('capital')
             ->withCount(['territoryCells as territory_cell_count'])
@@ -183,16 +223,24 @@ final class PublicWorldService
             ->orderByDesc('territory_cell_count')
             ->orderBy('id')
             ->get();
+        foreach ($nations as $nation) {
+            $nation->setAttribute('owned_land_cells', $areas[$nation->id] ?? 0);
+        }
+
+        return $nations;
     }
 
     private function nationWithPublicAggregates(Nation $nation): Nation
     {
-        return Nation::query()
+        $nation = Nation::query()
             ->whereKey($nation->id)
             ->with('capital')
             ->withCount(['territoryCells as territory_cell_count'])
             ->withSum('territoryCells as total_population', 'population')
             ->firstOrFail();
+        $nation->setAttribute('owned_land_cells', $this->landArea->forNation($nation));
+
+        return $nation;
     }
 
     /** @return array<string, mixed> */
@@ -208,6 +256,7 @@ final class PublicWorldService
             'state' => $nation->state,
             'total_population' => (int) ($nation->getAttribute('total_population') ?? 0),
             'territory_cell_count' => (int) ($nation->getAttribute('territory_cell_count') ?? 0),
+            'owned_land_cells' => (int) ($nation->getAttribute('owned_land_cells') ?? 0),
             'money_display' => $estimate['display'],
             'money_bucket' => $estimate['bucket'],
             'last_updated_turn' => $world->current_turn,

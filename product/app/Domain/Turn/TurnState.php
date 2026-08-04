@@ -24,7 +24,7 @@ final class TurnState
     /** @var array<int, true> */
     private array $changedMapChunkIds = [];
 
-    /** @var array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int}> */
+    /** @var array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int}> */
     private array $nationAggregates = [];
 
     /** @var list<LaunchIntent> */
@@ -125,7 +125,7 @@ final class TurnState
     }
 
     /**
-     * @param  array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int}  $aggregate
+     * @param  array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int}  $aggregate
      */
     public function setNationAggregate(int $nationId, array $aggregate): void
     {
@@ -135,7 +135,7 @@ final class TurnState
         $this->nationAggregates[$nationId] = $aggregate;
     }
 
-    /** @return array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int}> */
+    /** @return array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int}> */
     public function nationAggregates(): array
     {
         return $this->nationAggregates;

@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\Nation;
 use App\Models\NationResource as NationResourceBalance;
 use App\Support\MoneyFormatter;
@@ -42,6 +43,7 @@ class NationResource extends JsonResource
             'current_turn' => (int) $this->world()->value('current_turn'),
             'total_population' => (int) $this->territoryCells()->sum('population'),
             'territory_cell_count' => $this->territoryCells()->count(),
+            'owned_land_cells' => app(NationLandAreaCalculator::class)->forNation($this->resource),
             'total_food_tons' => $this->when($isOwner, $foodTotal),
             'food_total_tons' => $this->when($isOwner, $foodTotal),
             'food_capacity_tons' => $this->when($isOwner, $capacities?->foodTons),

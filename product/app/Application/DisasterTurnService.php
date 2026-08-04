@@ -2,8 +2,10 @@
 
 namespace App\Application;
 
+use App\Domain\Disaster\LandSubsidenceThresholdResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -19,13 +21,24 @@ final class DisasterTurnService
     public function __construct(
         private readonly MapCellStateService $cells,
         private readonly TurnEventRecorder $events,
+        private readonly NationLandAreaCalculator $landArea,
+        private readonly LandSubsidenceThresholdResolver $subsidenceThreshold,
     ) {}
 
-    /** @return array{executed_disasters: int, damaged_cells: int} */
+    /** @return array<string, int> */
     public function executeGlobal(TurnContext $context): array
     {
         $rules = $this->rules($context);
-        $metrics = ['executed_disasters' => 0, 'damaged_cells' => 0];
+        $metrics = [
+            'executed_disasters' => 0,
+            'damaged_cells' => 0,
+            'land_subsidence_nations' => 0,
+            'land_subsidence_changed_to_sea' => 0,
+            'land_subsidence_changed_to_shallow' => 0,
+            'land_subsidence_protected_mountains' => 0,
+            'land_subsidence_capitals_damaged' => 0,
+            'land_subsidence_affected_chunks' => 0,
+        ];
         $space = $this->surfaceSpace($context);
 
         $definitions = [
@@ -70,7 +83,244 @@ final class DisasterTurnService
             };
         }
 
+        $subsidence = $this->landSubsidence($context, $space, $rules['land_subsidence'] ?? null);
+        $metrics['executed_disasters'] += $subsidence['triggered_nations'];
+        $metrics['damaged_cells'] += $subsidence['changed_to_sea']
+            + $subsidence['changed_to_shallow']
+            + $subsidence['capitals_damaged'];
+        $metrics['land_subsidence_nations'] = $subsidence['triggered_nations'];
+        $metrics['land_subsidence_changed_to_sea'] = $subsidence['changed_to_sea'];
+        $metrics['land_subsidence_changed_to_shallow'] = $subsidence['changed_to_shallow'];
+        $metrics['land_subsidence_protected_mountains'] = $subsidence['protected_mountains'];
+        $metrics['land_subsidence_capitals_damaged'] = $subsidence['capitals_damaged'];
+        $metrics['land_subsidence_affected_chunks'] = $subsidence['affected_chunks'];
+
         return $metrics;
+    }
+
+    /**
+     * @return array{
+     *     triggered_nations: int,
+     *     changed_to_sea: int,
+     *     changed_to_shallow: int,
+     *     protected_mountains: int,
+     *     capitals_damaged: int,
+     *     affected_chunks: int
+     * }
+     */
+    private function landSubsidence(TurnContext $context, MapSpace $space, mixed $authoredSettings): array
+    {
+        $settings = $this->landSubsidenceSettings($authoredSettings);
+        $empty = [
+            'triggered_nations' => 0,
+            'changed_to_sea' => 0,
+            'changed_to_shallow' => 0,
+            'protected_mountains' => 0,
+            'capitals_damaged' => 0,
+            'affected_chunks' => 0,
+        ];
+        if (! $settings['enabled']) {
+            return $empty;
+        }
+
+        $cells = MapCell::query()->where('map_space_id', $space->id)
+            ->orderBy('id')->lockForUpdate()->with(['terrain', 'facility'])->get();
+        $landByNation = $this->landArea->byNation($cells);
+
+        /** @var array<int, MapCell> $cellsById */
+        $cellsById = [];
+        /** @var array<string, array{id: int, x: int, y: int, map_chunk_id: int, terrain_key: string, facility_key: string|null, owner_nation_id: int|null, population: int}> $snapshot */
+        $snapshot = [];
+        foreach ($cells as $cell) {
+            $cellsById[$cell->id] = $cell;
+            $snapshot[$cell->x.':'.$cell->y] = [
+                'id' => $cell->id,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'map_chunk_id' => $cell->map_chunk_id,
+                'terrain_key' => $cell->terrain->key,
+                'facility_key' => $cell->facility?->key,
+                'owner_nation_id' => $cell->owner_nation_id,
+                'population' => $cell->population,
+            ];
+        }
+
+        /** @var array<int, array{nation: Nation, owned_land_cells: int, threshold: int, draw: int, to_sea: array<int, true>, to_shallow: array<int, true>, protected_mountains: array<int, true>, capitals: array<int, true>}> $plans */
+        $plans = [];
+        $nations = Nation::query()
+            ->where('world_id', $context->world->id)
+            ->where('state', 'active')
+            ->orderBy('id')
+            ->get();
+        foreach ($nations as $nation) {
+            $ownedLandCells = $landByNation[$nation->id] ?? 0;
+            $threshold = $this->subsidenceThreshold->resolve($context->ruleset, $nation);
+            if ($ownedLandCells <= $threshold) {
+                continue;
+            }
+            $trigger = $this->probabilityDraw(
+                $context,
+                $settings['probability'],
+                TurnRandomStreamFactory::landSubsidenceTrigger($nation->id, $settings['stream_version']),
+            );
+            if (! $trigger['success']) {
+                continue;
+            }
+            $plans[$nation->id] = [
+                'nation' => $nation,
+                'owned_land_cells' => $ownedLandCells,
+                'threshold' => $threshold,
+                'draw' => $trigger['draw'],
+                'to_sea' => [],
+                'to_shallow' => [],
+                'protected_mountains' => [],
+                'capitals' => [],
+            ];
+        }
+        if ($plans === []) {
+            return $empty;
+        }
+
+        foreach ($plans as $nationId => &$plan) {
+            foreach ($snapshot as $cellSnapshot) {
+                if ($cellSnapshot['owner_nation_id'] !== $nationId
+                    || in_array($cellSnapshot['terrain_key'], ['sea', 'shallow'], true)) {
+                    continue;
+                }
+
+                $coastal = false;
+                $origin = new GridCoordinate($cellSnapshot['x'], $cellSnapshot['y']);
+                foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
+                    $coordinate = $origin->neighbor($direction);
+                    if ($coordinate->x < $space->min_x || $coordinate->x > $space->max_x
+                        || $coordinate->y < $space->min_y || $coordinate->y > $space->max_y) {
+                        $coastal = true;
+
+                        continue;
+                    }
+                    $neighbor = $snapshot[$coordinate->x.':'.$coordinate->y] ?? null;
+                    if ($neighbor === null || ! in_array($neighbor['terrain_key'], ['sea', 'shallow'], true)) {
+                        continue;
+                    }
+                    $coastal = true;
+                    if ($neighbor['terrain_key'] === 'shallow'
+                        && in_array($neighbor['owner_nation_id'], [null, $nationId], true)) {
+                        $plan['to_sea'][$neighbor['id']] = true;
+                    }
+                }
+                if (! $coastal) {
+                    continue;
+                }
+                if ($cellSnapshot['terrain_key'] === 'mountain') {
+                    $plan['protected_mountains'][$cellSnapshot['id']] = true;
+                } elseif ($cellSnapshot['facility_key'] === 'capital') {
+                    $plan['capitals'][$cellSnapshot['id']] = true;
+                } else {
+                    $plan['to_shallow'][$cellSnapshot['id']] = true;
+                }
+            }
+        }
+        unset($plan);
+
+        /** @var array<int, array<int, true>> $seaAffectedNations */
+        $seaAffectedNations = [];
+        foreach ($plans as $nationId => $plan) {
+            foreach (array_keys($plan['to_sea']) as $cellId) {
+                $seaAffectedNations[$cellId][$nationId] = true;
+            }
+        }
+
+        $changedToSea = 0;
+        $seaCellIds = array_keys($seaAffectedNations);
+        sort($seaCellIds, SORT_NUMERIC);
+        foreach ($seaCellIds as $cellId) {
+            $affectedNationIds = array_map('intval', array_keys($seaAffectedNations[$cellId]));
+            sort($affectedNationIds, SORT_NUMERIC);
+            if ($this->changeCell(
+                $context,
+                $cellsById[$cellId],
+                'land_subsidence',
+                $settings['affected_shallow_result'],
+                true,
+                'disaster.cell_damaged',
+                ['source' => 'land_subsidence', 'affected_nation_ids' => $affectedNationIds],
+            )) {
+                $changedToSea++;
+            }
+        }
+
+        $changedToShallow = 0;
+        $protectedMountains = 0;
+        $capitalsDamaged = 0;
+        /** @var array<int, true> $affectedChunks */
+        $affectedChunks = [];
+        /** @var array<int, list<array{before_population: int, after_population: int, damage_percent: int}>> $capitalDamageByNation */
+        $capitalDamageByNation = [];
+        foreach ($plans as $nationId => $plan) {
+            $protectedMountains += count($plan['protected_mountains']);
+            $landCellIds = array_keys($plan['to_shallow']);
+            sort($landCellIds, SORT_NUMERIC);
+            foreach ($landCellIds as $cellId) {
+                if ($this->changeCell(
+                    $context,
+                    $cellsById[$cellId],
+                    'land_subsidence',
+                    $settings['affected_coastal_land_result'],
+                    true,
+                    'disaster.cell_damaged',
+                    ['source' => 'land_subsidence'],
+                )) {
+                    $changedToShallow++;
+                }
+            }
+            $capitalCellIds = array_keys($plan['capitals']);
+            sort($capitalCellIds, SORT_NUMERIC);
+            foreach ($capitalCellIds as $cellId) {
+                $capitalDamageByNation[$nationId][] = $this->damageCapitalByPercentage(
+                    $context,
+                    $cellsById[$cellId],
+                    'land_subsidence',
+                    $settings['capital_damage_percentage'],
+                    ['source' => 'land_subsidence'],
+                );
+                $capitalsDamaged++;
+            }
+            foreach ([...array_keys($plan['to_sea']), ...$landCellIds, ...$capitalCellIds] as $cellId) {
+                $affectedChunks[$snapshot[$cellsById[$cellId]->x.':'.$cellsById[$cellId]->y]['map_chunk_id']] = true;
+            }
+        }
+
+        foreach ($plans as $nationId => $plan) {
+            $nationChunkIds = [];
+            foreach ([...array_keys($plan['to_sea']), ...array_keys($plan['to_shallow']), ...array_keys($plan['capitals'])] as $cellId) {
+                $nationChunkIds[$cellsById[$cellId]->map_chunk_id] = true;
+            }
+            $this->events->record($context, 'land_subsidence.triggered', $plan['nation'], [
+                'disaster_key' => 'land_subsidence',
+                'nation_id' => $nationId,
+                'nation_number' => $plan['nation']->nation_number,
+                'owned_land_cells_before' => $plan['owned_land_cells'],
+                'effective_safe_land_cells' => $plan['threshold'],
+                'changed_to_sea_count' => count($plan['to_sea']),
+                'changed_to_shallow_count' => count($plan['to_shallow']),
+                'protected_mountain_count' => count($plan['protected_mountains']),
+                'capital_damage' => $capitalDamageByNation[$nationId] ?? [],
+                'affected_chunk_count' => count($nationChunkIds),
+                'draw' => $plan['draw'],
+                'numerator' => $settings['probability']['numerator'],
+                'denominator' => $settings['probability']['denominator'],
+                'snapshot_applied' => true,
+            ]);
+        }
+
+        return [
+            'triggered_nations' => count($plans),
+            'changed_to_sea' => $changedToSea,
+            'changed_to_shallow' => $changedToShallow,
+            'protected_mountains' => $protectedMountains,
+            'capitals_damaged' => $capitalsDamaged,
+            'affected_chunks' => count($affectedChunks),
+        ];
     }
 
     public function landLevelEarthquake(
@@ -456,6 +706,7 @@ final class DisasterTurnService
 
     /**
      * @param  array<string, mixed>  $extra
+     * @return array{before_population: int, after_population: int, damage_percent: int}
      */
     private function damageCapital(
         TurnContext $context,
@@ -463,15 +714,37 @@ final class DisasterTurnService
         string $disasterKey,
         string $percentageKey,
         array $extra = [],
-    ): void {
+    ): array {
         $percentages = $context->ruleset->settings['capital_damage_percentages'] ?? null;
+        if (! is_array($percentages) || ! is_int($percentages[$percentageKey] ?? null)) {
+            throw new DomainException('The active ruleset has invalid Capital damage settings.');
+        }
+
+        return $this->damageCapitalByPercentage(
+            $context,
+            $cell,
+            $disasterKey,
+            $percentages[$percentageKey],
+            $extra,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $extra
+     * @return array{before_population: int, after_population: int, damage_percent: int}
+     */
+    private function damageCapitalByPercentage(
+        TurnContext $context,
+        MapCell $cell,
+        string $disasterKey,
+        int $percentage,
+        array $extra = [],
+    ): array {
         $minimum = $context->ruleset->settings['capital_minimum_population'] ?? null;
-        if (! is_array($percentages) || ! is_int($percentages[$percentageKey] ?? null)
-            || ! is_int($minimum) || $minimum < 1) {
+        if (! is_int($minimum) || $minimum < 1 || $percentage < 0 || $percentage > 100) {
             throw new DomainException('The active ruleset has invalid Capital damage settings.');
         }
         $before = $cell->population;
-        $percentage = $percentages[$percentageKey];
         $cell->population = max($minimum, intdiv($before * (100 - $percentage), 100));
         $minimumPopulationAdjustment = max(0, $cell->population - $before);
         $cell->version++;
@@ -490,6 +763,12 @@ final class DisasterTurnService
             'capital_identity_preserved' => true,
             ...$extra,
         ]);
+
+        return [
+            'before_population' => $before,
+            'after_population' => $cell->population,
+            'damage_percent' => $percentage,
+        ];
     }
 
     /** @param array<string, mixed> $extra */
@@ -580,6 +859,52 @@ final class DisasterTurnService
         }
 
         return $rules;
+    }
+
+    /**
+     * @return array{
+     *     enabled: bool,
+     *     base_safe_land_cells: int,
+     *     probability: array{numerator: int, denominator: int},
+     *     affected_shallow_result: string,
+     *     affected_coastal_land_result: string,
+     *     mountain_immune: bool,
+     *     capital_damage_percentage: int,
+     *     out_of_bounds_is_water: bool,
+     *     stream_version: int
+     * }
+     */
+    private function landSubsidenceSettings(mixed $authored): array
+    {
+        if (! is_array($authored)
+            || ! is_bool($authored['enabled'] ?? null)
+            || ! is_int($authored['base_safe_land_cells'] ?? null)
+            || ! is_array($authored['probability'] ?? null)
+            || ! is_int($authored['probability']['numerator'] ?? null)
+            || ! is_int($authored['probability']['denominator'] ?? null)
+            || ! is_string($authored['affected_shallow_result'] ?? null)
+            || ! is_string($authored['affected_coastal_land_result'] ?? null)
+            || ! is_bool($authored['mountain_immune'] ?? null)
+            || ! is_int($authored['capital_damage_percentage'] ?? null)
+            || ! is_bool($authored['out_of_bounds_is_water'] ?? null)
+            || ! is_int($authored['stream_version'] ?? null)) {
+            throw new DomainException('The active ruleset is missing land-subsidence settings.');
+        }
+        $numerator = $authored['probability']['numerator'];
+        $denominator = $authored['probability']['denominator'];
+        if ($authored['base_safe_land_cells'] < 0
+            || $numerator < 0 || $denominator < 1 || $numerator > $denominator
+            || $authored['affected_shallow_result'] !== 'sea'
+            || $authored['affected_coastal_land_result'] !== 'shallow'
+            || $authored['mountain_immune'] !== true
+            || $authored['capital_damage_percentage'] < 0
+            || $authored['capital_damage_percentage'] > 100
+            || $authored['out_of_bounds_is_water'] !== true
+            || $authored['stream_version'] < 1) {
+            throw new DomainException('The active ruleset has invalid land-subsidence settings.');
+        }
+
+        return $authored;
     }
 
     /** @param array{numerator: int, denominator: int} $probability

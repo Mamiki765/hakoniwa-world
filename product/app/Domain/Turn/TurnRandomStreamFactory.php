@@ -68,6 +68,8 @@ final class TurnRandomStreamFactory
 
     public const GLOBAL_ERUPTION_EFFECT = 'global_disasters:eruption:effect:v1';
 
+    private const LAND_SUBSIDENCE_TRIGGER_PREFIX = 'global_disasters:land_subsidence:nation:';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 
@@ -104,5 +106,14 @@ final class TurnRandomStreamFactory
                 true,
             ),
         );
+    }
+
+    public static function landSubsidenceTrigger(int $nationId, int $streamVersion): string
+    {
+        if ($nationId < 1 || $streamVersion < 1) {
+            throw new InvalidArgumentException('Land-subsidence stream identity must use positive integers.');
+        }
+
+        return self::LAND_SUBSIDENCE_TRIGGER_PREFIX.$nationId.':trigger:v'.$streamVersion;
     }
 }

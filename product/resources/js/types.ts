@@ -33,6 +33,7 @@ export interface Nation {
     current_turn: number;
     total_population: number;
     territory_cell_count: number;
+    owned_land_cells: number;
     capital: { x: number; y: number } | null;
 }
 
@@ -53,6 +54,7 @@ export interface PublicNationSummary {
     state: string;
     total_population: number;
     territory_cell_count: number;
+    owned_land_cells: number;
     money_display: string;
     money_bucket: string;
     last_updated_turn: number;

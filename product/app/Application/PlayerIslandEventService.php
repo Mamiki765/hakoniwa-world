@@ -24,6 +24,7 @@ final class PlayerIslandEventService
         'command.seabed_oil_search',
         'command.land_level_earthquake',
         'disaster.triggered',
+        'land_subsidence.triggered',
         'disaster.cell_damaged',
         'capital.disaster_damaged',
         'fire.prevented',
@@ -266,6 +267,11 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'center_x')),
                 number_format($this->integer($metadata, 'center_y')),
             ),
+            'land_subsidence.triggered' => sprintf(
+                '地盤沈下が発生し、浅瀬%sセルが海へ、陸地%sセルが浅瀬へ沈下しました。',
+                number_format($this->integer($metadata, 'changed_to_sea_count')),
+                number_format($this->integer($metadata, 'changed_to_shallow_count')),
+            ),
             'disaster.cell_damaged' => sprintf(
                 '%sにより%sが%sへ変化しました。',
                 $this->disasterLabel($metadata['disaster_key'] ?? null),
@@ -411,6 +417,7 @@ final class PlayerIslandEventService
             'meteor_shower' => '流星群',
             'huge_meteor' => '巨大隕石',
             'eruption' => '噴火',
+            'land_subsidence' => '地盤沈下',
             'fire' => '火災',
             default => '災害',
         };
@@ -480,6 +487,7 @@ final class PlayerIslandEventService
             'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged', 'oil.depleted' => 'warning',
             'command.buried_treasure', 'command.seabed_oil_search',
             'command.land_level_earthquake', 'disaster.triggered', 'fire.prevented', 'oil.income',
+            'land_subsidence.triggered',
             'settlement.appeared', 'settlement.stage_transitioned' => 'notable',
             default => 'info',
         };

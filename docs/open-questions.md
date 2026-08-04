@@ -240,6 +240,17 @@
 - Decision: 1時間turnの初期balanceとして、legacyの`n / 1000`である6 global disaster trigger、successful `land_level`ごとの5/1000、各対象cellの火災10/1000だけを、整数丸めせずそれぞれ`n / 2000`とする。油田枯渇40/1000、飢餓暴動1/4、災害発生後のcell別被害率、流星群の1/2継続、津波・台風等の内部確率、範囲・対象・被害内容は半減しない。
 - Decision record: `product/docs/disaster-oil-audit-pr15.md`、`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
 
+### B-18 Nation単位の地盤沈下
+
+- Status: Decided
+- Required before: 地盤沈下実装前
+- Decision: 各active Nationについて各turnに独立して判定し、事前snapshot上の所有陸地がrulesetのsafe land base 100を超える101hex以上なら2/100で発生する。dormant_frozen、dormant_contestable、sunken_archivedは既存のlifecycle凍結契約に従い対象外とする。所有陸地は`owner_nation_id`が一致しterrainがsea/shallow以外のsurface cellとし、山・採掘場・Capital・集落・地上施設を含める。sea/shallow、海底施設cell、monster actor自体は加算しない。表示とeligibilityは`NationLandAreaCalculator`を共用する。
+- Decision: eligible NationごとにNation IDを含む独立したversioned deterministic streamを使い、別Nationの追加・削除やdraw数で既存Nationの結果をずらさない。全対象Nationのeligibility、海岸、変更候補は地盤沈下開始時点のWorld全体snapshotから先に確定し、候補union後に適用する。新しい浅瀬・海を同じeventの追加判定へ使わず、Nation処理順へ依存させない。
+- Decision: snapshot上で対象Nation所有陸地に隣接する中立または自国shallowはseaへ、sea/shallowまたはWorld外に接する自国陸地は中立shallowへ変更する。他国所有shallow、他国領土、無関係な中立cell、既存sea上の海底施設は変更しない。山と採掘場は面積に含めるが無傷とする。
+- Decision: coastal Capitalはfacility identity、owner、terrain、capital coordinate、territory identityを維持し、現在人口へ30%の逐次damageを適用して`max(100, floor(old_population * 70 / 100))`とする。山地Capitalでは山の無効化を優先する。
+- Decision: safe limitを将来のitem/Nation効果で増やせる`LandSubsidenceThresholdResolver`境界だけを置き、PR18はruleset base値だけを返す。item/modifier table、unused effect record、UI item機能、汎用effect systemは実装しない。
+- Decision record: `product/docs/land-subsidence-audit-pr18.md`
+
 ### T-01 乱数seedと再現方式
 
 - Status: Decided
