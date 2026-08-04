@@ -591,6 +591,7 @@ final class DisasterTurnService
                 continue;
             }
             $distance = $center->distanceTo($coordinate);
+            $monsterRemoved = false;
             if ($this->isCapital($cell)) {
                 if ($distance === 0) {
                     $this->damageCapital($context, $cell, $disasterKey, 'deep_sea');
@@ -606,7 +607,10 @@ final class DisasterTurnService
                 continue;
             }
             if ($distance === 2) {
+                $monsterRemoved = $this->removeMonsterForTerrainEvent($context, $cell, $disasterKey);
                 if (! $this->hugeMeteorRingTwoTarget($cell, $settings)) {
+                    $damaged += $monsterRemoved ? 1 : 0;
+
                     continue;
                 }
                 $changed = $this->changeCell($context, $cell, $disasterKey, 'wasteland', false, 'disaster.cell_damaged');
@@ -623,7 +627,7 @@ final class DisasterTurnService
                     'disaster.cell_damaged',
                 );
             }
-            $damaged += $changed ? 1 : 0;
+            $damaged += ($changed || $monsterRemoved) ? 1 : 0;
         }
 
         return $damaged;
@@ -816,13 +820,7 @@ final class DisasterTurnService
         $beforeOwner = $cell->owner_nation_id;
         $beforePopulation = $cell->population;
         $targetOwner = $neutralizeOwner ? null : $beforeOwner;
-        $monsterRemoved = $this->monsterRemoval->removeAtCell(
-            $context,
-            $cell,
-            $disasterKey,
-            'monster.removed_by_terrain_event',
-            ['terrain_event_key' => $disasterKey, 'hardening_ignored' => true],
-        );
+        $monsterRemoved = $this->removeMonsterForTerrainEvent($context, $cell, $disasterKey);
         if ($beforeTerrain === $terrainKey && $beforeFacility === null
             && $beforeOwner === $targetOwner && $beforePopulation === 0) {
             return $monsterRemoved;
@@ -851,6 +849,20 @@ final class DisasterTurnService
         ]);
 
         return true;
+    }
+
+    private function removeMonsterForTerrainEvent(
+        TurnContext $context,
+        MapCell $cell,
+        string $disasterKey,
+    ): bool {
+        return $this->monsterRemoval->removeAtCell(
+            $context,
+            $cell,
+            $disasterKey,
+            'monster.removed_by_terrain_event',
+            ['terrain_event_key' => $disasterKey, 'hardening_ignored' => true],
+        );
     }
 
     private function saveChangedCell(TurnContext $context, MapCell $cell): void

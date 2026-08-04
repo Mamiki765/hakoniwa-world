@@ -352,10 +352,7 @@ class MonsterSystemTest extends TestCase
         $facility = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
         $facility->update(['key' => 'defense']);
         $this->setCell($defense, 'plain', 'defense', $nation->id, 0);
-        $victimCoordinate = collect($defenseCoordinate->radius(1))->first(
-            static fn (GridCoordinate $coordinate): bool => ! ($coordinate->x === $origin->x && $coordinate->y === $origin->y)
-                && ! ($coordinate->x === $defenseCoordinate->x && $coordinate->y === $defenseCoordinate->y),
-        );
+        $victimCoordinate = collect($defenseCoordinate->ring(2))->first();
         $this->assertInstanceOf(GridCoordinate::class, $victimCoordinate);
         $victimCell = $this->cellAt($space, $victimCoordinate->x, $victimCoordinate->y);
         $this->setCell($victimCell, 'wasteland', null, $nation->id, 0);
@@ -381,6 +378,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('removed', $blastVictim->fresh()->state);
         $this->assertSame('defense_self_destruct', $blastVictim->fresh()->removal_reason);
         $this->assertFalse($blastVictim->fresh()->occupancy()->exists());
+        $this->assertSame('wasteland', $victimCell->fresh()->terrain()->value('key'));
         $this->assertSame(1, $batch->metrics()['defense_self_destructs']);
         $this->assertSame(1, $batch->metrics()['monster_actions']);
         $this->assertSame('sea', $defense->fresh()->terrain()->value('key'));
@@ -391,12 +389,16 @@ class MonsterSystemTest extends TestCase
             ->whereRaw("metadata->>'disaster_key' = 'defense_self_destruct'")->count());
     }
 
-    public function test_fire_preserves_hardened_monster_while_huge_terrain_change_removes_it_without_rewards(): void
+    public function test_fire_preserves_hardened_monster_while_huge_blast_removes_center_and_wasteland_ring_two_without_rewards(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('地形相互作用国');
         $cell = $this->safeInteriorCell($space, $world);
         $this->setCell($cell, 'plain', 'factory', $nation->id, 0);
         $monster = $this->createMonster($world, $ruleset, $cell, 'whale', 4);
+        $ringTwoCoordinate = (new GridCoordinate($cell->x, $cell->y))->ring(2)[0];
+        $ringTwoCell = $this->cellAt($space, $ringTwoCoordinate->x, $ringTwoCoordinate->y);
+        $this->setCell($ringTwoCell, 'wasteland', null, $nation->id, 0);
+        $ringTwoMonster = $this->createMonster($world, $ruleset, $ringTwoCell, 'inora', 1);
         [$context] = $this->context($world, $ruleset, 2, 'terrain-removal', [$nation->id]);
         $removal = app(MonsterRemovalService::class);
         $removal->beginWorld($context);
@@ -417,9 +419,13 @@ class MonsterSystemTest extends TestCase
 
         $this->assertSame('removed', $monster->fresh()->state);
         $this->assertSame('huge_meteor', $monster->fresh()->removal_reason);
+        $this->assertSame('removed', $ringTwoMonster->fresh()->state);
+        $this->assertSame('huge_meteor', $ringTwoMonster->fresh()->removal_reason);
+        $this->assertFalse($ringTwoMonster->fresh()->occupancy()->exists());
+        $this->assertSame('wasteland', $ringTwoCell->fresh()->terrain()->value('key'));
         $this->assertSame(0, MonsterKillRecord::query()->count());
         $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
-        $this->assertSame(1, DB::table('audit_events')
+        $this->assertSame(2, DB::table('audit_events')
             ->where('event_type', 'monster.removed_by_terrain_event')->count());
         $this->assertSame('sea', $cell->fresh()->terrain()->value('key'));
     }
