@@ -23,11 +23,14 @@ final class DisasterTurnService
         private readonly TurnEventRecorder $events,
         private readonly NationLandAreaCalculator $landArea,
         private readonly LandSubsidenceThresholdResolver $subsidenceThreshold,
+        private readonly MonsterRemovalService $monsterRemoval,
+        private readonly MonsterSpawnService $monsterSpawn,
     ) {}
 
     /** @return array<string, int> */
     public function executeGlobal(TurnContext $context): array
     {
+        $this->monsterRemoval->beginWorld($context);
         $rules = $this->rules($context);
         $metrics = [
             'executed_disasters' => 0,
@@ -38,6 +41,11 @@ final class DisasterTurnService
             'land_subsidence_protected_mountains' => 0,
             'land_subsidence_capitals_damaged' => 0,
             'land_subsidence_affected_chunks' => 0,
+            'eligible_spawn_nations' => 0,
+            'spawn_draws' => 0,
+            'monsters_spawned' => 0,
+            'blocked_no_settlement' => 0,
+            'monsters_removed_by_terrain' => 0,
         ];
         $space = $this->surfaceSpace($context);
 
@@ -78,7 +86,7 @@ final class DisasterTurnService
                 'tsunami' => $this->tsunami($context, $space, $center, $settings),
                 'typhoon' => $this->typhoon($context, $space, $center, $settings),
                 'meteor_shower' => $this->meteorShower($context, $space, $center, $settings),
-                'huge_meteor' => $this->hugeMeteor($context, $space, $center, $settings),
+                'huge_meteor' => $this->resolveHugeMeteorBlast($context, $space, $center, $settings),
                 'eruption' => $this->eruption($context, $space, $center, $settings),
             };
         }
@@ -94,6 +102,11 @@ final class DisasterTurnService
         $metrics['land_subsidence_protected_mountains'] = $subsidence['protected_mountains'];
         $metrics['land_subsidence_capitals_damaged'] = $subsidence['capitals_damaged'];
         $metrics['land_subsidence_affected_chunks'] = $subsidence['affected_chunks'];
+
+        foreach ($this->monsterSpawn->spawnNatural($context, $space) as $key => $value) {
+            $metrics[$key] = $value;
+        }
+        $metrics['monsters_removed_by_terrain'] = $this->monsterRemoval->removedCount();
 
         return $metrics;
     }
@@ -366,6 +379,9 @@ final class DisasterTurnService
 
     public function processFire(TurnContext $context, MapCell $cell): bool
     {
+        if ($this->monsterRemoval->hasAtCell($cell->id)) {
+            return false;
+        }
         $rules = $this->rules($context);
         $settings = $rules['fire'];
         $facilityKey = $cell->facility?->key;
@@ -428,6 +444,9 @@ final class DisasterTurnService
             if ($cell === null || ! $this->isMutable($cell)) {
                 continue;
             }
+            if ($this->monsterRemoval->hasAtCell($cell->id)) {
+                continue;
+            }
             $facilityKey = $cell->facility?->key;
             $city = in_array($facilityKey, ['village', 'town', 'city', 'capital'], true)
                 && $cell->population >= $settings['minimum_city_population'];
@@ -468,6 +487,9 @@ final class DisasterTurnService
             if ($cell === null || ! $this->isMutable($cell) || ! $this->isTsunamiTarget($cell, $settings)) {
                 continue;
             }
+            if ($this->monsterRemoval->hasAtCell($cell->id)) {
+                continue;
+            }
             $water = $this->adjacentWaterCount($cell, $space, $settings['water_facility_keys']);
             $draw = $context->random->stream(TurnRandomStreamFactory::GLOBAL_TSUNAMI_EFFECT)
                 ->integer(0, $settings['internal_denominator'] - 1);
@@ -499,6 +521,9 @@ final class DisasterTurnService
             $cell = $this->cellAt($space, $coordinate);
             if ($cell === null || ! $this->isMutable($cell)
                 || ! in_array($cell->facility?->key, $settings['facility_keys'], true)) {
+                continue;
+            }
+            if ($this->monsterRemoval->hasAtCell($cell->id)) {
                 continue;
             }
             $protection = $this->adjacentProtectionCount($cell, $settings['protection_facility_keys']);
@@ -551,8 +576,13 @@ final class DisasterTurnService
     }
 
     /** @param array<string, mixed> $settings */
-    private function hugeMeteor(TurnContext $context, MapSpace $space, GridCoordinate $center, array $settings): int
-    {
+    public function resolveHugeMeteorBlast(
+        TurnContext $context,
+        MapSpace $space,
+        GridCoordinate $center,
+        array $settings,
+        string $disasterKey = 'huge_meteor',
+    ): int {
         $damaged = 0;
         $coordinates = [...$center->ring(0), ...$center->ring(1), ...$center->ring(2)];
         foreach ($coordinates as $coordinate) {
@@ -563,11 +593,11 @@ final class DisasterTurnService
             $distance = $center->distanceTo($coordinate);
             if ($this->isCapital($cell)) {
                 if ($distance === 0) {
-                    $this->damageCapital($context, $cell, 'huge_meteor', 'deep_sea');
+                    $this->damageCapital($context, $cell, $disasterKey, 'deep_sea');
                 } elseif ($distance === 1) {
-                    $this->damageCapital($context, $cell, 'huge_meteor', 'excavation_or_shallow');
+                    $this->damageCapital($context, $cell, $disasterKey, 'excavation_or_shallow');
                 } elseif ($this->hugeMeteorRingTwoTarget($cell, $settings)) {
-                    $this->damageCapital($context, $cell, 'huge_meteor', 'facility_or_wasteland');
+                    $this->damageCapital($context, $cell, $disasterKey, 'facility_or_wasteland');
                 } else {
                     continue;
                 }
@@ -579,15 +609,15 @@ final class DisasterTurnService
                 if (! $this->hugeMeteorRingTwoTarget($cell, $settings)) {
                     continue;
                 }
-                $changed = $this->changeCell($context, $cell, 'huge_meteor', 'wasteland', false, 'disaster.cell_damaged');
+                $changed = $this->changeCell($context, $cell, $disasterKey, 'wasteland', false, 'disaster.cell_damaged');
             } elseif ($cell->terrain->key === 'sea' || $cell->terrain->key === 'shallow'
                 || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true)) {
-                $changed = $this->changeCell($context, $cell, 'huge_meteor', 'sea', true, 'disaster.cell_damaged');
+                $changed = $this->changeCell($context, $cell, $disasterKey, 'sea', true, 'disaster.cell_damaged');
             } else {
                 $changed = $this->changeCell(
                     $context,
                     $cell,
-                    'huge_meteor',
+                    $disasterKey,
                     $distance === 0 ? 'sea' : 'shallow',
                     true,
                     'disaster.cell_damaged',
@@ -786,9 +816,16 @@ final class DisasterTurnService
         $beforeOwner = $cell->owner_nation_id;
         $beforePopulation = $cell->population;
         $targetOwner = $neutralizeOwner ? null : $beforeOwner;
+        $monsterRemoved = $this->monsterRemoval->removeAtCell(
+            $context,
+            $cell,
+            $disasterKey,
+            'monster.removed_by_terrain_event',
+            ['terrain_event_key' => $disasterKey, 'hardening_ignored' => true],
+        );
         if ($beforeTerrain === $terrainKey && $beforeFacility === null
             && $beforeOwner === $targetOwner && $beforePopulation === 0) {
-            return false;
+            return $monsterRemoved;
         }
 
         $this->cells->setFacility($cell, null);
