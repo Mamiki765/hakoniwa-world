@@ -192,7 +192,7 @@ class WorldResetTurnLockTest extends TestCase
             'discord',
             new ExternalIdentityData('reset-turn-lock-user', 'Reset Turn Lock User'),
         );
-        $nation = app(NationCreationService::class)->create($user, $world, 'Reset turn lock Nation');
+        $nation = app(NationCreationService::class)->create($user, $world, 'Reset turn lock Nation', '試験島主');
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $target = MapCell::query()
             ->where('owner_nation_id', $nation->id)

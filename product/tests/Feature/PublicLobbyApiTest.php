@@ -20,8 +20,10 @@ class PublicLobbyApiTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $firstUser = User::factory()->create();
-        $first = app(NationCreationService::class)->create($firstUser, $world, '第一国');
-        $second = app(NationCreationService::class)->create(User::factory()->create(), $world, '第二国');
+        $first = app(NationCreationService::class)->create($firstUser, $world, '第一国', '第一島主', '第一コメント');
+        $second = app(NationCreationService::class)->create(
+            User::factory()->create(), $world, '第二国', '第二島主', '第二コメント',
+        );
 
         MapCell::query()->whereIn('owner_nation_id', [$first->id, $second->id])->update(['population' => 0]);
         MapCell::query()->where('owner_nation_id', $first->id)->orderBy('id')->firstOrFail()->update(['population' => 1000]);
@@ -45,6 +47,9 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.0.nation_number', 2)
             ->assertJsonPath('data.1.id', $first->id)
             ->assertJsonPath('data.1.nation_number', 1)
+            ->assertJsonPath('data.0.owner_name', '第二島主')
+            ->assertJsonPath('data.0.comment', '第二コメント')
+            ->assertJsonPath('data.1.owner_name', '第一島主')
             ->assertJsonPath('data.0.money_display', '約500億円')
             ->assertJsonPath('data.0.money_bucket', '500')
             ->assertJsonPath('data.1.money_display', '約62,000億円')
@@ -128,7 +133,9 @@ class PublicLobbyApiTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($owner, $world, '秘匿国');
+        $nation = app(NationCreationService::class)->create(
+            $owner, $world, '秘匿国', '秘匿島主', '公開コメント',
+        );
         $nation->update(['money' => 62728]);
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $base = MapCell::query()->where('owner_nation_id', $nation->id)
@@ -141,11 +148,15 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.capital.x', $nation->capital()->value('x'))
             ->assertJsonPath('data.map_space.id', $mapSpace->id)
             ->assertJsonPath('data.map_space.bounds.max_x', $mapSpace->max_x)
-            ->assertJsonPath('data.money_display', '約62,000億円');
+            ->assertJsonPath('data.money_display', '約62,000億円')
+            ->assertJsonPath('data.owner_name', '秘匿島主')
+            ->assertJsonPath('data.comment', '公開コメント');
         $this->assertStringNotContainsString('62728', $nationResponse->getContent());
         $this->assertStringNotContainsString('total_food_tons', $nationResponse->getContent());
         $this->assertStringNotContainsString('food_resources', $nationResponse->getContent());
         $this->assertStringNotContainsString('wheat', $nationResponse->getContent());
+        $this->assertStringNotContainsString('user_id', $nationResponse->getContent());
+        $this->assertStringNotContainsString('membership', $nationResponse->getContent());
 
         $url = "/api/v1/public/nations/{$nation->id}/map-spaces/{$mapSpace->id}/chunks/{$base->chunk_x}/{$base->chunk_y}";
         $response = $this->getJson($url)->assertOk();

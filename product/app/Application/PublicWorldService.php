@@ -253,6 +253,8 @@ final class PublicWorldService
             'world_id' => $nation->world_id,
             'nation_number' => $nation->nation_number,
             'name' => $nation->name,
+            'owner_name' => $nation->owner_name,
+            'comment' => $nation->profile_comment,
             'state' => $nation->state,
             'total_population' => (int) ($nation->getAttribute('total_population') ?? 0),
             'territory_cell_count' => (int) ($nation->getAttribute('territory_cell_count') ?? 0),
@@ -260,7 +262,6 @@ final class PublicWorldService
             'money_display' => $estimate['display'],
             'money_bucket' => $estimate['bucket'],
             'last_updated_turn' => $world->current_turn,
-            'comment' => null,
         ];
     }
 }

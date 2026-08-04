@@ -140,5 +140,9 @@ sunken_archivedの国家は旧領土・旧首都を地図へ巻き戻さない�
 
 国家作成はWorld row lockとworld単位のPostgreSQL transaction advisory lockで直列化する。要求予約、候補選定、Nation、初期資源、島、Capital、Territory、Membership、audit eventを1 transactionに含め、例外時は全てrollbackする。
 
+PR19では登録入力に公開用の`owner_name`（必須、1–30文字）と`comment`（任意、0–100文字）を追加する。どちらも1行のplain textとして保存し、制御文字・改行・Unicode line/paragraph separatorを拒否する。前後のUnicode space separatorは除去するが、HTMLやURLを解釈・展開しない。OAuthの表示名、provider ID、emailから島主名を暗黙補完しない。
+
+登録後はNation ownerだけが`PATCH /api/v1/nations/{nation}/profile`で島主名と一言コメントを変更できる。変更はWorldとNationをlockし、最新ruleset Worldだけを対象にして、変更前後・変更field・actor user IDを`nation.profile_updated`へ記録する。同値更新は保存もaudit eventも作らない。過去ruleset Worldの更新は`reset_required`で拒否する。
+
 候補は中心からdistance 5以内の91セルが生成済みの海・無所有・施設なしで、他Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、y/xで安定tie-breakする。現在は先頭候補を使用するが、serviceの結果を上位3候補へ拡張できる。初期範囲に候補がない場合の自動拡張はMVP外である。
 - Status: Deferred / Required before: MVP後 — 放棄Territory再利用、World運用上限と新World作成、sunken_archivedからの再入植。

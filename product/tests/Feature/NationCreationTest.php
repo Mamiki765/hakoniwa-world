@@ -29,7 +29,7 @@ class NationCreationTest extends TestCase
     public function test_nation_creation_generates_legacy_inspired_island_capital_and_territory(): void
     {
         $world = $this->lightweightWorld();
-        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '最初の国');
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '最初の国', '試験島主');
 
         $this->assertSame(1, $nation->nation_number);
         $this->assertSame(100, $nation->money);
@@ -74,8 +74,8 @@ class NationCreationTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $service = app(NationCreationService::class);
-        $first = $service->create(User::factory()->create(), $world, '第一国');
-        $second = $service->create(User::factory()->create(), $world, '第二国');
+        $first = $service->create(User::factory()->create(), $world, '第一国', '試験島主');
+        $second = $service->create(User::factory()->create(), $world, '第二国', '試験島主');
         $a = new GridCoordinate($first->capital->x, $first->capital->y);
         $b = new GridCoordinate($second->capital->x, $second->capital->y);
 
@@ -91,10 +91,10 @@ class NationCreationTest extends TestCase
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $service = app(NationCreationService::class);
-        $service->create($user, $world, '一つ目');
+        $service->create($user, $world, '一つ目', '試験島主');
 
         $this->expectException(DomainException::class);
-        $service->create($user, $world, '二つ目');
+        $service->create($user, $world, '二つ目', '試験島主');
     }
 
     public function test_initial_shallow_coordinates_are_deterministic_for_the_same_seed_and_state(): void
@@ -104,13 +104,13 @@ class NationCreationTest extends TestCase
         $service = app(NationCreationService::class);
 
         DB::beginTransaction();
-        $first = $service->create($user, $world, '再現国');
+        $first = $service->create($user, $world, '再現国', '試験島主');
         $firstCoordinates = MapCell::query()
             ->whereHas('terrain', fn ($query) => $query->where('key', 'shallow'))
             ->orderBy('x')->orderBy('y')->get(['x', 'y'])->map->only(['x', 'y'])->all();
         DB::rollBack();
 
-        $second = $service->create($user, $world, '再現国');
+        $second = $service->create($user, $world, '再現国', '試験島主');
         $secondCoordinates = MapCell::query()
             ->whereHas('terrain', fn ($query) => $query->where('key', 'shallow'))
             ->orderBy('x')->orderBy('y')->get(['x', 'y'])->map->only(['x', 'y'])->all();
@@ -133,7 +133,7 @@ class NationCreationTest extends TestCase
         ]);
         $world->update(['ruleset_version_id' => $ruleset->id]);
 
-        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '候補不足国');
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '候補不足国', '試験島主');
 
         $this->assertNotNull($nation->capital);
         $this->assertSame(19, MapCell::query()->where('owner_nation_id', $nation->id)->count());
@@ -153,7 +153,7 @@ class NationCreationTest extends TestCase
         });
 
         try {
-            app(NationCreationService::class)->create(User::factory()->create(), $world, '失敗国');
+            app(NationCreationService::class)->create(User::factory()->create(), $world, '失敗国', '試験島主');
             $this->fail('Expected island failure.');
         } catch (RuntimeException) {
             $this->assertSame(0, Nation::query()->count());

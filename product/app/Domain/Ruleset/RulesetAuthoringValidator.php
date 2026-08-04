@@ -709,6 +709,74 @@ final class RulesetAuthoringValidator
                 $foodCapacity -= $amount;
             }
         }
+        $hasResourceCapacities = array_key_exists('resource_capacities', $settings);
+        $hasResourceOverflow = array_key_exists('resource_capacity_overflow', $settings);
+        if ($hasResourceCapacities !== $hasResourceOverflow) {
+            throw new DomainException(
+                'ruleset.resource_capacities and ruleset.resource_capacity_overflow must be published together.',
+            );
+        }
+        if ($hasResourceCapacities) {
+            $definitionsByKey = [];
+            foreach ($this->list($settings['resource_definitions'], 'ruleset.resource_definitions') as $definitionValue) {
+                $definition = $this->map($definitionValue, 'ruleset.resource_definitions entry');
+                $definitionKey = $this->string($definition['key'], 'ruleset.resource_definitions entry.key');
+                $definitionsByKey[$definitionKey] = $definition;
+            }
+            $resourceCapacities = $this->map($settings['resource_capacities'], 'ruleset.resource_capacities');
+            if ($resourceCapacities === []) {
+                throw new DomainException('ruleset.resource_capacities must not be empty.');
+            }
+            $initialResources = $this->map($settings['initial_resources'], 'ruleset.initial_resources');
+            foreach ($resourceCapacities as $resourceKey => $capacityValue) {
+                $this->reference($resourceKey, $resourceKeys, 'ruleset.resource_capacities');
+                $capacity = $this->integer(
+                    $capacityValue,
+                    "ruleset.resource_capacities.{$resourceKey}",
+                    0,
+                );
+                $definition = $definitionsByKey[$resourceKey];
+                if (($definition['category'] ?? null) === 'food') {
+                    throw new DomainException(
+                        "ruleset.resource_capacities.{$resourceKey} must not replace aggregate food capacity.",
+                    );
+                }
+                if (($definition['storable'] ?? null) !== true) {
+                    throw new DomainException(
+                        "ruleset.resource_capacities.{$resourceKey} requires a storable resource.",
+                    );
+                }
+                if (($definition['tradable'] ?? null) !== true) {
+                    throw new DomainException(
+                        "ruleset.resource_capacities.{$resourceKey} requires a tradable resource for stockpile overflow sale.",
+                    );
+                }
+                $initial = $this->integer(
+                    $initialResources[$resourceKey] ?? null,
+                    "ruleset.initial_resources.{$resourceKey}",
+                    0,
+                );
+                if ($initial > $capacity) {
+                    throw new DomainException(
+                        "ruleset.initial_resources.{$resourceKey} cannot exceed its resource capacity.",
+                    );
+                }
+            }
+
+            $overflowPath = 'ruleset.resource_capacity_overflow';
+            $overflow = $this->map($settings['resource_capacity_overflow'], $overflowPath);
+            $this->requireKeys($overflow, [
+                'behavior', 'applies_after_sale_policy', 'converts_unsold_to_money', 'event_type',
+            ], $overflowPath);
+            if ($this->persistedString($overflow['behavior'], "{$overflowPath}.behavior") !== 'sell_stockpile_overflow_then_discard_unsold'
+                || $this->boolean($overflow['applies_after_sale_policy'], "{$overflowPath}.applies_after_sale_policy") !== true
+                || $this->boolean($overflow['converts_unsold_to_money'], "{$overflowPath}.converts_unsold_to_money") !== false
+                || $this->persistedString($overflow['event_type'], "{$overflowPath}.event_type") !== 'capacity.overflow') {
+                throw new DomainException(
+                    'ruleset.resource_capacity_overflow must sell stockpile overflow and discard unsold excess.',
+                );
+            }
+        }
         if (array_key_exists('inventory_sale_rates', $settings)) {
             foreach ($this->map($settings['inventory_sale_rates'], 'ruleset.inventory_sale_rates') as $resourceKey => $rate) {
                 $this->reference($resourceKey, $resourceKeys, 'ruleset.inventory_sale_rates');

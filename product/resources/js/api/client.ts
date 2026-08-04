@@ -1,5 +1,9 @@
 export class ApiError extends Error {
-    constructor(public readonly status: number, message: string) {
+    constructor(
+        public readonly status: number,
+        message: string,
+        public readonly errors: Record<string, string[]> = {},
+    ) {
         super(message);
     }
 }
@@ -16,10 +20,14 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
             ...init.headers,
         },
     });
-    const payload = await response.json().catch(() => ({ message: response.statusText })) as { data?: T; message?: string };
+    const payload = await response.json().catch(() => ({ message: response.statusText })) as {
+        data?: T;
+        message?: string;
+        errors?: Record<string, string[]>;
+    };
 
     if (!response.ok) {
-        throw new ApiError(response.status, payload.message ?? `HTTP ${response.status}`);
+        throw new ApiError(response.status, payload.message ?? `HTTP ${response.status}`, payload.errors ?? {});
     }
 
     return payload.data as T;

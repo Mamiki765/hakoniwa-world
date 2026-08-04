@@ -195,7 +195,7 @@ class WorldResetCommandTest extends TestCase
 
         $resetWorld = World::query()->where('key', $world->key)->firstOrFail();
         $mapSpace = MapSpace::query()->where('world_id', $resetWorld->id)->firstOrFail();
-        $nation = app(NationCreationService::class)->create($user->fresh(), $resetWorld, 'Debug Nation');
+        $nation = app(NationCreationService::class)->create($user->fresh(), $resetWorld, 'Debug Nation', '試験島主');
 
         $this->assertSame(
             ['min_x' => 0, 'max_x' => 31, 'min_y' => 0, 'max_y' => 31],
@@ -237,7 +237,7 @@ class WorldResetCommandTest extends TestCase
             'discord',
             new ExternalIdentityData('reset-user', 'Reset User'),
         );
-        app(NationCreationService::class)->create($user, $world, 'リセット国');
+        app(NationCreationService::class)->create($user, $world, 'リセット国', '試験島主');
 
         $nation = Nation::query()->where('world_id', $world->id)->firstOrFail();
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();

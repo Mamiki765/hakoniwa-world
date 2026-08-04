@@ -57,7 +57,13 @@ class ApiController extends Controller
     public function createNation(CreateNationRequest $request, NationCreationService $service): JsonResponse
     {
         try {
-            $nation = $service->create($request->user(), World::query()->findOrFail($request->integer('world_id')), $request->string('name')->trim()->value());
+            $nation = $service->create(
+                $request->user(),
+                World::query()->findOrFail($request->integer('world_id')),
+                $request->string('name')->trim()->value(),
+                $request->string('owner_name')->value(),
+                $request->string('comment')->value(),
+            );
         } catch (ResetRequiredException $exception) {
             return response()->json([
                 'code' => ResetRequiredException::ERROR_CODE,

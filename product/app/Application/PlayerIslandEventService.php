@@ -374,6 +374,12 @@ final class PlayerIslandEventService
         return match ($metadata['asset'] ?? null) {
             'money' => "資金が収容上限を{$overflow}億円超過しています。",
             'aggregate_food' => "食料が収容上限を{$overflow}トン超過しています。",
+            'resource' => sprintf(
+                '%sが収容上限を%s%s超過し、超過分を破棄しました。',
+                $this->resourceLabel($metadata['resource_key'] ?? null),
+                $overflow,
+                $this->resourceUnitLabel($metadata['resource_key'] ?? null),
+            ),
             default => "資源が収容上限を{$overflow}超過しています。",
         };
     }
@@ -476,6 +482,15 @@ final class PlayerIslandEventService
             'fish' => '魚',
             'monster_meat' => '怪獣肉',
             default => '資源',
+        };
+    }
+
+    private function resourceUnitLabel(mixed $key): string
+    {
+        return match ($key) {
+            'industrial_goods' => 'ユニット',
+            'minerals', 'wheat', 'fish', 'monster_meat' => 'トン',
+            default => '',
         };
     }
 

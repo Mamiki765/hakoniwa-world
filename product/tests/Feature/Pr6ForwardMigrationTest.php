@@ -39,7 +39,7 @@ class Pr6ForwardMigrationTest extends TestCase
             'discord',
             new ExternalIdentityData('forward-user', 'Forward User'),
         );
-        $nation = app(NationCreationService::class)->create($user, $world, '前方移行国');
+        $nation = app(NationCreationService::class)->create($user, $world, '前方移行国', '試験島主');
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
@@ -166,7 +166,7 @@ class Pr6ForwardMigrationTest extends TestCase
             'discord',
             new ExternalIdentityData('invalid-quantity-user', 'Invalid Quantity User'),
         );
-        $nation = app(NationCreationService::class)->create($user, $world, '不正数量国');
+        $nation = app(NationCreationService::class)->create($user, $world, '不正数量国', '試験島主');
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
@@ -203,7 +203,7 @@ class Pr6ForwardMigrationTest extends TestCase
             'discord',
             new ExternalIdentityData('rollback-food-user', 'Rollback Food User'),
         );
-        $nation = app(NationCreationService::class)->create($user, $world, '食料rollback国');
+        $nation = app(NationCreationService::class)->create($user, $world, '食料rollback国', '試験島主');
         $wheatId = DB::table('resource_definitions')->where('key', 'wheat')->value('id');
         DB::table('nation_resources')->where('nation_id', $nation->id)
             ->where('resource_definition_id', $wheatId)->update(['amount' => 10_001]);

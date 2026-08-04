@@ -101,14 +101,21 @@ base_food_capacity_tons = 999,900 (food unit: 1 ton)
 
 Historically, only `shared-world` was moved from the exact expected PR6 ruleset by a data-preserving migration. Queue definition foreign keys were remapped by command key. This migration record remains until the canonical schema rebaseline; it is not a current procedure for continuing a historical World.
 
-`NationCapacityResolver` currently returns only the World's published base capacities. `CapacityModifier` is deliberately a marker boundary: if any modifier is supplied, resolution fails closed until E-04 decides addition, multiplication, caps, priority, and cycle prevention.
+PR #19 publishes `roadmap-pr19-v1` as a new immutable ruleset. `NationCapacityResolver` now returns the World's published money and aggregate food capacities together with the generic per-resource capacity map.
+
+```text
+resource_capacities.industrial_goods = 9,999,000
+resource_capacities.minerals         = 9,999,000
+```
+
+The generic map may reference only a storable, non-food resource in that same published payload. Unknown resources, food-category duplication, a missing overflow contract, or a configuration that converts overflow to money fail authoring validation. `CapacityModifier` remains a marker boundary: if any modifier is supplied, resolution fails closed until E-04 decides addition, multiplication, caps, priority, and cycle prevention.
 
 ```text
 current effective capacity = published base capacity
 future effective capacity = E-04-defined composition(base, modifiers)
 ```
 
-PR #7 therefore does not encode additive modifier arithmetic or ordering. No fixed capacity is placed in a DB CHECK constraint. Existing balances are not migrated or clamped.
+PR #19 does not encode additive modifier arithmetic or ordering. No fixed capacity is placed in a DB CHECK constraint. Existing balances are not migrated, and historical Worlds are not repointed: they remain readable but mutation requires World reset to the current ruleset.
 
 ## Capacity-bounded additions
 
@@ -133,7 +140,17 @@ inventory consumed = money applied × 1,000
 inventory remaining = original inventory - consumed
 ```
 
-It therefore preserves both unsellable whole batches and sub-1,000 remainders. The same boundary applies to `industrial_goods` and `minerals`; handlers do not create decimal money.
+For `sell_all` and `keep_amount`, it therefore preserves both money-capacity-blocked whole batches and sub-1,000 remainders up to the individual resource cap. The same integer boundary applies to `industrial_goods` and `minerals`; handlers do not create decimal money.
+
+PR #19 keeps this sale formula and makes the following phase-10 order explicit:
+
+1. derive requested inventory from the Nation's policy: all inventory for `sell_all`, inventory above the target for `keep_amount`, and inventory above the individual cap for `stockpile`;
+2. sell complete rate batches while the existing money capacity has room;
+3. enforce the individual `industrial_goods` and `minerals` capacities;
+4. discard only the remaining over-cap amount, including a sub-batch remainder or money-capacity-blocked excess;
+5. record `resource.automatic_sale` and `capacity.overflow` audit events in that order.
+
+This allows `sell_all` and `keep_amount` to retain unsold inventory up to the published cap, while `stockpile`—displayed as `上限まで備蓄`—sells only its overflow before discarding anything that still cannot fit. A failed turn rolls back the sale, revenue, inventory clamp, and audit events together. Owner API resources expose `capacity`, `remaining_capacity`, and `is_at_capacity`; exact inventories and capacities remain private.
 
 ## Commands
 

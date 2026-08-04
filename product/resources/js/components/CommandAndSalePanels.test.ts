@@ -333,7 +333,9 @@ describe('sale policy panel', () => {
 
         expect(wrapper.find('option[value="sell_all"]').exists()).toBe(false);
         expect(wrapper.find('option[value="stockpile"]').exists()).toBe(true);
+        expect(wrapper.find('option[value="stockpile"]').text()).toBe('上限まで備蓄');
         expect(wrapper.find('option[value="keep_amount"]').exists()).toBe(true);
+        expect(wrapper.text()).toContain('個別上限を超えた分だけを売却');
     });
 
     it('updates keep_amount with the row version and exposes non-negative validation', async () => {

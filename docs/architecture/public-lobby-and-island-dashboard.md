@@ -22,6 +22,14 @@ public route は 1分60 request の rate limit と、`public, max-age=30, stale-
 
 認証 route は従来どおり `/api/v1` 以下に置き、全 response を `private, no-store, max-age=0`、`Vary: Cookie` とする。`/me` の401は正常なguest状態であり、Frontendはpublic dataの読込を継続する。
 
+## Nation profile and resource capacity projection
+
+PR19の公開rankingとNation detailは、島名に加えて`owner_name`と`comment`を返す。両fieldは保存済みplain textをそのままJSON stringとして投影し、Frontendはtext interpolationだけで表示する。HTML rendering、Markdown、URL link化、OAuth profileへの参照、provider metadataの公開は行わない。
+
+プロフィール更新はowner-onlyの`PATCH /api/v1/nations/{nation}/profile`へ分離する。`owner_name`と`comment`はpartial update可能で、422 validationをfield単位で返す。guestは401、別Nationの利用者は403、過去ruleset Worldは`reset_required`の409を返す。
+
+owner Nation responseでは資金・食料の既存capacityに加え、全resource itemへ`capacity`、`remaining_capacity`、`is_at_capacity`を返す。PR19の工業品は`unit` / `ユニット`、鉱物は`ton` / `トン`で、双方の個別上限は9,999,000である。food itemのcapacityは種類別上限ではなく既存のfood category合計上限を示す。public ranking、public Nation detail、public mapへ正確な資源残高・capacityを追加しない。
+
 ## Ranking and public money
 
 人口ランキングは次の安定順序を使う。

@@ -44,10 +44,17 @@ class ApiAndAssetTest extends TestCase
             ->assertOk()->assertJsonPath('data.chunk_x', 0)->assertJsonPath('data.chunk_y', 0)
             ->assertJsonCount(256, 'data.cells');
 
-        $nation = $this->actingAs($user)->postJson('/api/v1/nations', ['world_id' => $world->id, 'name' => 'API国'])
+        $nation = $this->actingAs($user)->postJson('/api/v1/nations', [
+            'world_id' => $world->id,
+            'name' => 'API国',
+            'owner_name' => 'API島主',
+            'comment' => '公開プロフィール',
+        ])
             ->assertCreated()
             ->assertJsonPath('data.id', 18)
             ->assertJsonPath('data.nation_number', 1)
+            ->assertJsonPath('data.owner_name', 'API島主')
+            ->assertJsonPath('data.comment', '公開プロフィール')
             ->assertJsonMissingPath('data.food')
             ->assertJsonPath('data.resources.0.key', 'wheat')
             ->assertJsonPath('data.resources.0.amount', 10_000)
@@ -58,6 +65,15 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.money_capacity', 9_999)
             ->assertJsonPath('data.food_capacity_tons', 999_900)
             ->assertJsonPath('data.food_resources.0.balance', 10_000)
+            ->assertJsonPath('data.resources.0.capacity', 999_900)
+            ->assertJsonPath('data.resources.0.remaining_capacity', 989_900)
+            ->assertJsonPath('data.resources.0.is_at_capacity', false)
+            ->assertJsonPath('data.resources.3.unit', 'unit')
+            ->assertJsonPath('data.resources.3.unit_label', 'ユニット')
+            ->assertJsonPath('data.resources.3.capacity', 9_999_000)
+            ->assertJsonPath('data.resources.4.unit', 'ton')
+            ->assertJsonPath('data.resources.4.unit_label', 'トン')
+            ->assertJsonPath('data.resources.4.capacity', 9_999_000)
             ->json('data');
         $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->assertJsonPath('data.id', $nation['id']);
         $ownedCell = MapCell::query()->where('owner_nation_id', $nation['id'])->firstOrFail();
@@ -98,6 +114,8 @@ class ApiAndAssetTest extends TestCase
 
         $other = User::factory()->create();
         $otherResponse = $this->actingAs($other)->getJson("/api/v1/nations/{$nation['id']}")->assertOk();
+        $otherResponse->assertJsonPath('data.owner_name', 'API島主')
+            ->assertJsonPath('data.comment', '公開プロフィール');
         $otherResponse->assertJsonMissingPath('data.total_food_tons')
             ->assertJsonMissingPath('data.money')
             ->assertJsonMissingPath('data.money_capacity')

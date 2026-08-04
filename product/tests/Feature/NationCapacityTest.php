@@ -27,6 +27,10 @@ class NationCapacityTest extends TestCase
 
         $this->assertSame(9_999, $base->money);
         $this->assertSame(999_900, $base->foodTons);
+        $this->assertSame([
+            'industrial_goods' => 9_999_000,
+            'minerals' => 9_999_000,
+        ], $base->resources);
     }
 
     public function test_modifier_boundary_stays_fail_closed_until_e04_is_decided(): void
@@ -117,7 +121,7 @@ class NationCapacityTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, $name);
+        $nation = app(NationCreationService::class)->create($user, $world, $name, '試験島主');
 
         return [$user, $nation];
     }
