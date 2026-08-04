@@ -32,6 +32,7 @@ function chunkFromPath(path: string, state: MapChunk['state'] = 'generated'): Ma
         owner_nation_number: null,
         owner_name: null,
         details: [],
+        monster: null,
         asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平', fallback_style: 'tile-plain' },
         overlays: [],
         aria_label: `x ${chunkX * 16} y ${chunkY * 16} 平地`,

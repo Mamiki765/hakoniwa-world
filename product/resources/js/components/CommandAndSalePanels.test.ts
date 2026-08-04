@@ -14,6 +14,7 @@ import SalePolicyPanel from './SalePolicyPanel.vue';
 const selected: MapCell = {
     x: 8, y: 7, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
     display_name: '平地', owner_nation_id: 1, owner_nation_number: 1, owner_name: '操作国', details: [],
+    monster: null,
     asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平地', fallback_style: 'tile-plain' },
     overlays: [], aria_label: 'x 8 y 7 平地 所有 操作国', version: 1, updated_at: null,
 };

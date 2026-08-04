@@ -395,7 +395,14 @@ async function updateProfile(): Promise<void> {
                     <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
                     <div><dt>保有陸地</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
                     <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
+                    <div><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
                 </dl>
+                <p v-if="previewNation.monster_kill_marks.length" class="monster-kill-marks">
+                    討伐印：
+                    <span v-for="mark in previewNation.monster_kill_marks" :key="mark.key">
+                        {{ mark.name }}（T{{ mark.first_kill_turn }}）
+                    </span>
+                </p>
             </header>
             <div class="preview-grid">
                 <aside class="preview-details">

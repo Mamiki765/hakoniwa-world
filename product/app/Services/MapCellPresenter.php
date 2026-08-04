@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Facility\MissileBaseRules;
+use App\Domain\Monster\MonsterHardening;
 use App\Models\MapCell;
 use App\Models\TerrainDefinition;
 
@@ -16,10 +17,11 @@ final class MapCellPresenter
         private readonly AssetManifestResolver $assets,
         private readonly FacilityCapacityService $capacities,
         private readonly MissileBaseRules $missiles,
+        private readonly MonsterHardening $hardening,
     ) {}
 
     /** @return array<string, mixed> */
-    public function present(MapCell $cell, ?int $viewerNationId): array
+    public function present(MapCell $cell, ?int $viewerNationId, int $currentTurn): array
     {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
         $isDisguised = $cell->facility?->visibility_policy === FacilityVisibilityPolicy::Disguised->value
@@ -29,6 +31,7 @@ final class MapCellPresenter
         $displayDefinition = $facility ?? $terrain;
         $layers = $this->assets->resolveLayers($displayDefinition->asset_key, $displayDefinition->name);
         $details = $this->details($cell, $isOwner, $isDisguised);
+        $monster = $this->monster($cell, $currentTurn);
 
         return [
             'x' => $cell->x,
@@ -42,12 +45,54 @@ final class MapCellPresenter
             'owner_nation_number' => $cell->ownerNation?->nation_number,
             'owner_name' => $cell->ownerNation?->name,
             'details' => $details,
+            'monster' => $monster,
             'asset' => $layers['completed'],
             'overlays' => $layers['overlays'],
-            'aria_label' => $this->ariaLabel($cell, $displayDefinition->name, $details),
+            'aria_label' => $this->ariaLabel($cell, $displayDefinition->name, $details, $monster),
             // Secret-only state changes must not alter a non-owner representation version.
             'version' => $isOwner ? $cell->version : 1,
             'updated_at' => $isOwner ? $cell->updated_at?->toIso8601String() : null,
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function monster(MapCell $cell, int $currentTurn): ?array
+    {
+        $instance = $cell->monsterOccupancy?->monster;
+        if ($instance === null || $instance->state !== 'alive') {
+            return null;
+        }
+
+        $definition = $instance->definition;
+        $hardened = $this->hardening->isHardened($definition, $currentTurn);
+        $assetKey = $hardened && $definition->hardened_asset_key !== null
+            ? $definition->hardened_asset_key
+            : $definition->asset_key;
+        $asset = $this->assets->resolve($assetKey, $definition->name);
+        $hostNation = $cell->ownerNation;
+
+        return [
+            'id' => $instance->id,
+            'key' => $definition->key,
+            'name' => $definition->name,
+            'asset_key' => $assetKey,
+            'asset_url' => $asset['url'],
+            'asset' => $asset,
+            'current_hp' => $instance->current_hp,
+            'spawned_max_hp' => $instance->spawned_max_hp,
+            'hp_range' => [
+                'min' => $definition->base_hp,
+                'max' => $definition->base_hp + $definition->hp_variation,
+            ],
+            'skill_description' => $definition->skill_description,
+            'hardened_now' => $hardened,
+            'public_state' => 'alive',
+            'coordinate' => ['x' => $cell->x, 'y' => $cell->y],
+            'host_nation' => $hostNation === null ? null : [
+                'nation_number' => $hostNation->nation_number,
+                'name' => $hostNation->name,
+            ],
+            'host_label' => $hostNation === null ? '無所属' : 'N'.$hostNation->nation_number,
         ];
     }
 
@@ -98,10 +143,22 @@ final class MapCellPresenter
         return compact('key', 'label', 'value', 'unit', 'formatted', 'visibility');
     }
 
-    /** @param array<int, array{label: string, formatted: string}> $details */
-    private function ariaLabel(MapCell $cell, string $displayName, array $details): string
+    /**
+     * @param  array<int, array{label: string, formatted: string}>  $details
+     * @param  array<string, mixed>|null  $monster
+     */
+    private function ariaLabel(MapCell $cell, string $displayName, array $details, ?array $monster): string
     {
         $suffix = array_map(static fn (array $detail): string => $detail['label'].' '.$detail['formatted'], $details);
+        if ($monster !== null) {
+            $suffix[] = sprintf(
+                '怪獣 %s HP %d %s%s',
+                $monster['name'],
+                $monster['current_hp'],
+                $monster['host_label'],
+                $monster['hardened_now'] ? ' 硬化中' : '',
+            );
+        }
 
         return trim(implode(' ', [
             "x {$cell->x} y {$cell->y}",

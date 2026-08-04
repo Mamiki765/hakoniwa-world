@@ -81,6 +81,8 @@ export interface PublicEvent {
 export interface PublicNationDetail extends PublicNationSummary {
     world: { id: number; name: string; current_turn: number };
     capital: { x: number; y: number } | null;
+    monster_final_blow_count: number;
+    monster_kill_marks: Array<{ key: string; name: string; first_kill_turn: number }>;
     map_space: MapSpace;
 }
 
@@ -149,6 +151,24 @@ export interface MapCellDetail {
     visibility: 'public' | 'owner';
 }
 
+export interface MonsterOverlay {
+    id: number;
+    key: string;
+    name: string;
+    asset_key: string;
+    asset_url: string | null;
+    asset: AssetDescriptor;
+    current_hp: number;
+    spawned_max_hp: number;
+    hp_range: { min: number; max: number };
+    skill_description: string;
+    hardened_now: boolean;
+    public_state: 'alive';
+    coordinate: { x: number; y: number };
+    host_nation: { nation_number: number; name: string } | null;
+    host_label: string;
+}
+
 export interface MapCell {
     x: number;
     y: number;
@@ -161,6 +181,7 @@ export interface MapCell {
     owner_nation_number: number | null;
     owner_name: string | null;
     details: MapCellDetail[];
+    monster: MonsterOverlay | null;
     asset: AssetDescriptor;
     overlays: AssetDescriptor[];
     aria_label: string;
