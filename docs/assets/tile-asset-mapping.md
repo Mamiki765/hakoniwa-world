@@ -77,6 +77,8 @@
 
 対応根拠は`hakow.js:68-103,599-610`である。怪獣名やルールの新作採否と、画像ファイルの対応確認は別の判断として扱う。
 
+PR21ではこの対応表をproduction manifestの正本として採用した。8つのnormal `asset_key`と硬化variantは`AssetManifestResolver`から既存外部tile routeへ解決する。Git管理するのはmappingだけで、GIFは`product/public`へ置かない。画像のhash、catalog、fallback、deployment検査は`product/docs/monster-audit-pr21.md`を参照する。
+
 ## 新規要素
 
 原作にない首都、防壁都市、大学、研究所、新資源施設、新隕石アイテム、地下・宇宙専用施設には`hakoniwa_original.*`を割り当てない。原GIFを意味の似た新施設へ流用せず、当面は次のような別namespaceのplaceholderを使う。
