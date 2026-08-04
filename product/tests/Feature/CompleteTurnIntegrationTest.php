@@ -44,9 +44,9 @@ class CompleteTurnIntegrationTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, '統合国');
+        $nation = app(NationCreationService::class)->create($user, $world, '統合国', '試験島主');
         $secondUser = User::factory()->create();
-        $secondNation = app(NationCreationService::class)->create($secondUser, $world, '統合国二');
+        $secondNation = app(NationCreationService::class)->create($secondUser, $world, '統合国二', '試験島主');
         $farmCell = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
@@ -176,7 +176,13 @@ class CompleteTurnIntegrationTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, '原子性国');
+        $nation = app(NationCreationService::class)->create($user, $world, '原子性国', '試験島主');
+        NationResource::query()->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('key', 'industrial_goods'))
+            ->update(['amount' => 10_000_000]);
+        NationResource::query()->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('key', 'minerals'))
+            ->update(['amount' => 9_999_500]);
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->firstOrFail();
@@ -232,6 +238,14 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame('completed', $item->fresh()->status);
         $this->assertSame('plain', $target->fresh()->terrain()->value('key'));
+        $this->assertSame(9_999_000, (int) NationResource::query()->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('key', 'industrial_goods'))
+            ->value('amount'));
+        $this->assertSame(9_999_000, (int) NationResource::query()->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('key', 'minerals'))
+            ->value('amount'));
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'capacity.overflow')
+            ->whereRaw("metadata->>'asset' = ?", ['resource'])->count());
         $this->assertGreaterThan($snapshot['audit_count'], DB::table('audit_events')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
         $this->assertSame($capturedResult, $this->deterministicGameplayResult($world, $nation->id, $item->id));

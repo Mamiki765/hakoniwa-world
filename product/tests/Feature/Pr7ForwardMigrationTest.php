@@ -27,7 +27,7 @@ class Pr7ForwardMigrationTest extends TestCase
         $world->update(['ruleset_version_id' => $pr7->id]);
         $this->useRulesetAsCurrent('roadmap-pr7-v1');
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, 'PR7移行国');
+        $nation = app(NationCreationService::class)->create($user, $world, 'PR7移行国', '試験島主');
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $target = MapCell::query()
             ->where('owner_nation_id', $nation->id)

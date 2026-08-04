@@ -171,7 +171,7 @@ class RoadmapPr2StateTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, $name);
+        $nation = app(NationCreationService::class)->create($user, $world, $name, '試験島主');
 
         return [$user, $nation, MapSpace::query()->where('world_id', $world->id)->firstOrFail()];
     }

@@ -38,7 +38,7 @@ class TurnCellProcessingTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, 'セル処理国');
+        $nation = app(NationCreationService::class)->create($user, $world, 'セル処理国', '試験島主');
         $engine = app(CompleteTurnEngine::class);
         $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();

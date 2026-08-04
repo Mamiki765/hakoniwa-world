@@ -171,7 +171,7 @@ final class RuntimeMetadataFailureTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, $name);
+        $nation = app(NationCreationService::class)->create($user, $world, $name, '試験島主');
 
         return [$world, $user, $nation];
     }

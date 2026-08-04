@@ -25,7 +25,7 @@ class Pr11ForwardMigrationTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, 'PR11移行国');
+        $nation = app(NationCreationService::class)->create($user, $world, 'PR11移行国', '試験島主');
         $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
         $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $pr7->id]);
@@ -123,7 +123,7 @@ class Pr11ForwardMigrationTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, 'Legacy wheat seller');
+        $nation = app(NationCreationService::class)->create($user, $world, 'Legacy wheat seller', '試験島主');
         $pr7 = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $pr7->id]);
         $policy = DB::table('nation_resource_sale_policies')

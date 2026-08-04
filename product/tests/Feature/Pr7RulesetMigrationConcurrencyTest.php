@@ -167,7 +167,7 @@ class Pr7RulesetMigrationConcurrencyTest extends TestCase
         $this->useRulesetAsCurrent('roadmap-pr6-v1');
 
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world->fresh(), 'PR7 concurrency');
+        $nation = app(NationCreationService::class)->create($user, $world->fresh(), 'PR7 concurrency', '試験島主');
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $target = MapCell::query()
             ->where('owner_nation_id', $nation->id)

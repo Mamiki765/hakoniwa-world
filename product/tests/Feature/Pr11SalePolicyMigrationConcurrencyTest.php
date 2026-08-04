@@ -128,7 +128,7 @@ class Pr11SalePolicyMigrationConcurrencyTest extends TestCase
         ]);
         $this->useRulesetAsCurrent('roadmap-pr7-v1');
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world->fresh(), 'PR11 sale-policy concurrency');
+        $nation = app(NationCreationService::class)->create($user, $world->fresh(), 'PR11 sale-policy concurrency', '試験島主');
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
         $policy = NationResourceSalePolicy::query()
             ->where('nation_id', $nation->id)

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
+use App\Http\Controllers\Api\NationProfileController;
 use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
@@ -42,6 +43,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->where(['chunkX' => '-?\d+', 'chunkY' => '-?\d+']);
     Route::post('/nations', [ApiController::class, 'createNation']);
     Route::get('/nations/{nation}', [ApiController::class, 'nation']);
+    Route::patch('/nations/{nation}/profile', [NationProfileController::class, 'update']);
     Route::get('/me/nation', [ApiController::class, 'myNation']);
     Route::get('/nations/{nation}/events', [PlayerEventController::class, 'index']);
     Route::get('/nations/{nation}/map-spaces/{mapSpace}/command-definitions', [CommandQueueController::class, 'definitions']);

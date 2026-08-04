@@ -1,0 +1,87 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Domain\Ruleset\RulesetAuthoringValidator;
+use DomainException;
+use Tests\TestCase;
+
+class Pr19RulesetContractTest extends TestCase
+{
+    public function test_pr19_resource_units_capacities_and_existing_economy_rates_are_validated(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr19-v1');
+        $validated = app(RulesetAuthoringValidator::class)->validate($settings);
+        $resources = collect($settings['resource_definitions'])->keyBy('key');
+
+        $this->assertSame('roadmap-pr19-v1', $validated['key']);
+        $this->assertSame(['unit', 'ユニット'], [
+            $resources['industrial_goods']['unit'], $resources['industrial_goods']['unit_label'],
+        ]);
+        $this->assertSame(['ton', 'トン'], [
+            $resources['minerals']['unit'], $resources['minerals']['unit_label'],
+        ]);
+        foreach (['wheat', 'fish', 'monster_meat'] as $key) {
+            $this->assertSame('ton', $resources[$key]['unit']);
+            $this->assertSame('トン', $resources[$key]['unit_label']);
+        }
+        $this->assertSame(999_900, $settings['base_food_capacity_tons']);
+        $this->assertSame([
+            'industrial_goods' => 9_999_000,
+            'minerals' => 9_999_000,
+        ], $settings['resource_capacities']);
+        $this->assertSame(['inventory_units' => 1_000, 'money_units' => 1],
+            $settings['inventory_sale_rates']['industrial_goods']);
+        $this->assertSame(['inventory_units' => 1_000, 'money_units' => 1],
+            $settings['inventory_sale_rates']['minerals']);
+        $this->assertSame(1, $settings['turn_processing']['workforce']['factory_output_per_worker']);
+        $this->assertSame(1, $settings['turn_processing']['workforce']['mine_output_per_worker']);
+        $this->assertSame([
+            'behavior' => 'discard',
+            'applies_after_sale_policy' => true,
+            'converts_to_money' => false,
+            'event_type' => 'capacity.overflow',
+        ], $settings['resource_capacity_overflow']);
+
+        $historical = config('hakoniwa.published_rulesets.roadmap-pr18-v1');
+        $this->assertArrayNotHasKey('resource_capacities', $historical);
+        $this->assertNull(collect($historical['resource_definitions'])
+            ->firstWhere('key', 'industrial_goods')['unit_label']);
+    }
+
+    public function test_resource_capacity_map_rejects_unknown_food_and_invalid_overflow_contracts(): void
+    {
+        $base = config('hakoniwa.published_rulesets.roadmap-pr19-v1');
+        $cases = [
+            'unknown key' => function (array $settings): array {
+                $settings['resource_capacities']['unknown'] = 1;
+
+                return $settings;
+            },
+            'aggregate food replacement' => function (array $settings): array {
+                $settings['resource_capacities']['wheat'] = 999_900;
+
+                return $settings;
+            },
+            'money conversion' => function (array $settings): array {
+                $settings['resource_capacity_overflow']['converts_to_money'] = true;
+
+                return $settings;
+            },
+            'missing overflow contract' => function (array $settings): array {
+                unset($settings['resource_capacity_overflow']);
+
+                return $settings;
+            },
+        ];
+
+        foreach ($cases as $label => $mutate) {
+            try {
+                app(RulesetAuthoringValidator::class)->validate($mutate($base));
+                $this->fail("Invalid PR19 capacity contract was accepted: {$label}");
+            } catch (DomainException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+}

@@ -115,7 +115,7 @@ class LandSubsidenceTurnTest extends TestCase
     public function test_snapshot_effects_preserve_mountains_capital_foreign_cells_and_player_secrecy(): void
     {
         [$world, $nation, $ruleset, $space, $owner] = $this->worldAndNation();
-        $rival = app(NationCreationService::class)->create(User::factory()->create(), $world, '他国');
+        $rival = app(NationCreationService::class)->create(User::factory()->create(), $world, '他国', '試験島主');
         $this->resetSurface($space);
 
         for ($y = 8; $y <= 18; $y++) {
@@ -246,7 +246,7 @@ class LandSubsidenceTurnTest extends TestCase
     public function test_shared_neutral_shallow_is_changed_once_for_simultaneous_nations(): void
     {
         [$world, $first, $ruleset, $space] = $this->worldAndNation();
-        $second = app(NationCreationService::class)->create(User::factory()->create(), $world, '第二沈下国');
+        $second = app(NationCreationService::class)->create(User::factory()->create(), $world, '第二沈下国', '試験島主');
         $this->resetSurface($space);
         $shared = $this->cellAt($space, 15, 15);
         $this->setCell($shared, 'shallow', null, null, 0);
@@ -372,7 +372,7 @@ class LandSubsidenceTurnTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize($profile);
         $owner = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($owner, $world, '沈下試験国');
+        $nation = app(NationCreationService::class)->create($owner, $world, '沈下試験国', '試験島主');
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $settings = $ruleset->settings;
         foreach (['earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption'] as $key) {

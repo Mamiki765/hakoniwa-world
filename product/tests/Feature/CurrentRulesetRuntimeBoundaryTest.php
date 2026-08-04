@@ -34,7 +34,7 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, '閲覧国');
+        $nation = app(NationCreationService::class)->create($user, $world, '閲覧国', '試験島主');
         $space = $this->surfaceMapSpace($world);
         $chunk = MapChunk::query()->where('map_space_id', $space->id)->orderBy('id')->firstOrFail();
         $historical = RulesetVersion::query()->where('key', 'roadmap-pr14-v1')->firstOrFail();
@@ -83,7 +83,7 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($owner, $world, '停止国');
+        $nation = app(NationCreationService::class)->create($owner, $world, '停止国', '試験島主');
         $space = $this->surfaceMapSpace($world);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
@@ -138,6 +138,7 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
         $this->actingAs(User::factory()->create())->postJson('/api/v1/nations', [
             'world_id' => $world->id,
             'name' => '拒否国',
+            'owner_name' => '拒否島主',
         ])->assertConflict()->assertJsonPath('code', 'reset_required');
         $this->actingAs($owner)->putJson(
             "/api/v1/nations/{$nation->id}/resources/{$resource->id}/sale-policy",

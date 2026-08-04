@@ -28,7 +28,7 @@ class Pr14ForwardMigrationTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, 'PR14移行国');
+        $nation = app(NationCreationService::class)->create($user, $world, 'PR14移行国', '試験島主');
         $pr11 = RulesetVersion::query()->where('key', 'roadmap-pr11-v1')->firstOrFail();
         $pr14 = RulesetVersion::query()->where('key', 'roadmap-pr14-v1')->firstOrFail();
         $world->update(['ruleset_version_id' => $pr11->id]);

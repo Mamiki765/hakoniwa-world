@@ -19,14 +19,18 @@ export interface Nation {
     world_id: number;
     nation_number: number;
     name: string;
+    owner_name: string;
+    comment: string;
     money: number;
     money_display: string;
     money_capacity: number;
     money_remaining_capacity: number;
+    money_is_at_capacity: boolean;
     total_food_tons: number;
     food_total_tons: number;
     food_capacity_tons: number;
     food_remaining_capacity_tons: number;
+    food_is_at_capacity: boolean;
     food_resources: FoodResource[];
     resources: NationResource[];
     state: string;
@@ -51,6 +55,7 @@ export interface PublicNationSummary {
     world_id: number;
     nation_number: number;
     name: string;
+    owner_name: string;
     state: string;
     total_population: number;
     territory_cell_count: number;
@@ -58,7 +63,7 @@ export interface PublicNationSummary {
     money_display: string;
     money_bucket: string;
     last_updated_turn: number;
-    comment: string | null;
+    comment: string;
 }
 
 export interface PublicRankingEntry extends PublicNationSummary {
@@ -114,7 +119,9 @@ export interface NationResource {
     storable: boolean;
     tradable: boolean;
     amount: number;
-    capacity?: number | null;
+    capacity: number | null;
+    remaining_capacity: number | null;
+    is_at_capacity: boolean;
 }
 
 export interface FoodResource {

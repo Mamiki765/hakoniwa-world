@@ -121,6 +121,8 @@ PR5適用済みDBはfood categoryの既存balanceを明示的なforward migratio
 
 owner APIはfood categoryを動的に集計した`total_food_tons`と種類別`food_resources`を返す。HUDは合計を`10,000トン`形式で短く表示し、詳細で小麦・魚・怪獣肉を列挙する。guestや他国viewerへ正確な残高を返さない。固定の`wheat + fish + monster_meat`式をsummaryの正本にしない。
 
+PR19の最新rulesetでは、工業品をcanonical `unit`・表示`ユニット`、鉱物をcanonical `ton`・表示`トン`とし、それぞれ独立した9,999,000のgameplay capacityを持つ。capacityはrulesetのgeneric resource mapから解決し、food categoryの合計capacityとは混在させない。turnでは販売policy適用後に残高をcapへclampし、超過を換金せず破棄してresource単位のaudit eventを残す。owner API/UIだけが正確な残高・上限・残容量・到達状態を表示する。
+
 生産・消費・ledgerは未実装である。将来の第一候補は、food categoryの利用可能種類へ必要栄養量を均等配分し、不足分を残りへ再配分し、全種類を消費しても不足する場合だけ食料不足とする方式である。農場は抽象foodではなく`wheat`を生産する。既存`production_per_scale = 10`を旧100トン単位から換算するかは未決定であり、turn runner実装前に明示的に決める。PR6では値を推測して変更しない。実装前に丸め、transaction lock、event記録を決定する。
 
 ## 将来の施設生産と売却

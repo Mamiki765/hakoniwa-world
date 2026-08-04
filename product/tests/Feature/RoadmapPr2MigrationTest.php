@@ -24,7 +24,7 @@ class RoadmapPr2MigrationTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = app(AuthIdentityService::class)->authenticate('discord', new ExternalIdentityData('migration-user', '移行利用者'));
-        $nation = app(NationCreationService::class)->create($user, $world, '移行国');
+        $nation = app(NationCreationService::class)->create($user, $world, '移行国', '試験島主');
         $capital = $nation->capital;
         $migration = require database_path('migrations/2026_07_26_010000_add_roadmap_pr2_systems.php');
 

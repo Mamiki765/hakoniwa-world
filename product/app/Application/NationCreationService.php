@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Nation\NationProfileText;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -23,9 +24,17 @@ final class NationCreationService
         private readonly CurrentRulesetGuard $rulesetGuard,
     ) {}
 
-    public function create(User $user, World $world, string $name): Nation
-    {
-        return DB::transaction(function () use ($user, $world, $name): Nation {
+    public function create(
+        User $user,
+        World $world,
+        string $name,
+        string $ownerName,
+        string $profileComment = '',
+    ): Nation {
+        $ownerName = NationProfileText::ownerName($ownerName);
+        $profileComment = NationProfileText::comment($profileComment);
+
+        return DB::transaction(function () use ($user, $world, $name, $ownerName, $profileComment): Nation {
             $world = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
             $ruleset = $world->rulesetVersion()->firstOrFail();
             $this->rulesetGuard->assertMutable($world, $ruleset);
@@ -66,6 +75,7 @@ final class NationCreationService
 
             $nation = Nation::query()->create([
                 'world_id' => $world->id, 'nation_number' => $nationNumber, 'name' => $name,
+                'owner_name' => $ownerName, 'profile_comment' => $profileComment,
                 'money' => $rules['initial_money'],
                 'state' => 'active',
             ]);

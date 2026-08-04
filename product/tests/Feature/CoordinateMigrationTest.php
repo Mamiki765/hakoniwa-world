@@ -23,7 +23,7 @@ class CoordinateMigrationTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, '座標移行国');
+        $nation = app(NationCreationService::class)->create($user, $world, '座標移行国', '試験島主');
         $mapSpace = MapSpace::query()->firstOrFail();
         $target = MapCell::query()
             ->where('owner_nation_id', $nation->id)

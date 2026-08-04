@@ -42,7 +42,7 @@ final class RuntimeMutationQueryCountTest extends TestCase
         $this->assertSame([], $queries, 'The guard must compare already-loaded IDs without SQL.');
 
         $queries = [];
-        $nation = app(NationCreationService::class)->create($user, $world, '計測国');
+        $nation = app(NationCreationService::class)->create($user, $world, '計測国', '試験島主');
         $counts = ['nation_create' => count($queries)];
 
         $mapSpace = $this->surfaceMapSpace($world);

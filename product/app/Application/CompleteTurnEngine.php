@@ -314,9 +314,11 @@ final class CompleteTurnEngine
     {
         $metrics = ['sales' => 0, 'revenue' => 0, 'overflow_reports' => 0];
         $settings = $context->ruleset->settings;
+        $resourceOverflowEvent = $this->resourceOverflowEvent($settings);
         $forbiddenSellAll = $settings['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'];
         $rates = $settings['inventory_sale_rates'];
-        $resources = ResourceDefinition::query()->where('tradable', true)->orderBy('sort_order')->orderBy('id')->get();
+        $resources = ResourceDefinition::query()->orderBy('sort_order')->orderBy('id')->get();
+        $tradableResources = $resources->where('tradable', true);
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
@@ -324,7 +326,7 @@ final class CompleteTurnEngine
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
-            foreach ($resources as $resource) {
+            foreach ($tradableResources as $resource) {
                 $balance = NationResource::query()->firstOrCreate([
                     'nation_id' => $nation->id, 'resource_definition_id' => $resource->id,
                 ], ['amount' => 0]);
@@ -369,6 +371,38 @@ final class CompleteTurnEngine
                 ]);
             }
 
+            $resourceAmounts = [];
+            foreach ($capacity->resources as $resourceKey => $resourceCapacity) {
+                $resource = $resources->firstWhere('key', $resourceKey);
+                if (! $resource instanceof ResourceDefinition) {
+                    throw new DomainException("Configured resource capacity references missing catalog key {$resourceKey}.");
+                }
+                $balance = NationResource::query()->firstOrCreate([
+                    'nation_id' => $nation->id, 'resource_definition_id' => $resource->id,
+                ], ['amount' => 0]);
+                $balance = NationResource::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
+                $before = (int) $balance->amount;
+                $after = min($before, $resourceCapacity);
+                $overflow = $before - $after;
+                if ($overflow > 0) {
+                    $balance->update(['amount' => $after]);
+                    $metrics['overflow_reports']++;
+                    $this->events->record($context, $resourceOverflowEvent, $nation, [
+                        'asset' => 'resource',
+                        'resource_key' => $resourceKey,
+                        'before' => $before,
+                        'requested' => $before,
+                        'applied' => $after,
+                        'overflow' => $overflow,
+                        'capacity' => $resourceCapacity,
+                        'after' => $after,
+                        'discarded' => true,
+                        'source' => 'post_sale_inventory_capacity',
+                    ]);
+                }
+                $resourceAmounts[$resourceKey] = $after;
+            }
+
             $foodTotal = (int) NationResource::query()->where('nation_id', $nation->id)
                 ->whereHas('definition', fn ($query) => $query->where('category', 'food'))->sum('amount');
             foreach ([
@@ -383,11 +417,28 @@ final class CompleteTurnEngine
             $this->events->record($context, 'capacity.applied', $nation, [
                 'money' => (int) $nation->money, 'money_capacity' => $capacity->money,
                 'food_tons' => $foodTotal, 'food_capacity_tons' => $capacity->foodTons,
+                'resource_amounts' => $resourceAmounts,
+                'resource_capacities' => $capacity->resources,
                 'bounded_credits' => true,
             ]);
         }
 
         return $metrics;
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function resourceOverflowEvent(array $settings): string
+    {
+        $contract = $settings['resource_capacity_overflow'] ?? null;
+        if (! is_array($contract)
+            || ($contract['behavior'] ?? null) !== 'discard'
+            || ($contract['applies_after_sale_policy'] ?? null) !== true
+            || ($contract['converts_to_money'] ?? null) !== false
+            || ($contract['event_type'] ?? null) !== 'capacity.overflow') {
+            throw new DomainException('Published resource capacity overflow contract is invalid.');
+        }
+
+        return $contract['event_type'];
     }
 
     /** @return array<string, int|bool> */

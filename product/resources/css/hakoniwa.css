@@ -110,7 +110,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ranking-card th, .ranking-card td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: right; }
 .ranking-card th:nth-child(2), .ranking-card td:nth-child(2) { text-align: left; }
 .ranking-card th { color: var(--muted); font-size: .72rem; }
-.ranking-card td button { border: 0; background: none; color: var(--navy); font-weight: 850; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.ranking-card td button { border: 0; background: none; color: var(--navy); font-weight: 850; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.ranking-owner { display: block; margin-top: 3px; color: var(--muted); font-size: .72rem; font-weight: 650; text-decoration: none; }
 .event-list { list-style: none; display: grid; gap: 16px; margin: 18px 0 0; padding: 0; }
 .event-list li { display: grid; grid-template-columns: 10px 1fr; gap: 10px; }
 .event-mark { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--coral); }
@@ -119,10 +120,20 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 
 .panel { max-width: 980px; margin: 24px auto; padding: clamp(22px, 5vw, 58px); border: 1px solid var(--line); background: var(--paper); box-shadow: 14px 14px 0 rgba(18,63,73,.08); }
 .panel h1 { margin: 10px 0 18px; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 1; }
-.nation-form { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; }
+.nation-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 14px; align-items: end; }
 .nation-form h2, .nation-form .eyebrow { grid-column: 1 / -1; }
 .nation-form label { display: grid; gap: 7px; font-weight: 800; }
-.nation-form input { min-height: 46px; padding: 9px 11px; border: 1px solid #91a09b; background: white; }
+.nation-form input, .nation-form textarea, .profile-form input, .profile-form textarea { min-height: 46px; padding: 9px 11px; border: 1px solid #91a09b; background: white; color: var(--ink); font: inherit; }
+.nation-form textarea, .profile-form textarea { resize: vertical; }
+.field-hint { color: var(--muted); font-size: .72rem; font-weight: 500; }
+.field-error { color: #a52a2a; font-size: .76rem; font-weight: 800; }
+.profile-form { display: grid; gap: 18px; max-width: 680px; }
+.profile-form label { display: grid; gap: 7px; font-weight: 800; }
+.profile-actions { display: flex; gap: 10px; }
+.profile-owner, .profile-comment { margin: 4px 0 0; }
+.profile-owner { color: var(--muted); font-size: .78rem; font-weight: 750; }
+.nation-hud .profile-owner { color: #c9dede; }
+.profile-comment { color: inherit; overflow-wrap: anywhere; white-space: normal; }
 .account-panel ul { list-style: none; padding: 0; display: grid; gap: 10px; max-width: 540px; }
 .account-panel li { display: flex; justify-content: space-between; padding: 16px; border: 1px solid var(--line); }
 
@@ -391,9 +402,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
         margin-bottom: 8px;
         padding: 8px 10px;
     }
-    .hud-identity { display: flex; align-items: baseline; justify-content: space-between; }
+    .hud-identity { display: grid; grid-template-columns: 1fr auto; align-items: baseline; }
     .hud-identity .eyebrow { display: none; }
     .hud-identity h1 { font-size: 1rem; }
+    .hud-identity .profile-owner, .hud-identity .profile-comment { grid-column: 1 / -1; }
     .hud-primary { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
     .hud-primary > div { padding: 3px 5px; }
     .hud-primary > div:nth-child(n+5) { display: none; }

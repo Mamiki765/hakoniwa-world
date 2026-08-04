@@ -437,7 +437,8 @@
 
 - Status: Open
 - Required before: 本番公開前
-- 国家名、プロフィール、ログ、通報、凍結の最低運用を決める。
+- PR19 minimum decision: 島主名は必須1–30文字、一言コメントは任意0–100文字の1行plain textとする。制御文字と改行を拒否し、HTML・Markdown・URLを解釈しない。OAuth表示名は暗黙利用しない。owner-only変更を`nation.profile_updated`として変更前後とactor user ID付きで監査し、provider ID、token、email等の認証情報を含めない。
+- Remaining public-release gate: 国家名・島主名・コメントの禁止語、なりすまし対応、通報受付、管理者による非表示・凍結・解除、異議申立て、対応期限、moderation logの閲覧権限と保持期間をPR22 canonical schema rebaseline前に決める。PR19はmoderation workflowや管理画面を先行実装しない。
 
 ### D-08 複数World
 

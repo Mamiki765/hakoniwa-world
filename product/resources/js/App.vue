@@ -27,8 +27,14 @@ const publicEvents = ref<PublicEvent[]>([]);
 const nation = ref<Nation | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
-const page = ref<'home' | 'island' | 'preview' | 'resources' | 'account' | 'credits'>('home');
+const page = ref<'home' | 'island' | 'preview' | 'resources' | 'profile' | 'account' | 'credits'>('home');
 const nationName = ref('');
+const nationOwnerName = ref('');
+const nationComment = ref('');
+const profileOwnerName = ref('');
+const profileComment = ref('');
+const registrationErrors = ref<Record<string, string>>({});
+const profileErrors = ref<Record<string, string>>({});
 const foodDetailOpen = ref(false);
 const busy = ref(true);
 const message = ref('');
@@ -117,15 +123,68 @@ async function createNation(): Promise<void> {
     if (world === undefined) return;
     busy.value = true;
     message.value = '';
+    registrationErrors.value = {};
     try {
         nation.value = await api<Nation>('/api/v1/nations', {
             method: 'POST',
-            body: JSON.stringify({ world_id: world.id, name: nationName.value }),
+            body: JSON.stringify({
+                world_id: world.id,
+                name: nationName.value,
+                owner_name: nationOwnerName.value,
+                comment: nationComment.value,
+            }),
         });
         await loadPublicLobby();
         await openOwnIsland();
     } catch (error) {
-        message.value = error instanceof Error ? error.message : '国家を作成できませんでした。';
+        registrationErrors.value = validationErrors(error);
+        message.value = Object.keys(registrationErrors.value).length === 0
+            ? (error instanceof Error ? error.message : '国家を作成できませんでした。')
+            : '';
+        busy.value = false;
+    }
+}
+
+function validationErrors(error: unknown): Record<string, string> {
+    if (!(error instanceof ApiError)) return {};
+
+    return Object.fromEntries(Object.entries(error.errors).map(([key, messages]) => [key, messages[0] ?? '入力を確認してください。']));
+}
+
+function openProfile(): void {
+    if (nation.value === null) return;
+    profileOwnerName.value = nation.value.owner_name;
+    profileComment.value = nation.value.comment;
+    profileErrors.value = {};
+    message.value = '';
+    page.value = 'profile';
+}
+
+async function updateProfile(): Promise<void> {
+    if (nation.value === null) return;
+    busy.value = true;
+    message.value = '';
+    profileErrors.value = {};
+    try {
+        nation.value = await api<Nation>(`/api/v1/nations/${nation.value.id}/profile`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                owner_name: profileOwnerName.value,
+                comment: profileComment.value,
+            }),
+        });
+        await loadPublicLobby();
+        if (mapSpace.value === null) {
+            await openOwnIsland();
+        } else {
+            page.value = 'island';
+        }
+    } catch (error) {
+        profileErrors.value = validationErrors(error);
+        message.value = Object.keys(profileErrors.value).length === 0
+            ? (error instanceof Error ? error.message : 'プロフィールを更新できませんでした。')
+            : '';
+    } finally {
         busy.value = false;
     }
 }
@@ -138,6 +197,7 @@ async function createNation(): Promise<void> {
             <button type="button" @click="page = 'home'">公開ロビー</button>
             <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
             <button v-if="nation" type="button" @click="page = 'resources'">資源方針</button>
+            <button v-if="nation" type="button" @click="openProfile">プロフィール編集</button>
             <button type="button" @click="page = 'credits'">クレジット</button>
         </nav>
         <div class="session-actions">
@@ -190,7 +250,10 @@ async function createNation(): Promise<void> {
                             <tbody>
                                 <tr v-for="entry in rankings" :key="entry.id">
                                     <td>{{ entry.rank }}</td>
-                                    <td><button type="button" @click="openPreview(entry.id)">N{{ entry.nation_number }} {{ entry.name }}</button></td>
+                                    <td>
+                                        <button type="button" @click="openPreview(entry.id)">N{{ entry.nation_number }} {{ entry.name }}</button>
+                                        <span class="ranking-owner">島主：{{ entry.owner_name }}</span>
+                                    </td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
                                     <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
                                     <td>{{ entry.money_display }}</td>
@@ -219,14 +282,36 @@ async function createNation(): Promise<void> {
             <form v-if="user && !nation" class="nation-form panel" @submit.prevent="createNation">
                 <p class="eyebrow">CREATE YOUR NATION</p>
                 <h2>最初の国家を作成</h2>
-                <label>国家名 <input v-model="nationName" minlength="2" maxlength="30" required></label>
+                <label>
+                    島名
+                    <input v-model="nationName" minlength="2" maxlength="30" required aria-describedby="nation-name-help nation-name-error">
+                    <small id="nation-name-help" class="field-hint">2〜30文字。登録後の変更はできません。</small>
+                    <span v-if="registrationErrors.name" id="nation-name-error" class="field-error" role="alert">{{ registrationErrors.name }}</span>
+                </label>
+                <label>
+                    島主名
+                    <input v-model="nationOwnerName" minlength="1" maxlength="30" required aria-describedby="owner-name-help owner-name-error">
+                    <small id="owner-name-help" class="field-hint">1〜30文字。OAuth表示名とは別の公開名です。</small>
+                    <span v-if="registrationErrors.owner_name" id="owner-name-error" class="field-error" role="alert">{{ registrationErrors.owner_name }}</span>
+                </label>
+                <label>
+                    一言コメント
+                    <textarea v-model="nationComment" maxlength="100" rows="2" aria-describedby="comment-help comment-error" @keydown.enter.prevent></textarea>
+                    <small id="comment-help" class="field-hint">任意・100文字以内。改行不可のplain textです。</small>
+                    <span v-if="registrationErrors.comment" id="comment-error" class="field-error" role="alert">{{ registrationErrors.comment }}</span>
+                </label>
                 <button class="button primary" type="submit" :disabled="busy">国家を作る</button>
             </form>
         </section>
 
         <section v-else-if="page === 'island' && nation?.capital && mapSpace" class="island-page">
             <header class="nation-hud">
-                <div class="hud-identity"><p class="eyebrow">MY ISLAND</p><h1>N{{ nation.nation_number }} {{ nation.name }}</h1></div>
+                <div class="hud-identity">
+                    <p class="eyebrow">MY ISLAND</p>
+                    <h1>N{{ nation.nation_number }} {{ nation.name }}</h1>
+                    <p class="profile-owner">島主：{{ nation.owner_name }}</p>
+                    <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
+                </div>
                 <dl class="hud-primary">
                     <div><dt>turn</dt><dd>{{ nation.current_turn }}</dd></div>
                     <div class="hud-money">
@@ -266,7 +351,7 @@ async function createNation(): Promise<void> {
                     </div>
                     <div v-for="resource in nonFoodResources" :key="resource.key">
                         <dt>{{ resource.name }}</dt>
-                        <dd v-if="resource.capacity !== undefined && resource.capacity !== null" class="hud-capacity-value">
+                        <dd v-if="resource.capacity !== null" class="hud-capacity-value">
                             <strong class="hud-current-value">{{ formatResource(resource.amount, resource.unit_label) }}</strong>
                             <span class="hud-capacity-limit">上限 {{ formatResource(resource.capacity, resource.unit_label) }}</span>
                         </dd>
@@ -303,7 +388,12 @@ async function createNation(): Promise<void> {
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
             <header class="preview-heading">
-                <div><p class="eyebrow">PUBLIC ISLAND PREVIEW</p><h1>N{{ previewNation.nation_number }} {{ previewNation.name }}</h1></div>
+                <div>
+                    <p class="eyebrow">PUBLIC ISLAND PREVIEW</p>
+                    <h1>N{{ previewNation.nation_number }} {{ previewNation.name }}</h1>
+                    <p class="profile-owner">島主：{{ previewNation.owner_name }}</p>
+                    <p v-if="previewNation.comment" class="profile-comment">「{{ previewNation.comment }}」</p>
+                </div>
                 <dl>
                     <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
                     <div><dt>保有陸地</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
@@ -332,6 +422,30 @@ async function createNation(): Promise<void> {
         </section>
 
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
+
+        <section v-else-if="user && nation && page === 'profile'" class="panel profile-panel">
+            <p class="eyebrow">ISLAND PROFILE</p>
+            <h1>プロフィール編集</h1>
+            <p>N{{ nation.nation_number }} {{ nation.name }}の公開プロフィールです。島名は変更できません。</p>
+            <form class="profile-form" @submit.prevent="updateProfile">
+                <label>
+                    島主名
+                    <input v-model="profileOwnerName" minlength="1" maxlength="30" required aria-describedby="profile-owner-help profile-owner-error">
+                    <small id="profile-owner-help" class="field-hint">1〜30文字。公開ロビーや島previewへ表示されます。</small>
+                    <span v-if="profileErrors.owner_name" id="profile-owner-error" class="field-error" role="alert">{{ profileErrors.owner_name }}</span>
+                </label>
+                <label>
+                    一言コメント
+                    <textarea v-model="profileComment" maxlength="100" rows="3" aria-describedby="profile-comment-help profile-comment-error" @keydown.enter.prevent></textarea>
+                    <small id="profile-comment-help" class="field-hint">100文字以内、改行不可。HTMLやURLを解釈しないplain textです。</small>
+                    <span v-if="profileErrors.comment" id="profile-comment-error" class="field-error" role="alert">{{ profileErrors.comment }}</span>
+                </label>
+                <div class="profile-actions">
+                    <button class="button primary" type="submit" :disabled="busy">保存</button>
+                    <button type="button" :disabled="busy" @click="openOwnIsland">キャンセル</button>
+                </div>
+            </form>
+        </section>
 
         <section v-else-if="user && page === 'account'" class="panel account-panel">
             <p class="eyebrow">ACCOUNT SETTINGS</p>

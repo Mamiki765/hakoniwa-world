@@ -32,7 +32,7 @@ class TurnEconomyTest extends TestCase
     public function test_integer_workforce_food_sale_and_capacity_contracts(): void
     {
         $world = $this->lightweightWorld();
-        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '経済検証国');
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '経済検証国', '試験島主');
         $engine = app(CompleteTurnEngine::class);
         $farm = $this->facilityCell($nation, 'farm', 1);
         $factory = $this->facilityCell($nation, 'factory', 1);
@@ -109,6 +109,8 @@ class TurnEconomyTest extends TestCase
         $allocation = $engine->execute('nation_economy', $allocationContext);
         $this->assertSame(3, $allocation->metrics['industrial_goods_produced']);
         $this->assertSame(7, $allocation->metrics['minerals_produced']);
+        $this->assertSame(3, $this->resourceAmount($nation, 'industrial_goods'));
+        $this->assertSame(7, $this->resourceAmount($nation, 'minerals'));
         $this->assertSame(3, $this->event($allocationRun, 'resource.industrial_produced')['workers']);
         $this->assertSame(7, $this->event($allocationRun, 'resource.mineral_produced')['workers']);
 
@@ -142,6 +144,9 @@ class TurnEconomyTest extends TestCase
         $this->assertSame(2_000, $industrialSale['sold']);
         $this->assertSame(2, $industrialSale['revenue']);
         $this->assertSame(500, $industrialSale['after']);
+        $mineralSale = $this->event($saleRun, 'resource.automatic_sale', 'minerals');
+        $this->assertSame(2_000, $mineralSale['sold']);
+        $this->assertSame(2, $mineralSale['revenue']);
 
         $this->setResources($nation, ['industrial_goods' => 2_500, 'minerals' => 3_500]);
         Nation::query()->whereKey($nation->id)->update(['money' => 9_998]);
@@ -154,6 +159,59 @@ class TurnEconomyTest extends TestCase
         $this->assertSame(2_000, $limitedMinerals['requested']);
         $this->assertSame(0, $limitedMinerals['sold']);
         $this->assertSame(3_500, $limitedMinerals['after']);
+
+        $this->setPolicy($nation, 'industrial_goods', 'stockpile', null);
+        $this->setPolicy($nation, 'minerals', 'stockpile', null);
+        Nation::query()->whereKey($nation->id)->update(['money' => 0]);
+        $this->setResources($nation, [
+            'industrial_goods' => 9_998_999,
+            'minerals' => 9_999_000,
+        ]);
+        [$withinContext, $withinRun] = $this->context($world, $nation);
+        $within = $engine->execute('enforce_capacities', $withinContext);
+        $this->assertSame(0, $within->metrics['overflow_reports']);
+        $this->assertSame(9_998_999, $this->resourceAmount($nation, 'industrial_goods'));
+        $this->assertSame(9_999_000, $this->resourceAmount($nation, 'minerals'));
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'capacity.overflow')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $withinRun->id])->count());
+
+        $this->setResources($nation, [
+            'industrial_goods' => 9_999_123,
+            'minerals' => 10_000_000,
+        ]);
+        [$resourceOverflowContext, $resourceOverflowRun] = $this->context($world, $nation);
+        $resourceOverflow = $engine->execute('enforce_capacities', $resourceOverflowContext);
+        $this->assertSame(2, $resourceOverflow->metrics['overflow_reports']);
+        $this->assertSame(9_999_000, $this->resourceAmount($nation, 'industrial_goods'));
+        $this->assertSame(9_999_000, $this->resourceAmount($nation, 'minerals'));
+        $industrialOverflow = $this->event($resourceOverflowRun, 'capacity.overflow', 'industrial_goods');
+        $mineralOverflow = $this->event($resourceOverflowRun, 'capacity.overflow', 'minerals');
+        $this->assertSame(123, $industrialOverflow['overflow']);
+        $this->assertSame(1_000, $mineralOverflow['overflow']);
+        $this->assertTrue($industrialOverflow['discarded']);
+        $this->assertSame('post_sale_inventory_capacity', $mineralOverflow['source']);
+        $this->assertSame(0, $nation->fresh()->money);
+
+        $this->setPolicy($nation, 'industrial_goods', 'keep_amount', 10_000_000);
+        $this->setResources($nation, ['industrial_goods' => 10_001_000, 'minerals' => 0]);
+        [$saleBeforeCapacityContext, $saleBeforeCapacityRun] = $this->context($world, $nation);
+        $engine->execute('enforce_capacities', $saleBeforeCapacityContext);
+        $saleBeforeCapacity = $this->event(
+            $saleBeforeCapacityRun, 'resource.automatic_sale', 'industrial_goods',
+        );
+        $postSaleOverflow = $this->event(
+            $saleBeforeCapacityRun, 'capacity.overflow', 'industrial_goods',
+        );
+        $this->assertSame(1_000, $saleBeforeCapacity['sold']);
+        $this->assertSame(10_000_000, $saleBeforeCapacity['after']);
+        $this->assertSame(1_000, $postSaleOverflow['overflow']);
+        $this->assertSame(9_999_000, $postSaleOverflow['after']);
+        $this->assertSame(1, $nation->fresh()->money);
+        $this->assertLessThan(
+            $postSaleOverflow['_event_id'],
+            $saleBeforeCapacity['_event_id'],
+            'Automatic sale must be recorded before resource capacity overflow.',
+        );
 
         Nation::query()->whereKey($nation->id)->update(['money' => 10_000]);
         $this->setResources($nation, ['wheat' => 1_000_000, 'fish' => 0, 'monster_meat' => 0]);
@@ -283,7 +341,11 @@ class TurnEconomyTest extends TestCase
             $query->whereRaw("metadata->>'resource_key' = ?", [$resourceKey]);
         }
 
-        return json_decode((string) $query->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $event = $query->first(['id', 'metadata']);
+        $metadata = json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $metadata['_event_id'] = (int) $event->id;
+
+        return $metadata;
     }
 
     /**

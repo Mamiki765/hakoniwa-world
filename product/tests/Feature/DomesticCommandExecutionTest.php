@@ -578,7 +578,7 @@ class DomesticCommandExecutionTest extends TestCase
     {
         $user = User::factory()->create();
 
-        return [$user, app(NationCreationService::class)->create($user, $world, $name)];
+        return [$user, app(NationCreationService::class)->create($user, $world, $name, '試験島主')];
     }
 
     private function queue(
