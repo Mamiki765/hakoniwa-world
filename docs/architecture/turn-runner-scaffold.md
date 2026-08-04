@@ -140,17 +140,17 @@ inventory consumed = money applied × 1,000
 inventory remaining = original inventory - consumed
 ```
 
-It therefore preserves both unsellable whole batches and sub-1,000 remainders. The same boundary applies to `industrial_goods` and `minerals`; handlers do not create decimal money.
+For `sell_all` and `keep_amount`, it therefore preserves both money-capacity-blocked whole batches and sub-1,000 remainders up to the individual resource cap. The same integer boundary applies to `industrial_goods` and `minerals`; handlers do not create decimal money.
 
 PR #19 keeps this sale formula and makes the following phase-10 order explicit:
 
-1. apply the Nation's sale policy;
-2. enforce the individual `industrial_goods` and `minerals` capacities;
-3. discard any remaining excess without crediting money;
-4. record one `capacity.overflow` audit event per affected resource;
-5. enforce the existing money capacity.
+1. derive requested inventory from the Nation's policy: all inventory for `sell_all`, inventory above the target for `keep_amount`, and inventory above the individual cap for `stockpile`;
+2. sell complete rate batches while the existing money capacity has room;
+3. enforce the individual `industrial_goods` and `minerals` capacities;
+4. discard only the remaining over-cap amount, including a sub-batch remainder or money-capacity-blocked excess;
+5. record `resource.automatic_sale` and `capacity.overflow` audit events in that order.
 
-This allows `sell_all` and `keep_amount` to reduce inventory before capacity enforcement while ensuring `stockpile` cannot retain more than the published cap. A failed turn rolls back both the inventory clamp and its audit event. Owner API resources expose `capacity`, `remaining_capacity`, and `is_at_capacity`; exact inventories and capacities remain private.
+This allows `sell_all` and `keep_amount` to retain unsold inventory up to the published cap, while `stockpile`—displayed as `上限まで備蓄`—sells only its overflow before discarding anything that still cannot fit. A failed turn rolls back the sale, revenue, inventory clamp, and audit events together. Owner API resources expose `capacity`, `remaining_capacity`, and `is_at_capacity`; exact inventories and capacities remain private.
 
 ## Commands
 

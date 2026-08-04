@@ -746,6 +746,11 @@ final class RulesetAuthoringValidator
                         "ruleset.resource_capacities.{$resourceKey} requires a storable resource.",
                     );
                 }
+                if (($definition['tradable'] ?? null) !== true) {
+                    throw new DomainException(
+                        "ruleset.resource_capacities.{$resourceKey} requires a tradable resource for stockpile overflow sale.",
+                    );
+                }
                 $initial = $this->integer(
                     $initialResources[$resourceKey] ?? null,
                     "ruleset.initial_resources.{$resourceKey}",
@@ -761,14 +766,14 @@ final class RulesetAuthoringValidator
             $overflowPath = 'ruleset.resource_capacity_overflow';
             $overflow = $this->map($settings['resource_capacity_overflow'], $overflowPath);
             $this->requireKeys($overflow, [
-                'behavior', 'applies_after_sale_policy', 'converts_to_money', 'event_type',
+                'behavior', 'applies_after_sale_policy', 'converts_unsold_to_money', 'event_type',
             ], $overflowPath);
-            if ($this->persistedString($overflow['behavior'], "{$overflowPath}.behavior") !== 'discard'
+            if ($this->persistedString($overflow['behavior'], "{$overflowPath}.behavior") !== 'sell_stockpile_overflow_then_discard_unsold'
                 || $this->boolean($overflow['applies_after_sale_policy'], "{$overflowPath}.applies_after_sale_policy") !== true
-                || $this->boolean($overflow['converts_to_money'], "{$overflowPath}.converts_to_money") !== false
+                || $this->boolean($overflow['converts_unsold_to_money'], "{$overflowPath}.converts_unsold_to_money") !== false
                 || $this->persistedString($overflow['event_type'], "{$overflowPath}.event_type") !== 'capacity.overflow') {
                 throw new DomainException(
-                    'ruleset.resource_capacity_overflow must use discard-after-sale without money conversion.',
+                    'ruleset.resource_capacity_overflow must sell stockpile overflow and discard unsold excess.',
                 );
             }
         }

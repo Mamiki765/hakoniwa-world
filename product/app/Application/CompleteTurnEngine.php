@@ -342,9 +342,13 @@ final class CompleteTurnEngine
                     throw new DomainException("Stored sell_all policy is forbidden for {$resource->key}.");
                 }
                 $before = (int) $balance->amount;
+                $resourceCapacity = $capacity->resources[$resource->key] ?? null;
                 $requested = match ($policy) {
                     SalePolicy::SellAll->value => $before,
                     SalePolicy::KeepAmount->value => max(0, $before - (int) $keepAmount),
+                    SalePolicy::Stockpile->value => is_int($resourceCapacity)
+                        ? max(0, $before - $resourceCapacity)
+                        : 0,
                     default => 0,
                 };
                 $rate = $rates[$resource->key] ?? null;
@@ -367,6 +371,10 @@ final class CompleteTurnEngine
                     'resource_key' => $resource->key, 'policy' => $policy, 'keep_amount' => $keepAmount,
                     'before' => $before, 'requested' => $requested, 'sold' => $sold,
                     'revenue' => $revenue, 'after' => $before - $sold,
+                    'sale_reason' => $policy === SalePolicy::Stockpile->value && is_int($resourceCapacity)
+                        ? 'capacity_overflow'
+                        : 'sale_policy',
+                    'resource_capacity' => $resourceCapacity,
                     'money_capacity' => $capacity->money,
                 ]);
             }
@@ -431,9 +439,9 @@ final class CompleteTurnEngine
     {
         $contract = $settings['resource_capacity_overflow'] ?? null;
         if (! is_array($contract)
-            || ($contract['behavior'] ?? null) !== 'discard'
+            || ($contract['behavior'] ?? null) !== 'sell_stockpile_overflow_then_discard_unsold'
             || ($contract['applies_after_sale_policy'] ?? null) !== true
-            || ($contract['converts_to_money'] ?? null) !== false
+            || ($contract['converts_unsold_to_money'] ?? null) !== false
             || ($contract['event_type'] ?? null) !== 'capacity.overflow') {
             throw new DomainException('Published resource capacity overflow contract is invalid.');
         }

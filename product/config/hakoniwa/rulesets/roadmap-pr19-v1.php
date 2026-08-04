@@ -9,9 +9,9 @@ $ruleset['resource_capacities'] = [
     'minerals' => 9_999_000,
 ];
 $ruleset['resource_capacity_overflow'] = [
-    'behavior' => 'discard',
+    'behavior' => 'sell_stockpile_overflow_then_discard_unsold',
     'applies_after_sale_policy' => true,
-    'converts_to_money' => false,
+    'converts_unsold_to_money' => false,
     'event_type' => 'capacity.overflow',
 ];
 

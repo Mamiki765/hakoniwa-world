@@ -37,9 +37,9 @@ class Pr19RulesetContractTest extends TestCase
         $this->assertSame(1, $settings['turn_processing']['workforce']['factory_output_per_worker']);
         $this->assertSame(1, $settings['turn_processing']['workforce']['mine_output_per_worker']);
         $this->assertSame([
-            'behavior' => 'discard',
+            'behavior' => 'sell_stockpile_overflow_then_discard_unsold',
             'applies_after_sale_policy' => true,
-            'converts_to_money' => false,
+            'converts_unsold_to_money' => false,
             'event_type' => 'capacity.overflow',
         ], $settings['resource_capacity_overflow']);
 
@@ -63,8 +63,18 @@ class Pr19RulesetContractTest extends TestCase
 
                 return $settings;
             },
-            'money conversion' => function (array $settings): array {
-                $settings['resource_capacity_overflow']['converts_to_money'] = true;
+            'unsold money conversion' => function (array $settings): array {
+                $settings['resource_capacity_overflow']['converts_unsold_to_money'] = true;
+
+                return $settings;
+            },
+            'non-tradable capacity' => function (array $settings): array {
+                foreach ($settings['resource_definitions'] as &$definition) {
+                    if ($definition['key'] === 'industrial_goods') {
+                        $definition['tradable'] = false;
+                    }
+                }
+                unset($definition);
 
                 return $settings;
             },

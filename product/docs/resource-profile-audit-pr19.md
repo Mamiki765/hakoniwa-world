@@ -14,8 +14,9 @@ Historical Worlds are not migrated or repointed. They remain readable through vi
 | Minerals unit | canonical `ton`, label `トン` | immutable ruleset payload and resource catalog publication |
 | Industrial goods capacity | 9,999,000 per Nation | generic `resource_capacities` map |
 | Minerals capacity | 9,999,000 per Nation | generic `resource_capacities` map |
-| Enforcement order | production, sale policy, individual resource cap, money cap | phase-10 turn integration tests |
-| Overflow | discard; never convert to money | `capacity.overflow` audit event and rollback tests |
+| Enforcement order | production, money-capacity-bounded policy or stockpile-overflow sale, individual resource cap | phase-10 turn integration tests |
+| Stockpile overflow | sell full sale-rate batches within money capacity | `resource.automatic_sale` audit event |
+| Unsold overflow | discard sale-unit remainder and money-capacity-blocked excess | `capacity.overflow` audit event and rollback tests |
 | Owner API | exact amount, capacity, remaining capacity, reached state | private Nation resource only |
 | Public API | owner name and comment; no exact inventory or capacity | public ranking/detail projection tests |
 | Registration | explicit owner name plus optional comment | validation and no-OAuth-fallback tests |
@@ -24,9 +25,11 @@ Historical Worlds are not migrated or repointed. They remain readable through vi
 
 ## Capacity behavior
 
-The current ruleset contains a generic map keyed by a published, storable, non-food resource. Authoring fails closed for unknown keys, food resources, missing overflow semantics, or money conversion. Money and aggregate food retain their existing meanings and paths.
+The current ruleset contains a generic map keyed by a published, storable, tradable, non-food resource. Authoring fails closed for unknown keys, food or non-tradable resources, missing overflow semantics, or conversion of unsold excess. Money and aggregate food retain their existing meanings and paths.
 
-Sale policy is evaluated before the individual cap. `sell_all` and `keep_amount` can therefore consume inventory before enforcement; `stockpile` still clamps at the cap. Each discarded excess records the resource key, before amount, capacity, after amount, overflow, source, and discarded disposition. The write and event share the turn transaction, so a failed run leaves neither.
+Sale policy is evaluated before the individual cap. `sell_all` and `keep_amount` keep their existing behavior: they sell only complete rate batches that fit within the money capacity, retain unsold inventory up to the resource capacity, and discard only the amount beyond that capacity. The internal `stockpile` policy is displayed as `上限まで備蓄`; for a resource with an individual capacity it requests sale of only the amount beyond the cap. Complete 1,000-resource batches are sold at the published rate while money capacity remains, and a sub-batch remainder or money-capacity-blocked excess is then discarded by cap enforcement.
+
+Every automatic-sale audit records the resource, policy, before/requested/sold/after amounts, revenue, sale reason, resource capacity, and money capacity. Each discarded excess records the resource key, before amount, capacity, after amount, overflow, source, and discarded disposition. The writes and events share the turn transaction, so a failed run leaves neither.
 
 ## Profile data and API
 

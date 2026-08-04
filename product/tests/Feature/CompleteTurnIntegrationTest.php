@@ -244,8 +244,14 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame(9_999_000, (int) NationResource::query()->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('key', 'minerals'))
             ->value('amount'));
-        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'capacity.overflow')
-            ->whereRaw("metadata->>'asset' = ?", ['resource'])->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')
+            ->whereRaw("metadata->>'resource_key' = ?", ['industrial_goods'])
+            ->whereRaw("metadata->>'sold' = ?", ['1000'])
+            ->whereRaw("metadata->>'sale_reason' = ?", ['capacity_overflow'])->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'capacity.overflow')
+            ->whereRaw("metadata->>'asset' = ?", ['resource'])
+            ->whereRaw("metadata->>'resource_key' = ?", ['minerals'])
+            ->whereRaw("metadata->>'overflow' = ?", ['500'])->count());
         $this->assertGreaterThan($snapshot['audit_count'], DB::table('audit_events')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
         $this->assertSame($capturedResult, $this->deterministicGameplayResult($world, $nation->id, $item->id));
