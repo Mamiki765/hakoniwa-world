@@ -147,7 +147,11 @@ final class DisasterTurnService
 
         /** @var array<int, array{nation: Nation, owned_land_cells: int, threshold: int, draw: int, to_sea: array<int, true>, to_shallow: array<int, true>, protected_mountains: array<int, true>, capitals: array<int, true>}> $plans */
         $plans = [];
-        $nations = Nation::query()->where('world_id', $context->world->id)->orderBy('id')->get();
+        $nations = Nation::query()
+            ->where('world_id', $context->world->id)
+            ->where('state', 'active')
+            ->orderBy('id')
+            ->get();
         foreach ($nations as $nation) {
             $ownedLandCells = $landByNation[$nation->id] ?? 0;
             $threshold = $this->subsidenceThreshold->resolve($context->ruleset, $nation);

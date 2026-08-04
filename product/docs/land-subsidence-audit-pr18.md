@@ -8,7 +8,7 @@ ADR-0003、現行TurnRunner・災害・Capital・ownership実装とPR18 owner de
 
 | 観点 | 旧資料で確認した挙動 | PR18 owner decision / 新作の正本 |
 |---|---|---|
-| 抽選単位 | やまにてぃは島ごと、面積10,000超で3% | Nationごと・turnごとに独立。所有陸地100超、すなわち101hex以上で2/100 |
+| 抽選単位 | やまにてぃは島ごと、面積10,000超で3% | active Nationごと・turnごとに独立。所有陸地100超、すなわち101hex以上で2/100。休眠・沈没Nationは既存lifecycle契約どおり対象外 |
 | 面積 | `IS_LAND` cell数×100。山・採掘場もland | owner一致かつterrainがsea/shallow以外。表示と判定を`NationLandAreaCalculator`で共用 |
 | stream | global RNGでretry再現なし | `global_disasters:land_subsidence:nation:{id}:trigger:v1`。Nation追加で既存drawをずらさない |
 | 同時性 | 島ごと逐次 | World全体の単一事前snapshotで全Nationの候補を確定し、union後に適用 |

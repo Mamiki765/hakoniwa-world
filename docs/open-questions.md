@@ -244,7 +244,7 @@
 
 - Status: Decided
 - Required before: 地盤沈下実装前
-- Decision: 各Nationについて各turnに独立して判定し、事前snapshot上の所有陸地がrulesetのsafe land base 100を超える101hex以上なら2/100で発生する。所有陸地は`owner_nation_id`が一致しterrainがsea/shallow以外のsurface cellとし、山・採掘場・Capital・集落・地上施設を含める。sea/shallow、海底施設cell、monster actor自体は加算しない。表示とeligibilityは`NationLandAreaCalculator`を共用する。
+- Decision: 各active Nationについて各turnに独立して判定し、事前snapshot上の所有陸地がrulesetのsafe land base 100を超える101hex以上なら2/100で発生する。dormant_frozen、dormant_contestable、sunken_archivedは既存のlifecycle凍結契約に従い対象外とする。所有陸地は`owner_nation_id`が一致しterrainがsea/shallow以外のsurface cellとし、山・採掘場・Capital・集落・地上施設を含める。sea/shallow、海底施設cell、monster actor自体は加算しない。表示とeligibilityは`NationLandAreaCalculator`を共用する。
 - Decision: eligible NationごとにNation IDを含む独立したversioned deterministic streamを使い、別Nationの追加・削除やdraw数で既存Nationの結果をずらさない。全対象Nationのeligibility、海岸、変更候補は地盤沈下開始時点のWorld全体snapshotから先に確定し、候補union後に適用する。新しい浅瀬・海を同じeventの追加判定へ使わず、Nation処理順へ依存させない。
 - Decision: snapshot上で対象Nation所有陸地に隣接する中立または自国shallowはseaへ、sea/shallowまたはWorld外に接する自国陸地は中立shallowへ変更する。他国所有shallow、他国領土、無関係な中立cell、既存sea上の海底施設は変更しない。山と採掘場は面積に含めるが無傷とする。
 - Decision: coastal Capitalはfacility identity、owner、terrain、capital coordinate、territory identityを維持し、現在人口へ30%の逐次damageを適用して`max(100, floor(old_population * 70 / 100))`とする。山地Capitalでは山の無効化を優先する。

@@ -24,6 +24,7 @@ use App\Models\User;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -72,6 +73,43 @@ class LandSubsidenceTurnTest extends TestCase
         [$eligibleContext, $run] = $this->context($world, $ruleset, hash('sha256', 'exactly-101'));
         $this->assertSame(1, app(DisasterTurnService::class)->executeGlobal($eligibleContext)['land_subsidence_nations']);
         $this->assertSame(101, $this->event($run, 'land_subsidence.triggered')['owned_land_cells_before']);
+    }
+
+    #[DataProvider('dormantStateProvider')]
+    public function test_dormant_nations_are_excluded_and_keep_their_map_and_capital_frozen(string $state): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation();
+        $this->resetSurface($space);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->orderBy('id')->limit(101)->get();
+        foreach ($cells as $cell) {
+            $this->setCell($cell, 'plain', null, $nation->id, 0);
+        }
+        $capital = $cells[0];
+        $this->setCell($capital, 'plain', 'capital', $nation->id, 1_000);
+        $nation->capital()->firstOrFail()->update([
+            'map_cell_id' => $capital->id, 'x' => $capital->x, 'y' => $capital->y,
+        ]);
+        $nation->update(['state' => $state]);
+        $before = $this->surfaceSnapshot($space);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', "land-subsidence-{$state}"));
+
+        $metrics = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $this->assertSame(0, $metrics['land_subsidence_nations']);
+        $this->assertSame($before, $this->surfaceSnapshot($space));
+        $this->assertFalse(DB::table('audit_events')
+            ->where('event_type', 'land_subsidence.triggered')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->exists());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function dormantStateProvider(): array
+    {
+        return [
+            'frozen' => ['dormant_frozen'],
+            'contestable' => ['dormant_contestable'],
+        ];
     }
 
     public function test_snapshot_effects_preserve_mountains_capital_foreign_cells_and_player_secrecy(): void
