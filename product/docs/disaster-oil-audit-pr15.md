@@ -6,6 +6,8 @@
 
 ## 抽選・効果監査表
 
+`既存実装`列はコード変更前のPR15 baselineを記録したhistorical snapshotであり、現在の実装状況ではない。現在の契約と実装有無は`docs/open-questions.md`、PR15 merge後のruleset/test、各後続auditを正本とする。
+
 | Event | Legacy判定箇所 | 抽選単位 | Legacy率 | 新ruleset率 | 中心 | 範囲・対象 | 内部確率 | 通常cell結果 | Capital結果 | Audit / player log | Stream label | Retry / idempotency | 既存実装 |
 |---|---|---|---:|---:|---|---|---|---|---|---|---|---|---|
 | 地震 | `map.c:742-747,870-903` | Worldごと | 80/1000 | 80/2000 | x/yを各`[-5,64]`から一様抽選 | radius 10。人口10,000以上の都市、工場、ハリボテ | 対象ごと1/4 | 荒地化、施設・人口消失、owner維持 | 都市条件を満たす場合10%人口減。identity/owner/terrain維持、各event後最低100 | `disaster.triggered`、`disaster.cell_damaged`、`capital.disaster_damaged`。発生はWorld公開、被害は該当Nationのみ | `global_disasters:earthquake:{trigger,center,effect}:v1` | World transaction rollback。同target turn retryは同seed・同draw。完了turn再実行不可 | `global_disasters` stubのみ |

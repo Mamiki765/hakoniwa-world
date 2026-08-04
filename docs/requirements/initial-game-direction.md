@@ -1,8 +1,8 @@
-# Initial game direction
+# Historical initial game direction
 
-この文書は実装前の初期要件です。現在は設計文書を確定する段階であり、ゲーム本体、施設master、巨大数libraryは実装しません。
+この文書は2026-07-26時点の実装前要件を保存するhistorical recordである。現在の実装承認、実装状況、Open gateは表さず、`docs/open-questions.md`を現在の索引とする。
 
-## 最初のMVP縦切り
+## Historical initial MVP
 
 最初の実装は次に限定する。
 

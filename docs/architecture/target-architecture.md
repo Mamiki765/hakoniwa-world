@@ -71,7 +71,9 @@ Vueを採用する場合も、Vueコンポーネントはルール計算を持�
 
 世界全体を1件のJSONへ直列化しない。ターン処理も変更対象のチャンク・国家・イベントを明示して保存し、必要なら集計用read modelを更新する。
 
-## 最初のMVP縦切り
+## Historical initial MVP
+
+このsectionは最初のarchitecture sliceのprovenanceであり、現在の実装範囲やOpen gateを表さない。現在の索引は`docs/open-questions.md`とする。
 
 最初の実装は次の一本道に限定する。
 

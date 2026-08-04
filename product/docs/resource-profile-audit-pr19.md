@@ -47,6 +47,6 @@ The public lobby ranking and public Nation preview show the island name, island 
 
 The profile schema migration adds only the two text columns with non-personal empty defaults. The forward-only PR19 ruleset publication verifies the exact source catalog metadata, publishes a new immutable payload, and updates the global display metadata for the two resource definitions. It does not update `worlds.ruleset_version_id`, balances, commands, queues, Nations, or turn runs.
 
-## PR22 canonical rebaseline checklist
+## Release-freeze canonical rebaseline checklist
 
-Before public release, PR22 must rebaseline a fresh canonical schema and remove pre-release migration history only under a separately approved plan. That plan must preserve immutable published ruleset audit records, include the current PR19 resource metadata and Nation profile columns in the fresh schema, and resolve the remaining D-07 moderation gate: prohibited terms, impersonation, reports, hide/freeze/unfreeze actions, appeals, operator authorization, and moderation-log retention. PR19 does not implement those deferred operations.
+After monster and the remaining command roadmap are complete, a separately approved release-freeze PR must rebaseline a fresh canonical schema and remove pre-release migration history. The plan must preserve immutable published ruleset audit records and include the current PR19 resource metadata and Nation profile columns. Before public release, the remaining D-07 moderation gate must also be resolved: prohibited terms, impersonation, reports, hide/freeze/unfreeze actions, appeals, operator authorization, and moderation-log retention. PR19 does not implement those operations, and the release-freeze work is not tied to a fixed PR number.
