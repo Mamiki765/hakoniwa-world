@@ -18,6 +18,14 @@ const emptyChunk: MapChunk = {
     version: 'empty', state: 'empty', cells: [],
 };
 
+const publicDetail: PublicNationDetail = {
+    id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
+    owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500',
+    last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '共有世界', current_turn: 1 },
+    capital: { x: 12, y: 8 },
+    map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
+};
+
 function publicResponse(path: string): Response | null {
     if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '共有世界', turn: 1 }]);
     if (path.endsWith('/summary')) return response({ id: 1, key: 'shared-world', name: '共有世界', current_turn: 1, nation_count: 1, total_population: 1000 });
@@ -82,19 +90,12 @@ describe('application lobby and island entry', () => {
     });
 
     it('opens a guest preview through public-only endpoints', async () => {
-        const detail: PublicNationDetail = {
-            id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
-            owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500',
-            last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '共有世界', current_turn: 1 },
-            capital: { x: 12, y: 8 },
-            map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
-        };
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             const lobby = publicResponse(path);
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response(null, 401);
-            if (path === '/api/v1/public/nations/7') return response(detail);
+            if (path === '/api/v1/public/nations/7') return response(publicDetail);
             if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
             return response(null, 404);
         });
@@ -140,6 +141,8 @@ describe('application lobby and island entry', () => {
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
             if (path === '/api/v1/me/nation') return response(nation);
+            if (path === '/api/v1/public/nations/7') return response(publicDetail);
+            if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path === '/api/v1/nations/3/profile' && init?.method === 'PATCH') return response({
                 ...nation, owner_name: '更新島主', comment: '<b>更新コメント</b>',
             });
@@ -198,6 +201,12 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
 
+        const lobbyButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === '公開ロビー')!;
+        await lobbyButton.trigger('click');
+        await wrapper.find('.ranking-card tbody button').trigger('click');
+        await flushPromises();
+        expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
+
         const profileButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === 'プロフィール編集')!;
         await profileButton.trigger('click');
         await wrapper.find('.profile-form input').setValue('更新島主');
@@ -209,5 +218,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud b').exists()).toBe(false);
         const patchRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/nations/3/profile');
         expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ owner_name: '更新島主', comment: '<b>更新コメント</b>' });
+        const patchIndex = fetchMock.mock.calls.findIndex(([path]) => String(path) === '/api/v1/nations/3/profile');
+        expect(fetchMock.mock.calls.slice(patchIndex + 1).some(([path]) => String(path).includes('/api/v1/map-spaces/2/chunks/'))).toBe(true);
     });
 });

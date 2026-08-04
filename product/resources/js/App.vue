@@ -174,11 +174,7 @@ async function updateProfile(): Promise<void> {
             }),
         });
         await loadPublicLobby();
-        if (mapSpace.value === null) {
-            await openOwnIsland();
-        } else {
-            page.value = 'island';
-        }
+        await openOwnIsland();
     } catch (error) {
         profileErrors.value = validationErrors(error);
         message.value = Object.keys(profileErrors.value).length === 0

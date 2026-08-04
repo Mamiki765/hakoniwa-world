@@ -186,6 +186,41 @@ class PlayerIslandEventApiTest extends TestCase
         );
     }
 
+    public function test_resource_capacity_overflow_events_identify_stock_and_unit(): void
+    {
+        [$world, $owner, $nation] = $this->nation('資源超過ログ国');
+        $world->update(['current_turn' => 2]);
+        $base = [
+            'world_id' => $world->id,
+            'target_turn' => 2,
+            'nation_id' => $nation->id,
+            'asset' => 'resource',
+        ];
+        $industrialId = $this->audit('capacity.overflow', $nation, [
+            ...$base, 'resource_key' => 'industrial_goods', 'overflow' => 123,
+        ]);
+        $mineralId = $this->audit('capacity.overflow', $nation, [
+            ...$base, 'resource_key' => 'minerals', 'overflow' => 1_000,
+        ]);
+
+        $events = collect($this->actingAs($owner)
+            ->getJson("/api/v1/nations/{$nation->id}/events")
+            ->assertOk()
+            ->json('data.groups'))->flatMap(
+                static fn (array $group): array => $group['events'],
+            );
+
+        $this->assertSame([$mineralId, $industrialId], $events->pluck('id')->all());
+        $this->assertSame(
+            '鉱物が収容上限を1,000トン超過し、超過分を破棄しました。',
+            $events[0]['message'],
+        );
+        $this->assertSame(
+            '工業品が収容上限を123ユニット超過し、超過分を破棄しました。',
+            $events[1]['message'],
+        );
+    }
+
     public function test_seabed_oil_search_logs_success_and_failure_without_exposing_random_draws(): void
     {
         [$world, $owner, $nation] = $this->nation('油田ログ国');
