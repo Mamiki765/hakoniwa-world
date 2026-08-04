@@ -128,7 +128,9 @@ registrationとturnが同じworldを更新するため、ロック階層を統�
 
 sunken_archivedの国家は旧領土・旧首都を地図へ巻き戻さない。本人が後日復帰する場合は、新規登録と共通の空き領域探索・世界拡張を利用する再入植を基本候補とする。ただし旧国家名、初期資源、ランキング、称号、新規保護期間、同じnation_idを再利用するかは未決定である。
 
-## 未決定事項
+## Historical pre-implementation questions
+
+以下は最初のNation registration実装前に記録したhistorical questionsであり、現在のOpen gateではない。実装済み判断と残るgateは`docs/open-questions.md`を正本とする。
 
 - Status: Open / Required before: 国家作成実装前 — Capital建設可能地形、水域・建設不能地形のTerritory所有、最低発展可能セル数、候補score、生成seed。
 - Status: Open / Required before: 国家作成実装前 — 1登録あたりの最大拡張chunk数と同点の拡張方向選択。

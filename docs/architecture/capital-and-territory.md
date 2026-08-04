@@ -2,7 +2,7 @@
 
 ## 状態
 
-Capitalの不変条件と最低人口1単位は確定する。最初のMVP縦切りではCapitalと初期Territoryの生成までを対象とし、被害、回復、settlement_seed、緊急開拓、国境、戦闘は実装しない。これらは該当機能の実装前に`docs/open-questions.md`を確認する。
+Capitalの現行契約は、初期人口1,000人、地図上に存在する間の最低人口100人、通常成長上限25,000人である。Capitalと初期Territoryは実装済みで、人口成長と災害damageも後続roadmapで実装された。怪獣、戦闘、機能停止、復旧、占領の未決事項は`docs/open-questions.md`を正本とする。
 
 ## 首都の確定要件
 
@@ -11,7 +11,7 @@ Capitalの不変条件と最低人口1単位は確定する。最初のMVP縦切
 - 通常の災害、ミサイル、怪獣によって首都施設自体は消滅しない。
 - 通常の国境処理や占領で所有国は変わらない。
 - 首都人口は災害・攻撃で割合減少し得る。
-- 地図上に首都が存在する間、首都人口は最低1単位を下回らない。
+- 地図上に首都が存在する間、首都人口は最低100人を下回らない。
 - 被害は人口、収入、機能、復旧負担として残り、無敵の利益装置にはしない。
 - 国家存続条件を首都人口0に依存させない。
 - activeな首都はsettlement_seed能力により再建の起点になれる。
@@ -30,7 +30,7 @@ MVPの初期TerritoryはCapital cellと、Capitalからx/y grid distance 2以内
 - 現在の生成済み境界を固定の「世界端」とみなさない。必要なら既存座標を動かさずWorldを拡張する。
 - Capital周囲に最低限の発展可能地を確保する。
 
-水域・建設不能地形を初期Territoryへ含めるか、distance 2の範囲外セルや生成済み境界外をどう扱うか、候補地点のscore、Capital初期人口は国家作成実装前に決める。
+初期Territoryはdistance 2以内の生成陸地19 cellsだけとし、範囲外の生成陸地は中立のまま残す。候補地点のscoreと初期人口は`docs/open-questions.md`のB-18とB-01で決定済みである。
 
 ## データモデル案
 
@@ -44,27 +44,11 @@ MVPの初期TerritoryはCapital cellと、Capitalからx/y grid distance 2以内
 
 首都だけをif分岐で多数のhandlerへ散らさず、DamagePolicy、OwnershipPolicy、ConstructionPolicyで明示する。ただし汎用modifierだけで不変条件を表し、設定ミスで消滅可能になる設計は避ける。
 
-## 最低人口
+## 人口と割合被害
 
-首都人口の固定下限を1単位とする。1単位が実人口何人に相当するかは表示・バランス仕様で別途決める。
+Capitalのcanonical populationは人単位で、初期値1,000、固定下限100、通常成長上限25,000とする。全てのCapital population damageは各event開始時点の現在人口へ逐次適用し、`max(100, floor(old_population * (100 - damage_percent) / 100))`をeventごとに確定する。turn内でdamageを合算して最後に1回だけ丸めたり、minimumを最後だけ適用したりしない。
 
-全ての首都人口damageはpopulation = max(1, afterDamage)を最後に適用する。ただし、sunken_archivedへの沈没処理では首都自体を現在地図から除去するため、この下限は適用しない。
-
-最低1でも、稼働率、税収、機能、自然回復速度、復旧費はdamageを受ける。人口下限だけで国家を削除せず、最低値への到達を無敵化や敗北判定として使わない。
-
-## 割合被害の案
-
-被害量を単純な固定人数ではなく、攻撃・災害ごとのdamage ratioで算出する。丸め規則、1回上限、1ターン累積上限、最低保証適用順を固定する。
-
-候補順序:
-
-1. rawDamage = floor(currentPopulation × ratio)。
-2. 防御・災害軽減を適用する。
-3. 1イベント上限を適用する。
-4. population = max(capitalMinimum, current - effectiveDamage)。
-5. 防ぎ切れなかったraw impactからoperational damageを算出する。
-
-複数攻撃のたびに割合計算するか、ターン内で合算して1回計算するかで結果が変わる。後者は順序依存を減らすため有力だが、戦闘ログ表現と合わせて決める。
+通常cellを荒地化するdamageは10%、一段階掘削・浅瀬化相当は30%、深海化相当は90%、噴火中心の山化は30%とする。Capital facility identity、owner、terrain、Nationのcapital coordinate、territory identityを維持し、population、cell version、chunk invalidation、audit/player logだけを変更する。`sunken_archived`への明示的な沈没処理ではCapital自体を地図から除去するため、このpopulation下限を適用しない。
 
 ## 復旧方式の案
 
@@ -75,30 +59,15 @@ MVPの初期TerritoryはCapital cellと、Capitalからx/y grid distance 2以内
 
 暫定推奨は小さな自然回復と、費用を払う復旧commandの併用である。完全な自動回復は攻撃の意味を弱め、完全な手動回復は復帰不能を生みやすい。
 
-## settlement_seedによる村発生
+## settlement_seedと人口成長
 
-このsectionはturnの自動発展実装前に確定する将来設計であり、MVP縦切りには含めない。
+randomized sequential cell processingで、所有者がいる人口0・施設なしの平地を候補とする。候補ごとに100面20未満を先に抽選し、その後、隣接6 cellsに農場または人口1人以上の集落があれば人口100人の村を発生させる。先に発生した村は同じturnの後続cellから観測できる。
 
-首都を村・集落の発生源とする。地形・施設IDごとのif分岐ではなく、settlement_seed能力が候補探索と生成profileを提供する。
+海際度bandごとの通常成長rangeと上限、飢餓時の100〜3,000人減少は`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`と`docs/open-questions.md`のB-16を正本とする。Capitalはsettlement facilityへ置換せず、minimum 100とordinary growth cap 25,000を維持する。
 
-ターンの自動発展phaseで、activeな国家について次を全て満たす場合だけ候補にする。
+## 緊急開拓のhistorical proposal
 
-- 首都に隣接する6セルのいずれか。
-- 自国領土または中立地。
-- 村を生成可能な地形。
-- 敵国が所有・支配していない。
-- 首都が完全な機能停止中ではない。
-- 村または同等集落を置ける空きがある。
-
-中立地へ生成する場合は、そのセルを同じ国家の領土として確定する。敵国領土を村の自然発生で上書きしない。候補が複数あるときはturn seedと安定した座標順を使って決定的に選ぶ。
-
-dormant_frozen、dormant_contestable、sunken_archivedでは自動発展を停止するため発生させない。首都だけが残ったactive国家も、適格な隣接セルがあれば時間をかけて村と領土を再建できる。
-
-成功時はSettlementSeeded eventにsource capital、target x、y、生成施設、所有権変更を記録する。発生確率、最小村規模、1回あたりの頻度は未決定である。
-
-## 緊急開拓
-
-このsectionはcommand実装前に確定する将来設計であり、MVP縦切りには含めない。
+以下は初期設計時のproposalであり、現在のcommand契約では採用していない。B-17によりemergency farm commandは現行MVPへ導入せず、automatic financeと明示的なabandonment/recreationを立て直し境界とする。将来の別rulesetで再検討する場合も、新しいowner decisionが必要である。
 
 次を全て満たすactive国家だけが、首都から緊急開拓を実行できる。
 
@@ -159,7 +128,7 @@ dormant_frozen、dormant_contestable、sunken_archivedでは自動発展を停�
 - 新規保護中の領土はrulesetに従う。
 - 変更元・変更先nationが同じworldに存在する。
 - 1セルの所有権変更は1turn内で最終結果を1つに決定する。
-- 競合影響は処理順ではなく、同時入力を集約して解決する。
+- 競合影響へsimultaneous resolutionを暗黙に導入しない。source-derivedなrandom cell orderの逐次因果を前提に、exact algorithmとtie handlingはB-07で決める。
 - 変更時にchunk version、国家領土集計、domain eventを同時更新する。
 
 ## 国家の存続と休眠
@@ -168,16 +137,12 @@ dormant_frozen、dormant_contestable、sunken_archivedでは自動発展を停�
 
 365日未満の復帰では残存首都から再建できる。他国に占領された領土を自動返還せず、凍結期間の生産も遡及しない。sunken_archivedでは首都も現在地図から除去するが、user、nation、event、統計、領土・首都履歴は物理削除しない。
 
-## 要決定事項
+## 現在の要決定事項
 
-- Status: Open / Required before: 国家作成実装前 — 初期Capital人口、1人口単位の表示換算、初期Territoryへ含められる地形。
-- Status: Open / Required before: 戦闘実装前 — 被害率、丸め、turn累積上限、機能低下、復旧費、占領保護ring、Capital移転、防壁都市。
-- Status: Open / Required before: ターン処理実装前 — settlement_seedの発生率、最小村規模、頻度。
-- Status: Open / Required before: コマンド実装前 — 緊急農場のcooldown、自己撤去確認期間、昇格・消滅・代償。
-- Status: Deferred / Required before: MVP後 — sunken_archivedからの再入植条件。
+現在のblocking gateは`docs/open-questions.md`を正本とする。Capital関連ではB-03（機能停止と復旧）、B-05（防壁）、B-13（dormant占領保護）がOpen、B-15（再入植）がDeferredである。人口初期値、minimum、growth cap、初期Territory、settlement growth、緊急農場の現行採否は決定済みである。
 
-## MVP実装記録（2026-07-26）
+## Historical initial MVP実装記録（2026-07-26）
 
-Capitalは原作にない新施設`hakoniwa_new.capital`であり、原作GIFを流用せずCSS placeholderを表示する。中心セルは必ずNation所有、population 1,000、最低人口ruleset値1とし、`nation_capitals`から座標を安定取得する。
+Capitalは原作にない新施設`hakoniwa_new.capital`であり、原作GIFを流用せずCSS placeholderを表示する。中心cellは必ずNation所有、population 1,000とし、`nation_capitals`から座標を安定取得する。初期sliceのminimum ruleset値1は、後続の災害・人口契約でcanonical 100人へsupersedeされた。
 
 初期TerritoryはCapitalからdistance 2以内の生成陸地19セルだけである。島の成長範囲はdistance 4、配置予約範囲はdistance 5であり、Territoryと同一視しない。distance 2外に生成された陸地は中立のまま残せる。

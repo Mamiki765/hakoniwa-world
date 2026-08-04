@@ -128,7 +128,9 @@ DSTの影響を避けるため内部はUTC instantで管理する。ローカル
 
 rulesetは読取り頻度が高いためキャッシュ可能だが、cache keyにversionを含める。activeという可変キーだけに依存せず、turn開始時に具体版を解決する。キャッシュ障害時はDBから読み、古い版へ無言でfallbackしない。
 
-## 未決定事項
+## Historical pre-implementation questions
+
+以下はTurnRunner/ruleset実装前に記録したhistorical questionsであり、現在のOpen gateではない。pre-release契約とpublic-release gateは`docs/open-questions.md`のA-09とRELEASE-01を正本とする。
 
 - Status: Open / Required before: ターン処理実装前 — PostgreSQL上の完全なruleset本体をJSONB、型付き設定table、hybridのどれにするか。
 - Status: Open / Required before: 本番公開前 — Worldごとの上書き範囲と公開承認の権限model。
