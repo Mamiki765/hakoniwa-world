@@ -70,6 +70,10 @@ final class TurnRandomStreamFactory
 
     private const LAND_SUBSIDENCE_TRIGGER_PREFIX = 'global_disasters:land_subsidence:nation:';
 
+    private const MONSTER_MOVEMENT_PREFIX = 'process_cells:monster:';
+
+    private const MONSTER_SPAWN_PREFIX = 'global_disasters:monster_spawn:nation:';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 
@@ -115,5 +119,24 @@ final class TurnRandomStreamFactory
         }
 
         return self::LAND_SUBSIDENCE_TRIGGER_PREFIX.$nationId.':trigger:v'.$streamVersion;
+    }
+
+    public static function monsterMovement(int $monsterId, int $streamVersion): string
+    {
+        if ($monsterId < 1 || $streamVersion < 1) {
+            throw new InvalidArgumentException('Monster-movement stream identity must use positive integers.');
+        }
+
+        return self::MONSTER_MOVEMENT_PREFIX.$monsterId.':movement:v'.$streamVersion;
+    }
+
+    public static function monsterSpawn(int $nationId, string $purpose, int $streamVersion): string
+    {
+        if ($nationId < 1 || $streamVersion < 1
+            || ! in_array($purpose, ['trigger', 'candidate', 'type', 'hp'], true)) {
+            throw new InvalidArgumentException('Monster-spawn stream identity is invalid.');
+        }
+
+        return self::MONSTER_SPAWN_PREFIX.$nationId.':'.$purpose.':v'.$streamVersion;
     }
 }

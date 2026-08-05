@@ -18,14 +18,21 @@ final class MapChunkService
             ->where('map_space_id', $mapSpace->id)
             ->where('chunk_x', $chunkX)
             ->where('chunk_y', $chunkY)
-            ->with(['terrain', 'facility', 'ownerNation:id,nation_number,name'])
+            ->with([
+                'terrain',
+                'facility',
+                'ownerNation:id,nation_number,name',
+                'monsterOccupancy.monster.definition',
+            ])
             ->orderBy('y')
             ->orderBy('x')
             ->get();
 
+        $currentTurn = (int) $mapSpace->world()->value('current_turn');
         $presentedCells = $cells->map(fn (MapCell $cell): array => $this->presenter->present(
             $cell,
             $viewerNationId,
+            $currentTurn,
         ))->values();
         $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
 

@@ -11,6 +11,7 @@ function cell(overrides: Partial<MapCell> = {}): MapCell {
     return {
         x: 3, y: -2, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
         display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '試験国', details: [],
+        monster: null,
         asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平地', fallback_style: 'tile-plain' },
         overlays: [], aria_label: 'x 3 y -2 平地 所有 試験国', version: 1, updated_at: null,
         ...overrides,
@@ -78,6 +79,26 @@ describe('viewer-safe cell details', () => {
         expect(wrapper.text()).toContain('発射可能数');
         expect(wrapper.text()).not.toContain('人口');
         expect(wrapper.text()).not.toContain('人規模');
+    });
+
+    it('shows public monster HP, skill, hardening and the current host Nation number', () => {
+        const wrapper = mount(CellDetails, { props: { cell: cell({
+            monster: {
+                id: 8, key: 'whale', name: 'クジラ', asset_key: 'hakoniwa_original.monster.kujira', asset_url: null,
+                asset: { key: 'hakoniwa_original.monster.kujira', url: null, available: false, fallback_label: 'クジラ', fallback_style: 'monster-kujira' },
+                current_hp: 4, spawned_max_hp: 5, hp_range: { min: 4, max: 5 },
+                skill_description: '偶数ターンは硬化する。', hardened_now: true, public_state: 'alive',
+                coordinate: { x: 3, y: -2 }, host_nation: { nation_number: 1, name: '試験島' }, host_label: 'N1',
+            },
+        }) } });
+
+        expect(wrapper.text()).toContain('クジラ');
+        expect(wrapper.text()).toContain('現在HP4');
+        expect(wrapper.text()).toContain('4～5');
+        expect(wrapper.text()).toContain('偶数ターンは硬化する。');
+        expect(wrapper.text()).toContain('硬化中');
+        expect(wrapper.text()).toContain('試験島（N1）');
+        expect(wrapper.text()).not.toContain('N18');
     });
 
     it('renders a public disguised representation exactly as an ordinary forest detail view', () => {

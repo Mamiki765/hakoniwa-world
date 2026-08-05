@@ -77,20 +77,22 @@
 
 対応根拠は`hakow.js:68-103,599-610`である。怪獣名やルールの新作採否と、画像ファイルの対応確認は別の判断として扱う。
 
+PR21ではこの対応表をproduction manifestの正本として採用した。8つのnormal `asset_key`と硬化variantは`AssetManifestResolver`から既存外部tile routeへ解決する。Git管理するのはmappingだけで、GIFは`product/public`へ置かない。画像のhash、catalog、fallback、deployment検査は`product/docs/monster-audit-pr21.md`を参照する。
+
 ## 新規要素
 
-原作にない首都、防壁都市、大学、研究所、新資源施設、新隕石アイテム、地下・宇宙専用施設には`hakoniwa_original.*`を割り当てない。原GIFを意味の似た新施設へ流用せず、当面は次のような別namespaceのplaceholderを使う。
+原作にない首都、防壁都市、大学、研究所、新資源施設、新隕石アイテム、地下・宇宙専用施設には`hakoniwa_original.*`を割り当てない。原GIFを意味の似た新施設へ流用しない。首都はowner decisionにより既存の論理keyを維持したまま、Git外asset `capital.gif`へ解決する。
 
 ```json
 {
   "id": "facility.capital",
-  "asset_key": "placeholder.facility.capital",
-  "fallback_label": "首都",
-  "fallback_style": "capital"
+  "asset_key": "tile.capital",
+  "external_filename": "capital.gif",
+  "fallback_label": "首都"
 }
 ```
 
-将来画像を追加するときはdefinition IDを変えず、マニフェストのasset key解決先または選択themeを追加する。原画像namespaceと新規画像namespaceを混ぜない。
+`capital.gif`は箱庭諸島2＋由来怪獣画像として扱わず、provenanceを混同しない。バイナリはGitや`product/public`へ収録せず、既存のread-only external asset directoryへ同名GIFとして配置する。不足時は首都labelを持つCSS fallbackを使う。その他の新規要素へ将来画像を追加するときもdefinition IDを変えず、マニフェストのasset key解決先または選択themeを追加する。原画像namespaceと新規画像namespaceを混ぜない。
 
 ## 実行時配置
 

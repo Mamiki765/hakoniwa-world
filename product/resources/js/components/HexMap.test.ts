@@ -11,6 +11,7 @@ function mapCell(overrides: Partial<MapCell> = {}): MapCell {
     return {
         x: 0, y: 0, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
         display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '地図国', details: [],
+        monster: null,
         asset: { key: 'tile.plain', url: '/tiles/plain.gif?v=1-1', available: true, fallback_label: '平地', fallback_style: 'tile-plain' },
         overlays: [{ key: 'overlay.selection', url: '/tiles/selection.png?v=1-1', available: true, fallback_label: '', fallback_style: 'overlay-selection' }],
         aria_label: 'x 0 y 0 平地 所有 地図国', version: 1, updated_at: null,
@@ -105,6 +106,36 @@ describe('staggered square-image map', () => {
         expect(wrapper.html()).not.toContain('ミサイル基地');
         expect(wrapper.find('.map-cell').attributes('aria-label')).toBe('x 0 y 0 森 所有 他国');
         expect(wrapper.find('.map-cell').classes()).toContain('terrain-forest');
+    });
+
+    it('renders a non-interactive monster overlay with current HP, current host label and safe fallback', async () => {
+        const monsterCell = mapCell({
+            owner_nation_id: 18,
+            owner_nation_number: 3,
+            monster: {
+                id: 9, key: 'sanjira', name: 'サンジラ',
+                asset_key: 'hakoniwa_original.monster.hardened', asset_url: null,
+                asset: { key: 'hakoniwa_original.monster.hardened', url: null, available: false, fallback_label: 'サンジラ', fallback_style: 'hakoniwa-original-monster-hardened' },
+                current_hp: 1, spawned_max_hp: 2, hp_range: { min: 1, max: 2 },
+                skill_description: '奇数ターンは硬化する。', hardened_now: true, public_state: 'alive',
+                coordinate: { x: 0, y: 0 }, host_nation: { nation_number: 3, name: '第三国' }, host_label: 'N3',
+            },
+            aria_label: 'x 0 y 0 平地 怪獣 サンジラ HP 1 N3 硬化中',
+        });
+        const wrapper = mount(HexMap, { props: {
+            cells: [monsterCell], selected: monsterCell, capital: { x: 0, y: 0 }, bounds: worldBounds,
+            loading: false, error: null, emptyChunks: [],
+        } });
+        await flushPromises();
+
+        const overlay = wrapper.find('.monster-overlay');
+        expect(overlay.exists()).toBe(true);
+        expect(overlay.text()).toContain('HP 1');
+        expect(overlay.text()).toContain('N3');
+        expect(overlay.text()).toContain('硬');
+        expect(overlay.find('.monster-image').exists()).toBe(false);
+        expect(overlay.find('.monster-fallback').text()).toBe('サ');
+        expect(wrapper.find('.map-cell').attributes('aria-label')).toContain('サンジラ HP 1 N3');
     });
 
     it('uses absolute world y parity before panning around an odd-row capital', async () => {

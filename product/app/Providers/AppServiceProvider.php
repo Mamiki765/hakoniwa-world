@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Application\CompleteTurnEngine;
 use App\Application\InitialIslandGenerator;
 use App\Application\LegacyInspiredInitialIslandGenerator;
+use App\Application\MonsterRemovalService;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Turn\GameplayTurnPhase;
 use App\Domain\Turn\RandomTurnSeedGenerator;
@@ -27,6 +28,9 @@ class AppServiceProvider extends ServiceProvider
         ));
         $this->app->bind(InitialIslandGenerator::class, LegacyInspiredInitialIslandGenerator::class);
         $this->app->bind(TurnSeedGenerator::class, RandomTurnSeedGenerator::class);
+        // MonsterTurnService and its disaster resolver must mutate one shared
+        // turn-local occupancy index during defense self-destruct blasts.
+        $this->app->singleton(MonsterRemovalService::class);
         $this->app->bind(TurnPipeline::class, function ($app): TurnPipeline {
             $engine = $app->make(CompleteTurnEngine::class);
 

@@ -35,6 +35,6 @@ Docker Composeを起動
 
 ## 未実装
 
-ゲーム内コマンド、queue、turn処理、資源生産・消費、人口自然増加、災害、怪獣、ミサイル、国境侵食、休眠遷移、地下・宇宙、WebSocket、本番OCI Compose統合はMVP外です。
+ミサイルcombat、国境侵食、休眠遷移Job、地下・宇宙、WebSocket、本番OCI Compose統合は現在のroadmap scope外です。実装済みのcommand、queue、turn処理、経済、人口、災害、怪獣は各ruleset版とarchitecture文書を正本とします。
 
 設計判断と残るgateは [docs/open-questions.md](docs/open-questions.md)、実装構成は [mvp-implementation.md](docs/architecture/mvp-implementation.md)を参照してください。

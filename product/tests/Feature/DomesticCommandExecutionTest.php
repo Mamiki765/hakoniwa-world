@@ -14,6 +14,9 @@ use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonsterDefinition;
+use App\Models\MonsterInstance;
+use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
@@ -158,6 +161,56 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('plain', $capital->fresh()->terrain()->value('key'));
         $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.invalid')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
+    }
+
+    public function test_terrain_commands_reject_a_monster_occupied_target_without_mutation_or_cost(): void
+    {
+        $world = $this->lightweightWorld();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, '怪獣占有開発国');
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNotIn('id', $nation->capital()->select('map_cell_id'))
+            ->firstOrFail();
+        $this->changeTerrain($target, 'wasteland');
+        $target = $target->fresh(['terrain', 'facility']);
+        $definition = MonsterDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'inora')->firstOrFail();
+        $monster = MonsterInstance::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $definition->id,
+            'current_hp' => 1,
+            'spawned_max_hp' => 1,
+            'state' => 'alive',
+            'spawned_target_turn' => 1,
+            'version' => 1,
+        ]);
+        $occupancy = MonsterOccupancy::query()->create([
+            'monster_instance_id' => $monster->id,
+            'map_cell_id' => $target->id,
+        ]);
+        $moneyBefore = (int) $nation->money;
+        $items = [];
+        foreach (['land_clear', 'land_level', 'excavate'] as $position => $commandKey) {
+            $items[] = $this->queue($user, $nation, $space, $commandKey, $target, 1, $position + 1);
+        }
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], str_repeat('7', 64)),
+        );
+
+        $this->assertSame(3, $result['failures']);
+        $this->assertSame(3, $result['removed']);
+        $this->assertSame(0, $result['successes']);
+        foreach ($items as $item) {
+            $this->assertSame('failed', $item->fresh()->status);
+            $this->assertSame('monster_occupied', $item->fresh()->failure_code);
+        }
+        $this->assertSame($moneyBefore + 10, (int) $nation->fresh()->money);
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        $this->assertSame('alive', $monster->fresh()->state);
+        $this->assertSame($target->id, $occupancy->fresh()->map_cell_id);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
+        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.invalid')->count());
     }
 
     public function test_water_commands_reject_targets_owned_by_another_nation(): void

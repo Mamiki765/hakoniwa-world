@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -30,6 +31,7 @@ use Illuminate\Support\Carbon;
  * @property-read TerrainDefinition $terrain
  * @property-read FacilityDefinition|null $facility
  * @property-read Nation|null $ownerNation
+ * @property-read MonsterOccupancy|null $monsterOccupancy
  */
 class MapCell extends Model
 {
@@ -64,5 +66,11 @@ class MapCell extends Model
     public function ownerNation(): BelongsTo
     {
         return $this->belongsTo(Nation::class, 'owner_nation_id');
+    }
+
+    /** @return HasOne<MonsterOccupancy, $this> */
+    public function monsterOccupancy(): HasOne
+    {
+        return $this->hasOne(MonsterOccupancy::class, 'map_cell_id');
     }
 }

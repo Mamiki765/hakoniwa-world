@@ -37,12 +37,14 @@ class TileAssetTest extends TestCase
     {
         $this->writeGif('land0.gif');
         $this->writeGif('land6.gif');
+        $this->writeGif('capital.gif');
         $resolver = app(AssetManifestResolver::class);
         $layers = $resolver->resolveLayers('tile.sea', '海', ['tile.forest']);
 
         $this->assertTrue($layers['completed']['available']);
         $this->assertSame('tile.forest', $layers['overlays'][0]['key']);
         $this->assertTrue($layers['overlays'][0]['available']);
+        $this->assertStringContainsString('/capital.gif?v=', (string) $resolver->resolve('tile.capital', '首都')['url']);
         $this->assertNull($resolver->pathForFilename('../land0.gif'));
         $this->assertFalse($resolver->resolve('unregistered.asset', '?')['available']);
 

@@ -12,7 +12,7 @@
 
 | Milestone | Blocking Open IDs | 実装境界 |
 |---|---|---|
-| monster | MONSTER-02、MONSTER-03 | 怪獣実装前にsource-derived ruleとterrain-changing disaster相互作用を確定する。MONSTER-01は決定済み。 |
+| monster | — | MONSTER-01〜04はPR21で決定・実装済み。将来のawardはAWARD-01を別gateとして維持する。 |
 | missile / commands / combat | B-03、B-05、B-07、B-10、B-12、B-13 | 対応するmissile、attack、territory、dormancy機能の実装前にだけ停止する。怪獣単体PRの一律blockerではない。 |
 | lifecycle / automatic turn operations | T-02、D-02 | lifecycle Job実装前、またはproduction automatic retry / cron enablement前に確定する。 |
 | public release | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07 | release-freezeと本公開準備に入る前に確定する。 |
@@ -260,23 +260,39 @@
 ### MONSTER-01 怪獣actorとoccupancy
 
 - Status: Decided
-- Implemented: No
+- Implemented: Yes
 - Decision: 怪獣はterrain/facilityへ埋め込まず、独立したactorと別occupancy layerを持つ。最初の怪獣PRは1 actor = 1 cellとするが、将来のmulti-cell footprintを禁止しない。Capital cellのoccupancyは禁止する。
 - Decision record: `docs/decisions/ADR-0007-monster-actor-and-occupancy.md`
 
 ### MONSTER-02 source-derived怪獣rule
 
-- Status: Open
-- Required before: 怪獣実装前
-- Open decision: source-derived movement、acted flags、ghost、hardening parity、spawn、HP、rewardの新作契約を怪獣実装前source auditで確定する。legacy cell encodingは採用しない。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、`docs/decisions/ADR-0002-reference-integration-policy.md`
+- Status: Decided
+- Implemented: Yes
+- Decision: 8種のHP、movement上限、硬化parity、Nation単位の自然出現、人口pool、報酬値を`roadmap-pr21-v1`へ固定する。cell順の一回pass、移動先cellが未処理なら同turn再行動できるsource-derived因果を採用し、legacy cell encodingと永続`moves_taken`は採用しない。
+- Decision record: `product/docs/monster-audit-pr21.md`、`docs/architecture/monster-system.md`
 
 ### MONSTER-03 terrain-changing disasterとの相互作用
 
+- Status: Decided
+- Implemented: Yes
+- Decision: earthquake、tsunami、typhoon、fire、riotはoccupancyを維持して怪獣cellを通常対象から除外する。meteor shower、huge meteor、eruption、land subsidence、terrain-destruction missile、administrative terrain overwriteは先にoccupancyを報酬なしで除去してから地形を変更する。防衛施設接触は怪獣を明示除去して一度だけ巨大隕石相当blastを解決し、killer・報酬・kill statを作らない。
+- Decision record: `product/docs/monster-audit-pr21.md`、`docs/decisions/ADR-0007-monster-actor-and-occupancy.md`
+
+### MONSTER-04 共有Worldの自然出現・報酬・討伐統計
+
+- Status: Decided
+- Implemented: Yes
+- Decision: 自然出現はeligibleなactive Nationごとに1 turn 1回、`min(10,000, owned_land_cells * 2) / 10,000`で判定する。人口100,000未満は出現なし、100,000〜249,999はinora/sanjira、250,000〜399,999はさらにred/dark/ghost、400,000以上はさらにwhale/kingを加えたuniform poolからsettlementへ最大1体出現させ、mechaは自然出現させない。Nation attributed final blowではkillerへ価値の切捨て半分を賞金、死亡時cell ownerへ残りを現行sale contractと同価値の怪獣肉（1億円=500トン）としてcapacity上限付きで配分する。`nation_monster_kill_stats`のWorld/Nation/definition別countを種類別討伐数、`SUM(kill_count)`を総トドメ数、count>0をkill markの正本とし、個別撃破はstructured eventだけへ残す。awardは実装しない。
+- Asset decision: 箱庭諸島2＋の原GIFは`_references/hakoniwa-2plus/assets/hakogif`で監査するが、Git、`product/public`、container imageへ収録せず、既存のGit外read-only tile asset directoryから原名・GIF形式のまま配信する。`monster4.gif`はkind 2/6の硬化状態専用とし、不足時はAPIと画面を失敗させず安全なCSS fallbackを使う。
+- Decision record: `product/docs/monster-audit-pr21.md`、`docs/architecture/monster-system.md`、`docs/assets/tile-asset-mapping.md`、`docs/reference-analysis/license-and-provenance.md`
+
+### AWARD-01 Nation awards
+
 - Status: Open
-- Required before: 怪獣実装前
-- Open decision: monster occupancy中のcellへterrain-changing disasterが作用する場合に、occupancy維持、移動/退去、damage/消滅、event順序のどれを採るかowner判断を得る。無効なterrain/occupancy組合せを暗黙に作らない。
-- Decision record: `docs/decisions/ADR-0007-monster-actor-and-occupancy.md`、`product/docs/disaster-oil-audit-pr15.md`
+- Required before: award system実装前
+- Open decision: turn award、prosperity award、peace award、monster awardのexact threshold、repeatability、revocation、public display、historical backfillをowner判断で確定する。
+- Candidate: `monster_final_blow_count = 100`で怪獣賞等を検討できるが、PR21ではthresholdもawardも実装しない。
+- Decision record: `product/docs/monster-audit-pr21.md`
 
 ### B-02 Capitalへの複数被害
 

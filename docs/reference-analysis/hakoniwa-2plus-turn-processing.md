@@ -232,6 +232,12 @@ legacyはNation center x/yを持つだけでCapital facility identityを持た�
 
 全体怪獣処理は `disMonster` 回だけランダム座標を試し、適切な陸地で所有国人口が1,000単位以上なら人口帯に応じた怪獣を出す（`Map::globalDisaster`, `map.c:784-818`）。`disMonster` は確率/1000ではなく1ターンの試行回数である。
 
+### PR21での採否
+
+source factとして8種のkind、HP、skill、経験、価値、randomized single cell pass、移動先が後続cellなら再処理される因果、奇数/偶数硬化を採用した。一方、rank-based owner、`kind*20+hp` cell encoding、global座標試行型spawn、永続flagは採用しない。
+
+owner decisionとして共有Worldの各active Nationへ所有陸地数に比例する一回drawを割り当て、判定前snapshotから有人口集落候補と人口poolを選ぶ。terrain eventの維持/explicit removal、防衛施設self-destruct、killer/host reward、Nation/definition別aggregate kill stat、structured kill event、外部GIF配信もsourceの表現を直接移植せず新作契約として決定した。source factとowner decisionの完全な対応は`product/docs/monster-audit-pr21.md`を正本とする。
+
 ## 災害
 
 全体災害の地震、津波、台風、流星群、巨大隕石、噴火は、それぞれ独立に `dice(1000) < 設定値` で1回発生判定する（`Map::globalDisaster`, `map.c:742-782`）。火災は各対象セルで同じく `/1000`、地均し地震と埋蔵金はコマンド実行時 `/1000`（`Map::disFire`, `map.c:840-856`; `command.c:230-243`）。

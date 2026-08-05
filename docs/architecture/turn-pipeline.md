@@ -98,6 +98,12 @@ dormant_frozenまたはdormant_contestable内の既存怪獣に対する明示�
 
 turn_runに各フェーズの所要時間、読取・更新セル数、受理・失敗命令数、イベント数、再試行数を記録する。ログにはseed、ruleset_version、world_id、turn_number、run_idを相関キーとして含める。プレイヤー向けイベントと運用ログは別に保持する。
 
+### PR21 monster actor
+
+PR21では`process_cells`の各cellでmonster actorを人口・facility処理より先に解決し、World単位にbatch loadしたoccupancyとmemory coordinate indexを使う。randomized sequential causalityにより、未処理cellへ移動したactorは同turn内に再行動できる。definition別上限はturn-localで、硬化はtarget turn parityで判定する。新規自然出現は`global_disasters`末尾なので同turnのcell passへ戻らない。
+
+`process_cells` metricsはmonster loaded/actions/moves/trample/defense/max movesとcombat counterを、`global_disasters` metricsはNation eligibility/draw/spawn/no candidate/terrain removalを含む。exact順序とterrain event表は`docs/architecture/monster-system.md`および`product/docs/monster-audit-pr21.md`を正本とする。
+
 ## 必須テスト
 
 - 同じ入力とseedの再現性。

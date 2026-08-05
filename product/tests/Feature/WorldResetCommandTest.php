@@ -13,7 +13,11 @@ use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonsterDefinition;
+use App\Models\MonsterInstance;
+use App\Models\MonsterOccupancy;
 use App\Models\Nation;
+use App\Models\NationMonsterKillStat;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
@@ -180,6 +184,77 @@ class WorldResetCommandTest extends TestCase
         $this->assertNotNull(TurnRun::query()->find($otherRun->id));
         $this->assertSame($userCount, User::query()->count());
         $this->assertSame($identityCount, DB::table('auth_identities')->count());
+    }
+
+    public function test_reset_reports_and_cascades_world_owned_monster_stats_after_a_kill(): void
+    {
+        [$world] = $this->populatedWorld();
+        $nation = Nation::query()->where('world_id', $world->id)->firstOrFail();
+        $definition = MonsterDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'inora')
+            ->firstOrFail();
+        $cell = MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereNotIn('id', $nation->capital()->select('map_cell_id'))
+            ->firstOrFail();
+        $killed = MonsterInstance::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $definition->id,
+            'current_hp' => 0,
+            'spawned_max_hp' => 1,
+            'state' => 'killed',
+            'spawned_target_turn' => 1,
+            'version' => 2,
+            'removal_reason' => 'monster_missile',
+            'removed_at' => now(),
+        ]);
+        $killStat = NationMonsterKillStat::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $definition->id,
+            'nation_id' => $nation->id,
+            'kill_count' => 1,
+            'first_killed_turn' => 1,
+            'last_killed_turn' => 1,
+            'version' => 1,
+        ]);
+        $alive = MonsterInstance::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $definition->id,
+            'current_hp' => 1,
+            'spawned_max_hp' => 1,
+            'state' => 'alive',
+            'spawned_target_turn' => 1,
+            'version' => 1,
+        ]);
+        $occupancy = MonsterOccupancy::query()->create([
+            'monster_instance_id' => $alive->id,
+            'map_cell_id' => $cell->id,
+        ]);
+
+        $this->assertSame(0, Artisan::call('hakoniwa:world:reset', [
+            '--world' => $world->key,
+            '--dry-run' => true,
+        ]));
+        $dryRunOutput = Artisan::output();
+        $this->assertMatchesRegularExpression('/\|\s*nation_monster_kill_stats\s*\|\s*1\s*\|/', $dryRunOutput);
+        $this->assertMatchesRegularExpression('/\|\s*monster_instances\s*\|\s*2\s*\|/', $dryRunOutput);
+        $this->assertMatchesRegularExpression('/\|\s*monster_occupancies\s*\|\s*1\s*\|/', $dryRunOutput);
+        $this->assertNotNull($killStat->fresh());
+        $this->assertNotNull($occupancy->fresh());
+
+        $this->assertSame(0, Artisan::call('hakoniwa:world:reset', [
+            '--world' => $world->key,
+            '--profile' => 'debug-32x32',
+            '--confirm' => 'RESET-'.$world->key,
+        ]));
+
+        $this->assertNull(World::query()->find($world->id));
+        $this->assertNull(NationMonsterKillStat::query()->find($killStat->id));
+        $this->assertNull(MonsterInstance::query()->find($killed->id));
+        $this->assertNull(MonsterInstance::query()->find($alive->id));
+        $this->assertNull(MonsterOccupancy::query()->find($occupancy->id));
+        $this->assertNotNull(MonsterDefinition::query()->find($definition->id));
     }
 
     public function test_explicit_debug_profile_resets_to_32_by_32_and_restarts_nation_numbers(): void

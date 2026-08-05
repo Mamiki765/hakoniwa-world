@@ -11,6 +11,7 @@ use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
+use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
@@ -172,6 +173,10 @@ final class DomesticCommandExecutor
             ->first();
         if ($cell === null) {
             return ['code' => 'target_missing', 'message' => 'Target cell no longer exists.'];
+        }
+        if (in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)
+            && MonsterOccupancy::query()->where('map_cell_id', $cell->id)->lockForUpdate()->first(['id']) !== null) {
+            return ['code' => 'monster_occupied', 'message' => 'Terrain commands cannot alter a monster-occupied cell.'];
         }
         if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
             return ['code' => 'invalid_terrain', 'message' => 'Target terrain is no longer valid.'];

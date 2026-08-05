@@ -124,13 +124,13 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonMissingPath('data.resources');
     }
 
-    public function test_assets_fall_back_without_original_gifs_and_capital_is_placeholder(): void
+    public function test_assets_fall_back_without_external_gifs_including_capital(): void
     {
         config(['hakoniwa.assets.path' => storage_path('missing-original-assets')]);
         $resolver = app(AssetManifestResolver::class);
 
         $this->assertFalse($resolver->resolve('hakoniwa_original.sea', '海')['available']);
-        $this->assertNull($resolver->resolve('hakoniwa_new.capital', '首都')['url']);
+        $this->assertNull($resolver->resolve('tile.capital', '首都')['url']);
         $this->assertFalse($resolver->resolve('unknown.asset', '?')['available']);
     }
 }

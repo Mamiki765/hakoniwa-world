@@ -53,6 +53,12 @@
 - 配布元へのリンクと作者表示を維持する。
 - 論理キー、原ファイル名対応、配置・fallback契約は`docs/assets/tile-asset-mapping.md`に記録する。
 
+### PR21 怪獣画像provenance
+
+PR21の8種類の通常画像と硬化variantは、箱庭諸島2＋由来の`_references/hakoniwa-2plus/assets/hakogif/monster0.gif`〜`monster8.gif`を監査sourceとする。kind、stable key、filename、SHA-256の対応は`product/docs/monster-audit-pr21.md`に固定した。`monster4.gif`はkind 2/6の硬化状態専用であり、通常種または別怪獣へ割り当てない。
+
+この記録は上記の権利評価・再配布方針を変更しない。GIFはGit、`product/public`、container imageへ収録せず、production operatorがGit外のread-only asset directoryへ原名・原形式で配置する。applicationは既存tile resolver経路だけを使い、不足時はCSS fallbackを返す。加工、再描画、AI生成、形式変換、無断の別画像代用を行わない。
+
 ## mjtakenon/hakoniwa（やまにてぃ）
 
 ### 出典と固定した参照点

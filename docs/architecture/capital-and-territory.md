@@ -143,6 +143,6 @@ randomized sequential cell processingで、所有者がいる人口0・施設な
 
 ## Historical initial MVP実装記録（2026-07-26）
 
-Capitalは原作にない新施設`hakoniwa_new.capital`であり、原作GIFを流用せずCSS placeholderを表示する。中心cellは必ずNation所有、population 1,000とし、`nation_capitals`から座標を安定取得する。初期sliceのminimum ruleset値1は、後続の災害・人口契約でcanonical 100人へsupersedeされた。
+Capitalは原作にない新施設であり、箱庭諸島2＋由来画像を流用しない。`tile.capital`はGit外read-only asset directoryの`capital.gif`へ解決し、不足時はCSS fallbackを表示する。中心cellは必ずNation所有、population 1,000とし、`nation_capitals`から座標を安定取得する。初期sliceのminimum ruleset値1は、後続の災害・人口契約でcanonical 100人へsupersedeされた。
 
 初期TerritoryはCapitalからdistance 2以内の生成陸地19セルだけである。島の成長範囲はdistance 4、配置予約範囲はdistance 5であり、Territoryと同一視しない。distance 2外に生成された陸地は中立のまま残せる。

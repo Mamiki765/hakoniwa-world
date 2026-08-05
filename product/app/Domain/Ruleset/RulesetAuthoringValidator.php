@@ -84,7 +84,7 @@ final class RulesetAuthoringValidator
 
     /**
      * @param  array<string, mixed>  $settings
-     * @return array{key: string, version: int, resources: int, facilities: int, commands: int, production: int}
+     * @return array{key: string, version: int, resources: int, facilities: int, commands: int, production: int, monsters: int}
      */
     public function validate(array $settings): array
     {
@@ -279,6 +279,7 @@ final class RulesetAuthoringValidator
             $reservationRadius,
             $landRadius,
         );
+        $monsterCount = $this->validateMonsterSystem($settings, $resourceKeys, $facilityKeys);
 
         return [
             'key' => $key,
@@ -287,7 +288,245 @@ final class RulesetAuthoringValidator
             'facilities' => count($facilityKeys),
             'commands' => count($commandKeys),
             'production' => count($productionKeys),
+            'monsters' => $monsterCount,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<string>  $resourceKeys
+     * @param  list<string>  $facilityKeys
+     */
+    private function validateMonsterSystem(array $settings, array $resourceKeys, array $facilityKeys): int
+    {
+        $hasDefinitions = array_key_exists('monster_definitions', $settings);
+        $hasSystem = array_key_exists('monster_system', $settings);
+        if ($hasDefinitions !== $hasSystem) {
+            throw new DomainException(
+                'ruleset.monster_definitions and ruleset.monster_system must be published together.',
+            );
+        }
+        if (! $hasDefinitions) {
+            return 0;
+        }
+
+        $definitions = $this->list($settings['monster_definitions'], 'ruleset.monster_definitions');
+        $keys = $this->definitionKeys($definitions, 'ruleset.monster_definitions');
+        $expected = [
+            'mecha_inora' => [2, 0, 'none', 1, null, 0, 5, 'hakoniwa_original.monster.mecha_inora', null, 0, 0, 'monster7.gif'],
+            'inora' => [1, 1, 'none', 1, 1, 400, 5, 'hakoniwa_original.monster.inora', null, 1, 0, 'monster0.gif'],
+            'sanjira' => [1, 1, 'harden_odd', 1, 1, 500, 7, 'hakoniwa_original.monster.sanjira', 'hakoniwa_original.monster.hardened', 2, 3, 'monster5.gif'],
+            'red_inora' => [3, 1, 'none', 1, 2, 1_000, 12, 'hakoniwa_original.monster.red_inora', null, 3, 0, 'monster1.gif'],
+            'dark_inora' => [2, 1, 'move_2', 2, 2, 800, 15, 'hakoniwa_original.monster.dark_inora', null, 4, 1, 'monster2.gif'],
+            'inora_ghost' => [1, 0, 'move_9999', 9_999, 2, 300, 10, 'hakoniwa_original.monster.inora_ghost', null, 5, 2, 'monster8.gif'],
+            'whale' => [4, 1, 'harden_even', 1, 3, 1_500, 20, 'hakoniwa_original.monster.kujira', 'hakoniwa_original.monster.hardened', 6, 4, 'monster6.gif'],
+            'king_inora' => [5, 1, 'none', 1, 3, 2_000, 30, 'hakoniwa_original.monster.king_inora', null, 7, 0, 'monster3.gif'],
+        ];
+        if ($keys !== array_keys($expected)) {
+            throw new DomainException('ruleset.monster_definitions must contain the exact eight PR21 monster keys in canonical order.');
+        }
+
+        $assetKeys = [];
+        $knownSkills = ['none', 'move_2', 'move_9999', 'harden_odd', 'harden_even'];
+        foreach ($definitions as $index => $definitionValue) {
+            $path = "ruleset.monster_definitions.{$index}";
+            $definition = $this->map($definitionValue, $path);
+            $this->requireKeys($definition, [
+                'key', 'name', 'asset_key', 'hardened_asset_key', 'base_hp', 'hp_variation',
+                'skill_key', 'movement_limit', 'natural_spawn_tier', 'wreckage_value_money',
+                'missile_base_experience', 'skill_description', 'visibility',
+                'movement_terrain_contract', 'trample_contract', 'hardening_contract', 'source_metadata',
+            ], $path);
+            $key = $this->persistedString($definition['key'], "{$path}.key");
+            $this->persistedString($definition['name'], "{$path}.name");
+            $assetKey = $this->persistedString($definition['asset_key'], "{$path}.asset_key");
+            if (in_array($assetKey, $assetKeys, true)) {
+                throw new DomainException("{$path}.asset_key duplicates a normal monster asset key.");
+            }
+            $assetKeys[] = $assetKey;
+            $hardenedAsset = $definition['hardened_asset_key'] === null
+                ? null
+                : $this->persistedString($definition['hardened_asset_key'], "{$path}.hardened_asset_key");
+            $baseHp = $this->integer($definition['base_hp'], "{$path}.base_hp", 1);
+            $variation = $this->integer($definition['hp_variation'], "{$path}.hp_variation", 0);
+            if ($baseHp + $variation > 65_535) {
+                throw new DomainException("{$path} HP range must fit an unsigned small integer.");
+            }
+            $skill = $this->persistedString($definition['skill_key'], "{$path}.skill_key");
+            if (! in_array($skill, $knownSkills, true)) {
+                throw new DomainException("{$path}.skill_key is not a supported exclusive skill.");
+            }
+            $movementLimit = $this->integer($definition['movement_limit'], "{$path}.movement_limit", 1);
+            $tier = $definition['natural_spawn_tier'] === null
+                ? null
+                : $this->integer($definition['natural_spawn_tier'], "{$path}.natural_spawn_tier", 1);
+            $value = $this->integer($definition['wreckage_value_money'], "{$path}.wreckage_value_money", 0);
+            $experience = $this->integer($definition['missile_base_experience'], "{$path}.missile_base_experience", 0);
+            $this->persistedString($definition['skill_description'], "{$path}.skill_description");
+            if ($this->persistedString($definition['visibility'], "{$path}.visibility") !== 'public') {
+                throw new DomainException("{$path}.visibility must be public.");
+            }
+            $movement = $this->map($definition['movement_terrain_contract'], "{$path}.movement_terrain_contract");
+            $trample = $this->map($definition['trample_contract'], "{$path}.trample_contract");
+            $hardening = $this->map($definition['hardening_contract'], "{$path}.hardening_contract");
+            $source = $this->map($definition['source_metadata'], "{$path}.source_metadata");
+            $this->requireKeys($source, ['kind', 'skill_code', 'filename'], "{$path}.source_metadata");
+            $contract = $expected[$key];
+            if ([$baseHp, $variation, $skill, $movementLimit, $tier, $value, $experience, $assetKey,
+                $hardenedAsset, $source['kind'], $source['skill_code'], $source['filename']] !== $contract) {
+                throw new DomainException("{$path} differs from the audited Hakoniwa 2+ PR21 contract.");
+            }
+            $this->validateMonsterMovementContract($movement, $facilityKeys, "{$path}.movement_terrain_contract");
+            if ($trample !== ['population_after' => 0, 'remove_facility' => true, 'restore_previous_terrain' => false]) {
+                throw new DomainException("{$path}.trample_contract differs from the PR21 owner decision.");
+            }
+            $expectedHardening = match ($skill) {
+                'harden_odd' => ['type' => 'target_turn_parity', 'parity' => 'odd'],
+                'harden_even' => ['type' => 'target_turn_parity', 'parity' => 'even'],
+                default => ['type' => 'none'],
+            };
+            if ($hardening !== $expectedHardening) {
+                throw new DomainException("{$path}.hardening_contract does not match skill_key.");
+            }
+        }
+
+        $systemPath = 'ruleset.monster_system';
+        $system = $this->map($settings['monster_system'], $systemPath);
+        $this->requireKeys($system, ['footprint_cells', 'natural_spawn', 'movement', 'reward', 'terrain_events', 'kill_stats'], $systemPath);
+        if ($this->integer($system['footprint_cells'], "{$systemPath}.footprint_cells", 1) !== 1) {
+            throw new DomainException("{$systemPath}.footprint_cells must be exactly 1 for PR21.");
+        }
+        $this->validateMonsterMovementContract(
+            $this->map($system['movement'], "{$systemPath}.movement"),
+            $facilityKeys,
+            "{$systemPath}.movement",
+        );
+
+        $spawnPath = "{$systemPath}.natural_spawn";
+        $spawn = $this->map($system['natural_spawn'], $spawnPath);
+        $this->requireKeys($spawn, [
+            'probability_per_land_cell', 'maximum_probability_numerator', 'one_draw_per_active_nation',
+            'eligible_nation_state', 'minimum_population', 'population_tiers', 'settlement_facility_keys',
+            'exclude_capital', 'maximum_per_nation_per_turn', 'selection', 'stream_version',
+        ], $spawnPath);
+        $probability = $this->map($spawn['probability_per_land_cell'], "{$spawnPath}.probability_per_land_cell");
+        if ($probability !== ['numerator' => 2, 'denominator' => 10_000]
+            || $this->integer($spawn['maximum_probability_numerator'], "{$spawnPath}.maximum_probability_numerator", 0) !== 10_000
+            || $this->boolean($spawn['one_draw_per_active_nation'], "{$spawnPath}.one_draw_per_active_nation") !== true
+            || $this->persistedString($spawn['eligible_nation_state'], "{$spawnPath}.eligible_nation_state") !== 'active'
+            || $this->integer($spawn['minimum_population'], "{$spawnPath}.minimum_population", 1) !== 100_000
+            || $this->boolean($spawn['exclude_capital'], "{$spawnPath}.exclude_capital") !== true
+            || $this->integer($spawn['maximum_per_nation_per_turn'], "{$spawnPath}.maximum_per_nation_per_turn", 1) !== 1
+            || $this->persistedString($spawn['selection'], "{$spawnPath}.selection") !== 'uniform_source_pool'
+            || $this->integer($spawn['stream_version'], "{$spawnPath}.stream_version", 1) !== 1) {
+            throw new DomainException("{$spawnPath} differs from the Nation-scoped PR21 spawn contract.");
+        }
+        $settlements = $this->list($spawn['settlement_facility_keys'], "{$spawnPath}.settlement_facility_keys");
+        foreach ($settlements as $facilityKey) {
+            $this->reference($facilityKey, $facilityKeys, "{$spawnPath}.settlement_facility_keys");
+        }
+        if ($settlements !== ['village', 'town', 'city']) {
+            throw new DomainException("{$spawnPath}.settlement_facility_keys must exclude Capital and non-settlements.");
+        }
+        $tiers = $this->list($spawn['population_tiers'], "{$spawnPath}.population_tiers");
+        $expectedTiers = [
+            [100_000, ['inora', 'sanjira']],
+            [250_000, ['inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost']],
+            [400_000, ['inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora']],
+        ];
+        $actualTiers = [];
+        foreach ($tiers as $index => $tierValue) {
+            $tier = $this->map($tierValue, "{$spawnPath}.population_tiers.{$index}");
+            $this->requireKeys($tier, ['minimum_population', 'monster_keys'], "{$spawnPath}.population_tiers.{$index}");
+            $monsterKeys = $this->list($tier['monster_keys'], "{$spawnPath}.population_tiers.{$index}.monster_keys");
+            foreach ($monsterKeys as $monsterKey) {
+                $this->reference($monsterKey, $keys, "{$spawnPath}.population_tiers.{$index}.monster_keys");
+            }
+            $actualTiers[] = [
+                $this->integer($tier['minimum_population'], "{$spawnPath}.population_tiers.{$index}.minimum_population", 1),
+                $monsterKeys,
+            ];
+        }
+        if ($actualTiers !== $expectedTiers) {
+            throw new DomainException("{$spawnPath}.population_tiers must match the audited uniform source pools.");
+        }
+
+        $reward = $this->map($system['reward'], "{$systemPath}.reward");
+        $this->requireKeys($reward, [
+            'killer_money_share', 'host_remainder_share', 'host_food_resource_key',
+            'food_tons_per_money_unit', 'missile_base_experience_maximum',
+        ], "{$systemPath}.reward");
+        $this->reference($reward['host_food_resource_key'], $resourceKeys, "{$systemPath}.reward.host_food_resource_key");
+        $saleRates = $this->map($settings['inventory_sale_rates'] ?? null, 'ruleset.inventory_sale_rates');
+        $meatRate = $this->map($saleRates['monster_meat'] ?? null, 'ruleset.inventory_sale_rates.monster_meat');
+        $inventoryUnits = $this->integer(
+            $meatRate['inventory_units'] ?? null,
+            'ruleset.inventory_sale_rates.monster_meat.inventory_units',
+            1,
+        );
+        $moneyUnits = $this->integer(
+            $meatRate['money_units'] ?? null,
+            'ruleset.inventory_sale_rates.monster_meat.money_units',
+            1,
+        );
+        if ($inventoryUnits % $moneyUnits !== 0) {
+            throw new DomainException('ruleset.inventory_sale_rates.monster_meat must convert one money unit to exact integer tons.');
+        }
+        $foodTonsPerMoneyUnit = intdiv($inventoryUnits, $moneyUnits);
+        if ($foodTonsPerMoneyUnit !== 500 || $reward !== [
+            'killer_money_share' => 'floor_half', 'host_remainder_share' => true,
+            'host_food_resource_key' => 'monster_meat', 'food_tons_per_money_unit' => $foodTonsPerMoneyUnit,
+            'missile_base_experience_maximum' => 200,
+        ]) {
+            throw new DomainException("{$systemPath}.reward differs from the PR21 split contract.");
+        }
+
+        $terrainEvents = $this->map($system['terrain_events'], "{$systemPath}.terrain_events");
+        if ($terrainEvents !== [
+            'preserve_occupancy' => ['earthquake', 'tsunami', 'typhoon'],
+            'remove_without_rewards' => ['meteor_shower', 'huge_meteor', 'eruption', 'land_subsidence', 'defense_self_destruct', 'terrain_destruction_missile'],
+        ]) {
+            throw new DomainException("{$systemPath}.terrain_events differs from MONSTER-03.");
+        }
+        $killStats = $this->map($system['kill_stats'], "{$systemPath}.kill_stats");
+        if ($killStats !== [
+            'scope' => 'nation_monster_definition',
+            'increment_on_attributed_final_blow' => true,
+            'authoritative_for_final_blow_count' => true,
+            'authoritative_for_kill_marks' => true,
+            'maximum_species_rows_per_nation' => 8,
+        ]) {
+            throw new DomainException("{$systemPath}.kill_stats differs from the PR21 aggregate contract.");
+        }
+
+        return count($keys);
+    }
+
+    /**
+     * @param  array<string, mixed>  $movement
+     * @param  list<string>  $facilityKeys
+     */
+    private function validateMonsterMovementContract(array $movement, array $facilityKeys, string $path): void
+    {
+        $expected = [
+            'candidate_attempts_per_action' => 3,
+            'blocked_terrain_keys' => ['sea', 'shallow', 'mountain'],
+            'blocked_facility_keys' => ['seabed_oil_field', 'seabed_base', 'mine', 'monument', 'capital'],
+            'defense_facility_key' => 'defense',
+            'destination_terrain_key' => 'wasteland',
+            'preserve_owner' => true,
+        ];
+        if ($movement !== $expected) {
+            throw new DomainException("{$path} differs from the audited one-cell movement contract.");
+        }
+        foreach ($movement['blocked_terrain_keys'] as $terrainKey) {
+            $this->reference($terrainKey, self::TERRAIN_KEYS, "{$path}.blocked_terrain_keys");
+        }
+        $this->reference($movement['destination_terrain_key'], self::TERRAIN_KEYS, "{$path}.destination_terrain_key");
+        foreach ($movement['blocked_facility_keys'] as $facilityKey) {
+            $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$path}.blocked_facility_keys");
+        }
+        $this->facilityReferenceOrFuture($movement['defense_facility_key'], $facilityKeys, "{$path}.defense_facility_key");
     }
 
     /**

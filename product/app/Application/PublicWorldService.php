@@ -65,6 +65,27 @@ final class PublicWorldService
             ->where('key', config('hakoniwa.world.map_space_key'))
             ->firstOrFail();
         $capital = $nation->capital()->first();
+        $monsterKillStats = DB::table('nation_monster_kill_stats')
+            ->join('monster_definitions', 'monster_definitions.id', '=', 'nation_monster_kill_stats.monster_definition_id')
+            ->where('nation_monster_kill_stats.world_id', $nation->world_id)
+            ->where('nation_monster_kill_stats.nation_id', $nation->id)
+            ->orderBy('monster_definitions.key')
+            ->limit(8)
+            ->get([
+                'monster_definitions.key',
+                'monster_definitions.name',
+                'nation_monster_kill_stats.kill_count',
+                'nation_monster_kill_stats.first_killed_turn',
+                'nation_monster_kill_stats.last_killed_turn',
+            ])
+            ->map(static fn (object $stat): array => [
+                'key' => (string) $stat->key,
+                'name' => (string) $stat->name,
+                'kill_count' => (int) $stat->kill_count,
+                'first_killed_turn' => (int) $stat->first_killed_turn,
+                'last_killed_turn' => (int) $stat->last_killed_turn,
+            ])
+            ->values();
 
         return [
             ...$this->publicNationFields($nation, $world),
@@ -74,6 +95,8 @@ final class PublicWorldService
                 'current_turn' => $world->current_turn,
             ],
             'capital' => $capital === null ? null : ['x' => $capital->x, 'y' => $capital->y],
+            'monster_final_blow_count' => $monsterKillStats->sum('kill_count'),
+            'monster_kill_stats' => $monsterKillStats,
             'map_space' => [
                 'id' => $mapSpace->id,
                 'world_id' => $mapSpace->world_id,

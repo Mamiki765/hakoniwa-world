@@ -37,6 +37,7 @@ final class CompleteTurnEngine
         private readonly NationLandAreaCalculator $landArea,
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
+        private readonly MonsterTurnService $monsters,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -187,13 +188,39 @@ final class CompleteTurnEngine
             'population_increased' => 0, 'population_decreased' => 0,
             'stage_transitions' => 0, 'riots' => 0, 'fires' => 0,
             'oil_income' => 0, 'oil_depleted' => 0,
+            // Combat integrations call MonsterDamageService explicitly. Keep the
+            // canonical phase schema stable even when this turn has no such hit.
+            'damage_blocked' => 0, 'monsters_killed' => 0,
+            'rewards_distributed' => 0, 'kill_stats_incremented' => 0,
         ];
         $activeNations = Nation::query()->where('world_id', $context->world->id)->where('state', 'active')
             ->pluck('id')->map(static fn ($id): int => (int) $id)->flip();
 
+        $space = MapSpace::query()
+            ->where('world_id', $context->world->id)
+            ->where('key', 'surface')
+            ->firstOrFail();
+        $cells = MapCell::query()
+            ->whereIn('id', $context->state->surfaceCellIds())
+            ->with(['terrain', 'facility'])
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        $cellsById = $cells->keyBy('id');
+        $cellsByCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
+            $cell->x.':'.$cell->y => $cell,
+        ])->all();
+        $monsterBatch = $this->monsters->load($context);
+
         foreach ($context->state->surfaceCellIds() as $cellId) {
-            $cell = MapCell::query()->whereKey($cellId)->lockForUpdate()->with(['terrain', 'facility'])->firstOrFail();
+            $cell = $cellsById->get($cellId);
+            if (! $cell instanceof MapCell) {
+                throw new DomainException("Surface cell order references missing cell {$cellId}.");
+            }
             $metrics['processed']++;
+            if ($this->monsters->processCell($context, $space, $cell, $cellsByCoordinate, $monsterBatch)) {
+                continue;
+            }
             if ($cell->owner_nation_id === null || ! $activeNations->has($cell->owner_nation_id)) {
                 continue;
             }
@@ -265,7 +292,7 @@ final class CompleteTurnEngine
             }
         }
 
-        return $metrics;
+        return [...$metrics, ...$monsterBatch->metrics()];
     }
 
     /** @return array<string, int> */

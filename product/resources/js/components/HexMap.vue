@@ -63,6 +63,12 @@ const tooltipDetails = computed(() => {
     return [
         `座標 x=${cell.x}, y=${cell.y}`,
         `所有: ${cell.owner_name ?? '中立'}${cell.owner_nation_number === null ? '' : ` (N${cell.owner_nation_number})`}`,
+        ...(cell.monster === null ? [] : [
+            `怪獣: ${cell.monster.name}`,
+            `HP: ${cell.monster.current_hp}/${cell.monster.spawned_max_hp}`,
+            `所在: ${cell.monster.host_nation?.name ?? '無所属'} (${cell.monster.host_label})`,
+            ...(cell.monster.hardened_now ? ['状態: 硬化中'] : []),
+        ]),
         ...(cell.facility === null ? ['施設: なし'] : []),
         ...cell.details.map((detail) => `${detail.label}: ${detail.formatted}`),
     ];
@@ -356,6 +362,20 @@ function showTooltip(cell: MapCell, event: Event): void {
                     </template>
                     <span class="tile-label">{{ item.cell.facility === 'capital' ? '首' : item.cell.asset.fallback_label.slice(0, 1) }}</span>
                     <small v-if="item.cell.owner_nation_number !== null">N{{ item.cell.owner_nation_number }}</small>
+                    <span v-if="item.cell.monster" class="monster-overlay" aria-hidden="true">
+                        <span class="monster-fallback">{{ item.cell.monster.name.slice(0, 1) }}</span>
+                        <img
+                            v-if="item.cell.monster.asset.available && item.cell.monster.asset_url"
+                            class="monster-image"
+                            :src="item.cell.monster.asset_url"
+                            alt=""
+                            draggable="false"
+                            @error="($event.currentTarget as HTMLImageElement).hidden = true"
+                        >
+                        <span class="monster-hp">HP {{ item.cell.monster.current_hp }}</span>
+                        <span class="monster-host">{{ item.cell.monster.host_label }}</span>
+                        <span v-if="item.cell.monster.hardened_now" class="monster-hardened">硬</span>
+                    </span>
                 </button>
             </div>
             <div

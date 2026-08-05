@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
+use App\Models\MonsterDefinition;
 use App\Models\ProductionDefinition;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
@@ -71,6 +72,9 @@ final class RulesetPublisher
             /** @var array<model-property<ProductionDefinition>, mixed> $payload */
             ProductionDefinition::query()->create($payload);
         }
+        foreach ($this->monsterPayloads($ruleset, $settings) as $payload) {
+            MonsterDefinition::query()->create($payload);
+        }
     }
 
     /** @param array<string, mixed> $settings */
@@ -102,6 +106,60 @@ final class RulesetPublisher
                 );
             }
         }
+
+        if (! array_key_exists('monster_definitions', $settings)) {
+            return;
+        }
+        $expectedMonsters = collect($this->monsterPayloads($ruleset, $settings))->keyBy('key');
+        $monsters = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->get();
+        if ($monsters->count() !== $expectedMonsters->count()) {
+            throw new DomainException("Published ruleset {$ruleset->key} has different monster definitions.");
+        }
+        foreach ($monsters as $definition) {
+            $expected = $expectedMonsters->get($definition->key);
+            if (! is_array($expected)
+                || $this->canonicalJson($this->monsterState($definition)) !== $this->canonicalJson($expected)) {
+                throw new DomainException(
+                    "Published ruleset {$ruleset->key} monster {$definition->key} differs from its snapshot.",
+                );
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @return list<array<string, mixed>>
+     */
+    private function monsterPayloads(RulesetVersion $ruleset, array $settings): array
+    {
+        $payloads = [];
+        foreach ($settings['monster_definitions'] ?? [] as $definition) {
+            if (! is_array($definition)) {
+                throw new DomainException("Ruleset {$ruleset->key} has an invalid monster definition.");
+            }
+            $payloads[] = [
+                'ruleset_version_id' => $ruleset->id,
+                'key' => $definition['key'],
+                'name' => $definition['name'],
+                'asset_key' => $definition['asset_key'],
+                'hardened_asset_key' => $definition['hardened_asset_key'],
+                'base_hp' => $definition['base_hp'],
+                'hp_variation' => $definition['hp_variation'],
+                'skill_key' => $definition['skill_key'],
+                'movement_limit' => $definition['movement_limit'],
+                'natural_spawn_tier' => $definition['natural_spawn_tier'],
+                'wreckage_value_money' => $definition['wreckage_value_money'],
+                'missile_base_experience' => $definition['missile_base_experience'],
+                'skill_description' => $definition['skill_description'],
+                'visibility' => $definition['visibility'],
+                'movement_terrain_contract' => $definition['movement_terrain_contract'],
+                'trample_contract' => $definition['trample_contract'],
+                'hardening_contract' => $definition['hardening_contract'],
+                'source_metadata' => $definition['source_metadata'],
+            ];
+        }
+
+        return $payloads;
     }
 
     /**
@@ -210,6 +268,31 @@ final class RulesetPublisher
             'price_reference' => $definition->price_reference,
             'enabled' => $definition->enabled,
             'metadata' => $definition->metadata,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function monsterState(MonsterDefinition $definition): array
+    {
+        return [
+            'ruleset_version_id' => $definition->ruleset_version_id,
+            'key' => $definition->key,
+            'name' => $definition->name,
+            'asset_key' => $definition->asset_key,
+            'hardened_asset_key' => $definition->hardened_asset_key,
+            'base_hp' => $definition->base_hp,
+            'hp_variation' => $definition->hp_variation,
+            'skill_key' => $definition->skill_key,
+            'movement_limit' => $definition->movement_limit,
+            'natural_spawn_tier' => $definition->natural_spawn_tier,
+            'wreckage_value_money' => $definition->wreckage_value_money,
+            'missile_base_experience' => $definition->missile_base_experience,
+            'skill_description' => $definition->skill_description,
+            'visibility' => $definition->visibility,
+            'movement_terrain_contract' => $definition->movement_terrain_contract,
+            'trample_contract' => $definition->trample_contract,
+            'hardening_contract' => $definition->hardening_contract,
+            'source_metadata' => $definition->source_metadata,
         ];
     }
 

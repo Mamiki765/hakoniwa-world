@@ -1,0 +1,1033 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Application\DisasterTurnService;
+use App\Application\MonsterDamageService;
+use App\Application\MonsterRemovalService;
+use App\Application\MonsterSpawnService;
+use App\Application\MonsterTurnService;
+use App\Application\NationCreationService;
+use App\Application\PlayerIslandEventService;
+use App\Domain\Map\GridCoordinate;
+use App\Domain\Map\MapCellStateService;
+use App\Domain\Turn\TurnContext;
+use App\Domain\Turn\TurnRandomStreamFactory;
+use App\Domain\Turn\TurnState;
+use App\Models\FacilityDefinition;
+use App\Models\MapCell;
+use App\Models\MapSpace;
+use App\Models\MonsterDefinition;
+use App\Models\MonsterInstance;
+use App\Models\MonsterOccupancy;
+use App\Models\Nation;
+use App\Models\NationMonsterKillStat;
+use App\Models\NationResource;
+use App\Models\ResourceDefinition;
+use App\Models\RulesetVersion;
+use App\Models\TerrainDefinition;
+use App\Models\TurnRun;
+use App\Models\User;
+use App\Models\World;
+use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
+use Tests\Concerns\CreatesTestWorlds;
+use Tests\TestCase;
+
+class MonsterSystemTest extends TestCase
+{
+    use CreatesTestWorlds;
+    use RefreshDatabase;
+
+    public function test_natural_spawn_is_one_independent_draw_per_active_nation_and_uses_snapshot_settlements(): void
+    {
+        [$world, $active, $ruleset, $space] = $this->worldAndNation('出現国');
+        $other = $this->createNation($world, '第二出現国');
+        $activeSettlement = $this->prepareSettlement($active, 400_000);
+        $otherSettlement = $this->prepareSettlement($other, 400_000);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        [$context, $run] = $this->context($world, $ruleset, 2, 'spawn-active-snapshot', [$active->id, $other->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(2, $metrics['eligible_spawn_nations']);
+        $this->assertSame(2, $metrics['spawn_draws']);
+        $this->assertSame(2, $metrics['monsters_spawned']);
+        $occupancies = MonsterOccupancy::query()->with('monster.definition')->get()->keyBy('map_cell_id');
+        $this->assertCount(2, $occupancies);
+        foreach ([[$activeSettlement, $active], [$otherSettlement, $other]] as [$settlement, $nation]) {
+            $occupancy = $occupancies->get($settlement->id);
+            $this->assertNotNull($occupancy);
+            $this->assertNotSame('mecha_inora', $occupancy->monster->definition->key);
+            $this->assertContains($occupancy->monster->definition->key, [
+                'inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora',
+            ]);
+            $spawnedCell = $settlement->fresh(['terrain', 'facility']);
+            $this->assertSame('wasteland', $spawnedCell->terrain->key);
+            $this->assertNull($spawnedCell->facility_definition_id);
+            $this->assertSame(0, $spawnedCell->population);
+            $this->assertSame($nation->id, $spawnedCell->owner_nation_id);
+        }
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'monster.spawned')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
+    #[DataProvider('inactiveStateProvider')]
+    public function test_natural_spawn_excludes_each_inactive_nation_state(string $state): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('除外国');
+        $nation->update(['state' => $state]);
+        $this->prepareSettlement($nation, 400_000);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        [$context] = $this->context($world, $ruleset, 2, 'spawn-'.$state, [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(0, $metrics['eligible_spawn_nations']);
+        $this->assertSame(0, $metrics['spawn_draws']);
+        $this->assertSame(0, MonsterInstance::query()->count());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function inactiveStateProvider(): array
+    {
+        return [
+            'frozen' => ['dormant_frozen'],
+            'contestable' => ['dormant_contestable'],
+        ];
+    }
+
+    public function test_triggered_spawn_without_an_eligible_settlement_is_a_safe_audited_noop(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('候補なし国');
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $capital->update(['population' => 400_000]);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        [$context, $run] = $this->context($world, $ruleset, 2, 'spawn-no-candidate', [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(1, $metrics['eligible_spawn_nations']);
+        $this->assertSame(1, $metrics['blocked_no_settlement']);
+        $this->assertSame(0, $metrics['monsters_spawned']);
+        $this->assertSame(0, MonsterInstance::query()->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.spawn_failed_no_settlement')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
+    public function test_natural_spawn_replays_the_same_actor_after_transaction_rollback(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('出現再試行国');
+        $settlement = $this->prepareSettlement($nation, 400_000);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        [$initialContext, $run] = $this->context($world, $ruleset, 2, 'spawn-retry', [$nation->id]);
+        $seed = $initialContext->randomSeed;
+        $snapshot = static fn (): array => MonsterOccupancy::query()
+            ->with('monster.definition')
+            ->get()
+            ->map(static fn (MonsterOccupancy $occupancy): array => [
+                'cell_id' => $occupancy->map_cell_id,
+                'key' => $occupancy->monster->definition->key,
+                'hp' => $occupancy->monster->current_hp,
+            ])->all();
+        $newContext = static function () use ($world, $run, $ruleset, $seed, $nation): TurnContext {
+            $state = new TurnState;
+            $state->setStableNationIds([$nation->id]);
+            $state->setDevelopmentNationIds([$nation->id]);
+
+            return new TurnContext(
+                $world,
+                $run,
+                $ruleset,
+                2,
+                $seed,
+                new TurnRandomStreamFactory($seed),
+                $state,
+            );
+        };
+
+        $first = null;
+        try {
+            DB::transaction(function () use ($newContext, $space, $snapshot, &$first): void {
+                app(MonsterSpawnService::class)->spawnNatural($newContext(), $space);
+                $first = $snapshot();
+                throw new RuntimeException('spawn rollback probe');
+            });
+            $this->fail('Expected spawn rollback probe.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('spawn rollback probe', $exception->getMessage());
+        }
+
+        $this->assertSame(0, MonsterInstance::query()->count());
+        $this->assertSame('village', $settlement->fresh()->facility()->value('key'));
+        app(MonsterSpawnService::class)->spawnNatural($newContext(), $space);
+
+        $this->assertSame($first, $snapshot());
+    }
+
+    public function test_dark_inora_moves_at_most_twice_tramples_and_changes_current_host_nation(): void
+    {
+        [$world, $first, $ruleset, $space] = $this->worldAndNation('移動元国');
+        $second = $this->createNation($world, '移動先国');
+        $origin = $this->safeInteriorCell($space, $world);
+        foreach ((new GridCoordinate($origin->x, $origin->y))->radius(3) as $coordinate) {
+            $cell = $this->cellAt($space, $coordinate->x, $coordinate->y);
+            $this->setCell($cell, 'plain', null, $second->id, 321);
+        }
+        $this->setCell($origin, 'wasteland', null, $first->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'dark_inora', 3);
+        [$context] = $this->context($world, $ruleset, 2, 'dark-two-moves', [$first->id, $second->id]);
+        $service = app(MonsterTurnService::class);
+        $batch = $service->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $byCoordinate = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+
+        $this->assertTrue($service->processCell($context, $space, $origin->fresh(['terrain', 'facility']), $byCoordinate, $batch));
+        $firstDestinationId = MonsterOccupancy::query()->where('monster_instance_id', $monster->id)->value('map_cell_id');
+        $firstDestination = $cells->firstWhere('id', $firstDestinationId);
+        $this->assertNotNull($firstDestination);
+        $this->assertSame($second->id, MapCell::query()->findOrFail($firstDestinationId)->owner_nation_id);
+        $this->assertTrue($service->processCell($context, $space, $firstDestination, $byCoordinate, $batch));
+        $secondDestinationId = MonsterOccupancy::query()->where('monster_instance_id', $monster->id)->value('map_cell_id');
+        $secondDestination = $cells->firstWhere('id', $secondDestinationId);
+        $this->assertNotNull($secondDestination);
+        $this->assertTrue($service->processCell($context, $space, $secondDestination, $byCoordinate, $batch));
+
+        $this->assertSame(2, $batch->metrics()['monster_moves']);
+        $this->assertSame(2, $batch->metrics()['maximum_moves_by_single_monster']);
+        $occupiedCell = MapCell::query()->with(['terrain', 'facility'])->findOrFail($secondDestinationId);
+        $this->assertSame('wasteland', $occupiedCell->terrain->key);
+        $this->assertNull($occupiedCell->facility_definition_id);
+        $this->assertSame(0, $occupiedCell->population);
+        $this->assertContains($origin->map_chunk_id, $context->state->changedMapChunkIds());
+        $this->assertContains($occupiedCell->map_chunk_id, $context->state->changedMapChunkIds());
+    }
+
+    public function test_normal_monster_moves_once_then_stops_at_its_definition_limit(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('通常移動国');
+        $origin = $this->safeInteriorCell($space, $world);
+        foreach ((new GridCoordinate($origin->x, $origin->y))->radius(2) as $coordinate) {
+            $this->setCell($this->cellAt($space, $coordinate->x, $coordinate->y), 'plain', null, $nation->id, 0);
+        }
+        $this->setCell($origin, 'wasteland', null, $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'inora', 1);
+        [$context] = $this->context($world, $ruleset, 2, 'normal-one-move', [$nation->id]);
+        $turn = app(MonsterTurnService::class);
+        $batch = $turn->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $index = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+
+        $this->assertTrue($turn->processCell($context, $space, $origin->fresh(['terrain', 'facility']), $index, $batch));
+        $destinationId = (int) MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
+            ->value('map_cell_id');
+        $destination = $cells->firstWhere('id', $destinationId);
+        $this->assertInstanceOf(MapCell::class, $destination);
+        $this->assertTrue($turn->processCell($context, $space, $destination, $index, $batch));
+
+        $this->assertSame($destinationId, (int) MonsterOccupancy::query()
+            ->where('monster_instance_id', $monster->id)->value('map_cell_id'));
+        $this->assertSame(1, $batch->metrics()['monster_moves']);
+        $this->assertSame(2, $batch->metrics()['monster_actions']);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.stayed')
+            ->whereRaw("metadata->>'reason' = 'movement_limit'")->count());
+    }
+
+    public function test_world_edge_and_monster_collisions_leave_actor_in_place(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('端衝突国');
+        $origin = $this->cellAt($space, $space->min_x, $space->min_y);
+        $this->setCell($origin, 'wasteland', null, $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'inora', 1);
+        $coordinate = new GridCoordinate($origin->x, $origin->y);
+        foreach ($coordinate->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y) as $neighbor) {
+            $cell = $this->cellAt($space, $neighbor->x, $neighbor->y);
+            $this->setCell($cell, 'wasteland', null, $nation->id, 0);
+            $this->createMonster($world, $ruleset, $cell, 'inora', 1);
+        }
+        [$context] = $this->context($world, $ruleset, 2, 'edge-collision', [$nation->id]);
+        $turn = app(MonsterTurnService::class);
+        $batch = $turn->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $index = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+
+        $this->assertTrue($turn->processCell($context, $space, $origin->fresh(['terrain', 'facility']), $index, $batch));
+
+        $this->assertSame($origin->id, (int) MonsterOccupancy::query()
+            ->where('monster_instance_id', $monster->id)->value('map_cell_id'));
+        $this->assertSame(0, $batch->metrics()['monster_moves']);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.stayed')
+            ->whereRaw("metadata->>'reason' = 'no_candidate'")->count());
+    }
+
+    public function test_hardened_monster_neither_moves_nor_takes_normal_damage(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('硬化国');
+        $cell = $this->ownedNonCapitalCell($nation);
+        $this->setCell($cell, 'wasteland', null, $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'sanjira', 2);
+        [$context] = $this->context($world, $ruleset, 3, 'hardened-odd', [$nation->id]);
+        $turn = app(MonsterTurnService::class);
+        $batch = $turn->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $index = $cells->keyBy(static fn (MapCell $candidate): string => $candidate->x.':'.$candidate->y)->all();
+
+        $this->assertTrue($turn->processCell($context, $space, $cell->fresh(['terrain', 'facility']), $index, $batch));
+        $damage = app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            1,
+            'monster_missile',
+            $nation,
+            null,
+            $cell,
+            $context,
+        );
+
+        $this->assertSame(0, $batch->metrics()['monster_moves']);
+        $this->assertSame('blocked_hardened', $damage->status);
+        $this->assertSame(2, $monster->fresh()->current_hp);
+        $this->assertSame($cell->id, $monster->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
+    }
+
+    public function test_monster_movement_replays_the_same_result_after_transaction_rollback(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('再現国');
+        $origin = $this->safeInteriorCell($space, $world);
+        $originCoordinate = new GridCoordinate($origin->x, $origin->y);
+        $this->setCell($origin, 'wasteland', null, $nation->id, 0);
+        foreach ($originCoordinate->radius(1) as $coordinate) {
+            if ($coordinate->x === $origin->x && $coordinate->y === $origin->y) {
+                continue;
+            }
+            $this->setCell($this->cellAt($space, $coordinate->x, $coordinate->y), 'plain', null, $nation->id, 0);
+        }
+        $monster = $this->createMonster($world, $ruleset, $origin, 'whale', 4);
+        $runOnce = function () use ($world, $nation, $ruleset, $space, $monster): array {
+            [$context] = $this->context($world, $ruleset, 2, 'monster-replay', [$nation->id]);
+            $turn = app(MonsterTurnService::class);
+            $batch = $turn->load($context);
+            $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+            $index = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+            $currentCellId = MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
+                ->value('map_cell_id');
+            $currentCell = MapCell::query()->with(['terrain', 'facility'])->findOrFail($currentCellId);
+            $turn->processCell($context, $space, $currentCell, $index, $batch);
+            $destination = MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
+                ->with('cell')->firstOrFail()->cell;
+
+            return ['x' => $destination->x, 'y' => $destination->y, 'metrics' => $batch->metrics()];
+        };
+
+        $first = null;
+        try {
+            DB::transaction(function () use (&$first, $runOnce): void {
+                $first = $runOnce();
+                throw new RuntimeException('replay rollback');
+            });
+            $this->fail('Expected deterministic replay rollback.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('replay rollback', $exception->getMessage());
+        }
+
+        $this->assertSame($first, $runOnce());
+    }
+
+    public function test_defense_contact_removes_hardened_monster_without_rewards_and_applies_one_huge_blast(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('防衛国');
+        $origin = $this->safeInteriorCell($space, $world);
+        $this->setCell($origin, 'wasteland', null, $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'inora', 1);
+        [$context] = $this->context($world, $ruleset, 2, 'defense-contact', [$nation->id]);
+        $direction = (new TurnRandomStreamFactory(hash('sha256', 'defense-contact')))->stream(
+            TurnRandomStreamFactory::monsterMovement($monster->id, 1),
+        )->integer(0, 5);
+        $defenseCoordinate = (new GridCoordinate($origin->x, $origin->y))->neighbor($direction);
+        $defense = $this->cellAt($space, $defenseCoordinate->x, $defenseCoordinate->y);
+        $facility = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $facility->update(['key' => 'defense']);
+        $this->setCell($defense, 'plain', 'defense', $nation->id, 0);
+        $victimCoordinate = collect($defenseCoordinate->ring(2))->first();
+        $this->assertInstanceOf(GridCoordinate::class, $victimCoordinate);
+        $victimCell = $this->cellAt($space, $victimCoordinate->x, $victimCoordinate->y);
+        $this->setCell($victimCell, 'wasteland', null, $nation->id, 0);
+        $blastVictim = $this->createMonster($world, $ruleset, $victimCell, 'inora', 1);
+        $beforeMoney = (int) $nation->money;
+        $turn = app(MonsterTurnService::class);
+        $batch = $turn->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $index = $cells->keyBy(static fn (MapCell $candidate): string => $candidate->x.':'.$candidate->y)->all();
+
+        $this->assertTrue($turn->processCell($context, $space, $origin->fresh(['terrain', 'facility']), $index, $batch));
+        $this->assertFalse($turn->processCell(
+            $context,
+            $space,
+            $victimCell->fresh(['terrain', 'facility']),
+            $index,
+            $batch,
+        ));
+
+        $this->assertSame('removed', $monster->fresh()->state);
+        $this->assertSame('defense_self_destruct', $monster->fresh()->removal_reason);
+        $this->assertFalse($monster->fresh()->occupancy()->exists());
+        $this->assertSame('removed', $blastVictim->fresh()->state);
+        $this->assertSame('defense_self_destruct', $blastVictim->fresh()->removal_reason);
+        $this->assertFalse($blastVictim->fresh()->occupancy()->exists());
+        $this->assertSame('wasteland', $victimCell->fresh()->terrain()->value('key'));
+        $this->assertSame(1, $batch->metrics()['defense_self_destructs']);
+        $this->assertSame(1, $batch->metrics()['monster_actions']);
+        $this->assertSame('sea', $defense->fresh()->terrain()->value('key'));
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.defense_self_destructed')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'disaster.triggered')
+            ->whereRaw("metadata->>'disaster_key' = 'defense_self_destruct'")->count());
+    }
+
+    public function test_fire_preserves_hardened_monster_while_huge_blast_removes_center_and_wasteland_ring_two_without_rewards(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('地形相互作用国');
+        $cell = $this->safeInteriorCell($space, $world);
+        $this->setCell($cell, 'plain', 'factory', $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'whale', 4);
+        $ringTwoCoordinate = (new GridCoordinate($cell->x, $cell->y))->ring(2)[0];
+        $ringTwoCell = $this->cellAt($space, $ringTwoCoordinate->x, $ringTwoCoordinate->y);
+        $this->setCell($ringTwoCell, 'wasteland', null, $nation->id, 0);
+        $ringTwoMonster = $this->createMonster($world, $ruleset, $ringTwoCell, 'inora', 1);
+        [$context] = $this->context($world, $ruleset, 2, 'terrain-removal', [$nation->id]);
+        $removal = app(MonsterRemovalService::class);
+        $removal->beginWorld($context);
+        $disasters = app(DisasterTurnService::class);
+        $beforeMoney = (int) $nation->money;
+
+        $this->assertFalse($disasters->processFire($context, $cell->fresh(['terrain', 'facility'])));
+        $this->assertSame('alive', $monster->fresh()->state);
+        $settings = $ruleset->settings['turn_processing']['disasters']['huge_meteor'];
+        $settings['radius'] = 0;
+        $this->assertGreaterThanOrEqual(1, $disasters->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            new GridCoordinate($cell->x, $cell->y),
+            $settings,
+            'huge_meteor',
+        ));
+
+        $this->assertSame('removed', $monster->fresh()->state);
+        $this->assertSame('huge_meteor', $monster->fresh()->removal_reason);
+        $this->assertSame('removed', $ringTwoMonster->fresh()->state);
+        $this->assertSame('huge_meteor', $ringTwoMonster->fresh()->removal_reason);
+        $this->assertFalse($ringTwoMonster->fresh()->occupancy()->exists());
+        $this->assertSame('wasteland', $ringTwoCell->fresh()->terrain()->value('key'));
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
+        $this->assertSame(2, DB::table('audit_events')
+            ->where('event_type', 'monster.removed_by_terrain_event')->count());
+        $this->assertSame('sea', $cell->fresh()->terrain()->value('key'));
+    }
+
+    public function test_final_blow_splits_capacity_bounded_rewards_caps_base_experience_and_is_idempotent(): void
+    {
+        [$world, $host, $ruleset] = $this->worldAndNation('所在国');
+        $killer = $this->createNation($world, '撃破国');
+        $hostCell = $this->ownedNonCapitalCell($host);
+        $this->setCell($hostCell, 'wasteland', null, $host->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $hostCell, 'red_inora', 3);
+        $base = $this->ownedNonCapitalCell($killer);
+        $this->setCell($base, 'plain', 'missile_base', $killer->id, 0);
+        $base->update(['facility_experience' => 195]);
+        $killer->update(['money' => 9_500]);
+        $monsterMeat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
+        $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
+        NationResource::query()->where('nation_id', $host->id)->where('resource_definition_id', $wheat->id)
+            ->update(['amount' => 999_800]);
+        [$context] = $this->context($world, $ruleset, 2, 'reward-split', [$host->id, $killer->id]);
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            3,
+            'monster_missile',
+            $killer,
+            $base,
+            $hostCell,
+            $context,
+        );
+
+        $this->assertSame('killed', $result->status);
+        $this->assertSame(9_500, $result->killerMoney['before']);
+        $this->assertSame(500, $result->killerMoney['requested']);
+        $this->assertSame(499, $result->killerMoney['applied']);
+        $this->assertSame(1, $result->killerMoney['overflow']);
+        $this->assertSame(9_999, $result->killerMoney['after']);
+        $this->assertSame(9_999, $result->killerMoney['capacity']);
+        $this->assertSame(250_000, $result->hostMeat['requested']);
+        $this->assertSame(100, $result->hostMeat['applied']);
+        $this->assertSame(249_900, $result->hostMeat['overflow']);
+        $this->assertSame(5, $result->firingBaseExperienceApplied);
+        $this->assertSame(9_999, (int) $killer->fresh()->money);
+        $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
+            ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
+
+        $playerEvents = app(PlayerIslandEventService::class);
+        $killerReward = collect($playerEvents->page($killer->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->firstWhere('type', 'monster.reward_distributed');
+        $hostReward = collect($playerEvents->page($host->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->firstWhere('type', 'monster.reward_distributed');
+        $this->assertIsArray($killerReward);
+        $this->assertStringContainsString('レッドいのらを撃破し、賞金499億円', $killerReward['message']);
+        $this->assertIsArray($hostReward);
+        $this->assertStringContainsString('怪獣肉100トン', $hostReward['message']);
+        $this->assertSame(200, $base->fresh()->facility_experience);
+        $stat = NationMonsterKillStat::query()->sole();
+        $this->assertSame($killer->id, $stat->nation_id);
+        $this->assertSame($monster->monster_definition_id, $stat->monster_definition_id);
+        $this->assertSame(1, $stat->kill_count);
+        $this->assertSame(2, $stat->first_killed_turn);
+        $this->assertSame(2, $stat->last_killed_turn);
+        $this->assertSame(1, $stat->version);
+        $this->assertSame($stat->id, $result->killStatId);
+        $this->assertSame(0, $result->previousKillCount);
+        $this->assertSame(1, $result->newKillCount);
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.kill_stat_incremented')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($monster->id, $metadata['monster_instance_id']);
+        $this->assertSame('red_inora', $metadata['monster_definition_key']);
+        $this->assertSame($killer->id, $metadata['killer_nation_id']);
+        $this->assertSame($host->id, $metadata['host_nation_id']);
+        $this->assertSame(2, $metadata['target_turn']);
+        $this->assertSame(0, $metadata['previous_kill_count']);
+        $this->assertSame(1, $metadata['new_kill_count']);
+        $this->assertSame(500, $metadata['killer_money']['requested']);
+        $this->assertSame(250_000, $metadata['host_meat_food']['requested']);
+        $this->assertSame(249_900, $metadata['host_meat_food']['overflow']);
+        $this->assertSame($base->id, $metadata['firing_base_id']);
+        $this->assertSame('killed', $monster->fresh()->state);
+        $this->assertFalse($monster->fresh()->occupancy()->exists());
+        $this->assertContains($hostCell->map_chunk_id, $context->state->changedMapChunkIds());
+
+        $retry = app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            3,
+            'monster_missile',
+            $killer,
+            $base,
+            $hostCell,
+            $context,
+        );
+        $this->assertSame('already_resolved', $retry->status);
+        $this->assertNull($retry->killStatId);
+        $this->assertSame(1, NationMonsterKillStat::query()->count());
+        $this->assertSame(1, $stat->fresh()->kill_count);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.kill_stat_incremented')->count());
+        $this->assertSame(9_999, (int) $killer->fresh()->money);
+        $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
+            ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
+    }
+
+    public function test_all_eight_definitions_use_their_exact_wreckage_reward_values(): void
+    {
+        [$world, $host, $ruleset] = $this->worldAndNation('全種所在国');
+        $killer = $this->createNation($world, '全種撃破国');
+        $expectedValues = [
+            'mecha_inora' => 0,
+            'inora' => 400,
+            'sanjira' => 500,
+            'red_inora' => 1_000,
+            'dark_inora' => 800,
+            'inora_ghost' => 300,
+            'whale' => 1_500,
+            'king_inora' => 2_000,
+        ];
+        $cells = MapCell::query()->where('owner_nation_id', $host->id)
+            ->whereNotIn('id', $host->capital()->select('map_cell_id'))
+            ->with(['terrain', 'facility'])
+            ->limit(count($expectedValues))
+            ->get();
+        $this->assertCount(count($expectedValues), $cells);
+
+        foreach (array_values($expectedValues) as $index => $_value) {
+            $this->setCell($cells[$index], 'wasteland', null, $host->id, 0);
+        }
+        foreach ($expectedValues as $index => $value) {
+            $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+                ->where('key', $index)->firstOrFail();
+            $cell = $cells->shift();
+            $this->assertInstanceOf(MapCell::class, $cell);
+            $monster = $this->createMonster($world, $ruleset, $cell, $index, $definition->base_hp);
+            $targetTurn = match ($index) {
+                'sanjira' => 100,
+                'whale' => 101,
+                default => 110 + count($expectedValues) - $cells->count(),
+            };
+            [$context] = $this->context(
+                $world,
+                $ruleset,
+                $targetTurn,
+                'all-rewards-'.$index,
+                [$host->id, $killer->id],
+            );
+
+            $result = app(MonsterDamageService::class)->applyDamage(
+                $monster,
+                $definition->base_hp,
+                'monster_missile',
+                $killer,
+                null,
+                $cell,
+                $context,
+            );
+            $stat = NationMonsterKillStat::query()
+                ->where('nation_id', $killer->id)
+                ->where('monster_definition_id', $definition->id)
+                ->sole();
+            $killerShare = intdiv($value, 2);
+            $hostShare = $value - $killerShare;
+
+            $this->assertSame('killed', $result->status, $index);
+            $this->assertSame(1, $stat->kill_count, $index);
+            $this->assertSame($targetTurn, $stat->first_killed_turn, $index);
+            $this->assertSame($targetTurn, $stat->last_killed_turn, $index);
+            $this->assertSame($killerShare, $result->killerMoney['requested'], $index);
+            $this->assertSame($hostShare * 500, $result->hostMeat['requested'], $index);
+        }
+
+        $this->assertSame(8, NationMonsterKillStat::query()->count());
+        $this->assertSame(8, (int) NationMonsterKillStat::query()->sum('kill_count'));
+    }
+
+    public function test_same_nation_receives_both_shares_while_neutral_host_share_is_unclaimed(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('同一受取国');
+        $ownedCell = $this->ownedNonCapitalCell($nation);
+        $this->setCell($ownedCell, 'wasteland', null, $nation->id, 0);
+        $sameNationMonster = $this->createMonster($world, $ruleset, $ownedCell, 'inora', 1);
+        [$sameContext] = $this->context($world, $ruleset, 2, 'same-nation-reward', [$nation->id]);
+
+        $sameResult = app(MonsterDamageService::class)->applyDamage(
+            $sameNationMonster,
+            1,
+            'monster_missile',
+            $nation,
+            null,
+            $ownedCell,
+            $sameContext,
+        );
+
+        $this->assertSame(200, $sameResult->killerMoney['requested']);
+        $this->assertSame(100_000, $sameResult->hostMeat['requested']);
+        $this->assertSame(1, $sameResult->newKillCount);
+
+        $neutralCell = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')
+            ->with(['terrain', 'facility'])
+            ->firstOrFail();
+        $this->setCell($neutralCell, 'wasteland', null, null, 0);
+        $neutralMonster = $this->createMonster($world, $ruleset, $neutralCell, 'inora', 1);
+        [$neutralContext] = $this->context($world, $ruleset, 3, 'neutral-host-reward', [$nation->id]);
+
+        $neutralResult = app(MonsterDamageService::class)->applyDamage(
+            $neutralMonster,
+            1,
+            'monster_missile',
+            $nation,
+            null,
+            $neutralCell,
+            $neutralContext,
+        );
+
+        $this->assertSame(200, $neutralResult->killerMoney['requested']);
+        $this->assertNull($neutralResult->hostMeat);
+        $this->assertSame(1, $neutralResult->previousKillCount);
+        $this->assertSame(2, $neutralResult->newKillCount);
+        $stat = NationMonsterKillStat::query()->sole();
+        $this->assertSame(2, $stat->kill_count);
+        $this->assertSame(2, $stat->first_killed_turn);
+        $this->assertSame(3, $stat->last_killed_turn);
+        $this->assertSame(2, $stat->version);
+        $neutralMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.reward_distributed')
+            ->whereRaw("metadata->>'monster_instance_id' = ?", [(string) $neutralMonster->id])
+            ->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertNull($neutralMetadata['host_nation_id']);
+        $this->assertSame(200, $neutralMetadata['unclaimed_host_value_money']);
+    }
+
+    public function test_odd_wreckage_value_remainder_goes_to_current_host(): void
+    {
+        [$world, $host, $ruleset] = $this->worldAndNation('奇数所在国');
+        $killer = $this->createNation($world, '奇数撃破国');
+        $cell = $this->ownedNonCapitalCell($host);
+        $this->setCell($cell, 'wasteland', null, $host->id, 0);
+        $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'inora')->firstOrFail();
+        $definition->update(['wreckage_value_money' => 401]);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 1);
+        [$context] = $this->context($world, $ruleset, 2, 'odd-remainder', [$host->id, $killer->id]);
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster, 1, 'monster_missile', $killer, null, $cell, $context,
+        );
+
+        $this->assertSame(200, $result->killerMoney['requested']);
+        $this->assertSame(100_500, $result->hostMeat['requested']);
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.reward_distributed')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(401, $metadata['wreckage_value_money']);
+        $this->assertSame(200, $metadata['killer_money']['requested']);
+        $this->assertSame(100_500, $metadata['host_meat_food']['requested']);
+    }
+
+    public function test_unattributed_death_has_no_rewards_or_kill_stat(): void
+    {
+        [$world, $host, $ruleset] = $this->worldAndNation('無帰属国');
+        $cell = $this->ownedNonCapitalCell($host);
+        $this->setCell($cell, 'wasteland', null, $host->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 1);
+        $beforeMoney = (int) $host->money;
+        [$context] = $this->context($world, $ruleset, 2, 'unattributed', [$host->id]);
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            1,
+            'terrain_destruction_missile',
+            null,
+            null,
+            $cell,
+            $context,
+        );
+
+        $this->assertSame('killed_unattributed', $result->status);
+        $this->assertNull($result->killerMoney);
+        $this->assertNull($result->hostMeat);
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $this->assertSame($beforeMoney, (int) $host->fresh()->money);
+    }
+
+    public function test_final_blow_resolves_host_from_the_locked_current_cell_not_a_stale_caller_snapshot(): void
+    {
+        [$world, $formerHost, $ruleset] = $this->worldAndNation('旧所在国');
+        $currentHost = $this->createNation($world, '現在所在国');
+        $killer = $this->createNation($world, '現在撃破国');
+        $cell = $this->ownedNonCapitalCell($formerHost);
+        $this->setCell($cell, 'wasteland', null, $formerHost->id, 0);
+        $staleHostCell = $cell->fresh();
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 1);
+        MapCell::query()->whereKey($cell->id)->update(['owner_nation_id' => $currentHost->id]);
+        [$context] = $this->context(
+            $world,
+            $ruleset,
+            2,
+            'locked-current-host',
+            [$formerHost->id, $currentHost->id, $killer->id],
+        );
+
+        app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            1,
+            'monster_missile',
+            $killer,
+            null,
+            $staleHostCell,
+            $context,
+        );
+
+        $monsterMeat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.reward_distributed')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($currentHost->id, $metadata['host_nation_id']);
+        $this->assertSame(100_000, NationResource::query()->where('nation_id', $currentHost->id)
+            ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
+        $this->assertSame(0, NationResource::query()->where('nation_id', $formerHost->id)
+            ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
+    }
+
+    public function test_damage_and_rewards_roll_back_atomically(): void
+    {
+        [$world, $host, $ruleset] = $this->worldAndNation('rollback所在国');
+        $killer = $this->createNation($world, 'rollback撃破国');
+        $cell = $this->ownedNonCapitalCell($host);
+        $this->setCell($cell, 'wasteland', null, $host->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 1);
+        $beforeMoney = (int) $killer->money;
+        [$context] = $this->context($world, $ruleset, 2, 'reward-rollback', [$host->id, $killer->id]);
+
+        try {
+            DB::transaction(function () use ($monster, $killer, $cell, $context): void {
+                app(MonsterDamageService::class)->applyDamage(
+                    $monster, 1, 'monster_missile', $killer, null, $cell, $context,
+                );
+                throw new RuntimeException('rollback probe');
+            });
+            $this->fail('Expected rollback probe.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('rollback probe', $exception->getMessage());
+        }
+
+        $this->assertSame('alive', $monster->fresh()->state);
+        $this->assertSame(1, $monster->fresh()->current_hp);
+        $this->assertTrue($monster->fresh()->occupancy()->exists());
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $this->assertSame($beforeMoney, (int) $killer->fresh()->money);
+    }
+
+    public function test_database_rejects_capital_occupancy_and_invalid_kill_stat_mutation(): void
+    {
+        [$world, $nation, $ruleset] = $this->worldAndNation('DB制約国');
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'inora')->firstOrFail();
+        $monster = MonsterInstance::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $definition->id,
+            'current_hp' => 1,
+            'spawned_max_hp' => 1,
+            'state' => 'alive',
+            'spawned_target_turn' => 2,
+            'version' => 1,
+        ]);
+
+        try {
+            DB::transaction(static fn () => MonsterInstance::query()->whereKey($monster->id)->update([
+                'state' => 'removed',
+                'current_hp' => -1,
+                'removal_reason' => 'invalid_probe',
+                'removed_at' => now(),
+            ]));
+            $this->fail('Expected negative removed HP rejection.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('monster_instances_state_check', $exception->getMessage());
+        }
+
+        try {
+            DB::transaction(static function () use ($monster, $capital): void {
+                MonsterOccupancy::query()->create([
+                    'monster_instance_id' => $monster->id,
+                    'map_cell_id' => $capital->id,
+                ]);
+            });
+            $this->fail('Expected capital occupancy rejection.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('Capital cells cannot contain monster occupancy', $exception->getMessage());
+        }
+
+        $cell = $this->ownedNonCapitalCell($nation);
+        $this->setCell($cell, 'wasteland', null, $nation->id, 0);
+        MonsterOccupancy::query()->create(['monster_instance_id' => $monster->id, 'map_cell_id' => $cell->id]);
+        [$context] = $this->context($world, $ruleset, 2, 'immutable-kill', [$nation->id]);
+        app(MonsterDamageService::class)->applyDamage(
+            $monster, 1, 'monster_missile', $nation, null, $cell, $context,
+        );
+        $stat = NationMonsterKillStat::query()->sole();
+
+        try {
+            DB::transaction(static fn () => $stat->update(['last_killed_turn' => 99]));
+            $this->fail('Expected non-atomic kill stat update rejection.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('monster kill stat updates must be one atomic increment', $exception->getMessage());
+        }
+        $this->assertSame(1, $stat->fresh()->kill_count);
+        $this->assertSame(2, $stat->fresh()->last_killed_turn);
+
+        try {
+            DB::transaction(static fn () => $stat->delete());
+            $this->fail('Expected permanent kill stat deletion rejection.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('monster kill stats are permanent while their World exists', $exception->getMessage());
+        }
+        $this->assertNotNull($stat->fresh());
+    }
+
+    public function test_database_rejects_cross_world_kill_stats(): void
+    {
+        [$world, , $ruleset] = $this->worldAndNation('統計定義国');
+        $otherWorld = World::query()->create([
+            'key' => 'kill-stat-other-world',
+            'name' => '統計別世界',
+            'ruleset_version_id' => $ruleset->id,
+            'current_turn' => 1,
+        ]);
+        $otherNation = Nation::query()->create([
+            'world_id' => $otherWorld->id,
+            'nation_number' => 1,
+            'name' => '統計別世界国',
+            'owner_name' => '統計別世界国主',
+            'profile_comment' => '',
+            'money' => 100,
+            'state' => 'active',
+        ]);
+        $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'inora')->firstOrFail();
+
+        try {
+            DB::transaction(static fn () => NationMonsterKillStat::query()->create([
+                'world_id' => $world->id,
+                'nation_id' => $otherNation->id,
+                'monster_definition_id' => $definition->id,
+                'kill_count' => 1,
+                'first_killed_turn' => 2,
+                'last_killed_turn' => 2,
+                'version' => 1,
+            ]));
+            $this->fail('Expected cross-World kill stat rejection.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('monster kill stat references inconsistent World state', $exception->getMessage());
+        }
+
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
+    }
+
+    /** @return array{World, Nation, RulesetVersion, MapSpace} */
+    private function worldAndNation(string $name): array
+    {
+        $world = $this->lightweightWorld();
+        $nation = $this->createNation($world, $name);
+
+        return [$world, $nation, $world->rulesetVersion()->firstOrFail(), $this->surfaceMapSpace($world)];
+    }
+
+    private function createNation(World $world, string $name): Nation
+    {
+        return app(NationCreationService::class)->create(User::factory()->create(), $world, $name, $name.'主');
+    }
+
+    private function prepareSettlement(Nation $nation, int $population): MapCell
+    {
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $settlement = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', ['village', 'town', 'city']))
+            ->with(['terrain', 'facility'])
+            ->firstOrFail();
+        $settlement->update(['population' => $population]);
+
+        return $settlement;
+    }
+
+    private function guaranteeNaturalSpawn(RulesetVersion $ruleset): RulesetVersion
+    {
+        $settings = $ruleset->settings;
+        $settings['monster_system']['natural_spawn']['probability_per_land_cell'] = [
+            'numerator' => 10_000,
+            'denominator' => 10_000,
+        ];
+        $ruleset->settings = $settings;
+
+        return $ruleset;
+    }
+
+    /** @return array{TurnContext, TurnRun} */
+    private function context(
+        World $world,
+        RulesetVersion $ruleset,
+        int $targetTurn,
+        string $seedLabel,
+        array $nationIds,
+    ): array {
+        $seed = hash('sha256', $seedLabel);
+        $run = TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $targetTurn,
+            'ruleset_version_id' => $ruleset->id,
+            'random_seed' => $seed,
+            'source' => 'manual',
+            'is_dry_run' => true,
+            'status' => TurnRun::STATUS_DRY_RUN,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => [],
+        ]);
+        $state = new TurnState;
+        $state->setStableNationIds(array_values($nationIds));
+        $state->setDevelopmentNationIds(array_values($nationIds));
+
+        return [
+            new TurnContext($world, $run, $ruleset, $targetTurn, $seed, new TurnRandomStreamFactory($seed), $state),
+            $run,
+        ];
+    }
+
+    private function createMonster(
+        World $world,
+        RulesetVersion $ruleset,
+        MapCell $cell,
+        string $key,
+        int $hp,
+    ): MonsterInstance {
+        $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', $key)->firstOrFail();
+        $monster = MonsterInstance::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $definition->id,
+            'current_hp' => $hp,
+            'spawned_max_hp' => $hp,
+            'state' => 'alive',
+            'spawned_target_turn' => 2,
+            'version' => 1,
+        ]);
+        MonsterOccupancy::query()->create([
+            'monster_instance_id' => $monster->id,
+            'map_cell_id' => $cell->id,
+        ]);
+
+        return $monster->fresh(['definition', 'occupancy']);
+    }
+
+    private function ownedNonCapitalCell(Nation $nation): MapCell
+    {
+        return MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNotIn('id', $nation->capital()->select('map_cell_id'))
+            ->with(['terrain', 'facility'])
+            ->firstOrFail();
+    }
+
+    private function safeInteriorCell(MapSpace $space, World $world): MapCell
+    {
+        $capitalCoordinates = $world->nations()->with('capital')->get()
+            ->pluck('capital')->filter()->map(static fn ($capital): GridCoordinate => new GridCoordinate($capital->x, $capital->y));
+        $candidates = MapCell::query()->where('map_space_id', $space->id)
+            ->whereBetween('x', [$space->min_x + 4, $space->max_x - 4])
+            ->whereBetween('y', [$space->min_y + 4, $space->max_y - 4])
+            ->with(['terrain', 'facility'])
+            ->orderBy('id')->get();
+        foreach ($candidates as $cell) {
+            $coordinate = new GridCoordinate($cell->x, $cell->y);
+            if ($capitalCoordinates->every(static fn (GridCoordinate $capital): bool => $coordinate->distanceTo($capital) > 4)) {
+                return $cell;
+            }
+        }
+
+        throw new RuntimeException('No interior monster test cell was available.');
+    }
+
+    private function setCell(
+        MapCell $cell,
+        string $terrainKey,
+        ?string $facilityKey,
+        ?int $ownerNationId,
+        int $population,
+    ): void {
+        $cell = $cell->fresh(['terrain', 'facility']);
+        $states = app(MapCellStateService::class);
+        $states->setFacility($cell, null);
+        $states->transitionTerrain($cell, TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail());
+        if ($facilityKey !== null) {
+            $states->setFacility($cell, FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail());
+        }
+        $cell->owner_nation_id = $ownerNationId;
+        $cell->population = $population;
+        $cell->version++;
+        $cell->save();
+    }
+
+    private function cellAt(MapSpace $space, int $x, int $y): MapCell
+    {
+        return MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $x)->where('y', $y)->with(['terrain', 'facility'])->firstOrFail();
+    }
+}
