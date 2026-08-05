@@ -32,6 +32,8 @@ class NationCreationTest extends TestCase
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '最初の国', '試験島主');
 
         $this->assertSame(1, $nation->nation_number);
+        $this->assertSame($world->current_turn, $nation->registered_turn);
+        $this->assertSame(100, $nation->idle_counter);
         $this->assertSame(100, $nation->money);
         $this->assertSame([
             'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0, 'wheat' => 10_000,

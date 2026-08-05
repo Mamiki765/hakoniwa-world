@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $id
  * @property int $world_id
  * @property int $nation_number
+ * @property int $registered_turn
  * @property string $name
  * @property string $owner_name
  * @property string $profile_comment
@@ -24,13 +25,18 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Nation extends Model
 {
     protected $fillable = [
-        'world_id', 'nation_number', 'name', 'owner_name', 'profile_comment', 'money', 'state', 'idle_counter',
+        'world_id', 'nation_number', 'registered_turn', 'name', 'owner_name', 'profile_comment', 'money', 'state',
+        'idle_counter',
     ];
 
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['nation_number' => 'integer', 'idle_counter' => 'integer'];
+        return [
+            'nation_number' => 'integer',
+            'registered_turn' => 'integer',
+            'idle_counter' => 'integer',
+        ];
     }
 
     /** @return BelongsTo<World, $this> */

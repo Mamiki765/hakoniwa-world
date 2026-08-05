@@ -64,12 +64,12 @@ monster8.gif
 
 一部または全部がない場合もhealthcheck、API、map、Vite buildは失敗しない。resolverは該当URLを返さずUIが安全なCSS fallbackを表示する。missing fileはdeploy inventory mismatchとして記録し、別画像を代用しない。`_references`をmountまたはHTTP公開して配置を代替してはならない。
 
-## Pre-release ruleset update
+## Production data boundary
 
-既存migration chainはcanonical schema rebaselineまで維持し、application更新時は先にPostgreSQL backupと明示的な`*_test` DBで`php artisan migrate --force`を検証する。ただしmigration適用後もhistorical ruleset Worldの継続実行は行わない。read-only表示を確認し、`docs/operations/world-reset.md`のbackup-first手順でconfigured Worldをcurrent rulesetへresetする。
+PR23のgo-live前は`docs/operations/world-reset.md`の限定手順で開発Worldと仮データをfresh生成できる。production Worldの最終fresh生成、一般Nation登録開放、初回正式turn開始の3条件が揃った後はresetを禁止する。
 
-World更新のためにcontainer volumeを再作成したり、`docker compose down -v`を実行したりしない。published historical ruleset recordsは監査用に保持する。
+application更新時は暗号化off-host backupとdeploy前backupを取得し、明示的な`*_test` DBで`php artisan migrate --force`を検証する。go-live後のschemaとgameplay data変更はforward migrationまたは明示的な変換経路を必須とし、World更新のためにcontainer volumeを再作成したり、`docker compose down -v`を実行したりしない。published ruleset recordsは監査用に保持する。
 
-## 将来の本番統合
+## Production integration
 
-本番ではNginx Proxy ManagerからDocker network上の`hakoniwa-web:80`へ接続する。repositoryのlocal port mappingを既存OCI Composeへそのままcopyせず、network、secret、backup、monitoringを別承認で決める。
+実運用のreverse proxyはDocker network上の`hakoniwa-web:80`へ接続する。repositoryのlocal port mappingをOCI Composeへそのままcopyせず、実在するnetwork、secret、off-host backup、monitoringに合わせてoperatorが設定する。turn cronは`docs/operations/turn-cron.md`、backupとrestore rehearsalは`docs/operations/database-backup-and-restore.md`を正本とする。

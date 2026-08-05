@@ -1,0 +1,30 @@
+:root {
+    color-scheme: light;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    color: #173840;
+    background: #f3f0e8;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; line-height: 1.8; }
+a { color: #176b73; text-underline-offset: 3px; }
+.manual-header { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 3rem); color: white; background: #123f49; }
+.manual-header a { color: white; font-size: 1.15rem; font-weight: 800; text-decoration: none; }
+.manual-layout { display: grid; grid-template-columns: 220px minmax(0, 760px); justify-content: center; gap: 2rem; padding: 2rem 1rem 4rem; }
+.manual-layout nav { display: grid; align-content: start; gap: .35rem; position: sticky; top: 1rem; height: fit-content; }
+.manual-layout nav a { padding: .65rem .8rem; border-left: 3px solid transparent; text-decoration: none; }
+.manual-layout nav a.current { border-color: #e96b50; color: #123f49; background: #fff; font-weight: 800; }
+.manual-content, .standalone-content { min-width: 0; padding: clamp(1.25rem, 4vw, 3rem); border: 1px solid #d7d1c4; background: #fff; box-shadow: 10px 10px 0 rgba(18, 63, 73, .07); }
+.standalone-content { max-width: 800px; margin: 2rem auto 4rem; }
+h1 { margin-top: 0; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2rem, 6vw, 3.8rem); line-height: 1.2; }
+h2 { margin-top: 2.4rem; padding-bottom: .35rem; border-bottom: 2px solid #e8e2d6; }
+h3 { margin-top: 1.8rem; }
+li + li { margin-top: .25rem; }
+.contact-action a { display: inline-block; padding: .75rem 1rem; color: white; background: #176b73; font-weight: 800; text-decoration: none; }
+.contact-unavailable { padding: .75rem 1rem; background: #f5e6df; }
+
+@media (max-width: 720px) {
+    .manual-layout { grid-template-columns: 1fr; }
+    .manual-layout nav { position: static; grid-template-columns: repeat(2, 1fr); }
+    .standalone-content { margin: 1rem; }
+}

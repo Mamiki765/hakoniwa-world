@@ -11,12 +11,12 @@ use Tests\TestCase;
 
 class LandSubsidenceRulesetContractTest extends TestCase
 {
-    public function test_pr18_publishes_the_exact_land_subsidence_contract(): void
+    public function test_production_ruleset_publishes_the_exact_land_subsidence_contract(): void
     {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr18-v1');
+        $settings = config('hakoniwa.ruleset');
         $validated = app(RulesetAuthoringValidator::class)->validate($settings);
 
-        $this->assertSame('roadmap-pr18-v1', $validated['key']);
+        $this->assertSame('hakoniwa-2s-plus-v1', $validated['key']);
         $this->assertSame([
             'enabled' => true,
             'base_safe_land_cells' => 100,

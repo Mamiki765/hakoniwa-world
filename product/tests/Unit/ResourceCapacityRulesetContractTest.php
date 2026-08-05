@@ -6,15 +6,15 @@ use App\Domain\Ruleset\RulesetAuthoringValidator;
 use DomainException;
 use Tests\TestCase;
 
-class Pr19RulesetContractTest extends TestCase
+class ResourceCapacityRulesetContractTest extends TestCase
 {
-    public function test_pr19_resource_units_capacities_and_existing_economy_rates_are_validated(): void
+    public function test_production_resource_units_capacities_and_economy_rates_are_validated(): void
     {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr19-v1');
+        $settings = config('hakoniwa.ruleset');
         $validated = app(RulesetAuthoringValidator::class)->validate($settings);
         $resources = collect($settings['resource_definitions'])->keyBy('key');
 
-        $this->assertSame('roadmap-pr19-v1', $validated['key']);
+        $this->assertSame('hakoniwa-2s-plus-v1', $validated['key']);
         $this->assertSame(['unit', 'ユニット'], [
             $resources['industrial_goods']['unit'], $resources['industrial_goods']['unit_label'],
         ]);
@@ -43,15 +43,11 @@ class Pr19RulesetContractTest extends TestCase
             'event_type' => 'capacity.overflow',
         ], $settings['resource_capacity_overflow']);
 
-        $historical = config('hakoniwa.published_rulesets.roadmap-pr18-v1');
-        $this->assertArrayNotHasKey('resource_capacities', $historical);
-        $this->assertNull(collect($historical['resource_definitions'])
-            ->firstWhere('key', 'industrial_goods')['unit_label']);
     }
 
     public function test_resource_capacity_map_rejects_unknown_food_and_invalid_overflow_contracts(): void
     {
-        $base = config('hakoniwa.published_rulesets.roadmap-pr19-v1');
+        $base = config('hakoniwa.ruleset');
         $cases = [
             'unknown key' => function (array $settings): array {
                 $settings['resource_capacities']['unknown'] = 1;
@@ -88,7 +84,7 @@ class Pr19RulesetContractTest extends TestCase
         foreach ($cases as $label => $mutate) {
             try {
                 app(RulesetAuthoringValidator::class)->validate($mutate($base));
-                $this->fail("Invalid PR19 capacity contract was accepted: {$label}");
+                $this->fail("Invalid production capacity contract was accepted: {$label}");
             } catch (DomainException) {
                 $this->addToAssertionCount(1);
             }

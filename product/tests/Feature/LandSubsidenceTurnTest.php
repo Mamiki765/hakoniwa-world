@@ -235,12 +235,11 @@ class LandSubsidenceTurnTest extends TestCase
             $this->assertStringNotContainsString($secret, $body);
         }
 
-        $this->getJson("/api/v1/public/worlds/{$world->id}/events")
+        $publicEvents = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()
-            ->assertJsonFragment([
-                'type' => 'land_subsidence_triggered',
-                'nation_number' => $nation->nation_number,
-            ]);
+            ->assertJsonFragment(['type' => 'land_subsidence.triggered']);
+        $this->assertStringNotContainsString('nation_number', $publicEvents->getContent());
+        $this->assertStringNotContainsString('metadata', $publicEvents->getContent());
     }
 
     public function test_shared_neutral_shallow_is_changed_once_for_simultaneous_nations(): void

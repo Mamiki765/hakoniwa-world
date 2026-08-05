@@ -29,10 +29,16 @@ final class ResetWorld extends Command
         {--preserve-users : Accepted for clarity; users are always preserved}
         {--preserve-auth-identities : Accepted for clarity; auth identities are always preserved}';
 
-    protected $description = 'Safely reset one configured world while preserving users and authentication identities.';
+    protected $description = 'Reset one configured world in local or testing while preserving users and authentication identities.';
 
     public function handle(OceanWorldGenerator $generator, WorldTurnLock $turnLock): int
     {
+        if (app()->environment('production')) {
+            $this->error('World reset is disabled in production. Use forward migrations or an explicit conversion path.');
+
+            return self::FAILURE;
+        }
+
         $worldKey = (string) $this->option('world');
         $profile = WorldGenerationProfile::tryFrom((string) $this->option('profile'));
         $configuredWorldKey = (string) config('hakoniwa.world.key');

@@ -10,13 +10,13 @@ use Tests\TestCase;
 
 class DisasterRulesetContractTest extends TestCase
 {
-    public function test_pr15_publishes_exact_legacy_half_rates_and_preserves_internal_rates(): void
+    public function test_production_ruleset_publishes_exact_public_and_internal_disaster_rates(): void
     {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr15-v1');
+        $settings = config('hakoniwa.ruleset');
         $validated = app(RulesetAuthoringValidator::class)->validate($settings);
         $disasters = $settings['turn_processing']['disasters'];
 
-        $this->assertSame('roadmap-pr15-v1', $validated['key']);
+        $this->assertSame('hakoniwa-2s-plus-v1', $validated['key']);
         $this->assertSame([
             'earthquake' => [80, 2_000],
             'tsunami' => [300, 2_000],
@@ -81,7 +81,7 @@ class DisasterRulesetContractTest extends TestCase
     {
         $published = config('hakoniwa.published_rulesets');
         $this->assertIsArray($published);
-        $settings = $published['roadmap-pr15-v1'];
+        $settings = $published['hakoniwa-2s-plus-v1'];
         $settings['turn_processing']['disasters']['meteor_shower']['continuation_probability'] = [
             'numerator' => 1,
             'denominator' => 1,
@@ -105,7 +105,7 @@ class DisasterRulesetContractTest extends TestCase
             ['huge_meteor', 3, 2],
             ['eruption', 2, 1],
         ] as [$key, $authoredRadius, $expectedRadius]) {
-            $settings = $published['roadmap-pr15-v1'];
+            $settings = $published['hakoniwa-2s-plus-v1'];
             $settings['turn_processing']['disasters'][$key]['radius'] = $authoredRadius;
 
             try {
@@ -119,7 +119,7 @@ class DisasterRulesetContractTest extends TestCase
             }
         }
 
-        $settings = $published['roadmap-pr15-v1'];
+        $settings = $published['hakoniwa-2s-plus-v1'];
         $settings['turn_processing']['command_random_effects']['land_level_earthquake']['radius'] = 11;
         try {
             app(RulesetAuthoringValidator::class)->validate($settings);
@@ -138,13 +138,13 @@ class DisasterRulesetContractTest extends TestCase
         $this->assertIsArray($published);
         $maximum = 2_147_483_648;
 
-        $boundary = $published['roadmap-pr15-v1'];
+        $boundary = $published['hakoniwa-2s-plus-v1'];
         $boundary['turn_processing']['disasters']['tsunami']['internal_denominator'] = $maximum;
         $boundary['turn_processing']['disasters']['typhoon']['internal_denominator'] = $maximum;
-        $this->assertSame('roadmap-pr15-v1', app(RulesetAuthoringValidator::class)->validate($boundary)['key']);
+        $this->assertSame('hakoniwa-2s-plus-v1', app(RulesetAuthoringValidator::class)->validate($boundary)['key']);
 
         foreach (['tsunami', 'typhoon'] as $key) {
-            $settings = $published['roadmap-pr15-v1'];
+            $settings = $published['hakoniwa-2s-plus-v1'];
             $settings['turn_processing']['disasters'][$key]['internal_denominator'] = $maximum + 1;
 
             try {
@@ -165,14 +165,14 @@ class DisasterRulesetContractTest extends TestCase
         $this->assertIsArray($published);
         $maximum = DeterministicRandomStream::MAXIMUM_INTEGER - 59;
 
-        $boundary = $published['roadmap-pr15-v1'];
+        $boundary = $published['hakoniwa-2s-plus-v1'];
         foreach (['earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption'] as $key) {
             $boundary['turn_processing']['disasters'][$key]['center_padding'] = $maximum;
         }
-        $this->assertSame('roadmap-pr15-v1', app(RulesetAuthoringValidator::class)->validate($boundary)['key']);
+        $this->assertSame('hakoniwa-2s-plus-v1', app(RulesetAuthoringValidator::class)->validate($boundary)['key']);
 
         foreach (['earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption'] as $key) {
-            $settings = $published['roadmap-pr15-v1'];
+            $settings = $published['hakoniwa-2s-plus-v1'];
             $settings['turn_processing']['disasters'][$key]['center_padding'] = $maximum + 1;
 
             try {

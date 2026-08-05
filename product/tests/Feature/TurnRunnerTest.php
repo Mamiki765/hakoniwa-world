@@ -21,6 +21,7 @@ use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
 use Closure;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -201,12 +202,92 @@ class TurnRunnerTest extends TestCase
         $this->assertSame($originalName, $world->fresh()->name);
         $this->assertSame(1, $world->fresh()->current_turn);
 
-        $completed = $this->runner($this->pipeline())->run($world->fresh(), source: 'cron');
+        $completed = $this->runner($this->pipeline())->run($world->fresh(), source: 'manual');
         $this->assertSame($failed->id, $completed->id);
         $this->assertSame(self::SEED, $completed->random_seed);
         $this->assertSame(2, $completed->attempt_count);
-        $this->assertSame('cron', $completed->source);
+        $this->assertSame('manual', $completed->source);
         $this->assertSame(2, $world->fresh()->current_turn);
+    }
+
+    public function test_cron_does_not_retry_failed_turn_run(): void
+    {
+        $world = $this->lightweightWorld();
+        $failing = $this->pipeline(function (TurnContext $context, string $phase): void {
+            if ($phase === 'development_commands') {
+                throw new RuntimeException('synthetic cron failure');
+            }
+        });
+
+        try {
+            $this->runner($failing)->run($world, source: 'cron');
+            $this->fail('Expected the cron turn to fail.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('synthetic cron failure', $exception->getMessage());
+        }
+
+        $failed = TurnRun::query()
+            ->where('world_id', $world->id)
+            ->where('is_dry_run', false)
+            ->firstOrFail();
+
+        $before = $failed->only([
+            'status',
+            'attempt_count',
+            'random_seed',
+            'ruleset_version_id',
+            'source',
+        ]);
+
+        try {
+            $this->runner($this->pipeline())->run($world->fresh(), source: 'cron');
+            $this->fail('Expected cron retry rejection.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('Cron cannot retry unresolved World', $exception->getMessage());
+        }
+
+        $after = TurnRun::query()->findOrFail($failed->id);
+
+        $this->assertSame($before, $after->only(array_keys($before)));
+        $this->assertSame(TurnRun::STATUS_FAILED, $after->status);
+        $this->assertSame(1, $after->attempt_count);
+        $this->assertSame(1, $world->fresh()->current_turn);
+    }
+
+    public function test_cron_does_not_retry_blocked_turn_run(): void
+    {
+        $world = $this->lightweightWorld();
+        $phaseKeys = array_values(array_filter(
+            self::PHASES,
+            static fn (string $key): bool => $key !== 'global_disasters',
+        ));
+
+        $blocked = $this->runner($this->pipelineForKeys($phaseKeys))
+            ->run($world, source: 'cron');
+
+        $this->assertSame(TurnRun::STATUS_BLOCKED, $blocked->status);
+
+        $before = $blocked->only([
+            'status',
+            'attempt_count',
+            'random_seed',
+            'ruleset_version_id',
+            'source',
+        ]);
+
+        try {
+            $this->runner($this->pipeline())->run($world->fresh(), source: 'cron');
+            $this->fail('Expected cron retry rejection.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('Cron cannot retry unresolved World', $exception->getMessage());
+        }
+
+        $after = TurnRun::query()->findOrFail($blocked->id);
+
+        $this->assertSame($before, $after->only(array_keys($before)));
+        $this->assertSame(TurnRun::STATUS_BLOCKED, $after->status);
+        $this->assertSame(1, $after->attempt_count);
+        $this->assertSame(1, $world->fresh()->current_turn);
     }
 
     public function test_retry_reconstructs_random_orders_and_discards_failed_attempt_state(): void

@@ -55,7 +55,10 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.0.money_display', '約500億円')
             ->assertJsonPath('data.0.money_bucket', '500')
             ->assertJsonPath('data.1.money_display', '約62,000億円')
-            ->assertJsonPath('data.1.money_bucket', '62000');
+            ->assertJsonPath('data.1.money_bucket', '62000')
+            ->assertJsonPath('data.0.survival_turns', 0)
+            ->assertJsonPath('data.0.finance_only_turns', 100)
+            ->assertJsonPath('data.0.activity_status', 'finance_only');
         $rankingBody = $ranking->getContent();
         $this->assertStringNotContainsString('"money":', $rankingBody);
         $this->assertStringNotContainsString('62728', $rankingBody);
@@ -74,7 +77,15 @@ class PublicLobbyApiTest extends TestCase
 
         DB::table('audit_events')->insert([
             'actor_user_id' => null,
+            'world_id' => $world->id,
+            'turn' => 1,
+            'nation_id' => $first->id,
+            'x' => null,
+            'y' => null,
+            'message' => null,
+            'visibility' => 'public',
             'event_type' => 'disaster.triggered',
+            'severity' => 'warning',
             'subject_type' => $world->getMorphClass(),
             'subject_id' => $world->getKey(),
             'metadata' => json_encode([
@@ -95,18 +106,16 @@ class PublicLobbyApiTest extends TestCase
 
         $events = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()
-            ->assertJsonPath('data.0.type', 'disaster_triggered')
-            ->assertJsonPath('data.0.message', '地震が発生しました（中心 30,31）。')
-            ->assertJsonPath('data.0.metadata', [
-                'target_turn' => 2,
-                'disaster_key' => 'earthquake',
-                'center_x' => 30,
-                'center_y' => 31,
-            ])
-            ->assertJsonPath('data.1.type', 'nation_created')
-            ->assertJsonPath('data.1.metadata.nation_number', 2)
-            ->assertJsonStructure(['data' => [['id', 'type', 'message', 'metadata', 'occurred_at']]]);
+            ->assertJsonPath('data.page', 1)
+            ->assertJsonPath('data.anchor_turn', 1)
+            ->assertJsonPath('data.groups.0.target_turn', 1)
+            ->assertJsonPath('data.groups.0.events.0.type', 'disaster.triggered')
+            ->assertJsonPath('data.groups.0.events.0.message', '地震が発生しました（中心 30, 31）。')
+            ->assertJsonStructure(['data' => ['groups' => [['target_turn', 'events' => [
+                ['id', 'type', 'message', 'importance', 'target_turn', 'occurred_at'],
+            ]]]]]);
         $eventsBody = $events->getContent();
+        $this->assertStringNotContainsString('metadata', $eventsBody);
         $this->assertStringNotContainsString('"draw"', $eventsBody);
         $this->assertStringNotContainsString('"numerator"', $eventsBody);
         $this->assertStringNotContainsString('"denominator"', $eventsBody);
@@ -128,7 +137,64 @@ class PublicLobbyApiTest extends TestCase
 
         $this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()
-            ->assertExactJson(['data' => []]);
+            ->assertJsonPath('data.groups', [])
+            ->assertJsonPath('data.page', 1)
+            ->assertJsonPath('data.anchor_turn', 1)
+            ->assertJsonPath('data.has_older_page', false);
+    }
+
+    public function test_public_news_never_projects_nation_private_or_admin_events(): void
+    {
+        $world = $this->lightweightWorld();
+        foreach ([
+            ['visibility' => 'public', 'event_type' => 'turn.completed', 'secret' => 'public-safe'],
+            ['visibility' => 'public', 'event_type' => 'missile.launch_detail', 'secret' => 'misclassified-secret'],
+            ['visibility' => 'nation', 'event_type' => 'missile.launch_detail', 'secret' => 'nation-secret'],
+            ['visibility' => 'private', 'event_type' => 'missile.launch_detail', 'secret' => 'private-secret'],
+            ['visibility' => 'admin', 'event_type' => 'missile.launch_detail', 'secret' => 'admin-secret'],
+        ] as $event) {
+            DB::table('audit_events')->insert([
+                'actor_user_id' => null,
+                'world_id' => $world->id,
+                'turn' => 1,
+                'nation_id' => null,
+                'x' => null,
+                'y' => null,
+                'message' => null,
+                'visibility' => $event['visibility'],
+                'event_type' => $event['event_type'],
+                'severity' => 'info',
+                'subject_type' => $world->getMorphClass(),
+                'subject_id' => $world->id,
+                'metadata' => json_encode([
+                    'target_turn' => 1,
+                    'target_x' => 12,
+                    'target_y' => 13,
+                    'secret' => $event['secret'],
+                ], JSON_THROW_ON_ERROR),
+                'occurred_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $response = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.groups.0.events')
+            ->assertJsonPath('data.groups.0.events.0.type', 'turn.completed');
+        foreach (['misclassified-secret', 'nation-secret', 'private-secret', 'admin-secret', 'target_x', 'target_y', 'metadata'] as $secret) {
+            $this->assertStringNotContainsString($secret, $response->getContent());
+        }
+    }
+
+    public function test_public_monster_reward_news_is_third_party_safe_when_killer_and_host_differ(): void
+    {
+        $this->assertPublicMonsterRewardNews(987_654_321, 876_543_210);
+    }
+
+    public function test_public_monster_reward_news_is_third_party_safe_when_killer_and_host_are_same(): void
+    {
+        $this->assertPublicMonsterRewardNews(987_654_321, 987_654_321);
     }
 
     public function test_guest_nation_preview_uses_viewer_safe_cells_and_never_leaks_exact_money(): void
@@ -271,5 +337,65 @@ class PublicLobbyApiTest extends TestCase
         $this->assertIsArray($cell);
 
         return $cell;
+    }
+
+    private function assertPublicMonsterRewardNews(int $killerNationId, int $hostNationId): void
+    {
+        $world = $this->lightweightWorld();
+        DB::table('audit_events')->insert([
+            'actor_user_id' => null,
+            'world_id' => $world->id,
+            'turn' => 1,
+            'nation_id' => null,
+            'x' => 123_456_789,
+            'y' => 223_456_789,
+            'message' => null,
+            'visibility' => 'public',
+            'event_type' => 'monster.reward_distributed',
+            'severity' => 'info',
+            'subject_type' => $world->getMorphClass(),
+            'subject_id' => $world->id,
+            'metadata' => json_encode([
+                'target_turn' => 1,
+                'monster_key' => 'inora',
+                'killer_nation_id' => $killerNationId,
+                'host_nation_id' => $hostNationId,
+                'target_x' => 323_456_789,
+                'target_y' => 423_456_789,
+                'killer_money' => ['applied' => 200],
+                'host_meat_food' => ['applied' => 100_000],
+                'private_marker' => 'monster-reward-internal-only',
+            ], JSON_THROW_ON_ERROR),
+            'occurred_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.groups.0.events')
+            ->assertJsonPath('data.groups.0.events.0.type', 'monster.reward_distributed')
+            ->assertJsonPath(
+                'data.groups.0.events.0.message',
+                'いのらが倒され、撃破報酬が配分されました。',
+            );
+
+        foreach ([
+            '受け取りました',
+            (string) $killerNationId,
+            (string) $hostNationId,
+            '123456789',
+            '223456789',
+            '323456789',
+            '423456789',
+            'killer_nation_id',
+            'host_nation_id',
+            'target_x',
+            'target_y',
+            'metadata',
+            'monster-reward-internal-only',
+        ] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $response->getContent());
+        }
     }
 }

@@ -29,6 +29,7 @@ class NationResource extends JsonResource
         $capacities = $isOwner
             ? app(NationCapacityResolver::class)->resolve($this->resource)
             : null;
+        $currentTurn = (int) $this->world()->value('current_turn');
 
         return [
             'id' => $this->id, 'world_id' => $this->world_id,
@@ -47,7 +48,11 @@ class NationResource extends JsonResource
                 (int) $this->money >= ($capacities->money ?? PHP_INT_MAX),
             ),
             'state' => $this->state,
-            'current_turn' => (int) $this->world()->value('current_turn'),
+            'current_turn' => $currentTurn,
+            'registered_turn' => (int) $this->registered_turn,
+            'survival_turns' => max(0, $currentTurn - (int) $this->registered_turn),
+            'finance_only_turns' => (int) $this->idle_counter,
+            'activity_status' => (int) $this->idle_counter > 0 ? 'finance_only' : 'active',
             'total_population' => (int) $this->territoryCells()->sum('population'),
             'territory_cell_count' => $this->territoryCells()->count(),
             'owned_land_cells' => app(NationLandAreaCalculator::class)->forNation($this->resource),

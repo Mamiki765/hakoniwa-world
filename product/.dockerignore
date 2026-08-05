@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.testing
 .git
 .github
 node_modules

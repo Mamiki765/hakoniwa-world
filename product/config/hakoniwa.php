@@ -13,14 +13,15 @@ $publishedRulesets = RulesetAuthoringCollection::fromFiles([
     __DIR__.'/hakoniwa/rulesets/roadmap-pr19-v1.php',
     __DIR__.'/hakoniwa/rulesets/roadmap-pr21-v1.php',
     __DIR__.'/hakoniwa/rulesets/roadmap-pr22-v1.php',
+    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v1.php',
 ])->all();
 
 return [
-    'ruleset' => $publishedRulesets['roadmap-pr22-v1'],
+    'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v1'],
     'published_rulesets' => $publishedRulesets,
     'world' => [
         'key' => 'shared-world',
-        'name' => '共有世界',
+        'name' => '箱庭諸島２S＋',
         'map_space_key' => 'surface',
         'map_space_name' => '地上',
         'generator_id' => 'ocean-world',
@@ -35,5 +36,8 @@ return [
         'base_url' => env('HAKONIWA_TILE_ASSET_BASE_URL', env('HAKONIWA_ORIGINAL_ASSET_BASE_URL', '/assets/hakoniwa-tiles')),
         'path' => env('HAKONIWA_TILE_ASSET_PATH', env('HAKONIWA_ORIGINAL_ASSET_PATH', '/srv/hakoniwa-assets/tiles')),
         'allowed_extensions' => ['gif', 'png', 'webp'],
+    ],
+    'community' => [
+        'contact_url' => env('HAKONIWA_MODERATION_CONTACT_URL'),
     ],
 ];

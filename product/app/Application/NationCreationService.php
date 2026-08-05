@@ -74,10 +74,12 @@ final class NationCreationService
             ]);
 
             $nation = Nation::query()->create([
-                'world_id' => $world->id, 'nation_number' => $nationNumber, 'name' => $name,
+                'world_id' => $world->id, 'nation_number' => $nationNumber,
+                'registered_turn' => $world->current_turn, 'name' => $name,
                 'owner_name' => $ownerName, 'profile_comment' => $profileComment,
                 'money' => $rules['initial_money'],
                 'state' => 'active',
+                'idle_counter' => 100,
             ]);
             $this->resources->initialize($nation);
             $this->islands->generate($mapSpace, $nation, $center, $seed);
@@ -90,11 +92,22 @@ final class NationCreationService
                 'nation_id' => $nation->id, 'status' => 'completed', 'updated_at' => now(),
             ]);
             DB::table('audit_events')->insert([
-                'actor_user_id' => $user->id, 'event_type' => 'nation.created',
+                'actor_user_id' => $user->id,
+                'world_id' => $world->id,
+                'turn' => $world->current_turn,
+                'nation_id' => $nation->id,
+                'x' => $center->x,
+                'y' => $center->y,
+                'message' => null,
+                'visibility' => 'public',
+                'event_type' => 'nation.created',
+                'severity' => 'info',
                 'subject_type' => Nation::class, 'subject_id' => $nation->id,
                 'metadata' => json_encode([
                     'world_id' => $world->id,
+                    'target_turn' => $world->current_turn,
                     'nation_number' => $nation->nation_number,
+                    'nation_name' => $nation->name,
                     'x' => $center->x,
                     'y' => $center->y,
                 ], JSON_THROW_ON_ERROR),

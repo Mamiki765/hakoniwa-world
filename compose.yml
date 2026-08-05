@@ -30,7 +30,7 @@ services:
       hakoniwa-postgres:
         condition: service_healthy
     environment:
-      APP_NAME: ${APP_NAME:-Hakoniwa World}
+      APP_NAME: ${APP_NAME:-箱庭諸島２S＋}
       APP_ENV: ${APP_ENV:-local}
       APP_KEY: ${APP_KEY:?Generate APP_KEY and set it in the root .env file}
       APP_DEBUG: ${APP_DEBUG:-false}
@@ -50,6 +50,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://127.0.0.1:8080/auth/google/callback}
+      HAKONIWA_MODERATION_CONTACT_URL: ${HAKONIWA_MODERATION_CONTACT_URL:-}
       HAKONIWA_TILE_ASSET_BASE_URL: ${HAKONIWA_TILE_ASSET_BASE_URL:-${HAKONIWA_ORIGINAL_ASSET_BASE_URL:-/assets/hakoniwa-tiles}}
       HAKONIWA_TILE_ASSET_PATH: ${HAKONIWA_TILE_ASSET_PATH:-${HAKONIWA_ORIGINAL_ASSET_PATH:-/srv/hakoniwa-assets/tiles}}
       HAKONIWA_ORIGINAL_ASSET_BASE_URL: ${HAKONIWA_ORIGINAL_ASSET_BASE_URL:-/assets/hakoniwa-original}

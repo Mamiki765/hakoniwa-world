@@ -13,17 +13,6 @@ use Illuminate\Support\Facades\DB;
 
 final class PublicWorldService
 {
-    /** @var array<string, string> */
-    private const DISASTER_LABELS = [
-        'earthquake' => '地震',
-        'tsunami' => '津波',
-        'typhoon' => '台風',
-        'meteor_shower' => '流星群',
-        'huge_meteor' => '巨大隕石',
-        'eruption' => '噴火',
-        'land_subsidence' => '地盤沈下',
-    ];
-
     public function __construct(
         private readonly MoneyFormatter $money,
         private readonly NationLandAreaCalculator $landArea,
@@ -38,10 +27,21 @@ final class PublicWorldService
             'name' => $world->name,
             'current_turn' => $world->current_turn,
             'nation_count' => $world->nations()->count(),
+            'contact_url' => $this->contactUrl(),
             'total_population' => (int) MapCell::query()
                 ->whereIn('map_space_id', MapSpace::query()->select('id')->where('world_id', $world->id))
                 ->sum('population'),
         ];
+    }
+
+    private function contactUrl(): ?string
+    {
+        $url = config('hakoniwa.community.contact_url');
+        if (! is_string($url) || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+
+        return in_array(parse_url($url, PHP_URL_SCHEME), ['https', 'http'], true) ? $url : null;
     }
 
     /** @return Collection<int, non-empty-array<string, mixed>> */
@@ -112,127 +112,6 @@ final class PublicWorldService
         ];
     }
 
-    /** @return Collection<int, array{id: int, type: string, message: string, metadata: array<string, int|string>, occurred_at: string}> */
-    public function recentEvents(World $world, int $limit = 12): Collection
-    {
-        $nationEvents = DB::table('audit_events')
-            ->join('nations', function ($join): void {
-                $join->on('nations.id', '=', 'audit_events.subject_id')
-                    ->where('audit_events.subject_type', '=', Nation::class);
-            })
-            ->where('nations.world_id', $world->id)
-            ->where('audit_events.event_type', 'nation.created')
-            ->orderByDesc('audit_events.occurred_at')
-            ->orderByDesc('audit_events.id')
-            ->limit($limit)
-            ->get([
-                'audit_events.id',
-                'audit_events.occurred_at',
-                'nations.id as nation_id',
-                'nations.nation_number',
-                'nations.name as nation_name',
-            ])
-            ->map(static fn (object $event): array => [
-                'id' => (int) $event->id,
-                'type' => 'nation_created',
-                'message' => "{$event->nation_name}が成立しました。",
-                'metadata' => [
-                    'nation_id' => (int) $event->nation_id,
-                    'nation_number' => (int) $event->nation_number,
-                    'nation_name' => (string) $event->nation_name,
-                ],
-                'occurred_at' => (string) $event->occurred_at,
-            ]);
-
-        $disasterEvents = DB::table('audit_events')
-            ->where('subject_type', $world->getMorphClass())
-            ->where('subject_id', $world->getKey())
-            ->where('event_type', 'disaster.triggered')
-            ->orderByDesc('occurred_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get(['id', 'occurred_at', 'metadata'])
-            ->map(fn (object $event): ?array => $this->publicDisasterEvent($event))
-            ->filter(static fn (?array $event): bool => $event !== null)
-            ->values();
-
-        $landSubsidenceEvents = DB::table('audit_events')
-            ->join('nations', function ($join): void {
-                $join->on('nations.id', '=', 'audit_events.subject_id')
-                    ->where('audit_events.subject_type', '=', Nation::class);
-            })
-            ->where('nations.world_id', $world->id)
-            ->where('audit_events.event_type', 'land_subsidence.triggered')
-            ->orderByDesc('audit_events.occurred_at')
-            ->orderByDesc('audit_events.id')
-            ->limit($limit)
-            ->get(['audit_events.id', 'audit_events.occurred_at', 'audit_events.metadata'])
-            ->map(fn (object $event): ?array => $this->publicDisasterEvent($event))
-            ->filter(static fn (?array $event): bool => $event !== null)
-            ->values();
-
-        return $nationEvents
-            ->concat($disasterEvents)
-            ->concat($landSubsidenceEvents)
-            ->sort(static function (array $left, array $right): int {
-                $byTime = strcmp($right['occurred_at'], $left['occurred_at']);
-
-                return $byTime !== 0 ? $byTime : $right['id'] <=> $left['id'];
-            })
-            ->take($limit)
-            ->values();
-    }
-
-    /** @return array{id: int, type: string, message: string, metadata: array<string, int|string>, occurred_at: string}|null */
-    private function publicDisasterEvent(object $event): ?array
-    {
-        $metadata = json_decode((string) $event->metadata, true);
-        if (! is_array($metadata)) {
-            return null;
-        }
-
-        $key = $metadata['disaster_key'] ?? null;
-        if (! is_string($key) || ! isset(self::DISASTER_LABELS[$key])) {
-            return null;
-        }
-
-        if ($key === 'land_subsidence') {
-            $nationNumber = (int) ($metadata['nation_number'] ?? 0);
-
-            return [
-                'id' => (int) $event->id,
-                'type' => 'land_subsidence_triggered',
-                'message' => sprintf('N%dで地盤沈下が発生しました。', $nationNumber),
-                'metadata' => [
-                    'target_turn' => (int) ($metadata['target_turn'] ?? 0),
-                    'disaster_key' => $key,
-                    'nation_number' => $nationNumber,
-                    'changed_to_sea_count' => (int) ($metadata['changed_to_sea_count'] ?? 0),
-                    'changed_to_shallow_count' => (int) ($metadata['changed_to_shallow_count'] ?? 0),
-                ],
-                'occurred_at' => (string) $event->occurred_at,
-            ];
-        }
-
-        return [
-            'id' => (int) $event->id,
-            'type' => 'disaster_triggered',
-            'message' => sprintf(
-                '%sが発生しました（中心 %d,%d）。',
-                self::DISASTER_LABELS[$key],
-                (int) ($metadata['center_x'] ?? 0),
-                (int) ($metadata['center_y'] ?? 0),
-            ),
-            'metadata' => [
-                'target_turn' => (int) ($metadata['target_turn'] ?? 0),
-                'disaster_key' => $key,
-                'center_x' => (int) ($metadata['center_x'] ?? 0),
-                'center_y' => (int) ($metadata['center_y'] ?? 0),
-            ],
-            'occurred_at' => (string) $event->occurred_at,
-        ];
-    }
-
     /** @return Collection<int, Nation> */
     private function rankedNations(World $world): Collection
     {
@@ -270,6 +149,8 @@ final class PublicWorldService
     private function publicNationFields(Nation $nation, World $world): array
     {
         $estimate = $this->money->publicEstimate((int) $nation->money);
+        $financeOnlyTurns = (int) $nation->idle_counter;
+        $activityStatus = $financeOnlyTurns > 0 ? 'finance_only' : 'active';
 
         return [
             'id' => $nation->id,
@@ -284,6 +165,10 @@ final class PublicWorldService
             'owned_land_cells' => (int) ($nation->getAttribute('owned_land_cells') ?? 0),
             'money_display' => $estimate['display'],
             'money_bucket' => $estimate['bucket'],
+            'registered_turn' => (int) $nation->registered_turn,
+            'survival_turns' => max(0, (int) $world->current_turn - (int) $nation->registered_turn),
+            'finance_only_turns' => $financeOnlyTurns,
+            'activity_status' => $activityStatus,
             'last_updated_turn' => $world->current_turn,
         ];
     }

@@ -479,9 +479,9 @@ class MonsterSystemTest extends TestCase
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
         $this->assertIsArray($killerReward);
-        $this->assertStringContainsString('レッドいのらを撃破し、賞金499億円', $killerReward['message']);
+        $this->assertSame('レッドいのらを撃破し、賞金499億円を受け取りました。', $killerReward['message']);
         $this->assertIsArray($hostReward);
-        $this->assertStringContainsString('怪獣肉100トン', $hostReward['message']);
+        $this->assertSame('レッドいのらが倒され、怪獣肉100トンを受け取りました。', $hostReward['message']);
         $this->assertSame(200, $base->fresh()->facility_experience);
         $stat = NationMonsterKillStat::query()->sole();
         $this->assertSame($killer->id, $stat->nation_id);
@@ -621,6 +621,14 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(200, $sameResult->killerMoney['requested']);
         $this->assertSame(100_000, $sameResult->hostMeat['requested']);
         $this->assertSame(1, $sameResult->newKillCount);
+        $sameNationReward = collect(app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->firstWhere('type', 'monster.reward_distributed');
+        $this->assertIsArray($sameNationReward);
+        $this->assertSame(
+            'いのらを撃破し、賞金200億円と怪獣肉100,000トンを受け取りました。',
+            $sameNationReward['message'],
+        );
 
         $neutralCell = MapCell::query()->where('map_space_id', $space->id)
             ->whereNull('owner_nation_id')

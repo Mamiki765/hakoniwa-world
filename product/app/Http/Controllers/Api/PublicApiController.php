@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\MapChunkService;
+use App\Application\PlayerIslandEventService;
 use App\Application\PublicWorldService;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MapSpaceResource;
@@ -11,6 +12,7 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\World;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 final class PublicApiController extends Controller
@@ -30,9 +32,18 @@ final class PublicApiController extends Controller
         return response()->json(['data' => $service->rankings($world)]);
     }
 
-    public function events(World $world, PublicWorldService $service): JsonResponse
+    public function events(Request $request, World $world, PlayerIslandEventService $events): JsonResponse
     {
-        return response()->json(['data' => $service->recentEvents($world)]);
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'anchor_turn' => ['sometimes', 'integer', 'min:1'],
+        ]);
+
+        return response()->json(['data' => $events->publicPage(
+            $world,
+            (int) ($validated['page'] ?? 1),
+            isset($validated['anchor_turn']) ? (int) $validated['anchor_turn'] : null,
+        )]);
     }
 
     public function mapSpaces(World $world): AnonymousResourceCollection

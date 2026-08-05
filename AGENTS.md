@@ -55,21 +55,29 @@ The shared-world MVP is being implemented through roadmap-scoped pull requests. 
 
 Keep each implementation within its approved roadmap scope. Do not implement a `Deferred` item early without separate explicit approval. The design gates in `docs/open-questions.md` remain in force: when an `Open` item reaches its `Required before` gate, report the options and obtain a decision instead of deciding it implicitly or implementing around it.
 
-## Pre-release ruleset compatibility
+## Production data boundary
 
-The repository is currently in a pre-release development period. During this period,
-development Worlds may be reset for each update, including their Nations, cells,
-command queues, and TurnRun records.
+PR23 is the first production-release baseline. Development Worlds and provisional data may
+be fresh-reset only until all three go-live conditions have occurred:
 
-Published ruleset rows, settings, command definitions, and production definitions remain
-immutable audit records. Do not overwrite a published payload. Runtime compatibility is
-guaranteed only for the latest active ruleset: do not add fallback execution for older
-rulesets, older-ruleset TurnRunner tests, or failed/pending-run retry compatibility unless
-the repository owner requests it explicitly.
+1. the production World has been generated for the final time;
+2. Nation registration has been opened to general users; and
+3. the first official production turn has started.
 
-Before public-release preparation begins, stop and establish a formal data-migration and
-runtime backward-compatibility policy instead of carrying this pre-release exception
-forward implicitly.
+After that boundary, existing Worlds, Nations, cells, command queues, TurnRuns, and events
+are production data. Do not destroy or silently reinterpret them. Every schema or gameplay
+data change must provide a forward migration or an explicit, reviewed conversion path.
+Ruleset changes must state their effect on existing Worlds and keep the production World
+runnable through compatible runtime support or an explicit migration.
+
+Published ruleset rows, settings, command definitions, and production definitions are
+immutable audit records before and after go-live. Never overwrite a published payload.
+Before deploy, verify that the next non-dry TurnRun is not pending, running, or failed.
+Resolve such a run before deploy; never retry it automatically across a release. Preserve
+the same-target-turn, same-ruleset, same-seed manual retry boundary and audit records.
+
+The pre-release reset exception ends permanently at go-live. Do not copy it into future
+roadmaps or use PR23 rebaseline work as precedent for resetting production player data.
 
 ## Design gates
 
