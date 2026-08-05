@@ -815,6 +815,7 @@ final class PlayerIslandEventService
             'killed' => '怪獣を撃破しました',
             'blocked' => '硬化中の怪獣に防がれました',
             'capital_damaged' => '首都人口へ被害を与えました',
+            'capital_at_minimum' => '首都人口が最低人口のため効果はありませんでした',
             'water_facility_destroyed' => '水上施設を破壊しました',
             'land_scorched' => '土地を焼け跡にしました',
             'terrain_destroyed' => '陸地を破壊しました',

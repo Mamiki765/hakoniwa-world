@@ -278,7 +278,8 @@ final class MissileImpactResolver
             );
 
             return [
-                ...$base, 'meaningful' => $loss > 0, 'effect' => 'capital_damaged',
+                ...$base, 'meaningful' => $loss > 0,
+                'effect' => $loss > 0 ? 'capital_damaged' : 'capital_at_minimum',
                 'before_population' => $beforePopulation, 'after_population' => $cell->population,
                 'refugees' => $refugees,
             ];
@@ -344,7 +345,8 @@ final class MissileImpactResolver
             $loss = $this->damageCapital($context, $firingNation, $cell, 'land_destruction_missile', 30);
 
             return [
-                ...$base, 'meaningful' => $loss > 0, 'effect' => 'capital_damaged',
+                ...$base, 'meaningful' => $loss > 0,
+                'effect' => $loss > 0 ? 'capital_damaged' : 'capital_at_minimum',
                 'before_population' => $beforePopulation, 'after_population' => $cell->population,
                 'refugees' => 0,
             ];
@@ -402,7 +404,11 @@ final class MissileImpactResolver
             throw new DomainException('Missile Capital damage requires the existing minimum-population contract.');
         }
         $before = $cell->population;
-        $cell->population = max($minimum, intdiv($before * (100 - $percentage), 100));
+        $after = max($minimum, intdiv($before * (100 - $percentage), 100));
+        if ($after === $before) {
+            return 0;
+        }
+        $cell->population = $after;
         $cell->version++;
         $cell->save();
         $this->markCellChanged($context, $cell);
@@ -414,7 +420,7 @@ final class MissileImpactResolver
             'minimum_population' => $minimum,
         ]);
 
-        return max(0, $before - $cell->population);
+        return max(0, $before - $after);
     }
 
     private function generateAndReceiveRefugees(
