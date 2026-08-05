@@ -79,7 +79,7 @@ final class FirstProductionReleaseTest extends TestCase
         config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
         $this->artisan('hakoniwa:release:preflight')->assertSuccessful();
 
-        TurnRun::query()->create([
+        $failedRun = TurnRun::query()->create([
             'world_id' => $world->id,
             'target_turn' => $world->current_turn + 1,
             'ruleset_version_id' => $world->ruleset_version_id,
@@ -96,7 +96,19 @@ final class FirstProductionReleaseTest extends TestCase
         ]);
 
         $this->artisan('hakoniwa:release:preflight')
+            ->expectsOutputToContain('failed')
+            ->assertFailed();
+
+        $failedRun->update([
+            'random_seed' => str_repeat('b', 64),
+            'status' => TurnRun::STATUS_BLOCKED,
+            'failure_code' => 'test_blocked',
+            'failure_message' => 'blocked test',
+        ]);
+
+        $this->artisan('hakoniwa:release:preflight')
             ->expectsOutputToContain('Deploy blocked')
+            ->expectsOutputToContain('blocked')
             ->assertFailed();
     }
 

@@ -40,6 +40,7 @@ final class ReleasePreflight extends Command
                 TurnRun::STATUS_PENDING,
                 TurnRun::STATUS_RUNNING,
                 TurnRun::STATUS_FAILED,
+                TurnRun::STATUS_BLOCKED,
             ])
             ->orderBy('id')
             ->get(['id', 'status', 'attempt_count']);
