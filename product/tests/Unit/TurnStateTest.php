@@ -96,9 +96,12 @@ class TurnStateTest extends TestCase
         ], $state->nationActivity(10));
 
         $state->markIdleCounterFinalized(10);
-        $this->assertTrue($state->nationActivity(10)['idle_counter_finalized']);
+        $finalized = $state->nationActivity(10);
+        $this->assertTrue($finalized['idle_counter_finalized']);
 
-        $this->expectException(InvalidArgumentException::class);
         $state->recordFinanceSucceeded(10);
+        $state->recordMissileShotsFired(10, 1);
+        $state->markIdleCounterFinalized(10);
+        $this->assertSame($finalized, $state->nationActivity(10));
     }
 }

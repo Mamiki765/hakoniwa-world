@@ -215,7 +215,9 @@ final class TurnState
     {
         $nationId = $this->validatedNationId($nationId);
         $activity = $this->nationActivity($nationId);
-        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        if ($activity['idle_counter_finalized']) {
+            return;
+        }
         $activity['finance_succeeded'] = true;
         $this->nationActivity[$nationId] = $activity;
     }
@@ -224,7 +226,9 @@ final class TurnState
     {
         $nationId = $this->validatedNationId($nationId);
         $activity = $this->nationActivity($nationId);
-        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        if ($activity['idle_counter_finalized']) {
+            return;
+        }
         $activity['immediate_normal_command_succeeded'] = true;
         $this->nationActivity[$nationId] = $activity;
     }
@@ -233,7 +237,9 @@ final class TurnState
     {
         $nationId = $this->validatedNationId($nationId);
         $activity = $this->nationActivity($nationId);
-        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        if ($activity['idle_counter_finalized']) {
+            return;
+        }
         $activity['missile_intent_pending'] = true;
         $this->nationActivity[$nationId] = $activity;
     }
@@ -242,9 +248,11 @@ final class TurnState
     {
         $nationId = $this->validatedNationId($nationId);
         $activity = $this->nationActivity($nationId);
-        $this->assertIdleCounterNotFinalized($nationId, $activity);
         if (! is_int($shots) || $shots < 0) {
             throw new InvalidArgumentException('Missile shots fired must be a non-negative integer.');
+        }
+        if ($activity['idle_counter_finalized']) {
+            return;
         }
         if (! $activity['missile_intent_pending']) {
             throw new InvalidArgumentException('Missile shots cannot be recorded without a pending launch intent.');
@@ -279,7 +287,9 @@ final class TurnState
     {
         $nationId = $this->validatedNationId($nationId);
         $activity = $this->nationActivity($nationId);
-        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        if ($activity['idle_counter_finalized']) {
+            return;
+        }
         $activity['idle_counter_finalized'] = true;
         $this->nationActivity[$nationId] = $activity;
     }
@@ -308,21 +318,5 @@ final class TurnState
         }
 
         return $nationId;
-    }
-
-    /**
-     * @param  array{
-     *     finance_succeeded: bool,
-     *     immediate_normal_command_succeeded: bool,
-     *     missile_intent_pending: bool,
-     *     missile_shots_fired: int,
-     *     idle_counter_finalized: bool
-     * }  $activity
-     */
-    private function assertIdleCounterNotFinalized(int $nationId, array $activity): void
-    {
-        if ($activity['idle_counter_finalized']) {
-            throw new InvalidArgumentException('Turn activity cannot change after idle counter finalization.');
-        }
     }
 }
