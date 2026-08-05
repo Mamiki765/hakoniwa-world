@@ -210,6 +210,16 @@ export interface CommandDefinition {
     key: string;
     name: string;
     description: string;
+    target_type: 'cell' | 'nation';
+    parameters: Record<string, {
+        label: string;
+        type: 'integer';
+        minimum: number;
+        maximum: number;
+        required: boolean;
+        nullable?: boolean;
+        default?: number;
+    }>;
     cost_money: number;
     execution_phase: string;
     initial_facility_capacity: null | {
@@ -226,6 +236,8 @@ export interface CommandDefinition {
     available: boolean;
     shortfall_money: number;
     unavailable_reason: string | null;
+    execution_preview_status: 'target_required' | 'currently_executable' | 'currently_unavailable' | 'executable_after_queue';
+    execution_warnings: string[];
 }
 
 export interface DevelopmentPlanQuantityContract {

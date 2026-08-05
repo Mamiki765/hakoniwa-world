@@ -40,8 +40,8 @@ final class CommandQueueService
         Nation $nation,
         MapSpace $mapSpace,
         string $commandKey,
-        int $targetX,
-        int $targetY,
+        ?int $targetX,
+        ?int $targetY,
         string $requestKey,
         int $expectedVersion,
         int $quantity = DevelopmentPlanQuantity::DEFAULT,
@@ -60,6 +60,14 @@ final class CommandQueueService
             if ($definition === null) {
                 throw new DomainException('利用できないcommandです。');
             }
+
+            [$targetX, $targetY] = $this->resolveTargetCoordinates(
+                $nation,
+                $mapSpace,
+                $definition,
+                $targetX,
+                $targetY,
+            );
 
             $queue = NationCommandQueue::query()->firstOrCreate(
                 ['nation_id' => $nation->id],
@@ -80,12 +88,10 @@ final class CommandQueueService
             }
             $this->assertVersion($queue, $expectedVersion);
 
-            $cell = $this->targetCell($mapSpace, $targetX, $targetY);
-            $this->validateTarget($nation, $mapSpace, $definition, $cell);
-            if ($nation->money < $definition->cost_money) {
-                $shortfall = $definition->cost_money - $nation->money;
-                throw new DomainException('資金が'.number_format($shortfall).'億円不足しています。');
-            }
+            // A queue item is a future plan. Registration proves only that the
+            // coordinate and parameters are structurally valid; the locked
+            // target state and assets are revalidated immediately before execution.
+            $this->targetCell($mapSpace, $targetX, $targetY);
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
             $schemas = $definition->metadata['parameters'] ?? [];
             if (! is_array($schemas)) {
@@ -440,6 +446,30 @@ final class CommandQueueService
         }
 
         return $cell;
+    }
+
+    /** @return array{0: int, 1: int} */
+    private function resolveTargetCoordinates(
+        Nation $nation,
+        MapSpace $mapSpace,
+        CommandDefinition $definition,
+        ?int $targetX,
+        ?int $targetY,
+    ): array {
+        if ($definition->target_type === 'nation') {
+            $capital = $nation->capital()->firstOrFail();
+            $cell = $capital->cell()->firstOrFail();
+            if ($cell->map_space_id !== $mapSpace->id) {
+                throw new DomainException('Nationの首都とmap spaceが一致しません。');
+            }
+
+            return [(int) $capital->x, (int) $capital->y];
+        }
+        if ($targetX === null || $targetY === null) {
+            throw new DomainException('cell対象commandにはtarget x/yが必要です。');
+        }
+
+        return [$targetX, $targetY];
     }
 
     private function hasOwnedCellWithin(Nation $nation, MapSpace $mapSpace, MapCell $cell, int $radius, bool $includeCenter = true): bool

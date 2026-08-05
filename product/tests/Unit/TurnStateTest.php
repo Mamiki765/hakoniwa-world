@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Monster\MonsterSpawnSource;
 use App\Domain\Turn\LaunchIntent;
 use App\Domain\Turn\TurnState;
 use InvalidArgumentException;
@@ -76,5 +77,42 @@ class TurnStateTest extends TestCase
         $foreign = new LaunchIntent(1, 'missile', 1, 2, 1);
         $this->expectException(InvalidArgumentException::class);
         $state->consumeLaunchIntentShots($foreign, 1);
+    }
+
+    public function test_spawn_turn_movement_deferral_is_explicit_per_spawn_source(): void
+    {
+        $state = new TurnState;
+        $state->recordMonsterSpawned(9, MonsterSpawnSource::MonsterDispatchCommand);
+
+        $this->assertSame([9], $state->monsterIdsDeferredFromSpawnTurnMovement());
+        $this->assertFalse(MonsterSpawnSource::MonsterDispatchCommand->canActOnSpawnTurn());
+        $this->assertFalse(MonsterSpawnSource::Natural->canActOnSpawnTurn());
+    }
+
+    public function test_turn_local_nation_activity_aggregates_missile_results_until_idle_finalization(): void
+    {
+        $state = new TurnState;
+        $state->recordFinanceSucceeded(10);
+        $state->recordImmediateNormalCommandSucceeded(10);
+        $state->registerLaunchIntent(10, 'missile', 1, 2, 3);
+        $state->recordMissileShotsFired(10, 1);
+        $state->recordMissileShotsFired(10, 2);
+
+        $this->assertSame([
+            'finance_succeeded' => true,
+            'immediate_normal_command_succeeded' => true,
+            'missile_intent_pending' => true,
+            'missile_shots_fired' => 3,
+            'idle_counter_finalized' => false,
+        ], $state->nationActivity(10));
+
+        $state->markIdleCounterFinalized(10);
+        $finalized = $state->nationActivity(10);
+        $this->assertTrue($finalized['idle_counter_finalized']);
+
+        $state->recordFinanceSucceeded(10);
+        $state->recordMissileShotsFired(10, 1);
+        $state->markIdleCounterFinalized(10);
+        $this->assertSame($finalized, $state->nationActivity(10));
     }
 }

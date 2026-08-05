@@ -28,12 +28,17 @@ final class MonsterTurnService
 
     public function load(TurnContext $context): MonsterTurnBatch
     {
+        $deferredMonsterIds = $context->state->monsterIdsDeferredFromSpawnTurnMovement();
         $occupancies = MonsterOccupancy::query()
             ->whereHas('monster', fn ($query) => $query
                 ->where('world_id', $context->world->id)
                 ->where('state', 'alive')
                 ->whereHas('definition', fn ($definition) => $definition
                     ->where('ruleset_version_id', $context->ruleset->id)))
+            ->when($deferredMonsterIds !== [], fn ($query) => $query->whereNotIn(
+                'monster_instance_id',
+                $deferredMonsterIds,
+            ))
             ->with(['monster.definition'])
             ->orderBy('id')
             ->lockForUpdate()

@@ -75,7 +75,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'command_key' => 'build_farm', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => $requestKey, 'expected_version' => 1, 'parameters' => [],
         ])->assertCreated()->assertJsonPath('data.queue.version', 2)->json('data');
-        $this->assertStringContainsString('まだ実行されていません', $first['message']);
+        $this->assertStringContainsString('実行時に資金・資源・地形・施設・所有権・怪獣占有を再確認', $first['message']);
 
         // Retrying with the same idempotency key returns the original item even with the old version.
         $this->postJson($queuePath, [
@@ -108,7 +108,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.cancelled')->count());
     }
 
-    public function test_queue_rejects_unauthorized_invalid_stale_and_cross_world_requests(): void
+    public function test_queue_accepts_future_state_but_rejects_unauthorized_structural_stale_and_cross_world_requests(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('検証国');
         $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
@@ -123,15 +123,15 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->postJson($path, [
             'command_key' => 'build_mine', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
-        ])->assertUnprocessable();
+        ])->assertCreated();
         $this->postJson($path, [
             'command_key' => 'land_clear', 'target_x' => $mapSpace->max_x + 1, 'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(), 'expected_version' => 1,
+            'request_key' => (string) Str::uuid(), 'expected_version' => 2,
         ])->assertUnprocessable();
 
         $this->postJson($path, [
             'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(), 'expected_version' => 1,
+            'request_key' => (string) Str::uuid(), 'expected_version' => 2,
         ])->assertCreated();
         $this->postJson($path, [
             'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
@@ -192,22 +192,25 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $target->update(['facility_definition_id' => $oil->id, 'owner_nation_id' => $nation->id]);
         $occupied = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
             ->firstWhere('key', 'excavate');
-        $this->assertFalse($occupied['applicable']);
-        $this->assertSame('施設のある海では油田探索できません。', $occupied['unavailable_reason']);
+        $this->assertTrue($occupied['applicable']);
+        $this->assertSame('currently_unavailable', $occupied['execution_preview_status']);
+        $this->assertContains('施設のある海では油田探索できません。', $occupied['execution_warnings']);
+        $this->assertNull($occupied['unavailable_reason']);
         $this->postJson($queuePath, [
             'command_key' => 'excavate',
             'target_x' => $target->x,
             'target_y' => $target->y,
             'request_key' => (string) Str::uuid(),
             'expected_version' => 2,
-        ])->assertUnprocessable();
+        ])->assertCreated();
 
         [, $rival] = $this->nation('油田競合国');
         $target->update(['facility_definition_id' => null, 'owner_nation_id' => $rival->id]);
         $rivalOwned = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
             ->firstWhere('key', 'excavate');
-        $this->assertFalse($rivalOwned['applicable']);
-        $this->assertSame('他国所有の水域は掘削できません。', $rivalOwned['unavailable_reason']);
+        $this->assertTrue($rivalOwned['applicable']);
+        $this->assertSame('currently_unavailable', $rivalOwned['execution_preview_status']);
+        $this->assertContains('他国所有の水域は掘削できません。', $rivalOwned['execution_warnings']);
     }
 
     public function test_queue_limit_is_enforced_from_the_versioned_ruleset_boundary(): void
@@ -309,9 +312,11 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.quantity_contract.maximum', 99)
             ->assertJsonPath('data.quantity_contract.default', 1)
             ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99])
-            ->assertJsonCount(7, 'data.commands');
+            ->assertJsonCount(25, 'data.commands');
         foreach ($definitions->json('data.commands') as $definition) {
             $this->assertArrayNotHasKey('parameter_schema', $definition);
+            $this->assertArrayHasKey('target_type', $definition);
+            $this->assertArrayHasKey('parameters', $definition);
         }
 
         foreach ([null, 0, 100, -1, 1.5, '10', true, [], ['nested' => true]] as $invalid) {
@@ -517,6 +522,88 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertOk()
             ->assertJsonCount(30, 'data.plan')
             ->assertJsonPath('data.explicit_count', 29);
+    }
+
+    public function test_future_preview_follows_prior_same_cell_results_without_requiring_full_simulation(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('未来投影国');
+        $nation->update(['money' => 2_000]);
+        $anchor = MapCell::query()->where('owner_nation_id', $nation->id)->firstOrFail();
+        $coordinate = (new GridCoordinate($anchor->x, $anchor->y))->neighborsWithin(
+            $mapSpace->min_x,
+            $mapSpace->max_x,
+            $mapSpace->min_y,
+            $mapSpace->max_y,
+        )[0];
+        $target = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->where('x', $coordinate->x)->where('y', $coordinate->y)->firstOrFail();
+        $target->update([
+            'terrain_definition_id' => DB::table('terrain_definitions')->where('key', 'shallow')->value('id'),
+            'facility_definition_id' => null,
+            'owner_nation_id' => null,
+            'population' => 0,
+        ]);
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+        $queue = "{$base}/command-queue";
+        $this->actingAs($owner)->postJson($queue, [
+            'command_key' => 'reclaim', 'target_x' => $target->x, 'target_y' => $target->y,
+            'position' => 1, 'request_key' => (string) Str::uuid(), 'expected_version' => 1,
+        ])->assertCreated();
+
+        $landClear = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}&position=2",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'land_clear');
+        $this->assertSame('executable_after_queue', $landClear['execution_preview_status']);
+        $this->assertContains('予約済みcommand後は実行可能です。', $landClear['execution_warnings']);
+        $this->postJson($queue, [
+            'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
+            'position' => 2, 'request_key' => (string) Str::uuid(), 'expected_version' => 2,
+        ])->assertCreated();
+
+        $farm = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}&position=3",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
+        $this->assertSame('executable_after_queue', $farm['execution_preview_status']);
+        $this->assertContains('予約済みcommand後は実行可能です。', $farm['execution_warnings']);
+    }
+
+    public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('Nation対象国');
+        $target = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $nation->world()->firstOrFail(),
+            '援助対象国',
+            '試験島主',
+        );
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+        $catalog = $this->actingAs($owner)->getJson("{$base}/command-definitions")->assertOk();
+        $finance = collect($catalog->json('data.commands'))->firstWhere('key', 'finance');
+        $aid = collect($catalog->json('data.commands'))->firstWhere('key', 'money_aid');
+        $this->assertTrue($finance['applicable']);
+        $this->assertSame('nation', $finance['target_type']);
+        $this->assertSame('integer', $aid['parameters']['target_nation_id']['type']);
+
+        $created = $this->postJson("{$base}/command-queue", [
+            'command_key' => 'finance',
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated();
+        $this->assertSame($nation->capital()->value('x'), $created->json('data.queue.items.0.target_x'));
+        $this->assertSame($nation->capital()->value('y'), $created->json('data.queue.items.0.target_y'));
+
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'money_aid',
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+            'parameters' => ['target_nation_id' => $target->id],
+        ])->assertCreated()->assertJsonPath('data.queue.items.1.parameters.target_nation_id', $target->id);
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'money_aid',
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+            'parameters' => [],
+        ])->assertUnprocessable();
     }
 
     public function test_sale_policy_validation_authorization_audit_and_concurrency(): void

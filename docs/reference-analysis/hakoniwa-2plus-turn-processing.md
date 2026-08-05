@@ -220,9 +220,13 @@ presentation stageはlegacy表示と`Land::landValue`から、人口1–2,999人
 
 legacyはNation center x/yを持つだけでCapital facility identityを持たない。新作ではowner decisionにより、Capitalはidentityを維持したまま同じ通常growthとfamine lossを受け、village/town/city facilityへ置換しない。Capital固有のdamage、最低人口、機能停止は戦闘・災害gateを越えて先行決定しない。
 
+PR22では誘致中の通常上限後growthをversioned ruleset設定`turn_processing.settlement.post_ordinary_attraction_growth`として明示する。基礎range 100–100人へ海際度bandのgrowth multiplier 3/2/1を適用し、100–300/200/100人とする。通常上限後にordinary growthへ戻さない。
+
 ## ミサイル
 
 通常、PP、陸地破壊、弾道の4種。弾道以外は `missileReach` を超える基地から撃てない（`map.c:419-436`; `command.h:47-52`）。1基地あたりの発射数は基地経験値によるレベル分で、国家の残数・資金の範囲で撃つ（`map.c:438-448`; `Land::getLevel`, `map.c:1377-1397`）。PPは誤差半径1（7候補）、他は半径2（19候補）（`map.c:450-461`）。
+
+この射程は箱庭諸島2＋sourceの事実であり、PR22の採用契約ではない。owner decisionによりPR22は基地位置による射程制限を設けず、World内のactive Nation所有cellなら距離にかかわらず発射対象にできる。各基地は`process_cells`でcurrent owner、facility、level/capacity、残弾、資金を再検証するが、targetとの距離は検証しない。距離制限が必要になった場合は既存rulesetへ未使用metadataやresolver hookを置かず、新しいversioned rulesetとして追加する。将来予定する報復・反撃system自体はPR22の範囲外である。
 
 真の防衛施設が着弾点の半径2内にあれば空中爆破するが、防衛施設そのものへ直撃した場合は周辺防衛判定を省く（`map.c:479-489`）。陸地破壊弾は地形を海・荒地へ変え、通常系は怪獣へ1ダメージ、施設・町を荒地化する（`491-630`）。通常/PPで他国町を破壊した場合だけ難民が発生し、弾道では発生しない（`610-621`）。
 
@@ -237,6 +241,8 @@ legacyはNation center x/yを持つだけでCapital facility identityを持た�
 source factとして8種のkind、HP、skill、経験、価値、randomized single cell pass、移動先が後続cellなら再処理される因果、奇数/偶数硬化を採用した。一方、rank-based owner、`kind*20+hp` cell encoding、global座標試行型spawn、永続flagは採用しない。
 
 owner decisionとして共有Worldの各active Nationへ所有陸地数に比例する一回drawを割り当て、判定前snapshotから有人口集落候補と人口poolを選ぶ。terrain eventの維持/explicit removal、防衛施設self-destruct、killer/host reward、Nation/definition別aggregate kill stat、structured kill event、外部GIF配信もsourceの表現を直接移植せず新作契約として決定した。source factとowner decisionの完全な対応は`product/docs/monster-audit-pr21.md`を正本とする。
+
+PR22の`monster_dispatch`は`development_commands`で対象Nationのeligible settlementへ`mecha_inora`を出現させ、そのcellのfacility、population、terrain変更を即時適用する。ただしspawn sourceを`monster_dispatch_command`としてturn-local stateへ明示し、同じtarget turnのmonster movement batchからだけ除外する。次target turnから通常怪獣として行動する。これは自然出現怪獣が出現turnには行動しない契約と整合するが、将来の別spawn sourceへ暗黙に適用しない。
 
 ## 災害
 

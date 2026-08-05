@@ -74,6 +74,10 @@ final class TurnRandomStreamFactory
 
     private const MONSTER_SPAWN_PREFIX = 'global_disasters:monster_spawn:nation:';
 
+    private const MONSTER_DISPATCH_PREFIX = 'development_commands:monster_dispatch:item:';
+
+    private const MISSILE_IMPACT_PREFIX = 'development_commands:missile:item:';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 
@@ -138,5 +142,23 @@ final class TurnRandomStreamFactory
         }
 
         return self::MONSTER_SPAWN_PREFIX.$nationId.':'.$purpose.':v'.$streamVersion;
+    }
+
+    public static function monsterDispatch(int $queueItemId): string
+    {
+        if ($queueItemId < 1) {
+            throw new InvalidArgumentException('Monster-dispatch stream identity must use a positive queue item ID.');
+        }
+
+        return self::MONSTER_DISPATCH_PREFIX.$queueItemId.':candidate:v1';
+    }
+
+    public static function missileImpact(int $queueItemId): string
+    {
+        if ($queueItemId < 1) {
+            throw new InvalidArgumentException('Missile-impact stream identity must use a positive queue item ID.');
+        }
+
+        return self::MISSILE_IMPACT_PREFIX.$queueItemId.':deviation:v1';
     }
 }

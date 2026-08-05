@@ -30,7 +30,11 @@ final class CommandQueueController extends Controller
         FacilityCapacityService $capacities,
     ): JsonResponse {
         try {
-            $service->queueFor($request->user(), $nation, $mapSpace);
+            $queue = $service->queueFor($request->user(), $nation, $mapSpace);
+            $position = max(1, min(
+                $this->queueLimit($nation),
+                $request->integer('position', 1),
+            ));
             $cell = null;
             if ($request->has(['target_x', 'target_y'])) {
                 $cell = MapCell::query()
@@ -45,13 +49,16 @@ final class CommandQueueController extends Controller
                 ->where('enabled', true)
                 ->orderBy('sort_order')
                 ->get()
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position): array {
                     $unavailableReason = null;
-                    if ($cell !== null) {
+                    $projectedExecutable = false;
+                    if ($definition->target_type === 'cell' && $cell !== null) {
                         try {
                             $service->validateTarget($nation, $mapSpace, $definition, $cell);
                         } catch (DomainException $exception) {
                             $unavailableReason = $exception->getMessage();
+                            $projected = $this->projectedCellState($cell, $queue, $position, $nation);
+                            $projectedExecutable = $this->matchesProjectedTarget($definition, $projected, $nation);
                         }
                     }
 
@@ -61,16 +68,24 @@ final class CommandQueueController extends Controller
                     $initialCapacity = $resultFacility?->initial_scale === null
                         ? null
                         : $capacities->describe($resultFacility, $capacities->initialScale($resultFacility));
-                    $applicable = $cell !== null && $unavailableReason === null;
+                    $applicable = $definition->target_type === 'nation' || $cell !== null;
                     $shortfall = max(0, $definition->cost_money - $nation->money);
-                    if ($applicable && $shortfall > 0) {
-                        $unavailableReason = '資金が'.number_format($shortfall).'億円不足しています。';
+                    $warnings = [];
+                    if ($projectedExecutable) {
+                        $warnings[] = '予約済みcommand後は実行可能です。';
+                    } elseif ($unavailableReason !== null) {
+                        $warnings[] = $unavailableReason;
+                    }
+                    if ($shortfall > 0) {
+                        $warnings[] = '現在の資金では実行できません。';
                     }
 
                     return [
                         'key' => $definition->key,
                         'name' => $definition->name,
                         'description' => $definition->description,
+                        'target_type' => $definition->target_type,
+                        'parameters' => $definition->metadata['parameters'] ?? (object) [],
                         'cost_money' => $definition->cost_money,
                         'execution_phase' => $definition->execution_phase,
                         'initial_facility_capacity' => $initialCapacity === null ? null : [
@@ -79,9 +94,15 @@ final class CommandQueueController extends Controller
                             'formatted' => number_format($initialCapacity['capacity_people']).'人規模',
                         ],
                         'applicable' => $applicable,
-                        'available' => $applicable && $shortfall === 0,
+                        'available' => $applicable,
                         'shortfall_money' => $shortfall,
-                        'unavailable_reason' => $cell === null ? '対象セルを選択してください。' : $unavailableReason,
+                        'unavailable_reason' => ! $applicable ? '対象セルを選択してください。' : null,
+                        'execution_preview_status' => ! $applicable
+                            ? 'target_required'
+                            : ($projectedExecutable
+                                ? 'executable_after_queue'
+                                : ($warnings === [] ? 'currently_executable' : 'currently_unavailable')),
+                        'execution_warnings' => $warnings,
                     ];
                 });
 
@@ -114,8 +135,8 @@ final class CommandQueueController extends Controller
         $limit = $this->queueLimit($nation);
         $validated = $request->validate([
             'command_key' => ['required', 'string', 'max:64'],
-            'target_x' => ['required', 'integer'],
-            'target_y' => ['required', 'integer'],
+            'target_x' => ['sometimes', 'nullable', 'integer'],
+            'target_y' => ['sometimes', 'nullable', 'integer'],
             'request_key' => ['required', 'uuid'],
             'expected_version' => ['required', 'integer', 'min:1'],
             'quantity' => ['sometimes'],
@@ -133,8 +154,8 @@ final class CommandQueueController extends Controller
                 nation: $nation,
                 mapSpace: $mapSpace,
                 commandKey: $validated['command_key'],
-                targetX: $validated['target_x'],
-                targetY: $validated['target_y'],
+                targetX: $validated['target_x'] ?? null,
+                targetY: $validated['target_y'] ?? null,
                 requestKey: $validated['request_key'],
                 expectedVersion: $validated['expected_version'],
                 quantity: $quantity,
@@ -145,7 +166,7 @@ final class CommandQueueController extends Controller
             return response()->json(['data' => [
                 'queue' => $this->serializeQueue($this->loadQueue($result['queue'])),
                 'item_id' => $result['item']->id,
-                'message' => '開発計画に登録されました。まだ実行されていません。実行はターン更新時に行われます。登録時点では資金・地形・施設は変化しません。',
+                'message' => '開発計画に登録されました。実行時に資金・資源・地形・施設・所有権・怪獣占有を再確認します。',
             ]], 201);
         } catch (DomainException $exception) {
             return $this->domainError($exception);
@@ -278,6 +299,103 @@ final class CommandQueueController extends Controller
         $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
 
         return CommandQueueLimit::fromRulesetSettings($settings);
+    }
+
+    /**
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
+     */
+    private function projectedCellState(
+        MapCell $cell,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+    ): array {
+        $state = [
+            'terrain_key' => $cell->terrain->key,
+            'facility_key' => $cell->facility?->key,
+            'owner_nation_id' => $cell->owner_nation_id,
+        ];
+
+        foreach ($queue->items as $item) {
+            if ($item->queue_position >= $beforePosition
+                || $item->target_x !== $cell->x
+                || $item->target_y !== $cell->y) {
+                continue;
+            }
+            $definition = $item->definition;
+            if (! $this->matchesProjectedTarget($definition, $state, $nation)) {
+                continue;
+            }
+            $state = $this->applyProjectedResult($definition, $state, $nation);
+        }
+
+        return $state;
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
+     */
+    private function applyProjectedResult(CommandDefinition $definition, array $state, Nation $nation): array
+    {
+        if ($definition->key === 'reclaim') {
+            $state['terrain_key'] = $state['terrain_key'] === 'sea' ? 'shallow' : 'wasteland';
+            $state['owner_nation_id'] = $nation->id;
+        } elseif ($definition->key === 'excavate') {
+            $state['terrain_key'] = match ($state['terrain_key']) {
+                'sea' => 'sea',
+                'shallow' => 'sea',
+                'mountain' => 'wasteland',
+                default => 'shallow',
+            };
+            $state['facility_key'] = null;
+        } else {
+            if ($definition->result_terrain_key !== null) {
+                $state['terrain_key'] = $definition->result_terrain_key;
+            }
+            if ($definition->result_facility_key !== null) {
+                $state['facility_key'] = $definition->result_facility_key;
+            }
+        }
+
+        if (in_array($definition->key, ['land_clear', 'land_level', 'logging', 'plant_forest'], true)) {
+            $state['facility_key'] = null;
+        }
+        if ($definition->key === 'territory_expand') {
+            $state['owner_nation_id'] = $nation->id;
+        }
+
+        return $state;
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    private function matchesProjectedTarget(CommandDefinition $definition, array $state, Nation $nation): bool
+    {
+        if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
+            return false;
+        }
+        if ($definition->requires_empty_facility && $state['facility_key'] !== null) {
+            return false;
+        }
+        if ($definition->target_facility_keys !== []
+            && ! in_array($state['facility_key'], $definition->target_facility_keys, true)) {
+            return false;
+        }
+        if ($definition->key === 'territory_expand') {
+            return $state['owner_nation_id'] === null;
+        }
+        if ($definition->key === 'excavate'
+            && in_array($state['terrain_key'], ['sea', 'shallow'], true)
+            && $state['facility_key'] !== null) {
+            return false;
+        }
+        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'excavate'], true)) {
+            return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
+        }
+
+        return $state['owner_nation_id'] === $nation->id;
     }
 
     private function domainError(DomainException $exception): JsonResponse
