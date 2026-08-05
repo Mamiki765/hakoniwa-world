@@ -833,6 +833,22 @@ final class RulesetAuthoringValidator
             if (array_key_exists('disguise_asset_key', $definition) && $definition['disguise_asset_key'] !== null) {
                 $this->persistedString($definition['disguise_asset_key'], "{$path}.disguise_asset_key");
             }
+            if (array_key_exists('disguise_ownership_policy', $definition)
+                && $definition['disguise_ownership_policy'] !== null) {
+                $ownershipPolicy = $this->persistedString(
+                    $definition['disguise_ownership_policy'],
+                    "{$path}.disguise_ownership_policy",
+                );
+                if ($ownershipPolicy !== 'neutral') {
+                    throw new DomainException("{$path}.disguise_ownership_policy must be neutral or null.");
+                }
+                if ($visibilityPolicy !== FacilityVisibilityPolicy::Disguised->value
+                    || ! in_array($definition['disguise_terrain_key'] ?? null, ['sea', 'shallow'], true)) {
+                    throw new DomainException(
+                        "{$path}.disguise_ownership_policy neutral requires a disguised sea or shallow representation.",
+                    );
+                }
+            }
             if (array_key_exists('level_thresholds', $definition)) {
                 foreach ($this->list($definition['level_thresholds'], "{$path}.level_thresholds") as $index => $value) {
                     $this->integer($value, "{$path}.level_thresholds.{$index}", 0);

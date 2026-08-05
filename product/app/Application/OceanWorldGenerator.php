@@ -193,6 +193,7 @@ class OceanWorldGenerator
                 'visibility_policy' => $definition['visibility_policy'],
                 'disguise_terrain_key' => $definition['disguise_terrain_key'] ?? null,
                 'disguise_asset_key' => $definition['disguise_asset_key'] ?? null,
+                'disguise_ownership_policy' => $definition['disguise_ownership_policy'] ?? null,
                 'scale_unit_people' => $definition['scale_unit_people'],
                 'initial_scale' => $definition['initial_scale'],
                 'scale_increment' => $definition['scale_increment'],

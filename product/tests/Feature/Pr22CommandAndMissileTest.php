@@ -140,16 +140,23 @@ class Pr22CommandAndMissileTest extends TestCase
         $target->owner_nation_id = null;
         $target->population = 0;
         $target->save();
+        $moneyBefore = (int) $nation->money;
         $item = $this->queue(app(CommandQueueService::class), $user, $nation, $space, 'reclaim', $target);
+        $finance = $this->queue(app(CommandQueueService::class), $user, $nation, $space, 'finance', null, 1, 2);
 
-        app(DomesticCommandExecutor::class)->execute($this->context(
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
             $world,
             2,
             hash('sha256', 'reclaim missing adjacent territory'),
             [$nation->id],
         ));
 
-        $this->assertSame('missing_adjacent_territory', $item->fresh()->failure_code);
+        $this->assertSame(1, $result['failures']);
+        $this->assertSame(1, $result['successes']);
+        $this->assertSame('no_adjacent_owned_land', $item->fresh()->failure_code);
+        $this->assertSame('completed', $finance->fresh()->status);
+        $this->assertSame($moneyBefore + 10, (int) $nation->fresh()->money);
+        $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
         $page = app(PlayerIslandEventService::class)->page($nation, 1, 2);
         $messages = collect($page['groups'])->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertContains(sprintf(

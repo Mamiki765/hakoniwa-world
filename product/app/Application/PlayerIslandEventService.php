@@ -553,7 +553,7 @@ final class PlayerIslandEventService
         $reason = match ($failureReason) {
             'insufficient_funds', 'insufficient_money' => '資金不足のため実行できませんでした。',
             'insufficient_resource', 'insufficient_resources' => '必要な資源が不足しているため実行できませんでした。',
-            'missing_adjacent_territory' => '隣接する自国領地がないため実行できませんでした。',
+            'missing_adjacent_territory', 'no_adjacent_owned_land' => '隣接する自国領地がないため実行できませんでした。',
             'foreign_adjacent_water' => '他国領に接する水域のため実行できませんでした。',
             'foreign_owned' => '他国領のため実行できませんでした。',
             'not_owned', 'ownership_mismatch' => '自国領ではないため実行できませんでした。',

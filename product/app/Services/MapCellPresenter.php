@@ -8,6 +8,7 @@ use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Monster\MonsterHardening;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
+use App\Models\Nation;
 use App\Models\TerrainDefinition;
 
 final class MapCellPresenter
@@ -37,6 +38,9 @@ final class MapCellPresenter
         $terrain = $isDisguised
             ? $this->terrain($cell->facility->disguise_terrain_key ?? 'forest')
             : $cell->terrain;
+        $neutralizeOwnership = $isDisguised
+            && $cell->facility->disguise_ownership_policy === 'neutral';
+        $ownerNation = $neutralizeOwnership ? null : $cell->ownerNation;
         $facility = $isDisguised
             ? null
             : ($impersonatedFacilityKey === null ? $cell->facility : $this->facility($impersonatedFacilityKey));
@@ -49,7 +53,7 @@ final class MapCellPresenter
             : $displayDefinition->name;
         $layers = $this->assets->resolveLayers($displayAssetKey, $displayName);
         $details = $this->details($cell, $isOwner, $isDisguised);
-        $monster = $this->monster($cell, $currentTurn);
+        $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership);
 
         return [
             'x' => $cell->x,
@@ -59,14 +63,14 @@ final class MapCellPresenter
             'facility' => $facility?->key,
             'facility_name' => $facility?->key === 'monument' ? $displayName : $facility?->name,
             'display_name' => $displayName,
-            'owner_nation_id' => $cell->owner_nation_id,
-            'owner_nation_number' => $cell->ownerNation?->nation_number,
-            'owner_name' => $cell->ownerNation?->name,
+            'owner_nation_id' => $neutralizeOwnership ? null : $cell->owner_nation_id,
+            'owner_nation_number' => $ownerNation?->nation_number,
+            'owner_name' => $ownerNation?->name,
             'details' => $details,
             'monster' => $monster,
             'asset' => $layers['completed'],
             'overlays' => $layers['overlays'],
-            'aria_label' => $this->ariaLabel($cell, $displayName, $details, $monster),
+            'aria_label' => $this->ariaLabel($cell, $displayName, $ownerNation, $details, $monster),
             // Secret-only state changes must not alter a non-owner representation version.
             'version' => $isOwner ? $cell->version : 1,
             'updated_at' => $isOwner ? $cell->updated_at?->toIso8601String() : null,
@@ -74,7 +78,7 @@ final class MapCellPresenter
     }
 
     /** @return array<string, mixed>|null */
-    private function monster(MapCell $cell, int $currentTurn): ?array
+    private function monster(MapCell $cell, int $currentTurn, bool $hideOwnership): ?array
     {
         $instance = $cell->monsterOccupancy?->monster;
         if ($instance === null || $instance->state !== 'alive') {
@@ -87,7 +91,7 @@ final class MapCellPresenter
             ? $definition->hardened_asset_key
             : $definition->asset_key;
         $asset = $this->assets->resolve($assetKey, $definition->name);
-        $hostNation = $cell->ownerNation;
+        $hostNation = $hideOwnership ? null : $cell->ownerNation;
 
         return [
             'id' => $instance->id,
@@ -165,8 +169,13 @@ final class MapCellPresenter
      * @param  array<int, array{label: string, formatted: string}>  $details
      * @param  array<string, mixed>|null  $monster
      */
-    private function ariaLabel(MapCell $cell, string $displayName, array $details, ?array $monster): string
-    {
+    private function ariaLabel(
+        MapCell $cell,
+        string $displayName,
+        ?Nation $ownerNation,
+        array $details,
+        ?array $monster,
+    ): string {
         $suffix = array_map(static fn (array $detail): string => $detail['label'].' '.$detail['formatted'], $details);
         if ($monster !== null) {
             $suffix[] = sprintf(
@@ -181,9 +190,9 @@ final class MapCellPresenter
         return trim(implode(' ', [
             "x {$cell->x} y {$cell->y}",
             $displayName,
-            '所有 '.($cell->owner_nation_id === null
+            '所有 '.($ownerNation === null
                 ? '中立'
-                : $cell->ownerNation->name.' N'.$cell->ownerNation->nation_number),
+                : $ownerNation->name.' N'.$ownerNation->nation_number),
             ...$suffix,
         ]));
     }

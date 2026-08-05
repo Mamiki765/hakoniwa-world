@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $visibility_policy
  * @property string|null $disguise_terrain_key
  * @property string|null $disguise_asset_key
+ * @property string|null $disguise_ownership_policy
  * @property int|null $scale_unit_people
  * @property int|null $initial_scale
  * @property int|null $scale_increment
@@ -27,7 +28,7 @@ class FacilityDefinition extends Model
 {
     protected $fillable = [
         'key', 'name', 'asset_key', 'enabled', 'build_command_key', 'visibility_policy', 'disguise_terrain_key',
-        'disguise_asset_key', 'scale_unit_people', 'initial_scale', 'scale_increment', 'maximum_scale',
+        'disguise_asset_key', 'disguise_ownership_policy', 'scale_unit_people', 'initial_scale', 'scale_increment', 'maximum_scale',
         'workforce_per_scale_people', 'production_definition_key', 'buildable_terrain_keys', 'metadata',
     ];
 

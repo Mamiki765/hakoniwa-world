@@ -268,10 +268,7 @@ final class DomesticCommandExecutor
             return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
         }
         if ($definition->key === 'reclaim') {
-            if ($cell->owner_nation_id === $nation->id) {
-                return ['reason' => CommandFailureReason::AlreadyOwned, 'observed' => $observed];
-            }
-            if ($cell->owner_nation_id !== null) {
+            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
             if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
@@ -281,7 +278,7 @@ final class DomesticCommandExecutor
                 return ['reason' => CommandFailureReason::ForeignAdjacentWater, 'observed' => $observed];
             }
             if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
-                return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
+                return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
         } elseif (! in_array($definition->key, ['territory_expand', 'build_seabed_base'], true)) {
             if ($cell->owner_nation_id !== $nation->id

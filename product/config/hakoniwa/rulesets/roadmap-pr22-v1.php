@@ -19,6 +19,7 @@ foreach ($ruleset['command_definitions'] as &$existingCommand) {
 unset($existingCommand);
 
 $emptyFacility = [
+    'disguise_ownership_policy' => null,
     'scale_unit_people' => null,
     'initial_scale' => null,
     'scale_increment' => null,
@@ -43,6 +44,7 @@ $ruleset['facility_definitions']['seabed_base'] = [
     'visibility_policy' => 'disguised',
     'disguise_terrain_key' => 'sea',
     'disguise_asset_key' => 'tile.sea',
+    'disguise_ownership_policy' => 'neutral',
     'build_command_key' => 'build_seabed_base',
     'buildable_terrain_keys' => ['sea'],
 ];

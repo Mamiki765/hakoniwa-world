@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Domain\Map\MapCellStateService;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\User;
@@ -164,6 +166,9 @@ class PublicLobbyApiTest extends TestCase
         $publicForest = $this->cell($response->json('data.cells'), $forest);
         $this->assertSame('forest', $publicBase['terrain']);
         $this->assertNull($publicBase['facility']);
+        $this->assertSame($nation->id, $publicBase['owner_nation_id']);
+        $this->assertSame($nation->nation_number, $publicBase['owner_nation_number']);
+        $this->assertSame($nation->name, $publicBase['owner_name']);
         $this->assertSame([], $publicBase['details']);
         $this->assertSame([], $publicForest['details']);
 
@@ -177,6 +182,84 @@ class PublicLobbyApiTest extends TestCase
         }
         $this->assertStringContainsString('public', (string) $response->headers->get('Cache-Control'));
         $this->assertFalse($response->headers->has('Vary'));
+    }
+
+    public function test_seabed_base_is_indistinguishable_from_neutral_sea_to_public_viewers(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($owner, $world, '海底秘匿国', '海底島主');
+        $outsider = User::factory()->create();
+        app(NationCreationService::class)->create($outsider, $world, '海底外部国', '海底外部島主');
+        $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
+        $seabedBase = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->whereNull('owner_nation_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->firstOrFail();
+        $neutralSea = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->where('map_chunk_id', $seabedBase->map_chunk_id)
+            ->whereKeyNot($seabedBase->id)
+            ->whereNull('owner_nation_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->firstOrFail();
+
+        $publicUrl = "/api/v1/public/nations/{$nation->id}/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}";
+        $publicBefore = $this->getJson($publicUrl)->assertOk();
+        $publicVersionBefore = $publicBefore->json('data.version');
+
+        app(MapCellStateService::class)->setFacility(
+            $seabedBase,
+            FacilityDefinition::query()->where('key', 'seabed_base')->firstOrFail(),
+        );
+        $seabedBase->owner_nation_id = $nation->id;
+        $seabedBase->save();
+
+        $ownerResponse = $this->actingAs($owner)->getJson(
+            "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}",
+        )->assertOk();
+        $ownerCell = $this->cell($ownerResponse->json('data.cells'), $seabedBase);
+        $this->assertSame('seabed_base', $ownerCell['facility']);
+        $this->assertSame($seabedBase->x, $ownerCell['x']);
+        $this->assertSame($seabedBase->y, $ownerCell['y']);
+        $this->assertSame($nation->id, $ownerCell['owner_nation_id']);
+        $this->assertSame($nation->nation_number, $ownerCell['owner_nation_number']);
+        $this->assertSame($nation->name, $ownerCell['owner_name']);
+        $this->assertStringContainsString('no-store', (string) $ownerResponse->headers->get('Cache-Control'));
+        $this->assertSame('Cookie', $ownerResponse->headers->get('Vary'));
+
+        $nonOwnerResponse = $this->actingAs($outsider)->getJson(
+            "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}",
+        )->assertOk();
+        $nonOwnerBase = $this->cell($nonOwnerResponse->json('data.cells'), $seabedBase);
+        $this->assertStringContainsString('no-store', (string) $nonOwnerResponse->headers->get('Cache-Control'));
+        $this->assertSame('Cookie', $nonOwnerResponse->headers->get('Vary'));
+
+        $publicResponse = $this->getJson($publicUrl)->assertOk();
+        $publicBase = $this->cell($publicResponse->json('data.cells'), $seabedBase);
+        $publicSea = $this->cell($publicResponse->json('data.cells'), $neutralSea);
+        foreach ([$nonOwnerBase, $publicBase] as $disguisedBase) {
+            $this->assertSame('sea', $disguisedBase['terrain']);
+            $this->assertNull($disguisedBase['facility']);
+            $this->assertNull($disguisedBase['owner_nation_id']);
+            $this->assertNull($disguisedBase['owner_nation_number']);
+            $this->assertNull($disguisedBase['owner_name']);
+            $this->assertSame([], $disguisedBase['details']);
+            $this->assertStringContainsString('所有 中立', $disguisedBase['aria_label']);
+            $this->assertStringNotContainsString($nation->name, $disguisedBase['aria_label']);
+            $this->assertStringNotContainsString('N'.$nation->nation_number, $disguisedBase['aria_label']);
+        }
+
+        $this->assertSame($publicBase, $nonOwnerBase);
+        $this->assertSame($publicVersionBefore, $publicResponse->json('data.version'));
+        $this->assertSame($publicResponse->json('data.version'), $nonOwnerResponse->json('data.version'));
+        $this->assertNotSame($ownerResponse->json('data.version'), $publicResponse->json('data.version'));
+        $this->assertStringContainsString('public', (string) $publicResponse->headers->get('Cache-Control'));
+        $this->assertFalse($publicResponse->headers->has('Vary'));
+
+        foreach (['x', 'y', 'aria_label'] as $key) {
+            unset($publicBase[$key], $publicSea[$key]);
+        }
+        $this->assertSame($publicSea, $publicBase);
     }
 
     /** @param array<int, array<string, mixed>> $cells @return array<string, mixed> */

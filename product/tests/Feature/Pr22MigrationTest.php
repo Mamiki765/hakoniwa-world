@@ -20,6 +20,7 @@ final class Pr22MigrationTest extends TestCase
     public function test_pr22_migration_publishes_command_event_state_without_repointing_a_historical_world(): void
     {
         $this->assertTrue(Schema::hasColumn('nations', 'idle_counter'));
+        $this->assertTrue(Schema::hasColumn('facility_definitions', 'disguise_ownership_policy'));
         $this->assertTrue(Schema::hasTable('monument_definitions'));
         $this->assertTrue(Schema::hasColumn('map_cells', 'monument_definition_id'));
         $this->assertTrue(Schema::hasColumns('audit_events', [
@@ -58,6 +59,10 @@ final class Pr22MigrationTest extends TestCase
             ->where('ruleset_version_id', $pr22->id)->count());
         $this->assertSame('build_missile_base', DB::table('facility_definitions')
             ->where('key', 'missile_base')->value('build_command_key'));
+        $this->assertSame('neutral', DB::table('facility_definitions')
+            ->where('key', 'seabed_base')->value('disguise_ownership_policy'));
+        $this->assertNull(DB::table('facility_definitions')
+            ->where('key', 'missile_base')->value('disguise_ownership_policy'));
         $this->assertSame([
             'audit_events_severity_check', 'audit_events_visibility_check', 'nations_idle_counter_check',
         ], DB::table('pg_constraint')->whereIn('conname', [

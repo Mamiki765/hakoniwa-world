@@ -19,6 +19,14 @@ final class Pr22RulesetContractTest extends TestCase
         )->all();
 
         $this->assertSame('roadmap-pr22-v1', $validated['key']);
+        $this->assertSame(
+            'neutral',
+            $settings['facility_definitions']['seabed_base']['disguise_ownership_policy'],
+        );
+        $this->assertArrayNotHasKey(
+            'disguise_ownership_policy',
+            $settings['facility_definitions']['missile_base'],
+        );
         $this->assertSame([
             'land_clear' => 5,
             'land_level' => 100,
@@ -87,7 +95,7 @@ final class Pr22RulesetContractTest extends TestCase
         ])->all());
         $this->assertSame([
             'insufficient_funds', 'insufficient_resource', 'invalid_terrain',
-            'missing_adjacent_territory', 'foreign_adjacent_water', 'foreign_owned',
+            'missing_adjacent_territory', 'no_adjacent_owned_land', 'foreign_adjacent_water', 'foreign_owned',
             'not_owned', 'already_owned', 'occupied_by_monster', 'facility_exists',
             'invalid_facility', 'invalid_facility_scale', 'capital_protected', 'no_target',
             'invalid_target_nation', 'same_nation_target', 'invalid_parameter',
@@ -106,6 +114,24 @@ final class Pr22RulesetContractTest extends TestCase
                 $this->fail("Invalid Capital relocation cost {$invalidCost} was accepted.");
             } catch (DomainException) {
                 $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function test_neutral_disguise_ownership_is_limited_to_disguised_water_representations(): void
+    {
+        foreach ([
+            ['facility' => 'seabed_base', 'policy' => 'owner'],
+            ['facility' => 'missile_base', 'policy' => 'neutral'],
+        ] as $case) {
+            $settings = config('hakoniwa.published_rulesets.roadmap-pr22-v1');
+            $settings['facility_definitions'][$case['facility']]['disguise_ownership_policy'] = $case['policy'];
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail("Invalid {$case['facility']} disguise ownership policy was accepted.");
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString('disguise_ownership_policy', $exception->getMessage());
             }
         }
     }
