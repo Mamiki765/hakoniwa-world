@@ -7,6 +7,7 @@ use App\Application\DomesticCommandExecutor;
 use App\Application\MissileImpactResolver;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
+use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -24,9 +25,11 @@ use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
+use App\Services\MapCellPresenter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -268,9 +271,9 @@ class Pr22CommandAndMissileTest extends TestCase
                 app(DomesticCommandExecutor::class)->execute($context);
                 $this->processRegisteredMissiles($context, [$base]);
 
-                throw new \RuntimeException('force rollback after missile idle finalization');
+                throw new RuntimeException('force rollback after missile idle finalization');
             });
-        } catch (\RuntimeException $exception) {
+        } catch (RuntimeException $exception) {
             $this->assertSame('force rollback after missile idle finalization', $exception->getMessage());
         }
 
@@ -556,6 +559,158 @@ class Pr22CommandAndMissileTest extends TestCase
             $this->assertSame($capital->y, $impact['y']);
             $this->assertSame('capital_at_minimum', $impact['effect']);
         }
+    }
+
+    public function test_ordinary_missiles_neutralize_destroyed_owned_water_facilities_and_keep_event_attribution(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $firing->update(['money' => 2_000]);
+
+        foreach (['seabed_base', 'seabed_oil_field'] as $index => $facilityKey) {
+            $cell = $this->ownedWaterFacility($target, $facilityKey);
+            $cell->update(['population' => 321]);
+            $item = $this->queue(
+                app(CommandQueueService::class),
+                $firingUser,
+                $firing,
+                $space,
+                'spp_missile',
+                $cell,
+            );
+
+            $this->resolveMissile(
+                $this->context($world, 2 + $index, hash('sha256', "ordinary water {$facilityKey}"), [$firing->id, $target->id]),
+                $base,
+            );
+
+            $cell = $cell->fresh(['terrain', 'facility', 'ownerNation']);
+            $this->assertSame('sea', $cell->terrain->key);
+            $this->assertNull($cell->facility_definition_id);
+            $this->assertNull($cell->owner_nation_id);
+            $this->assertSame(0, $cell->population);
+            $presented = app(MapCellPresenter::class)->present($cell, null, 2 + $index);
+            $this->assertSame('sea', $presented['terrain']);
+            $this->assertNull($presented['facility']);
+            $this->assertNull($presented['owner_nation_id']);
+            $this->assertNull($presented['owner_nation_number']);
+            $this->assertNull($presented['owner_name']);
+            $this->assertStringNotContainsString($target->name, $presented['aria_label']);
+
+            $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
+                ->whereRaw("metadata->>'x' = ?", [(string) $cell->x])
+                ->whereRaw("metadata->>'y' = ?", [(string) $cell->y])
+                ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame($target->id, $impact['nation_id']);
+            $this->assertSame($target->name, $impact['target_nation_name']);
+            $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+                ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame($target->id, $detail['impacts'][0]['target_nation_id']);
+            $this->assertSame($target->name, $detail['impacts'][0]['target_nation_name']);
+        }
+    }
+
+    public function test_land_destruction_neutralizes_a_destroyed_water_facility_but_preserves_its_terrain_contract(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = $this->ownedWaterFacility($target, 'seabed_base');
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'land_destruction_missile',
+            $cell,
+        );
+        $seed = $this->seedForImpactIndex($item, $cell, 2, $cell);
+
+        $this->resolveMissile($this->context($world, 2, $seed, [$firing->id, $target->id]), $base);
+
+        $cell = $cell->fresh(['terrain', 'facility']);
+        $this->assertSame('sea', $cell->terrain->key);
+        $this->assertNull($cell->facility_definition_id);
+        $this->assertNull($cell->owner_nation_id);
+        $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($target->id, $impact['nation_id']);
+        $this->assertSame($target->name, $impact['target_nation_name']);
+    }
+
+    public function test_water_ownership_cleanup_does_not_affect_land_facilities_or_empty_owned_water(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $land = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $land,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $land,
+            FacilityDefinition::query()->where('key', 'farm')->firstOrFail(),
+            FacilityDefinition::query()->where('key', 'farm')->value('initial_scale'),
+        );
+        $land->save();
+        $landItem = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $land);
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'land ownership retained'), [$firing->id, $target->id]),
+            $base,
+        );
+        $this->assertSame($target->id, $land->fresh()->owner_nation_id);
+        $this->assertSame('completed', $landItem->fresh()->status);
+
+        $emptyWater = $this->ownedWaterFacility($target, 'seabed_base');
+        app(MapCellStateService::class)->setFacility($emptyWater, null);
+        $emptyWater->save();
+        $emptyItem = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $emptyWater);
+        $metrics = $this->resolveMissile(
+            $this->context($world, 3, hash('sha256', 'empty owned water ineffective'), [$firing->id, $target->id]),
+            $base,
+        );
+        $this->assertSame($target->id, $emptyWater->fresh()->owner_nation_id);
+        $this->assertSame(0, $metrics['meaningful_impacts']);
+        $this->assertSame(1, $metrics['ineffective_impacts']);
+        $this->assertSame('completed', $emptyItem->fresh()->status);
+    }
+
+    public function test_water_facility_ownership_cleanup_rolls_back_atomically_and_retries_once(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = $this->ownedWaterFacility($target, 'seabed_base');
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cell);
+
+        try {
+            DB::transaction(function () use ($world, $firing, $target, $base): void {
+                $this->resolveMissile(
+                    $this->context($world, 2, hash('sha256', 'rolled back water cleanup'), [$firing->id, $target->id]),
+                    $base,
+                );
+                throw new RuntimeException('force rollback');
+            });
+            $this->fail('The forced rollback did not occur.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('force rollback', $exception->getMessage());
+        }
+
+        $this->assertSame($target->id, $cell->fresh()->owner_nation_id);
+        $this->assertSame('seabed_base', $cell->fresh()->facility()->value('key'));
+        $this->assertSame('queued', $item->fresh()->status);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'retried water cleanup'), [$firing->id, $target->id]),
+            $base,
+        );
+        $this->assertNull($cell->fresh()->owner_nation_id);
+        $this->assertNull($cell->fresh()->facility_definition_id);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
     }
 
     public function test_multi_shot_launch_keeps_individual_refugee_events_and_aggregates_player_logs(): void
@@ -902,6 +1057,161 @@ class Pr22CommandAndMissileTest extends TestCase
         $this->assertSame('completed', $attraction->fresh()->status);
     }
 
+    public function test_zero_effect_money_and_food_aid_preserve_assets_and_increment_idle_through_automatic_finance(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $sender] = $this->nation($world, '援助送信国');
+        [, $receiver] = $this->nation($world, '援助上限国');
+        $space = $this->surfaceMapSpace($world);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $capacity = app(NationCapacityResolver::class)->resolve($receiver, $ruleset);
+        $sender->update(['money' => 1_000, 'idle_counter' => 3]);
+        $receiver->update(['money' => $capacity->money]);
+        $wheatId = DB::table('resource_definitions')->where('key', 'wheat')->value('id');
+        $this->assertIsInt($wheatId);
+        DB::table('nation_resources')->updateOrInsert(
+            ['nation_id' => $sender->id, 'resource_definition_id' => $wheatId],
+            ['amount' => 2_000, 'created_at' => now(), 'updated_at' => now()],
+        );
+        DB::table('nation_resources')->updateOrInsert(
+            ['nation_id' => $receiver->id, 'resource_definition_id' => $wheatId],
+            ['amount' => $capacity->foodTons, 'created_at' => now(), 'updated_at' => now()],
+        );
+        $parameters = ['target_nation_id' => $receiver->id];
+        $service = app(CommandQueueService::class);
+        $moneyAid = $this->queue($service, $user, $sender, $space, 'money_aid', null, 1, null, $parameters);
+        $foodAid = $this->queue($service, $user, $sender, $space, 'food_aid', null, 1, null, $parameters);
+
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            2,
+            hash('sha256', 'zero effect aid'),
+            [$sender->id],
+        ));
+
+        $this->assertSame(2, $result['successes']);
+        $this->assertSame(1, $result['automatic_finance']);
+        $this->assertSame(1, $result['idle_counter_increments']);
+        $this->assertSame(0, $result['idle_counter_resets']);
+        $this->assertSame(1_010, $sender->fresh()->money);
+        $this->assertSame($capacity->money, $receiver->fresh()->money);
+        $this->assertSame(2_000, (int) DB::table('nation_resources')
+            ->where('nation_id', $sender->id)->where('resource_definition_id', $wheatId)->value('amount'));
+        $this->assertSame($capacity->foodTons, (int) DB::table('nation_resources')
+            ->where('nation_id', $receiver->id)->where('resource_definition_id', $wheatId)->value('amount'));
+        $this->assertSame(4, $sender->fresh()->idle_counter);
+        $this->assertSame('completed', $moneyAid->fresh()->status);
+        $this->assertSame('completed', $foodAid->fresh()->status);
+        $this->assertSame(0, (int) DB::table('audit_events')->where('event_type', 'command.money_aid_transferred')
+            ->value(DB::raw("(metadata->>'transferred_money')::integer")));
+        $this->assertSame(0, (int) DB::table('audit_events')->where('event_type', 'command.food_aid_transferred')
+            ->value(DB::raw("(metadata->>'transferred_food_tons')::integer")));
+        $messages = collect(app(PlayerIslandEventService::class)->page($sender, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
+        $this->assertTrue($messages->contains(fn (string $message): bool => str_contains($message, '資金収容上限')));
+        $this->assertTrue($messages->contains(fn (string $message): bool => str_contains($message, '食料収容上限')));
+    }
+
+    public function test_partial_aid_is_meaningful_and_resets_idle_with_exact_transfer_and_overflow(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $sender] = $this->nation($world, '部分援助送信国');
+        [, $receiver] = $this->nation($world, '部分援助受信国');
+        $space = $this->surfaceMapSpace($world);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $capacity = app(NationCapacityResolver::class)->resolve($receiver, $ruleset);
+        $sender->update(['money' => 1_000, 'idle_counter' => 5]);
+        $receiver->update(['money' => $capacity->money - 50]);
+        $wheatId = DB::table('resource_definitions')->where('key', 'wheat')->value('id');
+        $this->assertIsInt($wheatId);
+        DB::table('nation_resources')->updateOrInsert(
+            ['nation_id' => $sender->id, 'resource_definition_id' => $wheatId],
+            ['amount' => 2_000, 'created_at' => now(), 'updated_at' => now()],
+        );
+        DB::table('nation_resources')->updateOrInsert(
+            ['nation_id' => $receiver->id, 'resource_definition_id' => $wheatId],
+            ['amount' => $capacity->foodTons - 500, 'created_at' => now(), 'updated_at' => now()],
+        );
+        $parameters = ['target_nation_id' => $receiver->id];
+        $service = app(CommandQueueService::class);
+        $this->queue($service, $user, $sender, $space, 'money_aid', null, 2, null, $parameters);
+        $this->queue($service, $user, $sender, $space, 'food_aid', null, 1, null, $parameters);
+
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            2,
+            hash('sha256', 'partial effect aid'),
+            [$sender->id],
+        ));
+
+        $this->assertSame(1, $result['automatic_finance']);
+        $this->assertSame(0, $result['idle_counter_increments']);
+        $this->assertSame(1, $result['idle_counter_resets']);
+        $this->assertSame(0, $sender->fresh()->idle_counter);
+        $this->assertSame(960, $sender->fresh()->money);
+        $this->assertSame($capacity->money, $receiver->fresh()->money);
+        $moneyEvent = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.money_aid_transferred')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $foodEvent = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.food_aid_transferred')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(50, $moneyEvent['transferred_money']);
+        $this->assertSame(150, $moneyEvent['receiver_capacity_overflow']);
+        $this->assertSame(500, $foodEvent['transferred_food_tons']);
+        $this->assertSame(500, $foodEvent['receiver_capacity_overflow_tons']);
+    }
+
+    public function test_zero_effect_aid_transaction_rollback_does_not_duplicate_idle_or_transfer_events(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $sender] = $this->nation($world, '援助再試行国');
+        [, $receiver] = $this->nation($world, '援助再試行対象国');
+        $space = $this->surfaceMapSpace($world);
+        $capacity = app(NationCapacityResolver::class)->resolve($receiver, $world->rulesetVersion()->firstOrFail());
+        $sender->update(['money' => 1_000, 'idle_counter' => 2]);
+        $receiver->update(['money' => $capacity->money]);
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $user,
+            $sender,
+            $space,
+            'money_aid',
+            null,
+            1,
+            null,
+            ['target_nation_id' => $receiver->id],
+        );
+
+        try {
+            DB::transaction(function () use ($world, $sender): void {
+                app(DomesticCommandExecutor::class)->execute($this->context(
+                    $world,
+                    2,
+                    hash('sha256', 'rolled back zero aid'),
+                    [$sender->id],
+                ));
+                throw new RuntimeException('force rollback');
+            });
+            $this->fail('The forced rollback did not occur.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('force rollback', $exception->getMessage());
+        }
+
+        $this->assertSame('queued', $item->fresh()->status);
+        $this->assertSame(2, $sender->fresh()->idle_counter);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.money_aid_transferred')->count());
+
+        app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            2,
+            hash('sha256', 'retried zero aid'),
+            [$sender->id],
+        ));
+
+        $this->assertSame(3, $sender->fresh()->idle_counter);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.money_aid_transferred')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')->count());
+    }
+
     /** @return array{World, User, Nation, Nation} */
     private function combatants(): array
     {
@@ -933,6 +1243,26 @@ class Pr22CommandAndMissileTest extends TestCase
         $cell->save();
 
         return $cell->fresh(['terrain', 'facility']);
+    }
+
+    private function ownedWaterFacility(Nation $nation, string $facilityKey): MapCell
+    {
+        $cell = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($nation->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'sea')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail(),
+        );
+        $cell->owner_nation_id = $nation->id;
+        $cell->population = 0;
+        $cell->save();
+
+        return $cell->fresh(['terrain', 'facility', 'ownerNation']);
     }
 
     /** @return list<MapCell> */

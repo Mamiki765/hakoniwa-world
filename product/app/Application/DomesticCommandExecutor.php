@@ -112,7 +112,14 @@ final class DomesticCommandExecutor
                 $before = $this->cellSnapshot($cell);
                 $executionCost = $this->executionCost($nation, $item, $definition, $cell);
                 $this->deductCostAndResources($nation, $definition, $executionCost);
-                $this->apply($context, $nation, $item, $definition, $cell, $executionCost);
+                $meaningfulActivity = $this->apply(
+                    $context,
+                    $nation,
+                    $item,
+                    $definition,
+                    $cell,
+                    $executionCost,
+                );
                 $after = $this->cellSnapshot($cell->fresh(['terrain', 'facility']));
 
                 $consumedTurn = (bool) ($definition->metadata['consumes_turn'] ?? true);
@@ -154,7 +161,7 @@ final class DomesticCommandExecutor
                 if ($definition->key === 'finance') {
                     $context->state->recordFinanceSucceeded($nation->id);
                     $metrics['finance_commands']++;
-                } elseif (! in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+                } elseif ($meaningfulActivity) {
                     $context->state->recordImmediateNormalCommandSucceeded($nation->id);
                 }
                 $this->events->record($context, 'command.success', $item, [
@@ -162,6 +169,7 @@ final class DomesticCommandExecutor
                     'command_key' => $definition->key,
                     'cost_money' => $executionCost,
                     'consumes_turn' => $consumedTurn,
+                    'meaningful_activity' => $meaningfulActivity,
                     'remaining_quantity' => $remainingQuantity,
                     'before' => $before,
                     'after' => $after,
@@ -494,7 +502,7 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
         MapCell $cell,
         int $executionCost,
-    ): void {
+    ): bool {
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             $context->state->registerLaunchIntent(
                 $nation->id,
@@ -513,42 +521,40 @@ final class DomesticCommandExecutor
                 'requested_shots' => $item->quantity,
             ], 'admin');
 
-            return;
+            return false;
         }
         if ($definition->key === 'finance') {
             $this->finance($context, $nation, 'command.finance');
 
-            return;
+            return false;
         }
         if ($definition->target_type === 'nation') {
-            $this->applyNationCommand($context, $nation, $item, $definition);
-
-            return;
+            return $this->applyNationCommand($context, $nation, $item, $definition);
         }
         if ($definition->key === 'logging') {
             $this->applyLogging($context, $nation, $definition, $cell);
 
-            return;
+            return true;
         }
         if ($definition->key === 'territory_expand') {
             $this->applyTerritoryExpand($context, $nation, $cell);
 
-            return;
+            return true;
         }
         if ($definition->key === 'relocate_capital') {
             $this->applyCapitalRelocation($context, $nation, $cell);
 
-            return;
+            return true;
         }
         if ($definition->key === 'reclaim') {
             $this->applyReclaim($context, $nation, $definition, $cell);
 
-            return;
+            return true;
         }
         if ($this->isSeabedOilSearch($definition, $cell)) {
             $this->applySeabedOilSearch($context, $nation, $item, $definition, $cell, $executionCost);
 
-            return;
+            return true;
         }
 
         $terrainKey = match ($definition->key) {
@@ -601,7 +607,7 @@ final class DomesticCommandExecutor
                 $this->disasters->landLevelEarthquake($context, $item, $cell->x, $cell->y);
             }
 
-            return;
+            return true;
         }
 
         $facilityKey = $definition->result_facility_key;
@@ -651,6 +657,8 @@ final class DomesticCommandExecutor
         if (! $expanded) {
             $this->recordConstructionProjection($context, $nation, $definition, $cell);
         }
+
+        return true;
     }
 
     private function recordConstructionProjection(
@@ -773,14 +781,14 @@ final class DomesticCommandExecutor
         Nation $nation,
         NationCommandQueueItem $item,
         CommandDefinition $definition,
-    ): void {
+    ): bool {
         if ($definition->key === 'attraction') {
             $context->state->markAttraction($nation->id);
             $this->events->record($context, 'command.attraction_started', $nation, [
                 'nation_id' => $nation->id,
             ]);
 
-            return;
+            return true;
         }
         $target = $this->targetNation($context, $nation, $item);
         if ($definition->key === 'money_aid') {
@@ -807,7 +815,7 @@ final class DomesticCommandExecutor
                 'receiver_capacity_overflow' => $addition->overflow,
             ]);
 
-            return;
+            return $addition->applied > 0;
         }
         if ($definition->key === 'food_aid') {
             $requested = $this->foodAidAmount($item, $definition);
@@ -840,7 +848,7 @@ final class DomesticCommandExecutor
                 'receiver_capacity_overflow_tons' => $addition->overflow,
             ]);
 
-            return;
+            return $addition->applied > 0;
         }
         if ($definition->key === 'monster_dispatch') {
             $monster = $this->monsterSpawn->dispatch($context, $target, $item->id);
@@ -849,7 +857,7 @@ final class DomesticCommandExecutor
                 'monster_key' => 'mecha_inora',
             ], 'private');
 
-            return;
+            return true;
         }
 
         throw new DomainException("Unsupported Nation command {$definition->key}.");

@@ -901,9 +901,11 @@ final class CompleteTurnEngine
             ? $rules['attraction_maximum_population']
             : $ordinaryMaximum;
         if ($before < $maximumPopulation) {
-            $growthRules = $attraction && $before < $ordinaryMaximum
-                ? $rules['attraction_growth']
-                : $rules['ordinary_growth'];
+            $growthRules = match (true) {
+                ! $attraction => $rules['ordinary_growth'],
+                $before < $ordinaryMaximum => $rules['attraction_growth'],
+                default => $rules['post_ordinary_attraction_growth'],
+            };
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'] * $band['growth_multiplier'],
             );

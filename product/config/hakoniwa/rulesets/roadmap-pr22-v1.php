@@ -9,6 +9,11 @@ $ruleset['turn_processing']['resource_sale_phase'] = [
     'after' => 'nation_economy',
     'before' => 'development_commands',
 ];
+$ruleset['turn_processing']['settlement']['post_ordinary_attraction_growth'] = [
+    'minimum' => 100,
+    'maximum' => 100,
+    'unit_people' => 1,
+];
 
 foreach ($ruleset['command_definitions'] as &$existingCommand) {
     if (in_array($existingCommand['key'], ['land_clear', 'land_level', 'excavate'], true)

@@ -485,26 +485,10 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'y')),
             ),
             'command.attraction_started' => '誘致活動を開始しました。',
-            'command.money_aid_transferred' => sprintf(
-                '%sへ資金援助として%s億円を送りました。',
-                $metadata['receiver_nation_name'] ?? '対象Nation',
-                number_format($this->integer($metadata, 'transferred_money')),
-            ),
-            'command.money_aid_received' => sprintf(
-                '%sから資金援助として%s億円を受け取りました。',
-                $metadata['sender_nation_name'] ?? '他Nation',
-                number_format($this->integer($metadata, 'transferred_money')),
-            ),
-            'command.food_aid_transferred' => sprintf(
-                '%sへ食料援助として%sトンを送りました。',
-                $metadata['receiver_nation_name'] ?? '対象Nation',
-                number_format($this->integer($metadata, 'transferred_food_tons')),
-            ),
-            'command.food_aid_received' => sprintf(
-                '%sから食料援助として%sトンを受け取りました。',
-                $metadata['sender_nation_name'] ?? '他Nation',
-                number_format($this->integer($metadata, 'transferred_food_tons')),
-            ),
+            'command.money_aid_transferred' => $this->moneyAidMessage($metadata, true),
+            'command.money_aid_received' => $this->moneyAidMessage($metadata, false),
+            'command.food_aid_transferred' => $this->foodAidMessage($metadata, true),
+            'command.food_aid_received' => $this->foodAidMessage($metadata, false),
             'command.monster_dispatched' => sprintf(
                 '%sを対象Nationへ派遣しました。',
                 $this->monsterLabel($metadata['monster_key'] ?? null),
@@ -670,6 +654,64 @@ final class PlayerIslandEventService
             number_format($this->integer($metadata, 'reward_money')),
             number_format($this->integer($metadata, 'applied_money')),
         );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function moneyAidMessage(array $metadata, bool $senderView): string
+    {
+        $transferred = $this->integer($metadata, 'transferred_money');
+        if ($transferred === 0) {
+            return $senderView
+                ? sprintf(
+                    '%sは資金収容上限に達していたため、資金援助を送れませんでした。',
+                    $metadata['receiver_nation_name'] ?? '対象Nation',
+                )
+                : sprintf(
+                    '資金収容上限に達していたため、%sからの資金援助を受け取れませんでした。',
+                    $metadata['sender_nation_name'] ?? '他Nation',
+                );
+        }
+
+        return $senderView
+            ? sprintf(
+                '%sへ資金援助として%s億円を送りました。',
+                $metadata['receiver_nation_name'] ?? '対象Nation',
+                number_format($transferred),
+            )
+            : sprintf(
+                '%sから資金援助として%s億円を受け取りました。',
+                $metadata['sender_nation_name'] ?? '他Nation',
+                number_format($transferred),
+            );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function foodAidMessage(array $metadata, bool $senderView): string
+    {
+        $transferred = $this->integer($metadata, 'transferred_food_tons');
+        if ($transferred === 0) {
+            return $senderView
+                ? sprintf(
+                    '%sは食料収容上限に達していたため、食料援助を送れませんでした。',
+                    $metadata['receiver_nation_name'] ?? '対象Nation',
+                )
+                : sprintf(
+                    '食料収容上限に達していたため、%sからの食料援助を受け取れませんでした。',
+                    $metadata['sender_nation_name'] ?? '他Nation',
+                );
+        }
+
+        return $senderView
+            ? sprintf(
+                '%sへ食料援助として%sトンを送りました。',
+                $metadata['receiver_nation_name'] ?? '対象Nation',
+                number_format($transferred),
+            )
+            : sprintf(
+                '%sから食料援助として%sトンを受け取りました。',
+                $metadata['sender_nation_name'] ?? '他Nation',
+                number_format($transferred),
+            );
     }
 
     /** @param array<string, mixed> $metadata */

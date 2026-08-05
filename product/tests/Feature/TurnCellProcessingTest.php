@@ -328,6 +328,58 @@ class TurnCellProcessingTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $commandRun->id])->count());
     }
 
+    public function test_attraction_growth_uses_distinct_pre_and_post_ordinary_ranges_and_clamps(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '誘致成長国', '誘致島主');
+        $capitalId = $nation->capital()->value('map_cell_id');
+        $cell = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capitalId)->firstOrFail();
+        $engine = app(CompleteTurnEngine::class);
+
+        $cases = [
+            ['before' => 7_000, 'sea_edge' => 24, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 10_000],
+            ['before' => 10_000, 'sea_edge' => 24, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 10_300],
+            ['before' => 5_000, 'sea_edge' => 12, 'minimum' => 100, 'maximum' => 200, 'draw' => 200, 'after' => 5_200],
+            ['before' => 2_000, 'sea_edge' => 0, 'minimum' => 100, 'maximum' => 100, 'draw' => 100, 'after' => 2_100],
+            ['before' => 19_950, 'sea_edge' => 24, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 20_000],
+        ];
+        foreach ($cases as $index => $case) {
+            $this->settlement($cell, 'city', $case['before']);
+            [$context] = $this->context(
+                $world,
+                $nation,
+                [$cell->id],
+                $this->seedForFirstDraw(
+                    TurnRandomStreamFactory::POPULATION_GROWTH,
+                    $case['minimum'],
+                    $case['maximum'],
+                    $case['draw'],
+                ),
+                [$cell->id => $case['sea_edge']],
+            );
+            $context->state->markAttraction($nation->id);
+
+            $engine->execute('process_cells', $context);
+
+            $this->assertSame($case['after'], $cell->fresh()->population, "Attraction case {$index} failed.");
+        }
+
+        $this->settlement($cell, 'village', 1_000);
+        [$ordinaryContext] = $this->context(
+            $world,
+            $nation,
+            [$cell->id],
+            $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 900, 900),
+            [$cell->id => 24],
+        );
+
+        $engine->execute('process_cells', $ordinaryContext);
+
+        $this->assertSame(1_900, $cell->fresh()->population);
+    }
+
     /** @return array{MapCell, MapCell} */
     private function sequentialCandidates(Nation $nation, MapCell $capital): array
     {

@@ -59,6 +59,11 @@ final class Pr22RulesetContractTest extends TestCase
             'after' => 'nation_economy',
             'before' => 'development_commands',
         ], $settings['turn_processing']['resource_sale_phase']);
+        $this->assertSame([
+            'minimum' => 100,
+            'maximum' => 100,
+            'unit_people' => 1,
+        ], $settings['turn_processing']['settlement']['post_ordinary_attraction_growth']);
         $this->assertSame('resource_sales', TurnPipeline::CANONICAL_PHASE_KEYS[4]);
         $this->assertSame('development_commands', TurnPipeline::CANONICAL_PHASE_KEYS[5]);
         $this->assertCount(12, TurnPipeline::CANONICAL_PHASE_KEYS);
@@ -134,5 +139,16 @@ final class Pr22RulesetContractTest extends TestCase
                 $this->assertStringContainsString('disguise_ownership_policy', $exception->getMessage());
             }
         }
+    }
+
+    public function test_pr22_requires_the_versioned_post_ordinary_attraction_growth_contract(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr22-v1');
+        unset($settings['turn_processing']['settlement']['post_ordinary_attraction_growth']);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('post_ordinary_attraction_growth');
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
     }
 }

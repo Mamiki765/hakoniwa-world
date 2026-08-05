@@ -57,7 +57,14 @@ PR22の実装前監査は、read-onlyの`_references/hakoniwa-2plus/source/hakow
 - aid: activeな同一Worldの別Nationだけを対象にし、sender資産とreceiver capacityを実行時に再検証する。senderとreceiverの双方へ相手Nation、requested/transferred量、receiver capacity、overflowを含む構造化イベントを記録する。
 - Capital relocation: cityをCapital、旧Capitalをcityへ置換し、両人口とCapital identityを維持する。費用はruleset固定1,000億円、validator範囲は1,000..9,999。
 
+### Aid and attraction activity follow-up
+
+- `money_aid` / `food_aid` は `transferred > 0` だけをmeaningful normal activityとする。receiver capacity到達による`transferred = 0`はqueueを消化し、既存どおりautomatic financeへ続くがidle counterをresetしない。player projectionにはcapacityによる0移転を明示する。
+- 誘致なしはordinary growth、誘致中かつ海際度別通常上限未満は100–3,000/2,000/1,000人、通常上限到達後は100–300/200/100人で成長し、20,000人でclampする。後半rangeはPR22 rulesetの`post_ordinary_attraction_growth`でversion管理する。
+
 ## Missiles and owner decisions B-10/B-12
+
+sea/shallow上の所有施設を通常/PP/SPPまたは陸地破壊弾が破壊した場合は、破壊前ownerをevent attribution用にsnapshotしてからfacility、population、ownerを消去する。ordinary missileは水面terrainを維持する。陸上施設のowner、施設のないowned waterへの無効着弾、dormant owner protectionは変更しない。public mapは破壊後のcellを中立の海・浅瀬として表示し、`missile.impact`とprivate launch detailは破壊前target Nationを保持する。
 
 commandは`LaunchIntent`だけを登録する。`process_cells`の既存randomized cell orderで発射基地ごとにcurrent facility、owner、level/capacity、残弾、資金を再検証し、1発ごとに費用を引く。通常/PP/陸地破壊/SPPの誤差半径は2/1/2/0で候補を均等選択する。通常、PP、SPPは陸地を`scorched`へし、settlement人口被害の半分を発射Nationの難民として扱う。陸地破壊弾は陸地を浅瀬、浅瀬を海へし、怪獣を報酬なしで除去し、難民を作らない。
 

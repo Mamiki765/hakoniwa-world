@@ -220,6 +220,8 @@ presentation stageはlegacy表示と`Land::landValue`から、人口1–2,999人
 
 legacyはNation center x/yを持つだけでCapital facility identityを持たない。新作ではowner decisionにより、Capitalはidentityを維持したまま同じ通常growthとfamine lossを受け、village/town/city facilityへ置換しない。Capital固有のdamage、最低人口、機能停止は戦闘・災害gateを越えて先行決定しない。
 
+PR22では誘致中の通常上限後growthをversioned ruleset設定`turn_processing.settlement.post_ordinary_attraction_growth`として明示する。基礎range 100–100人へ海際度bandのgrowth multiplier 3/2/1を適用し、100–300/200/100人とする。通常上限後にordinary growthへ戻さない。
+
 ## ミサイル
 
 通常、PP、陸地破壊、弾道の4種。弾道以外は `missileReach` を超える基地から撃てない（`map.c:419-436`; `command.h:47-52`）。1基地あたりの発射数は基地経験値によるレベル分で、国家の残数・資金の範囲で撃つ（`map.c:438-448`; `Land::getLevel`, `map.c:1377-1397`）。PPは誤差半径1（7候補）、他は半径2（19候補）（`map.c:450-461`）。

@@ -278,6 +278,8 @@ final class MissileImpactResolver
         $beforeTerrain = $cell->terrain->key;
         $beforeFacility = $cell->facility?->key;
         $beforePopulation = $cell->population;
+        $targetNationId = $cell->owner_nation_id;
+        $targetNationName = $cell->ownerNation?->name;
         if ($beforeFacility === 'capital') {
             $loss = $this->damageCapital($context, $firingNation, $cell, $missileKey, 10);
             $refugees = $this->generateAndReceiveRefugees(
@@ -308,6 +310,8 @@ final class MissileImpactResolver
         $this->cells->setFacility($cell, null);
         if (! $isWater) {
             $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'scorched')->firstOrFail());
+        } else {
+            $cell->owner_nation_id = null;
         }
         $cell->population = 0;
         $cell->version++;
@@ -331,10 +335,11 @@ final class MissileImpactResolver
             'before_population' => $beforePopulation,
             'after_population' => 0,
             'refugees_generated' => $refugees,
-        ]);
+        ], $targetNationId, $targetNationName);
 
         return [
             ...$base, 'meaningful' => true, 'effect' => $effect,
+            'target_nation_id' => $targetNationId, 'target_nation_name' => $targetNationName,
             'from_terrain_key' => $beforeTerrain, 'to_terrain_key' => $cell->terrain->key,
             'removed_facility_key' => $beforeFacility, 'before_population' => $beforePopulation,
             'refugees' => $refugees,
@@ -353,6 +358,8 @@ final class MissileImpactResolver
         $beforeTerrain = $cell->terrain->key;
         $beforeFacility = $cell->facility?->key;
         $beforePopulation = $cell->population;
+        $targetNationId = $cell->owner_nation_id;
+        $targetNationName = $cell->ownerNation?->name;
         if ($beforeFacility === 'capital') {
             $loss = $this->damageCapital($context, $firingNation, $cell, 'land_destruction_missile', 30);
 
@@ -382,6 +389,9 @@ final class MissileImpactResolver
         if ($targetTerrain !== null) {
             $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', $targetTerrain)->firstOrFail());
         }
+        if (in_array($beforeTerrain, ['sea', 'shallow'], true) && $beforeFacility !== null) {
+            $cell->owner_nation_id = null;
+        }
         $cell->population = 0;
         $cell->version++;
         $cell->save();
@@ -394,10 +404,11 @@ final class MissileImpactResolver
             'after_population' => 0,
             'monster_removed' => $monsterRemoved,
             'refugees_generated' => 0,
-        ]);
+        ], $targetNationId, $targetNationName);
 
         return [
             ...$base, 'meaningful' => true, 'effect' => 'terrain_destroyed',
+            'target_nation_id' => $targetNationId, 'target_nation_name' => $targetNationName,
             'from_terrain_key' => $beforeTerrain, 'to_terrain_key' => $cell->terrain->key,
             'removed_facility_key' => $beforeFacility, 'before_population' => $beforePopulation,
             'monster_removed' => $monsterRemoved, 'refugees' => 0,
@@ -516,10 +527,12 @@ final class MissileImpactResolver
         string $missileKey,
         string $effect,
         array $metadata,
+        ?int $targetNationId = null,
+        ?string $targetNationName = null,
     ): void {
         $this->events->record($context, 'missile.impact', $cell, [
-            'nation_id' => $cell->owner_nation_id,
-            'target_nation_name' => $cell->ownerNation?->name,
+            'nation_id' => $targetNationId ?? $cell->owner_nation_id,
+            'target_nation_name' => $targetNationName ?? $cell->ownerNation?->name,
             'firing_nation_id' => $firingNation?->id,
             'firing_nation_name' => $firingNation?->name,
             'missile_key' => $missileKey,

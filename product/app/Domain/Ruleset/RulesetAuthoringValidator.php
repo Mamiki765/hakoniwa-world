@@ -1255,11 +1255,15 @@ final class RulesetAuthoringValidator
         }
 
         $settlement = $this->map($turn['settlement'], "{$path}.settlement");
-        $this->requireKeys($settlement, [
+        $settlementKeys = [
             'appearance_probability', 'initial_population', 'eligible_terrain_key',
             'adjacent_facility_key', 'stages', 'sea_edge_bands', 'ordinary_growth',
             'attraction_growth', 'attraction_maximum_population',
-        ], "{$path}.settlement");
+        ];
+        if (($settings['key'] ?? null) === 'roadmap-pr22-v1') {
+            $settlementKeys[] = 'post_ordinary_attraction_growth';
+        }
+        $this->requireKeys($settlement, $settlementKeys, "{$path}.settlement");
         $this->probability($settlement['appearance_probability'], "{$path}.settlement.appearance_probability");
         $this->integer($settlement['initial_population'], "{$path}.settlement.initial_population", 1);
         $this->reference($settlement['eligible_terrain_key'], self::TERRAIN_KEYS, "{$path}.settlement.eligible_terrain_key");
@@ -1315,7 +1319,11 @@ final class RulesetAuthoringValidator
         if ($lastMinimumSeaCells !== 0) {
             throw new DomainException("{$path}.settlement.sea_edge_bands must end at minimum zero.");
         }
-        foreach (['ordinary_growth', 'attraction_growth'] as $growthKey) {
+        $growthKeys = ['ordinary_growth', 'attraction_growth'];
+        if (array_key_exists('post_ordinary_attraction_growth', $settlement)) {
+            $growthKeys[] = 'post_ordinary_attraction_growth';
+        }
+        foreach ($growthKeys as $growthKey) {
             $growth = $this->map($settlement[$growthKey], "{$path}.settlement.{$growthKey}");
             $this->requireKeys($growth, ['minimum', 'maximum', 'unit_people'], "{$path}.settlement.{$growthKey}");
             $minimum = $this->integer($growth['minimum'], "{$path}.settlement.{$growthKey}.minimum", 0);
