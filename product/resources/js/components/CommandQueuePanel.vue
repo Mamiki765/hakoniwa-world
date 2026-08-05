@@ -306,24 +306,7 @@ onBeforeUnmount(() => {
                     <h3>適用できるコマンド</h3>
                     <p class="queue-notice">開発計画に登録されます。実行はターン更新時に行われ、登録時点では資金・地形・施設は変化しません。</p>
                     <p v-if="message" class="compact-message" role="status">{{ message }}</p>
-                    <div v-if="applicableDefinitions.length" class="command-grid">
-                        <button
-                            v-for="definition in applicableDefinitions"
-                            :key="definition.key"
-                            type="button"
-                            :disabled="busy || !definition.available || queue.explicit_count >= queue.limit"
-                            :title="definition.unavailable_reason ?? definition.description"
-                            @click="chooseCommand(definition)"
-                        >
-                            <strong>{{ definition.name }}</strong>
-                            <span>{{ formatExactMoney(definition.cost_money) }}</span>
-                            <span v-if="definition.initial_facility_capacity">初期 {{ definition.initial_facility_capacity.formatted }}</span>
-                            <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
-                            <span v-for="warning in definition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</span>
-                        </button>
-                    </div>
-                    <p v-else class="empty-state">このセルで登録できるコマンドはありません。</p>
-                    <form v-if="pendingDefinition" class="parameter-popover" @submit.prevent="addPendingCommand">
+                                        <form v-if="pendingDefinition" class="parameter-popover" @submit.prevent="addPendingCommand">
                         <strong>{{ pendingDefinition.name }}の設定</strong>
                         <div class="preset-row">
                             <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
@@ -347,6 +330,23 @@ onBeforeUnmount(() => {
                             <button type="submit" :disabled="!quantityIsValid || !parametersAreValid">計画へ登録</button>
                         </div>
                     </form>
+                    <div v-if="applicableDefinitions.length" class="command-grid">
+                        <button
+                            v-for="definition in applicableDefinitions"
+                            :key="definition.key"
+                            type="button"
+                            :disabled="busy || !definition.available || queue.explicit_count >= queue.limit"
+                            :title="definition.unavailable_reason ?? definition.description"
+                            @click="chooseCommand(definition)"
+                        >
+                            <strong>{{ definition.name }}</strong>
+                            <span>{{ formatExactMoney(definition.cost_money) }}</span>
+                            <span v-if="definition.initial_facility_capacity">初期 {{ definition.initial_facility_capacity.formatted }}</span>
+                            <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
+                            <span v-for="warning in definition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</span>
+                        </button>
+                    </div>
+                    <p v-else class="empty-state">このセルで登録できるコマンドはありません。</p>
                 </section>
             </div>
         </aside>
