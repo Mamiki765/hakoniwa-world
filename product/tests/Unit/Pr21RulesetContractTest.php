@@ -81,13 +81,37 @@ class Pr21RulesetContractTest extends TestCase
         $this->assertContains('mine', $system['movement']['blocked_facility_keys']);
         $this->assertSame('defense', $system['movement']['defense_facility_key']);
         $this->assertSame('floor_half', $system['reward']['killer_money_share']);
-        $this->assertSame(1_000, $system['reward']['food_tons_per_money_unit']);
+        $meatSaleRate = config('hakoniwa.published_rulesets.roadmap-pr21-v1.inventory_sale_rates.monster_meat');
+        $this->assertSame(0, $meatSaleRate['inventory_units'] % $meatSaleRate['money_units']);
+        $this->assertSame(
+            intdiv($meatSaleRate['inventory_units'], $meatSaleRate['money_units']),
+            $system['reward']['food_tons_per_money_unit'],
+        );
+        $this->assertSame(500, $system['reward']['food_tons_per_money_unit']);
         $this->assertSame(200, $system['reward']['missile_base_experience_maximum']);
+        $this->assertSame([
+            'scope' => 'nation_monster_definition',
+            'increment_on_attributed_final_blow' => true,
+            'authoritative_for_final_blow_count' => true,
+            'authoritative_for_kill_marks' => true,
+            'maximum_species_rows_per_nation' => 8,
+        ], $system['kill_stats']);
         $this->assertSame(['earthquake', 'tsunami', 'typhoon'], $system['terrain_events']['preserve_occupancy']);
         $this->assertSame(
             ['meteor_shower', 'huge_meteor', 'eruption', 'land_subsidence', 'defense_self_destruct', 'terrain_destruction_missile'],
             $system['terrain_events']['remove_without_rewards'],
         );
+    }
+
+    public function test_monster_meat_reward_requires_an_exact_versioned_sale_rate_conversion(): void
+    {
+        $settings = config('hakoniwa.published_rulesets.roadmap-pr21-v1');
+        $settings['inventory_sale_rates']['monster_meat']['money_units'] = 3;
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('must convert one money unit to exact integer tons');
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
     #[DataProvider('spawnProbabilityProvider')]

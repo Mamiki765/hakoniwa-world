@@ -275,14 +275,14 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: earthquake、tsunami、typhoon、fire、riotはoccupancyを維持して怪獣cellを通常対象から除外する。meteor shower、huge meteor、eruption、land subsidence、terrain-destruction missile、administrative terrain overwriteは先にoccupancyを報酬なしで除去してから地形を変更する。防衛施設接触は怪獣を明示除去して一度だけ巨大隕石相当blastを解決し、killer・報酬・kill recordを作らない。
+- Decision: earthquake、tsunami、typhoon、fire、riotはoccupancyを維持して怪獣cellを通常対象から除外する。meteor shower、huge meteor、eruption、land subsidence、terrain-destruction missile、administrative terrain overwriteは先にoccupancyを報酬なしで除去してから地形を変更する。防衛施設接触は怪獣を明示除去して一度だけ巨大隕石相当blastを解決し、killer・報酬・kill statを作らない。
 - Decision record: `product/docs/monster-audit-pr21.md`、`docs/decisions/ADR-0007-monster-actor-and-occupancy.md`
 
 ### MONSTER-04 共有Worldの自然出現・報酬・討伐統計
 
 - Status: Decided
 - Implemented: Yes
-- Decision: 自然出現はeligibleなactive Nationごとに1 turn 1回、`min(10,000, owned_land_cells * 2) / 10,000`で判定し、population別のuniform poolからsettlementへ最大1体出現させる。Nation attributed final blowではkillerへ価値の切捨て半分を賞金、死亡時cell ownerへ残りを1億円あたり怪獣肉1,000トンとしてcapacity上限付きで配分する。immutable kill recordを総トドメ数とdefinition別first-kill markの正本とし、種類別countとawardは実装しない。
+- Decision: 自然出現はeligibleなactive Nationごとに1 turn 1回、`min(10,000, owned_land_cells * 2) / 10,000`で判定する。人口100,000未満は出現なし、100,000〜249,999はinora/sanjira、250,000〜399,999はさらにred/dark/ghost、400,000以上はさらにwhale/kingを加えたuniform poolからsettlementへ最大1体出現させ、mechaは自然出現させない。Nation attributed final blowではkillerへ価値の切捨て半分を賞金、死亡時cell ownerへ残りを現行sale contractと同価値の怪獣肉（1億円=500トン）としてcapacity上限付きで配分する。`nation_monster_kill_stats`のWorld/Nation/definition別countを種類別討伐数、`SUM(kill_count)`を総トドメ数、count>0をkill markの正本とし、個別撃破はstructured eventだけへ残す。awardは実装しない。
 - Asset decision: 箱庭諸島2＋の原GIFは`_references/hakoniwa-2plus/assets/hakogif`で監査するが、Git、`product/public`、container imageへ収録せず、既存のGit外read-only tile asset directoryから原名・GIF形式のまま配信する。`monster4.gif`はkind 2/6の硬化状態専用とし、不足時はAPIと画面を失敗させず安全なCSS fallbackを使う。
 - Decision record: `product/docs/monster-audit-pr21.md`、`docs/architecture/monster-system.md`、`docs/assets/tile-asset-mapping.md`、`docs/reference-analysis/license-and-provenance.md`
 

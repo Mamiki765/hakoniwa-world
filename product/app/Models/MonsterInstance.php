@@ -54,10 +54,4 @@ final class MonsterInstance extends Model
     {
         return $this->hasOne(MonsterOccupancy::class);
     }
-
-    /** @return HasOne<MonsterKillRecord, $this> */
-    public function killRecord(): HasOne
-    {
-        return $this->hasOne(MonsterKillRecord::class);
-    }
 }

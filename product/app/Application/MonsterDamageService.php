@@ -8,8 +8,8 @@ use App\Domain\Monster\MonsterHardening;
 use App\Domain\Turn\TurnContext;
 use App\Models\MapCell;
 use App\Models\MonsterInstance;
-use App\Models\MonsterKillRecord;
 use App\Models\Nation;
+use App\Models\NationMonsterKillStat;
 use App\Models\ResourceDefinition;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -61,7 +61,6 @@ final class MonsterDamageService
                     afterHp: $locked->current_hp,
                     blocked: false,
                     killed: $locked->state === 'killed',
-                    killRecordId: $locked->killRecord()->value('id'),
                 );
             }
             $occupancy = $locked->occupancy;
@@ -133,7 +132,7 @@ final class MonsterDamageService
                 if ($hostNation !== null) {
                     $meat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
                     $hostMeat = $this->boundedAssets
-                        ->creditFood($hostNation, $meat, $hostShare * 1_000, $context->ruleset)
+                        ->creditFood($hostNation, $meat, $hostShare * 500, $context->ruleset)
                         ->toArray();
                 }
             }
@@ -149,29 +148,20 @@ final class MonsterDamageService
             $locked->version++;
             $locked->save();
 
-            $killRecord = null;
+            $killStat = null;
+            $previousKillCount = null;
+            $newKillCount = null;
             if ($killerNation !== null) {
-                $killRecord = MonsterKillRecord::query()->create([
-                    'world_id' => $context->world->id,
-                    'monster_instance_id' => $locked->id,
-                    'monster_definition_id' => $locked->monster_definition_id,
-                    'killer_nation_id' => $killerNation->id,
-                    'host_nation_id' => $hostNation?->id,
-                    'firing_base_id' => $firingBase?->id,
-                    'target_turn' => $context->targetTurn,
-                    'kill_cause' => $damageType,
-                    'wreckage_value_money' => $value,
-                    'killer_money_requested' => $killerMoney['requested'],
-                    'killer_money_applied' => $killerMoney['applied'],
-                    'killer_money_overflow' => $killerMoney['overflow'],
-                    'host_meat_food_requested' => $hostMeat['requested'] ?? 0,
-                    'host_meat_food_applied' => $hostMeat['applied'] ?? 0,
-                    'host_meat_food_overflow' => $hostMeat['overflow'] ?? 0,
-                    'firing_base_experience_applied' => $baseExperienceApplied,
-                ]);
+                [$killStat, $previousKillCount, $newKillCount] = $this->incrementKillStat(
+                    $context,
+                    $killerNation,
+                    $locked,
+                );
             }
 
             $eventMetadata = [
+                'monster_instance_id' => $locked->id,
+                'monster_definition_key' => $locked->definition->key,
                 'monster_key' => $locked->definition->key,
                 'nation_id' => $killerNation->id ?? $hostNation?->id,
                 'killer_nation_id' => $killerNation?->id,
@@ -186,12 +176,15 @@ final class MonsterDamageService
                 'host_meat_food' => $hostMeat,
                 'unclaimed_host_value_money' => $hostNation === null && $killerNation !== null ? $hostShare : 0,
                 'firing_base_experience_applied' => $baseExperienceApplied,
-                'kill_record_id' => $killRecord?->id,
+                'firing_base_id' => $firingBase?->id,
+                'kill_stat_id' => $killStat?->id,
+                'previous_kill_count' => $previousKillCount,
+                'new_kill_count' => $newKillCount,
             ];
             $this->events->record($context, 'monster.killed', $locked, $eventMetadata);
             if ($killerNation !== null) {
                 $this->events->record($context, 'monster.reward_distributed', $locked, $eventMetadata);
-                $this->events->record($context, 'monster.kill_recorded', $killRecord, $eventMetadata);
+                $this->events->record($context, 'monster.kill_stat_incremented', $killStat, $eventMetadata);
             }
 
             return new MonsterDamageResult(
@@ -203,9 +196,44 @@ final class MonsterDamageService
                 killerMoney: $killerMoney,
                 hostMeat: $hostMeat,
                 firingBaseExperienceApplied: $baseExperienceApplied,
-                killRecordId: $killRecord?->id,
+                killStatId: $killStat?->id,
+                previousKillCount: $previousKillCount,
+                newKillCount: $newKillCount,
             );
         }, 3);
+    }
+
+    /** @return array{NationMonsterKillStat, int, int} */
+    private function incrementKillStat(
+        TurnContext $context,
+        Nation $killerNation,
+        MonsterInstance $monster,
+    ): array {
+        $row = DB::selectOne(<<<'SQL'
+INSERT INTO nation_monster_kill_stats (
+    world_id, nation_id, monster_definition_id, kill_count,
+    first_killed_turn, last_killed_turn, version, created_at, updated_at
+) VALUES (?, ?, ?, 1, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (world_id, nation_id, monster_definition_id) DO UPDATE SET
+    kill_count = nation_monster_kill_stats.kill_count + 1,
+    last_killed_turn = EXCLUDED.last_killed_turn,
+    version = nation_monster_kill_stats.version + 1,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING id, kill_count
+SQL, [
+            $context->world->id,
+            $killerNation->id,
+            $monster->monster_definition_id,
+            $context->targetTurn,
+            $context->targetTurn,
+        ]);
+        if ($row === null) {
+            throw new DomainException('Monster kill stat increment did not return its authoritative row.');
+        }
+        $newCount = (int) $row->kill_count;
+        $stat = NationMonsterKillStat::query()->findOrFail((int) $row->id);
+
+        return [$stat, $newCount - 1, $newCount];
     }
 
     private function creditFiringBaseExperience(

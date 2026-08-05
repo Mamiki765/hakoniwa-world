@@ -19,9 +19,9 @@ use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
-use App\Models\MonsterKillRecord;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
+use App\Models\NationMonsterKillStat;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
@@ -291,7 +291,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('blocked_hardened', $damage->status);
         $this->assertSame(2, $monster->fresh()->current_hp);
         $this->assertSame($cell->id, $monster->fresh()->occupancy()->value('map_cell_id'));
-        $this->assertSame(0, MonsterKillRecord::query()->count());
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
     }
 
     public function test_monster_movement_replays_the_same_result_after_transaction_rollback(): void
@@ -382,7 +382,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(1, $batch->metrics()['defense_self_destructs']);
         $this->assertSame(1, $batch->metrics()['monster_actions']);
         $this->assertSame('sea', $defense->fresh()->terrain()->value('key'));
-        $this->assertSame(0, MonsterKillRecord::query()->count());
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
         $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.defense_self_destructed')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'disaster.triggered')
@@ -423,7 +423,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('huge_meteor', $ringTwoMonster->fresh()->removal_reason);
         $this->assertFalse($ringTwoMonster->fresh()->occupancy()->exists());
         $this->assertSame('wasteland', $ringTwoCell->fresh()->terrain()->value('key'));
-        $this->assertSame(0, MonsterKillRecord::query()->count());
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
         $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
         $this->assertSame(2, DB::table('audit_events')
             ->where('event_type', 'monster.removed_by_terrain_event')->count());
@@ -464,9 +464,9 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(1, $result->killerMoney['overflow']);
         $this->assertSame(9_999, $result->killerMoney['after']);
         $this->assertSame(9_999, $result->killerMoney['capacity']);
-        $this->assertSame(500_000, $result->hostMeat['requested']);
+        $this->assertSame(250_000, $result->hostMeat['requested']);
         $this->assertSame(100, $result->hostMeat['applied']);
-        $this->assertSame(499_900, $result->hostMeat['overflow']);
+        $this->assertSame(249_900, $result->hostMeat['overflow']);
         $this->assertSame(5, $result->firingBaseExperienceApplied);
         $this->assertSame(9_999, (int) $killer->fresh()->money);
         $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
@@ -484,12 +484,29 @@ class MonsterSystemTest extends TestCase
         $this->assertIsArray($hostReward);
         $this->assertStringContainsString('怪獣肉100トン', $hostReward['message']);
         $this->assertSame(200, $base->fresh()->facility_experience);
-        $record = MonsterKillRecord::query()->sole();
-        $this->assertSame($killer->id, $record->killer_nation_id);
-        $this->assertSame($host->id, $record->host_nation_id);
-        $this->assertSame($monster->id, $record->monster_instance_id);
-        $this->assertSame(500, $record->killer_money_requested);
-        $this->assertSame(500_000, $record->host_meat_food_requested);
+        $stat = NationMonsterKillStat::query()->sole();
+        $this->assertSame($killer->id, $stat->nation_id);
+        $this->assertSame($monster->monster_definition_id, $stat->monster_definition_id);
+        $this->assertSame(1, $stat->kill_count);
+        $this->assertSame(2, $stat->first_killed_turn);
+        $this->assertSame(2, $stat->last_killed_turn);
+        $this->assertSame(1, $stat->version);
+        $this->assertSame($stat->id, $result->killStatId);
+        $this->assertSame(0, $result->previousKillCount);
+        $this->assertSame(1, $result->newKillCount);
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.kill_stat_incremented')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($monster->id, $metadata['monster_instance_id']);
+        $this->assertSame('red_inora', $metadata['monster_definition_key']);
+        $this->assertSame($killer->id, $metadata['killer_nation_id']);
+        $this->assertSame($host->id, $metadata['host_nation_id']);
+        $this->assertSame(2, $metadata['target_turn']);
+        $this->assertSame(0, $metadata['previous_kill_count']);
+        $this->assertSame(1, $metadata['new_kill_count']);
+        $this->assertSame(500, $metadata['killer_money']['requested']);
+        $this->assertSame(250_000, $metadata['host_meat_food']['requested']);
+        $this->assertSame(249_900, $metadata['host_meat_food']['overflow']);
+        $this->assertSame($base->id, $metadata['firing_base_id']);
         $this->assertSame('killed', $monster->fresh()->state);
         $this->assertFalse($monster->fresh()->occupancy()->exists());
         $this->assertContains($hostCell->map_chunk_id, $context->state->changedMapChunkIds());
@@ -504,8 +521,10 @@ class MonsterSystemTest extends TestCase
             $context,
         );
         $this->assertSame('already_resolved', $retry->status);
-        $this->assertSame($record->id, $retry->killRecordId);
-        $this->assertSame(1, MonsterKillRecord::query()->count());
+        $this->assertNull($retry->killStatId);
+        $this->assertSame(1, NationMonsterKillStat::query()->count());
+        $this->assertSame(1, $stat->fresh()->kill_count);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.kill_stat_incremented')->count());
         $this->assertSame(9_999, (int) $killer->fresh()->money);
         $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
@@ -563,19 +582,23 @@ class MonsterSystemTest extends TestCase
                 $cell,
                 $context,
             );
-            $record = MonsterKillRecord::query()->where('monster_instance_id', $monster->id)->sole();
+            $stat = NationMonsterKillStat::query()
+                ->where('nation_id', $killer->id)
+                ->where('monster_definition_id', $definition->id)
+                ->sole();
             $killerShare = intdiv($value, 2);
             $hostShare = $value - $killerShare;
 
             $this->assertSame('killed', $result->status, $index);
-            $this->assertSame($value, $record->wreckage_value_money, $index);
-            $this->assertSame($killerShare, $record->killer_money_requested, $index);
-            $this->assertSame($hostShare * 1_000, $record->host_meat_food_requested, $index);
+            $this->assertSame(1, $stat->kill_count, $index);
+            $this->assertSame($targetTurn, $stat->first_killed_turn, $index);
+            $this->assertSame($targetTurn, $stat->last_killed_turn, $index);
             $this->assertSame($killerShare, $result->killerMoney['requested'], $index);
-            $this->assertSame($hostShare * 1_000, $result->hostMeat['requested'], $index);
+            $this->assertSame($hostShare * 500, $result->hostMeat['requested'], $index);
         }
 
-        $this->assertSame(8, MonsterKillRecord::query()->count());
+        $this->assertSame(8, NationMonsterKillStat::query()->count());
+        $this->assertSame(8, (int) NationMonsterKillStat::query()->sum('kill_count'));
     }
 
     public function test_same_nation_receives_both_shares_while_neutral_host_share_is_unclaimed(): void
@@ -597,10 +620,8 @@ class MonsterSystemTest extends TestCase
         );
 
         $this->assertSame(200, $sameResult->killerMoney['requested']);
-        $this->assertSame(200_000, $sameResult->hostMeat['requested']);
-        $sameRecord = MonsterKillRecord::query()->where('monster_instance_id', $sameNationMonster->id)->sole();
-        $this->assertSame($nation->id, $sameRecord->killer_nation_id);
-        $this->assertSame($nation->id, $sameRecord->host_nation_id);
+        $this->assertSame(100_000, $sameResult->hostMeat['requested']);
+        $this->assertSame(1, $sameResult->newKillCount);
 
         $neutralCell = MapCell::query()->where('map_space_id', $space->id)
             ->whereNull('owner_nation_id')
@@ -622,13 +643,47 @@ class MonsterSystemTest extends TestCase
 
         $this->assertSame(200, $neutralResult->killerMoney['requested']);
         $this->assertNull($neutralResult->hostMeat);
-        $neutralRecord = MonsterKillRecord::query()->where('monster_instance_id', $neutralMonster->id)->sole();
-        $this->assertNull($neutralRecord->host_nation_id);
-        $this->assertSame(0, $neutralRecord->host_meat_food_requested);
-        $this->assertSame(2, MonsterKillRecord::query()->count());
+        $this->assertSame(1, $neutralResult->previousKillCount);
+        $this->assertSame(2, $neutralResult->newKillCount);
+        $stat = NationMonsterKillStat::query()->sole();
+        $this->assertSame(2, $stat->kill_count);
+        $this->assertSame(2, $stat->first_killed_turn);
+        $this->assertSame(3, $stat->last_killed_turn);
+        $this->assertSame(2, $stat->version);
+        $neutralMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.reward_distributed')
+            ->whereRaw("metadata->>'monster_instance_id' = ?", [(string) $neutralMonster->id])
+            ->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertNull($neutralMetadata['host_nation_id']);
+        $this->assertSame(200, $neutralMetadata['unclaimed_host_value_money']);
     }
 
-    public function test_unattributed_death_has_no_rewards_or_kill_record(): void
+    public function test_odd_wreckage_value_remainder_goes_to_current_host(): void
+    {
+        [$world, $host, $ruleset] = $this->worldAndNation('奇数所在国');
+        $killer = $this->createNation($world, '奇数撃破国');
+        $cell = $this->ownedNonCapitalCell($host);
+        $this->setCell($cell, 'wasteland', null, $host->id, 0);
+        $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'inora')->firstOrFail();
+        $definition->update(['wreckage_value_money' => 401]);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 1);
+        [$context] = $this->context($world, $ruleset, 2, 'odd-remainder', [$host->id, $killer->id]);
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster, 1, 'monster_missile', $killer, null, $cell, $context,
+        );
+
+        $this->assertSame(200, $result->killerMoney['requested']);
+        $this->assertSame(100_500, $result->hostMeat['requested']);
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.reward_distributed')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(401, $metadata['wreckage_value_money']);
+        $this->assertSame(200, $metadata['killer_money']['requested']);
+        $this->assertSame(100_500, $metadata['host_meat_food']['requested']);
+    }
+
+    public function test_unattributed_death_has_no_rewards_or_kill_stat(): void
     {
         [$world, $host, $ruleset] = $this->worldAndNation('無帰属国');
         $cell = $this->ownedNonCapitalCell($host);
@@ -650,7 +705,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('killed_unattributed', $result->status);
         $this->assertNull($result->killerMoney);
         $this->assertNull($result->hostMeat);
-        $this->assertSame(0, MonsterKillRecord::query()->count());
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
         $this->assertSame($beforeMoney, (int) $host->fresh()->money);
     }
 
@@ -682,10 +737,11 @@ class MonsterSystemTest extends TestCase
             $context,
         );
 
-        $record = MonsterKillRecord::query()->sole();
         $monsterMeat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
-        $this->assertSame($currentHost->id, $record->host_nation_id);
-        $this->assertSame(200_000, NationResource::query()->where('nation_id', $currentHost->id)
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.reward_distributed')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($currentHost->id, $metadata['host_nation_id']);
+        $this->assertSame(100_000, NationResource::query()->where('nation_id', $currentHost->id)
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
         $this->assertSame(0, NationResource::query()->where('nation_id', $formerHost->id)
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
@@ -716,11 +772,11 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('alive', $monster->fresh()->state);
         $this->assertSame(1, $monster->fresh()->current_hp);
         $this->assertTrue($monster->fresh()->occupancy()->exists());
-        $this->assertSame(0, MonsterKillRecord::query()->count());
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
         $this->assertSame($beforeMoney, (int) $killer->fresh()->money);
     }
 
-    public function test_database_rejects_capital_occupancy_and_mutating_an_authoritative_kill_record(): void
+    public function test_database_rejects_capital_occupancy_and_invalid_kill_stat_mutation(): void
     {
         [$world, $nation, $ruleset] = $this->worldAndNation('DB制約国');
         $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
@@ -767,23 +823,63 @@ class MonsterSystemTest extends TestCase
         app(MonsterDamageService::class)->applyDamage(
             $monster, 1, 'monster_missile', $nation, null, $cell, $context,
         );
-        $record = MonsterKillRecord::query()->sole();
+        $stat = NationMonsterKillStat::query()->sole();
 
         try {
-            DB::transaction(static fn () => $record->update(['target_turn' => 99]));
-            $this->fail('Expected immutable kill record rejection.');
+            DB::transaction(static fn () => $stat->update(['last_killed_turn' => 99]));
+            $this->fail('Expected non-atomic kill stat update rejection.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('monster kill records are immutable', $exception->getMessage());
+            $this->assertStringContainsString('monster kill stat updates must be one atomic increment', $exception->getMessage());
         }
-        $this->assertSame(2, $record->fresh()->target_turn);
+        $this->assertSame(1, $stat->fresh()->kill_count);
+        $this->assertSame(2, $stat->fresh()->last_killed_turn);
 
         try {
-            DB::transaction(static fn () => $record->delete());
-            $this->fail('Expected immutable kill record deletion rejection.');
+            DB::transaction(static fn () => $stat->delete());
+            $this->fail('Expected permanent kill stat deletion rejection.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('monster kill records are immutable', $exception->getMessage());
+            $this->assertStringContainsString('monster kill stats are permanent while their World exists', $exception->getMessage());
         }
-        $this->assertNotNull($record->fresh());
+        $this->assertNotNull($stat->fresh());
+    }
+
+    public function test_database_rejects_cross_world_kill_stats(): void
+    {
+        [$world, , $ruleset] = $this->worldAndNation('統計定義国');
+        $otherWorld = World::query()->create([
+            'key' => 'kill-stat-other-world',
+            'name' => '統計別世界',
+            'ruleset_version_id' => $ruleset->id,
+            'current_turn' => 1,
+        ]);
+        $otherNation = Nation::query()->create([
+            'world_id' => $otherWorld->id,
+            'nation_number' => 1,
+            'name' => '統計別世界国',
+            'owner_name' => '統計別世界国主',
+            'profile_comment' => '',
+            'money' => 100,
+            'state' => 'active',
+        ]);
+        $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'inora')->firstOrFail();
+
+        try {
+            DB::transaction(static fn () => NationMonsterKillStat::query()->create([
+                'world_id' => $world->id,
+                'nation_id' => $otherNation->id,
+                'monster_definition_id' => $definition->id,
+                'kill_count' => 1,
+                'first_killed_turn' => 2,
+                'last_killed_turn' => 2,
+                'version' => 1,
+            ]));
+            $this->fail('Expected cross-World kill stat rejection.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('monster kill stat references inconsistent World state', $exception->getMessage());
+        }
+
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
     }
 
     /** @return array{World, Nation, RulesetVersion, MapSpace} */

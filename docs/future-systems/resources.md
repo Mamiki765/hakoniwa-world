@@ -123,9 +123,9 @@ owner APIはfood categoryを動的に集計した`total_food_tons`と種類別`f
 
 ### PR21 monster reward
 
-Nation attributed final blowでは怪獣definitionの`wreckage_value_money`を二分する。killerへ`floor(value / 2)`億円、死亡時cell ownerへ残りと同価値の`monster_meat`を1億円当たり1,000トン付与する。既存`CapacityBoundedAssetService`でmoneyとfood categoryを別々にlockし、requested/applied/overflowをimmutable kill recordとauditへ残す。overflowを別資源や別Nationへ振り替えない。
+Nation attributed final blowでは怪獣definitionの`wreckage_value_money`を二分する。killerへ`floor(value / 2)`億円、死亡時cell ownerへ残りと同価値の`monster_meat`を現行versioned sale contract（1,000トン=2億円、したがって1億円当たり500トン）で付与する。既存`CapacityBoundedAssetService`でmoneyとfood categoryを別々にlockし、requested/applied/overflowをstructured audit eventへ残す。overflowを別資源や別Nationへ振り替えない。
 
-hostがnullならhost shareはunclaimedでkillerへ移さない。killerがnullなら双方のrewardを作らない。同一Nationが両roleなら同じNationへmoneyとfoodを個別にcreditする。kill/rewardはHP・occupancy・基地経験・record・eventと同一transactionであり、retryは一件のkill recordを正本にno-opとなる。exact値と例は`product/docs/monster-audit-pr21.md`を参照する。
+hostがnullならhost shareはunclaimedでkillerへ移さない。killerがnullなら双方のrewardを作らない。同一Nationが両roleなら同じNationへmoneyとfoodを個別にcreditする。kill/rewardはHP・occupancy・基地経験・`nation_monster_kill_stats`・eventと同一transactionであり、retryはalready-resolved instanceを正本にno-opとなる。exact値と例は`product/docs/monster-audit-pr21.md`を参照する。
 
 PR19の最新rulesetでは、工業品をcanonical `unit`・表示`ユニット`、鉱物をcanonical `ton`・表示`トン`とし、それぞれ独立した9,999,000のgameplay capacityを持つ。capacityはrulesetのgeneric resource mapから解決し、food categoryの合計capacityとは混在させない。turnでは販売policy適用後、`stockpile`（UI表示`上限まで備蓄`）の個別capacity超過分を既存の1,000資源単位・1億円rateで自動売却する。資金capacityまたは売却単位により売れない超過分だけをcapへclampして破棄し、売却と破棄をresource単位のaudit eventへ記録する。owner API/UIだけが正確な残高・上限・残容量・到達状態を表示する。
 

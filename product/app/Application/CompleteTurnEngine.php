@@ -191,7 +191,7 @@ final class CompleteTurnEngine
             // Combat integrations call MonsterDamageService explicitly. Keep the
             // canonical phase schema stable even when this turn has no such hit.
             'damage_blocked' => 0, 'monsters_killed' => 0,
-            'rewards_distributed' => 0, 'kill_records_created' => 0,
+            'rewards_distributed' => 0, 'kill_stats_incremented' => 0,
         ];
         $activeNations = Nation::query()->where('world_id', $context->world->id)->where('state', 'active')
             ->pluck('id')->map(static fn ($id): int => (int) $id)->flip();

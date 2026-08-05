@@ -131,7 +131,7 @@ final class MonsterRemovalService
             'nation_id' => $cell->owner_nation_id,
             'removal_reason' => $reason,
             'rewards_granted' => false,
-            'kill_recorded' => false,
+            'kill_stat_incremented' => false,
             ...$metadata,
         ]);
 

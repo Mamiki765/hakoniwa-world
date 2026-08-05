@@ -19,9 +19,14 @@ final class Pr21MigrationTest extends TestCase
 
     public function test_pr21_migration_publishes_monster_schema_without_repointing_a_historical_world(): void
     {
-        foreach (['monster_definitions', 'monster_instances', 'monster_occupancies', 'monster_kill_records'] as $table) {
+        foreach (['monster_definitions', 'monster_instances', 'monster_occupancies', 'nation_monster_kill_stats'] as $table) {
             $this->assertTrue(Schema::hasTable($table));
         }
+        $this->assertFalse(Schema::hasTable('monster_kill_records'));
+        $this->assertTrue(Schema::hasColumns('nation_monster_kill_stats', [
+            'world_id', 'nation_id', 'monster_definition_id', 'kill_count',
+            'first_killed_turn', 'last_killed_turn', 'version',
+        ]));
         $pr19 = RulesetVersion::query()->where('key', 'roadmap-pr19-v1')->firstOrFail();
         $pr21 = RulesetVersion::query()->where('key', 'roadmap-pr21-v1')->firstOrFail();
         $historicalPayload = $pr19->settings;
@@ -34,12 +39,12 @@ final class Pr21MigrationTest extends TestCase
         $this->assertSame($historicalPayload, $pr19->fresh()->settings);
         $this->assertSame(8, MonsterDefinition::query()->where('ruleset_version_id', $pr21->id)->count());
         $this->assertSame(
-            ['monster_instance_world_ruleset_guard', 'monster_kill_record_guard', 'monster_kill_record_immutable', 'monster_occupancy_guard'],
+            ['monster_instance_world_ruleset_guard', 'monster_occupancy_guard', 'nation_monster_kill_stat_delete_guard', 'nation_monster_kill_stat_guard'],
             DB::table('pg_trigger')->whereIn('tgname', [
                 'monster_instance_world_ruleset_guard',
-                'monster_kill_record_guard',
-                'monster_kill_record_immutable',
                 'monster_occupancy_guard',
+                'nation_monster_kill_stat_delete_guard',
+                'nation_monster_kill_stat_guard',
             ])->orderBy('tgname')->pluck('tgname')->all(),
         );
     }

@@ -56,7 +56,7 @@ public eventsはraw `audit_events`を返さない。PR5のallowlistは `nation.c
 
 PR21のowner-only player island event projectionは怪獣eventをallowlistへ追加するが、metadata自体は返さない。Nation attributed final blowは`monster.reward_distributed`一件をrole-awareに投影し、killerには撃破とapplied賞金、死亡時hostには怪獣肉のappliedトン数を示す。同一Nationなら両方を一つの明確なmessageへまとめ、neutral hostならkiller messageだけを返す。unattributed death、spawn、movement/trample、hardening block、defense contact、terrain removalも安全な定型文へ変換する。seed、draw、candidate、内部move counter、source metadataは文面/APIへ入れない。
 
-公開Nation detailは`monster_kill_records`から`monster_final_blow_count`と、definitionごとのkey/name/`first_kill_turn`を持つkill marksを返す。種類別countとawardは返さない。AWARD-01がOpenであるため、countから称号を暗黙に導出しない。
+公開Nation detailだけが対象Nationの`nation_monster_kill_stats`を一query・最大8行で取得する。`monster_final_blow_count = SUM(kill_count)`と、kill markを兼ねるdefinition別key/name/`kill_count`/`first_killed_turn`/`last_killed_turn`を返す。公開TOP、World summary、population rankingはstatをquery/eager loadせず、全Nation分を取得しない。AWARD-01がOpenであるため、countから称号を暗黙に導出しない。
 
 ## Effective 20-slot plan
 

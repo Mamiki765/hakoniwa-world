@@ -17,6 +17,8 @@ final readonly class MonsterDamageResult
         public ?array $killerMoney = null,
         public ?array $hostMeat = null,
         public int $firingBaseExperienceApplied = 0,
-        public ?int $killRecordId = null,
+        public ?int $killStatId = null,
+        public ?int $previousKillCount = null,
+        public ?int $newKillCount = null,
     ) {}
 }

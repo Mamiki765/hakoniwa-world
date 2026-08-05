@@ -134,8 +134,8 @@ final class PlayerIslandEventService
             })
             ->where(function (Builder $monsterRewardProjection): void {
                 // Attributed kills are represented by one role-aware reward event;
-                // the immutable kill fact remains in audit/storage without tripling
-                // the player log with killed/reward/recorded copies.
+                // structured audit events retain the individual history without
+                // tripling the player log with killed/reward/stat copies.
                 $monsterRewardProjection->where('events.event_type', '!=', 'monster.killed')
                     ->orWhereRaw("events.metadata->>'killer_nation_id' IS NULL");
             });

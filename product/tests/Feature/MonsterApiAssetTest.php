@@ -12,16 +12,18 @@ use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
-use App\Models\MonsterKillRecord;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
+use App\Models\NationMonsterKillStat;
 use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
 use App\Services\AssetManifestResolver;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
@@ -148,7 +150,7 @@ class MonsterApiAssetTest extends TestCase
         app(MonsterDamageService::class)->applyDamage(
             $monster, 1, 'monster_missile', $originNation, null, $destination, $context,
         );
-        $this->assertSame(0, MonsterKillRecord::query()->count());
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
         $afterDamage = $this->publicChunk($originNation, $space, $destination);
         $this->assertSame(2, $this->projectedCell($afterDamage, $destination)['monster']['current_hp']);
 
@@ -174,7 +176,7 @@ class MonsterApiAssetTest extends TestCase
         $this->assertSame('無所属', $projected['monster']['host_label']);
     }
 
-    public function test_public_nation_statistics_use_authoritative_final_blows_and_distinct_first_kill_marks(): void
+    public function test_public_nation_statistics_use_authoritative_species_aggregates(): void
     {
         [$world, $host, $ruleset] = $this->worldAndNation('統計所在国');
         $killer = $this->createNation($world, '統計撃破国');
@@ -187,7 +189,7 @@ class MonsterApiAssetTest extends TestCase
         $first = $this->createMonster($world, $ruleset, $cells[0], 'inora', 1);
         $second = $this->createMonster($world, $ruleset, $cells[1], 'inora', 1);
         $third = $this->createMonster($world, $ruleset, $cells[2], 'red_inora', 3);
-        foreach ([[$first, $cells[0], 5, 1], [$second, $cells[1], 3, 1], [$third, $cells[2], 4, 3]] as [$monster, $cell, $turn, $damage]) {
+        foreach ([[$first, $cells[0], 3, 1], [$second, $cells[1], 5, 1], [$third, $cells[2], 4, 3]] as [$monster, $cell, $turn, $damage]) {
             [$context] = $this->context($world, $ruleset, $turn, 'stats-'.$monster->id, [$host->id, $killer->id]);
             app(MonsterDamageService::class)->applyDamage(
                 $monster, $damage, 'monster_missile', $killer, null, $cell, $context,
@@ -200,11 +202,35 @@ class MonsterApiAssetTest extends TestCase
             ->json('data');
 
         $this->assertSame([
-            ['key' => 'inora', 'name' => 'いのら', 'first_kill_turn' => 3],
-            ['key' => 'red_inora', 'name' => 'レッドいのら', 'first_kill_turn' => 4],
-        ], $response['monster_kill_marks']);
-        $this->assertArrayNotHasKey('monster_kill_counts_by_species', $response);
+            ['key' => 'inora', 'name' => 'いのら', 'kill_count' => 2, 'first_killed_turn' => 3, 'last_killed_turn' => 5],
+            ['key' => 'red_inora', 'name' => 'レッドいのら', 'kill_count' => 1, 'first_killed_turn' => 4, 'last_killed_turn' => 4],
+        ], $response['monster_kill_stats']);
         $this->assertArrayNotHasKey('monster_award', $response);
+    }
+
+    public function test_only_target_nation_detail_queries_monster_kill_stats_once(): void
+    {
+        [$world, $nation] = $this->worldAndNation('照会境界国');
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = ['sql' => $query->sql, 'bindings' => $query->bindings];
+        });
+
+        $this->getJson("/api/v1/public/worlds/{$world->id}/summary")->assertOk();
+        $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")->assertOk();
+        $this->assertCount(0, array_filter(
+            $queries,
+            static fn (array $query): bool => str_contains($query['sql'], 'nation_monster_kill_stats'),
+        ));
+
+        $queries = [];
+        $this->getJson("/api/v1/public/nations/{$nation->id}")->assertOk();
+        $statQueries = array_values(array_filter(
+            $queries,
+            static fn (array $query): bool => str_contains($query['sql'], 'nation_monster_kill_stats'),
+        ));
+        $this->assertCount(1, $statQueries);
+        $this->assertContains($nation->id, $statQueries[0]['bindings']);
     }
 
     private function temporaryAssetDirectory(): string

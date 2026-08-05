@@ -58,4 +58,10 @@ final class MonsterDefinition extends Model
     {
         return $this->hasMany(MonsterInstance::class);
     }
+
+    /** @return HasMany<NationMonsterKillStat, $this> */
+    public function killStats(): HasMany
+    {
+        return $this->hasMany(NationMonsterKillStat::class);
+    }
 }

@@ -128,17 +128,19 @@ $ruleset['monster_system'] = [
         'killer_money_share' => 'floor_half',
         'host_remainder_share' => true,
         'host_food_resource_key' => 'monster_meat',
-        'food_tons_per_money_unit' => 1_000,
+        'food_tons_per_money_unit' => 500,
         'missile_base_experience_maximum' => 200,
     ],
     'terrain_events' => [
         'preserve_occupancy' => ['earthquake', 'tsunami', 'typhoon'],
         'remove_without_rewards' => ['meteor_shower', 'huge_meteor', 'eruption', 'land_subsidence', 'defense_self_destruct', 'terrain_destruction_missile'],
     ],
-    'kill_record' => [
-        'one_per_monster_instance' => true,
+    'kill_stats' => [
+        'scope' => 'nation_monster_definition',
+        'increment_on_attributed_final_blow' => true,
         'authoritative_for_final_blow_count' => true,
         'authoritative_for_kill_marks' => true,
+        'maximum_species_rows_per_nation' => 8,
     ],
 ];
 

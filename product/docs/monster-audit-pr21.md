@@ -55,9 +55,10 @@ probability = numerator / 10000
 
 | Nation人口 | exact uniform pool |
 |---:|---|
-| 100,000以上 | `inora`, `sanjira` |
-| 250,000以上 | 上記 + `red_inora`, `dark_inora`, `inora_ghost` |
-| 400,000以上 | 上記 + `whale`, `king_inora` |
+| 100,000未満 | 自然出現なし |
+| 100,000〜249,999 | `inora`, `sanjira` |
+| 250,000〜399,999 | `inora`, `sanjira`, `red_inora`, `dark_inora`, `inora_ghost` |
+| 400,000以上 | `inora`, `sanjira`, `red_inora`, `dark_inora`, `inora_ghost`, `whale`, `king_inora` |
 
 出現時は選ばれた集落の人口とfacilityを除去し、ownerを維持した荒地へ変え、そのcellへ怪獣を配置する。trigger後に候補がなければno-opとして`monster.spawn_failed_no_settlement`を残す。
 
@@ -69,32 +70,34 @@ sourceの一回cell passを採用する。randomized surface cell orderでoccupa
 
 ## terrain event相互作用
 
-| event | occupancy | HP/reward/record | event順序 |
+| event | occupancy | HP/reward/stat | event順序 |
 |---|---|---|---|
 | earthquake / tsunami / typhoon | 維持し、怪獣cellへの通常damageをskip | 変更なし | 怪獣を観測してcell effectをskip |
 | fire / riot | 維持し、怪獣actor処理後のcell effectをskip | 変更なし | monster actorがcell turnを占有 |
-| meteor shower / huge meteor / eruption | explicit removal | HP damage・報酬・kill recordなし | occupancyを除去してからterrain変更 |
+| meteor shower / huge meteor / eruption | explicit removal | HP damage・報酬・kill statなし | occupancyを除去してからterrain変更 |
 | land subsidence | explicit removal | 同上 | occupancyを除去してから沈下 |
 | terrain-destruction missile / administrative overwrite | explicit removal境界 | 同上 | terrain変更serviceが必ず除去を先行 |
-| defense facility contact | `defense_self_destruct`でexplicit removal | killer・報酬・経験・kill recordなし | 怪獣除去後、center固定の巨大隕石相当blastを一度だけ実行 |
+| defense facility contact | `defense_self_destruct`でexplicit removal | killer・報酬・経験・kill statなし | 怪獣除去後、center固定の巨大隕石相当blastを一度だけ実行 |
 
 防衛施設self-destructはrandom triggerを使わず、chain reactionを起こさない。通常HP damageや硬化判定を通さず、`monster.defense_self_destructed`と`disaster.triggered`を別々に監査する。
 
-## damage、reward、authoritative kill fact
+playerの`land_clear`、`land_level`、`excavate`は怪獣occupancyがあるtargetを`monster_occupied`で実行時拒否し、費用・terrain・occupancy・statを変更しない。operator用のadministrative overwriteだけが、明示的な報酬なしremovalを先行してからterrainを変更できる。
 
-`MonsterDamageService`はmonster、positive damage、damage type、killer Nation nullable、firing base nullable、現在host cell、turn contextを明示的に受ける。硬化時は`monster.damage_blocked`、生存damageは現在HPを更新する。final blow時だけoccupancyを除去し、Nation attributedなら一件のimmutable `monster_kill_records`を作る。retryは`already_resolved`で二重付与しない。全体を一transactionに置き、失敗時はHP、occupancy、資産、経験、record、eventをrollbackする。
+## damage、reward、authoritative kill stats
+
+`MonsterDamageService`はmonster、positive damage、damage type、killer Nation nullable、firing base nullable、現在host cell、turn contextを明示的に受ける。硬化時は`monster.damage_blocked`、生存damageは現在HPを更新する。final blow時だけoccupancyを除去し、Nation attributedならmonster instance lock下で`nation_monster_kill_stats`を一度だけupsertする。retryは`already_resolved`で二重付与せず、異なるinstanceの同種撃破はunique scopeへのatomic incrementで直列化する。全体を一transactionに置き、失敗時はHP、occupancy、資産、経験、stat、eventをrollbackする。
 
 ```text
 killer_money_share = floor(wreckage_value_money / 2) 億円
 host_meat_value = wreckage_value_money - killer_money_share
-host_monster_meat = host_meat_value * 1000 トン
+host_monster_meat = host_meat_value * 500 トン
 ```
 
-例: value 1,000はkiller 500億円、死亡時cell ownerへ怪獣肉500,000トン。moneyとfoodは既存capacity serviceで`requested / applied / overflow`を記録する。hostが中立ならhost shareは未付与でkillerへ振り替えない。killerがnullなら両方のreward、基地経験、kill recordを作らない。同一Nationがkiller/hostなら同じNationへ両assetを個別capacityで付与する。基地経験はdefinition値を加え、200を上限とする。
+現行versioned sale contractは怪獣肉1,000トン=2億円なので、1億円相当は端数のない500トンである。例: value 1,000はkiller 500億円、死亡時cell ownerへ怪獣肉250,000トン。奇数valueの余りはhost側へ入る。moneyとfoodは既存capacity serviceで`requested / applied / overflow`を記録する。hostが中立ならhost shareは失効しkillerへ振り替えない。killerがnullなら両方のreward、基地経験、kill statを作らない。同一Nationがkiller/hostなら同じNationへ両assetを個別capacityで付与する。基地経験はdefinition値を加え、200を上限とする。
 
-`monster_kill_records`はWorld、instance、definition、killer、host nullable、firing base nullable、target turn、cause、value、各reward requested/applied/overflow、applied experienceを保持する。DB triggerでWorld整合性とkilled stateを検査し、instanceごと一件、update/delete不可とする。
+`nation_monster_kill_stats`は`world_id`、`nation_id`、`monster_definition_id`をunique scopeとし、`kill_count`、`first_killed_turn`、`last_killed_turn`、`version`を永久gameplay stateとして保持する。初回はcount/version 1かつfirst=last=target turn、以後は同じ行のcount/versionを1増やし、firstを維持してlastを更新する。DB constraint/triggerが非負turn、count、World/Nation/definition整合、cross-World参照、不正な直接更新・World存続中の削除を拒否する。個別撃破を保存するtableは持たない。
 
-このNation単位spawn、reward split、kill record、討伐統計を`MONSTER-04`のowner decisionとして固定する。Nation総トドメ数は`COUNT(monster_kill_records WHERE killer_nation_id = Nation)`、kill markはdefinitionごとの`MIN(target_turn)`を正本とする。value 0のメカいのらもNation attributed final blowならcount対象。種類別count、ranking、award thresholdは実装しない。AWARD-01はOpenのままである。
+このNation単位spawn、reward split、討伐統計を`MONSTER-04`のowner decisionとして固定する。kill markはstat rowの`kill_count > 0`、種類別討伐数は`kill_count`、Nation総トドメ数は対象Nation最大8行の`SUM(kill_count)`を正本とし、`nations`へ重複totalを置かない。value 0のメカいのらもNation attributed final blowならcount対象。将来rankingはこの集計tableだけから算出できる境界を維持し、award thresholdは実装しない。AWARD-01はOpenのままである。
 
 ## API、map overlay、event secrecy
 
@@ -102,7 +105,9 @@ chunk projectionはmonsterの`id`、`key`、`name`、effective `asset_key`/`asse
 
 Vue mapはterrain/facility tileの上に独立HTML/CSS overlayを描き、GIF、`HP n`、現在host labelを常時表示する。`pointer-events: none`でclick/drag/panを奪わず、cellのaria labelとCellDetailsからkeyboardでも情報へ到達できる。chunk再取得はcell stateを置換するため移動・damage・death後の残像や二重overlayを作らない。
 
-最低限のaudit eventは`monster.spawned`、`monster.spawn_failed_no_settlement`、`monster.moved`、`monster.trampled`、`monster.stayed`、`monster.damage_blocked`、`monster.damaged`、`monster.killed`、`monster.reward_distributed`、`monster.kill_recorded`、`monster.defense_self_destructed`、`monster.removed_by_terrain_event`。player logはkillerへ撃破と賞金、hostへ撃破と怪獣肉をrole-aware messageとして投影し、raw metadataを返さない。
+最低限のaudit eventは`monster.spawned`、`monster.spawn_failed_no_settlement`、`monster.moved`、`monster.trampled`、`monster.stayed`、`monster.damage_blocked`、`monster.damaged`、`monster.killed`、`monster.reward_distributed`、`monster.kill_stat_incremented`、`monster.defense_self_destructed`、`monster.removed_by_terrain_event`。個別撃破のinstance/definition、killer、nullable host、turn、previous/new count、money/meat rewardとoverflow、nullable firing baseはこのstructured eventへ記録する。player logはkillerへ撃破と賞金、hostへ撃破と怪獣肉をrole-aware messageとして投影し、raw metadataを返さない。
+
+公開Nation detailだけが対象Nationのstatを一query・最大8行で取得し、`monster_final_blow_count`とkey/name/count/first/lastを返す。公開TOP、World summary、population rankingはこのtableをquery/eager loadせず、全Nation分のstatや個別eventを走査しない。
 
 ## asset配信とdeployment境界
 

@@ -392,7 +392,7 @@ final class RulesetAuthoringValidator
 
         $systemPath = 'ruleset.monster_system';
         $system = $this->map($settings['monster_system'], $systemPath);
-        $this->requireKeys($system, ['footprint_cells', 'natural_spawn', 'movement', 'reward', 'terrain_events', 'kill_record'], $systemPath);
+        $this->requireKeys($system, ['footprint_cells', 'natural_spawn', 'movement', 'reward', 'terrain_events', 'kill_stats'], $systemPath);
         if ($this->integer($system['footprint_cells'], "{$systemPath}.footprint_cells", 1) !== 1) {
             throw new DomainException("{$systemPath}.footprint_cells must be exactly 1 for PR21.");
         }
@@ -457,9 +457,25 @@ final class RulesetAuthoringValidator
             'food_tons_per_money_unit', 'missile_base_experience_maximum',
         ], "{$systemPath}.reward");
         $this->reference($reward['host_food_resource_key'], $resourceKeys, "{$systemPath}.reward.host_food_resource_key");
-        if ($reward !== [
+        $saleRates = $this->map($settings['inventory_sale_rates'] ?? null, 'ruleset.inventory_sale_rates');
+        $meatRate = $this->map($saleRates['monster_meat'] ?? null, 'ruleset.inventory_sale_rates.monster_meat');
+        $inventoryUnits = $this->integer(
+            $meatRate['inventory_units'] ?? null,
+            'ruleset.inventory_sale_rates.monster_meat.inventory_units',
+            1,
+        );
+        $moneyUnits = $this->integer(
+            $meatRate['money_units'] ?? null,
+            'ruleset.inventory_sale_rates.monster_meat.money_units',
+            1,
+        );
+        if ($inventoryUnits % $moneyUnits !== 0) {
+            throw new DomainException('ruleset.inventory_sale_rates.monster_meat must convert one money unit to exact integer tons.');
+        }
+        $foodTonsPerMoneyUnit = intdiv($inventoryUnits, $moneyUnits);
+        if ($foodTonsPerMoneyUnit !== 500 || $reward !== [
             'killer_money_share' => 'floor_half', 'host_remainder_share' => true,
-            'host_food_resource_key' => 'monster_meat', 'food_tons_per_money_unit' => 1_000,
+            'host_food_resource_key' => 'monster_meat', 'food_tons_per_money_unit' => $foodTonsPerMoneyUnit,
             'missile_base_experience_maximum' => 200,
         ]) {
             throw new DomainException("{$systemPath}.reward differs from the PR21 split contract.");
@@ -472,13 +488,15 @@ final class RulesetAuthoringValidator
         ]) {
             throw new DomainException("{$systemPath}.terrain_events differs from MONSTER-03.");
         }
-        $killRecord = $this->map($system['kill_record'], "{$systemPath}.kill_record");
-        if ($killRecord !== [
-            'one_per_monster_instance' => true,
+        $killStats = $this->map($system['kill_stats'], "{$systemPath}.kill_stats");
+        if ($killStats !== [
+            'scope' => 'nation_monster_definition',
+            'increment_on_attributed_final_blow' => true,
             'authoritative_for_final_blow_count' => true,
             'authoritative_for_kill_marks' => true,
+            'maximum_species_rows_per_nation' => 8,
         ]) {
-            throw new DomainException("{$systemPath}.kill_record differs from the PR21 authoritative fact contract.");
+            throw new DomainException("{$systemPath}.kill_stats differs from the PR21 aggregate contract.");
         }
 
         return count($keys);

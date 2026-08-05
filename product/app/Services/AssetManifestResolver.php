@@ -15,7 +15,7 @@ final class AssetManifestResolver
         'tile.forest' => 'land6.gif',
         'tile.mountain' => 'land11.gif',
         'tile.village' => 'land3.gif',
-        'tile.capital' => 'capital.png',
+        'tile.capital' => 'capital.gif',
         'tile.farm' => 'land7.gif',
         'tile.factory' => 'land8.gif',
         'tile.mine' => 'land15.gif',

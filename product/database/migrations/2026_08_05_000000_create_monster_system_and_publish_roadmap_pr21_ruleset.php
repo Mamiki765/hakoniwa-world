@@ -59,27 +59,18 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('monster_kill_records', function (Blueprint $table): void {
+        Schema::create('nation_monster_kill_stats', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('world_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('monster_instance_id')->unique()->constrained()->cascadeOnDelete();
+            $table->foreignId('nation_id')->constrained()->cascadeOnDelete();
             $table->foreignId('monster_definition_id')->constrained()->restrictOnDelete();
-            $table->foreignId('killer_nation_id')->constrained('nations')->cascadeOnDelete();
-            $table->foreignId('host_nation_id')->nullable()->constrained('nations')->cascadeOnDelete();
-            $table->foreignId('firing_base_id')->nullable()->constrained('map_cells')->cascadeOnDelete();
-            $table->unsignedBigInteger('target_turn');
-            $table->string('kill_cause', 64);
-            $table->unsignedBigInteger('wreckage_value_money');
-            $table->unsignedBigInteger('killer_money_requested');
-            $table->unsignedBigInteger('killer_money_applied');
-            $table->unsignedBigInteger('killer_money_overflow');
-            $table->unsignedBigInteger('host_meat_food_requested');
-            $table->unsignedBigInteger('host_meat_food_applied');
-            $table->unsignedBigInteger('host_meat_food_overflow');
-            $table->unsignedSmallInteger('firing_base_experience_applied')->default(0);
-            $table->timestampTz('created_at')->useCurrent();
-            $table->index(['killer_nation_id', 'target_turn']);
-            $table->index(['killer_nation_id', 'monster_definition_id']);
+            $table->unsignedBigInteger('kill_count');
+            $table->unsignedBigInteger('first_killed_turn');
+            $table->unsignedBigInteger('last_killed_turn');
+            $table->unsignedBigInteger('version')->default(1);
+            $table->timestamps();
+            $table->unique(['world_id', 'nation_id', 'monster_definition_id'], 'nation_monster_kill_stats_scope_unique');
+            $table->index(['world_id', 'nation_id']);
         });
 
         $this->installPostgresIntegrityConstraints();
@@ -110,8 +101,9 @@ return new class extends Migration
         DB::statement('ALTER TABLE monster_definitions ADD CONSTRAINT monster_definitions_spawn_tier_check CHECK (natural_spawn_tier IS NULL OR natural_spawn_tier BETWEEN 1 AND 3)');
         DB::statement("ALTER TABLE monster_instances ADD CONSTRAINT monster_instances_state_check CHECK ((state = 'alive' AND current_hp BETWEEN 1 AND spawned_max_hp AND removal_reason IS NULL AND removed_at IS NULL) OR (state = 'killed' AND current_hp = 0 AND removal_reason IS NOT NULL AND removed_at IS NOT NULL) OR (state = 'removed' AND current_hp BETWEEN 0 AND spawned_max_hp AND removal_reason IS NOT NULL AND removed_at IS NOT NULL))");
         DB::statement('ALTER TABLE monster_instances ADD CONSTRAINT monster_instances_turn_check CHECK (spawned_target_turn >= 1)');
-        DB::statement('ALTER TABLE monster_kill_records ADD CONSTRAINT monster_kill_records_turn_check CHECK (target_turn >= 1)');
-        DB::statement('ALTER TABLE monster_kill_records ADD CONSTRAINT monster_kill_records_money_split_check CHECK (killer_money_requested + host_meat_food_requested / 1000 <= wreckage_value_money AND killer_money_applied <= killer_money_requested AND killer_money_overflow = killer_money_requested - killer_money_applied AND host_meat_food_applied <= host_meat_food_requested AND host_meat_food_overflow = host_meat_food_requested - host_meat_food_applied)');
+        DB::statement('ALTER TABLE nation_monster_kill_stats ADD CONSTRAINT nation_monster_kill_stats_count_check CHECK (kill_count >= 1)');
+        DB::statement('ALTER TABLE nation_monster_kill_stats ADD CONSTRAINT nation_monster_kill_stats_turn_check CHECK (first_killed_turn >= 1 AND last_killed_turn >= first_killed_turn)');
+        DB::statement('ALTER TABLE nation_monster_kill_stats ADD CONSTRAINT nation_monster_kill_stats_version_check CHECK (version >= 1)');
 
         DB::unprepared(<<<'SQL'
 CREATE OR REPLACE FUNCTION validate_monster_instance_world_ruleset() RETURNS trigger AS $$
@@ -174,56 +166,54 @@ CREATE TRIGGER monster_occupancy_guard
 BEFORE INSERT OR UPDATE ON monster_occupancies
 FOR EACH ROW EXECUTE FUNCTION validate_monster_occupancy();
 
-CREATE OR REPLACE FUNCTION validate_monster_kill_record() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION validate_nation_monster_kill_stat() RETURNS trigger AS $$
 DECLARE
-    monster_world bigint;
-    monster_definition bigint;
-    monster_state text;
-    killer_world bigint;
-    host_world bigint;
-    base_world bigint;
+    nation_world bigint;
+    world_ruleset bigint;
+    definition_ruleset bigint;
 BEGIN
-    SELECT world_id, monster_definition_id, state
-      INTO monster_world, monster_definition, monster_state
-      FROM monster_instances WHERE id = NEW.monster_instance_id;
-    SELECT world_id INTO killer_world FROM nations WHERE id = NEW.killer_nation_id;
-    IF NEW.host_nation_id IS NOT NULL THEN
-        SELECT world_id INTO host_world FROM nations WHERE id = NEW.host_nation_id;
+    SELECT world_id INTO nation_world FROM nations WHERE id = NEW.nation_id;
+    SELECT ruleset_version_id INTO world_ruleset FROM worlds WHERE id = NEW.world_id;
+    SELECT ruleset_version_id INTO definition_ruleset
+      FROM monster_definitions WHERE id = NEW.monster_definition_id;
+    IF nation_world IS NULL OR world_ruleset IS NULL OR definition_ruleset IS NULL
+       OR nation_world <> NEW.world_id OR world_ruleset <> definition_ruleset THEN
+        RAISE EXCEPTION 'monster kill stat references inconsistent World state';
     END IF;
-    IF NEW.firing_base_id IS NOT NULL THEN
-        SELECT ms.world_id INTO base_world FROM map_cells mc
-          JOIN map_spaces ms ON ms.id = mc.map_space_id WHERE mc.id = NEW.firing_base_id;
+    IF TG_OP = 'INSERT' AND (NEW.kill_count <> 1 OR NEW.first_killed_turn <> NEW.last_killed_turn OR NEW.version <> 1) THEN
+        RAISE EXCEPTION 'first monster kill stat must start at count and version one';
     END IF;
-    IF monster_state IS DISTINCT FROM 'killed'
-       OR monster_world <> NEW.world_id OR monster_definition <> NEW.monster_definition_id
-       OR killer_world <> NEW.world_id
-       OR (NEW.host_nation_id IS NOT NULL AND host_world <> NEW.world_id)
-       OR (NEW.firing_base_id IS NOT NULL AND base_world <> NEW.world_id) THEN
-        RAISE EXCEPTION 'monster kill record references inconsistent World state';
+    IF TG_OP = 'UPDATE' AND (
+        NEW.world_id <> OLD.world_id
+        OR NEW.nation_id <> OLD.nation_id
+        OR NEW.monster_definition_id <> OLD.monster_definition_id
+        OR NEW.first_killed_turn <> OLD.first_killed_turn
+        OR NEW.kill_count <> OLD.kill_count + 1
+        OR NEW.last_killed_turn < OLD.last_killed_turn
+        OR NEW.version <> OLD.version + 1
+    ) THEN
+        RAISE EXCEPTION 'monster kill stat updates must be one atomic increment';
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER monster_kill_record_guard
-BEFORE INSERT ON monster_kill_records
-FOR EACH ROW EXECUTE FUNCTION validate_monster_kill_record();
+CREATE TRIGGER nation_monster_kill_stat_guard
+BEFORE INSERT OR UPDATE ON nation_monster_kill_stats
+FOR EACH ROW EXECUTE FUNCTION validate_nation_monster_kill_stat();
 
-CREATE OR REPLACE FUNCTION reject_monster_kill_record_mutation() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION reject_nation_monster_kill_stat_delete() RETURNS trigger AS $$
 BEGIN
-    -- A kill fact remains immutable while its World exists. The pre-release
-    -- reset path deletes the World root, so its FK cascades may remove the
-    -- otherwise immutable World-owned graph without a session-level bypass.
-    IF TG_OP = 'DELETE' AND NOT EXISTS (SELECT 1 FROM worlds WHERE id = OLD.world_id) THEN
+    IF NOT EXISTS (SELECT 1 FROM worlds WHERE id = OLD.world_id) THEN
         RETURN OLD;
     END IF;
-    RAISE EXCEPTION 'monster kill records are immutable';
+    RAISE EXCEPTION 'monster kill stats are permanent while their World exists';
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER monster_kill_record_immutable
-BEFORE UPDATE OR DELETE ON monster_kill_records
-FOR EACH ROW EXECUTE FUNCTION reject_monster_kill_record_mutation();
+CREATE TRIGGER nation_monster_kill_stat_delete_guard
+BEFORE DELETE ON nation_monster_kill_stats
+FOR EACH ROW EXECUTE FUNCTION reject_nation_monster_kill_stat_delete();
 SQL);
     }
 };

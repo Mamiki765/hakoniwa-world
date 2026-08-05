@@ -19,12 +19,12 @@
 - 1-cell実装を永続的な1-cell schema invariantにはせず、将来のmulti-cell footprintを追加できる境界を維持する。
 - Capital cellはmonster occupancyを許可しない。spawn、movement、forced relocationの候補から除外する。
 - terrain、facility、ownershipはmonster occupancyの有無だけで別種へencodeしない。
-- kind 0〜7を不変ruleset catalogへ公開し、instanceは現在HPと出現時最大HPを持つ。位置は`monster_occupancies`、撃破factはimmutableな`monster_kill_records`へ分離する。
+- kind 0〜7を不変ruleset catalogへ公開し、instanceは現在HPと出現時最大HPを持つ。位置は`monster_occupancies`、Nation/definition単位の永久討伐集計は`nation_monster_kill_stats`へ分離する。個別撃破はstructured eventだけに記録する。
 - movementはrandomized cell orderの一回passで処理する。移動先cellがまだ未処理なら同turn内に再行動できるが、上限はdefinition別のturn-local counterで制限し永続化しない。
 - 硬化はtarget turn parityで判定し、該当turnの通常damageとmovementを止める。`monster4.gif`はkindではなく硬化表示variantである。
 - terrain-changing eventは`product/docs/monster-audit-pr21.md`の表を正本とし、維持対象では怪獣cellをskip、上書き対象ではoccupancyを報酬なしで先に除去する。
-- 防衛施設接触は怪獣のexplicit removalと、一回の巨大隕石相当blastとして扱う。killer、経験、報酬、kill recordを作らない。
-- Nation attributed final blowだけがkiller賞金、現在cell ownerへの怪獣肉、基地経験、immutable kill recordを作る。
+- 防衛施設接触は怪獣のexplicit removalと、一回の巨大隕石相当blastとして扱う。killer、経験、報酬、kill statを作らない。
+- Nation attributed final blowだけがkiller賞金、現在cell ownerへの怪獣肉、基地経験、aggregate kill stat incrementを作る。怪獣価値はkillerへ切捨て半分、hostへ残りを配分し、怪獣肉はversioned sale contractの同価値整数トンへ換算する。
 
 これらはowner承認済みPR21 scopeで実装する。公開済みhistorical rulesetとWorldは変更しない。
 

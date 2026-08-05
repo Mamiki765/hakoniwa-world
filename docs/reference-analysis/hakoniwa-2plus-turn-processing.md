@@ -236,7 +236,7 @@ legacyはNation center x/yを持つだけでCapital facility identityを持た�
 
 source factとして8種のkind、HP、skill、経験、価値、randomized single cell pass、移動先が後続cellなら再処理される因果、奇数/偶数硬化を採用した。一方、rank-based owner、`kind*20+hp` cell encoding、global座標試行型spawn、永続flagは採用しない。
 
-owner decisionとして共有Worldの各active Nationへ所有陸地数に比例する一回drawを割り当て、判定前snapshotから有人口集落候補と人口poolを選ぶ。terrain eventの維持/explicit removal、防衛施設self-destruct、killer/host reward、kill record、外部GIF配信もsourceの表現を直接移植せず新作契約として決定した。source factとowner decisionの完全な対応は`product/docs/monster-audit-pr21.md`を正本とする。
+owner decisionとして共有Worldの各active Nationへ所有陸地数に比例する一回drawを割り当て、判定前snapshotから有人口集落候補と人口poolを選ぶ。terrain eventの維持/explicit removal、防衛施設self-destruct、killer/host reward、Nation/definition別aggregate kill stat、structured kill event、外部GIF配信もsourceの表現を直接移植せず新作契約として決定した。source factとowner decisionの完全な対応は`product/docs/monster-audit-pr21.md`を正本とする。
 
 ## 災害
 

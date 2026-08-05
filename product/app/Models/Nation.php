@@ -68,9 +68,9 @@ class Nation extends Model
         return $this->hasMany(NationResourceSalePolicy::class);
     }
 
-    /** @return HasMany<MonsterKillRecord, $this> */
-    public function monsterKillRecords(): HasMany
+    /** @return HasMany<NationMonsterKillStat, $this> */
+    public function monsterKillStats(): HasMany
     {
-        return $this->hasMany(MonsterKillRecord::class, 'killer_nation_id');
+        return $this->hasMany(NationMonsterKillStat::class);
     }
 }

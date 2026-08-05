@@ -130,7 +130,7 @@ final class MonsterPerformanceTest extends TestCase
         foreach ([
             'monsters_loaded', 'monster_actions', 'monster_moves', 'cells_trampled',
             'defense_self_destructs', 'damage_blocked', 'monsters_killed',
-            'rewards_distributed', 'kill_records_created', 'maximum_moves_by_single_monster',
+            'rewards_distributed', 'kill_stats_incremented', 'maximum_moves_by_single_monster',
         ] as $key) {
             $this->assertArrayHasKey($key, $metrics);
         }

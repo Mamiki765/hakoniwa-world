@@ -24,7 +24,9 @@ const publicDetail: PublicNationDetail = {
     last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '共有世界', current_turn: 1 },
     capital: { x: 12, y: 8 },
     monster_final_blow_count: 1,
-    monster_kill_marks: [{ key: 'inora', name: 'いのら', first_kill_turn: 12 }],
+    monster_kill_stats: [{
+        key: 'inora', name: 'いのら', kill_count: 1, first_killed_turn: 12, last_killed_turn: 12,
+    }],
     map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
 };
 
