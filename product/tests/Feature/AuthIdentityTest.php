@@ -12,6 +12,7 @@ use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\AbstractProvider;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 class AuthIdentityTest extends TestCase
@@ -89,5 +90,28 @@ class AuthIdentityTest extends TestCase
 
         $this->assertSame(0, User::query()->count());
         $this->assertSame(0, AuthIdentity::query()->count());
+    }
+
+    public function test_provider_failure_shows_temporary_outage_and_retry_guidance(): void
+    {
+        config([
+            'services.discord.client_id' => 'public-client-id',
+            'services.discord.client_secret' => 'test-only-secret',
+        ]);
+        $provider = Mockery::mock(AbstractProvider::class);
+        $provider->shouldReceive('setScopes')->once()->with(['identify'])->andReturnSelf();
+        $provider->shouldReceive('user')->once()->andThrow(new RuntimeException('provider unavailable'));
+        Socialite::shouldReceive('driver')->once()->with('discord')->andReturn($provider);
+
+        $this->withSession(['oauth_intent' => 'login'])
+            ->get('/auth/discord/callback')
+            ->assertRedirect('/?oauth=failed')
+            ->assertSessionHas('oauth_error');
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('一時的な障害')
+            ->assertSee('再試行')
+            ->assertSee('事前に別の認証サービスを連携済み');
     }
 }

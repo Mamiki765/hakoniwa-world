@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
+use App\Models\World;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -111,6 +112,18 @@ final class PlayerIslandEventService
         'pp_missile',
         'land_destruction_missile',
         'spp_missile',
+    ];
+
+    /** @var list<string> */
+    private const PUBLIC_NEWS_DENYLIST = [
+        'command.buried_treasure',
+        'command.seabed_oil_search',
+        'command.forest_planted_private',
+        'command.missile_base_built_private',
+        'command.seabed_base_built_private',
+        'command.decoy_built_private',
+        'command.logging_private',
+        'missile.launch_detail',
     ];
 
     /**
@@ -245,6 +258,112 @@ final class PlayerIslandEventService
     }
 
     /**
+     * Project the World news feed from public events only. Metadata and
+     * coordinates are deliberately never part of this public response.
+     *
+     * @return array{
+     *     groups: list<array{target_turn: int, events: list<array<string, mixed>>}>,
+     *     page: int,
+     *     anchor_turn: int,
+     *     turn_range: array{start: int, end: int}|null,
+     *     turns_per_page: int,
+     *     has_newer_page: bool,
+     *     has_older_page: bool
+     * }
+     */
+    public function publicPage(World $world, int $page = 1, ?int $anchorTurn = null): array
+    {
+        $anchorTurn ??= (int) $world->current_turn;
+        $rangeEnd = $anchorTurn - (($page - 1) * self::TURNS_PER_PAGE);
+        if ($rangeEnd < 1) {
+            return [
+                'groups' => [],
+                'page' => $page,
+                'anchor_turn' => $anchorTurn,
+                'turn_range' => null,
+                'turns_per_page' => self::TURNS_PER_PAGE,
+                'has_newer_page' => $page > 1,
+                'has_older_page' => false,
+            ];
+        }
+        $rangeStart = max(1, $rangeEnd - self::TURNS_PER_PAGE + 1);
+
+        $rows = DB::table('audit_events as events')
+            ->where('events.world_id', $world->id)
+            ->where('events.visibility', 'public')
+            ->whereIn('events.event_type', [...self::ALLOWED_EVENT_TYPES, 'nation.created'])
+            ->whereNotIn('events.event_type', self::PUBLIC_NEWS_DENYLIST)
+            ->whereBetween('events.turn', [$rangeStart, $rangeEnd])
+            ->where(function (Builder $visible): void {
+                $visible->where('events.event_type', '!=', 'command.buried_treasure')
+                    ->orWhereRaw("events.metadata->>'found' = 'true'");
+            })
+            ->where(function (Builder $visible): void {
+                $visible->where('events.event_type', '!=', 'resource.automatic_sale')
+                    ->orWhereRaw("COALESCE(events.metadata->>'sold', '0') <> '0'");
+            })
+            ->where(function (Builder $deduplicated): void {
+                $placeholders = implode(', ', array_fill(0, count(self::COMMANDS_WITH_SPECIFIC_RESULT_EVENT), '?'));
+                $deduplicated->where('events.event_type', '!=', 'command.success')
+                    ->orWhereRaw(
+                        "events.metadata->>'command_key' NOT IN ({$placeholders})",
+                        self::COMMANDS_WITH_SPECIFIC_RESULT_EVENT,
+                    );
+            })
+            ->where(function (Builder $deduplicated): void {
+                $deduplicated->where('events.event_type', '!=', 'population.decreased')
+                    ->orWhereRaw("COALESCE(events.metadata->>'reason', '') <> 'famine'");
+            })
+            ->where(function (Builder $monsterRewardProjection): void {
+                $monsterRewardProjection->where('events.event_type', '!=', 'monster.killed')
+                    ->orWhereRaw("events.metadata->>'killer_nation_id' IS NULL");
+            })
+            ->orderByDesc('events.turn')
+            ->orderByDesc('events.id')
+            ->get([
+                'events.id',
+                'events.event_type',
+                'events.metadata',
+                'events.turn',
+                'events.occurred_at',
+            ]);
+
+        $events = $rows->map(function (object $row): array {
+            $metadata = $this->metadata($row->metadata);
+            $targetTurn = (int) $row->turn;
+
+            return [
+                'id' => (int) $row->id,
+                'type' => (string) $row->event_type,
+                'message' => $this->message((string) $row->event_type, $metadata, $targetTurn, 0),
+                'importance' => $this->importance((string) $row->event_type),
+                'target_turn' => $targetTurn,
+                'occurred_at' => (string) $row->occurred_at,
+            ];
+        })->all();
+
+        $groups = [];
+        foreach ($events as $event) {
+            $last = array_key_last($groups);
+            if ($last === null || $groups[$last]['target_turn'] !== $event['target_turn']) {
+                $groups[] = ['target_turn' => $event['target_turn'], 'events' => []];
+                $last = array_key_last($groups);
+            }
+            $groups[$last]['events'][] = $event;
+        }
+
+        return [
+            'groups' => $groups,
+            'page' => $page,
+            'anchor_turn' => $anchorTurn,
+            'turn_range' => ['start' => $rangeStart, 'end' => $rangeEnd],
+            'turns_per_page' => self::TURNS_PER_PAGE,
+            'has_newer_page' => $page > 1,
+            'has_older_page' => $rangeStart > 1,
+        ];
+    }
+
+    /**
      * @param  list<object>  $rows
      * @return array<string, array<int, array{x: int, y: int}>>
      */
@@ -318,6 +437,7 @@ final class PlayerIslandEventService
     private function message(string $eventType, array $metadata, int $targetTurn, int $audienceNationId): string
     {
         return match ($eventType) {
+            'nation.created' => sprintf('%sが成立しました。', $metadata['nation_name'] ?? '新しい島'),
             'command.success' => $this->commandLabel($metadata).'が完了しました。',
             'command.failed', 'command.invalid', 'command.insufficient_assets' => $this->commandFailureMessage($metadata),
             'terrain.changed' => sprintf(

@@ -19,6 +19,7 @@
 * { box-sizing: border-box; }
 html { min-width: 320px; background: #edf2ec; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 72% 0%, #d9e8dc 0, transparent 35%), #edf2ec; }
+.server-alert { margin: 0; padding: 12px clamp(16px, 4vw, 48px); color: #6f2117; background: #ffe4dc; font-weight: 750; }
 button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
@@ -108,9 +109,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ranking-scroll { overflow: auto; margin: 18px -10px -8px; }
 .ranking-card table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: .84rem; }
 .ranking-card th, .ranking-card td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: right; }
-.ranking-card th:nth-child(2), .ranking-card td:nth-child(2) { text-align: left; }
+.ranking-card th:nth-child(1), .ranking-card td:nth-child(1), .ranking-card th:nth-child(2), .ranking-card td:nth-child(2) { text-align: left; }
 .ranking-card th { color: var(--muted); font-size: .72rem; }
 .ranking-card td button { border: 0; background: none; color: var(--navy); font-weight: 850; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.ranking-card td button.is-finance-only { color: var(--muted); }
 .ranking-owner { display: block; margin-top: 3px; color: var(--muted); font-size: .72rem; font-weight: 650; text-decoration: none; }
 .ranking-comment { display: block; max-width: 24rem; margin-top: 3px; color: var(--ink); font-size: .72rem; white-space: normal; }
 .event-list { list-style: none; display: grid; gap: 16px; margin: 18px 0 0; padding: 0; }
@@ -118,6 +120,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .event-mark { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--coral); }
 .event-list strong { display: block; font-size: .88rem; }
 .event-list time { display: block; margin-top: 4px; color: var(--muted); font-size: .7rem; }
+.public-event-group + .public-event-group { margin-top: 1rem; }
+.public-event-group h3 { margin: 1rem 0 0; color: var(--navy); font-size: .9rem; }
+.event-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; }
+.community-contact { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 18px 0 0; font-size: .78rem; }
 
 .panel { max-width: 980px; margin: 24px auto; padding: clamp(22px, 5vw, 58px); border: 1px solid var(--line); background: var(--paper); box-shadow: 14px 14px 0 rgba(18,63,73,.08); }
 .panel h1 { margin: 10px 0 18px; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 1; }

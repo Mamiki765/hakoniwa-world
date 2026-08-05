@@ -8,17 +8,17 @@ use App\Domain\Turn\TurnPipeline;
 use DomainException;
 use Tests\TestCase;
 
-final class Pr22RulesetContractTest extends TestCase
+final class FirstProductionRulesetContractTest extends TestCase
 {
-    public function test_pr22_publishes_the_audited_command_catalog_costs_and_turn_phase(): void
+    public function test_production_ruleset_publishes_the_audited_command_catalog_costs_and_turn_phase(): void
     {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr22-v1');
+        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1');
         $validated = app(RulesetAuthoringValidator::class)->validate($settings);
         $commands = collect($settings['command_definitions'])->mapWithKeys(
             static fn (array $definition): array => [$definition['key'] => $definition['cost_money']],
         )->all();
 
-        $this->assertSame('roadmap-pr22-v1', $validated['key']);
+        $this->assertSame('hakoniwa-2s-plus-v1', $validated['key']);
         $this->assertSame(
             'neutral',
             $settings['facility_definitions']['seabed_base']['disguise_ownership_policy'],
@@ -70,9 +70,9 @@ final class Pr22RulesetContractTest extends TestCase
         $this->assertNotContains('automatic_land_clear_set', array_keys($commands));
     }
 
-    public function test_pr22_missile_visibility_dormant_boundary_and_failure_enum_are_exact(): void
+    public function test_production_missile_visibility_dormant_boundary_and_failure_enum_are_exact(): void
     {
-        $military = config('hakoniwa.published_rulesets.roadmap-pr22-v1.military');
+        $military = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1.military');
 
         $this->assertArrayNotHasKey('range', $military);
         $this->assertArrayNotHasKey('maximum_range', $military);
@@ -117,7 +117,7 @@ final class Pr22RulesetContractTest extends TestCase
     public function test_capital_relocation_cost_is_bounded_by_the_approved_ruleset_range(): void
     {
         foreach ([999, 10_000] as $invalidCost) {
-            $settings = config('hakoniwa.published_rulesets.roadmap-pr22-v1');
+            $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1');
             $settings['capital_relocation_cost_money'] = $invalidCost;
 
             try {
@@ -135,7 +135,7 @@ final class Pr22RulesetContractTest extends TestCase
             ['facility' => 'seabed_base', 'policy' => 'owner'],
             ['facility' => 'missile_base', 'policy' => 'neutral'],
         ] as $case) {
-            $settings = config('hakoniwa.published_rulesets.roadmap-pr22-v1');
+            $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1');
             $settings['facility_definitions'][$case['facility']]['disguise_ownership_policy'] = $case['policy'];
 
             try {
@@ -147,9 +147,9 @@ final class Pr22RulesetContractTest extends TestCase
         }
     }
 
-    public function test_pr22_requires_the_versioned_post_ordinary_attraction_growth_contract(): void
+    public function test_production_ruleset_requires_the_versioned_post_ordinary_attraction_growth_contract(): void
     {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr22-v1');
+        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1');
         unset($settings['turn_processing']['settlement']['post_ordinary_attraction_growth']);
 
         $this->expectException(DomainException::class);

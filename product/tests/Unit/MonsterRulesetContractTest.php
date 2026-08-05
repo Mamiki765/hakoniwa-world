@@ -10,14 +10,14 @@ use App\Models\MonsterDefinition;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
-class Pr21RulesetContractTest extends TestCase
+class MonsterRulesetContractTest extends TestCase
 {
-    public function test_pr21_publishes_the_exact_audited_eight_monster_catalog(): void
+    public function test_production_ruleset_publishes_the_exact_audited_eight_monster_catalog(): void
     {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr21-v1');
+        $settings = config('hakoniwa.ruleset');
         $validated = app(RulesetAuthoringValidator::class)->validate($settings);
 
-        $this->assertSame('roadmap-pr21-v1', $validated['key']);
+        $this->assertSame('hakoniwa-2s-plus-v1', $validated['key']);
         $this->assertSame(8, $validated['monsters']);
         $this->assertSame([
             'mecha_inora' => [0, 'monster7.gif', 2, 0, 'none', 1, null, 0, 5],
@@ -45,7 +45,7 @@ class Pr21RulesetContractTest extends TestCase
 
     public function test_normal_assets_are_unique_and_monster4_is_hardening_only(): void
     {
-        $definitions = collect(config('hakoniwa.published_rulesets.roadmap-pr21-v1.monster_definitions'));
+        $definitions = collect(config('hakoniwa.ruleset.monster_definitions'));
 
         $this->assertCount(8, $definitions->pluck('asset_key')->unique());
         $this->assertNotContains('monster4.gif', $definitions->pluck('source_metadata.filename')->all());
@@ -62,7 +62,7 @@ class Pr21RulesetContractTest extends TestCase
 
     public function test_spawn_movement_reward_and_terrain_event_contracts_are_exact(): void
     {
-        $system = config('hakoniwa.published_rulesets.roadmap-pr21-v1.monster_system');
+        $system = config('hakoniwa.ruleset.monster_system');
 
         $this->assertSame(['numerator' => 2, 'denominator' => 10_000], $system['natural_spawn']['probability_per_land_cell']);
         $this->assertSame(10_000, $system['natural_spawn']['maximum_probability_numerator']);
@@ -81,7 +81,7 @@ class Pr21RulesetContractTest extends TestCase
         $this->assertContains('mine', $system['movement']['blocked_facility_keys']);
         $this->assertSame('defense', $system['movement']['defense_facility_key']);
         $this->assertSame('floor_half', $system['reward']['killer_money_share']);
-        $meatSaleRate = config('hakoniwa.published_rulesets.roadmap-pr21-v1.inventory_sale_rates.monster_meat');
+        $meatSaleRate = config('hakoniwa.ruleset.inventory_sale_rates.monster_meat');
         $this->assertSame(0, $meatSaleRate['inventory_units'] % $meatSaleRate['money_units']);
         $this->assertSame(
             intdiv($meatSaleRate['inventory_units'], $meatSaleRate['money_units']),
@@ -105,7 +105,7 @@ class Pr21RulesetContractTest extends TestCase
 
     public function test_monster_meat_reward_requires_an_exact_versioned_sale_rate_conversion(): void
     {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr21-v1');
+        $settings = config('hakoniwa.ruleset');
         $settings['inventory_sale_rates']['monster_meat']['money_units'] = 3;
 
         $this->expectException(\DomainException::class);
@@ -119,7 +119,7 @@ class Pr21RulesetContractTest extends TestCase
         int $ownedLandCells,
         int $expectedNumerator,
     ): void {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr21-v1.monster_system.natural_spawn');
+        $settings = config('hakoniwa.ruleset.monster_system.natural_spawn');
 
         $this->assertSame(
             ['numerator' => $expectedNumerator, 'denominator' => 10_000],
@@ -145,7 +145,7 @@ class Pr21RulesetContractTest extends TestCase
     #[DataProvider('populationPoolProvider')]
     public function test_population_pool_uses_exact_boundaries(int $population, array $expected): void
     {
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr21-v1.monster_system.natural_spawn');
+        $settings = config('hakoniwa.ruleset.monster_system.natural_spawn');
         $pool = app(MonsterNaturalSpawnPolicy::class)->poolForPopulation($settings, $population);
 
         $this->assertSame($expected, $pool);

@@ -2,7 +2,7 @@
 
 ## 状態
 
-各Worldが不変の`ruleset_version_id`を参照することをMVP基盤として確定する。Roadmap PR6では初期配置、初期資源、command definition、production definitionを含むsettings全体をsnapshotとして公開する。turn、command execution、災害、戦闘、管理画面は先行実装しない。
+各Worldが不変の`ruleset_version_id`を参照することをproduction基盤として確定する。`hakoniwa-2s-plus-v1`を初期公開版の正本とし、初期配置、初期資源、command definition、production definitionを含むsettings全体をimmutable snapshotとして公開する。初期版の承認記録はGit、pull request、ruleset validator、CI、merge履歴とし、application内の公開画面は作らない。
 
 ## 目的
 
@@ -28,17 +28,17 @@ repository内のauthoring sourceは`product/config/hakoniwa/rulesets/<version-ke
 
 `php artisan hakoniwa:ruleset:validate --key=<version-key>`はpublisherと同じschema validatorを使い、required key、strict integer type/range、catalog/definition reference、相互条件をDB mutationなしで検証する。このcommandはsnapshotをpublishせず、Worldの`ruleset_version_id`も変更しない。review後のpublishはimmutable snapshot作成、World切替は別の明示的operationであり、このauthoring境界にapply/switch機能を含めない。
 
-`OceanWorldGenerator::initialize()`は、configured rulesetが存在しない場合だけpublisherを通して作成し、存在する場合は保存済みsnapshotとの完全一致を確認する。新規Worldだけをconfigured rulesetへ関連付け、既存Worldの`ruleset_version_id`を変更しない。historical ruleset Worldに対するstandalone initは`reset_required`で停止し、明示的なWorld resetだけが開発game dataを破棄してcurrent rulesetへ再作成できる。
+`OceanWorldGenerator::initialize()`は、configured rulesetが存在しない場合だけpublisherを通して作成し、存在する場合は保存済みsnapshotとの完全一致を確認する。新規Worldだけをconfigured rulesetへ関連付け、既存Worldの`ruleset_version_id`を変更しない。historical ruleset Worldに対するstandalone initは`reset_required`で停止する。World resetはPR23のgo-live前に残る開発Worldと仮データだけへ使用でき、go-live後は既存Worldをmigrationまたは明示的変換なしに切り替えない。
 
-## Pre-release runtime boundary
+## Runtime boundary
 
-正式公開前のruntime mutationはconfigured current rulesetだけを対象とする。`CurrentRulesetGuard`は既に読み込んだWorldの`ruleset_version_id`とimmutableなruleset key/versionから確定したcurrent ruleset row IDを比較し、`ruleset_versions.is_active`の意味を変更せず、guard専用SQLを追加しない。
+PR23でconfigured current rulesetを`hakoniwa-2s-plus-v1`へrebaselineする。`CurrentRulesetGuard`は既に読み込んだWorldの`ruleset_version_id`とimmutableなruleset key/versionから確定したcurrent ruleset row IDを比較し、`ruleset_versions.is_active`の意味を変更せず、guard専用SQLを追加しない。
 
-historical ruleset Worldの地図、audit/player event、TurnRun、ruleset snapshotはread-onlyで閲覧できる。turn、dry-run TurnRun作成、command queue追加・数量更新・並べ替え・取消、Nation作成、sale policy更新、standalone initはHTTPでは409 `reset_required`、console/application境界では同じcodeを含むexceptionで拒否する。拒否前後でgame stateとaudit eventを変更しない。World resetそのものは復旧境界なので許可する。
+historical ruleset Worldの地図、audit/player event、TurnRun、ruleset snapshotはread-onlyで閲覧できる。turn、dry-run TurnRun作成、command queue追加・数量更新・並べ替え・取消、Nation作成、sale policy更新、standalone initはHTTPでは409 `reset_required`、console/application境界では同じcodeを含むexceptionで拒否する。拒否前後でgame stateとaudit eventを変更しない。go-live後のWorld resetは復旧経路としても許可せず、backup restore、forward migration、または明示的変換を使う。
 
 latest rulesetの必須runtime metadataが欠落している場合もhistorical behaviorへfallbackせず、transactionを失敗させてgame stateをrollbackする。advisory lock、World row lock、TurnRun retry、queue consistency trigger、unique/FK/check constraint、published payload immutabilityはこの期間も維持する。
 
-以下のRoadmap PR6/PR7 migration記録は既適用schema履歴としてcanonical schema rebaselineまで保持するものであり、historical World継続運用の現行手順ではない。
+以下のRoadmap PR6/PR7 migration記録はfresh installと監査に必要な既適用schema履歴として保持するものであり、historical World継続運用の現行手順ではない。PR23では過去PR間だけを再現する互換テストを整理し、現行仕様の回帰テストをproduction rulesetへ向ける。
 
 Roadmap PR6は`roadmap-pr2-v1`を更新せず、`roadmap-pr6-v1`を新規公開した。当時のforward-only migrationは`shared-world`が旧rulesetを参照している場合だけ新rulesetへ移し、queue itemのcommand definition参照を同じcommand keyの新定義へ付け替えた。
 
@@ -46,7 +46,7 @@ Roadmap PR7も既存snapshotを更新せず、基礎資金上限と基礎食料�
 
 global catalogである`TerrainDefinition`、`FacilityDefinition`、`ResourceDefinition`もinitializerから上書きしない。欠けているrowだけ作成し、既存値がconfigと異なる場合は明示的migrationを要求して停止する。PR6のfood単位変更は専用migrationが既存food balanceを100倍し、catalogの単位を`ton`へ変更する。
 
-draft、scheduled、retired、管理画面での公開workflow、turn・災害schemaは空実装で先行させない。
+draft、scheduled、retired、管理画面での公開workflowは初期版へ実装しない。将来in-app publishを追加するときにapplication auditも設計する。
 
 公開操作では次を検証する。
 
@@ -102,11 +102,11 @@ draft、scheduled、retired、管理画面での公開workflow、turn・災害sc
 - research、items、proficiencyなど段階公開。
 - 特定イベントの有効期間。
 
-## 管理画面
+## 将来の管理画面
 
 管理画面は単なるkey-value編集にせず、単位、説明、最小・最大、既定値、適用範囲をschemaから表示する。draftの検証、差分、承認、公開予定turn、rollback先を提供する。
 
-本番変更は、誰が、いつ、何を、なぜ、どのworldへ適用したか監査する。高影響設定は二者承認を検討する。公開後の履歴は削除しない。
+初期版はGitHubのPR、commit、CI、merge履歴を承認と公開の記録にする。将来のin-app公開では、誰が、いつ、何を、なぜ、どのWorldへ適用したかをapplication auditへ残し、高影響設定の承認方法もその時点で決める。公開後の履歴は削除しない。
 
 ## 時間設定
 

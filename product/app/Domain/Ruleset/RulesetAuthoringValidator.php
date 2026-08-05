@@ -1260,7 +1260,7 @@ final class RulesetAuthoringValidator
             'adjacent_facility_key', 'stages', 'sea_edge_bands', 'ordinary_growth',
             'attraction_growth', 'attraction_maximum_population',
         ];
-        if (($settings['key'] ?? null) === 'roadmap-pr22-v1') {
+        if (in_array($settings['key'] ?? null, ['roadmap-pr22-v1', 'hakoniwa-2s-plus-v1'], true)) {
             $settlementKeys[] = 'post_ordinary_attraction_growth';
         }
         $this->requireKeys($settlement, $settlementKeys, "{$path}.settlement");

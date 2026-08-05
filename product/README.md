@@ -8,6 +8,10 @@ Laravel API、OAuth callback、Vue 3 UI、世界・島生成、command queue、�
 - `php artisan hakoniwa:world:reset --world=shared-world --profile=debug-32x32 --confirm=RESET-shared-world`: `local` / `testing` 専用の32×32開発Worldへ明示的にreset（既定の`default`は60×60）
 - `php artisan hakoniwa:turn:run --world=shared-world --dry-run`: turn pipelineとruleset snapshotを確認
 - `php artisan hakoniwa:turn:status --world=shared-world`: Worldとturn run履歴を確認
+- `php artisan hakoniwa:release:preflight --world=shared-world`: deploy前の連絡窓口と次回TurnRun状態を確認
+- `php artisan hakoniwa:moderation-record`: gameplay状態を変えずにoperatorのmoderation記録を保存
+- `/manual`: Git管理するMarkdownを正本としたゲームマニュアル
+- `/community-guidelines`: 禁止行為と設定可能な外部連絡窓口
 - `/api/v1`: 認証済みJSON API
 - `resources/js/app.ts`: Vue entrypoint
 - `app/Application`: 世界生成、国家作成、配置、資源初期化
@@ -34,5 +38,4 @@ npm run build
 
 通常の起動・DB操作・OAuth設定はrepository rootの運用文書を参照してください。実際のsecretや原作GIFをこのdirectoryへ追加しないでください。
 
-production turnは必須phaseがstubの間は進みません。cron例と手動retry手順は
-`docs/operations/turn-cron.md`を参照してください。
+production turnはhost cronから既存のturn commandを実行します。登録前確認、失敗時の非ゼロ終了、同じtarget turn・ruleset・seedを使う明示的な手動retryは`docs/operations/turn-cron.md`を参照してください。初期公開版はautomatic retryを行いません。

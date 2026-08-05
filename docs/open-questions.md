@@ -14,8 +14,8 @@
 |---|---|---|
 | monster | — | MONSTER-01〜04はPR21で決定・実装済み。将来のawardはAWARD-01を別gateとして維持する。 |
 | missile / commands / combat | B-03、B-05、B-07、B-12、B-13 | 対応するattack、territory、dormancy機能の実装前にだけ停止する。B-10のPR22 missile visibilityは決定済み。怪獣単体PRの一律blockerではない。 |
-| lifecycle / automatic turn operations | T-02、D-02 | lifecycle Job実装前、またはproduction automatic retry / cron enablement前に確定する。 |
-| public release | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07 | release-freezeと本公開準備に入る前に確定する。 |
+| lifecycle / automatic turn operations | T-02 | 30日休眠Jobは公開後roadmapまで実装しない。production cronと手動retry境界はD-02で決定済み。 |
+| public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、B-15、D-06、D-08、C-02、C-04、E-01、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
@@ -56,8 +56,8 @@
 - Implemented: Yes
 - Decision: 各Worldは不変の`ruleset_version_id`を参照し、公開済みruleset payloadを上書きしない。pre-release runtimeは最新active rulesetだけを保証し、historical Worldはread-only、mutationは`reset_required`とする。
 - Implementation provenance: PR16でpre-release reset/runtime例外を記録し、PR17で`CurrentRulesetGuard`とlatest-only runtimeを実装し、PR19まで同じ境界を維持した。
-- Rebaseline plan: 怪獣と残るcommand roadmapが完了した後、本公開準備へ入るrelease-freeze PRでcanonical fresh schemaを再構成する。固定PR番号へ結び付けない。
-- Decision record: `docs/architecture/configuration-management.md`、`docs/architecture/target-architecture.md`
+- Rebaseline: PR23で`hakoniwa-2s-plus-v1`をcanonical rulesetとし、go-live後はpre-release reset例外を終了する。以後のdata保護契約はRELEASE-01を正本とする。
+- Decision record: `docs/architecture/configuration-management.md`、`docs/architecture/target-architecture.md`、`docs/decisions/ADR-0008-first-production-release.md`
 
 ### A-10 認証方式
 
@@ -362,17 +362,17 @@
 
 ### RELEASE-01 public-release data migrationとruntime互換性
 
-- Status: Open
-- Required before: release-freeze canonical rebaselineと本公開準備前
-- Open decision: 正式なdata migration方針、runtime backward compatibility範囲、failed/pending runのrelease後の扱い、historical audit verificationを確定する。
-- Decision record: `docs/architecture/configuration-management.md`、`product/docs/resource-profile-audit-pr19.md`
+- Status: Decided
+- Implemented: PR23でgo-live境界、canonical fresh baseline、deploy preflight、将来migration契約を文書・schema・運用手順へ反映する。
+- Decision: production Worldの最終fresh生成、一般Nation登録開放、初回正式turn開始の3条件が揃うまでは仮データをfresh resetできる。以後はWorld、Nation、cell、queue、TurnRun、eventを破壊せず、schema/gameplay data変更へforward migrationまたは明示的変換を必須とする。公開済みruleset payloadは不変とし、deploy前に次回non-dry TurnRunのpending/running/failedがないことを確認する。releaseを跨ぐautomatic retryは禁止し、監査記録を保持する。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/architecture/configuration-management.md`
 
 ### AUTH-05 provider障害時の復旧
 
-- Status: Open
-- Required before: 本番公開前
-- Open decision: provider停止時の案内、既存session、再試行、別identity loginの運用を決める。
-- Decision record: `docs/architecture/authentication-and-identities.md`
+- Status: Decided
+- Implemented: PR23でprovider失敗時の利用者向け案内を更新する。
+- Decision: 一時障害と再試行を案内し、既存sessionは通常期限まで維持する。事前link済みの別providerだけを代替loginに使える。email一致統合、緊急identity差替え、operator付替えは実装しない。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/architecture/authentication-and-identities.md`
 
 ### T-02 休眠状態遷移Job
 
@@ -383,54 +383,52 @@
 
 ### D-02 turn失敗時の再試行
 
-- Status: Open
-- Required before: production automatic retryまたはproduction cron enablement前
-- Implemented checkpoint: game state rollbackと、same run / target turn / ruleset / seedによる明示的な手動retryは実装済み。
-- Open decision: bounded automatic retryの回数、backoff、retryable error分類、stale-running recovery、上限到達後の保留状態とoperator通知経路を決める。
-- Decision record: `docs/architecture/turn-runner-scaffold.md`、`docs/operations/turn-cron.md`
+- Status: Decided
+- Implemented: game state rollbackとsame run / target turn / ruleset / seedによる明示的な手動retryは実装済み。PR23でproduction cron、非ゼロ終了、application log、TurnRun確認手順を固定する。
+- Decision: 初期公開版はautomatic retryを行わない。失敗時はoperatorが非ゼロ終了、application log、TurnRun状態を確認し、既存の明示的manual retryだけを行う。stale-running自動回収、backoff、retry上限、外部通知連携は公開後TODOとする。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/operations/turn-cron.md`
 
 ### B-14 明示的放棄の安全策
 
-- Status: Open
-- Required before: 本番公開前
-- Open decision: 再認証、待機/取消期間、確認入力、cooldown、監査を決める。
-- Decision record: `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`
+- Status: Decided
+- Implemented: Not applicable; 初期公開版はplayer/operator向けNation放棄・削除機能を提供しない。
+- Decision: 放棄、取消期間、再認証、cooldown、復帰、削除処理は公開後TODOとし、PR23で通常のNation削除機能を新設しない。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`
 
 ### D-01 scheduler・queue基盤
 
 - Status: Decided
-- Implemented: Application command and lock boundary only; production registration is not enabled.
+- Implemented: Application command、lock境界、host cron用wrapper、登録例を実装済み。PR23のgo-live手順でoperatorがproduction hostへ登録する。
 - Decision: Asia/Tokyoのhost cronをthin triggerとし、DB/application lockを正本、host `flock`を任意の一次filterとする。
 - Decision record: `docs/operations/turn-cron.md`
 
 ### D-03 ruleset公開承認
 
-- Status: Open
-- Required before: 本番公開前
-- Open decision: 単独管理者承認か二者承認かを決める。
-- Decision record: `docs/architecture/configuration-management.md`
+- Status: Decided
+- Implemented: Git、pull request、ruleset validator、CI、merge履歴を初期版の承認記録とする。
+- Decision: 単独管理者承認とする。application内publish画面、二者承認、公開操作専用audit eventは作らず、将来in-app publishを実装するときにapplication auditを追加する。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/architecture/configuration-management.md`
 
 ### D-04 backupのRPO・RTO
 
-- Status: Open
-- Required before: 本番公開前
-- Open decision: PostgreSQL継続backup、snapshot、復旧演習、目標RPO/RTOを決める。
-- Decision record: `docs/operations/database-backup-and-restore.md`
+- Status: Decided
+- Implemented: PR23でcredentialを含まないbackup/restore script、設定例、operator手順、非ゼロ失敗境界を用意する。実在しないoff-host環境をtestで偽装しない。
+- Decision: 暗号化off-host PostgreSQL backupを6時間ごとに取得し、日次backupを30日保持する。deploy前backup、正式公開前1回と以後月1回を目安にrestore確認する。初期目標RPOは6時間以内、RTOは12時間以内。continuous WAL、PITR、15分RPOは公開後TODOとする。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/operations/database-backup-and-restore.md`
 
 ### D-05 event・log保持期間
 
-- Status: Open
-- Required before: 本番公開前
-- Open decision: player表示、監査、分析の保持期間と削除境界を分離して決める。
-- Decision record: `docs/future-systems/event-log-and-notifications.md`
+- Status: Decided
+- Implemented: PR23のTOP全体ログはpublic visibilityだけをpaginationする。event retentionとは分離する。
+- Decision: player turn event、gameplay audit event、moderation記録を初期版では自動削除しない。application/web server運用logは30日を目安に保持し、分析専用基盤は作らない。event 100万件または実測性能問題を再判断gateとする。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/future-systems/event-log-and-notifications.md`
 
 ### D-07 moderation
 
-- Status: Open
-- Required before: 本番公開前
-- Implemented minimum: 島主名1–30文字、comment 0–100文字のsingle-line plain text、control/format character拒否、OAuth表示名の非流用、owner-only更新と`nation.profile_updated` auditはPR19で実装済み。
-- Open decision: 国家名・島主名・commentの禁止語、なりすまし、通報、hide/freeze/unfreeze、appeal、対応期限、operator authorization、moderation log保持だけをremaining public-release gateとする。
-- Decision record: `product/docs/resource-profile-audit-pr19.md`、`docs/architecture/public-lobby-and-island-dashboard.md`
+- Status: Decided
+- Implemented: PR19のplain-text validationに加え、PR23で禁止行為の方針、設定可能な外部窓口link、状態を変更しないoperator-onlyのmoderation記録境界を追加する。
+- Decision: 違法内容、個人情報、なりすまし、差別・嫌がらせ・脅迫、明らかな荒らしを禁止する。通報とappealは外部窓口で受け、固定対応期限は設けない。PR23ではUser/Nation/turn/map/profileの状態を変更する停止・BAN・罰則を実装しない。moderation記録は自動削除しない。ゲーム内停止・天罰、完全自動禁止語判定、通報管理画面、期限管理、高度appeal workflowは公開後TODOとする。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/architecture/public-lobby-and-island-dashboard.md`
 
 ## Deferred post-MVP
 

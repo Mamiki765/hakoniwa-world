@@ -2,13 +2,16 @@
 
 ## Purpose
 
-正式公開前はapplication更新ごとに開発Worldをresetし、configured current rulesetで再作成する。historical rulesetを参照するWorldは地図、event、TurnRun、ruleset snapshotをread-onlyで閲覧できるが、turn、command queue、Nation作成、sale policy更新その他のgame-state mutationは`reset_required`で拒否される。
+この手順はPR23のgo-live前に残る開発Worldと仮データだけを対象とする。production Worldの最終fresh生成、一般Nation登録開放、初回正式turn開始の3条件が揃った後は使用禁止である。go-live後はWorld、Nation、cell、command queue、TurnRun、eventをresetせず、schemaまたはgameplay data変更へforward migrationか明示的な変換経路を用意する。
+
+go-live前にhistorical rulesetを参照するWorldは地図、event、TurnRun、ruleset snapshotをread-onlyで閲覧できるが、turn、command queue、Nation作成、sale policy更新その他のgame-state mutationは`reset_required`で拒否される。
 
 既存Worldの`ruleset_version_id`をapplication codeで付け替えない。更新時はbackupとdry runを確認し、この専用commandで対象Worldの開発game dataを破棄してcurrent rulesetへ再初期化する。published ruleset rows、settings、command definitions、production definitionsは削除・上書きしない。
 
 ## Safety
 
 - 対象は設定済み `shared-world` だけ
+- PR23の3条件が揃うgo-live前だけ実行可能。go-live後の実行は禁止
 - users と auth identities は常に保持
 - 他 World は変更しない
 - production data を test に使わない

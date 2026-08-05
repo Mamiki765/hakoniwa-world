@@ -21,7 +21,8 @@ const emptyChunk: MapChunk = {
 const publicDetail: PublicNationDetail = {
     id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
     owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500',
-    last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '共有世界', current_turn: 1 },
+    registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
+    last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '箱庭諸島２S＋', current_turn: 1 },
     capital: { x: 12, y: 8 },
     monster_final_blow_count: 1,
     monster_kill_stats: [{
@@ -31,14 +32,18 @@ const publicDetail: PublicNationDetail = {
 };
 
 function publicResponse(path: string): Response | null {
-    if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '共有世界', turn: 1 }]);
-    if (path.endsWith('/summary')) return response({ id: 1, key: 'shared-world', name: '共有世界', current_turn: 1, nation_count: 1, total_population: 1000 });
+    if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '箱庭諸島２S＋', turn: 1 }]);
+    if (path.endsWith('/summary')) return response({ id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 1, nation_count: 1, total_population: 1000, contact_url: null });
     if (path.endsWith('/rankings')) return response([{
         rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
         owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500',
+        registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
         last_updated_turn: 1, comment: '公開コメント',
     }]);
-    if (path.endsWith('/events')) return response([]);
+    if (path.endsWith('/events')) return response({
+        groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
+        turns_per_page: 24, has_newer_page: false, has_older_page: false,
+    });
     return null;
 }
 
@@ -53,11 +58,12 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        expect(wrapper.text()).toContain('PUBLIC WORLD LOBBY');
-        expect(wrapper.text()).toContain('現在turn');
+        expect(wrapper.text()).toContain('HAKONIWA ISLANDS');
+        expect(wrapper.text()).toContain('現在ターン');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
-        expect(wrapper.find('.ranking-card tbody').text()).toContain('島主：公開島主');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
+        expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開コメント');
         expect(wrapper.text()).toContain('公開できる出来事はまだありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
@@ -130,7 +136,8 @@ describe('application lobby and island entry', () => {
                 { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },
                 { key: 'monster_meat', name: '怪獣肉', balance: 0, unit: 'ton', unit_label: 'トン' },
             ],
-            state: 'active', current_turn: 1, total_population: 1000, territory_cell_count: 19,
+            state: 'active', current_turn: 1, registered_turn: 1, survival_turns: 0,
+            finance_only_turns: 0, activity_status: 'active', total_population: 1000, territory_cell_count: 19,
             owned_land_cells: 17,
             capital: { x: 12, y: 8 },
             resources: [

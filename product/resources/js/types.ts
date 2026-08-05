@@ -35,6 +35,10 @@ export interface Nation {
     resources: NationResource[];
     state: string;
     current_turn: number;
+    registered_turn: number;
+    survival_turns: number;
+    finance_only_turns: number;
+    activity_status: 'active' | 'finance_only';
     total_population: number;
     territory_cell_count: number;
     owned_land_cells: number;
@@ -48,6 +52,7 @@ export interface PublicWorldSummary {
     current_turn: number;
     nation_count: number;
     total_population: number;
+    contact_url: string | null;
 }
 
 export interface PublicNationSummary {
@@ -62,6 +67,10 @@ export interface PublicNationSummary {
     owned_land_cells: number;
     money_display: string;
     money_bucket: string;
+    registered_turn: number;
+    survival_turns: number;
+    finance_only_turns: number;
+    activity_status: 'active' | 'finance_only';
     last_updated_turn: number;
     comment: string;
 }
@@ -72,10 +81,21 @@ export interface PublicRankingEntry extends PublicNationSummary {
 
 export interface PublicEvent {
     id: number;
-    type: 'nation_created' | 'system_announcement' | 'turn_event';
+    type: string;
     message: string;
-    metadata: Record<string, string | number>;
+    importance: 'info' | 'notable' | 'warning';
+    target_turn: number;
     occurred_at: string;
+}
+
+export interface PublicEventPage {
+    groups: Array<{ target_turn: number; events: PublicEvent[] }>;
+    page: number;
+    anchor_turn: number;
+    turn_range: { start: number; end: number } | null;
+    turns_per_page: 24;
+    has_newer_page: boolean;
+    has_older_page: boolean;
 }
 
 export interface PublicNationDetail extends PublicNationSummary {

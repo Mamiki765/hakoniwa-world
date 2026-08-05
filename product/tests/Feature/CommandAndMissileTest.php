@@ -33,7 +33,7 @@ use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
-class Pr22CommandAndMissileTest extends TestCase
+class CommandAndMissileTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
@@ -57,13 +57,13 @@ class Pr22CommandAndMissileTest extends TestCase
         $this->assertSame(1, $first['finance_commands']);
         $this->assertSame(1, $first['idle_counter_increments']);
         $this->assertSame('invalid_terrain', $failed->fresh()->failure_code);
-        $this->assertSame(1, $nation->fresh()->idle_counter);
+        $this->assertSame(101, $nation->fresh()->idle_counter);
         $this->assertSame('queued', $logging->fresh()->status);
 
         $second = app(DomesticCommandExecutor::class)->execute($this->context($world, 3, str_repeat('2', 64), [$nation->id]));
         $this->assertSame(1, $second['finance_commands']);
         $this->assertSame(1, $second['idle_counter_increments']);
-        $this->assertSame(2, $nation->fresh()->idle_counter);
+        $this->assertSame(102, $nation->fresh()->idle_counter);
 
         $third = app(DomesticCommandExecutor::class)->execute($this->context($world, 4, str_repeat('3', 64), [$nation->id]));
         $this->assertSame(1, $third['successes']);

@@ -12,7 +12,7 @@ import type {
     CurrentUser,
     MapSpace,
     Nation,
-    PublicEvent,
+    PublicEventPage,
     PublicNationDetail,
     PublicRankingEntry,
     PublicWorldSummary,
@@ -23,7 +23,7 @@ const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
 const rankings = ref<PublicRankingEntry[]>([]);
-const publicEvents = ref<PublicEvent[]>([]);
+const publicEvents = ref<PublicEventPage | null>(null);
 const nation = ref<Nation | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
@@ -69,13 +69,27 @@ async function loadPublicLobby(): Promise<void> {
         const [summary, nextRankings, events] = await Promise.all([
             api<PublicWorldSummary>(`/api/v1/public/worlds/${world.id}/summary`),
             api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
-            api<PublicEvent[]>(`/api/v1/public/worlds/${world.id}/events`),
+            api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
         ]);
         worldSummary.value = summary;
         rankings.value = nextRankings;
         publicEvents.value = events;
     } catch {
         message.value = '公開ロビーを取得できませんでした。';
+    }
+}
+
+async function loadPublicEvents(pageNumber: number): Promise<void> {
+    const world = worlds.value[0];
+    const anchor = publicEvents.value?.anchor_turn;
+    if (world === undefined || anchor === undefined) return;
+
+    try {
+        publicEvents.value = await api<PublicEventPage>(
+            `/api/v1/public/worlds/${world.id}/events?page=${pageNumber}&anchor_turn=${anchor}`,
+        );
+    } catch {
+        message.value = '公開ニュースを取得できませんでした。';
     }
 }
 
@@ -139,7 +153,7 @@ async function createNation(): Promise<void> {
     } catch (error) {
         registrationErrors.value = validationErrors(error);
         message.value = Object.keys(registrationErrors.value).length === 0
-            ? (error instanceof Error ? error.message : '国家を作成できませんでした。')
+            ? (error instanceof Error ? error.message : '島を作成できませんでした。')
             : '';
         busy.value = false;
     }
@@ -188,19 +202,21 @@ async function updateProfile(): Promise<void> {
 
 <template>
     <header class="site-header">
-        <a class="brand" href="#" @click.prevent="page = 'home'">HAKONIWA <span>WORLD</span></a>
+        <a class="brand" href="#" @click.prevent="page = 'home'">箱庭諸島<span>２S＋</span></a>
         <nav aria-label="主要ナビゲーション">
             <button type="button" @click="page = 'home'">公開ロビー</button>
             <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
             <button v-if="nation" type="button" @click="page = 'resources'">資源方針</button>
             <button v-if="nation" type="button" @click="openProfile">プロフィール編集</button>
             <button type="button" @click="page = 'credits'">クレジット</button>
+            <a href="/manual">マニュアル</a>
+            <a href="/community-guidelines">利用ルール</a>
         </nav>
         <div class="session-actions">
             <template v-if="user">
                 <span>{{ user.display_name }}</span>
                 <button v-if="nation" type="button" @click="openOwnIsland">{{ nation.name }}</button>
-                <button v-else type="button" @click="page = 'home'">国家を作る</button>
+                <button v-else type="button" @click="page = 'home'">島を作る</button>
                 <button type="button" @click="page = 'account'">アカウント</button>
             </template>
             <template v-else>
@@ -217,46 +233,51 @@ async function updateProfile(): Promise<void> {
         <section v-if="page === 'home'" class="lobby">
             <div class="lobby-heading">
                 <div>
-                    <p class="eyebrow">PUBLIC WORLD LOBBY</p>
-                    <h1>{{ worldSummary?.name ?? 'Hakoniwa World' }}</h1>
-                    <p>共有世界のいまを確認し、国家名から首都周辺の島を閲覧できます。</p>
+                    <p class="eyebrow">HAKONIWA ISLANDS</p>
+                    <h1>箱庭諸島２S＋</h1>
+                    <p>島を育て、世界の出来事を見守りながら、長く続く島を作りましょう。</p>
                 </div>
                 <div v-if="!user" class="compact-login">
-                    <p>国家を運営するにはログインしてください。</p>
+                    <p>島を運営するにはログインしてください。</p>
                     <a class="button discord" href="/auth/discord/redirect">Discord</a>
                     <a class="button google" href="/auth/google/redirect">Google</a>
                 </div>
             </div>
 
             <dl class="world-stats">
-                <div><dt>現在turn</dt><dd>{{ worldSummary?.current_turn ?? 1 }}</dd></div>
-                <div><dt>国家数</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
+                <div><dt>現在ターン</dt><dd>{{ worldSummary?.current_turn ?? 1 }}</dd></div>
+                <div><dt>島数</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
                 <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
             </dl>
 
             <div class="lobby-grid">
                 <section class="ranking-card">
                     <div class="section-heading">
-                        <div><p class="eyebrow">RANKING</p><h2>人口ランキング</h2></div>
+                        <div><p class="eyebrow">ISLANDS</p><h2>島一覧</h2></div>
                         <span>誰でも閲覧できます</span>
                     </div>
                     <div class="ranking-scroll">
                         <table>
-                            <thead><tr><th>順位</th><th>国家</th><th>人口</th><th>保有陸地</th><th>推定資金</th><th>更新turn</th></tr></thead>
+                            <thead><tr><th>島名</th><th>島主</th><th>人口</th><th>資金</th><th>生存ターン</th><th>活動状態</th></tr></thead>
                             <tbody>
                                 <tr v-for="entry in rankings" :key="entry.id">
-                                    <td>{{ entry.rank }}</td>
                                     <td>
-                                        <button type="button" @click="openPreview(entry.id)">N{{ entry.nation_number }} {{ entry.name }}</button>
-                                        <span class="ranking-owner">島主：{{ entry.owner_name }}</span>
+                                        <button
+                                            type="button"
+                                            :class="{ 'is-finance-only': entry.finance_only_turns > 0 }"
+                                            @click="openPreview(entry.id)"
+                                        >
+                                            {{ entry.name }}<template v-if="entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
+                                        </button>
                                         <span v-if="entry.comment" class="ranking-comment">{{ entry.comment }}</span>
                                     </td>
+                                    <td>{{ entry.owner_name }}</td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
-                                    <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
                                     <td>{{ entry.money_display }}</td>
-                                    <td>{{ entry.last_updated_turn }}</td>
+                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
+                                    <td>{{ entry.finance_only_turns > 0 ? '資金繰りのみ' : '活動中' }}</td>
                                 </tr>
-                                <tr v-if="rankings.length === 0"><td colspan="6" class="empty-state">まだ国家がありません。</td></tr>
+                                <tr v-if="rankings.length === 0"><td colspan="6" class="empty-state">まだ島がありません。</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -264,21 +285,35 @@ async function updateProfile(): Promise<void> {
 
                 <section class="events-card">
                     <div class="section-heading">
-                        <div><p class="eyebrow">PUBLIC EVENTS</p><h2>最近の出来事</h2></div>
+                        <div><p class="eyebrow">PUBLIC NEWS</p><h2>世界のニュース</h2></div>
                     </div>
-                    <ol v-if="publicEvents.length" class="event-list">
-                        <li v-for="event in publicEvents" :key="event.id">
-                            <span class="event-mark" aria-hidden="true"></span>
-                            <div><strong>{{ event.message }}</strong><time :datetime="event.occurred_at">{{ event.occurred_at }}</time></div>
-                        </li>
-                    </ol>
-                    <p v-else class="empty-state">公開できる出来事はまだありません。最初の国家成立を待っています。</p>
+                    <template v-if="publicEvents?.groups.length">
+                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="public-event-group">
+                            <h3>ターン {{ group.target_turn }}</h3>
+                            <ol class="event-list">
+                                <li v-for="event in group.events" :key="event.id">
+                                    <span class="event-mark" aria-hidden="true"></span>
+                                    <div><strong>{{ event.message }}</strong><time :datetime="event.occurred_at">{{ event.occurred_at }}</time></div>
+                                </li>
+                            </ol>
+                        </section>
+                    </template>
+                    <p v-else class="empty-state">公開できる出来事はまだありません。最初の島の成立を待っています。</p>
+                    <nav v-if="publicEvents" class="event-pager" aria-label="世界のニュースのページ">
+                        <button type="button" :disabled="!publicEvents.has_newer_page" @click="loadPublicEvents(publicEvents.page - 1)">新しいニュース</button>
+                        <span>{{ publicEvents.page }}ページ</span>
+                        <button type="button" :disabled="!publicEvents.has_older_page" @click="loadPublicEvents(publicEvents.page + 1)">古いニュース</button>
+                    </nav>
+                    <p class="community-contact">
+                        <a href="/community-guidelines">禁止行為と連絡方法</a>
+                        <a v-if="worldSummary?.contact_url" :href="worldSummary.contact_url" rel="external nofollow">通報・異議申立て窓口</a>
+                    </p>
                 </section>
             </div>
 
             <form v-if="user && !nation" class="nation-form panel" @submit.prevent="createNation">
                 <p class="eyebrow">CREATE YOUR NATION</p>
-                <h2>最初の国家を作成</h2>
+                <h2>最初の島を作成</h2>
                 <label>
                     島名
                     <input v-model="nationName" minlength="2" maxlength="30" required aria-describedby="nation-name-help nation-name-error">
@@ -294,10 +329,10 @@ async function updateProfile(): Promise<void> {
                 <label>
                     一言コメント
                     <textarea v-model="nationComment" maxlength="100" rows="2" aria-describedby="comment-help comment-error" @keydown.enter.prevent></textarea>
-                    <small id="comment-help" class="field-hint">任意・100文字以内。改行不可のplain textです。</small>
+                    <small id="comment-help" class="field-hint">任意・100文字以内。改行はできません。</small>
                     <span v-if="registrationErrors.comment" id="comment-error" class="field-error" role="alert">{{ registrationErrors.comment }}</span>
                 </label>
-                <button class="button primary" type="submit" :disabled="busy">国家を作る</button>
+                <button class="button primary" type="submit" :disabled="busy">島を作る</button>
             </form>
         </section>
 
@@ -310,7 +345,7 @@ async function updateProfile(): Promise<void> {
                     <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
                 </div>
                 <dl class="hud-primary">
-                    <div><dt>turn</dt><dd>{{ nation.current_turn }}</dd></div>
+                    <div><dt>ターン</dt><dd>{{ nation.current_turn }}</dd></div>
                     <div class="hud-money">
                         <dt>資金</dt>
                         <dd class="hud-capacity-value">
@@ -441,7 +476,7 @@ async function updateProfile(): Promise<void> {
                 <label>
                     一言コメント
                     <textarea v-model="profileComment" maxlength="100" rows="3" aria-describedby="profile-comment-help profile-comment-error" @keydown.enter.prevent></textarea>
-                    <small id="profile-comment-help" class="field-hint">100文字以内、改行不可。HTMLやURLを解釈しないplain textです。</small>
+                    <small id="profile-comment-help" class="field-hint">100文字以内、改行不可。HTMLやURLはリンクとして解釈されません。</small>
                     <span v-if="profileErrors.comment" id="profile-comment-error" class="field-error" role="alert">{{ profileErrors.comment }}</span>
                 </label>
                 <div class="profile-actions">

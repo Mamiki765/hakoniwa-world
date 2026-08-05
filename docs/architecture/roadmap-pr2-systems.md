@@ -76,4 +76,4 @@ tile width/heightとvertical stepは32、half offsetは16で一元管理する�
 
 この節は既適用migrationのhistorical recordであり、pre-releaseの現行World更新手順ではない。`2026_07_26_010000_add_roadmap_pr2_systems.php`は当時の既存users、identity、nation、world、3,600 cells、capitalを再生成せず列・catalog・queue/policy tableを追加し、既存forest、基地、scale施設、resource残高、default policyをbackfillした。
 
-現在のpre-release更新では既存migration chainを適用した後、historical Worldを継続実行せず、`docs/operations/world-reset.md`のbackup-first手順でconfigured Worldをresetする。volume削除と`down -v`は行わず、published historical ruleset recordsを保持する。
+このreset手順はPR23のgo-live前に残る開発Worldと仮データだけへ適用できる。go-live後は既存migration chainとpublished ruleset recordsを監査記録として保持し、Worldをresetせず、forward migrationまたは明示的変換を用意する。volume削除と`down -v`は行わない。

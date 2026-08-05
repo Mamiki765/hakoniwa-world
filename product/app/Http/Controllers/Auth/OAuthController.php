@@ -60,7 +60,10 @@ class OAuthController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return redirect('/?oauth=failed')->with('oauth_error', 'OAuth認証を完了できませんでした。');
+            return redirect('/?oauth=failed')->with(
+                'oauth_error',
+                '認証サービスで一時的な障害が発生しています。しばらく待ってから再試行してください。事前に別の認証サービスを連携済みの場合は、そちらからもログインできます。',
+            );
         }
     }
 

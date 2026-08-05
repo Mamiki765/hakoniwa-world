@@ -30,7 +30,7 @@ use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
-final class Pr22MonsterDispatchTurnTest extends TestCase
+final class MonsterDispatchTurnTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;

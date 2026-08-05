@@ -2,7 +2,7 @@
 
 ## Adopted deployment shape
 
-Roadmap PR #7 adopts an OCI host cron as the hourly trigger. It invokes the same Laravel Artisan command used by an operator. The shell wrapper contains no game rules, ruleset selection, transaction control, or retry loop.
+PR23 enables an OCI host cron as the production hourly trigger. It invokes the same Laravel Artisan command used by an operator. The shell wrapper contains no game rules, ruleset selection, transaction control, or retry loop.
 
 ```text
 OCI host cron
@@ -16,7 +16,7 @@ OCI host cron
 
 This is simpler than adding a cron daemon to `hakoniwa-web` or maintaining a dedicated scheduler container for one hourly World. A separate scheduler can be reconsidered when multiple Worlds or independent lifecycle jobs justify it. The database/application lock and unique turn-run key are authoritative; `flock` is only a cheap host-level filter.
 
-PR #7 does not install or change production cron.
+The repository supplies the reviewed wrapper and registration example. The operator installs the cron entry on the actual production host after the pre-registration checks below; credentials remain in the existing Compose environment and are not copied into cron.
 
 ## Host wrapper
 
@@ -52,7 +52,8 @@ Before registering production cron:
 3. Run `php artisan hakoniwa:turn:status --world=shared-world`.
 4. Run `php artisan hakoniwa:turn:run --world=shared-world --dry-run`.
 5. Confirm the reported `ruleset_version_id`, target turn, phase order, and missing phases.
-6. Do not register cron while the production pipeline is scaffold-blocked.
+6. Run `php artisan hakoniwa:release:preflight --world=shared-world` with the configured external contact URL.
+7. Register the cron entry, observe one official execution, and confirm World turn and TurnRun status both advanced.
 
 ## Success, failure, and retry
 
@@ -60,7 +61,8 @@ Before registering production cron:
 - Non-zero: the World was missing, a lock/idempotency guard rejected execution, the scaffold is incomplete, or execution failed.
 - A duplicate host trigger returns quickly because `flock` may reject it; even without `flock`, the PostgreSQL advisory lock rejects overlap.
 - On a Laravel failure, game state and `current_turn` roll back. The run history remains `failed` with bounded failure information.
-- Inspect with `hakoniwa:turn:status`, fix the cause, then invoke the same run command manually. The same target run and saved seed are reused.
-- There is no automatic retry, timeout kill, or stale-`running` takeover in this PR. Do not delete or edit the run row to force progress.
+- Inspect the non-zero exit, application log, and `hakoniwa:turn:status`. Fix the cause, then invoke the existing explicit manual retry. The same target turn, ruleset, and saved seed are reused.
+- Disable or hold the next cron trigger while the failed run is unresolved. There is no automatic retry, timeout kill, retry count loop, backoff, external notification, or stale-`running` takeover in PR23. Do not delete or edit the run row to force progress.
+- Before every deploy, run `hakoniwa:release:preflight`. A pending, running, or failed next production TurnRun blocks deploy and must be explicitly resolved. Never carry an automatic retry across a release.
 
-Long-running real phases require measured transaction/lock-duration testing before production enablement. If a command is interrupted after the database connection closes, the session advisory lock is released by PostgreSQL; the run record may still require operator diagnosis. Stale-run recovery is design gate D-02, not shell logic.
+If a command is interrupted after the database connection closes, the session advisory lock is released by PostgreSQL; the run record may still require operator diagnosis. Stale-run recovery, retry backoff and limits, and external notification are post-release work, not shell logic.

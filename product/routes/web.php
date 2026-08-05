@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
+use App\Http\Controllers\CommunityGuidelinesController;
+use App\Http\Controllers\ManualController;
 use App\Http\Middleware\PrivateApiResponse;
 use App\Http\Middleware\PublicApiResponse;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +23,10 @@ Route::get('/assets/hakoniwa-tiles/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
+
+Route::get('/manual/{section?}', ManualController::class)
+    ->where('section', 'beginner|intermediate|advanced');
+Route::get('/community-guidelines', CommunityGuidelinesController::class);
 
 Route::prefix('api/v1/public')
     ->middleware(['throttle:60,1', PublicApiResponse::class])
