@@ -156,6 +156,15 @@ class TurnRunner
                 "World {$world->key} turn {$targetTurn} already has a {$run->status} run.",
             );
         }
+        if ($source === 'cron' && in_array($run->status, [
+            TurnRun::STATUS_FAILED,
+            TurnRun::STATUS_BLOCKED,
+        ], true)) {
+            throw new DomainException(
+                "Cron cannot retry unresolved World {$world->key} turn {$targetTurn}; "
+                .'use source=manual after operator review.',
+            );
+        }
         if ($run->ruleset_version_id !== $ruleset->id) {
             throw new DomainException('A failed turn cannot be retried after the World ruleset snapshot changes.');
         }

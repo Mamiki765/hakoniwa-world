@@ -61,8 +61,13 @@ Before registering production cron:
 - Non-zero: the World was missing, a lock/idempotency guard rejected execution, the scaffold is incomplete, or execution failed.
 - A duplicate host trigger returns quickly because `flock` may reject it; even without `flock`, the PostgreSQL advisory lock rejects overlap.
 - On a Laravel failure, game state and `current_turn` roll back. The run history remains `failed` with bounded failure information.
-- Inspect the non-zero exit, application log, and `hakoniwa:turn:status`. Fix the cause, then invoke the existing explicit manual retry. The same target turn, ruleset, and saved seed are reused.
-- Disable or hold the next cron trigger while the failed run is unresolved. There is no automatic retry, timeout kill, retry count loop, backoff, external notification, or stale-`running` takeover in PR23. Do not delete or edit the run row to force progress.
+- `source=cron` does not retry an existing `failed` or `blocked` TurnRun. It exits non-zero without changing the run status, attempt count, ruleset, or saved seed.
+- Inspect the non-zero exit, application log, and `hakoniwa:turn:status`. Fix the cause, then explicitly retry as the operator:
+
+  ```console
+  php artisan hakoniwa:turn:run \
+    --world=shared-world \
+    --source=manual
 - Before every deploy, run `hakoniwa:release:preflight`. A pending, running, or failed next production TurnRun blocks deploy and must be explicitly resolved. Never carry an automatic retry across a release.
 
 If a command is interrupted after the database connection closes, the session advisory lock is released by PostgreSQL; the run record may still require operator diagnosis. Stale-run recovery, retry backoff and limits, and external notification are post-release work, not shell logic.
