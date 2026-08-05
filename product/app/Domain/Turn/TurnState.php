@@ -2,6 +2,7 @@
 
 namespace App\Domain\Turn;
 
+use App\Domain\Monster\MonsterSpawnSource;
 use InvalidArgumentException;
 
 final class TurnState
@@ -32,6 +33,9 @@ final class TurnState
 
     /** @var list<LaunchIntent> */
     private array $launchIntents = [];
+
+    /** @var array<int, MonsterSpawnSource> */
+    private array $spawnedMonsterSources = [];
 
     /**
      * @var array<int, array{
@@ -209,6 +213,32 @@ final class TurnState
         }
 
         $intent->consumeShots($shots);
+    }
+
+    public function recordMonsterSpawned(mixed $monsterId, MonsterSpawnSource $source): void
+    {
+        if (! is_int($monsterId) || $monsterId < 1) {
+            throw new InvalidArgumentException('Spawned monster ID must be a positive integer.');
+        }
+        if (isset($this->spawnedMonsterSources[$monsterId])) {
+            throw new InvalidArgumentException('A monster spawn source cannot change within a target turn.');
+        }
+
+        $this->spawnedMonsterSources[$monsterId] = $source;
+    }
+
+    /** @return list<int> */
+    public function monsterIdsDeferredFromSpawnTurnMovement(): array
+    {
+        $ids = [];
+        foreach ($this->spawnedMonsterSources as $monsterId => $source) {
+            if (! $source->canActOnSpawnTurn()) {
+                $ids[] = $monsterId;
+            }
+        }
+        sort($ids, SORT_NUMERIC);
+
+        return $ids;
     }
 
     public function recordFinanceSucceeded(mixed $nationId): void

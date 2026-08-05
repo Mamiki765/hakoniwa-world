@@ -333,7 +333,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: commandはturn-scoped launch intentを登録し、randomized cell processing中に各基地が自身のlevel、残数、資金、射程、現在状態を再検証して発射する。intent登録だけでは通常command成功とせず、Nation単位で1発以上実発射された場合だけidle counterをresetする。全intentが0発ならidle counterを維持し、process_cells後のautomatic financeは追加しない。
+- Decision: 箱庭諸島2＋sourceには基地射程があるが、PR22ではowner decisionにより射程制限を採用しない。World内のactive Nation所有cellは距離にかかわらずtargetにでき、randomized cell processing中に各基地はcurrent owner、facility、level/capacity、残弾、資金を再検証する一方、targetとの距離は検証しない。intent登録だけでは通常command成功とせず、Nation単位で1発以上実発射された場合だけidle counterをresetする。全intentが0発ならidle counterを維持し、process_cells後のautomatic financeは追加しない。距離制限は必要時に新しいversioned rulesetとして検討し、未使用metadataやextension hookを先行実装しない。報復・反撃systemはPR22範囲外とする。
 - Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、`product/docs/command-audit-pr22.md`
 
 ### B-10 ミサイル可視性

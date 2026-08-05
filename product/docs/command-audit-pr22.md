@@ -66,7 +66,7 @@ PR22の実装前監査は、read-onlyの`_references/hakoniwa-2plus/source/hakow
 
 sea/shallow上の所有施設を通常/PP/SPPまたは陸地破壊弾が破壊した場合は、破壊前ownerをevent attribution用にsnapshotしてからfacility、population、ownerを消去する。ordinary missileは水面terrainを維持する。陸上施設のowner、施設のないowned waterへの無効着弾、dormant owner protectionは変更しない。public mapは破壊後のcellを中立の海・浅瀬として表示し、`missile.impact`とprivate launch detailは破壊前target Nationを保持する。
 
-commandは`LaunchIntent`だけを登録する。`process_cells`の既存randomized cell orderで発射基地ごとにcurrent facility、owner、level/capacity、残弾、資金を再検証し、1発ごとに費用を引く。通常/PP/陸地破壊/SPPの誤差半径は2/1/2/0で候補を均等選択する。通常、PP、SPPは陸地を`scorched`へし、settlement人口被害の半分を発射Nationの難民として扱う。陸地破壊弾は陸地を浅瀬、浅瀬を海へし、怪獣を報酬なしで除去し、難民を作らない。
+commandは`LaunchIntent`だけを登録する。箱庭諸島2＋sourceには基地射程があるが、PR22はowner decisionにより射程制限を採用しない。World内のactive Nation所有cellは距離にかかわらずtargetにでき、`process_cells`の既存randomized cell orderで発射基地ごとにcurrent facility、owner、level/capacity、残弾、資金を再検証して1発ごとに費用を引く一方、targetとの距離は検証しない。距離制限が必要なら新しいversioned rulesetで追加し、PR22へ未使用のrange metadata、resolver、extension hookを先行実装しない。将来予定する報復・反撃systemはPR22範囲外である。通常/PP/陸地破壊/SPPの誤差半径は2/1/2/0で候補を均等選択する。通常、PP、SPPは陸地を`scorched`へし、settlement人口被害の半分を発射Nationの難民として扱う。陸地破壊弾は陸地を浅瀬、浅瀬を海へし、怪獣を報酬なしで除去し、難民を作らない。
 
 B-10では発射Nation、弾種、発射数と意味のある着弾をpublicとし、効果のない着弾をlaunch単位で集約する。発射Nationだけに狙点、費用、弾種、全着弾結果をprivate表示する。SPPも発射Nationを匿名化しない。同一launchの複数着弾が発生させた難民は個別のstructured eventを保持し、player projectionだけをtarget turn内で合算する。
 
@@ -83,3 +83,5 @@ turn eventの正本列は`world_id`、`turn`、`nation_id`、`x`、`y`、`messag
 ## Preserved PR21 actor order
 
 既存怪獣は`process_cells`の既存randomized cell order内で行動し、そのcellが発射基地なら怪獣処理後に基地処理へ進む。`global_disasters`で災害と地盤沈下を処理し、その末尾で自然怪獣を出現させる。怪獣だけのshuffleや再走査はなく、自然出現怪獣は次target turnまで行動しない。
+
+`monster_dispatch`は`development_commands`で`mecha_inora` instanceとoccupancyを作り、出現cellのfacility削除、人口0、荒地化を同じtarget turnに確定する。spawn source `monster_dispatch_command`をturn-local stateへ明示し、このsourceで当該target turnに作られた怪獣だけを直後のmovement batchから除外するため、移動、追加の踏み潰し、防衛施設への突入・自爆は次target turnまで起きない。元から存在する怪獣は従来どおり行動し、将来の別spawn sourceは個別契約なしに除外されない。

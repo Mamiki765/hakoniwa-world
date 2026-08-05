@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Monster\MonsterSpawnSource;
 use App\Domain\Turn\LaunchIntent;
 use App\Domain\Turn\TurnState;
 use InvalidArgumentException;
@@ -76,6 +77,16 @@ class TurnStateTest extends TestCase
         $foreign = new LaunchIntent(1, 'missile', 1, 2, 1);
         $this->expectException(InvalidArgumentException::class);
         $state->consumeLaunchIntentShots($foreign, 1);
+    }
+
+    public function test_spawn_turn_movement_deferral_is_explicit_per_spawn_source(): void
+    {
+        $state = new TurnState;
+        $state->recordMonsterSpawned(9, MonsterSpawnSource::MonsterDispatchCommand);
+
+        $this->assertSame([9], $state->monsterIdsDeferredFromSpawnTurnMovement());
+        $this->assertFalse(MonsterSpawnSource::MonsterDispatchCommand->canActOnSpawnTurn());
+        $this->assertFalse(MonsterSpawnSource::Natural->canActOnSpawnTurn());
     }
 
     public function test_turn_local_nation_activity_aggregates_missile_results_until_idle_finalization(): void

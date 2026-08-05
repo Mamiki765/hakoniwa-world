@@ -74,6 +74,12 @@ final class Pr22RulesetContractTest extends TestCase
     {
         $military = config('hakoniwa.published_rulesets.roadmap-pr22-v1.military');
 
+        $this->assertArrayNotHasKey('range', $military);
+        $this->assertArrayNotHasKey('maximum_range', $military);
+        foreach ($military['missiles'] as $missile) {
+            $this->assertArrayNotHasKey('range', $missile);
+            $this->assertArrayNotHasKey('maximum_range', $missile);
+        }
         $this->assertSame([
             'launch_summary' => 'public',
             'meaningful_impacts' => 'public',

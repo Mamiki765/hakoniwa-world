@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
+use App\Domain\Monster\MonsterSpawnSource;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -177,6 +178,7 @@ final class MonsterSpawnService
                 'before_population' => $beforePopulation,
                 'after_population' => 0,
                 'owner_preserved' => true,
+                'spawn_source' => MonsterSpawnSource::Natural->value,
             ]);
         }
 
@@ -221,6 +223,7 @@ final class MonsterSpawnService
             'spawned_target_turn' => $context->targetTurn,
             'version' => 1,
         ]);
+        $context->state->recordMonsterSpawned($monster->id, MonsterSpawnSource::MonsterDispatchCommand);
         MonsterOccupancy::query()->create([
             'monster_instance_id' => $monster->id,
             'map_cell_id' => $cell->id,
@@ -237,7 +240,7 @@ final class MonsterSpawnService
             'before_population' => $beforePopulation,
             'after_population' => 0,
             'owner_preserved' => true,
-            'spawn_source' => 'monster_dispatch_command',
+            'spawn_source' => MonsterSpawnSource::MonsterDispatchCommand->value,
             'queue_item_id' => $queueItemId,
         ]);
 

@@ -170,6 +170,51 @@ class Pr22CommandAndMissileTest extends TestCase
         $this->assertFalse($metadata['immediate_normal_command_succeeded']);
     }
 
+    public function test_normal_missile_can_launch_at_an_active_nation_cell_beyond_legacy_base_range(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $baseCoordinate = new GridCoordinate($base->x, $base->y);
+        $targetCell = MapCell::query()->where('map_space_id', $space->id)
+            ->with(['terrain', 'facility'])->get()
+            ->sortByDesc(static fn (MapCell $cell): int => $baseCoordinate->distanceTo(
+                new GridCoordinate($cell->x, $cell->y),
+            ))->first();
+        $this->assertInstanceOf(MapCell::class, $targetCell);
+        $this->assertGreaterThan(
+            12,
+            $baseCoordinate->distanceTo(new GridCoordinate($targetCell->x, $targetCell->y)),
+        );
+        app(MapCellStateService::class)->setFacility($targetCell, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $targetCell,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        $targetCell->owner_nation_id = $target->id;
+        $targetCell->population = 0;
+        $targetCell->save();
+        $moneyBefore = (int) $firing->money;
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $user,
+            $firing,
+            $space,
+            'missile',
+            $targetCell->fresh(['terrain', 'facility']),
+        );
+        $context = $this->context($world, 2, hash('sha256', 'unlimited missile distance'), [$firing->id]);
+
+        app(DomesticCommandExecutor::class)->execute($context);
+        $result = $this->processRegisteredMissiles($context, [$base]);
+
+        $this->assertSame(1, $result['shots_fired']);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame($moneyBefore - 20, $firing->fresh()->money);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.launched')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->count());
+    }
+
     public function test_partial_multi_base_multi_intent_launch_resets_idle_counter_once(): void
     {
         [$world, $user, $firing, $target] = $this->combatants();
