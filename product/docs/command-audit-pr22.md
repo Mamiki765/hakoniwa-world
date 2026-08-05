@@ -69,7 +69,7 @@ B-12のPR22境界ではexplicit target cellのowner Nationがactiveでなけれ�
 
 canonical 12 phasesでは`resource_sales`を`nation_economy`の後、`development_commands`の前に置く。これにより同target turnの生産物売却益をcommand資金へ利用できる。個別capacity適用は後段`enforce_capacities`で行い、売れなかった超過だけを破棄する。
 
-`finance`は1件がturn-consuming commandである。成功通常commandがあれば`idle_counter=0`、通常成功がなくfinanceだけ成功、または空queue automatic financeならtarget turnあたり最大1増加する。失敗commandはresetにも増加にも数えない。
+`finance`は1件がturn-consuming commandである。成功通常commandがあれば`idle_counter=0`、通常成功がなくfinanceだけ成功、または空queue automatic financeならtarget turnあたり最大1増加する。missile commandはintent登録時点では通常command成功に数えず、`process_cells`で1発以上実発射された場合だけresetする。全intentが0発なら失敗として現在値を維持し、zero-shot確定後のautomatic financeは追加しない。失敗commandはresetにも増加にも数えない。
 
 turn eventの正本列は`world_id`、`turn`、`nation_id`、`x`、`y`、`message`、`visibility`、`event_type`、`severity`、`metadata`、timestampsである。visibilityは`public`、`nation`、`private`、`admin`。島詳細は同じWorldのpublicと自Nationのnation/privateだけを返し、private文頭へ「（秘密）」を付ける。TOP重要ログの分類はPR22で変更しない。
 

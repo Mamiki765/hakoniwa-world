@@ -198,6 +198,7 @@ final class CompleteTurnEngine
             'missile_launches' => 0, 'missile_shots_fired' => 0,
             'missile_money_spent' => 0, 'missile_meaningful_impacts' => 0,
             'missile_ineffective_impacts' => 0,
+            'missile_idle_counter_resets' => 0,
         ];
         $activeNations = Nation::query()->where('world_id', $context->world->id)->where('state', 'active')
             ->pluck('id')->map(static fn ($id): int => (int) $id)->flip();
@@ -316,6 +317,7 @@ final class CompleteTurnEngine
 
         $launches = $this->missiles->finalize($context);
         $metrics['missile_launches'] = $launches['launches'];
+        $metrics['missile_idle_counter_resets'] = $launches['idle_counter_resets'];
 
         return [...$metrics, ...$monsterBatch->metrics()];
     }

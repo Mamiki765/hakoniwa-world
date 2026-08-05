@@ -77,4 +77,28 @@ class TurnStateTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $state->consumeLaunchIntentShots($foreign, 1);
     }
+
+    public function test_turn_local_nation_activity_aggregates_missile_results_until_idle_finalization(): void
+    {
+        $state = new TurnState;
+        $state->recordFinanceSucceeded(10);
+        $state->recordImmediateNormalCommandSucceeded(10);
+        $state->registerLaunchIntent(10, 'missile', 1, 2, 3);
+        $state->recordMissileShotsFired(10, 1);
+        $state->recordMissileShotsFired(10, 2);
+
+        $this->assertSame([
+            'finance_succeeded' => true,
+            'immediate_normal_command_succeeded' => true,
+            'missile_intent_pending' => true,
+            'missile_shots_fired' => 3,
+            'idle_counter_finalized' => false,
+        ], $state->nationActivity(10));
+
+        $state->markIdleCounterFinalized(10);
+        $this->assertTrue($state->nationActivity(10)['idle_counter_finalized']);
+
+        $this->expectException(InvalidArgumentException::class);
+        $state->recordFinanceSucceeded(10);
+    }
 }

@@ -33,6 +33,17 @@ final class TurnState
     /** @var list<LaunchIntent> */
     private array $launchIntents = [];
 
+    /**
+     * @var array<int, array{
+     *     finance_succeeded: bool,
+     *     immediate_normal_command_succeeded: bool,
+     *     missile_intent_pending: bool,
+     *     missile_shots_fired: int,
+     *     idle_counter_finalized: bool
+     * }>
+     */
+    private array $nationActivity = [];
+
     /** @param array<array-key, mixed> $nationIds */
     public function setStableNationIds(array $nationIds): void
     {
@@ -167,6 +178,7 @@ final class TurnState
     ): LaunchIntent {
         $intent = new LaunchIntent($nationId, $definitionKey, $targetX, $targetY, $requestedShots, $queueItemId);
         $this->launchIntents[] = $intent;
+        $this->markMissileIntentPending($intent->nationId);
 
         return $intent;
     }
@@ -199,6 +211,79 @@ final class TurnState
         $intent->consumeShots($shots);
     }
 
+    public function recordFinanceSucceeded(mixed $nationId): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $activity = $this->nationActivity($nationId);
+        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        $activity['finance_succeeded'] = true;
+        $this->nationActivity[$nationId] = $activity;
+    }
+
+    public function recordImmediateNormalCommandSucceeded(mixed $nationId): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $activity = $this->nationActivity($nationId);
+        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        $activity['immediate_normal_command_succeeded'] = true;
+        $this->nationActivity[$nationId] = $activity;
+    }
+
+    public function markMissileIntentPending(mixed $nationId): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $activity = $this->nationActivity($nationId);
+        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        $activity['missile_intent_pending'] = true;
+        $this->nationActivity[$nationId] = $activity;
+    }
+
+    public function recordMissileShotsFired(mixed $nationId, mixed $shots): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $activity = $this->nationActivity($nationId);
+        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        if (! is_int($shots) || $shots < 0) {
+            throw new InvalidArgumentException('Missile shots fired must be a non-negative integer.');
+        }
+        if (! $activity['missile_intent_pending']) {
+            throw new InvalidArgumentException('Missile shots cannot be recorded without a pending launch intent.');
+        }
+        $activity['missile_shots_fired'] += $shots;
+        $this->nationActivity[$nationId] = $activity;
+    }
+
+    /**
+     * @return array{
+     *     finance_succeeded: bool,
+     *     immediate_normal_command_succeeded: bool,
+     *     missile_intent_pending: bool,
+     *     missile_shots_fired: int,
+     *     idle_counter_finalized: bool
+     * }
+     */
+    public function nationActivity(mixed $nationId): array
+    {
+        $nationId = $this->validatedNationId($nationId);
+
+        return $this->nationActivity[$nationId] ?? [
+            'finance_succeeded' => false,
+            'immediate_normal_command_succeeded' => false,
+            'missile_intent_pending' => false,
+            'missile_shots_fired' => 0,
+            'idle_counter_finalized' => false,
+        ];
+    }
+
+    public function markIdleCounterFinalized(mixed $nationId): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $activity = $this->nationActivity($nationId);
+        $this->assertIdleCounterNotFinalized($nationId, $activity);
+        $activity['idle_counter_finalized'] = true;
+        $this->nationActivity[$nationId] = $activity;
+    }
+
     /** @param array<array-key, mixed> $values
      * @return list<int>
      */
@@ -214,5 +299,30 @@ final class TurnState
         }
 
         return $values;
+    }
+
+    private function validatedNationId(mixed $nationId): int
+    {
+        if (! is_int($nationId) || $nationId < 1) {
+            throw new InvalidArgumentException('Turn activity Nation ID must be a positive integer.');
+        }
+
+        return $nationId;
+    }
+
+    /**
+     * @param  array{
+     *     finance_succeeded: bool,
+     *     immediate_normal_command_succeeded: bool,
+     *     missile_intent_pending: bool,
+     *     missile_shots_fired: int,
+     *     idle_counter_finalized: bool
+     * }  $activity
+     */
+    private function assertIdleCounterNotFinalized(int $nationId, array $activity): void
+    {
+        if ($activity['idle_counter_finalized']) {
+            throw new InvalidArgumentException('Turn activity cannot change after idle counter finalization.');
+        }
     }
 }

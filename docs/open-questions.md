@@ -333,7 +333,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: commandはturn-scoped launch intentを登録し、randomized cell processing中に各基地が自身のlevel、残数、資金、射程、現在状態を再検証して発射する。
+- Decision: commandはturn-scoped launch intentを登録し、randomized cell processing中に各基地が自身のlevel、残数、資金、射程、現在状態を再検証して発射する。intent登録だけでは通常command成功とせず、Nation単位で1発以上実発射された場合だけidle counterをresetする。全intentが0発ならidle counterを維持し、process_cells後のautomatic financeは追加しない。
 - Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、`product/docs/command-audit-pr22.md`
 
 ### B-10 ミサイル可視性

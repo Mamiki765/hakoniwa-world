@@ -38,6 +38,7 @@ final class DomesticCommandExecutor
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
         private readonly MonsterSpawnService $monsterSpawn,
+        private readonly NationIdleCounterFinalizer $idleCounters,
     ) {}
 
     /**
@@ -75,8 +76,6 @@ final class DomesticCommandExecutor
                 ->first();
             $consumedTurn = false;
             $queueMutated = false;
-            $normalCommandSucceeded = false;
-            $financeSucceeded = false;
 
             while (! $consumedTurn) {
                 $item = $queue === null ? null : NationCommandQueueItem::query()
@@ -153,10 +152,10 @@ final class DomesticCommandExecutor
                 $queueMutated = true;
                 $metrics['successes']++;
                 if ($definition->key === 'finance') {
-                    $financeSucceeded = true;
+                    $context->state->recordFinanceSucceeded($nation->id);
                     $metrics['finance_commands']++;
-                } else {
-                    $normalCommandSucceeded = true;
+                } elseif (! in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+                    $context->state->recordImmediateNormalCommandSucceeded($nation->id);
                 }
                 $this->events->record($context, 'command.success', $item, [
                     'nation_id' => $nation->id,
@@ -171,17 +170,14 @@ final class DomesticCommandExecutor
 
             if (! $consumedTurn) {
                 $this->automaticFinance($context, $nation);
-                $financeSucceeded = true;
+                $context->state->recordFinanceSucceeded($nation->id);
                 $metrics['automatic_finance']++;
             }
-            $idleCounterChange = $this->updateIdleCounter(
-                $context,
-                $nation,
-                $normalCommandSucceeded,
-                $financeSucceeded,
-            );
-            $metrics['idle_counter_increments'] += $idleCounterChange === 'incremented' ? 1 : 0;
-            $metrics['idle_counter_resets'] += $idleCounterChange === 'reset' ? 1 : 0;
+            if (! $context->state->nationActivity($nation->id)['missile_intent_pending']) {
+                $idleCounterChange = $this->idleCounters->finalize($context, $nation);
+                $metrics['idle_counter_increments'] += $idleCounterChange === 'incremented' ? 1 : 0;
+                $metrics['idle_counter_resets'] += $idleCounterChange === 'reset' ? 1 : 0;
+            }
             if ($queue !== null && $queueMutated) {
                 $queue->increment('version');
             }
@@ -1143,41 +1139,6 @@ final class DomesticCommandExecutor
             'after' => $addition->after,
             'capacity' => $addition->capacity,
         ]);
-    }
-
-    /** @return 'incremented'|'reset'|'unchanged' */
-    private function updateIdleCounter(
-        TurnContext $context,
-        Nation $nation,
-        bool $normalCommandSucceeded,
-        bool $financeSucceeded,
-    ): string {
-        $before = (int) $nation->idle_counter;
-        if ($normalCommandSucceeded) {
-            $after = 0;
-            $change = $before === 0 ? 'unchanged' : 'reset';
-            $reason = 'normal_command_succeeded';
-        } elseif ($financeSucceeded) {
-            $after = $before + 1;
-            $change = 'incremented';
-            $reason = 'finance_only';
-        } else {
-            return 'unchanged';
-        }
-
-        if ($after !== $before) {
-            $nation->update(['idle_counter' => $after]);
-        }
-        $this->events->record($context, 'nation.idle_counter_changed', $nation, [
-            'before' => $before,
-            'after' => $after,
-            'reason' => $reason,
-            'normal_command_succeeded' => $normalCommandSucceeded,
-            'finance_succeeded' => $financeSucceeded,
-            'maximum_increment_per_target_turn' => 1,
-        ]);
-
-        return $change;
     }
 
     /**

@@ -84,6 +84,212 @@ class Pr22CommandAndMissileTest extends TestCase
         ));
     }
 
+    public function test_destroyed_base_zero_shot_missile_keeps_idle_counter_without_automatic_finance(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants();
+        $firing->update(['idle_counter' => 4]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $item = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital);
+        $context = $this->context($world, 2, hash('sha256', 'destroyed missile base'), [$firing->id]);
+
+        $development = app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame(0, $development['automatic_finance']);
+        $this->assertSame(0, $development['idle_counter_resets']);
+        $this->assertSame(4, $firing->fresh()->idle_counter);
+        app(MapCellStateService::class)->setFacility($base, null);
+        $base->save();
+
+        $result = $this->processRegisteredMissiles($context, [$base]);
+
+        $this->assertSame(0, $result['shots_fired']);
+        $this->assertSame(0, $result['finalize']['idle_counter_resets']);
+        $this->assertSame(4, $firing->fresh()->idle_counter);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.launch_failed')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.automatic_finance')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $firing->id)->count());
+        $this->assertSame([
+            'finance_succeeded' => false,
+            'immediate_normal_command_succeeded' => false,
+            'missile_intent_pending' => true,
+            'missile_shots_fired' => 0,
+            'idle_counter_finalized' => true,
+        ], $context->state->nationActivity($firing->id));
+    }
+
+    public function test_insufficient_funds_at_base_processing_keeps_idle_counter_for_zero_shots(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants();
+        $firing->update(['idle_counter' => 3]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital);
+        $context = $this->context($world, 2, hash('sha256', 'missile funds exhausted'), [$firing->id]);
+
+        app(DomesticCommandExecutor::class)->execute($context);
+        $firing->update(['money' => 0]);
+        $result = $this->processRegisteredMissiles($context, [$base]);
+
+        $this->assertSame(0, $result['shots_fired']);
+        $this->assertSame(3, $firing->fresh()->idle_counter);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.launch_failed')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $firing->id)->count());
+    }
+
+    public function test_actual_missile_shot_resets_idle_counter_only_after_finalize(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants();
+        $firing->update(['idle_counter' => 6]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital);
+        $context = $this->context($world, 2, hash('sha256', 'actual missile shot'), [$firing->id]);
+
+        $development = app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame(0, $development['idle_counter_resets']);
+        $this->assertSame(6, $firing->fresh()->idle_counter);
+        $result = $this->processRegisteredMissiles($context, [$base]);
+
+        $this->assertSame(1, $result['shots_fired']);
+        $this->assertSame(1, $result['finalize']['idle_counter_resets']);
+        $this->assertSame(0, $firing->fresh()->idle_counter);
+        $event = DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $firing->id)->firstOrFail();
+        $metadata = json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $metadata['missile_shots_fired']);
+        $this->assertTrue($metadata['missile_intent_pending']);
+        $this->assertFalse($metadata['immediate_normal_command_succeeded']);
+    }
+
+    public function test_partial_multi_base_multi_intent_launch_resets_idle_counter_once(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants();
+        $firing->update(['idle_counter' => 7]);
+        $space = $this->surfaceMapSpace($world);
+        $firstBase = $this->missileBase($firing);
+        $secondBase = $this->missileBase($firing);
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $first = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital, 1, 1);
+        $second = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital, 1, 2);
+        $context = $this->context($world, 2, hash('sha256', 'partial multiple missile intents'), [$firing->id]);
+
+        app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame('queued', $second->fresh()->status);
+        $context->state->registerLaunchIntent(
+            $firing->id,
+            'spp_missile',
+            $capital->x,
+            $capital->y,
+            1,
+            $second->id,
+        );
+        $cost = $context->ruleset->settings['military']['missiles']['spp_missile']['cost_money_per_shot'];
+        $this->assertIsInt($cost);
+        $firing->update(['money' => $cost]);
+
+        $result = $this->processRegisteredMissiles($context, [$firstBase, $secondBase]);
+
+        $this->assertSame(1, $result['shots_fired']);
+        $this->assertSame(1, $result['finalize']['idle_counter_resets']);
+        $this->assertSame(0, $firing->fresh()->idle_counter);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.launched')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.launch_failed')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $firing->id)->count());
+        $this->assertSame(1, $context->state->nationActivity($firing->id)['missile_shots_fired']);
+    }
+
+    public function test_zero_shot_missile_after_failed_normal_command_does_not_double_update_idle_counter(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants();
+        $firing->update(['idle_counter' => 5]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $forest = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->firstOrFail();
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $failed = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'build_farm', $forest, 1, 1);
+        $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital, 1, 2);
+        $context = $this->context($world, 2, hash('sha256', 'failed normal and zero shot missile'), [$firing->id]);
+
+        $development = app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame(1, $development['failures']);
+        $this->assertSame('failed', $failed->fresh()->status);
+        app(MapCellStateService::class)->setFacility($base, null);
+        $base->save();
+        $this->processRegisteredMissiles($context, [$base]);
+
+        $this->assertSame(5, $firing->fresh()->idle_counter);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $firing->id)->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.automatic_finance')->count());
+    }
+
+    public function test_empty_queue_automatic_finance_increments_idle_counter_once_per_target_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        [, $nation] = $this->nation($world, '自動資金繰り国');
+        $nation->update(['idle_counter' => 2]);
+
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            2,
+            hash('sha256', 'empty queue automatic finance'),
+            [$nation->id],
+        ));
+
+        $this->assertSame(1, $result['automatic_finance']);
+        $this->assertSame(1, $result['idle_counter_increments']);
+        $this->assertSame(3, $nation->fresh()->idle_counter);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $nation->id)->count());
+    }
+
+    public function test_rolled_back_missile_activity_is_applied_once_on_deterministic_retry(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants();
+        $firing->update(['idle_counter' => 4]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $item = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital);
+        $seed = hash('sha256', 'deterministic missile idle retry');
+
+        try {
+            DB::transaction(function () use ($world, $firing, $base, $seed): void {
+                $context = $this->context($world, 2, $seed, [$firing->id]);
+                app(DomesticCommandExecutor::class)->execute($context);
+                $this->processRegisteredMissiles($context, [$base]);
+
+                throw new \RuntimeException('force rollback after missile idle finalization');
+            });
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('force rollback after missile idle finalization', $exception->getMessage());
+        }
+
+        $this->assertSame(4, $firing->fresh()->idle_counter);
+        $this->assertSame('queued', $item->fresh()->status);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')->count());
+
+        $retry = $this->context($world, 2, $seed, [$firing->id]);
+        app(DomesticCommandExecutor::class)->execute($retry);
+        $result = $this->processRegisteredMissiles($retry, [$base]);
+
+        $this->assertSame(1, $result['shots_fired']);
+        $this->assertSame(0, $firing->fresh()->idle_counter);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $firing->id)->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.launched')->count());
+    }
+
     public function test_shallow_reclaim_clear_and_farm_execute_as_a_future_queue_chain(): void
     {
         $world = $this->lightweightWorld();
@@ -788,6 +994,29 @@ class Pr22CommandAndMissileTest extends TestCase
         $resolver->finalize($context);
 
         return $metrics;
+    }
+
+    /**
+     * @param  list<MapCell>  $bases
+     * @return array{
+     *     shots_fired: int,
+     *     finalize: array{launches: int, shots_fired: int, ineffective_impacts: int, idle_counter_resets: int}
+     * }
+     */
+    private function processRegisteredMissiles(TurnContext $context, array $bases): array
+    {
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin();
+        $shotsFired = 0;
+        foreach ($bases as $base) {
+            $metrics = $resolver->processBase($context, $this->surfaceMapSpace($context->world), $base);
+            $shotsFired += $metrics['shots_fired'];
+        }
+
+        return [
+            'shots_fired' => $shotsFired,
+            'finalize' => $resolver->finalize($context),
+        ];
     }
 
     private function queue(

@@ -42,6 +42,7 @@ final class MissileImpactResolver
         private readonly MonsterDamageService $monsterDamage,
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly TurnEventRecorder $events,
+        private readonly NationIdleCounterFinalizer $idleCounters,
     ) {}
 
     public function begin(): void
@@ -123,10 +124,12 @@ final class MissileImpactResolver
         return [...$metrics, 'changed_cell_ids' => $changed];
     }
 
-    /** @return array{launches: int, shots_fired: int, ineffective_impacts: int} */
+    /** @return array{launches: int, shots_fired: int, ineffective_impacts: int, idle_counter_resets: int} */
     public function finalize(TurnContext $context): array
     {
-        $metrics = ['launches' => 0, 'shots_fired' => 0, 'ineffective_impacts' => 0];
+        $metrics = ['launches' => 0, 'shots_fired' => 0, 'ineffective_impacts' => 0, 'idle_counter_resets' => 0];
+        /** @var array<int, int> $shotsFiredByNation */
+        $shotsFiredByNation = [];
         foreach ($context->state->launchIntents() as $intent) {
             if (! in_array($intent->definitionKey, self::MISSILE_KEYS, true) || $intent->queueItemId === null) {
                 continue;
@@ -136,6 +139,7 @@ final class MissileImpactResolver
                 'intent' => $intent, 'nation' => $nation, 'fired' => 0,
                 'cost' => 0, 'ineffective' => 0, 'impacts' => [],
             ];
+            $shotsFiredByNation[$nation->id] = ($shotsFiredByNation[$nation->id] ?? 0) + $launch['fired'];
             if ($launch['fired'] === 0) {
                 $this->events->record($context, 'missile.launch_failed', $nation, [
                     'nation_id' => $nation->id,
@@ -172,6 +176,14 @@ final class MissileImpactResolver
                 'cost_money' => $launch['cost'],
                 'impacts' => $launch['impacts'],
             ], 'private');
+        }
+
+        foreach ($shotsFiredByNation as $nationId => $shotsFired) {
+            $context->state->recordMissileShotsFired($nationId, $shotsFired);
+            $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
+            if ($this->idleCounters->finalize($context, $nation) === 'reset') {
+                $metrics['idle_counter_resets']++;
+            }
         }
 
         return $metrics;
