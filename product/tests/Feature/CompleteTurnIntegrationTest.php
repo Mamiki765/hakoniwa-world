@@ -115,7 +115,7 @@ class CompleteTurnIntegrationTest extends TestCase
 
         $this->assertSame('completed', $run->status);
         $this->assertSame(2, $world->fresh()->current_turn);
-        $this->assertCount(11, $run->phase_results);
+        $this->assertCount(12, $run->phase_results);
         $this->assertSame(3600, collect($run->phase_results)->firstWhere('phase', 'process_cells')['metrics']['processed']);
         $this->assertGreaterThan(0, $populationBefore);
         $production = json_decode((string) DB::table('audit_events')

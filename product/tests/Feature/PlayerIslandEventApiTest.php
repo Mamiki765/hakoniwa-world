@@ -330,9 +330,22 @@ class PlayerIslandEventApiTest extends TestCase
     /** @param array<string, mixed> $metadata */
     private function audit(string $eventType, Model $subject, array $metadata): int
     {
+        $nationId = is_numeric($metadata['nation_id'] ?? null) ? (int) $metadata['nation_id'] : null;
+        $visibility = in_array($eventType, ['turn.completed', 'disaster.triggered'], true)
+            ? 'public'
+            : 'nation';
+
         return (int) DB::table('audit_events')->insertGetId([
             'actor_user_id' => null,
+            'world_id' => (int) $metadata['world_id'],
+            'turn' => (int) $metadata['target_turn'],
+            'nation_id' => $nationId,
+            'x' => is_numeric($metadata['x'] ?? null) ? (int) $metadata['x'] : null,
+            'y' => is_numeric($metadata['y'] ?? null) ? (int) $metadata['y'] : null,
+            'message' => null,
+            'visibility' => $visibility,
             'event_type' => $eventType,
+            'severity' => 'info',
             'subject_type' => $subject->getMorphClass(),
             'subject_id' => $subject->getKey(),
             'metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),

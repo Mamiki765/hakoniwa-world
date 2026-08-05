@@ -21,8 +21,10 @@ const selected: MapCell = {
 
 const definition = (overrides: Partial<CommandDefinition> = {}): CommandDefinition => ({
     key: 'land_clear', name: '整地', description: '平地にします。', cost_money: 5,
+    target_type: 'cell', parameters: {},
     execution_phase: 'terrain', initial_facility_capacity: null,
     applicable: true, available: true, shortfall_money: 0, unavailable_reason: null,
+    execution_preview_status: 'currently_executable', execution_warnings: [],
     ...overrides,
 });
 
@@ -80,6 +82,7 @@ describe('command plan workspace', () => {
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(wrapper.findAll('.plan-row.automatic')).toHaveLength(20);
         await wrapper.findAll('.plan-row')[4]!.trigger('click');
+        await flushPromises();
         expect(wrapper.findAll('.plan-row')[4]!.classes()).toContain('selected');
         await wrapper.find('.command-grid button').trigger('click');
         expect(wrapper.find('.parameter-popover').exists()).toBe(true);
@@ -262,6 +265,47 @@ describe('command plan workspace', () => {
             expect(wrapper.find('.parameter-popover button[type="submit"]').attributes('disabled')).toBeDefined();
             await wrapper.find('.popover-actions button[type="button"]').trigger('click');
         }
+    });
+
+    it('registers a nation-target command without a selected cell and submits its parameter schema', async () => {
+        const monsterDispatch = definition({
+            key: 'monster_dispatch',
+            name: '怪獣派遣',
+            target_type: 'nation',
+            parameters: {
+                target_nation_id: {
+                    label: '対象Nation ID', type: 'integer', minimum: 1, maximum: 2_147_483_647, required: true,
+                },
+            },
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                return jsonResponse({ queue: commandQueue(2, [item(1, 1, {
+                    command_key: 'monster_dispatch', command_name: '怪獣派遣', parameters: { target_nation_id: 42 },
+                })]), message: '登録しました。' }, 201);
+            }
+            return jsonResponse(String(input).includes('command-definitions')
+                ? catalog([monsterDispatch])
+                : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected: null } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        const inputs = wrapper.findAll('.parameter-popover input');
+        expect(inputs).toHaveLength(2);
+        await inputs[1]!.setValue('42');
+        await wrapper.find('.parameter-popover').trigger('submit');
+        await flushPromises();
+
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+            command_key: 'monster_dispatch',
+            target_x: null,
+            target_y: null,
+            parameters: { target_nation_id: 42 },
+        });
     });
 
     it('opens quantity editing from a single mobile plan-row tap', async () => {

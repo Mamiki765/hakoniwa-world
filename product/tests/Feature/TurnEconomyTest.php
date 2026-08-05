@@ -132,7 +132,8 @@ class TurnEconomyTest extends TestCase
         $this->setPolicy($nation, 'minerals', 'keep_amount', 1_500);
         Nation::query()->whereKey($nation->id)->update(['money' => 9_990]);
         [$saleContext, $saleRun] = $this->context($world, $nation);
-        $sale = $engine->execute('enforce_capacities', $saleContext);
+        $sale = $engine->execute('resource_sales', $saleContext);
+        $engine->execute('enforce_capacities', $saleContext);
         $this->assertSame(2, $sale->metrics['sales']);
         $this->assertSame(4, $sale->metrics['revenue']);
         $this->assertSame(500, $this->resourceAmount($nation, 'industrial_goods'));
@@ -151,6 +152,7 @@ class TurnEconomyTest extends TestCase
         $this->setResources($nation, ['industrial_goods' => 2_500, 'minerals' => 3_500]);
         Nation::query()->whereKey($nation->id)->update(['money' => 9_998]);
         [$limitedContext, $limitedRun] = $this->context($world, $nation);
+        $engine->execute('resource_sales', $limitedContext);
         $engine->execute('enforce_capacities', $limitedContext);
         $this->assertSame(1_500, $this->resourceAmount($nation, 'industrial_goods'));
         $this->assertSame(3_500, $this->resourceAmount($nation, 'minerals'));
@@ -168,6 +170,7 @@ class TurnEconomyTest extends TestCase
             'minerals' => 9_999_000,
         ]);
         [$withinContext, $withinRun] = $this->context($world, $nation);
+        $engine->execute('resource_sales', $withinContext);
         $within = $engine->execute('enforce_capacities', $withinContext);
         $this->assertSame(0, $within->metrics['overflow_reports']);
         $this->assertSame(9_998_999, $this->resourceAmount($nation, 'industrial_goods'));
@@ -180,9 +183,10 @@ class TurnEconomyTest extends TestCase
             'minerals' => 10_000_000,
         ]);
         [$resourceOverflowContext, $resourceOverflowRun] = $this->context($world, $nation);
+        $resourceSale = $engine->execute('resource_sales', $resourceOverflowContext);
         $resourceOverflow = $engine->execute('enforce_capacities', $resourceOverflowContext);
-        $this->assertSame(1, $resourceOverflow->metrics['sales']);
-        $this->assertSame(1, $resourceOverflow->metrics['revenue']);
+        $this->assertSame(1, $resourceSale->metrics['sales']);
+        $this->assertSame(1, $resourceSale->metrics['revenue']);
         $this->assertSame(1, $resourceOverflow->metrics['overflow_reports']);
         $this->assertSame(9_999_000, $this->resourceAmount($nation, 'industrial_goods'));
         $this->assertSame(9_999_000, $this->resourceAmount($nation, 'minerals'));
@@ -208,6 +212,7 @@ class TurnEconomyTest extends TestCase
         Nation::query()->whereKey($nation->id)->update(['money' => 0]);
         $this->setResources($nation, ['industrial_goods' => 10_001_000, 'minerals' => 0]);
         [$saleBeforeCapacityContext, $saleBeforeCapacityRun] = $this->context($world, $nation);
+        $engine->execute('resource_sales', $saleBeforeCapacityContext);
         $engine->execute('enforce_capacities', $saleBeforeCapacityContext);
         $saleBeforeCapacity = $this->event(
             $saleBeforeCapacityRun, 'resource.automatic_sale', 'industrial_goods',
@@ -234,9 +239,10 @@ class TurnEconomyTest extends TestCase
             'minerals' => 10_001_000,
         ]);
         [$limitedOverflowContext, $limitedOverflowRun] = $this->context($world, $nation);
+        $limitedSale = $engine->execute('resource_sales', $limitedOverflowContext);
         $limitedOverflow = $engine->execute('enforce_capacities', $limitedOverflowContext);
-        $this->assertSame(1, $limitedOverflow->metrics['sales']);
-        $this->assertSame(1, $limitedOverflow->metrics['revenue']);
+        $this->assertSame(1, $limitedSale->metrics['sales']);
+        $this->assertSame(1, $limitedSale->metrics['revenue']);
         $this->assertSame(2, $limitedOverflow->metrics['overflow_reports']);
         $this->assertSame(9_999, $nation->fresh()->money);
         $this->assertSame(9_999_000, $this->resourceAmount($nation, 'industrial_goods'));
@@ -276,7 +282,7 @@ class TurnEconomyTest extends TestCase
         $this->assertNotNull($mine->fresh()->facility_definition_id);
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('Stored sell_all policy is forbidden for wheat');
-        $engine->execute('enforce_capacities', $forbiddenContext);
+        $engine->execute('resource_sales', $forbiddenContext);
     }
 
     private function facilityCell(Nation $nation, string $facilityKey, int $scale): MapCell

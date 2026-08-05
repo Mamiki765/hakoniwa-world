@@ -14,7 +14,7 @@ Historical Worlds are not migrated or repointed. They remain readable through vi
 | Minerals unit | canonical `ton`, label `トン` | immutable ruleset payload and resource catalog publication |
 | Industrial goods capacity | 9,999,000 per Nation | generic `resource_capacities` map |
 | Minerals capacity | 9,999,000 per Nation | generic `resource_capacities` map |
-| Enforcement order | production, money-capacity-bounded policy or stockpile-overflow sale, individual resource cap | phase-10 turn integration tests |
+| Enforcement order | production, PR22 `resource_sales`, command, then `enforce_capacities` for unsold overflow | phase-5/phase-11 turn integration tests |
 | Stockpile overflow | sell full sale-rate batches within money capacity | `resource.automatic_sale` audit event |
 | Unsold overflow | discard sale-unit remainder and money-capacity-blocked excess | `capacity.overflow` audit event and rollback tests |
 | Owner API | exact amount, capacity, remaining capacity, reached state | private Nation resource only |

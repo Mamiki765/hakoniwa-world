@@ -31,13 +31,14 @@ The order is derived from `_references/hakoniwa-2plus/extracted/turn.c:9-148`, w
 | 2 | `calculate_terrain_context` | `Map::calcSea` | stub |
 | 3 | `resolve_territory_influence` | `Map::infLand` | stub |
 | 4 | `nation_economy` | `Island::clear2`, `Island::income`, `prePop` | stub; `EconomyHandler` extension |
-| 5 | `development_commands` | `Command::exec` | stub; `CommandHandler` extension |
-| 6 | `process_cells` | `Map::process` including local growth, fire, missile and monster movement | stub; must later be decomposed without reordering effects silently |
-| 7 | `settle_deferred_effects` | refugees / delayed inter-nation effects | stub |
-| 8 | `global_disasters` | earthquake through monster appearance | stub |
-| 9 | `aggregate_nations` | `Map::estimate` | stub |
-| 10 | `enforce_capacities` | food overflow/sale then money cap | stub; capacity services are ready |
-| 11 | `finalize_turn` | elimination, prizes, ranking/owner projection, persistence | implemented commit boundary only |
+| 5 | `resource_sales` | PR22 inventory sale boundary after production | implemented; revenue is available to commands |
+| 6 | `development_commands` | `Command::exec` | implemented `CommandHandler` boundary |
+| 7 | `process_cells` | `Map::process` including local growth, fire, missile and monster movement | implemented sequential cell order |
+| 8 | `settle_deferred_effects` | refugees / delayed inter-nation effects | extension boundary; missile refugees resolve at impact |
+| 9 | `global_disasters` | earthquake through natural monster appearance | implemented PR21 order |
+| 10 | `aggregate_nations` | `Map::estimate` | implemented |
+| 11 | `enforce_capacities` | unsold resource overflow then money/food caps | implemented |
+| 12 | `finalize_turn` | completion event and commit boundary | implemented |
 
 The legacy code randomises the command Nation order and cell order, while economy uses the pre-existing ranking order. The foundation now exposes deterministic shuffles without connecting gameplay: command Nations start in immutable Nation ID order and use `development_commands:nation_order`; surface cells start in map-space ID, canonical x/y, and cell ID order and use `process_cells:surface_cell_order`. Required gameplay phases remain stubs.
 
@@ -142,7 +143,7 @@ inventory remaining = original inventory - consumed
 
 For `sell_all` and `keep_amount`, it therefore preserves both money-capacity-blocked whole batches and sub-1,000 remainders up to the individual resource cap. The same integer boundary applies to `industrial_goods` and `minerals`; handlers do not create decimal money.
 
-PR #19 keeps this sale formula and makes the following phase-10 order explicit:
+PR #19 established this sale formula. PR22 separates sale into phase 5 `resource_sales` and remaining overflow enforcement into phase 11 `enforce_capacities`:
 
 1. derive requested inventory from the Nation's policy: all inventory for `sell_all`, inventory above the target for `keep_amount`, and inventory above the individual cap for `stockpile`;
 2. sell complete rate batches while the existing money capacity has room;

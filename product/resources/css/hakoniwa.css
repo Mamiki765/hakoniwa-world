@@ -351,6 +351,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .map-cell.terrain-sea { background: linear-gradient(145deg, #5fa9c7, #7ec5d2); }
 .map-cell.terrain-shallow { background: linear-gradient(145deg, #79cbd0, #9eddd1); }
 .map-cell.terrain-wasteland { background: repeating-linear-gradient(45deg, #a88968, #a88968 4px, #b99b76 4px, #b99b76 8px); }
+.map-cell.terrain-scorched { background: repeating-radial-gradient(circle at 35% 40%, #3b302c 0 2px, #6c4938 3px 6px, #241f1d 7px 10px); color: #fff1df; }
 .map-cell.terrain-plain { background: #9cc783; }
 .map-cell.terrain-forest { background: repeating-linear-gradient(60deg, #3d795c, #3d795c 5px, #4e8b61 5px, #4e8b61 9px); color: white; }
 .map-cell.terrain-mountain { background: linear-gradient(145deg, #8b857f, #c6beb2); }

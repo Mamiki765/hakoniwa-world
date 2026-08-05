@@ -11,6 +11,7 @@ use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnOrderService;
 use App\Domain\Turn\TurnPhaseResult;
+use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -38,6 +39,7 @@ final class CompleteTurnEngine
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
         private readonly MonsterTurnService $monsters,
+        private readonly MissileImpactResolver $missiles,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -47,12 +49,13 @@ final class CompleteTurnEngine
             'calculate_terrain_context' => $this->calculateTerrainContext($context),
             'resolve_territory_influence' => ['mutations' => 0, 'extension_boundary' => true],
             'nation_economy' => $this->nationEconomy($context),
+            'resource_sales' => $this->sellResources($context),
             'development_commands' => $this->commands->execute($context),
             'process_cells' => $this->processCells($context),
             'settle_deferred_effects' => ['settled_effects' => 0, 'extension_boundary' => true],
             'global_disasters' => $this->disasters->executeGlobal($context),
             'aggregate_nations' => $this->aggregateNations($context),
-            'enforce_capacities' => $this->sellAndEnforceCapacities($context),
+            'enforce_capacities' => $this->enforceCapacities($context),
             'finalize_turn' => $this->finalizeTurn($context),
             default => throw new DomainException("Unknown canonical turn phase {$phase}."),
         };
@@ -192,6 +195,9 @@ final class CompleteTurnEngine
             // canonical phase schema stable even when this turn has no such hit.
             'damage_blocked' => 0, 'monsters_killed' => 0,
             'rewards_distributed' => 0, 'kill_stats_incremented' => 0,
+            'missile_launches' => 0, 'missile_shots_fired' => 0,
+            'missile_money_spent' => 0, 'missile_meaningful_impacts' => 0,
+            'missile_ineffective_impacts' => 0,
         ];
         $activeNations = Nation::query()->where('world_id', $context->world->id)->where('state', 'active')
             ->pluck('id')->map(static fn ($id): int => (int) $id)->flip();
@@ -211,6 +217,8 @@ final class CompleteTurnEngine
             $cell->x.':'.$cell->y => $cell,
         ])->all();
         $monsterBatch = $this->monsters->load($context);
+        $this->missiles->begin();
+        $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
 
         foreach ($context->state->surfaceCellIds() as $cellId) {
             $cell = $cellsById->get($cellId);
@@ -220,6 +228,20 @@ final class CompleteTurnEngine
             $metrics['processed']++;
             if ($this->monsters->processCell($context, $space, $cell, $cellsByCoordinate, $monsterBatch)) {
                 continue;
+            }
+            if (in_array($cell->facility?->key, $launchBaseKeys, true)) {
+                $launch = $this->missiles->processBase($context, $space, $cell);
+                $metrics['missile_shots_fired'] += $launch['shots_fired'];
+                $metrics['missile_money_spent'] += $launch['money_spent'];
+                $metrics['missile_meaningful_impacts'] += $launch['meaningful_impacts'];
+                $metrics['missile_ineffective_impacts'] += $launch['ineffective_impacts'];
+                foreach ($launch['changed_cell_ids'] as $changedCellId) {
+                    $changed = $cellsById->get($changedCellId);
+                    if ($changed instanceof MapCell) {
+                        $changed->refresh()->load(['terrain', 'facility']);
+                    }
+                }
+                $cell->refresh()->load(['terrain', 'facility']);
             }
             if ($cell->owner_nation_id === null || ! $activeNations->has($cell->owner_nation_id)) {
                 continue;
@@ -292,6 +314,9 @@ final class CompleteTurnEngine
             }
         }
 
+        $launches = $this->missiles->finalize($context);
+        $metrics['missile_launches'] = $launches['launches'];
+
         return [...$metrics, ...$monsterBatch->metrics()];
     }
 
@@ -337,11 +362,10 @@ final class CompleteTurnEngine
     }
 
     /** @return array<string, int> */
-    private function sellAndEnforceCapacities(TurnContext $context): array
+    private function sellResources(TurnContext $context): array
     {
-        $metrics = ['sales' => 0, 'revenue' => 0, 'overflow_reports' => 0];
+        $metrics = ['sales' => 0, 'revenue' => 0];
         $settings = $context->ruleset->settings;
-        $resourceOverflowEvent = $this->resourceOverflowEvent($settings);
         $forbiddenSellAll = $settings['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'];
         $rates = $settings['inventory_sale_rates'];
         $resources = ResourceDefinition::query()->orderBy('sort_order')->orderBy('id')->get();
@@ -405,6 +429,25 @@ final class CompleteTurnEngine
                     'money_capacity' => $capacity->money,
                 ]);
             }
+        }
+
+        return $metrics;
+    }
+
+    /** @return array<string, int> */
+    private function enforceCapacities(TurnContext $context): array
+    {
+        $metrics = ['overflow_reports' => 0];
+        $settings = $context->ruleset->settings;
+        $resourceOverflowEvent = $this->resourceOverflowEvent($settings);
+        $resources = ResourceDefinition::query()->orderBy('sort_order')->orderBy('id')->get();
+
+        foreach ($context->state->stableNationIds() as $nationId) {
+            $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
+            if ($nation->state !== 'active') {
+                continue;
+            }
+            $capacity = $this->capacities->resolve($nation, $context->ruleset);
 
             $resourceAmounts = [];
             foreach ($capacity->resources as $resourceKey => $resourceCapacity) {
@@ -481,7 +524,7 @@ final class CompleteTurnEngine
     {
         $this->events->record($context, 'turn.completed', $context->world, [
             'random_seed' => $context->randomSeed, 'ruleset_key' => $context->ruleset->key,
-            'phase_count' => 11,
+            'phase_count' => count(TurnPipeline::CANONICAL_PHASE_KEYS),
         ]);
 
         return ['completed' => true, 'target_turn' => $context->targetTurn];
@@ -847,11 +890,18 @@ final class CompleteTurnEngine
             throw new DomainException("Settlement sea-edge band is missing for cell {$cell->id}.");
         }
         $before = $cell->population;
-        $maximumPopulation = $cell->facility?->key === 'capital'
+        $attraction = $cell->owner_nation_id !== null
+            && $context->state->hasAttraction($cell->owner_nation_id);
+        $ordinaryMaximum = $cell->facility?->key === 'capital'
             ? $context->ruleset->settings['capital_growth_maximum_population']
             : $band['maximum_population'];
+        $maximumPopulation = $attraction && $cell->facility?->key !== 'capital'
+            ? $rules['attraction_maximum_population']
+            : $ordinaryMaximum;
         if ($before < $maximumPopulation) {
-            $growthRules = $rules['ordinary_growth'];
+            $growthRules = $attraction && $before < $ordinaryMaximum
+                ? $rules['attraction_growth']
+                : $rules['ordinary_growth'];
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'] * $band['growth_multiplier'],
             );
@@ -865,7 +915,9 @@ final class CompleteTurnEngine
             $this->events->record($context, 'population.increased', $cell, [
                 'nation_id' => $cell->owner_nation_id, 'before' => $before,
                 'increase' => $increase, 'after' => $cell->population, 'sea_edge' => $seaEdge,
-                'ordinary_maximum' => $maximumPopulation,
+                'ordinary_maximum' => $ordinaryMaximum,
+                'effective_maximum' => $maximumPopulation,
+                'attraction' => $attraction,
             ]);
         }
 

@@ -21,6 +21,7 @@ final class MapChunkService
             ->with([
                 'terrain',
                 'facility',
+                'monumentDefinition',
                 'ownerNation:id,nation_number,name',
                 'monsterOccupancy.monster.definition',
             ])

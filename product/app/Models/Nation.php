@@ -17,19 +17,20 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string $profile_comment
  * @property int $money
  * @property string $state
+ * @property int $idle_counter
  * @property-read NationCapital|null $capital
  * @property-read Collection<int, NationResource> $resourceBalances
  */
 class Nation extends Model
 {
     protected $fillable = [
-        'world_id', 'nation_number', 'name', 'owner_name', 'profile_comment', 'money', 'state',
+        'world_id', 'nation_number', 'name', 'owner_name', 'profile_comment', 'money', 'state', 'idle_counter',
     ];
 
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['nation_number' => 'integer'];
+        return ['nation_number' => 'integer', 'idle_counter' => 'integer'];
     }
 
     /** @return BelongsTo<World, $this> */

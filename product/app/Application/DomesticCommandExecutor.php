@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Command\CommandFailureReason;
 use App\Domain\Economy\CappedAddition;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
@@ -12,10 +13,13 @@ use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterOccupancy;
+use App\Models\MonumentDefinition;
 use App\Models\Nation;
+use App\Models\NationCapital;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationResource;
+use App\Models\ResourceDefinition;
 use App\Models\TerrainDefinition;
 use DomainException;
 
@@ -33,9 +37,21 @@ final class DomesticCommandExecutor
         private readonly CappedAddition $addition,
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
+        private readonly MonsterSpawnService $monsterSpawn,
     ) {}
 
-    /** @return array{successes: int, failures: int, removed: int, quantity_decrements: int, automatic_finance: int} */
+    /**
+     * @return array{
+     *     successes: int,
+     *     failures: int,
+     *     removed: int,
+     *     quantity_decrements: int,
+     *     automatic_finance: int,
+     *     finance_commands: int,
+     *     idle_counter_increments: int,
+     *     idle_counter_resets: int
+     * }
+     */
     public function execute(TurnContext $context): array
     {
         $metrics = [
@@ -44,6 +60,9 @@ final class DomesticCommandExecutor
             'removed' => 0,
             'quantity_decrements' => 0,
             'automatic_finance' => 0,
+            'finance_commands' => 0,
+            'idle_counter_increments' => 0,
+            'idle_counter_resets' => 0,
         ];
         foreach ($context->state->developmentNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
@@ -56,6 +75,8 @@ final class DomesticCommandExecutor
                 ->first();
             $consumedTurn = false;
             $queueMutated = false;
+            $normalCommandSucceeded = false;
+            $financeSucceeded = false;
 
             while (! $consumedTurn) {
                 $item = $queue === null ? null : NationCommandQueueItem::query()
@@ -71,9 +92,9 @@ final class DomesticCommandExecutor
                 }
 
                 $item->update(['execution_started_at' => now()]);
-                $failure = $this->validationFailure($nation, $queue, $item);
+                $failure = $this->validationFailure($context, $nation, $queue, $item);
                 if ($failure !== null) {
-                    $this->failAndRemove($context, $queue, $item, $failure['code'], $failure['message']);
+                    $this->failAndRemove($context, $nation, $queue, $item, $failure['reason'], $failure['observed']);
                     $metrics['failures']++;
                     $metrics['removed']++;
                     $queueMutated = true;
@@ -131,6 +152,12 @@ final class DomesticCommandExecutor
                 }
                 $queueMutated = true;
                 $metrics['successes']++;
+                if ($definition->key === 'finance') {
+                    $financeSucceeded = true;
+                    $metrics['finance_commands']++;
+                } else {
+                    $normalCommandSucceeded = true;
+                }
                 $this->events->record($context, 'command.success', $item, [
                     'nation_id' => $nation->id,
                     'command_key' => $definition->key,
@@ -144,8 +171,17 @@ final class DomesticCommandExecutor
 
             if (! $consumedTurn) {
                 $this->automaticFinance($context, $nation);
+                $financeSucceeded = true;
                 $metrics['automatic_finance']++;
             }
+            $idleCounterChange = $this->updateIdleCounter(
+                $context,
+                $nation,
+                $normalCommandSucceeded,
+                $financeSucceeded,
+            );
+            $metrics['idle_counter_increments'] += $idleCounterChange === 'incremented' ? 1 : 0;
+            $metrics['idle_counter_resets'] += $idleCounterChange === 'reset' ? 1 : 0;
             if ($queue !== null && $queueMutated) {
                 $queue->increment('version');
             }
@@ -154,75 +190,147 @@ final class DomesticCommandExecutor
         return $metrics;
     }
 
-    /** @return array{code: string, message: string}|null */
+    /**
+     * @return array{
+     *     reason: CommandFailureReason,
+     *     observed: array{terrain: string|null, facility: string|null, owner_nation_id: int|null, owner_nation_name: string|null, monster_id: int|null}
+     * }|null
+     */
     private function validationFailure(
+        TurnContext $context,
         Nation $nation,
         NationCommandQueue $queue,
         NationCommandQueueItem $item,
     ): ?array {
         $definition = $item->definition;
         if ($definition->ruleset_version_id !== $nation->world()->value('ruleset_version_id')) {
-            return ['code' => 'ruleset_mismatch', 'message' => 'Command definition does not match the active World ruleset.'];
+            return [
+                'reason' => CommandFailureReason::RulesetMismatch,
+                'observed' => $this->emptyObservedState(),
+            ];
+        }
+        if ($definition->key === 'finance') {
+            return null;
+        }
+        if ($definition->target_type === 'nation') {
+            return $this->nationCommandValidationFailure($context, $nation, $item, $definition);
         }
         $cell = MapCell::query()
             ->where('map_space_id', $queue->map_space_id)
             ->where('x', $item->target_x)
             ->where('y', $item->target_y)
             ->lockForUpdate()
-            ->with(['terrain', 'facility'])
+            ->with(['terrain', 'facility', 'ownerNation'])
             ->first();
         if ($cell === null) {
-            return ['code' => 'target_missing', 'message' => 'Target cell no longer exists.'];
+            return [
+                'reason' => CommandFailureReason::NoTarget,
+                'observed' => $this->emptyObservedState(),
+            ];
         }
-        if (in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)
-            && MonsterOccupancy::query()->where('map_cell_id', $cell->id)->lockForUpdate()->first(['id']) !== null) {
-            return ['code' => 'monster_occupied', 'message' => 'Terrain commands cannot alter a monster-occupied cell.'];
+        $occupancy = MonsterOccupancy::query()
+            ->where('map_cell_id', $cell->id)
+            ->lockForUpdate()
+            ->first(['id', 'monster_instance_id']);
+        $observed = $this->observedState($cell, $occupancy?->monster_instance_id);
+        if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+            return $this->missileValidationFailure($context, $nation, $definition, $cell, $observed);
         }
-        if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
-            return ['code' => 'invalid_terrain', 'message' => 'Target terrain is no longer valid.'];
+        if ($occupancy !== null) {
+            return ['reason' => CommandFailureReason::OccupiedByMonster, 'observed' => $observed];
+        }
+        if ($definition->key === 'territory_expand') {
+            if ($cell->owner_nation_id === $nation->id) {
+                return ['reason' => CommandFailureReason::AlreadyOwned, 'observed' => $observed];
+            }
+            if ($cell->owner_nation_id !== null) {
+                return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
+            }
+            if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
+                return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
+            }
+            if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
+                return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
+            }
+        } elseif ($definition->key === 'build_seabed_base') {
+            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
+                return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
+            }
+            if ($cell->terrain->key !== 'sea') {
+                return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
+            }
+            if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
+                return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
+            }
         }
         if ($cell->facility?->key === 'capital'
             && in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)) {
-            return ['code' => 'capital_protected', 'message' => 'Terrain commands cannot remove the Nation Capital.'];
+            return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
+        }
+        if ($definition->key === 'reclaim') {
+            if ($cell->owner_nation_id === $nation->id) {
+                return ['reason' => CommandFailureReason::AlreadyOwned, 'observed' => $observed];
+            }
+            if ($cell->owner_nation_id !== null) {
+                return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
+            }
+            if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
+                return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
+            }
+            if ($this->hasForeignAdjacentCell($nation, $cell)) {
+                return ['reason' => CommandFailureReason::ForeignAdjacentWater, 'observed' => $observed];
+            }
+            if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
+                return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
+            }
+        } elseif (! in_array($definition->key, ['territory_expand', 'build_seabed_base'], true)) {
+            if ($cell->owner_nation_id !== $nation->id
+                && ! ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true))) {
+                return [
+                    'reason' => $cell->owner_nation_id === null
+                        ? CommandFailureReason::NotOwned
+                        : CommandFailureReason::ForeignOwned,
+                    'observed' => $observed,
+                ];
+            }
+            if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
+                return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
+            }
         }
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
             if (! $this->isMatchingQuantityFacility($definition, $cell)) {
-                return ['code' => 'facility_not_empty', 'message' => 'Target cell now contains a facility.'];
+                return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }
             if ($cell->facility_scale === null || $cell->facility?->scale_increment === null
                 || $cell->facility->maximum_scale === null) {
-                return ['code' => 'invalid_facility_scale', 'message' => 'Target facility has invalid scale state.'];
+                return ['reason' => CommandFailureReason::InvalidFacilityScale, 'observed' => $observed];
             }
         }
         if ($definition->target_facility_keys !== []
             && ! in_array($cell->facility?->key, $definition->target_facility_keys, true)) {
-            return ['code' => 'invalid_facility', 'message' => 'Target facility is no longer valid.'];
+            return ['reason' => CommandFailureReason::InvalidFacility, 'observed' => $observed];
         }
-        if ($definition->key === 'reclaim') {
+        if ($definition->key === 'build_monument'
+            && ! MonumentDefinition::query()->where('enabled', true)
+                ->orderBy('sort_order')->orderBy('id')->offset($item->quantity - 1)->exists()) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
+        if ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
-                return ['code' => 'ownership_mismatch', 'message' => 'Reclaim target is owned by another Nation.'];
-            }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
-                return ['code' => 'ownership_mismatch', 'message' => 'Reclaim target has no adjacent owned cell.'];
-            }
-        } elseif ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true)) {
-            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
-                return ['code' => 'ownership_mismatch', 'message' => 'Excavation target is owned by another Nation.'];
+                return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
             if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
-                return ['code' => 'ownership_mismatch', 'message' => 'Excavation target has no owned cell within radius three.'];
+                return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
             }
             if ($cell->terrain->key === 'sea') {
                 $this->isSeabedOilSearch($definition, $cell);
             }
             if ($cell->terrain->key === 'sea' && $cell->facility_definition_id !== null) {
-                return ['code' => 'facility_not_empty', 'message' => 'Deep-sea oil search requires an empty cell.'];
+                return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }
-        } elseif ($cell->owner_nation_id !== $nation->id) {
-            return ['code' => 'ownership_mismatch', 'message' => 'Target cell is no longer owned by the Nation.'];
         }
         if ((int) $nation->money < $definition->cost_money) {
-            return ['code' => 'insufficient_money', 'message' => 'Nation no longer has enough money.'];
+            return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
         }
         foreach ($definition->required_resources as $resourceKey => $required) {
             $amount = NationResource::query()
@@ -230,8 +338,102 @@ final class DomesticCommandExecutor
                 ->whereHas('definition', fn ($query) => $query->where('key', $resourceKey))
                 ->value('amount');
             if ((int) $amount < $required) {
-                return ['code' => 'insufficient_resources', 'message' => "Nation lacks required resource {$resourceKey}."];
+                return ['reason' => CommandFailureReason::InsufficientResource, 'observed' => $observed];
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{
+     *     reason: CommandFailureReason,
+     *     observed: array{terrain: null, facility: null, owner_nation_id: null, owner_nation_name: null, monster_id: null}
+     * }|null
+     */
+    private function nationCommandValidationFailure(
+        TurnContext $context,
+        Nation $nation,
+        NationCommandQueueItem $item,
+        CommandDefinition $definition,
+    ): ?array {
+        $observed = $this->emptyObservedState();
+        if ((int) $nation->money < $definition->cost_money) {
+            return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
+        }
+        if ($definition->key === 'attraction') {
+            return null;
+        }
+        if (! in_array($definition->key, ['money_aid', 'food_aid', 'monster_dispatch'], true)) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
+        $targetNationId = $item->parameters['target_nation_id'] ?? null;
+        if (! is_int($targetNationId)) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
+        if ($targetNationId === $nation->id) {
+            return ['reason' => CommandFailureReason::SameNationTarget, 'observed' => $observed];
+        }
+        $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->first();
+        if ($target === null || $target->world_id !== $context->world->id || $target->state !== 'active') {
+            return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
+        }
+        if ($definition->key === 'money_aid') {
+            $requested = $this->moneyAidAmount($item, $definition);
+            if ((int) $nation->money < $requested) {
+                return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
+            }
+        }
+        if ($definition->key === 'food_aid') {
+            $requested = $this->foodAidAmount($item, $definition);
+            $available = (int) NationResource::query()
+                ->where('nation_id', $nation->id)
+                ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+                ->lockForUpdate()
+                ->get()
+                ->sum('amount');
+            if ($available < $requested) {
+                return ['reason' => CommandFailureReason::InsufficientResource, 'observed' => $observed];
+            }
+        }
+        if ($definition->key === 'monster_dispatch' && ! $this->monsterSpawn->hasDispatchCandidate($context, $target)) {
+            return ['reason' => CommandFailureReason::NoTarget, 'observed' => $observed];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{terrain: string|null, facility: string|null, owner_nation_id: int|null, owner_nation_name: string|null, monster_id: int|null}  $observed
+     * @return array{reason: CommandFailureReason, observed: array<string, int|string|null>}|null
+     */
+    private function missileValidationFailure(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $target,
+        array $observed,
+    ): ?array {
+        $targetNation = $target->owner_nation_id === null
+            ? null
+            : Nation::query()->whereKey($target->owner_nation_id)->lockForUpdate()->first();
+        if ($targetNation === null || $targetNation->world_id !== $context->world->id
+            || $targetNation->state !== 'active') {
+            return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
+        }
+        $baseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? null;
+        if (! is_array($baseKeys) || $baseKeys === []) {
+            throw new DomainException('The active ruleset has invalid missile launch-base settings.');
+        }
+        $hasBase = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->where('facility_operational_state', 'operational')
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', $baseKeys))
+            ->exists();
+        if (! $hasBase) {
+            return ['reason' => CommandFailureReason::NoLaunchBase, 'observed' => $observed];
+        }
+        if ((int) $nation->money < $definition->cost_money) {
+            return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
         }
 
         return null;
@@ -250,6 +452,9 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
         MapCell $cell,
     ): int {
+        if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+            return 0;
+        }
         if (! $this->isSeabedOilSearch($definition, $cell)) {
             return $definition->cost_money;
         }
@@ -297,6 +502,51 @@ final class DomesticCommandExecutor
         MapCell $cell,
         int $executionCost,
     ): void {
+        if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+            $context->state->registerLaunchIntent(
+                $nation->id,
+                $definition->key,
+                $item->target_x,
+                $item->target_y,
+                $item->quantity,
+                $item->id,
+            );
+            $this->events->record($context, 'missile.intent_registered', $item, [
+                'nation_id' => $nation->id,
+                'command_key' => $definition->key,
+                'queue_item_id' => $item->id,
+                'target_x' => $item->target_x,
+                'target_y' => $item->target_y,
+                'requested_shots' => $item->quantity,
+            ], 'admin');
+
+            return;
+        }
+        if ($definition->key === 'finance') {
+            $this->finance($context, $nation, 'command.finance');
+
+            return;
+        }
+        if ($definition->target_type === 'nation') {
+            $this->applyNationCommand($context, $nation, $item, $definition);
+
+            return;
+        }
+        if ($definition->key === 'logging') {
+            $this->applyLogging($context, $nation, $definition, $cell);
+
+            return;
+        }
+        if ($definition->key === 'territory_expand') {
+            $this->applyTerritoryExpand($context, $nation, $cell);
+
+            return;
+        }
+        if ($definition->key === 'relocate_capital') {
+            $this->applyCapitalRelocation($context, $nation, $cell);
+
+            return;
+        }
         if ($definition->key === 'reclaim') {
             $this->applyReclaim($context, $nation, $definition, $cell);
 
@@ -316,7 +566,10 @@ final class DomesticCommandExecutor
                 default => 'shallow',
             },
             'build_farm', 'build_factory', 'build_mine' => null,
-            default => throw new DomainException("Unsupported domestic command {$definition->key}."),
+            default => $definition->result_facility_key !== null
+                ? null
+                : ($definition->result_terrain_key
+                    ?? throw new DomainException("Unsupported domestic command {$definition->key}.")),
         };
 
         if ($terrainKey !== null) {
@@ -329,6 +582,7 @@ final class DomesticCommandExecutor
             $cell->version++;
             $cell->save();
             $context->state->markMapChunkChanged($cell->map_chunk_id);
+            $terrainEventVisibility = $definition->key === 'plant_forest' ? 'private' : 'nation';
             $this->events->record($context, 'terrain.changed', $cell, [
                 'nation_id' => $nation->id,
                 'command_key' => $definition->key,
@@ -337,7 +591,17 @@ final class DomesticCommandExecutor
                 'from_terrain_key' => $oldTerrain,
                 'to_terrain_key' => $terrainKey,
                 'removed_facility_key' => $oldFacility,
-            ]);
+            ], $terrainEventVisibility);
+            if ($definition->key === 'plant_forest') {
+                $metadata = [
+                    'nation_id' => $nation->id, 'nation_name' => $nation->name,
+                    'x' => $cell->x, 'y' => $cell->y,
+                ];
+                $this->events->record($context, 'command.forest_planted_public', $nation, [
+                    'nation_id' => $nation->id, 'nation_name' => $nation->name,
+                ], 'public');
+                $this->events->record($context, 'command.forest_planted_private', $cell, $metadata, 'private');
+            }
             if ($definition->key === 'land_clear') {
                 $this->buriedTreasure($context, $nation, $item);
             } elseif ($definition->key === 'land_level') {
@@ -362,10 +626,24 @@ final class DomesticCommandExecutor
             );
         }
         $this->cells->setFacility($cell, $facility, $scale);
+        $monument = null;
+        if ($definition->key === 'build_seabed_base') {
+            $cell->owner_nation_id = $nation->id;
+        }
+        if ($definition->key === 'build_monument') {
+            $monument = MonumentDefinition::query()->where('enabled', true)
+                ->orderBy('sort_order')->orderBy('id')->offset($item->quantity - 1)->firstOrFail();
+            $cell->monument_definition_id = $monument->id;
+        }
         $cell->population = 0;
         $cell->version++;
         $cell->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
+        $constructionVisibility = in_array(
+            $definition->key,
+            ['build_missile_base', 'build_seabed_base', 'build_decoy'],
+            true,
+        ) ? 'private' : 'nation';
         $this->events->record($context, $expanded ? 'facility.expanded' : 'facility.constructed', $cell, [
             'nation_id' => $nation->id,
             'command_key' => $definition->key,
@@ -375,7 +653,265 @@ final class DomesticCommandExecutor
             'scale_increment' => $expanded ? $facility->scale_increment : null,
             'x' => $cell->x,
             'y' => $cell->y,
+            'monument_definition_key' => $monument?->key,
+        ], $constructionVisibility);
+        if (! $expanded) {
+            $this->recordConstructionProjection($context, $nation, $definition, $cell);
+        }
+    }
+
+    private function recordConstructionProjection(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $cell,
+    ): void {
+        $metadata = [
+            'nation_id' => $nation->id, 'nation_name' => $nation->name,
+            'command_key' => $definition->key,
+            'facility_key' => $definition->result_facility_key,
+            'x' => $cell->x, 'y' => $cell->y,
+        ];
+        if ($definition->key === 'build_missile_base') {
+            $this->events->record($context, 'command.forest_planted_public', $nation, [
+                'nation_id' => $nation->id, 'nation_name' => $nation->name,
+            ], 'public');
+            $this->events->record($context, 'command.missile_base_built_private', $cell, $metadata, 'private');
+
+            return;
+        }
+        if ($definition->key === 'build_seabed_base') {
+            $this->events->record($context, 'command.seabed_base_built_public', $nation, [
+                'nation_id' => $nation->id, 'nation_name' => $nation->name,
+            ], 'public');
+            $this->events->record($context, 'command.seabed_base_built_private', $cell, $metadata, 'private');
+
+            return;
+        }
+        if ($definition->key === 'build_decoy') {
+            $this->events->record($context, 'command.facility_built_public', $cell, [
+                ...$metadata,
+                'command_key' => 'build_defense_facility',
+                'facility_key' => 'defense',
+            ], 'public');
+            $this->events->record($context, 'command.decoy_built_private', $cell, $metadata, 'private');
+
+            return;
+        }
+        if (in_array($definition->key, ['build_defense_facility', 'build_monument'], true)) {
+            $this->events->record($context, 'command.facility_built_public', $cell, $metadata, 'public');
+        }
+    }
+
+    private function applyLogging(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $cell,
+    ): void {
+        $treeUnits = (int) ($cell->terrain_quantity ?? 0);
+        $moneyPerUnit = $definition->metadata['money_per_legacy_tree_unit'] ?? null;
+        if (! is_int($moneyPerUnit) || $moneyPerUnit < 0) {
+            throw new DomainException('Logging income settings are invalid.');
+        }
+        $requested = $treeUnits * $moneyPerUnit;
+        $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
+        $income = $this->addition->calculate((int) $nation->money, $requested, $capacity);
+        if ($income->applied > 0) {
+            $nation->update(['money' => $income->after]);
+        }
+        $this->cells->setFacility($cell, null);
+        $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail());
+        $cell->population = 0;
+        $cell->version++;
+        $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+        $metadata = [
+            'nation_id' => $nation->id, 'nation_name' => $nation->name,
+            'x' => $cell->x, 'y' => $cell->y,
+            'tree_units' => $treeUnits, 'requested_money' => $requested,
+            'applied_money' => $income->applied, 'overflow_money' => $income->overflow,
+        ];
+        $this->events->record($context, 'command.logging_public', $nation, [
+            'nation_id' => $nation->id, 'nation_name' => $nation->name,
+        ], 'public');
+        $this->events->record($context, 'command.logging_private', $cell, $metadata, 'private');
+    }
+
+    private function applyTerritoryExpand(TurnContext $context, Nation $nation, MapCell $cell): void
+    {
+        $cell->owner_nation_id = $nation->id;
+        $cell->version++;
+        $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+        $this->events->record($context, 'command.territory_expanded', $cell, [
+            'nation_id' => $nation->id, 'x' => $cell->x, 'y' => $cell->y,
+            'terrain_key' => $cell->terrain->key,
         ]);
+    }
+
+    private function applyCapitalRelocation(TurnContext $context, Nation $nation, MapCell $target): void
+    {
+        $capital = NationCapital::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
+        $old = MapCell::query()->whereKey($capital->map_cell_id)->with(['terrain', 'facility'])
+            ->lockForUpdate()->firstOrFail();
+        $city = FacilityDefinition::query()->where('key', 'city')->firstOrFail();
+        $capitalFacility = FacilityDefinition::query()->where('key', 'capital')->firstOrFail();
+        $this->cells->setFacility($old, $city);
+        $this->cells->setFacility($target, $capitalFacility);
+        $old->version++;
+        $target->version++;
+        $old->save();
+        $target->save();
+        $capital->update(['map_cell_id' => $target->id, 'x' => $target->x, 'y' => $target->y]);
+        $context->state->markMapChunkChanged($old->map_chunk_id);
+        $context->state->markMapChunkChanged($target->map_chunk_id);
+        $this->events->record($context, 'command.capital_relocated', $target, [
+            'nation_id' => $nation->id,
+            'from_x' => $old->x, 'from_y' => $old->y,
+            'x' => $target->x, 'y' => $target->y,
+            'old_population_preserved' => $old->population,
+            'new_population_preserved' => $target->population,
+        ]);
+    }
+
+    private function applyNationCommand(
+        TurnContext $context,
+        Nation $nation,
+        NationCommandQueueItem $item,
+        CommandDefinition $definition,
+    ): void {
+        if ($definition->key === 'attraction') {
+            $context->state->markAttraction($nation->id);
+            $this->events->record($context, 'command.attraction_started', $nation, [
+                'nation_id' => $nation->id,
+            ]);
+
+            return;
+        }
+        $target = $this->targetNation($context, $nation, $item);
+        if ($definition->key === 'money_aid') {
+            $requested = $this->moneyAidAmount($item, $definition);
+            $capacity = $this->capacities->resolve($target, $context->ruleset)->money;
+            $addition = $this->addition->calculate((int) $target->money, $requested, $capacity);
+            if ($addition->applied > 0) {
+                $nation->decrement('money', $addition->applied);
+                $target->update(['money' => $addition->after]);
+                $nation->refresh();
+            }
+            $this->events->record($context, 'command.money_aid_transferred', $nation, [
+                'nation_id' => $nation->id, 'receiver_nation_id' => $target->id,
+                'receiver_nation_name' => $target->name,
+                'requested_money' => $requested, 'transferred_money' => $addition->applied,
+                'receiver_capacity_money' => $capacity,
+                'receiver_capacity_overflow' => $addition->overflow,
+            ]);
+            $this->events->record($context, 'command.money_aid_received', $target, [
+                'nation_id' => $target->id, 'sender_nation_id' => $nation->id,
+                'sender_nation_name' => $nation->name,
+                'requested_money' => $requested, 'transferred_money' => $addition->applied,
+                'receiver_capacity_money' => $capacity,
+                'receiver_capacity_overflow' => $addition->overflow,
+            ]);
+
+            return;
+        }
+        if ($definition->key === 'food_aid') {
+            $requested = $this->foodAidAmount($item, $definition);
+            $foodBalances = NationResource::query()->where('nation_id', $target->id)
+                ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+                ->lockForUpdate()->get();
+            $before = (int) $foodBalances->sum('amount');
+            $capacity = $this->capacities->resolve($target, $context->ruleset)->foodTons;
+            $addition = $this->addition->calculate($before, $requested, $capacity);
+            if ($addition->applied > 0) {
+                $this->debitFood($nation, $addition->applied);
+                $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
+                $balance = NationResource::query()->firstOrCreate([
+                    'nation_id' => $target->id, 'resource_definition_id' => $wheat->id,
+                ], ['amount' => 0]);
+                $balance->increment('amount', $addition->applied);
+            }
+            $this->events->record($context, 'command.food_aid_transferred', $nation, [
+                'nation_id' => $nation->id, 'receiver_nation_id' => $target->id,
+                'receiver_nation_name' => $target->name,
+                'requested_food_tons' => $requested, 'transferred_food_tons' => $addition->applied,
+                'receiver_capacity_food_tons' => $capacity,
+                'receiver_capacity_overflow_tons' => $addition->overflow,
+            ]);
+            $this->events->record($context, 'command.food_aid_received', $target, [
+                'nation_id' => $target->id, 'sender_nation_id' => $nation->id,
+                'sender_nation_name' => $nation->name,
+                'requested_food_tons' => $requested, 'transferred_food_tons' => $addition->applied,
+                'receiver_capacity_food_tons' => $capacity,
+                'receiver_capacity_overflow_tons' => $addition->overflow,
+            ]);
+
+            return;
+        }
+        if ($definition->key === 'monster_dispatch') {
+            $monster = $this->monsterSpawn->dispatch($context, $target, $item->id);
+            $this->events->record($context, 'command.monster_dispatched', $monster, [
+                'nation_id' => $nation->id, 'target_nation_id' => $target->id,
+                'monster_key' => 'mecha_inora',
+            ], 'private');
+
+            return;
+        }
+
+        throw new DomainException("Unsupported Nation command {$definition->key}.");
+    }
+
+    private function targetNation(TurnContext $context, Nation $sender, NationCommandQueueItem $item): Nation
+    {
+        $targetNationId = $item->parameters['target_nation_id'] ?? null;
+        if (! is_int($targetNationId) || $targetNationId === $sender->id) {
+            throw new DomainException('Nation command target changed after validation.');
+        }
+
+        return Nation::query()->whereKey($targetNationId)
+            ->where('world_id', $context->world->id)->where('state', 'active')
+            ->lockForUpdate()->firstOrFail();
+    }
+
+    private function moneyAidAmount(NationCommandQueueItem $item, CommandDefinition $definition): int
+    {
+        $perQuantity = $definition->metadata['transfer_money_per_quantity'] ?? null;
+        if (! is_int($perQuantity) || $perQuantity < 1) {
+            throw new DomainException('Money aid amount settings are invalid.');
+        }
+
+        return $item->quantity * $perQuantity;
+    }
+
+    private function foodAidAmount(NationCommandQueueItem $item, CommandDefinition $definition): int
+    {
+        $perQuantity = $definition->metadata['transfer_food_tons_per_quantity'] ?? null;
+        if (! is_int($perQuantity) || $perQuantity < 1) {
+            throw new DomainException('Food aid amount settings are invalid.');
+        }
+
+        return $item->quantity * $perQuantity;
+    }
+
+    private function debitFood(Nation $nation, int $amount): void
+    {
+        $remaining = $amount;
+        $balances = NationResource::query()->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+            ->with('definition')->lockForUpdate()->get()
+            ->sortBy(fn (NationResource $balance): array => [$balance->definition->sort_order, $balance->id]);
+        foreach ($balances as $balance) {
+            $debit = min($remaining, (int) $balance->amount);
+            if ($debit > 0) {
+                $balance->decrement('amount', $debit);
+                $remaining -= $debit;
+            }
+            if ($remaining === 0) {
+                return;
+            }
+        }
+        throw new DomainException('Food aid balance changed after validation.');
     }
 
     private function applyReclaim(
@@ -593,11 +1129,16 @@ final class DomesticCommandExecutor
 
     private function automaticFinance(TurnContext $context, Nation $nation): void
     {
+        $this->finance($context, $nation, 'command.automatic_finance');
+    }
+
+    private function finance(TurnContext $context, Nation $nation, string $eventType): void
+    {
         $requested = $context->ruleset->settings['turn_processing']['automatic_finance_money'];
         $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
         $addition = $this->addition->calculate((int) $nation->money, $requested, $capacity);
         $nation->update(['money' => $addition->after]);
-        $this->events->record($context, 'command.automatic_finance', $nation, [
+        $this->events->record($context, $eventType, $nation, [
             'before' => $addition->before,
             'requested' => $addition->requested,
             'applied' => $addition->applied,
@@ -607,35 +1148,126 @@ final class DomesticCommandExecutor
         ]);
     }
 
+    /** @return 'incremented'|'reset'|'unchanged' */
+    private function updateIdleCounter(
+        TurnContext $context,
+        Nation $nation,
+        bool $normalCommandSucceeded,
+        bool $financeSucceeded,
+    ): string {
+        $before = (int) $nation->idle_counter;
+        if ($normalCommandSucceeded) {
+            $after = 0;
+            $change = $before === 0 ? 'unchanged' : 'reset';
+            $reason = 'normal_command_succeeded';
+        } elseif ($financeSucceeded) {
+            $after = $before + 1;
+            $change = 'incremented';
+            $reason = 'finance_only';
+        } else {
+            return 'unchanged';
+        }
+
+        if ($after !== $before) {
+            $nation->update(['idle_counter' => $after]);
+        }
+        $this->events->record($context, 'nation.idle_counter_changed', $nation, [
+            'before' => $before,
+            'after' => $after,
+            'reason' => $reason,
+            'normal_command_succeeded' => $normalCommandSucceeded,
+            'finance_succeeded' => $financeSucceeded,
+            'maximum_increment_per_target_turn' => 1,
+        ]);
+
+        return $change;
+    }
+
+    /**
+     * @param  array<string, int|string|null>  $observed
+     */
     private function failAndRemove(
         TurnContext $context,
+        Nation $nation,
         NationCommandQueue $queue,
         NationCommandQueueItem $item,
-        string $code,
-        string $message,
+        CommandFailureReason $reason,
+        array $observed,
     ): void {
+        $metadata = [
+            'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
+            'command_key' => $item->definition->key,
+            'command_name' => $item->definition->name,
+            'x' => $item->target_x,
+            'y' => $item->target_y,
+            'failure_reason' => $reason->value,
+            'observed' => $observed,
+            'original_parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
+            'quantity' => $item->quantity,
+            'target_turn' => $context->targetTurn,
+        ];
         $item->update([
             'status' => 'failed',
             'queue_position' => null,
             'execution_failed_at' => now(),
-            'failure_code' => $code,
-            'failure_metadata' => ['message' => $message],
+            'failure_code' => $reason->value,
+            'failure_metadata' => $metadata,
         ]);
         $this->compact($queue);
-        $eventType = in_array($code, ['insufficient_money', 'insufficient_resources'], true)
-            ? 'command.insufficient_assets'
-            : 'command.invalid';
-        $this->events->record($context, $eventType, $item, [
-            'nation_id' => $queue->nation_id,
-            'command_key' => $item->definition->key,
-            'failure_code' => $code,
-            'message' => $message,
-        ]);
+        $this->events->record($context, 'command.failed', $item, $metadata);
         $this->events->record($context, 'command.queue_removed', $item, [
             'nation_id' => $queue->nation_id,
             'command_key' => $item->definition->key,
-            'reason' => $code,
+            'reason' => $reason->value,
         ]);
+    }
+
+    /**
+     * @return array{terrain: string|null, facility: string|null, owner_nation_id: int|null, owner_nation_name: string|null, monster_id: int|null}
+     */
+    private function observedState(MapCell $cell, ?int $monsterId): array
+    {
+        return [
+            'terrain' => $cell->terrain->key,
+            'facility' => $cell->facility?->key,
+            'owner_nation_id' => $cell->owner_nation_id,
+            'owner_nation_name' => $cell->ownerNation?->name,
+            'monster_id' => $monsterId,
+        ];
+    }
+
+    /**
+     * @return array{terrain: null, facility: null, owner_nation_id: null, owner_nation_name: null, monster_id: null}
+     */
+    private function emptyObservedState(): array
+    {
+        return [
+            'terrain' => null,
+            'facility' => null,
+            'owner_nation_id' => null,
+            'owner_nation_name' => null,
+            'monster_id' => null,
+        ];
+    }
+
+    private function hasForeignAdjacentCell(Nation $nation, MapCell $cell): bool
+    {
+        $coordinates = array_values(array_filter(
+            (new GridCoordinate($cell->x, $cell->y))->radius(1),
+            static fn (GridCoordinate $coordinate): bool => $coordinate->x !== $cell->x || $coordinate->y !== $cell->y,
+        ));
+
+        return MapCell::query()
+            ->where('map_space_id', $cell->map_space_id)
+            ->whereNotNull('owner_nation_id')
+            ->where('owner_nation_id', '!=', $nation->id)
+            ->where(function ($query) use ($coordinates): void {
+                foreach ($coordinates as $coordinate) {
+                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
+                }
+            })
+            ->exists();
     }
 
     private function compact(NationCommandQueue $queue): void

@@ -22,6 +22,9 @@ final class TurnState
     private array $famineNationIds = [];
 
     /** @var array<int, true> */
+    private array $attractionNationIds = [];
+
+    /** @var array<int, true> */
     private array $changedMapChunkIds = [];
 
     /** @var array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int}> */
@@ -107,6 +110,19 @@ final class TurnState
         return array_map('intval', array_keys($this->famineNationIds));
     }
 
+    public function markAttraction(int $nationId): void
+    {
+        if ($nationId < 1) {
+            throw new InvalidArgumentException('Attraction Nation ID must be positive.');
+        }
+        $this->attractionNationIds[$nationId] = true;
+    }
+
+    public function hasAttraction(int $nationId): bool
+    {
+        return isset($this->attractionNationIds[$nationId]);
+    }
+
     public function markMapChunkChanged(int $mapChunkId): void
     {
         if ($mapChunkId < 1) {
@@ -147,8 +163,9 @@ final class TurnState
         mixed $targetX,
         mixed $targetY,
         mixed $requestedShots,
+        mixed $queueItemId = null,
     ): LaunchIntent {
-        $intent = new LaunchIntent($nationId, $definitionKey, $targetX, $targetY, $requestedShots);
+        $intent = new LaunchIntent($nationId, $definitionKey, $targetX, $targetY, $requestedShots, $queueItemId);
         $this->launchIntents[] = $intent;
 
         return $intent;

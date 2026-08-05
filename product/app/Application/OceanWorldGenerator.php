@@ -168,6 +168,7 @@ class OceanWorldGenerator
             ['key' => 'sea', 'name' => '海', 'asset_key' => 'tile.sea', 'is_water' => true, 'is_buildable' => false, 'quantity_key' => null, 'quantity_label' => null, 'quantity_unit' => null, 'initial_quantity' => null, 'minimum_quantity' => null, 'maximum_quantity' => null, 'growth_rule_key' => null, 'metadata' => []],
             ['key' => 'shallow', 'name' => '浅瀬', 'asset_key' => 'tile.shallow', 'is_water' => true, 'is_buildable' => false, 'quantity_key' => null, 'quantity_label' => null, 'quantity_unit' => null, 'initial_quantity' => null, 'minimum_quantity' => null, 'maximum_quantity' => null, 'growth_rule_key' => null, 'metadata' => []],
             ['key' => 'wasteland', 'name' => '荒地', 'asset_key' => 'tile.wasteland', 'is_water' => false, 'is_buildable' => true, 'quantity_key' => null, 'quantity_label' => null, 'quantity_unit' => null, 'initial_quantity' => null, 'minimum_quantity' => null, 'maximum_quantity' => null, 'growth_rule_key' => null, 'metadata' => []],
+            ['key' => 'scorched', 'name' => '焦土', 'asset_key' => 'tile.scorched', 'is_water' => false, 'is_buildable' => true, 'quantity_key' => null, 'quantity_label' => null, 'quantity_unit' => null, 'initial_quantity' => null, 'minimum_quantity' => null, 'maximum_quantity' => null, 'growth_rule_key' => null, 'metadata' => ['created_by' => 'missile_impact']],
             ['key' => 'plain', 'name' => '平地', 'asset_key' => 'tile.plain', 'is_water' => false, 'is_buildable' => true, 'quantity_key' => null, 'quantity_label' => null, 'quantity_unit' => null, 'initial_quantity' => null, 'minimum_quantity' => null, 'maximum_quantity' => null, 'growth_rule_key' => null, 'metadata' => []],
             [
                 'key' => 'forest', 'name' => '森', 'asset_key' => 'tile.forest', 'is_water' => false, 'is_buildable' => false,
@@ -204,6 +205,7 @@ class OceanWorldGenerator
                     'maximum_experience' => $definition['maximum_experience'] ?? null,
                     'level_thresholds' => $definition['level_thresholds'] ?? null,
                     'launch_capacity_by_level' => $definition['launch_capacity_by_level'] ?? null,
+                    'display_as_facility_key' => $definition['display_as_facility_key'] ?? null,
                 ], static fn (mixed $value): bool => $value !== null),
             ]);
         }

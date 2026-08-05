@@ -48,7 +48,7 @@ final class RulesetAuthoringValidator
     private const REQUIRED_INITIAL_ISLAND_FACILITY_KEYS = ['village', 'missile_base', 'capital'];
 
     /** @var list<string> */
-    private const TERRAIN_KEYS = ['sea', 'shallow', 'wasteland', 'plain', 'forest', 'mountain'];
+    private const TERRAIN_KEYS = ['sea', 'shallow', 'wasteland', 'scorched', 'plain', 'forest', 'mountain'];
 
     /** @var list<string> */
     private const LEGACY_FUTURE_FACILITY_KEYS = ['decoy', 'monument', 'defense', 'seabed_base'];
@@ -173,6 +173,16 @@ final class RulesetAuthoringValidator
         }
 
         $this->integer($settings['initial_money'], 'ruleset.initial_money', 0);
+        if (array_key_exists('capital_relocation_cost_money', $settings)) {
+            $capitalRelocationCost = $this->integer(
+                $settings['capital_relocation_cost_money'],
+                'ruleset.capital_relocation_cost_money',
+                1_000,
+            );
+            if ($capitalRelocationCost > 9_999) {
+                throw new DomainException('ruleset.capital_relocation_cost_money must be between 1000 and 9999.');
+            }
+        }
         $defaultSalePolicy = $this->string($settings['default_sale_policy'], 'ruleset.default_sale_policy');
         if (! SalePolicy::isSupportedRulesetDefault($defaultSalePolicy)) {
             throw new DomainException(
@@ -280,6 +290,7 @@ final class RulesetAuthoringValidator
             $landRadius,
         );
         $monsterCount = $this->validateMonsterSystem($settings, $resourceKeys, $facilityKeys);
+        $this->validateMilitary($settings, $facilityKeys);
 
         return [
             'key' => $key,
@@ -290,6 +301,100 @@ final class RulesetAuthoringValidator
             'production' => count($productionKeys),
             'monsters' => $monsterCount,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<string>  $facilityKeys
+     */
+    private function validateMilitary(array $settings, array $facilityKeys): void
+    {
+        if (! array_key_exists('military', $settings)) {
+            return;
+        }
+
+        $path = 'ruleset.military';
+        $military = $this->map($settings['military'], $path);
+        $this->requireKeys($military, [
+            'launch_base_facility_keys', 'missiles', 'visibility', 'dormant_impact', 'refugees',
+        ], $path);
+        foreach ($this->list($military['launch_base_facility_keys'], "{$path}.launch_base_facility_keys") as $key) {
+            $this->reference($key, $facilityKeys, "{$path}.launch_base_facility_keys");
+        }
+
+        $missiles = $this->map($military['missiles'], "{$path}.missiles");
+        $expected = [
+            'missile' => [20, 2, 'scorched', true],
+            'pp_missile' => [50, 1, 'scorched', true],
+            'land_destruction_missile' => [100, 2, null, false],
+            'spp_missile' => [500, 0, 'scorched', true],
+        ];
+        if (array_keys($missiles) !== array_keys($expected)) {
+            throw new DomainException("{$path}.missiles must contain the canonical PR22 missile keys.");
+        }
+        foreach ($expected as $key => [$cost, $deviation, $terrain, $refugees]) {
+            $definitionPath = "{$path}.missiles.{$key}";
+            $definition = $this->map($missiles[$key], $definitionPath);
+            $this->requireKeys($definition, [
+                'cost_money_per_shot', 'deviation_radius', 'creates_terrain', 'refugees',
+            ], $definitionPath);
+            $validatedDeviation = $this->integer(
+                $definition['deviation_radius'],
+                "{$definitionPath}.deviation_radius",
+                0,
+            );
+            if ($validatedDeviation > 2
+                || $this->integer($definition['cost_money_per_shot'], "{$definitionPath}.cost_money_per_shot", 1) !== $cost
+                || $validatedDeviation !== $deviation
+                || $definition['creates_terrain'] !== $terrain
+                || $this->boolean($definition['refugees'], "{$definitionPath}.refugees") !== $refugees) {
+                throw new DomainException("{$definitionPath} differs from the approved PR22 missile contract.");
+            }
+        }
+
+        $visibility = $this->map($military['visibility'], "{$path}.visibility");
+        $this->requireKeys($visibility, [
+            'launch_summary', 'meaningful_impacts', 'ineffective_impacts',
+            'firing_nation_details', 'anonymous_missile_keys',
+        ], "{$path}.visibility");
+        if ($visibility !== [
+            'launch_summary' => 'public',
+            'meaningful_impacts' => 'public',
+            'ineffective_impacts' => 'aggregate_per_launch',
+            'firing_nation_details' => 'private',
+            'anonymous_missile_keys' => [],
+        ]) {
+            throw new DomainException("{$path}.visibility differs from owner decision B-10.");
+        }
+
+        $dormant = $this->map($military['dormant_impact'], "{$path}.dormant_impact");
+        $this->requireKeys($dormant, [
+            'explicit_target_state', 'no_effect_owner_states', 'preserve', 'monster_exception',
+        ], "{$path}.dormant_impact");
+        if ($dormant !== [
+            'explicit_target_state' => 'active',
+            'no_effect_owner_states' => ['dormant_frozen', 'dormant_contestable', 'sunken_archived'],
+            'preserve' => ['cell', 'facility', 'population', 'monster_occupancy'],
+            'monster_exception' => false,
+        ]) {
+            throw new DomainException("{$path}.dormant_impact differs from owner decision B-12.");
+        }
+
+        $refugees = $this->map($military['refugees'], "{$path}.refugees");
+        $this->requireKeys($refugees, [
+            'settlement_facility_keys', 'recipient', 'generated_fraction', 'event_types',
+        ], "{$path}.refugees");
+        foreach ($this->list($refugees['settlement_facility_keys'], "{$path}.refugees.settlement_facility_keys") as $key) {
+            $this->reference($key, $facilityKeys, "{$path}.refugees.settlement_facility_keys");
+        }
+        if ($refugees['recipient'] !== 'firing_nation'
+            || $refugees['event_types'] !== ['refugee_generated', 'refugee_received']) {
+            throw new DomainException("{$path}.refugees must use the approved recipient and structured event keys.");
+        }
+        $fraction = $this->map($refugees['generated_fraction'], "{$path}.refugees.generated_fraction");
+        if ($fraction !== ['numerator' => 1, 'denominator' => 2]) {
+            throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
+        }
     }
 
     /**

@@ -13,7 +13,7 @@
 | Milestone | Blocking Open IDs | 実装境界 |
 |---|---|---|
 | monster | — | MONSTER-01〜04はPR21で決定・実装済み。将来のawardはAWARD-01を別gateとして維持する。 |
-| missile / commands / combat | B-03、B-05、B-07、B-10、B-12、B-13 | 対応するmissile、attack、territory、dormancy機能の実装前にだけ停止する。怪獣単体PRの一律blockerではない。 |
+| missile / commands / combat | B-03、B-05、B-07、B-12、B-13 | 対応するattack、territory、dormancy機能の実装前にだけ停止する。B-10のPR22 missile visibilityは決定済み。怪獣単体PRの一律blockerではない。 |
 | lifecycle / automatic turn operations | T-02、D-02 | lifecycle Job実装前、またはproduction automatic retry / cron enablement前に確定する。 |
 | public release | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07 | release-freezeと本公開準備に入る前に確定する。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、B-15、D-06、D-08、C-02、C-04、E-01、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
@@ -332,23 +332,24 @@
 ### MISSILE-01 launch intentと基地単位解決
 
 - Status: Decided
-- Implemented: Boundary only
+- Implemented: Yes
 - Decision: commandはturn-scoped launch intentを登録し、randomized cell processing中に各基地が自身のlevel、残数、資金、射程、現在状態を再検証して発射する。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、`product/docs/command-audit-pr22.md`
 
 ### B-10 ミサイル可視性
 
-- Status: Open
-- Required before: ミサイルcommand実装前
-- Open decision: normal missileの発射Nation公開、ST missile匿名を方向性とし、target、impact、damage、failureのexact public/private payloadをsource auditで確定する。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+- Status: Decided
+- Implemented: Yes
+- Decision: 発射Nation、弾種、発射数と意味のある着弾はpublic、効果のない着弾はlaunch単位で集約する。発射Nationには狙点、費用、弾種、全着弾結果をprivate詳細として表示する。SPPを含む全弾種で発射Nationを公開する。
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、`product/docs/command-audit-pr22.md`
 
 ### B-12 dormant国家への攻撃詳細
 
 - Status: Open
 - Required before: dormant Nationを対象にするcombat実装前
-- Open decision: `dormant_contestable`の施設・防壁処理と、怪獣討伐例外の実行契約を決める。
-- Decision record: `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`
+- Implemented minimum: PR22ではexplicit missile targetをactive Nation所有cellだけに限定する。誤差着弾が`dormant_frozen`、`dormant_contestable`、`sunken_archived`所有cellへ到達してもcell、facility、population、owner、monster occupancyを変更せず、効果なしとして集約する。怪獣だけを討伐する例外も設けない。
+- Open decision: 将来`dormant_contestable`を攻撃・占領可能にするときの施設、防壁、Capital保護、怪獣討伐例外を決める。今回のminimum境界を将来仕様の暗黙決定にしない。
+- Decision record: `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`、`product/docs/command-audit-pr22.md`
 
 ### B-13 Capital周辺の占領保護
 

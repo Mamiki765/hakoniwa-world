@@ -42,6 +42,7 @@ const draggedItemId = ref<number | null>(null);
 const pendingDefinition = ref<CommandDefinition | null>(null);
 const editingItem = ref<CommandQueueItem | null>(null);
 const quantity = ref(1);
+const commandParameters = ref<Record<string, number | null>>({});
 const mobileCommandExpanded = ref(false);
 const mobilePlanExpanded = ref(false);
 let refreshGeneration = 0;
@@ -54,7 +55,7 @@ const quantityIsValid = computed(() => Number.isInteger(quantity.value)
     && quantity.value <= quantityContract.value.maximum);
 
 watch(
-    () => [props.selected?.x, props.selected?.y, props.nationId, props.mapSpaceId],
+    () => [props.selected?.x, props.selected?.y, props.nationId, props.mapSpaceId, selectedPosition.value],
     () => void refresh(),
     { immediate: true },
 );
@@ -66,14 +67,18 @@ async function refresh(): Promise<void> {
     activeRefreshController = controller;
     const selected = props.selected === null ? null : { x: props.selected.x, y: props.selected.y };
     const path = basePath(props.nationId, props.mapSpaceId);
-    const target = selected === null ? '' : `?target_x=${selected.x}&target_y=${selected.y}`;
+    const query = new URLSearchParams({ position: String(selectedPosition.value) });
+    if (selected !== null) {
+        query.set('target_x', String(selected.x));
+        query.set('target_y', String(selected.y));
+    }
 
     refreshing.value = true;
     message.value = '';
 
     try {
         const [nextDefinitions, nextQueue] = await Promise.all([
-            api<CommandCatalog>(`${path}/command-definitions${target}`, { signal: controller.signal }),
+            api<CommandCatalog>(`${path}/command-definitions?${query}`, { signal: controller.signal }),
             api<CommandQueue>(`${path}/command-queue`, { signal: controller.signal }),
         ]);
 
@@ -94,22 +99,45 @@ async function refresh(): Promise<void> {
 }
 
 function chooseCommand(definition: CommandDefinition): void {
-    if (!definition.available || props.selected === null) return;
+    if (!definition.available || (definition.target_type === 'cell' && props.selected === null)) return;
     pendingDefinition.value = definition;
     quantity.value = quantityContract.value.default;
+    commandParameters.value = Object.fromEntries(Object.entries(definition.parameters).map(([key, schema]) => [
+        key,
+        schema.default ?? null,
+    ]));
 }
+
+const parametersAreValid = computed(() => {
+    const definition = pendingDefinition.value;
+    if (definition === null) return true;
+
+    return Object.entries(definition.parameters).every(([key, schema]) => {
+        const value = commandParameters.value[key];
+        if (value === null || value === undefined) return !schema.required || schema.nullable === true;
+        return Number.isInteger(value) && value >= schema.minimum && value <= schema.maximum;
+    });
+});
 
 async function addPendingCommand(): Promise<void> {
     const definition = pendingDefinition.value;
-    if (definition === null || !quantityIsValid.value) return;
-    await addCommand(definition, quantity.value);
+    if (definition === null || !quantityIsValid.value || !parametersAreValid.value) return;
+    const parameters: Record<string, number> = {};
+    for (const [key, value] of Object.entries(commandParameters.value)) {
+        if (value !== null) parameters[key] = value;
+    }
+    await addCommand(definition, quantity.value, parameters);
     pendingDefinition.value = null;
 }
 
-async function addCommand(definition: CommandDefinition, requestedQuantity: number): Promise<void> {
-    if (props.selected === null || !definition.available) return;
+async function addCommand(
+    definition: CommandDefinition,
+    requestedQuantity: number,
+    parameters: Record<string, number>,
+): Promise<void> {
+    if ((definition.target_type === 'cell' && props.selected === null) || !definition.available) return;
     const generation = refreshGeneration;
-    const selected = { x: props.selected.x, y: props.selected.y };
+    const selected = props.selected === null ? null : { x: props.selected.x, y: props.selected.y };
     const path = basePath(props.nationId, props.mapSpaceId);
     mutating.value = true;
 
@@ -118,13 +146,13 @@ async function addCommand(definition: CommandDefinition, requestedQuantity: numb
             method: 'POST',
             body: JSON.stringify({
                 command_key: definition.key,
-                target_x: selected.x,
-                target_y: selected.y,
+                target_x: definition.target_type === 'cell' ? selected?.x : null,
+                target_y: definition.target_type === 'cell' ? selected?.y : null,
                 position: selectedPosition.value,
                 request_key: crypto.randomUUID(),
                 expected_version: queue.value.version,
                 quantity: requestedQuantity,
-                parameters: {},
+                parameters,
             }),
         });
         if (generation !== refreshGeneration) return;
@@ -291,20 +319,32 @@ onBeforeUnmount(() => {
                             <span>{{ formatExactMoney(definition.cost_money) }}</span>
                             <span v-if="definition.initial_facility_capacity">初期 {{ definition.initial_facility_capacity.formatted }}</span>
                             <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
+                            <span v-for="warning in definition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</span>
                         </button>
                     </div>
                     <p v-else class="empty-state">このセルで登録できるコマンドはありません。</p>
                     <form v-if="pendingDefinition" class="parameter-popover" @submit.prevent="addPendingCommand">
-                        <strong>{{ pendingDefinition.name }}の数量</strong>
+                        <strong>{{ pendingDefinition.name }}の設定</strong>
                         <div class="preset-row">
                             <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
                         </div>
                         <label>数量
                             <input v-model.number="quantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
                         </label>
+                        <label v-for="(schema, key) in pendingDefinition.parameters" :key="key">
+                            {{ schema.label }}
+                            <input
+                                v-model.number="commandParameters[key]"
+                                type="number"
+                                step="1"
+                                :min="schema.minimum"
+                                :max="schema.maximum"
+                                :required="schema.required && !schema.nullable"
+                            >
+                        </label>
                         <div class="popover-actions">
                             <button type="button" @click="pendingDefinition = null">閉じる</button>
-                            <button type="submit" :disabled="!quantityIsValid">計画へ登録</button>
+                            <button type="submit" :disabled="!quantityIsValid || !parametersAreValid">計画へ登録</button>
                         </div>
                     </form>
                 </section>

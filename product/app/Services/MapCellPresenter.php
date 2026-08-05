@@ -6,12 +6,17 @@ use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Monster\MonsterHardening;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\TerrainDefinition;
 
 final class MapCellPresenter
 {
-    private ?TerrainDefinition $forest = null;
+    /** @var array<string, TerrainDefinition> */
+    private array $terrains = [];
+
+    /** @var array<string, FacilityDefinition> */
+    private array $facilities = [];
 
     public function __construct(
         private readonly AssetManifestResolver $assets,
@@ -26,10 +31,23 @@ final class MapCellPresenter
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
         $isDisguised = $cell->facility?->visibility_policy === FacilityVisibilityPolicy::Disguised->value
             && ! $isOwner;
-        $terrain = $isDisguised ? $this->forest() : $cell->terrain;
-        $facility = $isDisguised ? null : $cell->facility;
+        $impersonatedFacilityKey = ! $isOwner && is_string($cell->facility?->metadata['display_as_facility_key'] ?? null)
+            ? $cell->facility->metadata['display_as_facility_key']
+            : null;
+        $terrain = $isDisguised
+            ? $this->terrain($cell->facility->disguise_terrain_key ?? 'forest')
+            : $cell->terrain;
+        $facility = $isDisguised
+            ? null
+            : ($impersonatedFacilityKey === null ? $cell->facility : $this->facility($impersonatedFacilityKey));
         $displayDefinition = $facility ?? $terrain;
-        $layers = $this->assets->resolveLayers($displayDefinition->asset_key, $displayDefinition->name);
+        $displayAssetKey = $facility?->key === 'monument' && $cell->monumentDefinition !== null
+            ? $cell->monumentDefinition->asset_key
+            : $displayDefinition->asset_key;
+        $displayName = $facility?->key === 'monument' && $cell->monumentDefinition !== null
+            ? $cell->monumentDefinition->name
+            : $displayDefinition->name;
+        $layers = $this->assets->resolveLayers($displayAssetKey, $displayName);
         $details = $this->details($cell, $isOwner, $isDisguised);
         $monster = $this->monster($cell, $currentTurn);
 
@@ -39,8 +57,8 @@ final class MapCellPresenter
             'terrain' => $terrain->key,
             'terrain_name' => $terrain->name,
             'facility' => $facility?->key,
-            'facility_name' => $facility?->name,
-            'display_name' => $displayDefinition->name,
+            'facility_name' => $facility?->key === 'monument' ? $displayName : $facility?->name,
+            'display_name' => $displayName,
             'owner_nation_id' => $cell->owner_nation_id,
             'owner_nation_number' => $cell->ownerNation?->nation_number,
             'owner_name' => $cell->ownerNation?->name,
@@ -48,7 +66,7 @@ final class MapCellPresenter
             'monster' => $monster,
             'asset' => $layers['completed'],
             'overlays' => $layers['overlays'],
-            'aria_label' => $this->ariaLabel($cell, $displayDefinition->name, $details, $monster),
+            'aria_label' => $this->ariaLabel($cell, $displayName, $details, $monster),
             // Secret-only state changes must not alter a non-owner representation version.
             'version' => $isOwner ? $cell->version : 1,
             'updated_at' => $isOwner ? $cell->updated_at?->toIso8601String() : null,
@@ -170,8 +188,13 @@ final class MapCellPresenter
         ]));
     }
 
-    private function forest(): TerrainDefinition
+    private function terrain(string $key): TerrainDefinition
     {
-        return $this->forest ??= TerrainDefinition::query()->where('key', 'forest')->firstOrFail();
+        return $this->terrains[$key] ??= TerrainDefinition::query()->where('key', $key)->firstOrFail();
+    }
+
+    private function facility(string $key): FacilityDefinition
+    {
+        return $this->facilities[$key] ??= FacilityDefinition::query()->where('key', $key)->firstOrFail();
     }
 }

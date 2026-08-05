@@ -15,6 +15,7 @@ use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\TerrainDefinition;
 use DomainException;
+use Illuminate\Database\Eloquent\Collection;
 
 final class MonsterSpawnService
 {
@@ -180,6 +181,88 @@ final class MonsterSpawnService
         }
 
         return $metrics;
+    }
+
+    public function hasDispatchCandidate(TurnContext $context, Nation $target): bool
+    {
+        return $this->dispatchCandidates($context, $target, false)->isNotEmpty();
+    }
+
+    public function dispatch(TurnContext $context, Nation $target, int $queueItemId): MonsterInstance
+    {
+        if ($target->world_id !== $context->world->id || $target->state !== 'active') {
+            throw new DomainException('A dispatched monster requires an active target Nation in the current World.');
+        }
+        $candidates = $this->dispatchCandidates($context, $target, true);
+        if ($candidates->isEmpty()) {
+            throw new DomainException('A dispatched monster lost its eligible settlement before execution.');
+        }
+        $index = $context->random->stream(TurnRandomStreamFactory::monsterDispatch($queueItemId))
+            ->integer(0, $candidates->count() - 1);
+        /** @var MapCell $cell */
+        $cell = $candidates->values()->get($index);
+        $definition = MonsterDefinition::query()
+            ->where('ruleset_version_id', $context->ruleset->id)
+            ->where('key', 'mecha_inora')
+            ->firstOrFail();
+        $beforeFacility = $cell->facility?->key;
+        $beforePopulation = $cell->population;
+        $this->cells->setFacility($cell, null);
+        $this->cells->transitionTerrain($cell, $this->wasteland());
+        $cell->population = 0;
+        $cell->version++;
+        $cell->save();
+        $monster = MonsterInstance::query()->create([
+            'world_id' => $context->world->id,
+            'monster_definition_id' => $definition->id,
+            'current_hp' => $definition->base_hp,
+            'spawned_max_hp' => $definition->base_hp,
+            'state' => 'alive',
+            'spawned_target_turn' => $context->targetTurn,
+            'version' => 1,
+        ]);
+        MonsterOccupancy::query()->create([
+            'monster_instance_id' => $monster->id,
+            'map_cell_id' => $cell->id,
+        ]);
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+        $this->events->record($context, 'monster.spawned', $monster, [
+            'monster_key' => $definition->key,
+            'nation_id' => $target->id,
+            'nation_number' => $target->nation_number,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'initial_hp' => $definition->base_hp,
+            'removed_facility_key' => $beforeFacility,
+            'before_population' => $beforePopulation,
+            'after_population' => 0,
+            'owner_preserved' => true,
+            'spawn_source' => 'monster_dispatch_command',
+            'queue_item_id' => $queueItemId,
+        ]);
+
+        return $monster;
+    }
+
+    /** @return Collection<int, MapCell> */
+    private function dispatchCandidates(TurnContext $context, Nation $target, bool $lock)
+    {
+        $keys = $context->ruleset->settings['monster_system']['natural_spawn']['settlement_facility_keys'] ?? null;
+        if (! is_array($keys) || $keys === []) {
+            throw new DomainException('Monster dispatch requires the PR21 settlement eligibility contract.');
+        }
+        $query = MapCell::query()
+            ->where('owner_nation_id', $target->id)
+            ->where('population', '>', 0)
+            ->whereHas('facility', fn ($facility) => $facility->whereIn('key', $keys))
+            ->whereDoesntHave('monsterOccupancy')
+            ->with(['terrain', 'facility'])
+            ->orderBy('id');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get();
     }
 
     private function wasteland(): TerrainDefinition

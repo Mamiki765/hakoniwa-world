@@ -159,7 +159,7 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame($populationBefore, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
         $this->assertSame('plain', $capital->fresh()->terrain()->value('key'));
-        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.invalid')->count());
+        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.failed')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
     }
 
@@ -203,14 +203,14 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(0, $result['successes']);
         foreach ($items as $item) {
             $this->assertSame('failed', $item->fresh()->status);
-            $this->assertSame('monster_occupied', $item->fresh()->failure_code);
+            $this->assertSame('occupied_by_monster', $item->fresh()->failure_code);
         }
         $this->assertSame($moneyBefore + 10, (int) $nation->fresh()->money);
         $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
         $this->assertSame('alive', $monster->fresh()->state);
         $this->assertSame($target->id, $occupancy->fresh()->map_cell_id);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
-        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.invalid')->count());
+        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.failed')->count());
     }
 
     public function test_water_commands_reject_targets_owned_by_another_nation(): void
@@ -232,8 +232,8 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(2, $result['failures']);
         $this->assertSame(2, $result['removed']);
         $this->assertSame(1, $result['automatic_finance']);
-        $this->assertSame('ownership_mismatch', $reclaim->fresh()->failure_code);
-        $this->assertSame('ownership_mismatch', $excavate->fresh()->failure_code);
+        $this->assertSame('foreign_owned', $reclaim->fresh()->failure_code);
+        $this->assertSame('foreign_owned', $excavate->fresh()->failure_code);
         $this->assertSame($moneyBefore + 10, $nation->fresh()->money);
         $this->assertSame($rival->id, $target->fresh()->owner_nation_id);
         $this->assertSame('shallow', $target->fresh()->terrain()->value('key'));
@@ -326,7 +326,7 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame([true, true], array_column(array_slice($events, 1), 'adjacent_effect'));
     }
 
-    public function test_reclaim_neighbor_spread_preserves_owned_water_and_seabed_oil_fields(): void
+    public function test_reclaim_rejects_water_adjacent_to_foreign_territory_without_mutating_neighbors(): void
     {
         $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
@@ -351,20 +351,22 @@ class DomesticCommandExecutionTest extends TestCase
                 'version',
             ])],
         );
-        $this->queue($user, $nation, $space, 'reclaim', $target);
+        $item = $this->queue($user, $nation, $space, 'reclaim', $target);
         $context = $this->context($world, [$nation->id], str_repeat('a', 64));
 
         app(DomesticCommandExecutor::class)->execute($context);
 
-        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        $this->assertSame('failed', $item->fresh()->status);
+        $this->assertSame('foreign_adjacent_water', $item->fresh()->failure_code);
+        $this->assertSame('shallow', $target->fresh()->terrain()->value('key'));
         foreach ($protected as $cellId => $state) {
             $this->assertSame($state, MapCell::query()->findOrFail($cellId)->only(array_keys($state)));
         }
         $this->assertSame(
-            [$target->id],
+            [],
             DB::table('audit_events')->where('event_type', 'terrain.changed')->pluck('subject_id')->all(),
         );
-        $this->assertSame([$target->map_chunk_id], $context->state->changedMapChunkIds());
+        $this->assertSame([], $context->state->changedMapChunkIds());
     }
 
     public function test_reclaim_at_world_corner_ignores_out_of_bounds_neighbors(): void
@@ -501,7 +503,7 @@ class DomesticCommandExecutionTest extends TestCase
         $insufficient = $this->queue($user, $nation, $space, 'excavate', $target, 99);
         app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $failureSeed));
         $this->assertSame('failed', $insufficient->fresh()->status);
-        $this->assertSame('insufficient_money', $insufficient->fresh()->failure_code);
+        $this->assertSame('insufficient_funds', $insufficient->fresh()->failure_code);
         $this->assertSame(209, $nation->fresh()->money);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.seabed_oil_search')->count());
     }
@@ -581,7 +583,7 @@ class DomesticCommandExecutionTest extends TestCase
         $insufficientItem = $this->queue($user, $nation, $space, 'land_clear', $target);
         Nation::query()->whereKey($nation->id)->update(['money' => 0]);
         $executor->execute($this->context($world, [$nation->id], $successSeed, $fixedMinimumRuleset));
-        $this->assertSame('insufficient_money', $insufficientItem->fresh()->failure_code);
+        $this->assertSame('insufficient_funds', $insufficientItem->fresh()->failure_code);
         $this->assertSame(10, $nation->fresh()->money);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.buried_treasure')
             ->where('subject_id', $insufficientItem->id)->count());
@@ -591,7 +593,7 @@ class DomesticCommandExecutionTest extends TestCase
         $ownershipItem = $this->queue($user, $nation, $space, 'land_clear', $target);
         MapCell::query()->whereKey($target->id)->update(['owner_nation_id' => null]);
         $executor->execute($this->context($world, [$nation->id], $successSeed, $fixedMinimumRuleset));
-        $this->assertSame('ownership_mismatch', $ownershipItem->fresh()->failure_code);
+        $this->assertSame('not_owned', $ownershipItem->fresh()->failure_code);
         $this->assertSame('forest', $target->fresh()->terrain()->value('key'));
         $this->assertSame(110, $nation->fresh()->money);
         MapCell::query()->whereKey($target->id)->update(['owner_nation_id' => $nation->id]);
@@ -604,7 +606,7 @@ class DomesticCommandExecutionTest extends TestCase
         $definition->update(['required_resources' => ['minerals' => 1]]);
         $resourceItem = $this->queue($user, $nation, $space, 'land_clear', $target);
         $executor->execute($this->context($world, [$nation->id], $successSeed, $fixedMinimumRuleset));
-        $this->assertSame('insufficient_resources', $resourceItem->fresh()->failure_code);
+        $this->assertSame('insufficient_resource', $resourceItem->fresh()->failure_code);
         $this->assertSame('forest', $target->fresh()->terrain()->value('key'));
         $this->assertSame(110, $nation->fresh()->money);
         $definition->update(['required_resources' => []]);

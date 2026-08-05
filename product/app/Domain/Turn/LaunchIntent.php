@@ -16,6 +16,8 @@ final class LaunchIntent
 
     public readonly int $requestedShots;
 
+    public readonly ?int $queueItemId;
+
     private int $remainingShots;
 
     public function __construct(
@@ -24,6 +26,7 @@ final class LaunchIntent
         mixed $targetX,
         mixed $targetY,
         mixed $requestedShots,
+        mixed $queueItemId = null,
     ) {
         if (! is_int($nationId) || $nationId < 1) {
             throw new InvalidArgumentException('Launch intent Nation ID must be a positive integer.');
@@ -37,12 +40,16 @@ final class LaunchIntent
         if (! is_int($requestedShots) || $requestedShots < 0) {
             throw new InvalidArgumentException('Launch intent requested shots must be a non-negative integer.');
         }
+        if ($queueItemId !== null && (! is_int($queueItemId) || $queueItemId < 1)) {
+            throw new InvalidArgumentException('Launch intent queue item ID must be null or a positive integer.');
+        }
 
         $this->nationId = $nationId;
         $this->definitionKey = $definitionKey;
         $this->targetX = $targetX;
         $this->targetY = $targetY;
         $this->requestedShots = $requestedShots;
+        $this->queueItemId = $queueItemId;
         $this->remainingShots = $requestedShots;
     }
 

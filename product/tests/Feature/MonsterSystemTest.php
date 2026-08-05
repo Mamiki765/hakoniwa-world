@@ -349,8 +349,7 @@ class MonsterSystemTest extends TestCase
         )->integer(0, 5);
         $defenseCoordinate = (new GridCoordinate($origin->x, $origin->y))->neighbor($direction);
         $defense = $this->cellAt($space, $defenseCoordinate->x, $defenseCoordinate->y);
-        $facility = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
-        $facility->update(['key' => 'defense']);
+        $this->assertTrue(FacilityDefinition::query()->where('key', 'defense')->exists());
         $this->setCell($defense, 'plain', 'defense', $nation->id, 0);
         $victimCoordinate = collect($defenseCoordinate->ring(2))->first();
         $this->assertInstanceOf(GridCoordinate::class, $victimCoordinate);
