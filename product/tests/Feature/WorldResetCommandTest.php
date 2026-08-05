@@ -55,6 +55,7 @@ class WorldResetCommandTest extends TestCase
 
     public function test_reset_isolated_world_preserves_users_identities_and_other_worlds(): void
     {
+        $this->assertTrue($this->app->environment('testing'));
         [$world, $user] = $this->populatedWorld(WorldGenerationProfile::Production);
         $otherWorld = World::query()->create([
             'key' => 'other-world',
@@ -281,26 +282,57 @@ class WorldResetCommandTest extends TestCase
         $this->assertSame(1, $nation->nation_number);
     }
 
-    public function test_debug_profile_is_rejected_outside_local_and_testing_without_mutation(): void
+    public function test_production_reset_is_rejected_with_default_profile_and_correct_confirmation_without_mutation(): void
     {
-        [$world] = $this->populatedWorld();
-        $worldId = $world->id;
-        $cellCount = MapCell::query()->count();
+        [$world] = $this->populatedWorld(WorldGenerationProfile::Production);
+        $this->createTurnRun($world, 2);
+        $before = $this->gameplaySnapshot();
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
         $this->app['env'] = 'production';
 
         try {
             $this->artisan('hakoniwa:world:reset', [
                 '--world' => $world->key,
-                '--profile' => 'debug-32x32',
+                '--profile' => 'default',
                 '--confirm' => 'RESET-'.$world->key,
-            ])->expectsOutputToContain('restricted to local and testing environments')
+            ])->expectsOutputToContain('World reset is disabled in production')
                 ->assertFailed();
         } finally {
             $this->app['env'] = 'testing';
         }
 
-        $this->assertSame($worldId, World::query()->where('key', $world->key)->value('id'));
-        $this->assertSame($cellCount, MapCell::query()->count());
+        $this->assertSame([], $queries);
+        $this->assertSame($before, $this->gameplaySnapshot());
+    }
+
+    public function test_production_reset_rejects_bypass_arguments_and_dry_run_without_mutation(): void
+    {
+        [$world] = $this->populatedWorld();
+        $this->createTurnRun($world, 2);
+        $before = $this->gameplaySnapshot();
+        $this->app['env'] = 'production';
+
+        try {
+            $this->artisan('hakoniwa:world:reset', [
+                '--world' => 'not-the-configured-world',
+                '--profile' => 'debug-32x32',
+                '--confirm' => 'RESET-not-the-configured-world',
+            ])->expectsOutputToContain('World reset is disabled in production')
+                ->assertFailed();
+            $this->artisan('hakoniwa:world:reset', [
+                '--world' => $world->key,
+                '--profile' => 'default',
+                '--dry-run' => true,
+            ])->expectsOutputToContain('World reset is disabled in production')
+                ->assertFailed();
+        } finally {
+            $this->app['env'] = 'testing';
+        }
+
+        $this->assertSame($before, $this->gameplaySnapshot());
     }
 
     /** @return array{World, User} */
@@ -352,5 +384,28 @@ class WorldResetCommandTest extends TestCase
             'completed_at' => now(),
             'failure_context' => [],
         ]);
+    }
+
+    /** @return array<string, list<array<string, mixed>>> */
+    private function gameplaySnapshot(): array
+    {
+        $snapshot = [];
+        foreach ([
+            'worlds',
+            'nations',
+            'map_cells',
+            'nation_command_queues',
+            'nation_command_queue_items',
+            'turn_runs',
+            'audit_events',
+        ] as $table) {
+            $snapshot[$table] = DB::table($table)
+                ->orderBy('id')
+                ->get()
+                ->map(static fn (object $row): array => (array) $row)
+                ->all();
+        }
+
+        return $snapshot;
     }
 }

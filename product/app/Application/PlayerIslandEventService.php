@@ -335,7 +335,7 @@ final class PlayerIslandEventService
             return [
                 'id' => (int) $row->id,
                 'type' => (string) $row->event_type,
-                'message' => $this->message((string) $row->event_type, $metadata, $targetTurn, 0),
+                'message' => $this->publicNewsMessage((string) $row->event_type, $metadata, $targetTurn),
                 'importance' => $this->importance((string) $row->event_type),
                 'target_turn' => $targetTurn,
                 'occurred_at' => (string) $row->occurred_at,
@@ -361,6 +361,18 @@ final class PlayerIslandEventService
             'has_newer_page' => $page > 1,
             'has_older_page' => $rangeStart > 1,
         ];
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function publicNewsMessage(string $eventType, array $metadata, int $targetTurn): string
+    {
+        return match ($eventType) {
+            'monster.reward_distributed' => sprintf(
+                '%sが倒され、撃破報酬が配分されました。',
+                $this->monsterLabel($metadata['monster_key'] ?? null),
+            ),
+            default => $this->message($eventType, $metadata, $targetTurn, 0),
+        };
     }
 
     /**

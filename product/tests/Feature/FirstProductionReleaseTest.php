@@ -102,6 +102,7 @@ final class FirstProductionReleaseTest extends TestCase
 
     public function test_manual_and_player_facing_policy_are_available(): void
     {
+        $this->withoutVite();
         config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
 
         $this->get('/manual')->assertOk()->assertSee('箱庭諸島２S＋マニュアル');

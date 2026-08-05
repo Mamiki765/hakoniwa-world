@@ -94,6 +94,7 @@ class AuthIdentityTest extends TestCase
 
     public function test_provider_failure_shows_temporary_outage_and_retry_guidance(): void
     {
+        $this->withoutVite();
         config([
             'services.discord.client_id' => 'public-client-id',
             'services.discord.client_secret' => 'test-only-secret',

@@ -8,6 +8,7 @@ use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\User;
+use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
@@ -187,6 +188,16 @@ class PublicLobbyApiTest extends TestCase
         }
     }
 
+    public function test_public_monster_reward_news_is_third_party_safe_when_killer_and_host_differ(): void
+    {
+        $this->assertPublicMonsterRewardNews(987_654_321, 876_543_210);
+    }
+
+    public function test_public_monster_reward_news_is_third_party_safe_when_killer_and_host_are_same(): void
+    {
+        $this->assertPublicMonsterRewardNews(987_654_321, 987_654_321);
+    }
+
     public function test_guest_nation_preview_uses_viewer_safe_cells_and_never_leaks_exact_money(): void
     {
         $world = $this->lightweightWorld();
@@ -327,5 +338,65 @@ class PublicLobbyApiTest extends TestCase
         $this->assertIsArray($cell);
 
         return $cell;
+    }
+
+    private function assertPublicMonsterRewardNews(int $killerNationId, int $hostNationId): void
+    {
+        $world = $this->lightweightWorld();
+        DB::table('audit_events')->insert([
+            'actor_user_id' => null,
+            'world_id' => $world->id,
+            'turn' => 1,
+            'nation_id' => null,
+            'x' => 123_456_789,
+            'y' => 223_456_789,
+            'message' => null,
+            'visibility' => 'public',
+            'event_type' => 'monster.reward_distributed',
+            'severity' => 'info',
+            'subject_type' => $world->getMorphClass(),
+            'subject_id' => $world->id,
+            'metadata' => json_encode([
+                'target_turn' => 1,
+                'monster_key' => 'inora',
+                'killer_nation_id' => $killerNationId,
+                'host_nation_id' => $hostNationId,
+                'target_x' => 323_456_789,
+                'target_y' => 423_456_789,
+                'killer_money' => ['applied' => 200],
+                'host_meat_food' => ['applied' => 100_000],
+                'private_marker' => 'monster-reward-internal-only',
+            ], JSON_THROW_ON_ERROR),
+            'occurred_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.groups.0.events')
+            ->assertJsonPath('data.groups.0.events.0.type', 'monster.reward_distributed')
+            ->assertJsonPath(
+                'data.groups.0.events.0.message',
+                'いのらが倒され、撃破報酬が配分されました。',
+            );
+
+        foreach ([
+            '受け取りました',
+            (string) $killerNationId,
+            (string) $hostNationId,
+            '123456789',
+            '223456789',
+            '323456789',
+            '423456789',
+            'killer_nation_id',
+            'host_nation_id',
+            'target_x',
+            'target_y',
+            'metadata',
+            'monster-reward-internal-only',
+        ] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $response->getContent());
+        }
     }
 }
