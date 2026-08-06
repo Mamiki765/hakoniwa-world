@@ -715,7 +715,7 @@ final class DomesticCommandExecutor
         if (! is_int($moneyPerUnit) || $moneyPerUnit < 0) {
             throw new DomainException('Logging income settings are invalid.');
         }
-        $requested = $treeUnits * $moneyPerUnit;
+        $requested = intdiv($treeUnits, 100) * $moneyPerUnit;
         $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
         $income = $this->addition->calculate((int) $nation->money, $requested, $capacity);
         if ($income->applied > 0) {
