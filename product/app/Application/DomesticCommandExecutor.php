@@ -1248,9 +1248,11 @@ final class DomesticCommandExecutor
         if ($items->isEmpty()) {
             return;
         }
-        NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())->increment('queue_position', 1000);
+        NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())
+            ->update(['queue_position' => null]);
         foreach ($items as $index => $queuedItem) {
-            $queuedItem->update(['queue_position' => $index + 1]);
+            NationCommandQueueItem::query()->whereKey($queuedItem->id)
+                ->update(['queue_position' => $index + 1]);
         }
     }
 

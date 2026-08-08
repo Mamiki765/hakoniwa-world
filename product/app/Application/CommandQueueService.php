@@ -102,11 +102,23 @@ final class CommandQueueService
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
                 ->orderBy('queue_position')
+                ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
             $limit = $this->queueLimit($world);
             if ($activeItems->count() >= $limit) {
                 throw new DomainException("command queueの上限{$limit}件に達しています。");
+            }
+            if ($activeItems->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position === null || $item->queue_position < 1 || $item->queue_position > $limit
+            )) {
+                $this->compact($queue);
+                $activeItems = NationCommandQueueItem::query()
+                    ->where('nation_command_queue_id', $queue->id)
+                    ->where('status', 'queued')
+                    ->orderBy('queue_position')
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
             }
             $position ??= $this->firstAutomaticPosition($activeItems->pluck('queue_position')->all(), $limit);
             if ($position < 1 || $position > $limit) {
@@ -125,7 +137,8 @@ final class CommandQueueService
                 $shifted->push($byPosition->get($shiftPosition));
             }
             if ($shifted->isNotEmpty()) {
-                NationCommandQueueItem::query()->whereIn('id', $shifted->modelKeys())->increment('queue_position', 1000);
+                NationCommandQueueItem::query()->whereIn('id', $shifted->modelKeys())
+                    ->update(['queue_position' => null]);
                 foreach ($shifted->sortByDesc('queue_position') as $shiftedItem) {
                     NationCommandQueueItem::query()->whereKey($shiftedItem->id)
                         ->update(['queue_position' => (int) $shiftedItem->queue_position + 1]);
@@ -194,7 +207,8 @@ final class CommandQueueService
             }
 
             if ($currentIds !== []) {
-                NationCommandQueueItem::query()->whereIn('id', $currentIds)->increment('queue_position', 1000);
+                NationCommandQueueItem::query()->whereIn('id', $currentIds)
+                    ->update(['queue_position' => null]);
                 foreach ($placements as $placement) {
                     NationCommandQueueItem::query()->whereKey($placement['id'])
                         ->update(['queue_position' => $placement['position']]);
@@ -262,7 +276,8 @@ final class CommandQueueService
                 throw new DomainException('reorder対象が現在のqueueと一致しません。');
             }
 
-            NationCommandQueueItem::query()->whereIn('id', $orderedIds)->increment('queue_position', 1000);
+            NationCommandQueueItem::query()->whereIn('id', $orderedIds)
+                ->update(['queue_position' => null]);
             foreach ($orderedIds as $index => $id) {
                 NationCommandQueueItem::query()->whereKey($id)->update(['queue_position' => $index + 1]);
             }
@@ -506,14 +521,18 @@ final class CommandQueueService
             ->where('nation_command_queue_id', $queue->id)
             ->where('status', 'queued')
             ->orderBy('queue_position')
+            ->orderBy('id')
+            ->lockForUpdate()
             ->get();
         if ($items->isEmpty()) {
             return;
         }
 
-        NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())->increment('queue_position', 1000);
+        NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())
+            ->update(['queue_position' => null]);
         foreach ($items as $index => $item) {
-            $item->update(['queue_position' => $index + 1]);
+            NationCommandQueueItem::query()->whereKey($item->id)
+                ->update(['queue_position' => $index + 1]);
         }
     }
 

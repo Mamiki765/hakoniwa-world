@@ -39,8 +39,9 @@ a { color: var(--navy); }
     top: 0;
     z-index: 50;
 }
-.brand { font-weight: 950; text-decoration: none; letter-spacing: .12em; white-space: nowrap; }
+.brand { display: inline-flex; align-items: baseline; gap: 5px; font-weight: 950; text-decoration: none; letter-spacing: .12em; white-space: nowrap; }
 .brand span { color: var(--coral); }
+.app-version { color: var(--muted); font-size: .62rem; font-weight: 750; letter-spacing: .04em; }
 .site-header nav, .session-actions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .site-header nav button, .session-actions button, .session-actions a {
     border: 0;

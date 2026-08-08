@@ -67,6 +67,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開コメント');
         expect(wrapper.text()).toContain('公開できる出来事はまだありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.0.2');
     });
 
     it('registers the island profile explicitly and shows field-level validation', async () => {
