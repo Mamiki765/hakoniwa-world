@@ -20,7 +20,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.0.2';
+const applicationVersion = '1.1.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
