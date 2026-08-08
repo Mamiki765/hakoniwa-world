@@ -37,7 +37,11 @@ function publicResponse(path: string): Response | null {
         { id: 1, title: 'ver 1.0.1のお知らせ', body: 'resource fix', created_at: '2026-08-01T03:00:00+09:00', updated_at: '2026-08-01T03:00:00+09:00' },
     ]);
     if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '箱庭諸島２S＋', turn: 1 }]);
-    if (path.endsWith('/summary')) return response({ id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 1, nation_count: 1, total_population: 1000, contact_url: null });
+    if (path.endsWith('/summary')) return response({
+        id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 1, nation_count: 1, total_population: 1000, contact_url: null,
+        turn_status: 'normal', last_successful_turn_at: '2026-08-09T13:00:00Z',
+        next_scheduled_turn_at: '2099-08-09T15:00:00Z', turn_schedule_timezone: 'Asia/Tokyo',
+    });
     if (path.endsWith('/rankings')) return response([{
         rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
         owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500',
@@ -63,7 +67,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         expect(wrapper.text()).toContain('HAKONIWA ISLANDS');
-        expect(wrapper.text()).toContain('現在ターン');
+        expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
@@ -74,6 +78,26 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.app-version').text()).toBe('ver 1.0.2');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
+        expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
+        expect(wrapper.find('.turn-status-card').text()).toContain('次回更新まで');
+        expect(wrapper.find('.turn-countdown').exists()).toBe(true);
+    });
+
+    it('suppresses the normal countdown for a failed turn', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) return response({
+                id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 7, nation_count: 1, total_population: 1000, contact_url: null,
+                turn_status: 'failed', last_successful_turn_at: '2026-08-09T13:00:00Z',
+                next_scheduled_turn_at: '2026-08-09T15:00:00Z', turn_schedule_timezone: 'Asia/Tokyo',
+            });
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        expect(wrapper.find('.turn-status-card').text()).toContain('ターン更新が停止しています。');
+        expect(wrapper.find('.turn-countdown').exists()).toBe(false);
     });
 
     it('shows paged plain-text announcements and never renders article HTML', async () => {

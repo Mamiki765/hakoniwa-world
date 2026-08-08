@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ApiError, api } from './api/client';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
@@ -49,10 +49,23 @@ const profileErrors = ref<Record<string, string>>({});
 const foodDetailOpen = ref(false);
 const busy = ref(true);
 const message = ref('');
+const clockNow = ref(Date.now());
+let clockTimer: ReturnType<typeof setInterval> | null = null;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
 const nonFoodResources = computed(() => nation.value?.resources.filter((resource) => resource.category !== 'food') ?? []);
+const nextTurnCountdown = computed(() => {
+    if (worldSummary.value?.turn_status !== 'normal') return null;
+    const remaining = Math.max(0, new Date(worldSummary.value.next_scheduled_turn_at).getTime() - clockNow.value);
+    const totalSeconds = Math.floor(remaining / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
+});
+const turnStatusMessage = computed(() => matchTurnStatus(worldSummary.value?.turn_status));
 
 function formatResource(amount: number, unitLabel: string | null): string {
     return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
@@ -66,7 +79,28 @@ function formatAnnouncementDate(value: string): string {
     }).format(new Date(value));
 }
 
+function formatTurnTimestamp(value: string | null): string {
+    if (value === null) return '未実施';
+
+    return new Intl.DateTimeFormat('ja-JP', {
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Tokyo',
+    }).format(new Date(value));
+}
+
+function matchTurnStatus(status: PublicWorldSummary['turn_status'] | undefined): string {
+    if (status === 'failed' || status === 'blocked') return 'ターン更新が停止しています。';
+    if (status === 'delayed') return 'ターン更新が遅延しています。';
+
+    return '';
+}
+
 onMounted(async () => {
+    clockTimer = setInterval(() => { clockNow.value = Date.now(); }, 1000);
     await loadPublicLobby();
     try {
         user.value = await api<CurrentUser>('/api/v1/me');
@@ -78,6 +112,10 @@ onMounted(async () => {
     } finally {
         busy.value = false;
     }
+});
+
+onUnmounted(() => {
+    if (clockTimer !== null) clearInterval(clockTimer);
 });
 
 async function loadPublicLobby(): Promise<void> {
@@ -349,10 +387,23 @@ async function updateProfile(): Promise<void> {
             </div>
 
             <dl class="world-stats">
-                <div><dt>現在ターン</dt><dd>{{ worldSummary?.current_turn ?? 1 }}</dd></div>
+                <div><dt>ターン更新（2時間ごと）</dt><dd>{{ worldSummary?.current_turn ?? 1 }}</dd></div>
                 <div><dt>島数</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
                 <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
             </dl>
+
+            <section v-if="worldSummary" class="turn-status-card" :data-status="worldSummary.turn_status" aria-label="ターン更新状況">
+                <div>
+                    <span>最終ターン更新</span>
+                    <strong>{{ formatTurnTimestamp(worldSummary.last_successful_turn_at) }}</strong>
+                </div>
+                <div v-if="worldSummary.turn_status === 'normal'">
+                    <span>次回更新まで</span>
+                    <strong class="turn-countdown">{{ nextTurnCountdown }}</strong>
+                    <time :datetime="worldSummary.next_scheduled_turn_at">予定 {{ formatTurnTimestamp(worldSummary.next_scheduled_turn_at) }}</time>
+                </div>
+                <p v-else role="status">{{ turnStatusMessage }}</p>
+            </section>
 
             <section class="announcement-window" aria-labelledby="latest-announcements-heading">
                 <div class="section-heading">

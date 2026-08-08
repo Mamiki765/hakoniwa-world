@@ -102,6 +102,13 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .world-stats div:last-child { border-right: 0; }
 .world-stats dt { color: #b9d2d2; font-size: .74rem; font-weight: 800; }
 .world-stats dd { margin: 4px 0 0; font-size: clamp(1.35rem, 3vw, 2.3rem); font-weight: 900; }
+.turn-status-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); background: var(--line); }
+.turn-status-card > div { display: grid; gap: 4px; padding: 12px 18px; background: var(--paper); }
+.turn-status-card span, .turn-status-card time { color: var(--muted); font-size: .74rem; }
+.turn-status-card strong { color: var(--navy); font-size: 1rem; }
+.turn-status-card .turn-countdown { font-variant-numeric: tabular-nums; font-size: 1.25rem; }
+.turn-status-card > p { grid-column: 1 / -1; margin: 0; padding: 14px 18px; color: #75271f; background: #ffe8df; font-weight: 850; }
+.turn-status-card[data-status="delayed"] > p { color: #674600; background: #fff2c8; }
 .lobby-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, .8fr); gap: 18px; }
 .announcement-window { padding: 16px 20px; border: 1px solid var(--line); background: rgba(255, 253, 244, .82); }
 .announcement-window .section-heading button, .announcement-actions button, .announcement-pager button {
@@ -432,6 +439,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .compact-login { min-width: 0; }
     .world-stats div { padding: 12px 10px; }
     .world-stats dd { font-size: 1.2rem; }
+    .turn-status-card { grid-template-columns: 1fr; }
     .lobby-grid { grid-template-columns: 1fr; }
     .announcement-list.compact { grid-template-columns: 1fr; gap: 0; }
     .announcement-list li { grid-template-columns: 1fr; gap: 4px; }

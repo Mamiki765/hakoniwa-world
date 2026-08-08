@@ -2,7 +2,7 @@
 
 ## Adopted deployment shape
 
-PR23 enables an OCI host cron as the production hourly trigger. It invokes the same Laravel Artisan command used by an operator. The shell wrapper contains no game rules, ruleset selection, transaction control, or retry loop.
+PR23 enables an OCI host cron as the production trigger. Version 1.1.0 fixes that trigger to every even hour in Asia/Tokyo (00:00, 02:00, ..., 22:00). It invokes the same Laravel Artisan command used by an operator. The shell wrapper contains no game rules, ruleset selection, transaction control, or retry loop.
 
 ```text
 OCI host cron
@@ -14,7 +14,7 @@ OCI host cron
   -> PostgreSQL advisory lock + turn transaction
 ```
 
-This is simpler than adding a cron daemon to `hakoniwa-web` or maintaining a dedicated scheduler container for one hourly World. A separate scheduler can be reconsidered when multiple Worlds or independent lifecycle jobs justify it. The database/application lock and unique turn-run key are authoritative; `flock` is only a cheap host-level filter.
+This is simpler than adding a cron daemon to `hakoniwa-web` or maintaining a dedicated scheduler container for one World. A separate scheduler can be reconsidered when multiple Worlds or independent lifecycle jobs justify it. The database/application lock and unique turn-run key are authoritative; `flock` is only a cheap host-level filter.
 
 The repository supplies the reviewed wrapper and registration example. The operator installs the cron entry on the actual production host after the pre-registration checks below; credentials remain in the existing Compose environment and are not copied into cron.
 
@@ -30,16 +30,18 @@ HAKONIWA_WORLD_KEY=shared-world \
 
 It runs the command as `www-data`, without allocating a TTY. It inherits the service's existing environment and therefore does not copy credentials into a cron file.
 
-## Hourly Asia/Tokyo example
+## Even-hour Asia/Tokyo example
 
 Confirm the host cron implementation supports `CRON_TZ` before using this example:
 
 ```cron
 CRON_TZ=Asia/Tokyo
-0 * * * * /usr/bin/flock -n /run/lock/hakoniwa-shared-world-turn.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world HAKONIWA_WORLD_KEY=shared-world /opt/hakoniwa-world/product/docker/cron/run-turn.sh >> /var/log/hakoniwa-turn.log 2>&1
+0 */2 * * * /usr/bin/flock -n /run/lock/hakoniwa-shared-world-turn.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world HAKONIWA_WORLD_KEY=shared-world /opt/hakoniwa-world/product/docker/cron/run-turn.sh >> /var/log/hakoniwa-turn.log 2>&1
 ```
 
-This produces 24 scheduled triggers per local day. The interval and timezone live in operations configuration, not game code. If the host does not support `CRON_TZ`, set the cron daemon timezone explicitly or translate the schedule to the host timezone and document it.
+This produces 12 scheduled triggers per local day. On a UTC cron host, the equivalent fixed schedule is `0 1-23/2 * * *`: JST 00:00 is the previous UTC date at 15:00, followed by 17:00, 19:00, 21:00, 23:00, 01:00, ..., 13:00 UTC. Prefer `CRON_TZ=Asia/Tokyo` so this date boundary remains explicit. Japan does not observe daylight-saving time.
+
+The public turn health contract uses the same `Asia/Tokyo` even-hour schedule and `HAKONIWA_TURN_SCHEDULE_GRACE_MINUTES` (default 15). Keep the cron entry, environment, and application config together when changing operations. The web process never reads the host crontab directly.
 
 The log destination is owned by the host operator. Laravel also emits command failures through its configured application log. Do not log environment dumps, database URLs, or credentials.
 
@@ -68,6 +70,8 @@ Before registering production cron:
   php artisan hakoniwa:turn:run \
     --world=shared-world \
     --source=manual
+  ```
+
 - Before every deploy, run `hakoniwa:release:preflight`. A pending, running, or failed next production TurnRun blocks deploy and must be explicitly resolved. Never carry an automatic retry across a release.
 
 If a command is interrupted after the database connection closes, the session advisory lock is released by PostgreSQL; the run record may still require operator diagnosis. Stale-run recovery, retry backoff and limits, and external notification are post-release work, not shell logic.

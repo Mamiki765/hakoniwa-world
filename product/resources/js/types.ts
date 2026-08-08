@@ -62,6 +62,10 @@ export interface PublicWorldSummary {
     nation_count: number;
     total_population: number;
     contact_url: string | null;
+    turn_status: 'normal' | 'failed' | 'blocked' | 'delayed';
+    last_successful_turn_at: string | null;
+    next_scheduled_turn_at: string;
+    turn_schedule_timezone: 'Asia/Tokyo';
 }
 
 export interface PublicNationSummary {

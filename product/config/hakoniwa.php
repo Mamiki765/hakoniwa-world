@@ -44,4 +44,9 @@ return [
     'admin' => [
         'discord_user_id' => env('HAKONIWA_ADMIN_DISCORD_USER_ID'),
     ],
+    'turn_schedule' => [
+        'timezone' => 'Asia/Tokyo',
+        'interval_hours' => 2,
+        'grace_minutes' => (int) env('HAKONIWA_TURN_SCHEDULE_GRACE_MINUTES', 15),
+    ],
 ];
