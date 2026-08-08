@@ -7,7 +7,16 @@ export interface UserIdentity {
 export interface CurrentUser {
     id: number;
     display_name: string;
+    can_manage_announcements: boolean;
     providers: UserIdentity[];
+}
+
+export interface Announcement {
+    id: number;
+    title: string;
+    body: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface World { id: number; key: string; name: string; turn: number }
