@@ -58,25 +58,40 @@ Expected pre-hotfix result for the known incident:
 If any other A-class mismatch appears, stop. Do not broaden this hotfix or repair
 rows manually.
 
-## Apply the forward-only repair
+## Repair on production 1.1.0 before release deployment
 
-1. Leave the failed Turn 40 row unchanged and keep automatic cron execution off.
-2. Record the failed row ID, ruleset ID, seed, status, and attempt count, and take
-   the normal production database backup.
-3. Deploy the reviewed 1.1.1 image.
-4. Run `php artisan migrate --force`. The repair obtains the shared World advisory
-   transaction lock and requires that the World already use v2.
+Do not deploy 1.1.1 while the next non-dry TurnRun is failed. The conversion SQL
+is deliberately independent of Laravel 1.1.1 code so an operator can review and
+run it against the existing production 1.1.0 database without crossing the
+release preflight boundary.
+
+1. Leave the failed Turn 40 row unchanged and keep automatic cron execution and
+   player writes off.
+2. Record the failed row ID, target turn, ruleset ID, random seed, status, and
+   attempt count, and take the normal production database backup.
+3. From an isolated checkout of the reviewed hotfix commit (not the deployed
+   application checkout), run the read-only audit shown above. Stop if anything
+   beyond the two known monster mismatches appears.
+4. Review the exact conversion file, then execute it directly with `psql` against
+   the production database used by the still-running 1.1.0 application:
+
+   ```console
+   psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --single-transaction \
+     --file product/database/operations/repair_hakoniwa_2s_plus_v2_live_monster_references.sql
+   ```
+
 5. Run `docs/operations/ruleset-live-reference-audit.sql` again. Every A-class
-   mismatch count must be `0`.
-6. Confirm the World still uses v2 and remains at turn 39. Confirm the failed Turn
-   40 row still has its original ID, ruleset ID, seed, status, and attempt count.
-
-`hakoniwa:release:preflight` must continue to report the failed Turn 40 before
-this repair; do not alter the run to make that gate green. This is the narrowly
-authorized emergency migration for that already-diagnosed failed run, not a
-general preflight bypass. Keep player writes and cron stopped for the maintenance
-window, apply only the reviewed migration, and proceed to the explicit retry
-below after all post-migration checks pass.
+   mismatch count must be `0`. Confirm the World remains on v2 at turn 39 and the
+   failed Turn 40 row still has the recorded ID, target turn, ruleset ID, random
+   seed, status, and attempt count.
+6. Retry Turn 40 manually as described below and verify the same run completes
+   with the same ruleset and random seed.
+7. Run `php artisan hakoniwa:release:preflight` from production 1.1.0. It must be
+   green before any 1.1.1 deploy starts.
+8. Only after that green result, deploy the reviewed 1.1.1 image and run
+   `php artisan migrate --force`. The release migration executes the exact same
+   conversion SQL, so production already repaired by the operator path is an
+   idempotent no-op plus consistency assertion.
 
 The migration maps the complete v1/v2 monster catalogs by unique monster key and
 updates only `monster_definition_id`, including alive, killed, and removed
@@ -92,7 +107,8 @@ invoking the migration logic again is also idempotent after all rows point to v2
 
 ## Manually retry failed Turn 40
 
-After the post-migration audit is clean, retry once as an operator:
+After the operator repair and post-repair audit are clean, retry once from the
+still-deployed production 1.1.0 application:
 
 ```console
 php artisan hakoniwa:turn:run \
@@ -103,5 +119,6 @@ php artisan hakoniwa:turn:run \
 The runner must reuse the existing failed Turn 40 row, its v2 ruleset snapshot,
 and its saved seed, incrementing only the attempt count. Verify that the command
 returns success, the same TurnRun becomes `completed`, `current_turn` becomes 40,
-and the next status reports target turn 41. Resume cron only after those checks
-pass. Do not delete, edit, recreate, or automatically retry the failed row.
+and the next status reports target turn 41. Keep cron stopped, run release
+preflight, deploy 1.1.1, and verify the migration no-op before resuming cron. Do
+not delete, edit, recreate, or automatically retry the failed row.

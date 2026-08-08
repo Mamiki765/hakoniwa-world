@@ -102,7 +102,7 @@ final class RulesetV2LiveMonsterReferenceRepairTest extends TestCase
         ]);
         $failedRunSnapshot = collect($failedRun->fresh()->getAttributes())->sortKeys()->all();
 
-        $this->repairMigration()->up();
+        $this->operatorRepair();
 
         $v2Definition = $this->definition($v2, 'inora');
         foreach ($instances as $instance) {
@@ -223,9 +223,7 @@ final class RulesetV2LiveMonsterReferenceRepairTest extends TestCase
         ]);
 
         $this->v2Migration()->up();
-        $this->repairMigration()->up();
         $world->refresh();
-        $this->assertLiveRulesetReferenceConsistency($world);
 
         $base = MapCell::query()->where('owner_nation_id', $firingNation->id)
             ->whereNull('facility_definition_id')
@@ -265,6 +263,15 @@ final class RulesetV2LiveMonsterReferenceRepairTest extends TestCase
             'failure_message' => 'pre-hotfix production failure',
             'failure_context' => ['phase' => 'process_cells'],
         ]);
+        $failedRunSnapshot = collect($failedRun->fresh()->getAttributes())->sortKeys()->all();
+
+        $this->artisan('hakoniwa:release:preflight')->assertFailed();
+        $this->operatorRepair();
+        $this->assertLiveRulesetReferenceConsistency($world->fresh());
+        $this->assertSame(
+            $failedRunSnapshot,
+            collect($failedRun->fresh()->getAttributes())->sortKeys()->all(),
+        );
 
         $run = (new TurnRunner(
             app(TurnPipeline::class),
@@ -284,6 +291,19 @@ final class RulesetV2LiveMonsterReferenceRepairTest extends TestCase
             ->where('nation_id', $firingNation->id)->firstOrFail();
         $this->assertSame(1, $stat->kill_count);
         $this->assertSame('hakoniwa-2s-plus-v2', $stat->definition()->firstOrFail()->rulesetVersion()->value('key'));
+
+        $this->artisan('hakoniwa:release:preflight')->assertSuccessful();
+        $postRetrySnapshot = [
+            'world' => $world->fresh()->getAttributes(),
+            'monster' => $monster->fresh()->getAttributes(),
+            'stat' => $stat->fresh()->getAttributes(),
+            'turn_run' => $run->fresh()->getAttributes(),
+        ];
+        $this->repairMigration()->up();
+        $this->assertSame($postRetrySnapshot['world'], $world->fresh()->getAttributes());
+        $this->assertSame($postRetrySnapshot['monster'], $monster->fresh()->getAttributes());
+        $this->assertSame($postRetrySnapshot['stat'], $stat->fresh()->getAttributes());
+        $this->assertSame($postRetrySnapshot['turn_run'], $run->fresh()->getAttributes());
     }
 
     /** @return array{World, MonsterInstance, NationMonsterKillStat, MonsterDefinition} */
@@ -463,6 +483,15 @@ SQL, [
     private function repairMigration(): object
     {
         return require database_path('migrations/2026_08_09_020000_repair_hakoniwa_2s_plus_v2_live_monster_references.php');
+    }
+
+    private function operatorRepair(): void
+    {
+        $path = database_path('operations/repair_hakoniwa_2s_plus_v2_live_monster_references.sql');
+        $sql = file_get_contents($path);
+        $this->assertNotFalse($sql);
+
+        DB::transaction(static fn () => DB::unprepared($sql));
     }
 }
 
