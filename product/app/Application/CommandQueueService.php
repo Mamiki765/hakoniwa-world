@@ -26,6 +26,8 @@ use Illuminate\Support\Facades\DB;
 
 final class CommandQueueService
 {
+    private const LEGACY_QUEUE_POSITION_OFFSET = 1000;
+
     public function __construct(
         private readonly CommandParametersValidator $parameters,
         private readonly CurrentRulesetGuard $rulesetGuard,
@@ -528,12 +530,48 @@ final class CommandQueueService
             return;
         }
 
+        $items = $this->recoverLegacyStagedOrder($items);
+
         NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())
             ->update(['queue_position' => null]);
         foreach ($items as $index => $item) {
             NationCommandQueueItem::query()->whereKey($item->id)
                 ->update(['queue_position' => $index + 1]);
         }
+    }
+
+    /**
+     * @param  Collection<int, NationCommandQueueItem>  $items
+     * @return Collection<int, NationCommandQueueItem>
+     */
+    private function recoverLegacyStagedOrder(Collection $items): Collection
+    {
+        $legacyStaged = $items->filter(
+            static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
+                && $item->queue_position > self::LEGACY_QUEUE_POSITION_OFFSET,
+        );
+        if ($legacyStaged->isEmpty()) {
+            return $items;
+        }
+
+        // The legacy compactor parked the unchanged prefix at its original
+        // position + 1000. Visible rows are the shifted suffix or plans added
+        // later, so recover the staged prefix before ordinary compaction.
+        $legacyStaged = $legacyStaged->sort(
+            static fn (NationCommandQueueItem $left, NationCommandQueueItem $right): int => [
+                (int) $left->queue_position - self::LEGACY_QUEUE_POSITION_OFFSET,
+                $left->id,
+            ] <=> [
+                (int) $right->queue_position - self::LEGACY_QUEUE_POSITION_OFFSET,
+                $right->id,
+            ],
+        );
+        $visible = $items->reject(
+            static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
+                && $item->queue_position > self::LEGACY_QUEUE_POSITION_OFFSET,
+        );
+
+        return $legacyStaged->values()->concat($visible->values())->values();
     }
 
     /** @param array<int, int|null> $occupied */

@@ -137,26 +137,31 @@ class DomesticCommandExecutionTest extends TestCase
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->createNation($world, 'ターン復旧国');
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
-        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+        $forest = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
             ->firstOrFail();
-        $first = $this->queue($user, $nation, $space, 'land_clear', $target, 1, 1);
-        $second = $this->queue($user, $nation, $space, 'land_clear', $target, 1, 2);
-        $third = $this->queue($user, $nation, $space, 'land_clear', $target, 1, 3);
-        $third->update(['queue_position' => 1002]);
+        $plain = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $first = $this->queue($user, $nation, $space, 'land_clear', $forest, 1, 1);
+        $second = $this->queue($user, $nation, $space, 'plant_forest', $plain, 1, 2);
+        $third = $this->queue($user, $nation, $space, 'build_farm', $plain, 1, 3);
+        $second->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
+        $first->update(['queue_position' => 1001]);
+        $third->update(['queue_position' => 2]);
 
         $seed = $this->seedWithFirstDraw(TurnRandomStreamFactory::LAND_CLEAR_BURIED_TREASURE, 1_000, 10);
         $result = app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
 
         $this->assertSame(1, $result['successes']);
         $this->assertSame('completed', $first->fresh()->status);
-        $this->assertSame('queued', $second->fresh()->status);
+        $this->assertSame('cancelled', $second->fresh()->status);
         $this->assertSame('queued', $third->fresh()->status);
-        $this->assertSame(
-            [1, 2],
-            NationCommandQueueItem::query()->where('nation_command_queue_id', $nation->commandQueue->id)
-                ->where('status', 'queued')->orderBy('queue_position')->pluck('queue_position')->all(),
-        );
+        $remaining = NationCommandQueueItem::query()->where('nation_command_queue_id', $nation->commandQueue->id)
+            ->where('status', 'queued')->with('definition')->orderBy('queue_position')->get();
+        $this->assertSame([$third->id], $remaining->pluck('id')->all());
+        $this->assertSame(['build_farm'], $remaining->pluck('definition.key')->all());
+        $this->assertSame([1], $remaining->pluck('queue_position')->all());
     }
 
     public function test_terrain_commands_cannot_remove_the_nation_capital(): void

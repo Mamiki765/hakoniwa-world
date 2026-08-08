@@ -22,9 +22,12 @@ use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\TerrainDefinition;
 use DomainException;
+use Illuminate\Database\Eloquent\Collection;
 
 final class DomesticCommandExecutor
 {
+    private const LEGACY_QUEUE_POSITION_OFFSET = 1000;
+
     /** @var list<string> */
     private const QUANTITY_COMMANDS = ['build_farm', 'build_factory', 'build_mine'];
 
@@ -74,6 +77,9 @@ final class DomesticCommandExecutor
                 ->where('nation_id', $nation->id)
                 ->lockForUpdate()
                 ->first();
+            if ($queue !== null) {
+                $this->recoverLegacyStagedQueue($queue);
+            }
             $consumedTurn = false;
             $queueMutated = false;
 
@@ -1238,22 +1244,81 @@ final class DomesticCommandExecutor
 
     private function compact(NationCommandQueue $queue): void
     {
-        $items = NationCommandQueueItem::query()
+        $items = $this->lockedQueuedItems($queue);
+        if ($items->isEmpty()) {
+            return;
+        }
+        $this->writeCompactedPositions($this->recoverLegacyStagedOrder($items));
+    }
+
+    private function recoverLegacyStagedQueue(NationCommandQueue $queue): void
+    {
+        $items = $this->lockedQueuedItems($queue);
+        if ($items->isEmpty()) {
+            return;
+        }
+        $recovered = $this->recoverLegacyStagedOrder($items);
+        if ($recovered === $items) {
+            return;
+        }
+        $this->writeCompactedPositions($recovered);
+    }
+
+    /** @return Collection<int, NationCommandQueueItem> */
+    private function lockedQueuedItems(NationCommandQueue $queue): Collection
+    {
+        return NationCommandQueueItem::query()
             ->where('nation_command_queue_id', $queue->id)
             ->where('status', 'queued')
             ->orderBy('queue_position')
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
-        if ($items->isEmpty()) {
-            return;
-        }
+    }
+
+    /** @param Collection<int, NationCommandQueueItem> $items */
+    private function writeCompactedPositions(Collection $items): void
+    {
         NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())
             ->update(['queue_position' => null]);
         foreach ($items as $index => $queuedItem) {
             NationCommandQueueItem::query()->whereKey($queuedItem->id)
                 ->update(['queue_position' => $index + 1]);
         }
+    }
+
+    /**
+     * @param  Collection<int, NationCommandQueueItem>  $items
+     * @return Collection<int, NationCommandQueueItem>
+     */
+    private function recoverLegacyStagedOrder(Collection $items): Collection
+    {
+        $legacyStaged = $items->filter(
+            static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
+                && $item->queue_position > self::LEGACY_QUEUE_POSITION_OFFSET,
+        );
+        if ($legacyStaged->isEmpty()) {
+            return $items;
+        }
+
+        // The legacy compactor parked the unchanged prefix at its original
+        // position + 1000. Visible rows are the shifted suffix or plans added
+        // later, so recover the staged prefix before ordinary compaction.
+        $legacyStaged = $legacyStaged->sort(
+            static fn (NationCommandQueueItem $left, NationCommandQueueItem $right): int => [
+                (int) $left->queue_position - self::LEGACY_QUEUE_POSITION_OFFSET,
+                $left->id,
+            ] <=> [
+                (int) $right->queue_position - self::LEGACY_QUEUE_POSITION_OFFSET,
+                $right->id,
+            ],
+        );
+        $visible = $items->reject(
+            static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
+                && $item->queue_position > self::LEGACY_QUEUE_POSITION_OFFSET,
+        );
+
+        return $legacyStaged->values()->concat($visible->values())->values();
     }
 
     private function hasOwnedCellWithin(

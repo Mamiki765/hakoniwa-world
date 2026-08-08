@@ -102,6 +102,71 @@ class HotfixCommandQueueCorruptionTest extends TestCase
         $this->assertSame([1, 2], $this->queuedPositions());
     }
 
+    public function test_repair_recovers_the_legacy_staging_offset_before_compacting(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('旧配置復旧国');
+        [$path, $ids, $target] = $this->queuedPlansWithCommands(
+            $owner,
+            $nation,
+            $mapSpace,
+            ['land_clear', 'plant_forest', 'build_farm'],
+        );
+        NationCommandQueueItem::query()->whereKey($ids[1])->update([
+            'status' => 'cancelled',
+            'queue_position' => null,
+            'cancelled_at' => now(),
+        ]);
+        NationCommandQueueItem::query()->whereKey($ids[0])->update(['queue_position' => 1001]);
+        NationCommandQueueItem::query()->whereKey($ids[2])->update(['queue_position' => 2]);
+
+        $newId = (int) $this->postJson($path, [
+            'command_key' => 'land_level',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 4,
+        ])->assertCreated()->json('data.item_id');
+
+        $items = NationCommandQueueItem::query()->where('status', 'queued')
+            ->with('definition')->orderBy('queue_position')->get();
+        $this->assertSame([$ids[0], $ids[2], $newId], $items->pluck('id')->all());
+        $this->assertSame(['land_clear', 'build_farm', 'land_level'], $items->pluck('definition.key')->all());
+        $this->assertSame([1, 2, 3], $items->pluck('queue_position')->all());
+    }
+
+    public function test_repair_keeps_legacy_staged_plans_before_later_visible_plans(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('本番混在復旧国');
+        [$path, $ids, $target] = $this->queuedPlansWithCommands(
+            $owner,
+            $nation,
+            $mapSpace,
+            ['land_clear', 'plant_forest', 'build_farm', 'land_level', 'reclaim'],
+        );
+        foreach (array_slice($ids, 0, 3) as $index => $id) {
+            NationCommandQueueItem::query()->whereKey($id)->update(['queue_position' => 1001 + $index]);
+        }
+        NationCommandQueueItem::query()->whereKey($ids[3])->update(['queue_position' => 1]);
+        NationCommandQueueItem::query()->whereKey($ids[4])->update(['queue_position' => 2]);
+
+        $newId = (int) $this->postJson($path, [
+            'command_key' => 'build_factory',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 6,
+        ])->assertCreated()->json('data.item_id');
+
+        $items = NationCommandQueueItem::query()->where('status', 'queued')
+            ->with('definition')->orderBy('queue_position')->get();
+        $this->assertSame([...$ids, $newId], $items->pluck('id')->all());
+        $this->assertSame(
+            ['land_clear', 'plant_forest', 'build_farm', 'land_level', 'reclaim', 'build_factory'],
+            $items->pluck('definition.key')->all(),
+        );
+        $this->assertSame([1, 2, 3, 4, 5, 6], $items->pluck('queue_position')->all());
+    }
+
     /** @return array{User, Nation, MapSpace} */
     private function nation(string $name): array
     {
@@ -117,6 +182,24 @@ class HotfixCommandQueueCorruptionTest extends TestCase
      */
     private function queuedPlans(User $owner, Nation $nation, MapSpace $mapSpace, int $count): array
     {
+        return $this->queuedPlansWithCommands(
+            $owner,
+            $nation,
+            $mapSpace,
+            array_fill(0, $count, 'land_clear'),
+        );
+    }
+
+    /**
+     * @param  array<int, string>  $commandKeys
+     * @return array{string, array<int, int>, MapCell}
+     */
+    private function queuedPlansWithCommands(
+        User $owner,
+        Nation $nation,
+        MapSpace $mapSpace,
+        array $commandKeys,
+    ): array {
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
@@ -124,9 +207,9 @@ class HotfixCommandQueueCorruptionTest extends TestCase
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
         $ids = [];
         $this->actingAs($owner);
-        for ($index = 0; $index < $count; $index++) {
+        foreach ($commandKeys as $index => $commandKey) {
             $ids[] = (int) $this->postJson($path, [
-                'command_key' => 'land_clear',
+                'command_key' => $commandKey,
                 'target_x' => $target->x,
                 'target_y' => $target->y,
                 'request_key' => (string) Str::uuid(),
