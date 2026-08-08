@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Command\CommandFailureReason;
+use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Economy\CappedAddition;
 use App\Domain\Economy\NationCapacityResolver;
@@ -427,12 +428,15 @@ final class DomesticCommandExecutor
         MapCell $target,
         array $observed,
     ): ?array {
-        $targetNation = $target->owner_nation_id === null
-            ? null
-            : Nation::query()->whereKey($target->owner_nation_id)->lockForUpdate()->first();
-        if ($targetNation === null || $targetNation->world_id !== $context->world->id
-            || $targetNation->state !== 'active') {
-            return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
+        $targetPolicy = MissileTargetPolicy::explicitTargetState($context->ruleset->settings);
+        if ($targetPolicy === MissileTargetPolicy::ACTIVE_NATION) {
+            $targetNation = $target->owner_nation_id === null
+                ? null
+                : Nation::query()->whereKey($target->owner_nation_id)->lockForUpdate()->first();
+            if ($targetNation === null || $targetNation->world_id !== $context->world->id
+                || $targetNation->state !== 'active') {
+                return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
+            }
         }
         $baseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? null;
         if (! is_array($baseKeys) || $baseKeys === []) {

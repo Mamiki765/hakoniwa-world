@@ -14,10 +14,11 @@ $publishedRulesets = RulesetAuthoringCollection::fromFiles([
     __DIR__.'/hakoniwa/rulesets/roadmap-pr21-v1.php',
     __DIR__.'/hakoniwa/rulesets/roadmap-pr22-v1.php',
     __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v1.php',
+    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v2.php',
 ])->all();
 
 return [
-    'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v1'],
+    'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v2'],
     'published_rulesets' => $publishedRulesets,
     'world' => [
         'key' => 'shared-world',

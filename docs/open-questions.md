@@ -347,9 +347,9 @@
 
 - Status: Open
 - Required before: dormant Nationを対象にするcombat実装前
-- Implemented minimum: PR22ではexplicit missile targetをactive Nation所有cellだけに限定する。誤差着弾が`dormant_frozen`、`dormant_contestable`、`sunken_archived`所有cellへ到達してもcell、facility、population、owner、monster occupancyを変更せず、効果なしとして集約する。怪獣だけを討伐する例外も設けない。
+- Implemented minimum: `hakoniwa-2s-plus-v1`ではexplicit missile targetをactive Nation所有cellだけに限定する。1.1.0の`hakoniwa-2s-plus-v2`ではWorld内の既存座標を所有状態にかかわらずaim pointとして選択できるが、`dormant_frozen`、`dormant_contestable`、`sunken_archived`所有cellへのimpactはcell、facility、population、owner、monster occupancyを変更せず、完全な効果なしとして扱う。怪獣だけを討伐する例外も設けない。v1 payloadは変更せず、production Worldとqueue definitionはforward migrationでv2へ対応付ける。
 - Open decision: 将来`dormant_contestable`を攻撃・占領可能にするときの施設、防壁、Capital保護、怪獣討伐例外を決める。今回のminimum境界を将来仕様の暗黙決定にしない。
-- Decision record: `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`、`product/docs/command-audit-pr22.md`
+- Decision record: `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`、`docs/decisions/ADR-0009-ruleset-v2-missile-targeting.md`、`product/docs/command-audit-pr22.md`
 
 ### B-13 Capital周辺の占領保護
 

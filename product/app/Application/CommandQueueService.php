@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
@@ -366,6 +367,22 @@ final class CommandQueueService
         }
         if ($definition->target_facility_keys !== [] && ! in_array($facilityKey, $definition->target_facility_keys, true)) {
             throw new DomainException('対象施設ではこのcommandをqueueへ追加できません。');
+        }
+
+        if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+            $world = $nation->world()->with('rulesetVersion')->firstOrFail();
+            $targetPolicy = MissileTargetPolicy::explicitTargetState($world->rulesetVersion->settings);
+            if ($targetPolicy === MissileTargetPolicy::ANY_EXISTING_COORDINATE) {
+                return;
+            }
+            $targetNation = $cell->owner_nation_id === null
+                ? null
+                : Nation::query()->whereKey($cell->owner_nation_id)->first();
+            if ($targetNation === null || $targetNation->world_id !== $world->id || $targetNation->state !== 'active') {
+                throw new DomainException('active Nation所有のcellだけを対象にできます。');
+            }
+
+            return;
         }
 
         if (in_array($definition->key, ['reclaim'], true)) {
