@@ -265,6 +265,7 @@ final class RulesetV2LiveMonsterReferenceRepairTest extends TestCase
         ]);
         $failedRunSnapshot = collect($failedRun->fresh()->getAttributes())->sortKeys()->all();
 
+        config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
         $this->artisan('hakoniwa:release:preflight')->assertFailed();
         $this->operatorRepair();
         $this->assertLiveRulesetReferenceConsistency($world->fresh());
