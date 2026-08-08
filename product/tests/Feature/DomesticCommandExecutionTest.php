@@ -780,6 +780,80 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame($eventCount, DB::table('audit_events')->count());
     }
 
+    public function test_flatland_construction_replaces_settlements_but_protects_capital_and_other_facilities(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '集落建設国');
+        $nation->update(['money' => 100_000]);
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capital->id)->orderBy('id')->limit(5)->get();
+        $this->assertCount(5, $targets);
+
+        $states = app(MapCellStateService::class);
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        foreach ($targets as $target) {
+            $states->transitionTerrain($target, $plain);
+            $states->setFacility($target, null);
+            $target->population = 0;
+            $target->save();
+        }
+
+        $items = [
+            $this->queue($user, $nation, $space, 'build_farm', $targets[0], 1, 1),
+            $this->queue($user, $nation, $space, 'build_factory', $targets[1], 1, 2),
+            $this->queue($user, $nation, $space, 'build_defense_facility', $targets[2], 1, 3),
+            $this->queue($user, $nation, $space, 'build_monument', $targets[3], 1, 4),
+            $this->queue($user, $nation, $space, 'build_factory', $targets[4], 1, 5),
+            $this->queue($user, $nation, $space, 'build_farm', $capital, 1, 6),
+        ];
+
+        foreach ([
+            0 => 'village',
+            1 => 'village',
+            2 => 'town',
+            3 => 'city',
+            4 => 'defense',
+        ] as $index => $facilityKey) {
+            $states->setFacility(
+                $targets[$index],
+                FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail(),
+            );
+            $targets[$index]->population = 1_000 * ($index + 1);
+            $targets[$index]->save();
+        }
+
+        $executor = app(DomesticCommandExecutor::class);
+        for ($turn = 2; $turn <= 5; $turn++) {
+            $result = $executor->execute($this->context(
+                $world,
+                [$nation->id],
+                hash('sha256', "settlement-overbuild:{$turn}"),
+                targetTurn: $turn,
+            ));
+            $this->assertSame(1, $result['successes']);
+        }
+        $failureResult = $executor->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'settlement-overbuild:failures'),
+            targetTurn: 6,
+        ));
+
+        $this->assertSame(['completed', 'completed', 'completed', 'completed', 'failed', 'failed'],
+            collect($items)->map(fn (NationCommandQueueItem $item): string => $item->fresh()->status)->all());
+        $this->assertSame('facility_exists', $items[4]->fresh()->failure_code);
+        $this->assertSame('capital_protected', $items[5]->fresh()->failure_code);
+        $this->assertSame(2, $failureResult['failures']);
+        $this->assertSame(['farm', 'factory', 'defense', 'monument'],
+            $targets->take(4)->map(fn (MapCell $cell): string => $cell->fresh()->facility()->value('key'))->all());
+        $this->assertSame([0, 0, 0, 0],
+            $targets->take(4)->map(fn (MapCell $cell): int => $cell->fresh()->population)->all());
+        $this->assertSame('defense', $targets[4]->fresh()->facility()->value('key'));
+        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+    }
+
     /** @return array{User, Nation} */
     private function createNation(World $world, string $name): array
     {

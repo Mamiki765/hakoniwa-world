@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Map\MapCellStateService;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -565,6 +566,47 @@ class CommandQueueAndSalePolicyTest extends TestCase
         )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
         $this->assertSame('executable_after_queue', $farm['execution_preview_status']);
         $this->assertContains('予約済みcommand後は実行可能です。', $farm['execution_warnings']);
+    }
+
+    public function test_queue_preview_and_registration_allow_settlements_but_reject_capital_overbuild(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('集落予約国');
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capital->id)->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $target,
+            FacilityDefinition::query()->where('key', 'village')->firstOrFail(),
+        );
+        $target->update(['population' => 1_234]);
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+
+        $farm = collect($this->actingAs($owner)->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
+        $this->assertSame('currently_executable', $farm['execution_preview_status']);
+
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'build_farm',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated();
+
+        $capitalFarm = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$capital->x}&target_y={$capital->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
+        $this->assertSame('currently_unavailable', $capitalFarm['execution_preview_status']);
+        $this->assertContains('首都を通常建設commandで上書きすることはできません。', $capitalFarm['execution_warnings']);
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'build_farm',
+            'target_x' => $capital->x,
+            'target_y' => $capital->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertUnprocessable();
     }
 
     public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void

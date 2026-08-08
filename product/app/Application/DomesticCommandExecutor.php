@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Command\CommandFailureReason;
+use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Economy\CappedAddition;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
@@ -276,6 +277,9 @@ final class DomesticCommandExecutor
             && in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)) {
             return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
         }
+        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $cell->facility?->key)) {
+            return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
+        }
         if ($definition->key === 'reclaim') {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
@@ -304,11 +308,14 @@ final class DomesticCommandExecutor
             }
         }
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
-            if (! $this->isMatchingQuantityFacility($definition, $cell)) {
+            $matchingQuantityFacility = $this->isMatchingQuantityFacility($definition, $cell);
+            if (! $matchingQuantityFacility
+                && ! SettlementOverbuildPolicy::allows($definition->key, $cell->facility?->key)) {
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }
-            if ($cell->facility_scale === null || $cell->facility?->scale_increment === null
-                || $cell->facility->maximum_scale === null) {
+            if ($matchingQuantityFacility
+                && ($cell->facility_scale === null || $cell->facility?->scale_increment === null
+                || $cell->facility->maximum_scale === null)) {
                 return ['reason' => CommandFailureReason::InvalidFacilityScale, 'observed' => $observed];
             }
         }
