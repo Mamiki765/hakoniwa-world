@@ -14,7 +14,7 @@ class MonsterRulesetContractTest extends TestCase
 {
     public function test_production_ruleset_publishes_the_exact_audited_eight_monster_catalog(): void
     {
-        $settings = config('hakoniwa.ruleset');
+        $settings = config('hakoniwa.published_rulesets')['hakoniwa-2s-plus-v1'];
         $validated = app(RulesetAuthoringValidator::class)->validate($settings);
 
         $this->assertSame('hakoniwa-2s-plus-v1', $validated['key']);

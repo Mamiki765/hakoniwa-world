@@ -12,7 +12,7 @@ class DisasterRulesetContractTest extends TestCase
 {
     public function test_production_ruleset_publishes_exact_public_and_internal_disaster_rates(): void
     {
-        $settings = config('hakoniwa.ruleset');
+        $settings = config('hakoniwa.published_rulesets')['hakoniwa-2s-plus-v1'];
         $validated = app(RulesetAuthoringValidator::class)->validate($settings);
         $disasters = $settings['turn_processing']['disasters'];
 

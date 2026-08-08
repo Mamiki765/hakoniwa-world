@@ -11,6 +11,8 @@ use Tests\TestCase;
 
 class RulesetAuthoringValidatorTest extends TestCase
 {
+    private const FIRST_PRODUCTION_PAYLOAD_HASH = '0c03226dd5c99c0293392ed1bc5528a03093084e622ff21e3784a8810c3b8ba0';
+
     /** @var array<string, string> */
     private const PRE_SPLIT_PAYLOAD_HASHES = [
         'roadmap-pr2-v1' => '091494cae4988c2517417f91bb9810e277ee665525c98ff67eeb305b23592fe3',
@@ -43,6 +45,28 @@ class RulesetAuthoringValidatorTest extends TestCase
             $this->assertSame(7, $summary['commands']);
             $this->assertSame(3, $summary['production']);
         }
+    }
+
+    public function test_v1_payload_is_frozen_and_v2_contains_only_the_approved_targeting_delta(): void
+    {
+        $v1 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1');
+        $v2 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v2');
+        $this->assertIsArray($v1);
+        $this->assertIsArray($v2);
+        $this->assertSame(
+            self::FIRST_PRODUCTION_PAYLOAD_HASH,
+            hash('sha256', json_encode($v1, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
+
+        $expected = $v1;
+        $expected['key'] = 'hakoniwa-2s-plus-v2';
+        $expected['version'] = 2;
+        $expected['military']['dormant_impact']['explicit_target_state'] = 'any_existing_coordinate';
+        $this->assertSame($expected, $v2);
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($v2);
+        $this->assertSame('hakoniwa-2s-plus-v2', $summary['key']);
+        $this->assertSame(2, $summary['version']);
     }
 
     public function test_architecture_chunk_size_and_canonical_initial_bounds_are_valid(): void

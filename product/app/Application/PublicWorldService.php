@@ -16,11 +16,14 @@ final class PublicWorldService
     public function __construct(
         private readonly MoneyFormatter $money,
         private readonly NationLandAreaCalculator $landArea,
+        private readonly TurnScheduleStatus $turnSchedule,
     ) {}
 
     /** @return array<string, mixed> */
     public function summary(World $world): array
     {
+        $turnSchedule = $this->turnSchedule->forWorld($world);
+
         return [
             'id' => $world->id,
             'key' => $world->key,
@@ -28,6 +31,10 @@ final class PublicWorldService
             'current_turn' => $world->current_turn,
             'nation_count' => $world->nations()->count(),
             'contact_url' => $this->contactUrl(),
+            'turn_status' => $turnSchedule['status'],
+            'last_successful_turn_at' => $turnSchedule['last_successful_turn_at'],
+            'next_scheduled_turn_at' => $turnSchedule['next_scheduled_turn_at'],
+            'turn_schedule_timezone' => $turnSchedule['timezone'],
             'total_population' => (int) MapCell::query()
                 ->whereIn('map_space_id', MapSpace::query()->select('id')->where('world_id', $world->id))
                 ->sum('population'),

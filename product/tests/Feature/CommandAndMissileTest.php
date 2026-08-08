@@ -215,6 +215,55 @@ class CommandAndMissileTest extends TestCase
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->count());
     }
 
+    public function test_v2_explicit_targeting_accepts_own_foreign_neutral_and_unowned_sea_cells(): void
+    {
+        [$world, $user, $firing, $foreign] = $this->combatants();
+        $this->assertSame('hakoniwa-2s-plus-v2', $world->rulesetVersion()->value('key'));
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $own = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereKeyNot($base->id)->whereNull('facility_definition_id')->firstOrFail();
+        $foreignCell = MapCell::query()->where('owner_nation_id', $foreign->id)->firstOrFail();
+        $neutral = MapCell::query()->where('map_space_id', $space->id)->whereNull('owner_nation_id')
+            ->whereNull('facility_definition_id')->whereHas('terrain', fn ($query) => $query->where('key', 'wasteland'))
+            ->firstOrFail();
+        $sea = MapCell::query()->where('map_space_id', $space->id)->whereNull('owner_nation_id')
+            ->whereNull('facility_definition_id')->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->firstOrFail();
+
+        $preview = collect($this->actingAs($user)->getJson(
+            "/api/v1/nations/{$firing->id}/map-spaces/{$space->id}/command-definitions"
+            ."?target_x={$neutral->x}&target_y={$neutral->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'spp_missile');
+        $this->assertSame('currently_executable', $preview['execution_preview_status']);
+        $this->assertNotContains('自国領のcellだけを対象にできます。', $preview['execution_warnings']);
+
+        foreach ([$own, $foreignCell, $neutral, $sea] as $index => $target) {
+            $item = $this->queue(
+                app(CommandQueueService::class),
+                $user,
+                $firing,
+                $space,
+                'spp_missile',
+                $target,
+            );
+            $context = $this->context(
+                $world,
+                $index + 2,
+                hash('sha256', "v2-explicit-target:{$index}"),
+                [$firing->id, $foreign->id],
+            );
+
+            $result = app(DomesticCommandExecutor::class)->execute($context);
+
+            $this->assertSame(1, $result['successes']);
+            $this->assertSame('completed', $item->fresh()->status);
+            $intent = $context->state->launchIntentsForNation($firing->id)[0];
+            $this->assertSame([$target->x, $target->y], [$intent->targetX, $intent->targetY]);
+        }
+    }
+
     public function test_partial_multi_base_multi_intent_launch_resets_idle_counter_once(): void
     {
         [$world, $user, $firing, $target] = $this->combatants();
@@ -891,6 +940,62 @@ class CommandAndMissileTest extends TestCase
         $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('dormant_owner_protected', $detail['impacts'][0]['effect']);
+    }
+
+    public function test_v2_direct_dormant_and_sunken_targets_are_selectable_but_complete_no_ops(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $firing] = $this->nation($world, '休眠直接発射国');
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+
+        foreach (['dormant_frozen', 'dormant_contestable', 'sunken_archived'] as $index => $state) {
+            [, $targetNation] = $this->nation($world, "休眠直接標的{$index}");
+            $target = MapCell::query()->where('owner_nation_id', $targetNation->id)
+                ->whereKeyNot($targetNation->capital()->value('map_cell_id'))->firstOrFail();
+            app(MapCellStateService::class)->transitionTerrain(
+                $target,
+                TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+            );
+            app(MapCellStateService::class)->setFacility(
+                $target,
+                FacilityDefinition::query()->where('key', 'city')->firstOrFail(),
+            );
+            $target->population = 777;
+            $target->version++;
+            $target->save();
+            $targetNation->update(['state' => $state]);
+            $monster = $this->monster($world, $target);
+            $snapshot = $target->fresh()->only([
+                'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population',
+                'facility_scale', 'facility_experience', 'facility_operational_state', 'version',
+            ]);
+            $item = $this->queue(
+                app(CommandQueueService::class),
+                $user,
+                $firing,
+                $space,
+                'spp_missile',
+                $target,
+            );
+
+            $this->resolveMissile($this->context(
+                $world,
+                $index + 2,
+                hash('sha256', "v2-direct-protected:{$state}"),
+                [$firing->id, $targetNation->id],
+            ), $base);
+
+            $this->assertSame('completed', $item->fresh()->status);
+            $this->assertSame($snapshot, $target->fresh()->only(array_keys($snapshot)));
+            $this->assertTrue(MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
+                ->where('map_cell_id', $target->id)->exists());
+            $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+                ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame('dormant_owner_protected', $detail['impacts'][0]['effect']);
+            $this->assertSame($state, $detail['impacts'][0]['owner_state']);
+        }
     }
 
     public function test_pp_deviation_stays_within_one_hex_and_out_of_bounds_is_treated_as_sea(): void

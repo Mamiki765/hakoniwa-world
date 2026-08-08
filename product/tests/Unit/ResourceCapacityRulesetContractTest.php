@@ -10,7 +10,7 @@ class ResourceCapacityRulesetContractTest extends TestCase
 {
     public function test_production_resource_units_capacities_and_economy_rates_are_validated(): void
     {
-        $settings = config('hakoniwa.ruleset');
+        $settings = config('hakoniwa.published_rulesets')['hakoniwa-2s-plus-v1'];
         $validated = app(RulesetAuthoringValidator::class)->validate($settings);
         $resources = collect($settings['resource_definitions'])->keyBy('key');
 

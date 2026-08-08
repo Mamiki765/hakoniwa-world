@@ -24,9 +24,11 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertFalse(Schema::hasColumn('users', 'moderation_suspended_at'));
         $this->assertFalse(Schema::hasColumn('nations', 'moderation_suspended_at'));
 
-        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v1')->firstOrFail();
+        $v1 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v1')->firstOrFail();
+        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v2')->firstOrFail();
         $previous = RulesetVersion::query()->where('key', 'roadmap-pr22-v1')->firstOrFail();
-        $this->assertSame('hakoniwa-2s-plus-v1', config('hakoniwa.ruleset.key'));
+        $this->assertSame('hakoniwa-2s-plus-v2', config('hakoniwa.ruleset.key'));
+        $this->assertEquals(config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1'), $v1->settings);
         $this->assertEquals(
             config('hakoniwa.published_rulesets.roadmap-pr22-v1'),
             $previous->settings,

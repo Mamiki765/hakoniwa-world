@@ -14,10 +14,11 @@ $publishedRulesets = RulesetAuthoringCollection::fromFiles([
     __DIR__.'/hakoniwa/rulesets/roadmap-pr21-v1.php',
     __DIR__.'/hakoniwa/rulesets/roadmap-pr22-v1.php',
     __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v1.php',
+    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v2.php',
 ])->all();
 
 return [
-    'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v1'],
+    'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v2'],
     'published_rulesets' => $publishedRulesets,
     'world' => [
         'key' => 'shared-world',
@@ -39,5 +40,13 @@ return [
     ],
     'community' => [
         'contact_url' => env('HAKONIWA_MODERATION_CONTACT_URL'),
+    ],
+    'admin' => [
+        'discord_user_id' => env('HAKONIWA_ADMIN_DISCORD_USER_ID'),
+    ],
+    'turn_schedule' => [
+        'timezone' => 'Asia/Tokyo',
+        'interval_hours' => 2,
+        'grace_minutes' => (int) env('HAKONIWA_TURN_SCHEDULE_GRACE_MINUTES', 15),
     ],
 ];

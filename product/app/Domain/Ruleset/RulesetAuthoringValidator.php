@@ -4,6 +4,7 @@ namespace App\Domain\Ruleset;
 
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
@@ -371,8 +372,11 @@ final class RulesetAuthoringValidator
         $this->requireKeys($dormant, [
             'explicit_target_state', 'no_effect_owner_states', 'preserve', 'monster_exception',
         ], "{$path}.dormant_impact");
+        $explicitTargetState = ($settings['key'] ?? null) === 'hakoniwa-2s-plus-v2'
+            ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
+            : MissileTargetPolicy::ACTIVE_NATION;
         if ($dormant !== [
-            'explicit_target_state' => 'active',
+            'explicit_target_state' => $explicitTargetState,
             'no_effect_owner_states' => ['dormant_frozen', 'dormant_contestable', 'sunken_archived'],
             'preserve' => ['cell', 'facility', 'population', 'monster_occupancy'],
             'monster_exception' => false,
@@ -1260,7 +1264,9 @@ final class RulesetAuthoringValidator
             'adjacent_facility_key', 'stages', 'sea_edge_bands', 'ordinary_growth',
             'attraction_growth', 'attraction_maximum_population',
         ];
-        if (in_array($settings['key'] ?? null, ['roadmap-pr22-v1', 'hakoniwa-2s-plus-v1'], true)) {
+        if (in_array($settings['key'] ?? null, [
+            'roadmap-pr22-v1', 'hakoniwa-2s-plus-v1', 'hakoniwa-2s-plus-v2',
+        ], true)) {
             $settlementKeys[] = 'post_ordinary_attraction_growth';
         }
         $this->requireKeys($settlement, $settlementKeys, "{$path}.settlement");

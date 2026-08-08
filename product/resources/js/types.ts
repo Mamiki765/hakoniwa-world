@@ -7,7 +7,16 @@ export interface UserIdentity {
 export interface CurrentUser {
     id: number;
     display_name: string;
+    can_manage_announcements: boolean;
     providers: UserIdentity[];
+}
+
+export interface Announcement {
+    id: number;
+    title: string;
+    body: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface World { id: number; key: string; name: string; turn: number }
@@ -53,6 +62,10 @@ export interface PublicWorldSummary {
     nation_count: number;
     total_population: number;
     contact_url: string | null;
+    turn_status: 'normal' | 'failed' | 'blocked' | 'delayed';
+    last_successful_turn_at: string | null;
+    next_scheduled_turn_at: string;
+    turn_schedule_timezone: 'Asia/Tokyo';
 }
 
 export interface PublicNationSummary {

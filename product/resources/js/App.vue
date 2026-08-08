@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ApiError, api } from './api/client';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
@@ -9,6 +9,7 @@ import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import type {
+    Announcement,
     CurrentUser,
     MapSpace,
     Nation,
@@ -19,16 +20,25 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.0.2';
+const applicationVersion = '1.1.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
 const rankings = ref<PublicRankingEntry[]>([]);
 const publicEvents = ref<PublicEventPage | null>(null);
+const latestAnnouncements = ref<Announcement[]>([]);
+const announcementItems = ref<Announcement[]>([]);
+const announcementDetail = ref<Announcement | null>(null);
+const announcementPageNumber = ref(1);
+const announcementView = ref<'list' | 'detail' | 'form'>('list');
+const announcementFormId = ref<number | null>(null);
+const announcementTitle = ref('');
+const announcementBody = ref('');
+const announcementErrors = ref<Record<string, string>>({});
 const nation = ref<Nation | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
-const page = ref<'home' | 'island' | 'preview' | 'resources' | 'profile' | 'account' | 'credits'>('home');
+const page = ref<'home' | 'announcements' | 'island' | 'preview' | 'resources' | 'profile' | 'account' | 'credits'>('home');
 const nationName = ref('');
 const nationOwnerName = ref('');
 const nationComment = ref('');
@@ -39,16 +49,58 @@ const profileErrors = ref<Record<string, string>>({});
 const foodDetailOpen = ref(false);
 const busy = ref(true);
 const message = ref('');
+const clockNow = ref(Date.now());
+let clockTimer: ReturnType<typeof setInterval> | null = null;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
 const nonFoodResources = computed(() => nation.value?.resources.filter((resource) => resource.category !== 'food') ?? []);
+const nextTurnCountdown = computed(() => {
+    if (worldSummary.value?.turn_status !== 'normal') return null;
+    const remaining = Math.max(0, new Date(worldSummary.value.next_scheduled_turn_at).getTime() - clockNow.value);
+    const totalSeconds = Math.floor(remaining / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
+});
+const turnStatusMessage = computed(() => matchTurnStatus(worldSummary.value?.turn_status));
 
 function formatResource(amount: number, unitLabel: string | null): string {
     return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
 }
 
+function formatAnnouncementDate(value: string): string {
+    return new Intl.DateTimeFormat('ja-JP', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Tokyo',
+    }).format(new Date(value));
+}
+
+function formatTurnTimestamp(value: string | null): string {
+    if (value === null) return '未実施';
+
+    return new Intl.DateTimeFormat('ja-JP', {
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Tokyo',
+    }).format(new Date(value));
+}
+
+function matchTurnStatus(status: PublicWorldSummary['turn_status'] | undefined): string {
+    if (status === 'failed' || status === 'blocked') return 'ターン更新が停止しています。';
+    if (status === 'delayed') return 'ターン更新が遅延しています。';
+
+    return '';
+}
+
 onMounted(async () => {
+    clockTimer = setInterval(() => { clockNow.value = Date.now(); }, 1000);
     await loadPublicLobby();
     try {
         user.value = await api<CurrentUser>('/api/v1/me');
@@ -62,9 +114,18 @@ onMounted(async () => {
     }
 });
 
+onUnmounted(() => {
+    if (clockTimer !== null) clearInterval(clockTimer);
+});
+
 async function loadPublicLobby(): Promise<void> {
     try {
-        worlds.value = await api<World[]>('/api/v1/public/worlds');
+        const [nextWorlds, announcements] = await Promise.all([
+            api<World[]>('/api/v1/public/worlds'),
+            api<Announcement[]>('/api/v1/public/announcements/latest'),
+        ]);
+        worlds.value = nextWorlds;
+        latestAnnouncements.value = announcements;
         const world = worlds.value[0];
         if (world === undefined) return;
         const [summary, nextRankings, events] = await Promise.all([
@@ -77,6 +138,84 @@ async function loadPublicLobby(): Promise<void> {
         publicEvents.value = events;
     } catch {
         message.value = '公開ロビーを取得できませんでした。';
+    }
+}
+
+async function openAnnouncements(pageNumber = 1): Promise<void> {
+    busy.value = true;
+    message.value = '';
+    try {
+        announcementItems.value = await api<Announcement[]>(`/api/v1/public/announcements?page=${pageNumber}`);
+        announcementPageNumber.value = pageNumber;
+        announcementView.value = 'list';
+        page.value = 'announcements';
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'お知らせ一覧を取得できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function openAnnouncement(id: number): Promise<void> {
+    busy.value = true;
+    message.value = '';
+    try {
+        announcementDetail.value = await api<Announcement>(`/api/v1/public/announcements/${id}`);
+        announcementView.value = 'detail';
+        page.value = 'announcements';
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'お知らせを取得できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+function editAnnouncement(announcement: Announcement | null = null): void {
+    announcementFormId.value = announcement?.id ?? null;
+    announcementTitle.value = announcement?.title ?? '';
+    announcementBody.value = announcement?.body ?? '';
+    announcementErrors.value = {};
+    announcementView.value = 'form';
+    page.value = 'announcements';
+}
+
+async function saveAnnouncement(): Promise<void> {
+    busy.value = true;
+    message.value = '';
+    announcementErrors.value = {};
+    const id = announcementFormId.value;
+    try {
+        const saved = await api<Announcement>(id === null
+            ? '/api/v1/admin/announcements'
+            : `/api/v1/admin/announcements/${id}`, {
+            method: id === null ? 'POST' : 'PATCH',
+            body: JSON.stringify({ title: announcementTitle.value, body: announcementBody.value }),
+        });
+        announcementDetail.value = saved;
+        announcementView.value = 'detail';
+        latestAnnouncements.value = await api<Announcement[]>('/api/v1/public/announcements/latest');
+    } catch (error) {
+        announcementErrors.value = validationErrors(error);
+        if (Object.keys(announcementErrors.value).length === 0) {
+            message.value = error instanceof Error ? error.message : 'お知らせを保存できませんでした。';
+        }
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function deleteAnnouncement(announcement: Announcement): Promise<void> {
+    if (!window.confirm(`「${announcement.title}」を削除しますか？`)) return;
+    busy.value = true;
+    message.value = '';
+    try {
+        await api<null>(`/api/v1/admin/announcements/${announcement.id}`, { method: 'DELETE' });
+        latestAnnouncements.value = await api<Announcement[]>('/api/v1/public/announcements/latest');
+        await openAnnouncements(1);
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'お知らせを削除できませんでした。';
+    } finally {
+        busy.value = false;
     }
 }
 
@@ -248,10 +387,37 @@ async function updateProfile(): Promise<void> {
             </div>
 
             <dl class="world-stats">
-                <div><dt>現在ターン</dt><dd>{{ worldSummary?.current_turn ?? 1 }}</dd></div>
+                <div><dt>ターン更新（2時間ごと）</dt><dd>{{ worldSummary?.current_turn ?? 1 }}</dd></div>
                 <div><dt>島数</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
                 <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
             </dl>
+
+            <section v-if="worldSummary" class="turn-status-card" :data-status="worldSummary.turn_status" aria-label="ターン更新状況">
+                <div>
+                    <span>最終ターン更新</span>
+                    <strong>{{ formatTurnTimestamp(worldSummary.last_successful_turn_at) }}</strong>
+                </div>
+                <div v-if="worldSummary.turn_status === 'normal'">
+                    <span>次回更新まで</span>
+                    <strong class="turn-countdown">{{ nextTurnCountdown }}</strong>
+                    <time :datetime="worldSummary.next_scheduled_turn_at">予定 {{ formatTurnTimestamp(worldSummary.next_scheduled_turn_at) }}</time>
+                </div>
+                <p v-else role="status">{{ turnStatusMessage }}</p>
+            </section>
+
+            <section class="announcement-window" aria-labelledby="latest-announcements-heading">
+                <div class="section-heading">
+                    <div><p class="eyebrow">ANNOUNCEMENTS</p><h2 id="latest-announcements-heading">お知らせ</h2></div>
+                    <button type="button" @click="openAnnouncements(1)">すべて表示</button>
+                </div>
+                <ol v-if="latestAnnouncements.length" class="announcement-list compact">
+                    <li v-for="announcement in latestAnnouncements" :key="announcement.id">
+                        <button type="button" @click="openAnnouncement(announcement.id)">{{ announcement.title }}</button>
+                        <time :datetime="announcement.created_at">{{ formatAnnouncementDate(announcement.created_at) }}</time>
+                    </li>
+                </ol>
+                <p v-else class="empty-state">お知らせはまだありません。</p>
+            </section>
 
             <div class="lobby-grid">
                 <section class="ranking-card">
@@ -336,6 +502,63 @@ async function updateProfile(): Promise<void> {
                     <span v-if="registrationErrors.comment" id="comment-error" class="field-error" role="alert">{{ registrationErrors.comment }}</span>
                 </label>
                 <button class="button primary" type="submit" :disabled="busy">島を作る</button>
+            </form>
+        </section>
+
+        <section v-else-if="page === 'announcements'" class="announcement-page panel">
+            <div class="section-heading">
+                <div><p class="eyebrow">ANNOUNCEMENTS</p><h1>お知らせ</h1></div>
+                <div class="announcement-actions">
+                    <button type="button" @click="page = 'home'">TOPへ戻る</button>
+                    <button v-if="user?.can_manage_announcements" type="button" @click="editAnnouncement()">新規作成</button>
+                </div>
+            </div>
+
+            <template v-if="announcementView === 'list'">
+                <ol v-if="announcementItems.length" class="announcement-list full">
+                    <li v-for="announcement in announcementItems" :key="announcement.id">
+                        <button type="button" @click="openAnnouncement(announcement.id)">{{ announcement.title }}</button>
+                        <time :datetime="announcement.created_at">{{ formatAnnouncementDate(announcement.created_at) }}</time>
+                    </li>
+                </ol>
+                <p v-else class="empty-state">お知らせはまだありません。</p>
+                <nav class="announcement-pager" aria-label="お知らせのページ">
+                    <button type="button" :disabled="announcementPageNumber <= 1" @click="openAnnouncements(announcementPageNumber - 1)">前へ</button>
+                    <span>{{ announcementPageNumber }}ページ</span>
+                    <button type="button" :disabled="announcementItems.length < 10" @click="openAnnouncements(announcementPageNumber + 1)">次へ</button>
+                </nav>
+            </template>
+
+            <article v-else-if="announcementView === 'detail' && announcementDetail" class="announcement-article">
+                <h2>{{ announcementDetail.title }}</h2>
+                <p class="announcement-timestamps">
+                    投稿日時 <time :datetime="announcementDetail.created_at">{{ formatAnnouncementDate(announcementDetail.created_at) }}</time>
+                    <template v-if="announcementDetail.updated_at !== announcementDetail.created_at">
+                        ／ 更新日時 <time :datetime="announcementDetail.updated_at">{{ formatAnnouncementDate(announcementDetail.updated_at) }}</time>
+                    </template>
+                </p>
+                <p class="announcement-body">{{ announcementDetail.body }}</p>
+                <div class="announcement-actions">
+                    <button type="button" @click="openAnnouncements(announcementPageNumber)">一覧へ戻る</button>
+                    <button v-if="user?.can_manage_announcements" type="button" @click="editAnnouncement(announcementDetail)">編集</button>
+                    <button v-if="user?.can_manage_announcements" class="danger" type="button" @click="deleteAnnouncement(announcementDetail)">削除</button>
+                </div>
+            </article>
+
+            <form v-else-if="announcementView === 'form' && user?.can_manage_announcements" class="announcement-form" @submit.prevent="saveAnnouncement">
+                <h2>{{ announcementFormId === null ? 'お知らせを作成' : 'お知らせを編集' }}</h2>
+                <label>題名
+                    <input v-model="announcementTitle" maxlength="160" required>
+                    <span v-if="announcementErrors.title" class="field-error" role="alert">{{ announcementErrors.title }}</span>
+                </label>
+                <label>本文（プレーンテキスト）
+                    <textarea v-model="announcementBody" maxlength="20000" rows="12" required></textarea>
+                    <span v-if="announcementErrors.body" class="field-error" role="alert">{{ announcementErrors.body }}</span>
+                </label>
+                <div class="announcement-actions">
+                    <button class="button primary" type="submit" :disabled="busy">保存</button>
+                    <button type="button" @click="announcementView = announcementDetail ? 'detail' : 'list'">キャンセル</button>
+                </div>
             </form>
         </section>
 

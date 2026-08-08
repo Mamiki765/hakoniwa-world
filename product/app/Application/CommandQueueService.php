@@ -5,6 +5,8 @@ namespace App\Application;
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\MissileTargetPolicy;
+use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Ruleset\CurrentRulesetGuard;
@@ -92,7 +94,10 @@ final class CommandQueueService
             // A queue item is a future plan. Registration proves only that the
             // coordinate and parameters are structurally valid; the locked
             // target state and assets are revalidated immediately before execution.
-            $this->targetCell($mapSpace, $targetX, $targetY);
+            $target = $this->targetCell($mapSpace, $targetX, $targetY);
+            if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
+                throw new DomainException('首都を通常建設commandで上書きすることはできません。');
+            }
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
             $schemas = $definition->metadata['parameters'] ?? [];
             if (! is_array($schemas)) {
@@ -353,11 +358,31 @@ final class CommandQueueService
         if (! in_array($terrainKey, $definition->target_terrain_keys, true)) {
             throw new DomainException('対象地形ではこのcommandをqueueへ追加できません。');
         }
-        if ($definition->requires_empty_facility && $facilityKey !== null) {
+        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $facilityKey)) {
+            throw new DomainException('首都を通常建設commandで上書きすることはできません。');
+        }
+        if ($definition->requires_empty_facility && $facilityKey !== null
+            && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey)) {
             throw new DomainException('施設のあるcellにはこのcommandをqueueへ追加できません。');
         }
         if ($definition->target_facility_keys !== [] && ! in_array($facilityKey, $definition->target_facility_keys, true)) {
             throw new DomainException('対象施設ではこのcommandをqueueへ追加できません。');
+        }
+
+        if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+            $world = $nation->world()->with('rulesetVersion')->firstOrFail();
+            $targetPolicy = MissileTargetPolicy::explicitTargetState($world->rulesetVersion->settings);
+            if ($targetPolicy === MissileTargetPolicy::ANY_EXISTING_COORDINATE) {
+                return;
+            }
+            $targetNation = $cell->owner_nation_id === null
+                ? null
+                : Nation::query()->whereKey($cell->owner_nation_id)->first();
+            if ($targetNation === null || $targetNation->world_id !== $world->id || $targetNation->state !== 'active') {
+                throw new DomainException('active Nation所有のcellだけを対象にできます。');
+            }
+
+            return;
         }
 
         if (in_array($definition->key, ['reclaim'], true)) {

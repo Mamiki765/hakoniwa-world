@@ -6,6 +6,7 @@ use App\Application\CommandQueueService;
 use App\Application\LegacyCommandQueueOrder;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Ruleset\ResetRequiredException;
@@ -380,7 +381,11 @@ final class CommandQueueController extends Controller
         if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
             return false;
         }
-        if ($definition->requires_empty_facility && $state['facility_key'] !== null) {
+        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $state['facility_key'])) {
+            return false;
+        }
+        if ($definition->requires_empty_facility && $state['facility_key'] !== null
+            && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'])) {
             return false;
         }
         if ($definition->target_facility_keys !== []

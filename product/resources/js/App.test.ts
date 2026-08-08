@@ -32,8 +32,16 @@ const publicDetail: PublicNationDetail = {
 };
 
 function publicResponse(path: string): Response | null {
+    if (path === '/api/v1/public/announcements/latest') return response([
+        { id: 2, title: 'ver 1.0.2のお知らせ', body: 'queue fix', created_at: '2026-08-02T03:00:00+09:00', updated_at: '2026-08-02T03:00:00+09:00' },
+        { id: 1, title: 'ver 1.0.1のお知らせ', body: 'resource fix', created_at: '2026-08-01T03:00:00+09:00', updated_at: '2026-08-01T03:00:00+09:00' },
+    ]);
     if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '箱庭諸島２S＋', turn: 1 }]);
-    if (path.endsWith('/summary')) return response({ id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 1, nation_count: 1, total_population: 1000, contact_url: null });
+    if (path.endsWith('/summary')) return response({
+        id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 1, nation_count: 1, total_population: 1000, contact_url: null,
+        turn_status: 'normal', last_successful_turn_at: '2026-08-09T13:00:00Z',
+        next_scheduled_turn_at: '2099-08-09T15:00:00Z', turn_schedule_timezone: 'Asia/Tokyo',
+    });
     if (path.endsWith('/rankings')) return response([{
         rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
         owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500',
@@ -59,7 +67,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         expect(wrapper.text()).toContain('HAKONIWA ISLANDS');
-        expect(wrapper.text()).toContain('現在ターン');
+        expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
@@ -67,7 +75,110 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開コメント');
         expect(wrapper.text()).toContain('公開できる出来事はまだありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.0.2');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.1.0');
+        expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
+        expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
+        expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
+        expect(wrapper.find('.turn-status-card').text()).toContain('次回更新まで');
+        expect(wrapper.find('.turn-countdown').exists()).toBe(true);
+    });
+
+    it('suppresses the normal countdown for a failed turn', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) return response({
+                id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 7, nation_count: 1, total_population: 1000, contact_url: null,
+                turn_status: 'failed', last_successful_turn_at: '2026-08-09T13:00:00Z',
+                next_scheduled_turn_at: '2026-08-09T15:00:00Z', turn_schedule_timezone: 'Asia/Tokyo',
+            });
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        expect(wrapper.find('.turn-status-card').text()).toContain('ターン更新が停止しています。');
+        expect(wrapper.find('.turn-countdown').exists()).toBe(false);
+    });
+
+    it('shows paged plain-text announcements and never renders article HTML', async () => {
+        const article = {
+            id: 5, title: '運営からのお知らせ', body: '<b>タグではありません</b>\n二行目',
+            created_at: '2026-08-09T10:30:00+09:00', updated_at: '2026-08-09T10:30:00+09:00',
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/announcements?page=1') return response([article]);
+            if (path === '/api/v1/public/announcements/5') return response(article);
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await flushPromises();
+        expect(wrapper.find('.announcement-page').text()).toContain('運営からのお知らせ');
+        expect(wrapper.find('.announcement-pager').text()).toContain('1ページ');
+        await wrapper.find('.announcement-list.full button').trigger('click');
+        await flushPromises();
+        expect(wrapper.find('.announcement-body').text()).toContain('<b>タグではありません</b>\n二行目');
+        expect(wrapper.find('.announcement-body b').exists()).toBe(false);
+    });
+
+    it('allows only a capability-bearing user to create edit and delete announcements', async () => {
+        let article = {
+            id: 8, title: '新規記事', body: '本文',
+            created_at: '2026-08-09T10:30:00+09:00', updated_at: '2026-08-09T10:30:00+09:00',
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/public/announcements/latest') return response([article]);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Admin', can_manage_announcements: true, providers: [] });
+            if (path === '/api/v1/me/nation') return response(null);
+            if (path === '/api/v1/public/announcements?page=1') return response([article]);
+            if (path === '/api/v1/admin/announcements' && init?.method === 'POST') {
+                article = { ...article, ...JSON.parse(String(init.body)) as { title: string; body: string } };
+                return response(article, 201);
+            }
+            if (path === '/api/v1/admin/announcements/8' && init?.method === 'PATCH') {
+                article = { ...article, ...JSON.parse(String(init.body)) as { title: string; body: string } };
+                return response(article);
+            }
+            if (path === '/api/v1/admin/announcements/8' && init?.method === 'DELETE') return response(null);
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await flushPromises();
+        const create = wrapper.findAll('.announcement-actions button').find((button) => button.text() === '新規作成')!;
+        await create.trigger('click');
+        await wrapper.find('.announcement-form input').setValue('作成した記事');
+        await wrapper.find('.announcement-form textarea').setValue('一行目\n二行目');
+        await wrapper.find('.announcement-form').trigger('submit');
+        await flushPromises();
+        const post = fetchMock.mock.calls.find(([path, init]) => String(path) === '/api/v1/admin/announcements' && init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toEqual({ title: '作成した記事', body: '一行目\n二行目' });
+
+        const edit = wrapper.findAll('.announcement-actions button').find((button) => button.text() === '編集')!;
+        await edit.trigger('click');
+        await wrapper.find('.announcement-form input').setValue('編集した記事');
+        await wrapper.find('.announcement-form').trigger('submit');
+        await flushPromises();
+        expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/admin/announcements/8') && init?.method === 'PATCH')).toBe(true);
+
+        const remove = wrapper.findAll('.announcement-actions button').find((button) => button.text() === '削除')!;
+        await remove.trigger('click');
+        await flushPromises();
+        expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/admin/announcements/8') && init?.method === 'DELETE')).toBe(true);
     });
 
     it('registers the island profile explicitly and shows field-level validation', async () => {
