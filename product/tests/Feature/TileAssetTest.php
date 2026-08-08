@@ -67,6 +67,21 @@ class TileAssetTest extends TestCase
         $this->assertFalse($resolver->resolve('tile.sea', '海')['available']);
     }
 
+    public function test_settlement_and_missile_scar_tiles_use_the_confirmed_original_mappings(): void
+    {
+        foreach (['land1.gif', 'land3.gif', 'land4.gif', 'land5.gif', 'land13.gif'] as $filename) {
+            $this->writeGif($filename);
+        }
+
+        $resolver = app(AssetManifestResolver::class);
+
+        $this->assertStringContainsString('/land1.gif?v=', (string) $resolver->resolve('tile.wasteland', '荒地')['url']);
+        $this->assertStringContainsString('/land3.gif?v=', (string) $resolver->resolve('tile.village', '村')['url']);
+        $this->assertStringContainsString('/land4.gif?v=', (string) $resolver->resolve('tile.town', '町')['url']);
+        $this->assertStringContainsString('/land5.gif?v=', (string) $resolver->resolve('tile.city', '都市')['url']);
+        $this->assertStringContainsString('/land13.gif?v=', (string) $resolver->resolve('tile.scorched', '焼け跡')['url']);
+    }
+
     public function test_replacing_same_filename_changes_version_url_and_route_cache_headers(): void
     {
         $path = $this->writeGif('land0.gif');
