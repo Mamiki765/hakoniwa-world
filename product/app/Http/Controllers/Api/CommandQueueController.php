@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\CommandQueueService;
+use App\Application\LegacyCommandQueueOrder;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Concurrency\OptimisticLockException;
@@ -22,6 +23,8 @@ use Illuminate\Http\Request;
 
 final class CommandQueueController extends Controller
 {
+    public function __construct(private readonly LegacyCommandQueueOrder $legacyOrder) {}
+
     public function definitions(
         Request $request,
         Nation $nation,
@@ -243,18 +246,19 @@ final class CommandQueueController extends Controller
     /** @return array<string, mixed> */
     private function serializeQueue(NationCommandQueue $queue): array
     {
-        $items = $queue->items->map(static fn (NationCommandQueueItem $item): array => [
-            'id' => $item->id,
-            'command_key' => $item->definition->key,
-            'command_name' => $item->definition->name,
-            'queue_position' => $item->queue_position,
-            'target_x' => $item->target_x,
-            'target_y' => $item->target_y,
-            'quantity' => $item->quantity,
-            'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
-            'status' => $item->status,
-            'queued_at' => $item->queued_at?->toIso8601String(),
-        ])->values();
+        $items = $this->legacyOrder->project($queue->items)
+            ->map(static fn (NationCommandQueueItem $item): array => [
+                'id' => $item->id,
+                'command_key' => $item->definition->key,
+                'command_name' => $item->definition->name,
+                'queue_position' => $item->queue_position,
+                'target_x' => $item->target_x,
+                'target_y' => $item->target_y,
+                'quantity' => $item->quantity,
+                'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
+                'status' => $item->status,
+                'queued_at' => $item->queued_at?->toIso8601String(),
+            ])->values();
         $byPosition = $items->keyBy('queue_position');
         $limit = $this->queueLimit($queue->nation()->firstOrFail());
         $plan = collect(range(1, $limit))->map(static function (int $position) use ($byPosition): array {

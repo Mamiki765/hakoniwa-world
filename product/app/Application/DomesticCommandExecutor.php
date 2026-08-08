@@ -26,8 +26,6 @@ use Illuminate\Database\Eloquent\Collection;
 
 final class DomesticCommandExecutor
 {
-    private const LEGACY_QUEUE_POSITION_OFFSET = 1000;
-
     /** @var list<string> */
     private const QUANTITY_COMMANDS = ['build_farm', 'build_factory', 'build_mine'];
 
@@ -42,6 +40,7 @@ final class DomesticCommandExecutor
         private readonly DisasterTurnService $disasters,
         private readonly MonsterSpawnService $monsterSpawn,
         private readonly NationIdleCounterFinalizer $idleCounters,
+        private readonly LegacyCommandQueueOrder $legacyOrder,
     ) {}
 
     /**
@@ -1248,7 +1247,7 @@ final class DomesticCommandExecutor
         if ($items->isEmpty()) {
             return;
         }
-        $this->writeCompactedPositions($this->recoverLegacyStagedOrder($items));
+        $this->writeCompactedPositions($this->legacyOrder->recover($items));
     }
 
     private function recoverLegacyStagedQueue(NationCommandQueue $queue): void
@@ -1257,7 +1256,7 @@ final class DomesticCommandExecutor
         if ($items->isEmpty()) {
             return;
         }
-        $recovered = $this->recoverLegacyStagedOrder($items);
+        $recovered = $this->legacyOrder->recover($items);
         if ($recovered === $items) {
             return;
         }
@@ -1285,40 +1284,6 @@ final class DomesticCommandExecutor
             NationCommandQueueItem::query()->whereKey($queuedItem->id)
                 ->update(['queue_position' => $index + 1]);
         }
-    }
-
-    /**
-     * @param  Collection<int, NationCommandQueueItem>  $items
-     * @return Collection<int, NationCommandQueueItem>
-     */
-    private function recoverLegacyStagedOrder(Collection $items): Collection
-    {
-        $legacyStaged = $items->filter(
-            static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
-                && $item->queue_position > self::LEGACY_QUEUE_POSITION_OFFSET,
-        );
-        if ($legacyStaged->isEmpty()) {
-            return $items;
-        }
-
-        // The legacy compactor parked the unchanged prefix at its original
-        // position + 1000. Visible rows are the shifted suffix or plans added
-        // later, so recover the staged prefix before ordinary compaction.
-        $legacyStaged = $legacyStaged->sort(
-            static fn (NationCommandQueueItem $left, NationCommandQueueItem $right): int => [
-                (int) $left->queue_position - self::LEGACY_QUEUE_POSITION_OFFSET,
-                $left->id,
-            ] <=> [
-                (int) $right->queue_position - self::LEGACY_QUEUE_POSITION_OFFSET,
-                $right->id,
-            ],
-        );
-        $visible = $items->reject(
-            static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
-                && $item->queue_position > self::LEGACY_QUEUE_POSITION_OFFSET,
-        );
-
-        return $legacyStaged->values()->concat($visible->values())->values();
     }
 
     private function hasOwnedCellWithin(
