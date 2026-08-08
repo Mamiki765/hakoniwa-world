@@ -41,4 +41,7 @@ return [
     'community' => [
         'contact_url' => env('HAKONIWA_MODERATION_CONTACT_URL'),
     ],
+    'admin' => [
+        'discord_user_id' => env('HAKONIWA_ADMIN_DISCORD_USER_ID'),
+    ],
 ];
