@@ -132,6 +132,82 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertArrayNotHasKey('earthquake', $landLevelEvent);
     }
 
+    public function test_turn_execution_repairs_a_split_queue_without_stopping_the_world(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'ターン復旧国');
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $forest = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
+            ->firstOrFail();
+        $plain = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $first = $this->queue($user, $nation, $space, 'land_clear', $forest, 1, 1);
+        $second = $this->queue($user, $nation, $space, 'plant_forest', $plain, 1, 2);
+        $third = $this->queue($user, $nation, $space, 'build_farm', $plain, 1, 3);
+        $second->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
+        $first->update(['queue_position' => 1001]);
+        $third->update(['queue_position' => 2]);
+
+        $seed = $this->seedWithFirstDraw(TurnRandomStreamFactory::LAND_CLEAR_BURIED_TREASURE, 1_000, 10);
+        $result = app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
+
+        $this->assertSame(1, $result['successes']);
+        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame('cancelled', $second->fresh()->status);
+        $this->assertSame('queued', $third->fresh()->status);
+        $remaining = NationCommandQueueItem::query()->where('nation_command_queue_id', $nation->commandQueue->id)
+            ->where('status', 'queued')->with('definition')->orderBy('queue_position')->get();
+        $this->assertSame([$third->id], $remaining->pluck('id')->all());
+        $this->assertSame(['build_farm'], $remaining->pluck('definition.key')->all());
+        $this->assertSame([1], $remaining->pluck('queue_position')->all());
+    }
+
+    public function test_queue_reads_and_turn_execution_share_the_legacy_recovered_head(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '表示実行一致国');
+        $nation->update(['money' => 1_000]);
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $reclaimTarget = $this->reclaimTarget($nation, $space);
+        $plain = $this->ownedTerrain($nation, 'plain');
+        $first = $this->queue($user, $nation, $space, 'reclaim', $reclaimTarget, 1, 1);
+        $cancelled = $this->queue($user, $nation, $space, 'plant_forest', $plain, 1, 2);
+        $third = $this->queue($user, $nation, $space, 'build_farm', $plain, 1, 3);
+        $cancelled->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
+        $first->update(['queue_position' => 1001]);
+        $third->update(['queue_position' => 2]);
+
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}";
+        $this->actingAs($user)->getJson("{$base}/command-queue")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.id', $first->id)
+            ->assertJsonPath('data.items.0.command_key', 'reclaim')
+            ->assertJsonPath('data.items.0.queue_position', 1)
+            ->assertJsonPath('data.items.1.id', $third->id)
+            ->assertJsonPath('data.items.1.queue_position', 2)
+            ->assertJsonPath('data.plan.0.id', $first->id)
+            ->assertJsonPath('data.plan.0.kind', 'explicit');
+        $landClear = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$reclaimTarget->x}&target_y={$reclaimTarget->y}&position=2",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'land_clear');
+        $this->assertSame('executable_after_queue', $landClear['execution_preview_status']);
+        $this->assertSame(1001, $first->fresh()->queue_position);
+        $this->assertSame(2, $third->fresh()->queue_position);
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], str_repeat('e', 64)),
+        );
+
+        $this->assertSame(1, $result['successes']);
+        $this->assertSame('completed', $first->fresh()->status);
+        $remaining = $third->fresh('definition');
+        $this->assertSame('queued', $remaining->status);
+        $this->assertSame('build_farm', $remaining->definition->key);
+        $this->assertSame(1, $remaining->queue_position);
+    }
+
     public function test_terrain_commands_cannot_remove_the_nation_capital(): void
     {
         $world = $this->lightweightWorld();

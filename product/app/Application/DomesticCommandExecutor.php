@@ -22,6 +22,7 @@ use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\TerrainDefinition;
 use DomainException;
+use Illuminate\Database\Eloquent\Collection;
 
 final class DomesticCommandExecutor
 {
@@ -39,6 +40,7 @@ final class DomesticCommandExecutor
         private readonly DisasterTurnService $disasters,
         private readonly MonsterSpawnService $monsterSpawn,
         private readonly NationIdleCounterFinalizer $idleCounters,
+        private readonly LegacyCommandQueueOrder $legacyOrder,
     ) {}
 
     /**
@@ -74,6 +76,9 @@ final class DomesticCommandExecutor
                 ->where('nation_id', $nation->id)
                 ->lockForUpdate()
                 ->first();
+            if ($queue !== null) {
+                $this->recoverLegacyStagedQueue($queue);
+            }
             $consumedTurn = false;
             $queueMutated = false;
 
@@ -1238,19 +1243,46 @@ final class DomesticCommandExecutor
 
     private function compact(NationCommandQueue $queue): void
     {
-        $items = NationCommandQueueItem::query()
+        $items = $this->lockedQueuedItems($queue);
+        if ($items->isEmpty()) {
+            return;
+        }
+        $this->writeCompactedPositions($this->legacyOrder->recover($items));
+    }
+
+    private function recoverLegacyStagedQueue(NationCommandQueue $queue): void
+    {
+        $items = $this->lockedQueuedItems($queue);
+        if ($items->isEmpty()) {
+            return;
+        }
+        $recovered = $this->legacyOrder->recover($items);
+        if ($recovered === $items) {
+            return;
+        }
+        $this->writeCompactedPositions($recovered);
+    }
+
+    /** @return Collection<int, NationCommandQueueItem> */
+    private function lockedQueuedItems(NationCommandQueue $queue): Collection
+    {
+        return NationCommandQueueItem::query()
             ->where('nation_command_queue_id', $queue->id)
             ->where('status', 'queued')
             ->orderBy('queue_position')
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
-        if ($items->isEmpty()) {
-            return;
-        }
-        NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())->increment('queue_position', 1000);
+    }
+
+    /** @param Collection<int, NationCommandQueueItem> $items */
+    private function writeCompactedPositions(Collection $items): void
+    {
+        NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())
+            ->update(['queue_position' => null]);
         foreach ($items as $index => $queuedItem) {
-            $queuedItem->update(['queue_position' => $index + 1]);
+            NationCommandQueueItem::query()->whereKey($queuedItem->id)
+                ->update(['queue_position' => $index + 1]);
         }
     }
 

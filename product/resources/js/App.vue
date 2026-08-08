@@ -19,6 +19,7 @@ import type {
     World,
 } from './types';
 
+const applicationVersion = '1.0.2';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -202,7 +203,9 @@ async function updateProfile(): Promise<void> {
 
 <template>
     <header class="site-header">
-        <a class="brand" href="#" @click.prevent="page = 'home'">箱庭諸島<span>２S＋</span></a>
+        <a class="brand" href="#" @click.prevent="page = 'home'">
+            箱庭諸島<span>２S＋</span><small class="app-version">ver {{ applicationVersion }}</small>
+        </a>
         <nav aria-label="主要ナビゲーション">
             <button type="button" @click="page = 'home'">公開ロビー</button>
             <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
