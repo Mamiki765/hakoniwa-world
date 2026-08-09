@@ -47,7 +47,6 @@ const profileOwnerName = ref('');
 const profileComment = ref('');
 const registrationErrors = ref<Record<string, string>>({});
 const profileErrors = ref<Record<string, string>>({});
-const foodDetailOpen = ref(false);
 const busy = ref(true);
 const message = ref('');
 const clockNow = ref(Date.now());
@@ -523,7 +522,7 @@ async function updateProfile(): Promise<void> {
                     </div>
                     <div class="ranking-scroll">
                         <table>
-                            <thead><tr><th>島名</th><th>島主</th><th>生存ターン</th><th>人口</th><th>資金</th><th>食料</th></tr></thead>
+                            <thead><tr><th>島名</th><th>島主</th><th>生存ターン</th><th>面積</th><th>農場規模</th><th>工場規模</th><th>採掘場規模</th><th>人口</th><th>資金</th><th>食料</th></tr></thead>
                             <tbody>
                                 <tr v-for="entry in rankings" :key="entry.id">
                                     <td>
@@ -541,11 +540,15 @@ async function updateProfile(): Promise<void> {
                                     </td>
                                     <td>{{ entry.owner_name }}</td>
                                     <td>{{ entry.survival_turns.toLocaleString() }}</td>
+                                    <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
+                                    <td>{{ entry.farm_capacity_people.toLocaleString() }}人</td>
+                                    <td>{{ entry.factory_capacity_people.toLocaleString() }}人</td>
+                                    <td>{{ entry.mine_capacity_people.toLocaleString() }}人</td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
                                     <td>{{ entry.money_display }}</td>
                                     <td>{{ entry.food_total_tons.toLocaleString() }}トン</td>
                                 </tr>
-                                <tr v-if="rankings.length === 0"><td colspan="6" class="empty-state">まだ島がありません。</td></tr>
+                                <tr v-if="rankings.length === 0"><td colspan="10" class="empty-state">まだ島がありません。</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -671,56 +674,37 @@ async function updateProfile(): Promise<void> {
                     <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
                 </div>
                 <dl class="hud-primary">
+                    <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
+                    <div><dt>面積</dt><dd>{{ nation.owned_land_cells.toLocaleString() }}セル</dd></div>
                     <div class="hud-money">
                         <dt>資金</dt>
-                        <dd class="hud-capacity-value">
-                            <strong class="hud-current-value">{{ formatExactMoney(nation.money) }}</strong>
-                            <span class="hud-capacity-limit">上限 {{ formatExactMoney(nation.money_capacity) }}</span>
-                        </dd>
+                        <dd><strong class="hud-current-value">{{ formatExactMoney(nation.money) }}</strong></dd>
                     </div>
-                    <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
                     <div class="hud-food">
                         <dt>食料</dt>
-                        <dd class="hud-capacity-value">
-                            <span class="hud-value-line">
-                                <strong class="hud-current-value">{{ formatResource(nation.total_food_tons, 'トン') }}</strong>
-                                <button
-                                    class="food-detail-toggle"
-                                    type="button"
-                                    :aria-expanded="foodDetailOpen"
-                                    @click="foodDetailOpen = !foodDetailOpen"
-                                >
-                                    詳細
-                                </button>
-                            </span>
-                            <span class="hud-capacity-limit">上限 {{ formatResource(nation.food_capacity_tons, 'トン') }}</span>
-                        </dd>
-                        <div v-if="foodDetailOpen" class="hud-food-detail" role="dialog" aria-label="食料の内訳">
-                            <strong>食料の内訳</strong>
-                            <ul>
-                                <li v-for="resource in nation.food_resources" :key="resource.key">
-                                    <span>{{ resource.name }}</span>
-                                    <span>{{ formatResource(resource.balance, resource.unit_label) }}</span>
-                                </li>
-                            </ul>
-                            <button type="button" @click="foodDetailOpen = false">閉じる</button>
-                        </div>
+                        <dd><strong class="hud-current-value">{{ formatResource(nation.total_food_tons, 'トン') }}</strong></dd>
                     </div>
                     <div><dt>農場規模</dt><dd>{{ nation.farm_capacity_people.toLocaleString() }}人</dd></div>
                     <div><dt>工場規模</dt><dd>{{ nation.factory_capacity_people.toLocaleString() }}人</dd></div>
                     <div><dt>採掘場規模</dt><dd>{{ nation.mine_capacity_people.toLocaleString() }}人</dd></div>
-                    <div v-for="resource in nonFoodResources" :key="resource.key">
-                        <dt>{{ resource.name }}</dt>
-                        <dd v-if="resource.capacity !== null" class="hud-capacity-value">
-                            <strong class="hud-current-value">{{ formatResource(resource.amount, resource.unit_label) }}</strong>
-                            <span class="hud-capacity-limit">上限 {{ formatResource(resource.capacity, resource.unit_label) }}</span>
-                        </dd>
-                        <dd v-else>{{ formatResource(resource.amount, resource.unit_label) }}</dd>
-                    </div>
                 </dl>
                 <details class="hud-more">
-                    <summary>追加統計</summary>
-                    <span>保有陸地：{{ nation.owned_land_cells.toLocaleString() }}セル</span>
+                    <summary>詳細情報</summary>
+                    <dl class="hud-details">
+                        <div><dt>資金上限</dt><dd>{{ formatExactMoney(nation.money_capacity) }}</dd></div>
+                        <div><dt>食料上限</dt><dd>{{ formatResource(nation.food_capacity_tons, 'トン') }}</dd></div>
+                        <div v-for="resource in nation.food_resources" :key="`food:${resource.key}`">
+                            <dt>{{ resource.name }}</dt><dd>{{ formatResource(resource.balance, resource.unit_label) }}</dd>
+                        </div>
+                        <div v-for="resource in nonFoodResources" :key="resource.key">
+                            <dt>{{ resource.name }}</dt>
+                            <dd v-if="resource.capacity !== null">
+                                {{ formatResource(resource.amount, resource.unit_label) }}
+                                （上限 {{ formatResource(resource.capacity, resource.unit_label) }}）
+                            </dd>
+                            <dd v-else>{{ formatResource(resource.amount, resource.unit_label) }}</dd>
+                        </div>
+                    </dl>
                     <span>出来事は24ターンごとに表示</span>
                 </details>
             </header>
@@ -756,8 +740,12 @@ async function updateProfile(): Promise<void> {
                 </div>
                 <dl>
                     <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
-                    <div><dt>保有陸地</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
+                    <div><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
                     <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
+                    <div><dt>食料</dt><dd>{{ previewNation.food_total_tons.toLocaleString() }}トン</dd></div>
+                    <div><dt>農場規模</dt><dd>{{ previewNation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                    <div><dt>工場規模</dt><dd>{{ previewNation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                    <div><dt>採掘場規模</dt><dd>{{ previewNation.mine_capacity_people.toLocaleString() }}人</dd></div>
                     <div><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
                 </dl>
                 <p v-if="previewNation.monster_kill_stats.length" class="monster-kill-marks">
@@ -770,7 +758,7 @@ async function updateProfile(): Promise<void> {
             <div class="preview-grid">
                 <aside class="preview-details">
                     <CellDetails :cell="map.selected.value" />
-                    <p class="queue-notice">公開情報だけを表示しています。コマンド、正確な資金・資源、非公開施設は取得していません。</p>
+                    <p class="queue-notice">公開情報（人口・面積・推定資金・食料合計・施設規模）だけを表示しています。食料内訳、その他資源在庫・上限、非公開施設は取得していません。</p>
                 </aside>
                 <HexMap
                     :cells="map.visibleCells.value"

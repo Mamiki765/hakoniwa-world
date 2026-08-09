@@ -26,6 +26,7 @@ const emptyChunk: MapChunk = {
 const publicDetail: PublicNationDetail = {
     id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
     owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+    farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
     registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
     last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '箱庭諸島２S＋', current_turn: 1 },
     capital: { x: 12, y: 8 },
@@ -50,6 +51,7 @@ function publicResponse(path: string): Response | null {
     if (path.endsWith('/rankings')) return response([{
         rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
         owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+        farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
         registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
         last_updated_turn: 1, comment: '公開コメント',
     }]);
@@ -78,7 +80,11 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
-        expect(wrapper.find('.ranking-card thead').text()).toBe('島名島主生存ターン人口資金食料');
+        expect(wrapper.find('.ranking-card thead').text()).toBe('島名島主生存ターン面積農場規模工場規模採掘場規模人口資金食料');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('17セル');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('10,000人');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('30,000人');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('5,000人');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('10,000トン');
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
@@ -101,6 +107,7 @@ describe('application lobby and island entry', () => {
                 rank: 1, id: 7, world_id: 1, nation_number: 1, name: '休止島', state: 'dormant_frozen',
                 total_population: 1000, owner_name: '休止島主', territory_cell_count: 19, owned_land_cells: 17,
                 money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+                farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
                 registered_turn: 1, survival_turns: 10, finance_only_turns: 7, activity_status: 'finance_only',
                 last_updated_turn: 11, comment: '',
             }]);
@@ -413,7 +420,14 @@ describe('application lobby and island entry', () => {
         await wrapper.find('.ranking-card tbody button').trigger('click');
         await flushPromises();
         expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
-        expect(wrapper.text()).toContain('公開情報だけを表示しています');
+        expect(wrapper.text()).toContain('人口・面積・推定資金・食料合計・施設規模');
+        expect(wrapper.find('.preview-heading').text()).toContain('人口1,000人');
+        expect(wrapper.find('.preview-heading').text()).toContain('面積17セル');
+        expect(wrapper.find('.preview-heading').text()).toContain('推定資金約500億円');
+        expect(wrapper.find('.preview-heading').text()).toContain('食料10,000トン');
+        expect(wrapper.find('.preview-heading').text()).toContain('農場規模10,000人');
+        expect(wrapper.find('.preview-heading').text()).toContain('工場規模30,000人');
+        expect(wrapper.find('.preview-heading').text()).toContain('採掘場規模5,000人');
         expect(wrapper.text()).toContain('島主：公開島主');
         expect(wrapper.text()).toContain('公開コメント');
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
@@ -486,26 +500,27 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
         expect(wrapper.find('.nation-hud').text()).toContain('島主：自島主');
         expect(wrapper.find('.nation-hud').text()).toContain('自島コメント');
-        expect(wrapper.find('.nation-hud').text()).toContain('保有陸地：17セル');
-        expect(wrapper.find('.nation-hud').text()).toContain('食料');
-        expect(wrapper.find('.nation-hud').text()).toContain('10,000トン');
+        expect(wrapper.find('.hud-primary').text()).toContain('人口1,000人');
+        expect(wrapper.find('.hud-primary').text()).toContain('面積17セル');
+        expect(wrapper.find('.hud-primary').text()).toContain('食料10,000トン');
+        expect(wrapper.find('.hud-primary').text()).toContain('農場規模10,000人');
+        expect(wrapper.find('.hud-primary').text()).toContain('工場規模20,000人');
+        expect(wrapper.find('.hud-primary').text()).toContain('採掘場規模30,000人');
+        expect(wrapper.findAll('.hud-primary > div')).toHaveLength(7);
         expect(wrapper.find('.hud-money .hud-current-value').text()).toBe('62,728億円');
-        expect(wrapper.find('.hud-money .hud-capacity-limit').text()).toBe('上限 9,999億円');
-        expect(wrapper.find('.hud-food .hud-capacity-limit').text()).toBe('上限 999,900トン');
         expect(wrapper.find('.hud-money').text()).not.toContain('/');
-        const industrialHud = wrapper.findAll('.hud-primary > div').find((item) => item.text().includes('工業品'))!;
-        const mineralHud = wrapper.findAll('.hud-primary > div').find((item) => item.text().includes('鉱物'))!;
-        expect(industrialHud.find('.hud-current-value').text()).toBe('1,200ユニット');
-        expect(industrialHud.find('.hud-capacity-limit').text()).toBe('上限 9,999,000ユニット');
-        expect(mineralHud.find('.hud-capacity-limit').text()).toBe('上限 9,999,000トン');
-        expect(wrapper.find('.hud-food-detail').exists()).toBe(false);
-        await wrapper.find('.food-detail-toggle').trigger('click');
-        expect(wrapper.find('.hud-food-detail').text()).toContain('小麦');
-        expect(wrapper.find('.hud-food-detail').text()).toContain('魚');
-        expect(wrapper.find('.hud-food-detail').text()).toContain('怪獣肉');
-        expect(wrapper.find('.hud-food-detail').text()).toContain('0トン');
-        await wrapper.find('.hud-food-detail > button').trigger('click');
-        expect(wrapper.find('.hud-food-detail').exists()).toBe(false);
+        expect(wrapper.find('.hud-primary').text()).not.toContain('工業品');
+        expect(wrapper.find('.hud-primary').text()).not.toContain('上限');
+        expect(wrapper.find('.hud-more').text()).toContain('詳細情報');
+        expect(wrapper.find('.hud-details').text()).toContain('資金上限9,999億円');
+        expect(wrapper.find('.hud-details').text()).toContain('食料上限999,900トン');
+        expect(wrapper.find('.hud-details').text()).toContain('小麦10,000トン');
+        expect(wrapper.find('.hud-details').text()).toContain('魚0トン');
+        expect(wrapper.find('.hud-details').text()).toContain('怪獣肉0トン');
+        expect(wrapper.find('.hud-details').text()).toContain('工業品1,200ユニット');
+        expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000ユニット');
+        expect(wrapper.find('.hud-details').text()).toContain('鉱物0トン');
+        expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000トン');
         expect(wrapper.find('.island-grid').exists()).toBe(true);
         expect(wrapper.find('.island-events-panel').text()).toContain('島の出来事');
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);

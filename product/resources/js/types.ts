@@ -84,6 +84,9 @@ export interface PublicNationSummary {
     money_display: string;
     money_bucket: string;
     food_total_tons: number;
+    farm_capacity_people: number;
+    factory_capacity_people: number;
+    mine_capacity_people: number;
     registered_turn: number;
     survival_turns: number;
     finance_only_turns: number;
