@@ -103,6 +103,29 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.turn-countdown').exists()).toBe(true);
     });
 
+    it('renders a 100-character Latin comment in the wrapping ranking owner row', async () => {
+        const comment = `https://example.com/${'a'.repeat(80)}`;
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/rankings')) return response([{
+                rank: 1, id: 7, world_id: 1, nation_number: 1, name: '長文島', state: 'active',
+                total_population: 1000, owner_name: '長文島主', territory_cell_count: 19, owned_land_cells: 17,
+                money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+                farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
+                registered_turn: 1, survival_turns: 0, finance_only_turns: 0, activity_status: 'active',
+                last_updated_turn: 1, comment,
+                achievements: { awards: [], monster_kills: null },
+            }]);
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const ownerCell = wrapper.find('.ranking-owner-row td');
+        expect(comment).toHaveLength(100);
+        expect(ownerCell.text()).toBe(`長文島主：${comment}`);
+    });
+
     it('marks dormant islands beside the name without an activity-status column', async () => {
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
