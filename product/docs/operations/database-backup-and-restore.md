@@ -82,7 +82,9 @@ upload、HEAD、検証に失敗してmarkerがないfileは自動削除しない
 
 ## Logrotate
 
-production logは`/var/log/hakoniwa-backup.log`で、repositoryの`product/docker/backup/hakoniwa-backup.logrotate`をhostへinstallする。application/web server logの既存方針と同じく日次rotate、30世代、圧縮、rootのみreadableとする。
+production logは`/var/log/hakoniwa-backup.log`で、repositoryの`product/docker/backup/hakoniwa-backup.logrotate`をhostへinstallする。application/web server logの既存方針と同じく日次rotate、30世代、圧縮、rootのみreadableとし、`create 0600 root root`と`su root root`を維持する。
+
+Ubuntu 24.04 production hostでは`/var/log`が`root:syslog`所有、mode 0775のため、`su root root`がない設定はlogrotateの安全チェックでskipされる。回避のために`/var/log`自体のpermissionを変更せず、repository正本の`su root root`を明示した設定を使う。
 
 ```console
 touch /var/log/hakoniwa-backup.log

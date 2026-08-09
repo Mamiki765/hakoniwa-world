@@ -11,6 +11,7 @@ repository_root="$(cd -- "${test_directory}/../../../.." && pwd)"
 wrapper="${repository_root}/product/docker/backup/run-production-backup.sh"
 create_script="${repository_root}/product/docker/backup/create-encrypted-backup.sh"
 prune_script="${repository_root}/product/docker/backup/prune-verified-local-backups.sh"
+logrotate_config="${repository_root}/product/docker/backup/hakoniwa-backup.logrotate"
 test_root="$(mktemp -d)"
 trap 'rm -rf -- "${test_root}"' EXIT
 
@@ -41,6 +42,10 @@ assert_output() {
 assert_empty_file() {
     [[ ! -s "$1" ]] || fail_test "expected empty file: $1"
 }
+
+assert_output "${logrotate_config}" '    create 0600 root root'
+assert_output "${logrotate_config}" '    su root root'
+pass 'logrotate keeps root-owned log creation and rotation identity'
 
 file_sha256() {
     openssl dgst -sha256 "$1" | awk '{ print $2 }'
