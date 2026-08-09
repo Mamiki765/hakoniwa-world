@@ -21,7 +21,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.3.0';
+const applicationVersion = '1.3.1';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -619,7 +619,9 @@ async function updateProfile(): Promise<void> {
                                     <td>{{ formatFacilityScale(entry.mine_capacity_people) }}</td>
                                     <td>{{ entry.survival_turns.toLocaleString() }}</td>
                                 </tr>
-                                <tr class="ranking-owner-row"><td colspan="9">島主：{{ entry.owner_name }}</td></tr>
+                                <tr class="ranking-owner-row">
+                                    <td colspan="9">島主：{{ entry.owner_name }}<template v-if="entry.comment">：{{ entry.comment }}</template></td>
+                                </tr>
                             </tbody>
                             <tbody v-if="rankings.length === 0"><tr><td colspan="10" class="empty-state">まだ島がありません。</td></tr></tbody>
                         </table>
