@@ -58,7 +58,7 @@ PR21のowner-only player island event projectionは怪獣eventをallowlistへ追
 
 公開Nation detailは対象Nationの`nation_monster_kill_stats`を一query・最大8行で取得する。`monster_final_blow_count = SUM(kill_count)`とdefinition別key/name/`kill_count`/`first_killed_turn`/`last_killed_turn`を返す。
 
-ver 1.3.0の公開TOPランキングだけは全Nationの`nation_awards`と正数の`nation_monster_kill_stats`をtableごとの一括queryで投影する。各Nationは順位と主要数値の1行、島主名だけの2行目で表示し、commentを表示しない。賞は全反復受賞turn、怪獣markは最大stable source kindの画像、tooltipはkind昇順の種類別正確countを返す。raw kind、source metadata、seed、周期内部countは公開しない。World summaryとpublic Nation detailへ`achievements`を追加しない。正本は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`とする。
+ver 1.3.0の公開TOPランキングだけは全Nationの`nation_awards`と正数の`nation_monster_kill_stats`をtableごとの一括queryで投影する。各Nationは順位と主要数値の1行、島主名とprofile commentの2行目で表示する。ver 1.3.1 overrideにより、2行目はcommentがある場合は`島主名：comment`、ない場合は島主名だけとする。賞は全反復受賞turn、怪獣markは最大stable source kindの画像、tooltipはkind昇順の種類別正確countを返す。raw kind、source metadata、seed、周期内部countは公開しない。World summaryとpublic Nation detailへ`achievements`を追加しない。正本は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`とする。
 
 ## Effective 20-slot plan
 
