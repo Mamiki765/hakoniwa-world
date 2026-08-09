@@ -620,7 +620,7 @@ async function updateProfile(): Promise<void> {
                                     <td>{{ entry.survival_turns.toLocaleString() }}</td>
                                 </tr>
                                 <tr class="ranking-owner-row">
-                                    <td colspan="9">島主：{{ entry.owner_name }}<template v-if="entry.comment">：{{ entry.comment }}</template></td>
+                                    <td colspan="9">{{ entry.owner_name }}<template v-if="entry.comment">：{{ entry.comment }}</template></td>
                                 </tr>
                             </tbody>
                             <tbody v-if="rankings.length === 0"><tr><td colspan="10" class="empty-state">まだ島がありません。</td></tr></tbody>
