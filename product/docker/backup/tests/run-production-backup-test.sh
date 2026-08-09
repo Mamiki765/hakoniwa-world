@@ -262,6 +262,57 @@ fi
 assert_output "${missing_passphrase}.out" 'passphrase_file_missing_unreadable_or_empty'
 pass 'missing passphrase fails before backup creation'
 
+passphrase_symlink_case="${test_root}/passphrase-symlink"
+passphrase_symlink_target="${test_root}/passphrase-symlink-target"
+printf 'symlink-passphrase\n' >"${passphrase_symlink_target}"
+chmod 0600 "${passphrase_symlink_target}"
+passphrase_symlink_target_hash="$(file_sha256 "${passphrase_symlink_target}")"
+ln -s -- "${passphrase_symlink_target}" "${test_root}/passphrase-symlink-file"
+if run_wrapper success "${passphrase_symlink_case}" 1 "${test_root}/passphrase-symlink-file" \
+    >"${passphrase_symlink_case}.out" 2>&1; then
+    fail_test 'passphrase symlink succeeded'
+fi
+assert_output "${passphrase_symlink_case}.out" 'passphrase_file_is_not_a_safe_regular_file'
+assert_empty_file "${passphrase_symlink_case}/docker.log"
+assert_no_file "${passphrase_symlink_case}/staging/hakoniwa-20260809T001700Z.dump.enc"
+assert_no_file "${passphrase_symlink_case}/staging/hakoniwa-20260809T001700Z.dump.enc.uploaded"
+[[ "$(file_sha256 "${passphrase_symlink_target}")" == "${passphrase_symlink_target_hash}" ]] \
+    || fail_test 'passphrase symlink target changed'
+pass 'passphrase symlink fails before Docker without changing its target'
+
+insecure_passphrase_case="${test_root}/insecure-passphrase-mode"
+insecure_passphrase="${test_root}/insecure-passphrase"
+cp -- "${passphrase}" "${insecure_passphrase}"
+chmod 0640 "${insecure_passphrase}"
+if run_wrapper success "${insecure_passphrase_case}" 1 "${insecure_passphrase}" \
+    >"${insecure_passphrase_case}.out" 2>&1; then
+    fail_test 'group-readable passphrase succeeded'
+fi
+assert_output "${insecure_passphrase_case}.out" 'passphrase_file_permissions_must_be_0600'
+assert_empty_file "${insecure_passphrase_case}/docker.log"
+assert_no_file "${insecure_passphrase_case}/staging/hakoniwa-20260809T001700Z.dump.enc"
+assert_no_file "${insecure_passphrase_case}/staging/hakoniwa-20260809T001700Z.dump.enc.uploaded"
+[[ "$(stat -c %a -- "${insecure_passphrase}")" == '640' ]] \
+    || fail_test 'insecure passphrase mode changed'
+pass 'group-readable passphrase fails before Docker and is not modified'
+
+nonroot_passphrase_case="${test_root}/nonroot-passphrase-owner"
+nonroot_passphrase="${test_root}/nonroot-passphrase"
+cp -- "${passphrase}" "${nonroot_passphrase}"
+chmod 0600 "${nonroot_passphrase}"
+chown 1:1 "${nonroot_passphrase}"
+if run_wrapper success "${nonroot_passphrase_case}" 1 "${nonroot_passphrase}" \
+    >"${nonroot_passphrase_case}.out" 2>&1; then
+    fail_test 'non-root-owned passphrase succeeded'
+fi
+assert_output "${nonroot_passphrase_case}.out" 'passphrase_file_is_not_owned_by_root'
+assert_empty_file "${nonroot_passphrase_case}/docker.log"
+assert_no_file "${nonroot_passphrase_case}/staging/hakoniwa-20260809T001700Z.dump.enc"
+assert_no_file "${nonroot_passphrase_case}/staging/hakoniwa-20260809T001700Z.dump.enc.uploaded"
+[[ "$(stat -c %u -- "${nonroot_passphrase}")" == '1' ]] \
+    || fail_test 'non-root passphrase owner changed'
+pass 'non-root-owned passphrase fails before Docker and is not modified'
+
 capacity_case="${test_root}/capacity"
 if run_wrapper success "${capacity_case}" 900000000000000000 >"${capacity_case}.out" 2>&1; then
     fail_test 'capacity preflight succeeded unexpectedly'

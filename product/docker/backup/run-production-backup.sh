@@ -45,7 +45,13 @@ done
 [[ -x "${create_script}" ]] || fail 'create_script_missing_or_not_executable'
 [[ -x "${prune_script}" ]] || fail 'prune_script_missing_or_not_executable'
 [[ -d "${backup_directory}" && -w "${backup_directory}" ]] || fail 'backup_directory_missing_or_not_writable'
+[[ -e "${passphrase_file}" || -L "${passphrase_file}" ]] \
+    || fail 'passphrase_file_missing_unreadable_or_empty'
+[[ -f "${passphrase_file}" && ! -L "${passphrase_file}" ]] \
+    || fail 'passphrase_file_is_not_a_safe_regular_file'
 [[ -r "${passphrase_file}" && -s "${passphrase_file}" ]] || fail 'passphrase_file_missing_unreadable_or_empty'
+[[ "$(stat -c %u -- "${passphrase_file}")" == '0' ]] || fail 'passphrase_file_is_not_owned_by_root'
+[[ "$(stat -c %a -- "${passphrase_file}")" == '600' ]] || fail 'passphrase_file_permissions_must_be_0600'
 [[ "${bucket}" =~ ^[A-Za-z0-9._-]+$ ]] || fail 'invalid_bucket_name'
 [[ "${minimum_free_bytes}" =~ ^[1-9][0-9]{0,17}$ ]] || fail 'invalid_minimum_free_bytes'
 [[ "${local_generations}" =~ ^[1-9][0-9]{0,2}$ ]] || fail 'invalid_local_generation_count'

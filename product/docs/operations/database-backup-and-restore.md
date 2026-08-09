@@ -1,4 +1,4 @@
-# PostgreSQL backupとrestore
+# PostgreSQL backup and restore
 
 ## Production契約（ver 1.3.2）
 
@@ -61,7 +61,7 @@ docker run --rm ghcr.io/oracle/oci-cli:20260729@sha256:12ba572de6290354255e9d7ed
 
 ## Secret、staging、容量
 
-passphrase fileはGit、`.env`、cron、logへ書かず、secret値をenvironment dumpや運用記録へ出力しない。production host上のcopyはrootだけが読める既存fileを使う。
+passphrase fileはGit、`.env`、cron、logへ書かず、secret値をenvironment dumpや運用記録へ出力しない。production host上のcopyはroot所有のregular file、非symlink、mode 0600とし、wrapperはdump前のpreflightでこの契約を強制する。
 
 VM全損時にも復号できるよう、production hostとOCI bucket `hakoniwa-backup`の双方から独立したoperator-controlled secret保管先へrecovery copyを保持することを必須とする。passphraseをbackup objectと同じbucket、同じpath、または同じstaging directoryへ保存しない。保管先のidentifier、access承認者、最終取得確認日時は記録してよいが、secret値は記録しない。月次restore rehearsalではObject Storage backupだけでなく、この独立保管先からpassphraseをDR取得できることも実証する。
 
@@ -195,7 +195,7 @@ restore_rehearsal=ok database=hakoniwa_rehearsal_restore worlds=1
 
 | Failure path | Fail-closed contract | Operator action |
 |---|---|---|
-| passphrase missing/unreadable/empty | dump前に非ゼロ | root所有、mode 0600、production host/bucketから独立したDR保管先と取得経路を確認 |
+| passphrase missing/unreadable/empty、非regular、symlink、非root所有、mode 0600以外 | dump前に非ゼロ | root所有regular file、非symlink、mode 0600、production host/bucketから独立したDR保管先と取得経路を確認 |
 | DB dump失敗 | `pipefail`で非ゼロ、partial削除 | PostgreSQL health、Compose service、DB/userを確認 |
 | OpenSSL失敗 | 非ゼロ、partial削除 | OpenSSL、disk、passphrase fileを確認 |
 | staging書込不可 | probeまたは既存scriptで非ゼロ | ownership、mode、mountを確認 |

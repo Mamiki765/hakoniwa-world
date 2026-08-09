@@ -413,7 +413,7 @@
 - Status: Decided
 - Implemented: PR23でcredentialを含まないbackup/restore script、設定例、operator手順、非ゼロ失敗境界を用意する。実在しないoff-host環境をtestで偽装しない。
 - Decision: 暗号化off-host PostgreSQL backupを6時間ごとに取得し、日次backupを30日保持する。deploy前backup、正式公開前1回と以後月1回を目安にrestore確認する。初期目標RPOは6時間以内、RTOは12時間以内。continuous WAL、PITR、15分RPOは公開後TODOとする。
-- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/operations/database-backup-and-restore.md`
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`product/docs/operations/database-backup-and-restore.md`
 
 ### D-05 event・log保持期間
 
