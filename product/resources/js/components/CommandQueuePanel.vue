@@ -108,6 +108,7 @@ function chooseCommand(definition: CommandDefinition): void {
         pendingDefinition.value = definition;
         return;
     }
+    pendingDefinition.value = null;
     void addCommand(definition, definition.quantity_default ?? quantityContract.value.default, {});
 }
 

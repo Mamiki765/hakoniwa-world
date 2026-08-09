@@ -380,6 +380,36 @@ describe('command plan workspace', () => {
         });
     });
 
+    it('closes a prior parameter form when switching to an immediate unused command', async () => {
+        const monument = definition({
+            key: 'build_monument',
+            quantity_semantics: 'selector',
+            quantity_default: null,
+            quantity_options: [{ value: 1, key: 'peace', label: '平和記念碑' }],
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                return jsonResponse({ queue: commandQueue(2), message: '登録しました。' }, 201);
+            }
+            return jsonResponse(String(input).includes('command-definitions')
+                ? catalog([monument, definition()])
+                : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        const buttons = wrapper.findAll('.command-grid button');
+        await buttons[0]!.trigger('click');
+        expect(wrapper.find('.parameter-popover').exists()).toBe(true);
+        await buttons[1]!.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.find('.parameter-popover').exists()).toBe(false);
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ command_key: 'land_clear' });
+    });
+
     it('opens quantity editing from a single mobile plan-row tap', async () => {
         vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
