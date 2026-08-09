@@ -43,4 +43,16 @@ class World extends Model
     {
         return $this->hasMany(TurnRun::class);
     }
+
+    /** @return HasMany<NationAward, $this> */
+    public function nationAwards(): HasMany
+    {
+        return $this->hasMany(NationAward::class);
+    }
+
+    /** @return HasMany<NationMonsterCycleStat, $this> */
+    public function nationMonsterCycleStats(): HasMany
+    {
+        return $this->hasMany(NationMonsterCycleStat::class);
+    }
 }

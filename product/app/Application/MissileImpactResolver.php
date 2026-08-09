@@ -491,6 +491,7 @@ final class MissileImpactResolver
             }
         }
         $received = $generated - $remaining;
+        $context->state->addRefugeesReceived($recipient->id, $received);
         $this->events->record($context, 'refugee_received', $recipient, [
             'nation_id' => $recipient->id,
             'source_nation_id' => $source->owner_nation_id,

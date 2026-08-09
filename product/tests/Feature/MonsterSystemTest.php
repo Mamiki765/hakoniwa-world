@@ -21,6 +21,7 @@ use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
+use App\Models\NationMonsterCycleStat;
 use App\Models\NationMonsterKillStat;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
@@ -433,6 +434,7 @@ class MonsterSystemTest extends TestCase
         $this->assertFalse($ringTwoMonster->fresh()->occupancy()->exists());
         $this->assertSame('wasteland', $ringTwoCell->fresh()->terrain()->value('key'));
         $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $this->assertSame(0, NationMonsterCycleStat::query()->count());
         $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
         $this->assertSame(2, DB::table('audit_events')
             ->where('event_type', 'monster.removed_by_terrain_event')->count());
@@ -505,6 +507,11 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(2, $stat->first_killed_turn);
         $this->assertSame(2, $stat->last_killed_turn);
         $this->assertSame(1, $stat->version);
+        $cycleStat = NationMonsterCycleStat::query()->sole();
+        $this->assertSame($killer->id, $cycleStat->nation_id);
+        $this->assertSame(1, $cycleStat->cycle_start_turn);
+        $this->assertSame(100, $cycleStat->cycle_end_turn);
+        $this->assertSame(1, $cycleStat->kill_count);
         $this->assertSame($stat->id, $result->killStatId);
         $this->assertSame(0, $result->previousKillCount);
         $this->assertSame(1, $result->newKillCount);
@@ -517,6 +524,8 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(2, $metadata['target_turn']);
         $this->assertSame(0, $metadata['previous_kill_count']);
         $this->assertSame(1, $metadata['new_kill_count']);
+        $this->assertSame(0, $metadata['previous_monster_cycle_kill_count']);
+        $this->assertSame(1, $metadata['new_monster_cycle_kill_count']);
         $this->assertSame(500, $metadata['killer_money']['requested']);
         $this->assertSame(250_000, $metadata['host_meat_food']['requested']);
         $this->assertSame(249_900, $metadata['host_meat_food']['overflow']);
@@ -538,6 +547,7 @@ class MonsterSystemTest extends TestCase
         $this->assertNull($retry->killStatId);
         $this->assertSame(1, NationMonsterKillStat::query()->count());
         $this->assertSame(1, $stat->fresh()->kill_count);
+        $this->assertSame(1, $cycleStat->fresh()->kill_count);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.kill_stat_incremented')->count());
         $this->assertSame(9_999, (int) $killer->fresh()->money);
         $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
@@ -613,6 +623,10 @@ class MonsterSystemTest extends TestCase
 
         $this->assertSame(8, NationMonsterKillStat::query()->count());
         $this->assertSame(8, (int) NationMonsterKillStat::query()->sum('kill_count'));
+        $this->assertSame(1, NationMonsterCycleStat::query()
+            ->where('cycle_start_turn', 1)->where('cycle_end_turn', 100)->value('kill_count'));
+        $this->assertSame(7, NationMonsterCycleStat::query()
+            ->where('cycle_start_turn', 101)->where('cycle_end_turn', 200)->value('kill_count'));
     }
 
     public function test_same_nation_receives_both_shares_while_neutral_host_share_is_unclaimed(): void
@@ -728,6 +742,7 @@ class MonsterSystemTest extends TestCase
         $this->assertNull($result->killerMoney);
         $this->assertNull($result->hostMeat);
         $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $this->assertSame(0, NationMonsterCycleStat::query()->count());
         $this->assertSame($beforeMoney, (int) $host->fresh()->money);
     }
 
@@ -795,6 +810,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(1, $monster->fresh()->current_hp);
         $this->assertTrue($monster->fresh()->occupancy()->exists());
         $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $this->assertSame(0, NationMonsterCycleStat::query()->count());
         $this->assertSame($beforeMoney, (int) $killer->fresh()->money);
     }
 

@@ -40,6 +40,7 @@ final class CompleteTurnEngine
         private readonly DisasterTurnService $disasters,
         private readonly MonsterTurnService $monsters,
         private readonly MissileImpactResolver $missiles,
+        private readonly AwardTurnFinalizer $awards,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -529,6 +530,7 @@ final class CompleteTurnEngine
     /** @return array<string, int|bool> */
     private function finalizeTurn(TurnContext $context): array
     {
+        $awardMetrics = $this->awards->finalize($context);
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->findOrFail($nationId);
             $start = $context->state->nationStartSummary($nationId);
@@ -552,7 +554,7 @@ final class CompleteTurnEngine
             'phase_count' => count(TurnPipeline::CANONICAL_PHASE_KEYS),
         ]);
 
-        return ['completed' => true, 'target_turn' => $context->targetTurn];
+        return ['completed' => true, 'target_turn' => $context->targetTurn, ...$awardMetrics];
     }
 
     /** @return array{money: int, population: int, food: int} */

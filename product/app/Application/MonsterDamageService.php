@@ -21,6 +21,7 @@ final class MonsterDamageService
         private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly MonsterRemovalService $removal,
         private readonly TurnEventRecorder $events,
+        private readonly MonsterKillCycleService $monsterCycles,
     ) {}
 
     public function applyDamage(
@@ -151,12 +152,14 @@ final class MonsterDamageService
             $killStat = null;
             $previousKillCount = null;
             $newKillCount = null;
+            $monsterCycle = null;
             if ($killerNation !== null) {
                 [$killStat, $previousKillCount, $newKillCount] = $this->incrementKillStat(
                     $context,
                     $killerNation,
                     $locked,
                 );
+                $monsterCycle = $this->monsterCycles->increment($context, $killerNation);
             }
 
             $eventMetadata = [
@@ -180,6 +183,8 @@ final class MonsterDamageService
                 'kill_stat_id' => $killStat?->id,
                 'previous_kill_count' => $previousKillCount,
                 'new_kill_count' => $newKillCount,
+                'previous_monster_cycle_kill_count' => $monsterCycle['previous'] ?? null,
+                'new_monster_cycle_kill_count' => $monsterCycle['current'] ?? null,
             ];
             $this->events->record($context, 'monster.killed', $locked, $eventMetadata);
             if ($killerNation !== null) {
