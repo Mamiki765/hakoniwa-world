@@ -38,7 +38,7 @@ ver 1.3.0では、公開TOPを箱庭諸島2＋に近い情報密度へ戻し、N
 
 各100 turn境界で当該区間の最大値が1以上なら、最大の全Nationへ`award.monster_turn`を付与する。最大0なら付与しない。判定後は次区間の0行を作成するが、完了区間の行は削除・上書きせずaudit historyとして保持する。原作の`prize10.gif`は300 turn賞だったが、ver 1.3.0ではowner decisionにより討伐ターン賞へ明示的に再対応付けする。`prize11.gif`は使用しない。
 
-pre-1.3.0期間の区間値はeventや永久累積値から推測しない。operatorがWorld key、Nation DB ID、現在区間の確認済みcount、確認tokenを明示するfail-closed commandだけを提供する。既存seed/runtime行、別World Nation、負数、turn実行中、次target turnの未解決non-dry TurnRunがあれば変更しない。award自体のhistorical backfillは行わない。
+pre-1.3.0期間の区間値はeventや永久累積値から推測しない。migrationは100 turn境界途中の既存World/Nationをseed要求行として固定し、全要求の明示完了までnon-dry turn開始と周期順位確定をfail closedにする。要求完了は同じWorld/Nation/区間の`seeded_at`付き周期statとDB上で不可分にし、applicationも完了時刻だけの不整合を未完了として拒否する。operatorはWorld key、Nation DB ID、現在区間の確認済みcount、確認tokenを明示するcommandだけを使用し、0件も明示する。既存seed/runtime行、要求のないNation、別World Nation、負数、turn実行中、次target turnの未解決non-dry TurnRunがあれば変更しない。award自体のhistorical backfillは行わない。
 
 ### 公開markと操作性
 

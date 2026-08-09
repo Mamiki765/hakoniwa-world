@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\CommandQueueService;
+use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
 use App\Application\TurnRunner;
 use App\Domain\Map\GridCoordinate;
@@ -279,6 +280,7 @@ final class RulesetV2LiveMonsterReferenceRepairTest extends TestCase
             new WorldTurnLock,
             new HotfixFixedTurnSeedGenerator(str_repeat('f', 64)),
             app(CurrentRulesetGuard::class),
+            app(MonsterKillCycleService::class),
         ))->run($world, source: 'manual');
 
         $this->assertSame($failedRun->id, $run->id);

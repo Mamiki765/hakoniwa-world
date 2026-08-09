@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\AuthIdentityService;
 use App\Application\CommandQueueService;
 use App\Application\ExternalIdentityData;
+use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
 use App\Application\TurnRunner;
 use App\Domain\Ruleset\CurrentRulesetGuard;
@@ -249,7 +250,13 @@ class WorldResetTurnLockTest extends TestCase
             }
         };
 
-        return new TurnRunner($pipeline, new WorldTurnLock, $seeds, app(CurrentRulesetGuard::class));
+        return new TurnRunner(
+            $pipeline,
+            new WorldTurnLock,
+            $seeds,
+            app(CurrentRulesetGuard::class),
+            app(MonsterKillCycleService::class),
+        );
     }
 
     private function acquireAdvisoryLock(string $connectionName, World $world): void

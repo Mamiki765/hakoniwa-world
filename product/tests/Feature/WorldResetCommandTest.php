@@ -234,8 +234,17 @@ class WorldResetCommandTest extends TestCase
             'cycle_end_turn' => 100,
             'kill_count' => 1,
             'version' => 1,
+            'seeded_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
+        ]);
+        $seedRequirementId = DB::table('nation_monster_cycle_seed_requirements')->insertGetId([
+            'world_id' => $world->id,
+            'nation_id' => $nation->id,
+            'cycle_start_turn' => 1,
+            'cycle_end_turn' => 100,
+            'completed_at' => now(),
+            'created_at' => now(),
         ]);
         $alive = MonsterInstance::query()->create([
             'world_id' => $world->id,
@@ -258,12 +267,18 @@ class WorldResetCommandTest extends TestCase
         $dryRunOutput = Artisan::output();
         $this->assertMatchesRegularExpression('/\|\s*nation_awards\s*\|\s*1\s*\|/', $dryRunOutput);
         $this->assertMatchesRegularExpression('/\|\s*nation_monster_cycle_stats\s*\|\s*1\s*\|/', $dryRunOutput);
+        $this->assertMatchesRegularExpression(
+            '/\|\s*nation_monster_cycle_seed_requirements\s*\|\s*1\s*\|/',
+            $dryRunOutput,
+        );
         $this->assertMatchesRegularExpression('/\|\s*nation_monster_kill_stats\s*\|\s*1\s*\|/', $dryRunOutput);
         $this->assertMatchesRegularExpression('/\|\s*monster_instances\s*\|\s*2\s*\|/', $dryRunOutput);
         $this->assertMatchesRegularExpression('/\|\s*monster_occupancies\s*\|\s*1\s*\|/', $dryRunOutput);
         $this->assertNotNull($killStat->fresh());
         $this->assertTrue(DB::table('nation_awards')->where('id', $awardId)->exists());
         $this->assertTrue(DB::table('nation_monster_cycle_stats')->where('id', $cycleStatId)->exists());
+        $this->assertTrue(DB::table('nation_monster_cycle_seed_requirements')
+            ->where('id', $seedRequirementId)->exists());
         $this->assertNotNull($occupancy->fresh());
 
         $this->assertSame(0, Artisan::call('hakoniwa:world:reset', [
@@ -275,6 +290,8 @@ class WorldResetCommandTest extends TestCase
         $this->assertNull(World::query()->find($world->id));
         $this->assertFalse(DB::table('nation_awards')->where('id', $awardId)->exists());
         $this->assertFalse(DB::table('nation_monster_cycle_stats')->where('id', $cycleStatId)->exists());
+        $this->assertFalse(DB::table('nation_monster_cycle_seed_requirements')
+            ->where('id', $seedRequirementId)->exists());
         $this->assertNull(NationMonsterKillStat::query()->find($killStat->id));
         $this->assertNull(MonsterInstance::query()->find($killed->id));
         $this->assertNull(MonsterInstance::query()->find($alive->id));

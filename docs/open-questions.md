@@ -289,7 +289,7 @@
 ### AWARD-01 Nation awards
 
 - Status: Decided
-- Decision: owner提示のver 1.3.0条件表を正本とし、災難50,000/100,000/200,000人純減、繁栄300,000/500,000/1,000,000人最終人口、平和20,000/50,000/80,000人実受入とする。各系列は下位から1 turn 1段階、一度限りで取消なし。100 turnごとの人口最大全Nationへturn賞、同区間のNation attributed final blow最大全Nationへ最大0を除き討伐turn賞を反復付与する。公開TOPだけへ全受賞turn、種類別永久討伐count、stable source kind由来markを表示する。pre-1.3.0の周期countはexplicit operator seedだけ、award backfillは行わない。gameplay bonusはない。
+- Decision: owner提示のver 1.3.0条件表を正本とし、災難50,000/100,000/200,000人純減、繁栄300,000/500,000/1,000,000人最終人口、平和20,000/50,000/80,000人実受入とする。各系列は下位から1 turn 1段階、一度限りで取消なし。100 turnごとの人口最大全Nationへturn賞、同区間のNation attributed final blow最大全Nationへ最大0を除き討伐turn賞を反復付与する。公開TOPだけへ全受賞turn、種類別永久討伐count、stable source kind由来markを表示する。pre-1.3.0の周期countはmigrationが固定した全要求Nationへのexplicit operator seedだけとし、完了までnon-dry turnと周期順位をfail closedにする。award backfillは行わず、gameplay bonusもない。
 - Implemented: ver 1.3.0
 - Decision record: `docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`、`product/docs/operations/ver-1.3.0-monster-cycle-seed.md`
 

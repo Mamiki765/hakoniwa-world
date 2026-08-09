@@ -25,6 +25,7 @@ final class MonsterKillCycleService
     /** @return array{previous: int, current: int} */
     public function increment(TurnContext $context, Nation $nation): array
     {
+        $this->assertLegacySeedCoverage($context->world, $context->targetTurn);
         $interval = $this->intervalForTurn($context->targetTurn);
         $row = DB::selectOne(<<<'SQL'
 INSERT INTO nation_monster_cycle_stats (
@@ -46,12 +47,43 @@ SQL, [$context->world->id, $nation->id, $interval['start'], $interval['end']]);
         return ['previous' => $current - 1, 'current' => $current];
     }
 
+    public function assertLegacySeedCoverage(World $world, int $targetTurn): void
+    {
+        $interval = $this->intervalForTurn($targetTurn);
+        $missingNationIds = DB::table('nation_monster_cycle_seed_requirements as requirements')
+            ->leftJoin('nation_monster_cycle_stats as stats', function ($join): void {
+                $join->on('stats.world_id', '=', 'requirements.world_id')
+                    ->on('stats.nation_id', '=', 'requirements.nation_id')
+                    ->on('stats.cycle_start_turn', '=', 'requirements.cycle_start_turn')
+                    ->on('stats.cycle_end_turn', '=', 'requirements.cycle_end_turn');
+            })
+            ->where('requirements.world_id', $world->id)
+            ->where('requirements.cycle_start_turn', $interval['start'])
+            ->where('requirements.cycle_end_turn', $interval['end'])
+            ->where(function ($query): void {
+                $query->whereNull('requirements.completed_at')
+                    ->orWhereNull('stats.id')
+                    ->orWhereNull('stats.seeded_at');
+            })
+            ->orderBy('requirements.nation_id')
+            ->pluck('requirements.nation_id')
+            ->map(static fn (mixed $nationId): int => (int) $nationId)
+            ->all();
+        if ($missingNationIds !== []) {
+            throw new DomainException(
+                "Monster award cycle {$interval['start']}-{$interval['end']} has incomplete "
+                .'legacy seed coverage for Nation IDs '.implode(',', $missingNationIds).'.',
+            );
+        }
+    }
+
     /**
      * @param  list<int>  $nationIds
      * @return array<int, int>
      */
     public function counts(World $world, int $targetTurn, array $nationIds): array
     {
+        $this->assertLegacySeedCoverage($world, $targetTurn);
         $interval = $this->intervalForTurn($targetTurn);
         $counts = array_fill_keys($nationIds, 0);
         if ($nationIds === []) {

@@ -29,6 +29,7 @@ class TurnRunner
         private readonly WorldTurnLock $lock,
         private readonly TurnSeedGenerator $seeds,
         private readonly CurrentRulesetGuard $rulesetGuard,
+        private readonly MonsterKillCycleService $monsterCycles,
     ) {}
 
     public function run(World $world, bool $dryRun = false, string $source = 'manual'): TurnRun
@@ -49,6 +50,7 @@ class TurnRunner
                 return $this->recordDryRun($world, $ruleset, $targetTurn, $source);
             }
 
+            $this->monsterCycles->assertLegacySeedCoverage($world, $targetTurn);
             $run = $this->prepareRun($world, $ruleset, $targetTurn, $source);
             $validation = $this->pipeline->canonicalValidation();
             if (! $validation['valid']) {

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\AwardTurnFinalizer;
 use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
+use App\Application\TurnRunner;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -15,6 +16,7 @@ use App\Models\NationMonsterCycleStat;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
+use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -372,6 +374,13 @@ class AwardSystemTest extends TestCase
         $targetTurn = (int) $world->current_turn + 1;
         $cycleStart = intdiv($targetTurn - 1, 100) * 100 + 1;
         $cycleEnd = $cycleStart + 99;
+        DB::table('nation_monster_cycle_seed_requirements')->insert([
+            'world_id' => $world->id,
+            'nation_id' => $nation->id,
+            'cycle_start_turn' => $cycleStart,
+            'cycle_end_turn' => $cycleEnd,
+            'created_at' => now(),
+        ]);
         $token = "SEED-{$world->key}-N{$nation->id}-{$cycleStart}-{$cycleEnd}-4";
 
         $missingConfirmation = Artisan::call('hakoniwa:awards:seed-monster-cycle', [
@@ -398,6 +407,8 @@ class AwardSystemTest extends TestCase
             'kill_count' => 4,
         ]);
         $this->assertNotNull(NationMonsterCycleStat::query()->sole()->seeded_at);
+        $this->assertNotNull(DB::table('nation_monster_cycle_seed_requirements')->value('completed_at'));
+        $this->assertStringContainsString('remaining_required_nations=0', Artisan::output());
 
         $duplicate = Artisan::call('hakoniwa:awards:seed-monster-cycle', [
             '--world' => $world->key,
@@ -406,7 +417,7 @@ class AwardSystemTest extends TestCase
             '--confirm' => $token,
         ]);
         $this->assertSame(1, $duplicate);
-        $this->assertStringContainsString('already has seed or runtime state', Artisan::output());
+        $this->assertStringContainsString('seed requirement is already complete', Artisan::output());
         $this->assertSame(1, NationMonsterCycleStat::query()->count());
         $this->assertSame(1, DB::table('nation_monster_kill_stats')->count());
         $this->assertSame(1, (int) DB::table('nation_monster_kill_stats')->sum('kill_count'));
@@ -435,6 +446,163 @@ class AwardSystemTest extends TestCase
             '--kills' => '-1',
         ]);
         $this->assertSame(1, $negative);
+    }
+
+    public function test_legacy_seed_requirement_requires_seeded_stat_then_can_only_complete_once_and_cannot_be_deleted(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = $this->createNation($world, 'seed要求監査国');
+        $requirementId = DB::table('nation_monster_cycle_seed_requirements')->insertGetId([
+            'world_id' => $world->id,
+            'nation_id' => $nation->id,
+            'cycle_start_turn' => 1,
+            'cycle_end_turn' => 100,
+            'created_at' => now(),
+        ]);
+
+        try {
+            DB::transaction(static function () use ($requirementId): void {
+                DB::table('nation_monster_cycle_seed_requirements')
+                    ->where('id', $requirementId)->update(['completed_at' => now()]);
+            });
+            $this->fail('Seed requirement unexpectedly completed without a seeded cycle stat.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('requires a corresponding seeded stat', $exception->getMessage());
+        }
+        $this->assertNull(DB::table('nation_monster_cycle_seed_requirements')
+            ->where('id', $requirementId)->value('completed_at'));
+
+        NationMonsterCycleStat::query()->create([
+            'world_id' => $world->id,
+            'nation_id' => $nation->id,
+            'cycle_start_turn' => 1,
+            'cycle_end_turn' => 100,
+            'kill_count' => 0,
+            'version' => 1,
+            'seeded_at' => now(),
+        ]);
+        $this->assertSame(1, DB::table('nation_monster_cycle_seed_requirements')
+            ->where('id', $requirementId)->update(['completed_at' => now()]));
+
+        try {
+            DB::transaction(static function () use ($requirementId): void {
+                DB::table('nation_monster_cycle_seed_requirements')
+                    ->where('id', $requirementId)->update(['completed_at' => now()->addSecond()]);
+            });
+            $this->fail('Completed seed requirement unexpectedly changed twice.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('may only be completed once', $exception->getMessage());
+        }
+
+        try {
+            DB::transaction(static function () use ($requirementId): void {
+                DB::table('nation_monster_cycle_seed_requirements')->where('id', $requirementId)->delete();
+            });
+            $this->fail('Seed requirement audit row was unexpectedly deleted.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('permanent while its World exists', $exception->getMessage());
+        }
+
+        $this->assertTrue(DB::table('nation_monster_cycle_seed_requirements')
+            ->where('id', $requirementId)->exists());
+    }
+
+    public function test_completed_seed_requirement_without_seeded_stat_is_rejected_before_turn_or_ranking(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = $this->createNation($world, 'seed不整合監査国');
+        $requirementId = DB::table('nation_monster_cycle_seed_requirements')->insertGetId([
+            'world_id' => $world->id,
+            'nation_id' => $nation->id,
+            'cycle_start_turn' => 1,
+            'cycle_end_turn' => 100,
+            'created_at' => now(),
+        ]);
+
+        DB::statement(
+            'ALTER TABLE nation_monster_cycle_seed_requirements '
+            .'DISABLE TRIGGER nation_monster_cycle_seed_requirement_update_guard',
+        );
+        try {
+            DB::table('nation_monster_cycle_seed_requirements')
+                ->where('id', $requirementId)->update(['completed_at' => now()]);
+        } finally {
+            DB::statement(
+                'ALTER TABLE nation_monster_cycle_seed_requirements '
+                .'ENABLE TRIGGER nation_monster_cycle_seed_requirement_update_guard',
+            );
+        }
+
+        try {
+            app(TurnRunner::class)->run($world);
+            $this->fail('Turn unexpectedly started with a completed requirement but no seeded stat.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString("Nation IDs {$nation->id}", $exception->getMessage());
+        }
+        $this->assertSame(0, TurnRun::query()->where('world_id', $world->id)
+            ->where('is_dry_run', false)->count());
+
+        try {
+            app(MonsterKillCycleService::class)->counts($world, 100, [$nation->id]);
+            $this->fail('Ranking unexpectedly defaulted a completed requirement without a seeded stat to zero.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('incomplete legacy seed coverage', $exception->getMessage());
+        }
+    }
+
+    public function test_incomplete_legacy_seed_coverage_blocks_turns_and_cycle_ranking_before_zero_default(): void
+    {
+        $world = $this->lightweightWorld();
+        $first = $this->createNation($world, '移行seed第一国');
+        $second = $this->createNation($world, '移行seed第二国');
+        $interval = app(MonsterKillCycleService::class)->intervalForTurn($world->current_turn + 1);
+        foreach ([$first, $second] as $nation) {
+            DB::table('nation_monster_cycle_seed_requirements')->insert([
+                'world_id' => $world->id,
+                'nation_id' => $nation->id,
+                'cycle_start_turn' => $interval['start'],
+                'cycle_end_turn' => $interval['end'],
+                'created_at' => now(),
+            ]);
+        }
+
+        $firstToken = "SEED-{$world->key}-N{$first->id}-{$interval['start']}-{$interval['end']}-0";
+        $this->assertSame(0, Artisan::call('hakoniwa:awards:seed-monster-cycle', [
+            '--world' => $world->key,
+            '--nation' => (string) $first->id,
+            '--kills' => '0',
+            '--confirm' => $firstToken,
+        ]));
+        $this->assertStringContainsString('remaining_required_nations=1', Artisan::output());
+
+        try {
+            app(TurnRunner::class)->run($world);
+            $this->fail('Turn unexpectedly started with incomplete legacy seed coverage.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString("Nation IDs {$second->id}", $exception->getMessage());
+        }
+        $this->assertSame(0, TurnRun::query()->where('world_id', $world->id)
+            ->where('is_dry_run', false)->count());
+
+        try {
+            app(MonsterKillCycleService::class)->counts($world, 100, [$first->id, $second->id]);
+            $this->fail('Cycle ranking unexpectedly defaulted an incomplete legacy seed to zero.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('incomplete legacy seed coverage', $exception->getMessage());
+        }
+
+        $secondToken = "SEED-{$world->key}-N{$second->id}-{$interval['start']}-{$interval['end']}-0";
+        $this->assertSame(0, Artisan::call('hakoniwa:awards:seed-monster-cycle', [
+            '--world' => $world->key,
+            '--nation' => (string) $second->id,
+            '--kills' => '0',
+            '--confirm' => $secondToken,
+        ]));
+        $this->assertStringContainsString('remaining_required_nations=0', Artisan::output());
+        $this->assertSame(
+            [$first->id => 0, $second->id => 0],
+            app(MonsterKillCycleService::class)->counts($world, 100, [$first->id, $second->id]),
+        );
     }
 
     /**

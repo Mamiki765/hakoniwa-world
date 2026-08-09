@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
+use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
@@ -120,6 +121,7 @@ class CompleteTurnIntegrationTest extends TestCase
             new WorldTurnLock,
             new Pr11FixedTurnSeedGenerator(str_repeat('7', 64)),
             app(CurrentRulesetGuard::class),
+            app(MonsterKillCycleService::class),
         ))->run($world);
 
         $this->assertSame('completed', $run->status);
@@ -245,6 +247,7 @@ class CompleteTurnIntegrationTest extends TestCase
             new WorldTurnLock,
             new Pr11FixedTurnSeedGenerator($seed),
             app(CurrentRulesetGuard::class),
+            app(MonsterKillCycleService::class),
         );
 
         try {

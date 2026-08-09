@@ -89,6 +89,19 @@ final class SeedMonsterAwardCycle extends Command
                 if ($nation === null || $nation->world_id !== $lockedWorld->id) {
                     throw new DomainException("Nation {$nationId} does not belong to World '{$worldKey}'.");
                 }
+                $requirement = DB::table('nation_monster_cycle_seed_requirements')
+                    ->where('world_id', $lockedWorld->id)
+                    ->where('nation_id', $nation->id)
+                    ->where('cycle_start_turn', $interval['start'])
+                    ->where('cycle_end_turn', $interval['end'])
+                    ->lockForUpdate()
+                    ->first();
+                if ($requirement === null) {
+                    throw new DomainException('This Nation and cycle has no legacy seed requirement.');
+                }
+                if ($requirement->completed_at !== null) {
+                    throw new DomainException('This Nation and cycle seed requirement is already complete.');
+                }
                 $existing = NationMonsterCycleStat::query()
                     ->where('world_id', $lockedWorld->id)
                     ->where('nation_id', $nation->id)
@@ -107,10 +120,24 @@ final class SeedMonsterAwardCycle extends Command
                     'version' => 1,
                     'seeded_at' => now(),
                 ]);
+                $completed = DB::table('nation_monster_cycle_seed_requirements')
+                    ->where('id', $requirement->id)
+                    ->whereNull('completed_at')
+                    ->update(['completed_at' => now()]);
+                if ($completed !== 1) {
+                    throw new DomainException('Legacy seed requirement completion was not recorded exactly once.');
+                }
+                $remaining = DB::table('nation_monster_cycle_seed_requirements')
+                    ->where('world_id', $lockedWorld->id)
+                    ->where('cycle_start_turn', $interval['start'])
+                    ->where('cycle_end_turn', $interval['end'])
+                    ->whereNull('completed_at')
+                    ->count();
 
                 return [
                     'nation_name' => $nation->name,
                     'target_turn' => $targetTurn,
+                    'remaining' => $remaining,
                     ...$interval,
                 ];
             }, 3);
@@ -125,7 +152,8 @@ final class SeedMonsterAwardCycle extends Command
         $this->info(
             "monster_cycle_seeded world={$worldKey} nation_id={$nationId} "
             ."nation={$result['nation_name']} cycle={$result['start']}-{$result['end']} "
-            ."next_target_turn={$result['target_turn']} kills={$kills}",
+            ."next_target_turn={$result['target_turn']} kills={$kills} "
+            ."remaining_required_nations={$result['remaining']}",
         );
 
         return self::SUCCESS;

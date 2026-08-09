@@ -41,6 +41,21 @@ return new class extends Migration
             $table->index(['world_id', 'cycle_start_turn', 'kill_count']);
         });
 
+        Schema::create('nation_monster_cycle_seed_requirements', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('world_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('nation_id')->constrained()->cascadeOnDelete();
+            $table->unsignedInteger('cycle_start_turn');
+            $table->unsignedInteger('cycle_end_turn');
+            $table->timestampTz('completed_at')->nullable();
+            $table->timestampTz('created_at');
+            $table->unique(
+                ['world_id', 'nation_id', 'cycle_start_turn'],
+                'nation_monster_cycle_seed_requirement_unique',
+            );
+            $table->index(['world_id', 'cycle_start_turn', 'completed_at']);
+        });
+
         DB::statement('ALTER TABLE nation_awards ADD CONSTRAINT nation_awards_positive_turn CHECK (awarded_turn >= 1)');
         DB::statement(<<<'SQL'
 ALTER TABLE nation_monster_cycle_stats
@@ -51,6 +66,30 @@ ADD CONSTRAINT nation_monster_cycle_stats_valid_interval CHECK (
     AND kill_count >= 0
     AND version >= 1
 )
+SQL);
+        DB::statement(<<<'SQL'
+ALTER TABLE nation_monster_cycle_seed_requirements
+ADD CONSTRAINT nation_monster_cycle_seed_requirement_valid_interval CHECK (
+    cycle_start_turn >= 1
+    AND MOD(cycle_start_turn - 1, 100) = 0
+    AND cycle_end_turn = cycle_start_turn + 99
+)
+SQL);
+        DB::statement(<<<'SQL'
+INSERT INTO nation_monster_cycle_seed_requirements (
+    world_id, nation_id, cycle_start_turn, cycle_end_turn, completed_at, created_at
+)
+SELECT
+    worlds.id,
+    nations.id,
+    (FLOOR(worlds.current_turn / 100.0)::integer * 100) + 1,
+    (FLOOR(worlds.current_turn / 100.0)::integer * 100) + 100,
+    NULL,
+    CURRENT_TIMESTAMP
+FROM worlds
+INNER JOIN nations ON nations.world_id = worlds.id
+WHERE worlds.current_turn > 0
+  AND MOD(worlds.current_turn, 100) <> 0
 SQL);
 
         DB::unprepared(<<<'SQL'
@@ -72,6 +111,10 @@ FOR EACH ROW EXECUTE FUNCTION validate_nation_achievement_world();
 
 CREATE TRIGGER nation_monster_cycle_world_guard
 BEFORE INSERT OR UPDATE OF world_id, nation_id ON nation_monster_cycle_stats
+FOR EACH ROW EXECUTE FUNCTION validate_nation_achievement_world();
+
+CREATE TRIGGER nation_monster_cycle_seed_requirement_world_guard
+BEFORE INSERT OR UPDATE OF world_id, nation_id ON nation_monster_cycle_seed_requirements
 FOR EACH ROW EXECUTE FUNCTION validate_nation_achievement_world();
 
 CREATE OR REPLACE FUNCTION reject_nation_award_update() RETURNS trigger AS $$
@@ -114,6 +157,38 @@ CREATE TRIGGER nation_monster_cycle_update_guard
 BEFORE UPDATE ON nation_monster_cycle_stats
 FOR EACH ROW EXECUTE FUNCTION validate_nation_monster_cycle_update();
 
+CREATE OR REPLACE FUNCTION validate_nation_monster_cycle_seed_requirement_update() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' THEN
+        IF NEW.world_id <> OLD.world_id
+            OR NEW.nation_id <> OLD.nation_id
+            OR NEW.cycle_start_turn <> OLD.cycle_start_turn
+            OR NEW.cycle_end_turn <> OLD.cycle_end_turn
+            OR NEW.created_at IS DISTINCT FROM OLD.created_at
+            OR OLD.completed_at IS NOT NULL
+            OR NEW.completed_at IS NULL THEN
+            RAISE EXCEPTION 'Monster cycle seed requirement may only be completed once';
+        END IF;
+    END IF;
+    IF NEW.completed_at IS NOT NULL AND NOT EXISTS (
+        SELECT 1
+        FROM nation_monster_cycle_stats
+        WHERE world_id = NEW.world_id
+          AND nation_id = NEW.nation_id
+          AND cycle_start_turn = NEW.cycle_start_turn
+          AND cycle_end_turn = NEW.cycle_end_turn
+          AND seeded_at IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION 'Monster cycle seed requirement completion requires a corresponding seeded stat';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER nation_monster_cycle_seed_requirement_update_guard
+BEFORE INSERT OR UPDATE ON nation_monster_cycle_seed_requirements
+FOR EACH ROW EXECUTE FUNCTION validate_nation_monster_cycle_seed_requirement_update();
+
 CREATE OR REPLACE FUNCTION reject_nation_achievement_delete() RETURNS trigger AS $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM worlds WHERE id = OLD.world_id) THEN
@@ -129,6 +204,10 @@ FOR EACH ROW EXECUTE FUNCTION reject_nation_achievement_delete();
 
 CREATE TRIGGER nation_monster_cycle_delete_guard
 BEFORE DELETE ON nation_monster_cycle_stats
+FOR EACH ROW EXECUTE FUNCTION reject_nation_achievement_delete();
+
+CREATE TRIGGER nation_monster_cycle_seed_requirement_delete_guard
+BEFORE DELETE ON nation_monster_cycle_seed_requirements
 FOR EACH ROW EXECUTE FUNCTION reject_nation_achievement_delete();
 SQL);
     }

@@ -160,6 +160,8 @@ final class ResetWorld extends Command
             'turn_runs' => DB::table('turn_runs')->where('world_id', $world->id)->count(),
             'nation_awards' => DB::table('nation_awards')->where('world_id', $world->id)->count(),
             'nation_monster_cycle_stats' => DB::table('nation_monster_cycle_stats')->where('world_id', $world->id)->count(),
+            'nation_monster_cycle_seed_requirements' => DB::table('nation_monster_cycle_seed_requirements')
+                ->where('world_id', $world->id)->count(),
             'nation_monster_kill_stats' => DB::table('nation_monster_kill_stats')->where('world_id', $world->id)->count(),
             'monster_instances' => DB::table('monster_instances')->where('world_id', $world->id)->count(),
             'monster_occupancies' => DB::table('monster_occupancies')
