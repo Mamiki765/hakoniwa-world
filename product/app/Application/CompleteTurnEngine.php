@@ -71,6 +71,10 @@ final class CompleteTurnEngine
         }
         $nationIds = $this->orders->stableNationIds($context->world);
         $context->state->setStableNationIds($nationIds);
+        foreach ($nationIds as $nationId) {
+            $nation = Nation::query()->findOrFail($nationId);
+            $context->state->setNationStartSummary($nationId, $this->summaryState($nation));
+        }
 
         return ['nations' => count($nationIds), 'ruleset_validated' => true];
     }
@@ -167,6 +171,7 @@ final class CompleteTurnEngine
                 $context->state->markFamine($nation->id);
                 $metrics['famine_nations']++;
                 $this->events->record($context, 'resource.food_shortage', $nation, [
+                    'nation_name' => $nation->name,
                     'required_nutrition' => $requiredNutrition,
                     'shortage' => $consumption['shortage'], 'famine' => true,
                 ]);
@@ -524,12 +529,45 @@ final class CompleteTurnEngine
     /** @return array<string, int|bool> */
     private function finalizeTurn(TurnContext $context): array
     {
+        foreach ($context->state->stableNationIds() as $nationId) {
+            $nation = Nation::query()->findOrFail($nationId);
+            $start = $context->state->nationStartSummary($nationId);
+            $end = $this->summaryState($nation);
+            $summary = [];
+            foreach (['money', 'population', 'food'] as $key) {
+                $summary[$key] = [
+                    'start' => $start[$key],
+                    'end' => $end[$key],
+                    'delta' => $end[$key] - $start[$key],
+                ];
+            }
+            $this->events->record($context, 'turn.summary', $nation, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+                'summary' => $summary,
+            ], 'nation');
+        }
         $this->events->record($context, 'turn.completed', $context->world, [
             'random_seed' => $context->randomSeed, 'ruleset_key' => $context->ruleset->key,
             'phase_count' => count(TurnPipeline::CANONICAL_PHASE_KEYS),
         ]);
 
         return ['completed' => true, 'target_turn' => $context->targetTurn];
+    }
+
+    /** @return array{money: int, population: int, food: int} */
+    private function summaryState(Nation $nation): array
+    {
+        $food = (int) NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+            ->sum('amount');
+
+        return [
+            'money' => (int) $nation->fresh()->money,
+            'population' => (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population'),
+            'food' => $food,
+        ];
     }
 
     /** @return array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int} */

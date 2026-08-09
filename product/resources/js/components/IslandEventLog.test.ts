@@ -41,7 +41,7 @@ describe('IslandEventLog', () => {
                     events: [{
                         id: 5, type: 'terrain.changed', message: '整地を実行し、荒地を平地へ変更しました。',
                         importance: 'info', target_turn: 25, coordinate: { x: 12, y: 8 },
-                        occurred_at: '2026-08-01T10:00:00+09:00',
+                        occurred_at: '2026-08-01T10:00:00+09:00', summary: null,
                     }],
                 },
                 {
@@ -49,7 +49,7 @@ describe('IslandEventLog', () => {
                     events: [{
                         id: 1, type: 'turn.completed', message: '第2ターンが完了しました。',
                         importance: 'info', target_turn: 2, coordinate: null,
-                        occurred_at: '2026-07-01T10:00:00+09:00',
+                        occurred_at: '2026-07-01T10:00:00+09:00', summary: null,
                     }],
                 },
             ],

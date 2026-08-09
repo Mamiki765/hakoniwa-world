@@ -4,10 +4,14 @@ namespace Tests\Feature;
 
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
+use App\Domain\Map\MapCellStateService;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
+use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Services\AssetManifestResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -75,7 +79,23 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.resources.4.unit_label', 'トン')
             ->assertJsonPath('data.resources.4.capacity', 9_999_000)
             ->json('data');
-        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->assertJsonPath('data.id', $nation['id']);
+        $scaleCells = MapCell::query()->where('owner_nation_id', $nation['id'])
+            ->whereNull('facility_definition_id')->limit(3)->get();
+        foreach (['farm', 'factory', 'mine'] as $index => $facilityKey) {
+            $cell = $scaleCells[$index]->fresh(['terrain', 'facility']);
+            app(MapCellStateService::class)->transitionTerrain(
+                $cell,
+                TerrainDefinition::query()->where('key', $facilityKey === 'mine' ? 'mountain' : 'plain')->firstOrFail(),
+            );
+            $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
+            app(MapCellStateService::class)->setFacility($cell, $facility, $facility->initial_scale);
+            $cell->save();
+        }
+        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
+            ->assertJsonPath('data.id', $nation['id'])
+            ->assertJsonPath('data.farm_capacity_people', 10_000)
+            ->assertJsonPath('data.factory_capacity_people', 30_000)
+            ->assertJsonPath('data.mine_capacity_people', 5_000);
         $ownedCell = MapCell::query()->where('owner_nation_id', $nation['id'])->firstOrFail();
         $ownedChunk = $this->actingAs($user)->getJson(
             "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$ownedCell->chunk_x}/{$ownedCell->chunk_y}",
@@ -106,22 +126,49 @@ class ApiAndAssetTest extends TestCase
             'amount' => 250,
         ]);
 
-        $this->getJson('/api/v1/me/nation')
+        Nation::query()->whereKey($nation['id'])->update(['money' => 62_728]);
+        $ownerStatus = $this->getJson('/api/v1/me/nation')
             ->assertOk()
+            ->assertJsonPath('data.money', 62_728)
+            ->assertJsonPath('data.money_display', '62,728億円')
             ->assertJsonPath('data.total_food_tons', 10_250)
+            ->assertJsonPath('data.food_total_tons', 10_250)
             ->assertJsonPath('data.food_resources.3.key', 'seaweed')
-            ->assertJsonPath('data.food_resources.3.balance', 250);
+            ->assertJsonPath('data.food_resources.3.balance', 250)
+            ->json('data');
 
         $other = User::factory()->create();
         $otherResponse = $this->actingAs($other)->getJson("/api/v1/nations/{$nation['id']}")->assertOk();
         $otherResponse->assertJsonPath('data.owner_name', 'API島主')
-            ->assertJsonPath('data.comment', '公開プロフィール');
+            ->assertJsonPath('data.comment', '公開プロフィール')
+            ->assertJsonPath('data.money_display', '約62,000億円')
+            ->assertJsonPath('data.food_total_tons', 10_250)
+            ->assertJsonPath('data.farm_capacity_people', 10_000)
+            ->assertJsonPath('data.factory_capacity_people', 30_000)
+            ->assertJsonPath('data.mine_capacity_people', 5_000);
         $otherResponse->assertJsonMissingPath('data.total_food_tons')
             ->assertJsonMissingPath('data.money')
             ->assertJsonMissingPath('data.money_capacity')
             ->assertJsonMissingPath('data.food_capacity_tons')
             ->assertJsonMissingPath('data.food_resources')
             ->assertJsonMissingPath('data.resources');
+        $publicRanking = $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")
+            ->assertOk()->json('data.0');
+        $publicDetail = $this->getJson("/api/v1/public/nations/{$nation['id']}")
+            ->assertOk()->json('data');
+        foreach ([
+            'total_population', 'territory_cell_count', 'owned_land_cells', 'food_total_tons',
+            'farm_capacity_people', 'factory_capacity_people', 'mine_capacity_people',
+        ] as $field) {
+            $this->assertSame($ownerStatus[$field], $publicRanking[$field]);
+            $this->assertSame($ownerStatus[$field], $publicDetail[$field]);
+        }
+        foreach ([$otherResponse->getContent(), json_encode($publicRanking), json_encode($publicDetail)] as $publicBody) {
+            $this->assertIsString($publicBody);
+            foreach (['62728', 'seaweed', 'wheat', 'fish', 'monster_meat', 'industrial_goods', 'minerals', 'food_capacity_tons'] as $privateValue) {
+                $this->assertStringNotContainsString($privateValue, $publicBody);
+            }
+        }
     }
 
     public function test_assets_fall_back_without_external_gifs_including_capital(): void

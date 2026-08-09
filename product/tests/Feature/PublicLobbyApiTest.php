@@ -4,9 +4,12 @@ namespace Tests\Feature;
 
 use App\Application\NationCreationService;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\Nation;
+use App\Models\TerrainDefinition;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +37,8 @@ class PublicLobbyApiTest extends TestCase
         $neutral->update(['owner_nation_id' => $second->id]);
         $first->update(['money' => 62728]);
         $second->update(['money' => 700]);
+        $this->placeScaleFacilities($second);
+        $secondArea = app(NationLandAreaCalculator::class)->forNation($second);
 
         $summary = $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
             ->assertOk()
@@ -54,6 +59,11 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.1.owner_name', '第一島主')
             ->assertJsonPath('data.0.money_display', '約500億円')
             ->assertJsonPath('data.0.money_bucket', '500')
+            ->assertJsonPath('data.0.food_total_tons', 10000)
+            ->assertJsonPath('data.0.owned_land_cells', $secondArea)
+            ->assertJsonPath('data.0.farm_capacity_people', 10000)
+            ->assertJsonPath('data.0.factory_capacity_people', 30000)
+            ->assertJsonPath('data.0.mine_capacity_people', 5000)
             ->assertJsonPath('data.1.money_display', '約62,000億円')
             ->assertJsonPath('data.1.money_bucket', '62000')
             ->assertJsonPath('data.0.survival_turns', 0)
@@ -62,6 +72,9 @@ class PublicLobbyApiTest extends TestCase
         $rankingBody = $ranking->getContent();
         $this->assertStringNotContainsString('"money":', $rankingBody);
         $this->assertStringNotContainsString('62728', $rankingBody);
+        foreach (['food_resources', 'resources', 'food_capacity_tons', 'wheat', 'fish', 'monster_meat'] as $privateField) {
+            $this->assertStringNotContainsString($privateField, $rankingBody);
+        }
 
         MapCell::query()->where('owner_nation_id', $first->id)->orderBy('id')->firstOrFail()->update(['population' => 1500]);
         $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")
@@ -115,6 +128,10 @@ class PublicLobbyApiTest extends TestCase
                 ['id', 'type', 'message', 'importance', 'target_turn', 'occurred_at'],
             ]]]]]);
         $eventsBody = $events->getContent();
+        $this->assertMatchesRegularExpression(
+            '/T\d{2}:\d{2}:\d{2}\+00:00$/',
+            (string) $events->json('data.groups.0.events.0.occurred_at'),
+        );
         $this->assertStringNotContainsString('metadata', $eventsBody);
         $this->assertStringNotContainsString('"draw"', $eventsBody);
         $this->assertStringNotContainsString('"numerator"', $eventsBody);
@@ -205,6 +222,7 @@ class PublicLobbyApiTest extends TestCase
             $owner, $world, '秘匿国', '秘匿島主', '公開コメント',
         );
         $nation->update(['money' => 62728]);
+        $this->placeScaleFacilities($nation);
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
         $base = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereHas('facility', fn ($query) => $query->where('key', 'missile_base'))->firstOrFail();
@@ -217,6 +235,11 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.map_space.id', $mapSpace->id)
             ->assertJsonPath('data.map_space.bounds.max_x', $mapSpace->max_x)
             ->assertJsonPath('data.money_display', '約62,000億円')
+            ->assertJsonPath('data.food_total_tons', 10000)
+            ->assertJsonPath('data.owned_land_cells', app(NationLandAreaCalculator::class)->forNation($nation))
+            ->assertJsonPath('data.farm_capacity_people', 10000)
+            ->assertJsonPath('data.factory_capacity_people', 30000)
+            ->assertJsonPath('data.mine_capacity_people', 5000)
             ->assertJsonPath('data.owner_name', '秘匿島主')
             ->assertJsonPath('data.comment', '公開コメント');
         $this->assertStringNotContainsString('62728', $nationResponse->getContent());
@@ -225,6 +248,9 @@ class PublicLobbyApiTest extends TestCase
         $this->assertStringNotContainsString('wheat', $nationResponse->getContent());
         $this->assertStringNotContainsString('user_id', $nationResponse->getContent());
         $this->assertStringNotContainsString('membership', $nationResponse->getContent());
+        foreach (['food_capacity_tons', 'resources', 'industrial_goods', 'minerals'] as $privateField) {
+            $this->assertStringNotContainsString($privateField, $nationResponse->getContent());
+        }
 
         $url = "/api/v1/public/nations/{$nation->id}/map-spaces/{$mapSpace->id}/chunks/{$base->chunk_x}/{$base->chunk_y}";
         $response = $this->getJson($url)->assertOk();
@@ -329,6 +355,22 @@ class PublicLobbyApiTest extends TestCase
     }
 
     /** @param array<int, array<string, mixed>> $cells @return array<string, mixed> */
+    private function placeScaleFacilities(Nation $nation): void
+    {
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->limit(3)->get();
+        foreach (['farm', 'factory', 'mine'] as $index => $facilityKey) {
+            $cell = $cells[$index]->fresh(['terrain', 'facility']);
+            app(MapCellStateService::class)->transitionTerrain(
+                $cell,
+                TerrainDefinition::query()->where('key', $facilityKey === 'mine' ? 'mountain' : 'plain')->firstOrFail(),
+            );
+            $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
+            app(MapCellStateService::class)->setFacility($cell, $facility, $facility->initial_scale);
+            $cell->save();
+        }
+    }
+
     private function cell(array $cells, MapCell $expected): array
     {
         $cell = collect($cells)->first(

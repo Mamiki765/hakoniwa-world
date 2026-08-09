@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Application\CommandQueueService;
 use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
@@ -9,12 +10,14 @@ use App\Domain\Map\MapCellStateService;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonumentDefinition;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
 use App\Models\User;
 use App\Models\World;
+use DomainException;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -318,7 +321,17 @@ class CommandQueueAndSalePolicyTest extends TestCase
             $this->assertArrayNotHasKey('parameter_schema', $definition);
             $this->assertArrayHasKey('target_type', $definition);
             $this->assertArrayHasKey('parameters', $definition);
+            $this->assertArrayHasKey('quantity_semantics', $definition);
+            $this->assertArrayHasKey('quantity_default', $definition);
+            $this->assertArrayHasKey('quantity_options', $definition);
         }
+        $commands = collect($definitions->json('data.commands'));
+        $this->assertSame('unused', $commands->firstWhere('key', 'land_clear')['quantity_semantics']);
+        $this->assertSame('ordinary', $commands->firstWhere('key', 'excavate')['quantity_semantics']);
+        $this->assertSame(99, $commands->firstWhere('key', 'missile')['quantity_default']);
+        $this->assertSame('selector', $commands->firstWhere('key', 'build_monument')['quantity_semantics']);
+        $this->assertNull($commands->firstWhere('key', 'build_monument')['quantity_default']);
+        $this->assertNotEmpty($commands->firstWhere('key', 'build_monument')['quantity_options']);
 
         foreach ([null, 0, 100, -1, 1.5, '10', true, [], ['nested' => true]] as $invalid) {
             $this->postJson($path, [
@@ -379,6 +392,21 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 3,
         ])->assertCreated()
             ->assertJsonPath('data.queue.items.1.quantity', 1);
+        $landClearId = NationCommandQueueItem::query()->whereHas(
+            'definition', fn ($query) => $query->where('key', 'land_clear'),
+        )->value('id');
+        $this->patchJson("{$path}/{$landClearId}", [
+            'quantity' => 2,
+            'expected_version' => 4,
+        ])->assertUnprocessable();
+        $this->postJson($path, [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'quantity' => 2,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 4,
+        ])->assertUnprocessable();
 
         $this->postJson($path, [
             'command_key' => 'build_farm',
@@ -404,6 +432,142 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertCount(2, $updatedAudit);
         $this->assertSame(1, $updatedAudit['old_quantity']);
         $this->assertSame(99, $updatedAudit['new_quantity']);
+    }
+
+    public function test_command_specific_defaults_and_selector_are_validated_at_registration(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('選択数量国');
+        $nation->update(['money' => 20_000]);
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $peace = MonumentDefinition::query()->where('key', 'peace')->firstOrFail();
+        $prosperity = MonumentDefinition::query()->where('key', 'prosperity')->firstOrFail();
+        $peaceId = (int) $peace->id;
+        $prosperityId = (int) $prosperity->id;
+        $this->assertSame(
+            ['peace' => 1, 'prosperity' => 2, 'victory' => 3],
+            MonumentDefinition::query()->orderBy('id')->pluck('id', 'key')
+                ->map(static fn (mixed $id): int => (int) $id)->all(),
+        );
+
+        $this->actingAs($owner)->postJson($path, [
+            'command_key' => 'build_monument',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertUnprocessable();
+
+        $monument = $this->postJson($path, [
+            'command_key' => 'build_monument',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'quantity' => $peaceId,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.0.quantity_semantics', 'selector')
+            ->assertJsonPath('data.queue.items.0.quantity_label', '平和記念碑');
+
+        $peace->update(['enabled' => false]);
+        $prosperity->update(['sort_order' => 1]);
+        $this->getJson($path)->assertOk()
+            ->assertJsonPath('data.items.0.quantity', $peaceId)
+            ->assertJsonPath('data.items.0.quantity_label', '平和記念碑');
+
+        $this->postJson($path, [
+            'command_key' => 'build_monument',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'quantity' => $peaceId,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertUnprocessable();
+
+        $this->patchJson("{$path}/{$monument->json('data.item_id')}", [
+            'quantity' => $prosperityId,
+            'expected_version' => 2,
+        ])->assertUnprocessable();
+
+        $this->postJson($path, [
+            'command_key' => 'missile',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.1.quantity', 1)
+            ->assertJsonPath('data.queue.items.1.quantity_semantics', 'ordinary');
+    }
+
+    public function test_selector_requires_explicit_presence_when_queue_service_is_called_directly(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('直接選択国');
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+
+        try {
+            app(CommandQueueService::class)->add(
+                user: $owner,
+                nation: $nation,
+                mapSpace: $mapSpace,
+                commandKey: 'build_monument',
+                targetX: $target->x,
+                targetY: $target->y,
+                requestKey: (string) Str::uuid(),
+                expectedVersion: 1,
+            );
+            $this->fail('selector quantity omission must be rejected by the application service');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('選択肢を明示', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('nation_command_queues', ['nation_id' => $nation->id]);
+    }
+
+    public function test_quantity_patch_does_not_reorder_or_repair_legacy_queue_positions(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('数量位置国');
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        foreach ([1, 2] as $expectedVersion) {
+            $this->actingAs($owner)->postJson($path, [
+                'command_key' => 'excavate',
+                'target_x' => $target->x,
+                'target_y' => $target->y,
+                'quantity' => 1,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => $expectedVersion,
+            ])->assertCreated();
+        }
+        $items = NationCommandQueueItem::query()->where('status', 'queued')->orderBy('queue_position')->get();
+        $items[1]->update(['queue_position' => 1001]);
+
+        $response = $this->patchJson("{$path}/{$items[0]->id}", [
+            'quantity' => 5,
+            'expected_version' => 3,
+        ])->assertOk()
+            ->assertJsonPath('data.version', 4)
+            ->assertJsonPath('data.items.0.id', $items[1]->id)
+            ->assertJsonPath('data.items.0.queue_position', 1)
+            ->assertJsonPath('data.items.1.id', $items[0]->id)
+            ->assertJsonPath('data.items.1.queue_position', 2);
+
+        $this->assertSame([1, 2], collect($response->json('data.items'))->pluck('queue_position')->all());
+
+        $this->assertSame(
+            [1, 1001],
+            NationCommandQueueItem::query()->where('status', 'queued')->orderBy('id')->pluck('queue_position')->all(),
+        );
     }
 
     public function test_future_special_parameter_api_distinguishes_omitted_defaults_from_explicit_null(): void
@@ -622,9 +786,21 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $catalog = $this->actingAs($owner)->getJson("{$base}/command-definitions")->assertOk();
         $finance = collect($catalog->json('data.commands'))->firstWhere('key', 'finance');
         $aid = collect($catalog->json('data.commands'))->firstWhere('key', 'money_aid');
+        $foodAid = collect($catalog->json('data.commands'))->firstWhere('key', 'food_aid');
+        $dispatch = collect($catalog->json('data.commands'))->firstWhere('key', 'monster_dispatch');
         $this->assertTrue($finance['applicable']);
         $this->assertSame('nation', $finance['target_type']);
         $this->assertSame('integer', $aid['parameters']['target_nation_id']['type']);
+        $this->assertSame('nation_selector', $aid['parameters']['target_nation_id']['input_semantics']);
+        $this->assertSame('対象島', $aid['parameters']['target_nation_id']['label']);
+        $this->assertSame([[
+            'value' => $target->id,
+            'label' => $target->name,
+            'nation_number' => $target->nation_number,
+        ]], $aid['parameters']['target_nation_id']['options']);
+        $this->assertSame('ordinary', $aid['quantity_semantics']);
+        $this->assertSame('ordinary', $foodAid['quantity_semantics']);
+        $this->assertSame('unused', $dispatch['quantity_semantics']);
 
         $created = $this->postJson("{$base}/command-queue", [
             'command_key' => 'finance',
@@ -640,6 +816,25 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 2,
             'parameters' => ['target_nation_id' => $target->id],
         ])->assertCreated()->assertJsonPath('data.queue.items.1.parameters.target_nation_id', $target->id);
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'money_aid',
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+            'parameters' => ['target_nation_id' => $nation->id],
+        ])->assertUnprocessable();
+
+        $target->update(['state' => 'dormant_frozen']);
+        $catalogWithoutTarget = $this->getJson("{$base}/command-definitions")->assertOk();
+        $unavailableAid = collect($catalogWithoutTarget->json('data.commands'))->firstWhere('key', 'money_aid');
+        $this->assertFalse($unavailableAid['applicable']);
+        $this->assertFalse($unavailableAid['available']);
+        $this->assertSame([], $unavailableAid['parameters']['target_nation_id']['options']);
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'money_aid',
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+            'parameters' => ['target_nation_id' => $target->id],
+        ])->assertUnprocessable();
         $this->postJson("{$base}/command-queue", [
             'command_key' => 'money_aid',
             'request_key' => (string) Str::uuid(),

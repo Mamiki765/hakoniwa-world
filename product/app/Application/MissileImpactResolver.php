@@ -219,6 +219,7 @@ final class MissileImpactResolver
         $cell = MapCell::query()->where('map_space_id', $space->id)
             ->where('x', $coordinate->x)->where('y', $coordinate->y)
             ->with(['terrain', 'facility', 'ownerNation'])->lockForUpdate()->firstOrFail();
+        $base['terrain_key'] = $cell->terrain->key;
         $ownerState = $cell->ownerNation?->state;
         if (in_array($ownerState, ['dormant_frozen', 'dormant_contestable', 'sunken_archived'], true)) {
             return [...$base, 'effect' => 'dormant_owner_protected', 'owner_state' => $ownerState];

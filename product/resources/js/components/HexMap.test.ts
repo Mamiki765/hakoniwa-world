@@ -90,6 +90,29 @@ describe('staggered square-image map', () => {
         expect(wrapper.emitted('select')?.[0]).toEqual([fallback]);
     });
 
+    it('does not draw a capital fallback glyph over a working capital image', async () => {
+        const capital = mapCell({
+            facility: 'capital', facility_name: '首都', display_name: '首都',
+            asset: {
+                key: 'tile.capital', url: '/tiles/capital.gif?v=1-1', available: true,
+                fallback_label: '首都', fallback_style: 'tile-capital',
+            },
+            aria_label: 'x 0 y 0 首都 所有 地図国',
+        });
+        const wrapper = mount(HexMap, { props: {
+            cells: [capital], selected: capital, capital: { x: 0, y: 0 }, bounds: worldBounds,
+            loading: false, error: null, emptyChunks: [],
+        } });
+        await flushPromises();
+
+        expect(wrapper.find('.map-cell img:not(.tile-overlay)').exists()).toBe(true);
+        expect(wrapper.find('.tile-label').exists()).toBe(false);
+        await wrapper.find('.map-cell img:not(.tile-overlay)').trigger('error');
+        await flushPromises();
+        expect(wrapper.find('.map-cell img:not(.tile-overlay)').exists()).toBe(false);
+        expect(wrapper.find('.tile-label').text()).toBe('首');
+    });
+
     it('does not leak secret facility data when given the public forest representation', async () => {
         const publicForest = mapCell({
             terrain: 'forest', terrain_name: '森', facility: null, facility_name: null, display_name: '森',

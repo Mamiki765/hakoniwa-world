@@ -6,6 +6,7 @@ use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
 use App\Models\World;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -82,7 +83,23 @@ final class PlayerIslandEventService
         'missile.impact',
         'refugee_generated',
         'refugee_received',
+        'turn.summary',
         'turn.completed',
+    ];
+
+    /** @var list<string> */
+    private const PLAYER_LOG_DENYLIST = [
+        'population.increased',
+        'famine.applied',
+        'settlement.stage_transitioned',
+        'settlement.appeared',
+        'turn.completed',
+        'nation.idle_counter_changed',
+        'command.automatic_finance',
+        'monster.moved',
+        'monster.stayed',
+        'fire.prevented',
+        'missile.ineffective_aggregated',
     ];
 
     /** @var list<string> */
@@ -157,6 +174,7 @@ final class PlayerIslandEventService
 
         $query = DB::table('audit_events as events')
             ->whereIn('events.event_type', self::ALLOWED_EVENT_TYPES)
+            ->whereNotIn('events.event_type', self::PLAYER_LOG_DENYLIST)
             ->where('events.world_id', $nation->world_id)
             ->whereBetween('events.turn', [$rangeStart, $rangeEnd])
             ->where(function (Builder $audience) use ($nation): void {
@@ -192,6 +210,11 @@ final class PlayerIslandEventService
                 // tripling the player log with killed/reward/stat copies.
                 $monsterRewardProjection->where('events.event_type', '!=', 'monster.killed')
                     ->orWhereRaw("events.metadata->>'killer_nation_id' IS NULL");
+            })
+            ->where(function (Builder $rewardAudience) use ($nation): void {
+                $rewardAudience->where('events.event_type', '!=', 'monster.reward_distributed')
+                    ->orWhereRaw("events.metadata->>'killer_nation_id' = ?", [(string) $nation->id])
+                    ->orWhereRaw("events.metadata->>'host_nation_id' = ?", [(string) $nation->id]);
             });
 
         $rows = $query
@@ -212,6 +235,7 @@ final class PlayerIslandEventService
         $coordinates = $this->subjectCoordinates($rows->all());
         $events = $rows->map(function (object $row) use ($coordinates, $nation): array {
             $metadata = $this->metadata($row->metadata);
+            $metadata['audience_nation_name'] = $nation->name;
             $targetTurn = (int) $row->turn;
             $message = $this->message(
                 (string) $row->event_type,
@@ -230,10 +254,14 @@ final class PlayerIslandEventService
                 'importance' => $this->importance((string) $row->event_type),
                 'target_turn' => $targetTurn,
                 'coordinate' => $this->coordinate($row, $metadata, $coordinates),
-                'occurred_at' => (string) $row->occurred_at,
+                'occurred_at' => $this->isoUtcTimestamp($row->occurred_at),
+                'summary' => (string) $row->event_type === 'turn.summary'
+                    ? $this->turnSummaryProjection($metadata)
+                    : null,
                 '_metadata' => $metadata,
             ];
         })->all();
+        $events = $this->expandMissileLaunchDetails($events);
         $events = $this->aggregateRefugeeEvents($events, $nation->id);
 
         $groups = [];
@@ -338,7 +366,7 @@ final class PlayerIslandEventService
                 'message' => $this->publicNewsMessage((string) $row->event_type, $metadata, $targetTurn),
                 'importance' => $this->importance((string) $row->event_type),
                 'target_turn' => $targetTurn,
-                'occurred_at' => (string) $row->occurred_at,
+                'occurred_at' => $this->isoUtcTimestamp($row->occurred_at),
             ];
         })->all();
 
@@ -519,7 +547,10 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'actual_loss')),
                 number_format($this->integer($metadata, 'after')),
             ),
-            'resource.food_shortage' => '食料が不足し、島内で飢餓が発生しました。',
+            'resource.food_shortage' => sprintf(
+                '%sで食料が不足しています！',
+                $metadata['nation_name'] ?? $metadata['audience_nation_name'] ?? '自国',
+            ),
             'famine.applied' => sprintf(
                 '飢餓により人口が%s人減少し、%s人になりました。',
                 number_format($this->integer($metadata, 'actual_loss')),
@@ -547,8 +578,11 @@ final class PlayerIslandEventService
                 $this->monsterLabel($metadata['monster_key'] ?? null),
             ),
             'monster.trampled' => sprintf(
-                '%sが土地を踏み荒らし、荒地にしました。',
+                '%sが%s(%s,%s)を踏み荒らしました。',
                 $this->monsterLabel($metadata['monster_key'] ?? null),
+                $this->trampledLocationLabel($metadata),
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
             ),
             'monster.stayed' => sprintf(
                 '%sが%sため、その場に留まりました。',
@@ -651,8 +685,22 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'received_population')),
             ),
             'turn.completed' => "第{$targetTurn}ターンが完了しました。",
+            'turn.summary' => "第{$targetTurn}ターンの資源変化",
             default => '島で出来事がありました。',
         };
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function trampledLocationLabel(array $metadata): string
+    {
+        $facility = $metadata['pre_impact_facility_key'] ?? $metadata['removed_facility_key'] ?? null;
+        if (is_string($facility) && $facility !== '') {
+            return $this->facilityLabel($facility);
+        }
+
+        return $this->terrainLabel(
+            $metadata['pre_impact_terrain_key'] ?? $metadata['from_terrain_key'] ?? null,
+        );
     }
 
     /** @param array<string, mixed> $metadata */
@@ -695,6 +743,110 @@ final class PlayerIslandEventService
         };
 
         return $prefix.$reason;
+    }
+
+    /** @param array<string, mixed> $metadata
+     * @return array<string, array{start: int, end: int, delta: int}>
+     */
+    private function turnSummaryProjection(array $metadata): array
+    {
+        $summary = is_array($metadata['summary'] ?? null) ? $metadata['summary'] : [];
+        $result = [];
+        foreach (['money', 'population', 'food'] as $key) {
+            $values = is_array($summary[$key] ?? null) ? $summary[$key] : [];
+            $result[$key] = [
+                'start' => $this->integer($values, 'start'),
+                'end' => $this->integer($values, 'end'),
+                'delta' => $this->integer($values, 'delta'),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Published public rulesets aggregate ineffective impacts per launch.
+     * The firing Nation's existing private launch detail is projected into
+     * coordinate-level player entries without widening that visibility.
+     *
+     * @param  list<array<string, mixed>>  $events
+     * @return list<array<string, mixed>>
+     */
+    private function expandMissileLaunchDetails(array $events): array
+    {
+        $result = [];
+        foreach ($events as $event) {
+            if (($event['type'] ?? null) !== 'missile.launch_detail') {
+                $result[] = $event;
+
+                continue;
+            }
+            $metadata = is_array($event['_metadata'] ?? null) ? $event['_metadata'] : [];
+            $impacts = is_array($metadata['impacts'] ?? null) ? $metadata['impacts'] : [];
+            $grouped = [];
+            foreach ($impacts as $impact) {
+                if (! is_array($impact) || ($impact['meaningful'] ?? false) === true
+                    || ! is_numeric($impact['x'] ?? null) || ! is_numeric($impact['y'] ?? null)) {
+                    continue;
+                }
+                $x = (int) $impact['x'];
+                $y = (int) $impact['y'];
+                $effect = is_string($impact['effect'] ?? null) ? $impact['effect'] : 'ineffective_sea';
+                $key = "{$x}:{$y}:{$effect}";
+                if (! isset($grouped[$key])) {
+                    $grouped[$key] = ['x' => $x, 'y' => $y, 'effect' => $effect, 'hits' => 0, ...$impact];
+                }
+                $grouped[$key]['hits']++;
+            }
+            if ($grouped === []) {
+                $result[] = $event;
+
+                continue;
+            }
+            // Coordinate-level ineffective rows supplement the firing Nation's
+            // private launch record; they must not replace its target, cost,
+            // and complete impact list.
+            $result[] = $event;
+            foreach (array_values($grouped) as $index => $impact) {
+                $hits = (int) $impact['hits'];
+                $location = $this->ineffectiveImpactLocation($impact);
+                $missile = $this->missileLabel($metadata['command_key'] ?? null);
+                $hitText = $hits > 1 ? number_format($hits).'発' : '';
+                $result[] = [
+                    ...$event,
+                    'id' => -(((int) $event['id'] * 1_000) + $index + 1),
+                    'type' => 'missile.ineffective_impact',
+                    'message' => sprintf(
+                        '（秘密）%sが%s(%s,%s)に%s着弾しましたが、効果はありませんでした。',
+                        $missile,
+                        $location,
+                        number_format((int) $impact['x']),
+                        number_format((int) $impact['y']),
+                        $hitText,
+                    ),
+                    'coordinate' => ['x' => (int) $impact['x'], 'y' => (int) $impact['y']],
+                    'summary' => null,
+                    '_metadata' => [...$metadata, ...$impact],
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    /** @param array<string, mixed> $impact */
+    private function ineffectiveImpactLocation(array $impact): string
+    {
+        $terrain = $impact['terrain_key'] ?? null;
+        if (is_string($terrain)) {
+            return $this->terrainLabel($terrain);
+        }
+
+        return match ($impact['effect'] ?? null) {
+            'ineffective_barren_land' => '荒地',
+            'dormant_owner_protected' => '保護対象領地',
+            default => '海',
+        };
     }
 
     /**
@@ -1119,6 +1271,9 @@ final class PlayerIslandEventService
         if ($isHost) {
             return "{$monster}が倒され、怪獣肉{$meat}トンを受け取りました。";
         }
+        if (! $isKiller) {
+            return "{$monster}が倒され、撃破報酬が配分されました。";
+        }
 
         return "{$monster}を撃破し、賞金{$money}億円を受け取りました。";
     }
@@ -1154,6 +1309,11 @@ final class PlayerIslandEventService
             'missile.launched', 'missile.impact', 'command.capital_relocated' => 'notable',
             default => 'info',
         };
+    }
+
+    private function isoUtcTimestamp(mixed $timestamp): string
+    {
+        return CarbonImmutable::parse((string) $timestamp)->utc()->toIso8601String();
     }
 
     /** @param array<string, mixed> $metadata */

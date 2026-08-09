@@ -19,6 +19,7 @@ use App\Domain\Turn\WorldTurnLock;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationResource;
 use App\Models\NationResourceSalePolicy;
@@ -104,6 +105,14 @@ class CompleteTurnIntegrationTest extends TestCase
         $populationBefore = (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population');
         $wheatBefore = (int) NationResource::query()->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('key', 'wheat'))->value('amount');
+        $summaryStart = collect([$nation, $secondNation])->mapWithKeys(fn (Nation $summaryNation): array => [
+            $summaryNation->id => [
+                'money' => (int) $summaryNation->money,
+                'population' => (int) MapCell::query()->where('owner_nation_id', $summaryNation->id)->sum('population'),
+                'food' => (int) NationResource::query()->where('nation_id', $summaryNation->id)
+                    ->whereHas('definition', fn ($query) => $query->where('category', 'food'))->sum('amount'),
+            ],
+        ]);
         $chunkVersionsBefore = DB::table('map_chunks')->orderBy('id')->pluck('version', 'id');
 
         $run = (new TurnRunner(
@@ -140,6 +149,28 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'resource.food_produced')->count());
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'resource.food_consumed')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
+        $summaryRows = DB::table('audit_events')->where('event_type', 'turn.summary')
+            ->where('turn', 2)->orderBy('nation_id')->get();
+        $this->assertCount(2, $summaryRows);
+        foreach ($summaryRows as $summaryRow) {
+            $this->assertSame('nation', $summaryRow->visibility);
+            $metadata = json_decode((string) $summaryRow->metadata, true, 512, JSON_THROW_ON_ERROR);
+            $summaryNationId = (int) $summaryRow->nation_id;
+            $summaryEnd = [
+                'money' => (int) $world->nations()->whereKey($summaryNationId)->value('money'),
+                'population' => (int) MapCell::query()->where('owner_nation_id', $summaryNationId)->sum('population'),
+                'food' => (int) NationResource::query()->where('nation_id', $summaryNationId)
+                    ->whereHas('definition', fn ($query) => $query->where('category', 'food'))->sum('amount'),
+            ];
+            foreach (['money', 'population', 'food'] as $key) {
+                $this->assertSame($summaryStart[$summaryNationId][$key], $metadata['summary'][$key]['start']);
+                $this->assertSame($summaryEnd[$key], $metadata['summary'][$key]['end']);
+                $this->assertSame(
+                    $summaryEnd[$key] - $summaryStart[$summaryNationId][$key],
+                    $metadata['summary'][$key]['delta'],
+                );
+            }
+        }
         $this->assertSame('completed', $queuedFactory->fresh()->status);
         $this->assertSame('completed', $secondCommand->fresh()->status);
         $this->assertSame('factory', $factoryTarget->fresh()->facility()->value('key'));
@@ -229,6 +260,7 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame($seed, $failed->random_seed);
         $this->assertIsArray($capturedResult);
         $this->assertSame($snapshot, $this->gameplaySnapshot($world, $nation->id, $item->id));
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'turn.summary')->count());
 
         $completed = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $completed->status);
@@ -254,6 +286,7 @@ class CompleteTurnIntegrationTest extends TestCase
             ->whereRaw("metadata->>'overflow' = ?", ['500'])->count());
         $this->assertGreaterThan($snapshot['audit_count'], DB::table('audit_events')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.summary')->count());
         $this->assertSame($capturedResult, $this->deterministicGameplayResult($world, $nation->id, $item->id));
     }
 

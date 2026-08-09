@@ -1,5 +1,7 @@
 # PR19 resource capacity and Nation profile audit
 
+> **Superseded in part by the ver 1.2.0 owner decision.** This document records the historical PR19 contract. The statements below that public endpoints expose no exact inventory are superseded only for aggregate food: public island projections now expose exact total food across all food categories. Food composition, non-food inventory, every inventory capacity, and exact money remain non-public. The current contract is recorded in `ver-1.2.0-public-island-status-projection.md`.
+
 ## Scope boundary
 
 PR19 inherits the merged PR18 behavior and publishes `roadmap-pr19-v1` as a new immutable ruleset. It does not change `NationLandAreaCalculator`, owned-land projection, land subsidence, disaster probability, Capital rules, coordinates, or territory calculations.

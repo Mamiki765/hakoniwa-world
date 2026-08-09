@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ApiError, api } from './api/client';
+import { ApiError, api, apiEnvelope } from './api/client';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import HexMap from './components/HexMap.vue';
@@ -20,7 +20,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.1.1';
+const applicationVersion = '1.2.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -30,6 +30,7 @@ const latestAnnouncements = ref<Announcement[]>([]);
 const announcementItems = ref<Announcement[]>([]);
 const announcementDetail = ref<Announcement | null>(null);
 const announcementPageNumber = ref(1);
+const announcementLastPage = ref(1);
 const announcementView = ref<'list' | 'detail' | 'form'>('list');
 const announcementFormId = ref<number | null>(null);
 const announcementTitle = ref('');
@@ -46,11 +47,16 @@ const profileOwnerName = ref('');
 const profileComment = ref('');
 const registrationErrors = ref<Record<string, string>>({});
 const profileErrors = ref<Record<string, string>>({});
-const foodDetailOpen = ref(false);
 const busy = ref(true);
 const message = ref('');
 const clockNow = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
+let summaryDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
+let summaryRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let summaryFallbackTimer: ReturnType<typeof setInterval> | null = null;
+let turnViewCurrentTurn: number | null = null;
+const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as const;
+const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
@@ -116,7 +122,20 @@ onMounted(async () => {
 
 onUnmounted(() => {
     if (clockTimer !== null) clearInterval(clockTimer);
+    if (summaryDeadlineTimer !== null) clearTimeout(summaryDeadlineTimer);
+    if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+    stopSummaryFallbackPolling();
 });
+
+function stopSummaryFallbackPolling(): void {
+    if (summaryFallbackTimer !== null) clearInterval(summaryFallbackTimer);
+    summaryFallbackTimer = null;
+}
+
+function startSummaryFallbackPolling(): void {
+    stopSummaryFallbackPolling();
+    summaryFallbackTimer = setInterval(() => { void refreshFallbackSummary(); }, 60_000);
+}
 
 async function loadPublicLobby(): Promise<void> {
     try {
@@ -134,19 +153,161 @@ async function loadPublicLobby(): Promise<void> {
             api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
         ]);
         worldSummary.value = summary;
+        scheduleDeadlineRefresh();
         rankings.value = nextRankings;
         publicEvents.value = events;
+        turnViewCurrentTurn = summary.current_turn;
+        startSummaryFallbackPolling();
     } catch {
         message.value = '公開ロビーを取得できませんでした。';
     }
+}
+
+async function refreshWorldSummary(reschedule = true): Promise<PublicWorldSummary | null> {
+    const world = worlds.value[0];
+    if (world === undefined) return null;
+
+    try {
+        const summary = await api<PublicWorldSummary>(`/api/v1/public/worlds/${world.id}/summary`);
+        worldSummary.value = summary;
+        if (reschedule) scheduleDeadlineRefresh();
+
+        return summary;
+    } catch {
+        return null;
+    }
+}
+
+async function refreshFallbackSummary(): Promise<void> {
+    const summary = await refreshWorldSummary(false);
+    if (summary !== null) await refreshTurnDependentViewsIfNeeded(summary);
+    if (summary !== null
+        && summary.turn_status === 'normal'
+        && new Date(summary.next_scheduled_turn_at).getTime() > Date.now()) {
+        scheduleDeadlineRefresh();
+    }
+}
+
+async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): Promise<boolean> {
+    if (turnViewCurrentTurn === summary.current_turn) return true;
+
+    const world = worlds.value[0];
+    if (world === undefined) return false;
+    const currentNation = nation.value;
+    const currentPreview = page.value === 'preview' ? previewNation.value : null;
+    const [rankingResult, eventResult, nationResult, previewResult] = await Promise.allSettled([
+        api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
+        api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
+        currentNation === null ? Promise.resolve(null) : api<Nation | null>('/api/v1/me/nation'),
+        currentPreview === null
+            ? Promise.resolve(null)
+            : api<PublicNationDetail>(`/api/v1/public/nations/${currentPreview.id}`),
+    ] as const);
+
+    let refreshed = true;
+    if (rankingResult.status === 'fulfilled') rankings.value = rankingResult.value;
+    else refreshed = false;
+    if (eventResult.status === 'fulfilled') publicEvents.value = eventResult.value;
+    else refreshed = false;
+
+    let refreshedNation = currentNation;
+    if (nationResult.status === 'fulfilled') {
+        refreshedNation = nationResult.value;
+        nation.value = refreshedNation;
+    } else {
+        refreshed = false;
+    }
+
+    let refreshedPreview = currentPreview;
+    if (previewResult.status === 'fulfilled') {
+        refreshedPreview = previewResult.value;
+        if (refreshedPreview !== null) {
+            previewNation.value = refreshedPreview;
+            mapSpace.value = refreshedPreview.map_space;
+        }
+    } else {
+        refreshed = false;
+    }
+
+    if (page.value === 'island' && refreshedNation !== null && refreshedNation.capital !== null && mapSpace.value !== null) {
+        await map.loadAround(mapSpace.value, refreshedNation.capital.x, refreshedNation.capital.y, { kind: 'private' });
+        if (map.error.value !== null) refreshed = false;
+    } else if (page.value === 'preview' && refreshedPreview !== null && refreshedPreview.capital !== null) {
+        await map.loadAround(refreshedPreview.map_space, refreshedPreview.capital.x, refreshedPreview.capital.y, {
+            kind: 'public',
+            nationId: refreshedPreview.id,
+        });
+        if (map.error.value !== null) refreshed = false;
+    }
+
+    if (refreshed) turnViewCurrentTurn = summary.current_turn;
+
+    return refreshed;
+}
+
+function scheduleDeadlineRefresh(): void {
+    if (summaryDeadlineTimer !== null) clearTimeout(summaryDeadlineTimer);
+    summaryDeadlineTimer = null;
+    if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+    summaryRetryTimer = null;
+    if (worldSummary.value?.turn_status !== 'normal') return;
+
+    const remaining = new Date(worldSummary.value.next_scheduled_turn_at).getTime() - Date.now();
+    const delay = Math.min(maximumTimeoutDelay, Math.max(0, remaining));
+    summaryDeadlineTimer = setTimeout(() => {
+        if (remaining > maximumTimeoutDelay) {
+            scheduleDeadlineRefresh();
+            return;
+        }
+        void refreshAfterDeadline(0);
+    }, delay);
+}
+
+async function refreshAfterDeadline(attempt: number): Promise<void> {
+    const before = worldSummary.value;
+    if (before === null || before.turn_status !== 'normal') return;
+    const summary = await refreshWorldSummary(false);
+    if (summary === null) {
+        scheduleSummaryRetry(attempt);
+        return;
+    }
+
+    const viewsWereStale = turnViewCurrentTurn !== summary.current_turn;
+    if (viewsWereStale && ! await refreshTurnDependentViewsIfNeeded(summary)) {
+        scheduleSummaryRetry(attempt);
+        return;
+    }
+
+    const unchanged = summary.turn_status === 'normal'
+        && summary.current_turn === before.current_turn
+        && summary.last_successful_turn_at === before.last_successful_turn_at
+        && summary.next_scheduled_turn_at === before.next_scheduled_turn_at;
+    if (unchanged && ! viewsWereStale) {
+        scheduleSummaryRetry(attempt);
+    } else {
+        if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+        summaryRetryTimer = null;
+        scheduleDeadlineRefresh();
+    }
+}
+
+function scheduleSummaryRetry(attempt: number): void {
+    const delay = summaryRetryDelays[attempt];
+    if (delay === undefined) return;
+    if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+    summaryRetryTimer = setTimeout(() => { void refreshAfterDeadline(attempt + 1); }, delay);
 }
 
 async function openAnnouncements(pageNumber = 1): Promise<void> {
     busy.value = true;
     message.value = '';
     try {
-        announcementItems.value = await api<Announcement[]>(`/api/v1/public/announcements?page=${pageNumber}`);
-        announcementPageNumber.value = pageNumber;
+        const envelope = await apiEnvelope<Announcement[]>(`/api/v1/public/announcements?page=${pageNumber}`);
+        announcementItems.value = envelope.data;
+        const currentPage = Number(envelope.meta?.current_page ?? pageNumber);
+        const lastPage = Number(envelope.meta?.last_page ?? currentPage);
+        announcementPageNumber.value = Number.isInteger(currentPage) && currentPage > 0 ? currentPage : pageNumber;
+        announcementLastPage.value = Number.isInteger(lastPage) && lastPage > 0 ? lastPage : announcementPageNumber.value;
         announcementView.value = 'list';
         page.value = 'announcements';
     } catch (error) {
@@ -427,26 +588,33 @@ async function updateProfile(): Promise<void> {
                     </div>
                     <div class="ranking-scroll">
                         <table>
-                            <thead><tr><th>島名</th><th>島主</th><th>人口</th><th>資金</th><th>生存ターン</th><th>活動状態</th></tr></thead>
+                            <thead><tr><th>島名</th><th>島主</th><th>生存ターン</th><th>面積</th><th>農場規模</th><th>工場規模</th><th>採掘場規模</th><th>人口</th><th>資金</th><th>食料</th></tr></thead>
                             <tbody>
                                 <tr v-for="entry in rankings" :key="entry.id">
                                     <td>
                                         <button
                                             type="button"
-                                            :class="{ 'is-finance-only': entry.finance_only_turns > 0 }"
+                                            :class="{
+                                                'is-finance-only': entry.finance_only_turns > 0,
+                                                'is-dormant': entry.state === 'dormant_frozen' || entry.state === 'dormant_contestable',
+                                            }"
                                             @click="openPreview(entry.id)"
                                         >
-                                            {{ entry.name }}<template v-if="entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
+                                            {{ entry.name }}<template v-if="entry.state === 'dormant_frozen' || entry.state === 'dormant_contestable'">（休止中）</template><template v-else-if="entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
                                         </button>
                                         <span v-if="entry.comment" class="ranking-comment">{{ entry.comment }}</span>
                                     </td>
                                     <td>{{ entry.owner_name }}</td>
+                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
+                                    <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
+                                    <td>{{ entry.farm_capacity_people.toLocaleString() }}人</td>
+                                    <td>{{ entry.factory_capacity_people.toLocaleString() }}人</td>
+                                    <td>{{ entry.mine_capacity_people.toLocaleString() }}人</td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
                                     <td>{{ entry.money_display }}</td>
-                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
-                                    <td>{{ entry.finance_only_turns > 0 ? '資金繰りのみ' : '活動中' }}</td>
+                                    <td>{{ entry.food_total_tons.toLocaleString() }}トン</td>
                                 </tr>
-                                <tr v-if="rankings.length === 0"><td colspan="6" class="empty-state">まだ島がありません。</td></tr>
+                                <tr v-if="rankings.length === 0"><td colspan="10" class="empty-state">まだ島がありません。</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -462,7 +630,7 @@ async function updateProfile(): Promise<void> {
                             <ol class="event-list">
                                 <li v-for="event in group.events" :key="event.id">
                                     <span class="event-mark" aria-hidden="true"></span>
-                                    <div><strong>{{ event.message }}</strong><time :datetime="event.occurred_at">{{ event.occurred_at }}</time></div>
+                                    <div><strong>{{ event.message }}</strong><time :datetime="event.occurred_at">{{ formatAnnouncementDate(event.occurred_at) }}</time></div>
                                 </li>
                             </ol>
                         </section>
@@ -525,7 +693,7 @@ async function updateProfile(): Promise<void> {
                 <nav class="announcement-pager" aria-label="お知らせのページ">
                     <button type="button" :disabled="announcementPageNumber <= 1" @click="openAnnouncements(announcementPageNumber - 1)">前へ</button>
                     <span>{{ announcementPageNumber }}ページ</span>
-                    <button type="button" :disabled="announcementItems.length < 10" @click="openAnnouncements(announcementPageNumber + 1)">次へ</button>
+                    <button type="button" :disabled="announcementPageNumber >= announcementLastPage" @click="openAnnouncements(announcementPageNumber + 1)">次へ</button>
                 </nav>
             </template>
 
@@ -567,58 +735,42 @@ async function updateProfile(): Promise<void> {
                 <div class="hud-identity">
                     <p class="eyebrow">MY ISLAND</p>
                     <h1>N{{ nation.nation_number }} {{ nation.name }}</h1>
+                    <p class="turn-indicator">現在ターン {{ nation.current_turn }}</p>
                     <p class="profile-owner">島主：{{ nation.owner_name }}</p>
                     <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
                 </div>
                 <dl class="hud-primary">
-                    <div><dt>ターン</dt><dd>{{ nation.current_turn }}</dd></div>
+                    <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
+                    <div><dt>面積</dt><dd>{{ nation.owned_land_cells.toLocaleString() }}セル</dd></div>
                     <div class="hud-money">
                         <dt>資金</dt>
-                        <dd class="hud-capacity-value">
-                            <strong class="hud-current-value">{{ formatExactMoney(nation.money) }}</strong>
-                            <span class="hud-capacity-limit">上限 {{ formatExactMoney(nation.money_capacity) }}</span>
-                        </dd>
+                        <dd><strong class="hud-current-value">{{ formatExactMoney(nation.money) }}</strong></dd>
                     </div>
-                    <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
                     <div class="hud-food">
                         <dt>食料</dt>
-                        <dd class="hud-capacity-value">
-                            <span class="hud-value-line">
-                                <strong class="hud-current-value">{{ formatResource(nation.total_food_tons, 'トン') }}</strong>
-                                <button
-                                    class="food-detail-toggle"
-                                    type="button"
-                                    :aria-expanded="foodDetailOpen"
-                                    @click="foodDetailOpen = !foodDetailOpen"
-                                >
-                                    詳細
-                                </button>
-                            </span>
-                            <span class="hud-capacity-limit">上限 {{ formatResource(nation.food_capacity_tons, 'トン') }}</span>
-                        </dd>
-                        <div v-if="foodDetailOpen" class="hud-food-detail" role="dialog" aria-label="食料の内訳">
-                            <strong>食料の内訳</strong>
-                            <ul>
-                                <li v-for="resource in nation.food_resources" :key="resource.key">
-                                    <span>{{ resource.name }}</span>
-                                    <span>{{ formatResource(resource.balance, resource.unit_label) }}</span>
-                                </li>
-                            </ul>
-                            <button type="button" @click="foodDetailOpen = false">閉じる</button>
-                        </div>
+                        <dd><strong class="hud-current-value">{{ formatResource(nation.total_food_tons, 'トン') }}</strong></dd>
                     </div>
-                    <div v-for="resource in nonFoodResources" :key="resource.key">
-                        <dt>{{ resource.name }}</dt>
-                        <dd v-if="resource.capacity !== null" class="hud-capacity-value">
-                            <strong class="hud-current-value">{{ formatResource(resource.amount, resource.unit_label) }}</strong>
-                            <span class="hud-capacity-limit">上限 {{ formatResource(resource.capacity, resource.unit_label) }}</span>
-                        </dd>
-                        <dd v-else>{{ formatResource(resource.amount, resource.unit_label) }}</dd>
-                    </div>
+                    <div><dt>農場規模</dt><dd>{{ nation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                    <div><dt>工場規模</dt><dd>{{ nation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                    <div><dt>採掘場規模</dt><dd>{{ nation.mine_capacity_people.toLocaleString() }}人</dd></div>
                 </dl>
                 <details class="hud-more">
-                    <summary>追加統計</summary>
-                    <span>保有陸地：{{ nation.owned_land_cells.toLocaleString() }}セル</span>
+                    <summary>詳細情報</summary>
+                    <dl class="hud-details">
+                        <div><dt>資金上限</dt><dd>{{ formatExactMoney(nation.money_capacity) }}</dd></div>
+                        <div><dt>食料上限</dt><dd>{{ formatResource(nation.food_capacity_tons, 'トン') }}</dd></div>
+                        <div v-for="resource in nation.food_resources" :key="`food:${resource.key}`">
+                            <dt>{{ resource.name }}</dt><dd>{{ formatResource(resource.balance, resource.unit_label) }}</dd>
+                        </div>
+                        <div v-for="resource in nonFoodResources" :key="resource.key">
+                            <dt>{{ resource.name }}</dt>
+                            <dd v-if="resource.capacity !== null">
+                                {{ formatResource(resource.amount, resource.unit_label) }}
+                                （上限 {{ formatResource(resource.capacity, resource.unit_label) }}）
+                            </dd>
+                            <dd v-else>{{ formatResource(resource.amount, resource.unit_label) }}</dd>
+                        </div>
+                    </dl>
                     <span>出来事は24ターンごとに表示</span>
                 </details>
             </header>
@@ -641,7 +793,7 @@ async function updateProfile(): Promise<void> {
                     />
                 </div>
             </div>
-            <IslandEventLog :nation-id="nation.id" />
+            <IslandEventLog :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" />
         </section>
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
@@ -654,8 +806,12 @@ async function updateProfile(): Promise<void> {
                 </div>
                 <dl>
                     <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
-                    <div><dt>保有陸地</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
+                    <div><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
                     <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
+                    <div><dt>食料</dt><dd>{{ previewNation.food_total_tons.toLocaleString() }}トン</dd></div>
+                    <div><dt>農場規模</dt><dd>{{ previewNation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                    <div><dt>工場規模</dt><dd>{{ previewNation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                    <div><dt>採掘場規模</dt><dd>{{ previewNation.mine_capacity_people.toLocaleString() }}人</dd></div>
                     <div><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
                 </dl>
                 <p v-if="previewNation.monster_kill_stats.length" class="monster-kill-marks">
@@ -668,7 +824,7 @@ async function updateProfile(): Promise<void> {
             <div class="preview-grid">
                 <aside class="preview-details">
                     <CellDetails :cell="map.selected.value" />
-                    <p class="queue-notice">公開情報だけを表示しています。コマンド、正確な資金・資源、非公開施設は取得していません。</p>
+                    <p class="queue-notice">公開情報（人口・面積・推定資金・食料合計・施設規模）だけを表示しています。食料内訳、その他資源在庫・上限、非公開施設は取得していません。</p>
                 </aside>
                 <HexMap
                     :cells="map.visibleCells.value"

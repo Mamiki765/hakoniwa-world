@@ -28,6 +28,7 @@ const viewportSize = ref({ width: 900, height: 600 });
 const tooltipCell = ref<MapCell | null>(null);
 const wholeWorldView = ref(false);
 const tooltipPosition = ref({ x: 0, y: 0, placement: 'right' as 'right' | 'left' | 'bottom' | 'top' });
+const failedAssets = ref<Set<string>>(new Set());
 let resizeObserver: ResizeObserver | null = null;
 const PAN_THRESHOLD = 6;
 let activePointer: {
@@ -306,6 +307,18 @@ function showTooltip(cell: MapCell, event: Event): void {
     tooltipCell.value = cell;
     tooltipPosition.value = { x: Math.max(8, x), y: Math.max(8, y), placement };
 }
+
+function assetIdentity(cell: MapCell): string {
+    return `${cell.x}:${cell.y}:${cell.asset.key}:${cell.asset.url ?? ''}`;
+}
+
+function assetIsRenderable(cell: MapCell): boolean {
+    return cell.asset.available && cell.asset.url !== null && !failedAssets.value.has(assetIdentity(cell));
+}
+
+function markAssetFailed(cell: MapCell): void {
+    failedAssets.value = new Set([...failedAssets.value, assetIdentity(cell)]);
+}
 </script>
 
 <template>
@@ -356,11 +369,11 @@ function showTooltip(cell: MapCell, event: Event): void {
                     @blur="tooltipCell = null"
                     @click="emit('select', item.cell)"
                 >
-                    <img v-if="item.cell.asset.available && item.cell.asset.url" :src="item.cell.asset.url" alt="" draggable="false" @error="($event.currentTarget as HTMLImageElement).hidden = true">
+                    <img v-if="assetIsRenderable(item.cell)" :src="item.cell.asset.url ?? ''" alt="" draggable="false" @error="markAssetFailed(item.cell)">
                     <template v-for="overlay in item.cell.overlays" :key="overlay.key">
                         <img v-if="overlay.available && overlay.url" class="tile-overlay" :src="overlay.url" alt="" draggable="false">
                     </template>
-                    <span class="tile-label">{{ item.cell.facility === 'capital' ? '首' : item.cell.asset.fallback_label.slice(0, 1) }}</span>
+                    <span v-if="!assetIsRenderable(item.cell)" class="tile-label">{{ item.cell.facility === 'capital' ? '首' : item.cell.asset.fallback_label.slice(0, 1) }}</span>
                     <small v-if="item.cell.owner_nation_number !== null">N{{ item.cell.owner_nation_number }}</small>
                     <span v-if="item.cell.monster" class="monster-overlay" aria-hidden="true">
                         <span class="monster-fallback">{{ item.cell.monster.name.slice(0, 1) }}</span>

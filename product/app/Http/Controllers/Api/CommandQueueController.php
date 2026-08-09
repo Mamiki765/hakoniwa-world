@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Application\CommandQuantitySemantics;
 use App\Application\CommandQueueService;
 use App\Application\LegacyCommandQueueOrder;
+use App\Application\NationCommandTargetService;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\SettlementOverbuildPolicy;
@@ -24,7 +26,11 @@ use Illuminate\Http\Request;
 
 final class CommandQueueController extends Controller
 {
-    public function __construct(private readonly LegacyCommandQueueOrder $legacyOrder) {}
+    public function __construct(
+        private readonly LegacyCommandQueueOrder $legacyOrder,
+        private readonly CommandQuantitySemantics $quantitySemantics,
+        private readonly NationCommandTargetService $nationTargets,
+    ) {}
 
     public function definitions(
         Request $request,
@@ -48,12 +54,13 @@ final class CommandQueueController extends Controller
                     ->with(['terrain', 'facility'])
                     ->first();
             }
+            $nationTargetOptions = $this->nationTargets->options($nation);
             $definitions = CommandDefinition::query()
                 ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
                 ->where('enabled', true)
                 ->orderBy('sort_order')
                 ->get()
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions): array {
                     $unavailableReason = null;
                     $projectedExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
@@ -72,7 +79,10 @@ final class CommandQueueController extends Controller
                     $initialCapacity = $resultFacility?->initial_scale === null
                         ? null
                         : $capacities->describe($resultFacility, $capacities->initialScale($resultFacility));
-                    $applicable = $definition->target_type === 'nation' || $cell !== null;
+                    $requiresNationTarget = $this->nationTargets->requiresTarget($definition);
+                    $parameters = $this->nationTargets->presentParameters($definition, $nationTargetOptions);
+                    $applicable = ($definition->target_type === 'nation' || $cell !== null)
+                        && (! $requiresNationTarget || $nationTargetOptions !== []);
                     $shortfall = max(0, $definition->cost_money - $nation->money);
                     $warnings = [];
                     if ($projectedExecutable) {
@@ -89,7 +99,10 @@ final class CommandQueueController extends Controller
                         'name' => $definition->name,
                         'description' => $definition->description,
                         'target_type' => $definition->target_type,
-                        'parameters' => $definition->metadata['parameters'] ?? (object) [],
+                        'parameters' => $parameters === [] ? (object) [] : $parameters,
+                        'quantity_semantics' => $this->quantitySemantics->for($definition),
+                        'quantity_default' => $this->quantitySemantics->presentationDefault($definition),
+                        'quantity_options' => $this->quantitySemantics->options($definition),
                         'cost_money' => $definition->cost_money,
                         'execution_phase' => $definition->execution_phase,
                         'initial_facility_capacity' => $initialCapacity === null ? null : [
@@ -100,7 +113,9 @@ final class CommandQueueController extends Controller
                         'applicable' => $applicable,
                         'available' => $applicable,
                         'shortfall_money' => $shortfall,
-                        'unavailable_reason' => ! $applicable ? '対象セルを選択してください。' : null,
+                        'unavailable_reason' => ! $applicable
+                            ? ($requiresNationTarget ? '選択可能な対象島がありません。' : '対象セルを選択してください。')
+                            : null,
                         'execution_preview_status' => ! $applicable
                             ? 'target_required'
                             : ($projectedExecutable
@@ -165,6 +180,7 @@ final class CommandQueueController extends Controller
                 quantity: $quantity,
                 parameters: $validated['parameters'] ?? [],
                 position: $validated['position'] ?? null,
+                quantityProvided: $request->exists('quantity'),
             );
 
             return response()->json(['data' => [
@@ -248,7 +264,7 @@ final class CommandQueueController extends Controller
     private function serializeQueue(NationCommandQueue $queue): array
     {
         $items = $this->legacyOrder->project($queue->items)
-            ->map(static fn (NationCommandQueueItem $item): array => [
+            ->map(fn (NationCommandQueueItem $item): array => [
                 'id' => $item->id,
                 'command_key' => $item->definition->key,
                 'command_name' => $item->definition->name,
@@ -256,6 +272,8 @@ final class CommandQueueController extends Controller
                 'target_x' => $item->target_x,
                 'target_y' => $item->target_y,
                 'quantity' => $item->quantity,
+                'quantity_semantics' => $this->quantitySemantics->for($item->definition),
+                'quantity_label' => $this->quantitySemantics->label($item->definition, $item->quantity),
                 'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                 'status' => $item->status,
                 'queued_at' => $item->queued_at?->toIso8601String(),

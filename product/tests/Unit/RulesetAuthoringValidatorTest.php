@@ -13,6 +13,8 @@ class RulesetAuthoringValidatorTest extends TestCase
 {
     private const FIRST_PRODUCTION_PAYLOAD_HASH = '0c03226dd5c99c0293392ed1bc5528a03093084e622ff21e3784a8810c3b8ba0';
 
+    private const SECOND_PRODUCTION_PAYLOAD_HASH = '8c865b7e53593ad90a97357d50fa39e3ebdaf4e97bc925118b1012e01ea38234';
+
     /** @var array<string, string> */
     private const PRE_SPLIT_PAYLOAD_HASHES = [
         'roadmap-pr2-v1' => '091494cae4988c2517417f91bb9810e277ee665525c98ff67eeb305b23592fe3',
@@ -63,6 +65,10 @@ class RulesetAuthoringValidatorTest extends TestCase
         $expected['version'] = 2;
         $expected['military']['dormant_impact']['explicit_target_state'] = 'any_existing_coordinate';
         $this->assertSame($expected, $v2);
+        $this->assertSame(
+            self::SECOND_PRODUCTION_PAYLOAD_HASH,
+            hash('sha256', json_encode($v2, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
 
         $summary = app(RulesetAuthoringValidator::class)->validate($v2);
         $this->assertSame('hakoniwa-2s-plus-v2', $summary['key']);

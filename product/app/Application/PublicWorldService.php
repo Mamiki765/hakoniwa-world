@@ -2,7 +2,6 @@
 
 namespace App\Application;
 
-use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -15,7 +14,7 @@ final class PublicWorldService
 {
     public function __construct(
         private readonly MoneyFormatter $money,
-        private readonly NationLandAreaCalculator $landArea,
+        private readonly NationBasicStatusProjection $basicStatus,
         private readonly TurnScheduleStatus $turnSchedule,
     ) {}
 
@@ -122,21 +121,27 @@ final class PublicWorldService
     /** @return Collection<int, Nation> */
     private function rankedNations(World $world): Collection
     {
-        $areas = $this->landArea->forWorld($world);
         $nations = Nation::query()
             ->where('world_id', $world->id)
             ->with('capital')
-            ->withCount(['territoryCells as territory_cell_count'])
-            ->withSum('territoryCells as total_population', 'population')
-            ->orderByDesc('total_population')
-            ->orderByDesc('territory_cell_count')
             ->orderBy('id')
             ->get();
+        $statuses = $this->basicStatus->forWorld($world, $nations);
         foreach ($nations as $nation) {
-            $nation->setAttribute('owned_land_cells', $areas[$nation->id] ?? 0);
+            $this->applyBasicStatus($nation, $statuses[$nation->id]);
         }
 
-        return $nations;
+        return $nations->sort(static function (Nation $left, Nation $right): int {
+            $population = (int) $right->getAttribute('total_population')
+                <=> (int) $left->getAttribute('total_population');
+            if ($population !== 0) {
+                return $population;
+            }
+            $territory = (int) $right->getAttribute('territory_cell_count')
+                <=> (int) $left->getAttribute('territory_cell_count');
+
+            return $territory !== 0 ? $territory : $left->id <=> $right->id;
+        })->values();
     }
 
     private function nationWithPublicAggregates(Nation $nation): Nation
@@ -144,12 +149,18 @@ final class PublicWorldService
         $nation = Nation::query()
             ->whereKey($nation->id)
             ->with('capital')
-            ->withCount(['territoryCells as territory_cell_count'])
-            ->withSum('territoryCells as total_population', 'population')
             ->firstOrFail();
-        $nation->setAttribute('owned_land_cells', $this->landArea->forNation($nation));
+        $this->applyBasicStatus($nation, $this->basicStatus->forNation($nation));
 
         return $nation;
+    }
+
+    /** @param array<string, int> $status */
+    private function applyBasicStatus(Nation $nation, array $status): void
+    {
+        foreach ($status as $field => $value) {
+            $nation->setAttribute($field, $value);
+        }
     }
 
     /** @return array<string, mixed> */
@@ -172,6 +183,10 @@ final class PublicWorldService
             'owned_land_cells' => (int) ($nation->getAttribute('owned_land_cells') ?? 0),
             'money_display' => $estimate['display'],
             'money_bucket' => $estimate['bucket'],
+            'food_total_tons' => (int) ($nation->getAttribute('food_total_tons') ?? 0),
+            'farm_capacity_people' => (int) ($nation->getAttribute('farm_capacity_people') ?? 0),
+            'factory_capacity_people' => (int) ($nation->getAttribute('factory_capacity_people') ?? 0),
+            'mine_capacity_people' => (int) ($nation->getAttribute('mine_capacity_people') ?? 0),
             'registered_turn' => (int) $nation->registered_turn,
             'survival_turns' => max(0, (int) $world->current_turn - (int) $nation->registered_turn),
             'finance_only_turns' => $financeOnlyTurns,

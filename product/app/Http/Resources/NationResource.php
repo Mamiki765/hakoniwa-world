@@ -2,9 +2,9 @@
 
 namespace App\Http\Resources;
 
+use App\Application\NationBasicStatusProjection;
 use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationCapacityResolver;
-use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\Nation;
 use App\Models\NationResource as NationResourceBalance;
 use App\Support\MoneyFormatter;
@@ -21,15 +21,14 @@ class NationResource extends JsonResource
             ? $this->resourceBalances->sortBy(fn (NationResourceBalance $balance): int => $balance->definition->sort_order)
             : null;
         $isOwner = $balances !== null;
-        $foodTotal = $isOwner
-            ? (int) $balances
-                ->filter(fn (NationResourceBalance $balance): bool => $balance->definition->category === 'food')
-                ->sum('amount')
-            : null;
+        $basicStatus = app(NationBasicStatusProjection::class)->forNation($this->resource);
+        $foodTotal = $basicStatus['food_total_tons'];
         $capacities = $isOwner
             ? app(NationCapacityResolver::class)->resolve($this->resource)
             : null;
         $currentTurn = (int) $this->world()->value('current_turn');
+        $money = app(MoneyFormatter::class);
+        $publicMoney = $money->publicEstimate((int) $this->money);
 
         return [
             'id' => $this->id, 'world_id' => $this->world_id,
@@ -37,7 +36,8 @@ class NationResource extends JsonResource
             'owner_name' => $this->owner_name,
             'comment' => $this->profile_comment,
             'money' => $this->when($isOwner, (int) $this->money),
-            'money_display' => $this->when($isOwner, app(MoneyFormatter::class)->exact((int) $this->money)),
+            'money_display' => $isOwner ? $money->exact((int) $this->money) : $publicMoney['display'],
+            'money_bucket' => $this->when(! $isOwner, $publicMoney['bucket']),
             'money_capacity' => $this->when($isOwner, $capacities?->money),
             'money_remaining_capacity' => $this->when(
                 $isOwner,
@@ -53,20 +53,23 @@ class NationResource extends JsonResource
             'survival_turns' => max(0, $currentTurn - (int) $this->registered_turn),
             'finance_only_turns' => (int) $this->idle_counter,
             'activity_status' => (int) $this->idle_counter > 0 ? 'finance_only' : 'active',
-            'total_population' => (int) $this->territoryCells()->sum('population'),
-            'territory_cell_count' => $this->territoryCells()->count(),
-            'owned_land_cells' => app(NationLandAreaCalculator::class)->forNation($this->resource),
+            'total_population' => $basicStatus['total_population'],
+            'territory_cell_count' => $basicStatus['territory_cell_count'],
+            'owned_land_cells' => $basicStatus['owned_land_cells'],
             'total_food_tons' => $this->when($isOwner, $foodTotal),
-            'food_total_tons' => $this->when($isOwner, $foodTotal),
+            'food_total_tons' => $foodTotal,
             'food_capacity_tons' => $this->when($isOwner, $capacities?->foodTons),
             'food_remaining_capacity_tons' => $this->when(
                 $isOwner,
-                max(0, ($capacities->foodTons ?? 0) - ($foodTotal ?? 0)),
+                max(0, ($capacities->foodTons ?? 0) - $foodTotal),
             ),
             'food_is_at_capacity' => $this->when(
                 $isOwner,
-                ($foodTotal ?? 0) >= ($capacities->foodTons ?? PHP_INT_MAX),
+                $foodTotal >= ($capacities->foodTons ?? PHP_INT_MAX),
             ),
+            'farm_capacity_people' => $basicStatus['farm_capacity_people'],
+            'factory_capacity_people' => $basicStatus['factory_capacity_people'],
+            'mine_capacity_people' => $basicStatus['mine_capacity_people'],
             'food_resources' => $this->when($isOwner, fn (): array => $balances
                 ?->filter(fn (NationResourceBalance $balance): bool => $balance->definition->category === 'food')
                 ->map(fn (NationResourceBalance $balance): array => [
