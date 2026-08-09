@@ -6,6 +6,7 @@ use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
+use App\Models\NationResource;
 use App\Models\World;
 use App\Support\MoneyFormatter;
 use Illuminate\Support\Collection;
@@ -125,7 +126,7 @@ final class PublicWorldService
         $areas = $this->landArea->forWorld($world);
         $nations = Nation::query()
             ->where('world_id', $world->id)
-            ->with('capital')
+            ->with(['capital', 'resourceBalances.definition'])
             ->withCount(['territoryCells as territory_cell_count'])
             ->withSum('territoryCells as total_population', 'population')
             ->orderByDesc('total_population')
@@ -143,7 +144,7 @@ final class PublicWorldService
     {
         $nation = Nation::query()
             ->whereKey($nation->id)
-            ->with('capital')
+            ->with(['capital', 'resourceBalances.definition'])
             ->withCount(['territoryCells as territory_cell_count'])
             ->withSum('territoryCells as total_population', 'population')
             ->firstOrFail();
@@ -158,6 +159,9 @@ final class PublicWorldService
         $estimate = $this->money->publicEstimate((int) $nation->money);
         $financeOnlyTurns = (int) $nation->idle_counter;
         $activityStatus = $financeOnlyTurns > 0 ? 'finance_only' : 'active';
+        $foodTotal = $nation->resourceBalances
+            ->filter(static fn (NationResource $balance): bool => $balance->definition->category === 'food')
+            ->sum('amount');
 
         return [
             'id' => $nation->id,
@@ -172,6 +176,7 @@ final class PublicWorldService
             'owned_land_cells' => (int) ($nation->getAttribute('owned_land_cells') ?? 0),
             'money_display' => $estimate['display'],
             'money_bucket' => $estimate['bucket'],
+            'food_total_tons' => (int) $foodTotal,
             'registered_turn' => (int) $nation->registered_turn,
             'survival_turns' => max(0, (int) $world->current_turn - (int) $nation->registered_turn),
             'finance_only_turns' => $financeOnlyTurns,

@@ -54,6 +54,7 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.1.owner_name', '第一島主')
             ->assertJsonPath('data.0.money_display', '約500億円')
             ->assertJsonPath('data.0.money_bucket', '500')
+            ->assertJsonPath('data.0.food_total_tons', 10000)
             ->assertJsonPath('data.1.money_display', '約62,000億円')
             ->assertJsonPath('data.1.money_bucket', '62000')
             ->assertJsonPath('data.0.survival_turns', 0)
@@ -115,6 +116,10 @@ class PublicLobbyApiTest extends TestCase
                 ['id', 'type', 'message', 'importance', 'target_turn', 'occurred_at'],
             ]]]]]);
         $eventsBody = $events->getContent();
+        $this->assertMatchesRegularExpression(
+            '/T\d{2}:\d{2}:\d{2}\+00:00$/',
+            (string) $events->json('data.groups.0.events.0.occurred_at'),
+        );
         $this->assertStringNotContainsString('metadata', $eventsBody);
         $this->assertStringNotContainsString('"draw"', $eventsBody);
         $this->assertStringNotContainsString('"numerator"', $eventsBody);
@@ -217,6 +222,7 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.map_space.id', $mapSpace->id)
             ->assertJsonPath('data.map_space.bounds.max_x', $mapSpace->max_x)
             ->assertJsonPath('data.money_display', '約62,000億円')
+            ->assertJsonPath('data.food_total_tons', 10000)
             ->assertJsonPath('data.owner_name', '秘匿島主')
             ->assertJsonPath('data.comment', '公開コメント');
         $this->assertStringNotContainsString('62728', $nationResponse->getContent());

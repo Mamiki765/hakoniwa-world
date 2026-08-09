@@ -176,7 +176,7 @@ class MonsterSystemTest extends TestCase
         $origin = $this->safeInteriorCell($space, $world);
         foreach ((new GridCoordinate($origin->x, $origin->y))->radius(3) as $coordinate) {
             $cell = $this->cellAt($space, $coordinate->x, $coordinate->y);
-            $this->setCell($cell, 'plain', null, $second->id, 321);
+            $this->setCell($cell, 'plain', 'village', $second->id, 321);
         }
         $this->setCell($origin, 'wasteland', null, $first->id, 0);
         $monster = $this->createMonster($world, $ruleset, $origin, 'dark_inora', 3);
@@ -205,6 +205,16 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, $occupiedCell->population);
         $this->assertContains($origin->map_chunk_id, $context->state->changedMapChunkIds());
         $this->assertContains($occupiedCell->map_chunk_id, $context->state->changedMapChunkIds());
+        $playerEvents = collect(app(PlayerIslandEventService::class)->page($second->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->filter(fn (array $event): bool => str_starts_with($event['type'], 'monster.'))
+            ->values();
+        $this->assertCount(2, $playerEvents);
+        $this->assertSame(['monster.trampled', 'monster.trampled'], $playerEvents->pluck('type')->all());
+        foreach ($playerEvents as $event) {
+            $this->assertStringContainsString('村(', $event['message']);
+            $this->assertStringContainsString('を踏み荒らしました。', $event['message']);
+        }
     }
 
     public function test_normal_monster_moves_once_then_stops_at_its_definition_limit(): void
@@ -433,6 +443,7 @@ class MonsterSystemTest extends TestCase
     {
         [$world, $host, $ruleset] = $this->worldAndNation('所在国');
         $killer = $this->createNation($world, '撃破国');
+        $spectator = $this->createNation($world, '第三国');
         $hostCell = $this->ownedNonCapitalCell($host);
         $this->setCell($hostCell, 'wasteland', null, $host->id, 0);
         $monster = $this->createMonster($world, $ruleset, $hostCell, 'red_inora', 3);
@@ -478,10 +489,14 @@ class MonsterSystemTest extends TestCase
         $hostReward = collect($playerEvents->page($host->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
+        $spectatorReward = collect($playerEvents->page($spectator->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->firstWhere('type', 'monster.reward_distributed');
         $this->assertIsArray($killerReward);
         $this->assertSame('レッドいのらを撃破し、賞金499億円を受け取りました。', $killerReward['message']);
         $this->assertIsArray($hostReward);
         $this->assertSame('レッドいのらが倒され、怪獣肉100トンを受け取りました。', $hostReward['message']);
+        $this->assertNull($spectatorReward);
         $this->assertSame(200, $base->fresh()->facility_experience);
         $stat = NationMonsterKillStat::query()->sole();
         $this->assertSame($killer->id, $stat->nation_id);

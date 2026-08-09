@@ -31,6 +31,9 @@ final class TurnState
     /** @var array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int}> */
     private array $nationAggregates = [];
 
+    /** @var array<int, array{money: int, population: int, food: int}> */
+    private array $nationStartSummaries = [];
+
     /** @var list<LaunchIntent> */
     private array $launchIntents = [];
 
@@ -170,6 +173,25 @@ final class TurnState
     public function nationAggregates(): array
     {
         return $this->nationAggregates;
+    }
+
+    /** @param array{money: int, population: int, food: int} $summary */
+    public function setNationStartSummary(int $nationId, array $summary): void
+    {
+        if ($nationId < 1 || min($summary) < 0) {
+            throw new InvalidArgumentException('Nation start summary values must be non-negative integers.');
+        }
+        $this->nationStartSummaries[$nationId] = $summary;
+    }
+
+    /** @return array{money: int, population: int, food: int} */
+    public function nationStartSummary(int $nationId): array
+    {
+        if (! isset($this->nationStartSummaries[$nationId])) {
+            throw new InvalidArgumentException("Nation {$nationId} has no start-of-turn summary.");
+        }
+
+        return $this->nationStartSummaries[$nationId];
     }
 
     public function registerLaunchIntent(

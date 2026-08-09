@@ -563,6 +563,54 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('capital_at_minimum', $detail['impacts'][0]['effect']);
     }
 
+    public function test_actual_land_impact_is_returned_by_map_api_as_the_scorched_tile(): void
+    {
+        $assetDirectory = storage_path('framework/testing/scorched-asset-'.Str::uuid());
+        mkdir($assetDirectory, 0777, true);
+        $gif = base64_decode('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', true);
+        $this->assertIsString($gif);
+        file_put_contents($assetDirectory.DIRECTORY_SEPARATOR.'land13.gif', $gif);
+        config([
+            'hakoniwa.assets.path' => $assetDirectory,
+            'hakoniwa.assets.base_url' => '/assets/hakoniwa-tiles',
+        ]);
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility($cell, null);
+        $cell->update(['population' => 1_000]);
+        $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cell,
+        );
+
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'scorched map api'), [$firing->id, $target->id]),
+            $base,
+        );
+
+        $this->assertSame('scorched', $cell->fresh()->terrain()->value('key'));
+        $response = $this->actingAs($firingUser)->getJson(
+            "/api/v1/map-spaces/{$space->id}/chunks/{$cell->chunk_x}/{$cell->chunk_y}",
+        )->assertOk();
+        $presented = collect($response->json('data.cells'))->first(
+            fn (array $entry): bool => $entry['x'] === $cell->x && $entry['y'] === $cell->y,
+        );
+        $this->assertIsArray($presented);
+        $this->assertSame('scorched', $presented['terrain']);
+        $this->assertSame('tile.scorched', $presented['asset']['key']);
+        $this->assertTrue($presented['asset']['available']);
+        $this->assertStringContainsString('/land13.gif?v=', $presented['asset']['url']);
+        unlink($assetDirectory.DIRECTORY_SEPARATOR.'land13.gif');
+        rmdir($assetDirectory);
+    }
+
     public function test_land_destruction_missile_at_minimum_capital_is_a_complete_no_op(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
@@ -1524,6 +1572,7 @@ class CommandAndMissileTest extends TestCase
             quantity: $quantity,
             parameters: $parameters,
             position: $position,
+            quantityProvided: true,
         )['item'];
     }
 

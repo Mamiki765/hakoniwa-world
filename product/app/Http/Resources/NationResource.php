@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\Nation;
 use App\Models\NationResource as NationResourceBalance;
@@ -29,6 +30,7 @@ class NationResource extends JsonResource
         $capacities = $isOwner
             ? app(NationCapacityResolver::class)->resolve($this->resource)
             : null;
+        $facilityCapacities = $isOwner ? $this->facilityCapacities() : [];
         $currentTurn = (int) $this->world()->value('current_turn');
 
         return [
@@ -67,6 +69,9 @@ class NationResource extends JsonResource
                 $isOwner,
                 ($foodTotal ?? 0) >= ($capacities->foodTons ?? PHP_INT_MAX),
             ),
+            'farm_capacity_people' => $this->when($isOwner, $facilityCapacities['farm'] ?? 0),
+            'factory_capacity_people' => $this->when($isOwner, $facilityCapacities['factory'] ?? 0),
+            'mine_capacity_people' => $this->when($isOwner, $facilityCapacities['mine'] ?? 0),
             'food_resources' => $this->when($isOwner, fn (): array => $balances
                 ?->filter(fn (NationResourceBalance $balance): bool => $balance->definition->category === 'food')
                 ->map(fn (NationResourceBalance $balance): array => [
@@ -93,6 +98,26 @@ class NationResource extends JsonResource
                 'x' => $this->capital->x, 'y' => $this->capital->y,
             ]),
         ];
+    }
+
+    /** @return array{farm: int, factory: int, mine: int} */
+    private function facilityCapacities(): array
+    {
+        $totals = ['farm' => 0, 'factory' => 0, 'mine' => 0];
+        $capacities = app(FacilityCapacityService::class);
+        $cells = $this->territoryCells()
+            ->whereNotNull('facility_definition_id')
+            ->with('facility')
+            ->get();
+        foreach ($cells as $cell) {
+            $facility = $cell->facility;
+            if ($facility === null || ! array_key_exists($facility->key, $totals)) {
+                continue;
+            }
+            $totals[$facility->key] += $capacities->capacityPeople($facility, (int) $cell->facility_scale);
+        }
+
+        return $totals;
     }
 
     /** @return array{capacity: int|null, remaining_capacity: int|null, is_at_capacity: bool} */

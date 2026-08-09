@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
+use App\Domain\Map\MapCellStateService;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
+use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Services\AssetManifestResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -75,7 +78,23 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.resources.4.unit_label', 'トン')
             ->assertJsonPath('data.resources.4.capacity', 9_999_000)
             ->json('data');
-        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->assertJsonPath('data.id', $nation['id']);
+        $scaleCells = MapCell::query()->where('owner_nation_id', $nation['id'])
+            ->whereNull('facility_definition_id')->limit(3)->get();
+        foreach (['farm', 'factory', 'mine'] as $index => $facilityKey) {
+            $cell = $scaleCells[$index]->fresh(['terrain', 'facility']);
+            app(MapCellStateService::class)->transitionTerrain(
+                $cell,
+                TerrainDefinition::query()->where('key', $facilityKey === 'mine' ? 'mountain' : 'plain')->firstOrFail(),
+            );
+            $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
+            app(MapCellStateService::class)->setFacility($cell, $facility, $facility->initial_scale);
+            $cell->save();
+        }
+        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
+            ->assertJsonPath('data.id', $nation['id'])
+            ->assertJsonPath('data.farm_capacity_people', 10_000)
+            ->assertJsonPath('data.factory_capacity_people', 30_000)
+            ->assertJsonPath('data.mine_capacity_people', 5_000);
         $ownedCell = MapCell::query()->where('owner_nation_id', $nation['id'])->firstOrFail();
         $ownedChunk = $this->actingAs($user)->getJson(
             "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$ownedCell->chunk_x}/{$ownedCell->chunk_y}",

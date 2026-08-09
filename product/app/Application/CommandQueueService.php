@@ -32,6 +32,7 @@ final class CommandQueueService
         private readonly CommandParametersValidator $parameters,
         private readonly CurrentRulesetGuard $rulesetGuard,
         private readonly LegacyCommandQueueOrder $legacyOrder,
+        private readonly CommandQuantitySemantics $quantitySemantics,
     ) {}
 
     /**
@@ -50,8 +51,9 @@ final class CommandQueueService
         int $quantity = DevelopmentPlanQuantity::DEFAULT,
         array $parameters = [],
         ?int $position = null,
+        bool $quantityProvided = false,
     ): array {
-        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $quantity, $parameters, $position): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $quantity, $parameters, $position, $quantityProvided): array {
             $membership = $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
             $world = $this->lockWorldForQueue($nation);
@@ -99,6 +101,7 @@ final class CommandQueueService
                 throw new DomainException('首都を通常建設commandで上書きすることはできません。');
             }
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
+            $this->quantitySemantics->validateForRegistration($definition, $quantity, $quantityProvided);
             $schemas = $definition->metadata['parameters'] ?? [];
             if (! is_array($schemas)) {
                 throw new DomainException('command parameter schemaが不正です。');
@@ -244,6 +247,8 @@ final class CommandQueueService
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
                 throw new DomainException('編集できないcommandです。');
             }
+            $item->loadMissing('definition');
+            $this->quantitySemantics->assertEditable($item->definition);
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
             $oldQuantity = $item->quantity;
             $item->update(['quantity' => $quantity]);

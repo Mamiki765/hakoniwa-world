@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Application\CommandQuantitySemantics;
 use App\Application\CommandQueueService;
 use App\Application\LegacyCommandQueueOrder;
 use App\Domain\Command\CommandQueueLimit;
@@ -24,7 +25,10 @@ use Illuminate\Http\Request;
 
 final class CommandQueueController extends Controller
 {
-    public function __construct(private readonly LegacyCommandQueueOrder $legacyOrder) {}
+    public function __construct(
+        private readonly LegacyCommandQueueOrder $legacyOrder,
+        private readonly CommandQuantitySemantics $quantitySemantics,
+    ) {}
 
     public function definitions(
         Request $request,
@@ -90,6 +94,9 @@ final class CommandQueueController extends Controller
                         'description' => $definition->description,
                         'target_type' => $definition->target_type,
                         'parameters' => $definition->metadata['parameters'] ?? (object) [],
+                        'quantity_semantics' => $this->quantitySemantics->for($definition),
+                        'quantity_default' => $this->quantitySemantics->presentationDefault($definition),
+                        'quantity_options' => $this->quantitySemantics->options($definition),
                         'cost_money' => $definition->cost_money,
                         'execution_phase' => $definition->execution_phase,
                         'initial_facility_capacity' => $initialCapacity === null ? null : [
@@ -165,6 +172,7 @@ final class CommandQueueController extends Controller
                 quantity: $quantity,
                 parameters: $validated['parameters'] ?? [],
                 position: $validated['position'] ?? null,
+                quantityProvided: $request->exists('quantity'),
             );
 
             return response()->json(['data' => [
@@ -248,7 +256,7 @@ final class CommandQueueController extends Controller
     private function serializeQueue(NationCommandQueue $queue): array
     {
         $items = $this->legacyOrder->project($queue->items)
-            ->map(static fn (NationCommandQueueItem $item): array => [
+            ->map(fn (NationCommandQueueItem $item): array => [
                 'id' => $item->id,
                 'command_key' => $item->definition->key,
                 'command_name' => $item->definition->name,
@@ -256,6 +264,8 @@ final class CommandQueueController extends Controller
                 'target_x' => $item->target_x,
                 'target_y' => $item->target_y,
                 'quantity' => $item->quantity,
+                'quantity_semantics' => $this->quantitySemantics->for($item->definition),
+                'quantity_label' => $this->quantitySemantics->label($item->definition, $item->quantity),
                 'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                 'status' => $item->status,
                 'queued_at' => $item->queued_at?->toIso8601String(),

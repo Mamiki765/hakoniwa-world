@@ -58,6 +58,22 @@ final class AnnouncementApiTest extends TestCase
         $this->assertStringNotContainsString('can_manage', $response->getContent());
     }
 
+    public function test_exact_twenty_articles_have_a_full_second_and_final_page(): void
+    {
+        $time = Carbon::parse('2026-08-09 12:00:00+09:00');
+        foreach (range(1, 20) as $number) {
+            $this->announcement("Article {$number}", "Body {$number}", $time);
+        }
+
+        $this->getJson('/api/v1/public/announcements?page=2')
+            ->assertOk()
+            ->assertJsonCount(10, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.per_page', 10)
+            ->assertJsonPath('meta.total', 20);
+    }
+
     public function test_configured_discord_identity_can_create_update_and_soft_delete(): void
     {
         config(['hakoniwa.admin.discord_user_id' => 'stable-admin-id']);
