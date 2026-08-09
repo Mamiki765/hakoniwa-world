@@ -10,6 +10,7 @@ PR21は怪獣をterrain/facilityから独立した1-cell actorとして実装す
 | `monster_instances` | World内identity、現在HP、出現時最大HP、alive/killed/removed lifecycle |
 | `monster_occupancies` | actorと現在surface cellの1対1対応。Capital occupancy禁止 |
 | `nation_monster_kill_stats` | World/Nation/definition単位の永久討伐count、初回turn、最終turn、version |
+| `nation_monster_cycle_stats` | World/Nation/100 turn区間単位の討伐turn賞用count履歴、明示seed時刻 |
 | `MonsterTurnService` | World単位batch load、memory cell index、randomized process-cell action、trample、防衛接触 |
 | `MonsterSpawnService` | active Nationごとのsnapshot、独立draw、settlement置換、instance/occupancy作成 |
 | `MonsterDamageService` | hardening、atomic HP damage、final blow、capacity-bounded reward、aggregate stat upsert、idempotency |
@@ -32,14 +33,14 @@ movement、spawn trigger/candidate/type/HPは用途別labelled random streamを�
 - occupancyはalive、同一World、surface、非CapitalをDB triggerで検証する。
 - cellとmonsterはlock順を固定し、occupancyのcell/monster一意制約で二重配置を拒否する。
 - kill statはWorld/Nation/definitionのunique scopeで、初回count/version 1、以後のatomic incrementだけを許す。Nation/definitionのWorld整合とcross-World拒否をDBで保証する。
-- 個別撃破tableは持たず、instance lock下のalive→killed成立時だけstatをupsertする。retryとtransaction rollbackは二重加算や部分更新を残さない。
+- 個別撃破tableは持たず、instance lock下のalive→killed成立時だけ永久statと現在の100 turn周期statを同じtransactionでupsertする。retryとtransaction rollbackは二重加算や部分更新を残さない。
 - published `roadmap-pr21-v1`を追加するだけでhistorical ruleset/Worldをrepointしない。
 
 ## Projection
 
 `MapChunkService`はcellとmonster graphをeager loadし、`MapCellPresenter`がviewer-safe overlayを作る。overlayはcurrent HP、hardened、effective asset、現在host Nation number/nameを返す。terrain/facility projectionは従来どおり残り、Vueは独立layerとして描く。asset不足時はnull URLとfallback labelを返し、broken imageを作らない。
 
-公開Nation detailだけが対象Nationの`nation_monster_kill_stats`を一query・最大8行で取得し、総final blow count、definition key/name、種類別count、first/last turnを返す。公開TOP、World summary、population rankingはstatをquery/eager loadしない。award、seed、draw、source metadataは公開しない。個別撃破はstructured eventへ残し、player island eventはraw auditを返さずkiller/host roleに応じたmessageへ変換する。
+公開Nation detailは対象Nationの`nation_monster_kill_stats`を一query・最大8行で取得し、総final blow count、definition key/name、種類別count、first/last turnを返す。ver 1.3.0の公開TOPだけは全Nationの正数statを一括取得し、最大stable source kindのkill markとkind昇順の種類別countを投影する。周期count、seed、draw、raw source metadataは公開しない。賞判定と表示は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`を正本とする。個別撃破はstructured eventへ残し、player island eventはraw auditを返さずkiller/host roleに応じたmessageへ変換する。
 
 ## Observability
 

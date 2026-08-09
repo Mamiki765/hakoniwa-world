@@ -79,6 +79,20 @@
 
 PR21ではこの対応表をproduction manifestの正本として採用した。8つのnormal `asset_key`と硬化variantは`AssetManifestResolver`から既存外部tile routeへ解決する。Git管理するのはmappingだけで、GIFは`product/public`へ置かない。画像のhash、catalog、fallback、deployment検査は`product/docs/monster-audit-pr21.md`を参照する。
 
+## 確認済み賞対応
+
+ver 1.3.0は外部assetの`prize0.gif`〜`prize10.gif`だけをallowlistへ追加する。`prize11.gif`は原作の別turn賞用だが使用しない。原作との差分として`prize10.gif`を討伐turn賞へ割り当てることは`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`のowner decisionである。
+
+| asset key | 元ファイル名 |
+|---|---|
+| `award.turn` | `prize0.gif` |
+| `award.prosperity` / `_great` / `_ultimate` | `prize1.gif` / `prize2.gif` / `prize3.gif` |
+| `award.peace` / `_great` / `_ultimate` | `prize4.gif` / `prize5.gif` / `prize6.gif` |
+| `award.calamity` / `_great` / `_ultimate` | `prize7.gif` / `prize8.gif` / `prize9.gif` |
+| `award.monster_turn` | `prize10.gif` |
+
+これらもGitやcontainer imageへ収録せず、既存read-only external asset directoryから16×16 GIFとして配信し、不足時はCSS text fallbackを使う。
+
 ## 新規要素
 
 原作にない首都、防壁都市、大学、研究所、新資源施設、新隕石アイテム、地下・宇宙専用施設には`hakoniwa_original.*`を割り当てない。原GIFを意味の似た新施設へ流用しない。首都はowner decisionにより既存の論理keyを維持したまま、Git外asset `capital.gif`へ解決する。
