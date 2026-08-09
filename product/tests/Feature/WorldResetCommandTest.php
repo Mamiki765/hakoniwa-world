@@ -187,7 +187,7 @@ class WorldResetCommandTest extends TestCase
         $this->assertSame($identityCount, DB::table('auth_identities')->count());
     }
 
-    public function test_reset_reports_and_cascades_world_owned_monster_stats_after_a_kill(): void
+    public function test_reset_reports_and_cascades_world_owned_monster_and_award_state(): void
     {
         [$world] = $this->populatedWorld();
         $nation = Nation::query()->where('world_id', $world->id)->firstOrFail();
@@ -219,6 +219,24 @@ class WorldResetCommandTest extends TestCase
             'last_killed_turn' => 1,
             'version' => 1,
         ]);
+        $awardId = DB::table('nation_awards')->insertGetId([
+            'world_id' => $world->id,
+            'nation_id' => $nation->id,
+            'award_key' => 'award.prosperity',
+            'awarded_turn' => 1,
+            'award_occurrence_key' => 'once',
+            'created_at' => now(),
+        ]);
+        $cycleStatId = DB::table('nation_monster_cycle_stats')->insertGetId([
+            'world_id' => $world->id,
+            'nation_id' => $nation->id,
+            'cycle_start_turn' => 1,
+            'cycle_end_turn' => 100,
+            'kill_count' => 1,
+            'version' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $alive = MonsterInstance::query()->create([
             'world_id' => $world->id,
             'monster_definition_id' => $definition->id,
@@ -238,10 +256,14 @@ class WorldResetCommandTest extends TestCase
             '--dry-run' => true,
         ]));
         $dryRunOutput = Artisan::output();
+        $this->assertMatchesRegularExpression('/\|\s*nation_awards\s*\|\s*1\s*\|/', $dryRunOutput);
+        $this->assertMatchesRegularExpression('/\|\s*nation_monster_cycle_stats\s*\|\s*1\s*\|/', $dryRunOutput);
         $this->assertMatchesRegularExpression('/\|\s*nation_monster_kill_stats\s*\|\s*1\s*\|/', $dryRunOutput);
         $this->assertMatchesRegularExpression('/\|\s*monster_instances\s*\|\s*2\s*\|/', $dryRunOutput);
         $this->assertMatchesRegularExpression('/\|\s*monster_occupancies\s*\|\s*1\s*\|/', $dryRunOutput);
         $this->assertNotNull($killStat->fresh());
+        $this->assertTrue(DB::table('nation_awards')->where('id', $awardId)->exists());
+        $this->assertTrue(DB::table('nation_monster_cycle_stats')->where('id', $cycleStatId)->exists());
         $this->assertNotNull($occupancy->fresh());
 
         $this->assertSame(0, Artisan::call('hakoniwa:world:reset', [
@@ -251,6 +273,8 @@ class WorldResetCommandTest extends TestCase
         ]));
 
         $this->assertNull(World::query()->find($world->id));
+        $this->assertFalse(DB::table('nation_awards')->where('id', $awardId)->exists());
+        $this->assertFalse(DB::table('nation_monster_cycle_stats')->where('id', $cycleStatId)->exists());
         $this->assertNull(NationMonsterKillStat::query()->find($killStat->id));
         $this->assertNull(MonsterInstance::query()->find($killed->id));
         $this->assertNull(MonsterInstance::query()->find($alive->id));
