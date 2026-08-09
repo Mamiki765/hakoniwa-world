@@ -16,6 +16,7 @@ final class PublicWorldService
         private readonly MoneyFormatter $money,
         private readonly NationBasicStatusProjection $basicStatus,
         private readonly TurnScheduleStatus $turnSchedule,
+        private readonly PublicRankingAchievementProjection $achievements,
     ) {}
 
     /** @return array<string, mixed> */
@@ -53,10 +54,14 @@ final class PublicWorldService
     /** @return Collection<int, non-empty-array<string, mixed>> */
     public function rankings(World $world): Collection
     {
-        return $this->rankedNations($world)->values()->map(
+        $nations = $this->rankedNations($world)->values();
+        $achievements = $this->achievements->forWorld($world, $nations);
+
+        return $nations->map(
             fn (Nation $nation, int $index): array => [
                 'rank' => $index + 1,
                 ...$this->publicNationFields($nation, $world),
+                'achievements' => $achievements[$nation->id],
             ],
         );
     }

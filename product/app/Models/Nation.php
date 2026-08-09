@@ -80,4 +80,16 @@ class Nation extends Model
     {
         return $this->hasMany(NationMonsterKillStat::class);
     }
+
+    /** @return HasMany<NationAward, $this> */
+    public function awards(): HasMany
+    {
+        return $this->hasMany(NationAward::class);
+    }
+
+    /** @return HasMany<NationMonsterCycleStat, $this> */
+    public function monsterCycleStats(): HasMany
+    {
+        return $this->hasMany(NationMonsterCycleStat::class);
+    }
 }

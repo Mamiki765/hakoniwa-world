@@ -860,6 +860,132 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
     }
 
+    public function test_plant_forest_preview_registration_and_execution_replace_only_settlements(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '集落植林国');
+        $nation->update(['money' => 1_000]);
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capital->id)->orderBy('id')->limit(6)->get();
+        $this->assertCount(6, $targets);
+
+        $states = app(MapCellStateService::class);
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        foreach ($targets as $target) {
+            $states->transitionTerrain($target, $plain);
+            $states->setFacility($target, null);
+            $target->population = 0;
+            $target->save();
+        }
+        foreach (['village', 'town', 'city'] as $index => $facilityKey) {
+            $states->setFacility(
+                $targets[$index],
+                FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail(),
+            );
+            $targets[$index]->population = 1_000 * ($index + 1);
+            $targets[$index]->save();
+        }
+        foreach (['farm', 'factory', 'missile_base'] as $offset => $facilityKey) {
+            $index = $offset + 3;
+            $states->setFacility(
+                $targets[$index],
+                FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail(),
+            );
+            $targets[$index]->save();
+        }
+
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}";
+        foreach ($targets->take(3) as $target) {
+            $plantForest = collect($this->actingAs($user)->getJson(
+                "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+            )->assertOk()->json('data.commands'))->firstWhere('key', 'plant_forest');
+            $this->assertSame('currently_executable', $plantForest['execution_preview_status']);
+        }
+        foreach ($targets->slice(3)->push($capital) as $target) {
+            $plantForest = collect($this->getJson(
+                "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+            )->assertOk()->json('data.commands'))->firstWhere('key', 'plant_forest');
+            $this->assertSame('currently_unavailable', $plantForest['execution_preview_status']);
+        }
+
+        $expectedVersion = 1;
+        foreach ($targets->take(3) as $target) {
+            $this->postJson("{$base}/command-queue", [
+                'command_key' => 'plant_forest',
+                'target_x' => $target->x,
+                'target_y' => $target->y,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => $expectedVersion++,
+            ])->assertCreated();
+        }
+        foreach ($targets->slice(3) as $target) {
+            $this->postJson("{$base}/command-queue", [
+                'command_key' => 'plant_forest',
+                'target_x' => $target->x,
+                'target_y' => $target->y,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => $expectedVersion++,
+            ])->assertCreated();
+        }
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'plant_forest',
+            'target_x' => $capital->x,
+            'target_y' => $capital->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => $expectedVersion,
+        ])->assertUnprocessable();
+
+        $items = NationCommandQueueItem::query()
+            ->whereHas('queue', fn ($query) => $query->where('nation_id', $nation->id))
+            ->orderBy('queue_position')->get()->all();
+        $items[] = $this->queue($user, $nation, $space, 'plant_forest', $capital, 1, 7);
+
+        $executor = app(DomesticCommandExecutor::class);
+        for ($turn = 2; $turn <= 4; $turn++) {
+            $result = $executor->execute($this->context(
+                $world,
+                [$nation->id],
+                hash('sha256', "plant-forest-settlement:{$turn}"),
+                targetTurn: $turn,
+            ));
+            $this->assertSame(1, $result['successes']);
+        }
+        $this->assertSame(850, $nation->fresh()->money);
+        $failureResult = $executor->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'plant-forest-non-settlement'),
+            targetTurn: 5,
+        ));
+
+        $this->assertSame(
+            ['completed', 'completed', 'completed', 'failed', 'failed', 'failed', 'failed'],
+            collect($items)->map(fn (NationCommandQueueItem $item): string => $item->fresh()->status)->all(),
+        );
+        $this->assertSame(
+            ['facility_exists', 'facility_exists', 'facility_exists'],
+            collect(array_slice($items, 3, 3))
+                ->map(fn (NationCommandQueueItem $item): ?string => $item->fresh()->failure_code)->all(),
+        );
+        $this->assertSame('capital_protected', $items[6]->fresh()->failure_code);
+        $this->assertSame(4, $failureResult['failures']);
+        foreach ($targets->take(3) as $target) {
+            $this->assertNull($target->fresh()->facility_definition_id);
+            $this->assertSame('forest', $target->fresh()->terrain()->value('key'));
+            $this->assertSame(0, $target->fresh()->population);
+            $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        }
+        $this->assertSame(
+            ['farm', 'factory', 'missile_base'],
+            $targets->slice(3)->values()
+                ->map(fn (MapCell $cell): string => $cell->fresh()->facility()->value('key'))->all(),
+        );
+        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+        $this->assertSame(860, $nation->fresh()->money);
+    }
+
     /** @return array{User, Nation} */
     private function createNation(World $world, string $name): array
     {

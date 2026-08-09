@@ -95,8 +95,35 @@ export interface PublicNationSummary {
     comment: string;
 }
 
+export interface PublicAwardAchievement {
+    key: string;
+    name: string;
+    recurring: boolean;
+    count: number;
+    awarded_turns?: number[];
+    asset: AssetDescriptor;
+}
+
+export interface PublicMonsterKillSpecies {
+    key: string;
+    name: string;
+    kill_count: number;
+}
+
+export interface PublicMonsterKillAchievement {
+    total_count: number;
+    asset: AssetDescriptor;
+    species: PublicMonsterKillSpecies[];
+}
+
+export interface PublicRankingAchievements {
+    awards: PublicAwardAchievement[];
+    monster_kills: PublicMonsterKillAchievement | null;
+}
+
 export interface PublicRankingEntry extends PublicNationSummary {
     rank: number;
+    achievements: PublicRankingAchievements;
 }
 
 export interface PublicEvent {

@@ -54,6 +54,7 @@ function publicResponse(path: string): Response | null {
         farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
         registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
         last_updated_turn: 1, comment: '公開コメント',
+        achievements: { awards: [], monster_kills: null },
     }]);
     if (path.endsWith('/events')) return response({
         groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
@@ -80,7 +81,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
-        expect(wrapper.find('.ranking-card thead').text()).toBe('島名島主生存ターン面積農場規模工場規模採掘場規模人口資金食料');
+        expect(wrapper.find('.ranking-card thead').text()).toBe('順位島名＋賞/討伐人口面積資金食料農場規模工場規模採掘場規模生存ターン');
+        expect(wrapper.findAll('.ranking-card tbody')).toHaveLength(1);
+        expect(wrapper.findAll('.ranking-card tbody tr')).toHaveLength(2);
         expect(wrapper.find('.ranking-card tbody').text()).toContain('17セル');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('10,000人');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('30,000人');
@@ -88,11 +91,12 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('10,000トン');
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
+        expect(wrapper.find('.ranking-owner-row').text()).toBe('島主：公開島主');
         expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
-        expect(wrapper.find('.ranking-card tbody').text()).toContain('公開コメント');
+        expect(wrapper.find('.ranking-card tbody').text()).not.toContain('公開コメント');
         expect(wrapper.text()).toContain('公開できる出来事はまだありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.2.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.3.0');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
         expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
@@ -107,7 +111,7 @@ describe('application lobby and island entry', () => {
                 rank: 1, id: 7, world_id: 1, nation_number: 1, name: '休止島', state: 'dormant_frozen',
                 total_population: 1000, owner_name: '休止島主', territory_cell_count: 19, owned_land_cells: 17,
                 money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
-                farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
+                farm_capacity_people: 0, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
                 registered_turn: 1, survival_turns: 10, finance_only_turns: 7, activity_status: 'finance_only',
                 last_updated_turn: 11, comment: '',
             }]);
@@ -120,6 +124,7 @@ describe('application lobby and island entry', () => {
         expect(name.text()).toBe('休止島（休止中）');
         expect(name.classes()).toContain('is-dormant');
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('保有せず');
     });
 
     it('suppresses the normal countdown for a failed turn', async () => {

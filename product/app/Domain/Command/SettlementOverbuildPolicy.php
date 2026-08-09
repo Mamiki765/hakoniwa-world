@@ -6,6 +6,7 @@ final class SettlementOverbuildPolicy
 {
     /** @var list<string> */
     private const COMMAND_KEYS = [
+        'plant_forest',
         'build_farm',
         'build_factory',
         'build_missile_base',

@@ -12,7 +12,7 @@
 
 | Milestone | Blocking Open IDs | 実装境界 |
 |---|---|---|
-| monster | — | MONSTER-01〜04はPR21で決定・実装済み。将来のawardはAWARD-01を別gateとして維持する。 |
+| monster | — | MONSTER-01〜04はPR21、AWARD-01はver 1.3.0のowner decisionで決定・実装済み。 |
 | missile / commands / combat | B-03、B-05、B-07、B-12、B-13 | 対応するattack、territory、dormancy機能の実装前にだけ停止する。B-10のPR22 missile visibilityは決定済み。怪獣単体PRの一律blockerではない。 |
 | lifecycle / automatic turn operations | T-02 | 30日休眠Jobは公開後roadmapまで実装しない。production cronと手動retry境界はD-02で決定済み。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
@@ -282,17 +282,16 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: 自然出現はeligibleなactive Nationごとに1 turn 1回、`min(10,000, owned_land_cells * 2) / 10,000`で判定する。人口100,000未満は出現なし、100,000〜249,999はinora/sanjira、250,000〜399,999はさらにred/dark/ghost、400,000以上はさらにwhale/kingを加えたuniform poolからsettlementへ最大1体出現させ、mechaは自然出現させない。Nation attributed final blowではkillerへ価値の切捨て半分を賞金、死亡時cell ownerへ残りを現行sale contractと同価値の怪獣肉（1億円=500トン）としてcapacity上限付きで配分する。`nation_monster_kill_stats`のWorld/Nation/definition別countを種類別討伐数、`SUM(kill_count)`を総トドメ数、count>0をkill markの正本とし、個別撃破はstructured eventだけへ残す。awardは実装しない。
+- Decision: 自然出現はeligibleなactive Nationごとに1 turn 1回、`min(10,000, owned_land_cells * 2) / 10,000`で判定する。人口100,000未満は出現なし、100,000〜249,999はinora/sanjira、250,000〜399,999はさらにred/dark/ghost、400,000以上はさらにwhale/kingを加えたuniform poolからsettlementへ最大1体出現させ、mechaは自然出現させない。Nation attributed final blowではkillerへ価値の切捨て半分を賞金、死亡時cell ownerへ残りを現行sale contractと同価値の怪獣肉（1億円=500トン）としてcapacity上限付きで配分する。`nation_monster_kill_stats`のWorld/Nation/definition別countを種類別討伐数、`SUM(kill_count)`を総トドメ数、count>0をkill markの正本とし、個別撃破はstructured eventだけへ残す。PR21ではawardを実装せず、後続のAWARD-01でver 1.3.0として実装する。
 - Asset decision: 箱庭諸島2＋の原GIFは`_references/hakoniwa-2plus/assets/hakogif`で監査するが、Git、`product/public`、container imageへ収録せず、既存のGit外read-only tile asset directoryから原名・GIF形式のまま配信する。`monster4.gif`はkind 2/6の硬化状態専用とし、不足時はAPIと画面を失敗させず安全なCSS fallbackを使う。
 - Decision record: `product/docs/monster-audit-pr21.md`、`docs/architecture/monster-system.md`、`docs/assets/tile-asset-mapping.md`、`docs/reference-analysis/license-and-provenance.md`
 
 ### AWARD-01 Nation awards
 
-- Status: Open
-- Required before: award system実装前
-- Open decision: turn award、prosperity award、peace award、monster awardのexact threshold、repeatability、revocation、public display、historical backfillをowner判断で確定する。
-- Candidate: `monster_final_blow_count = 100`で怪獣賞等を検討できるが、PR21ではthresholdもawardも実装しない。
-- Decision record: `product/docs/monster-audit-pr21.md`
+- Status: Decided
+- Decision: owner提示のver 1.3.0条件表を正本とし、災難50,000/100,000/200,000人純減、繁栄300,000/500,000/1,000,000人最終人口、平和20,000/50,000/80,000人実受入とする。各系列は下位から1 turn 1段階、一度限りで取消なし。100 turnごとの人口最大全Nationへturn賞、同区間のNation attributed final blow最大全Nationへ最大0を除き討伐turn賞を反復付与する。公開TOPだけへ全受賞turn、種類別永久討伐count、stable source kind由来markを表示する。pre-1.3.0の周期countはmigrationが固定した全要求Nationへのexplicit operator seedだけとし、完了までnon-dry turnと周期順位をfail closedにする。award backfillは行わず、gameplay bonusもない。
+- Implemented: ver 1.3.0
+- Decision record: `docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`、`product/docs/operations/ver-1.3.0-monster-cycle-seed.md`
 
 ### B-02 Capitalへの複数被害
 

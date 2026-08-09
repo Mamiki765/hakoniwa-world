@@ -8,7 +8,9 @@ use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonsterDefinition;
 use App\Models\Nation;
+use App\Models\NationAward;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -39,6 +41,40 @@ class PublicLobbyApiTest extends TestCase
         $second->update(['money' => 700]);
         $this->placeScaleFacilities($second);
         $secondArea = app(NationLandAreaCalculator::class)->forNation($second);
+        foreach ([100, 200] as $turn) {
+            NationAward::query()->create([
+                'world_id' => $world->id,
+                'nation_id' => $second->id,
+                'award_key' => 'award.turn',
+                'awarded_turn' => $turn,
+                'award_occurrence_key' => "turn:{$turn}",
+            ]);
+        }
+        NationAward::query()->create([
+            'world_id' => $world->id,
+            'nation_id' => $second->id,
+            'award_key' => 'award.prosperity',
+            'awarded_turn' => 50,
+            'award_occurrence_key' => 'once',
+        ]);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $inora = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'inora')->firstOrFail();
+        $mecha = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'mecha_inora')->firstOrFail();
+        foreach ([$inora, $mecha] as $definition) {
+            DB::table('nation_monster_kill_stats')->insert([
+                'world_id' => $world->id,
+                'nation_id' => $second->id,
+                'monster_definition_id' => $definition->id,
+                'kill_count' => 1,
+                'first_killed_turn' => 10,
+                'last_killed_turn' => 10,
+                'version' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         $summary = $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
             ->assertOk()
@@ -57,6 +93,17 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.0.owner_name', '第二島主')
             ->assertJsonPath('data.0.comment', '第二コメント')
             ->assertJsonPath('data.1.owner_name', '第一島主')
+            ->assertJsonPath('data.0.achievements.awards.0.key', 'award.turn')
+            ->assertJsonPath('data.0.achievements.awards.0.count', 2)
+            ->assertJsonPath('data.0.achievements.awards.0.awarded_turns', [100, 200])
+            ->assertJsonPath('data.0.achievements.awards.1.key', 'award.prosperity')
+            ->assertJsonPath('data.0.achievements.monster_kills.total_count', 2)
+            ->assertJsonPath('data.0.achievements.monster_kills.species.0.key', 'mecha_inora')
+            ->assertJsonPath('data.0.achievements.monster_kills.species.0.kill_count', 1)
+            ->assertJsonPath('data.0.achievements.monster_kills.species.1.key', 'inora')
+            ->assertJsonPath('data.0.achievements.monster_kills.asset.key', 'hakoniwa_original.monster.inora')
+            ->assertJsonPath('data.1.achievements.awards', [])
+            ->assertJsonPath('data.1.achievements.monster_kills', null)
             ->assertJsonPath('data.0.money_display', '約500億円')
             ->assertJsonPath('data.0.money_bucket', '500')
             ->assertJsonPath('data.0.food_total_tons', 10000)
@@ -75,6 +122,10 @@ class PublicLobbyApiTest extends TestCase
         foreach (['food_resources', 'resources', 'food_capacity_tons', 'wheat', 'fish', 'monster_meat'] as $privateField) {
             $this->assertStringNotContainsString($privateField, $rankingBody);
         }
+        $this->assertStringNotContainsString('source_metadata', $rankingBody);
+        $this->getJson("/api/v1/public/nations/{$second->id}")
+            ->assertOk()
+            ->assertJsonMissingPath('data.achievements');
 
         MapCell::query()->where('owner_nation_id', $first->id)->orderBy('id')->firstOrFail()->update(['population' => 1500]);
         $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")

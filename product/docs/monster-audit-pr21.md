@@ -97,7 +97,7 @@ host_monster_meat = host_meat_value * 500 トン
 
 `nation_monster_kill_stats`は`world_id`、`nation_id`、`monster_definition_id`をunique scopeとし、`kill_count`、`first_killed_turn`、`last_killed_turn`、`version`を永久gameplay stateとして保持する。初回はcount/version 1かつfirst=last=target turn、以後は同じ行のcount/versionを1増やし、firstを維持してlastを更新する。DB constraint/triggerが非負turn、count、World/Nation/definition整合、cross-World参照、不正な直接更新・World存続中の削除を拒否する。個別撃破を保存するtableは持たない。
 
-このNation単位spawn、reward split、討伐統計を`MONSTER-04`のowner decisionとして固定する。kill markはstat rowの`kill_count > 0`、種類別討伐数は`kill_count`、Nation総トドメ数は対象Nation最大8行の`SUM(kill_count)`を正本とし、`nations`へ重複totalを置かない。value 0のメカいのらもNation attributed final blowならcount対象。将来rankingはこの集計tableだけから算出できる境界を維持し、award thresholdは実装しない。AWARD-01はOpenのままである。
+このNation単位spawn、reward split、討伐統計を`MONSTER-04`のowner decisionとして固定する。kill markはstat rowの`kill_count > 0`、種類別討伐数は`kill_count`、Nation総トドメ数は対象Nation最大8行の`SUM(kill_count)`を正本とし、`nations`へ重複totalを置かない。value 0のメカいのらもNation attributed final blowならcount対象。PR21ではawardを実装しなかったが、AWARD-01はver 1.3.0の`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`で後続決定された。
 
 ## API、map overlay、event secrecy
 
@@ -107,7 +107,7 @@ Vue mapはterrain/facility tileの上に独立HTML/CSS overlayを描き、GIF、
 
 最低限のaudit eventは`monster.spawned`、`monster.spawn_failed_no_settlement`、`monster.moved`、`monster.trampled`、`monster.stayed`、`monster.damage_blocked`、`monster.damaged`、`monster.killed`、`monster.reward_distributed`、`monster.kill_stat_incremented`、`monster.defense_self_destructed`、`monster.removed_by_terrain_event`。個別撃破のinstance/definition、killer、nullable host、turn、previous/new count、money/meat rewardとoverflow、nullable firing baseはこのstructured eventへ記録する。player logはkillerへ撃破と賞金、hostへ撃破と怪獣肉をrole-aware messageとして投影し、raw metadataを返さない。
 
-公開Nation detailだけが対象Nationのstatを一query・最大8行で取得し、`monster_final_blow_count`とkey/name/count/first/lastを返す。公開TOP、World summary、population rankingはこのtableをquery/eager loadせず、全Nation分のstatや個別eventを走査しない。
+PR21時点では公開Nation detailだけが対象Nationのstatを一query・最大8行で取得し、`monster_final_blow_count`とkey/name/count/first/lastを返し、公開TOPはstatを取得しなかった。ver 1.3.0はこの履歴契約をTOPに限って後続変更し、World単位一括queryでkill markを投影する。現行正本は`docs/architecture/public-lobby-and-island-dashboard.md`とADR-0009である。
 
 ## asset配信とdeployment境界
 

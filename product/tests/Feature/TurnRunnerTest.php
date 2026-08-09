@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Application\MonsterKillCycleService;
 use App\Application\TurnRunner;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\ScaffoldTurnPhase;
@@ -427,6 +428,7 @@ class TurnRunnerTest extends TestCase
             new WorldTurnLock,
             new FixedTurnSeedGenerator(self::SEED),
             app(CurrentRulesetGuard::class),
+            app(MonsterKillCycleService::class),
         );
     }
 

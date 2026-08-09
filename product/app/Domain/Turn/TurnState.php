@@ -34,6 +34,9 @@ final class TurnState
     /** @var array<int, array{money: int, population: int, food: int}> */
     private array $nationStartSummaries = [];
 
+    /** @var array<int, int> */
+    private array $refugeesReceivedByNation = [];
+
     /** @var list<LaunchIntent> */
     private array $launchIntents = [];
 
@@ -192,6 +195,23 @@ final class TurnState
         }
 
         return $this->nationStartSummaries[$nationId];
+    }
+
+    public function addRefugeesReceived(int $nationId, int $population): void
+    {
+        if ($nationId < 1 || $population < 0) {
+            throw new InvalidArgumentException('Received refugees require a positive Nation ID and non-negative population.');
+        }
+        $this->refugeesReceivedByNation[$nationId] = ($this->refugeesReceivedByNation[$nationId] ?? 0) + $population;
+    }
+
+    public function refugeesReceivedForNation(int $nationId): int
+    {
+        if ($nationId < 1) {
+            throw new InvalidArgumentException('Received-refugee Nation ID must be positive.');
+        }
+
+        return $this->refugeesReceivedByNation[$nationId] ?? 0;
     }
 
     public function registerLaunchIntent(

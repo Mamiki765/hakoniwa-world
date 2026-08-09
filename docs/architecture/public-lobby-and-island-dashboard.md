@@ -56,7 +56,9 @@ public eventsはraw `audit_events`を返さない。PR5のallowlistは `nation.c
 
 PR21のowner-only player island event projectionは怪獣eventをallowlistへ追加するが、metadata自体は返さない。Nation attributed final blowは`monster.reward_distributed`一件をrole-awareに投影し、killerには撃破とapplied賞金、死亡時hostには怪獣肉のappliedトン数を示す。同一Nationなら両方を一つの明確なmessageへまとめ、neutral hostならkiller messageだけを返す。unattributed death、spawn、movement/trample、hardening block、defense contact、terrain removalも安全な定型文へ変換する。seed、draw、candidate、内部move counter、source metadataは文面/APIへ入れない。
 
-公開Nation detailだけが対象Nationの`nation_monster_kill_stats`を一query・最大8行で取得する。`monster_final_blow_count = SUM(kill_count)`と、kill markを兼ねるdefinition別key/name/`kill_count`/`first_killed_turn`/`last_killed_turn`を返す。公開TOP、World summary、population rankingはstatをquery/eager loadせず、全Nation分を取得しない。AWARD-01がOpenであるため、countから称号を暗黙に導出しない。
+公開Nation detailは対象Nationの`nation_monster_kill_stats`を一query・最大8行で取得する。`monster_final_blow_count = SUM(kill_count)`とdefinition別key/name/`kill_count`/`first_killed_turn`/`last_killed_turn`を返す。
+
+ver 1.3.0の公開TOPランキングだけは全Nationの`nation_awards`と正数の`nation_monster_kill_stats`をtableごとの一括queryで投影する。各Nationは順位と主要数値の1行、島主名だけの2行目で表示し、commentを表示しない。賞は全反復受賞turn、怪獣markは最大stable source kindの画像、tooltipはkind昇順の種類別正確countを返す。raw kind、source metadata、seed、周期内部countは公開しない。World summaryとpublic Nation detailへ`achievements`を追加しない。正本は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`とする。
 
 ## Effective 20-slot plan
 

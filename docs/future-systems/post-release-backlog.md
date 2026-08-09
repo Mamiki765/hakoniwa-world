@@ -2,15 +2,9 @@
 
 PR23は箱庭諸島２S＋の初回production baselineを固定する。以下は初回公開へ含めず、別roadmapとowner decisionまでextension boundaryだけを維持する。
 
-## 賞
+## 賞（ver 1.3.0で実装済み）
 
-- turn賞
-- 繁栄賞
-- 平和賞
-- 討伐賞
-- 災難賞
-
-threshold、繰返し受賞、取消、公開表示、historical backfillはAWARD-01で決める。PR23は既存の討伐統計を維持するがawardを生成しない。
+AWARD-01は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`で決定済みである。新しい賞、賞の取消、gameplay bonus、別周期、historical award backfillは引き続き将来のowner decisionとする。
 
 ## Combatと報復
 
