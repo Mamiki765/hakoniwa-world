@@ -50,6 +50,7 @@ PR22の実装前監査は、read-onlyの`_references/hakoniwa-2plus/source/hakow
 
 ## PR22 command differences
 
+- settlement overbuild: `SettlementOverbuildPolicy`をpreviewと実行時再検証のtarget適格性の共通正本とする。`plant_forest`と既存の平地建設commandは自国の`village` / `town` / `city`だけを置換できる。植林は施設と人口を除去して森へ変えるがownerは維持する。Capitalとfarm、factory、missile base等の非settlement施設は引き続き保護する。queue登録はfuture-plan契約により現在の非settlement施設状態だけでは拒否せず、Capitalだけを構造的に即時拒否する。この適用漏れ修正ではpublished ruleset v1/v2 payloadを変更しない。
 - `logging`: 森を荒地へ変更し、legacy tree unit×5億円をcapacity内で受け取る。公開は曖昧、privateは座標と金額を表示する。
 - `territory_expand`: 他国領取得を許可せず、自国領に隣接する中立陸地だけを取得する。
 - secret construction: 植林、ミサイル基地、海底基地、ハリボテはpublic projectionと正確なprivate projectionを分離する。ミサイル基地のpublic文とevent typeは植林と同一、海底基地のpublic座標は`(?,?)`とし、正確な座標は建設Nationのprivateログだけに残す。ハリボテのpublic文、event type、facility metadataは防衛施設と同一で、monster self-destructへは接続しない。
