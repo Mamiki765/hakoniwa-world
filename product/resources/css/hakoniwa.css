@@ -149,7 +149,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ranking-comment { display: block; max-width: 24rem; margin-top: 3px; color: var(--ink); font-size: .72rem; white-space: normal; }
 .ranking-rank { width: 3.5rem; color: var(--coral-dark); font-size: 1rem; font-weight: 900; vertical-align: top; }
 .ranking-island { min-width: 15rem; }
-.ranking-owner-row td { padding-top: 3px; color: var(--muted); font-size: .72rem; font-weight: 700; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.ranking-owner-row td { padding-top: 3px; color: var(--muted); font-size: .72rem; font-weight: 700; text-align: left; }
 .ranking-entry + .ranking-entry .ranking-primary-row td { border-top: 2px solid rgba(18, 63, 73, .16); }
 .ranking-achievements { display: inline-flex; align-items: center; gap: 2px; margin-left: 7px; vertical-align: middle; }
 .achievement-badge { position: relative; display: inline-flex; }

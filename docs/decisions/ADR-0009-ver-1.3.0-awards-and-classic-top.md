@@ -16,7 +16,7 @@ ver 1.3.0では、公開TOPを箱庭諸島2＋に近い情報密度へ戻し、N
 
 `GET /api/v1/public/worlds/{world}/rankings`だけに`achievements`を追加する。World summary、public Nation detail、public previewへ賞を混入しない。賞と種類別討伐統計はそれぞれWorld単位の一括queryで投影し、NationごとのN+1 queryを行わない。
 
-各Nationは2行で表示する。1行目は順位、島名と賞／討伐mark、人口、面積、推定資金、正確な全food合計、農場、工場、採掘場、生存ターンの順とする。2行目は、ver 1.3.0では島主名だけを表示し、profile commentを置かない契約だった。ver 1.3.1 overrideでは、島主名を表示し、commentがある場合は`島主名：comment`、ない場合は島主名だけを表示する。施設規模0は`保有せず`とする。ランキング対象と順位は現行契約を維持し、stateで除外せず、最終人口降順、領土降順、Nation ID昇順とする。
+各Nationは2行で表示する。1行目は順位、島名と賞／討伐mark、人口、面積、推定資金、正確な全food合計、農場、工場、採掘場、生存ターンの順とする。2行目は島主名だけを表示し、profile commentは置かない。施設規模0は`保有せず`とする。ランキング対象と順位は現行契約を維持し、stateで除外せず、最終人口降順、領土降順、Nation ID昇順とする。
 
 ### 永続賞
 
