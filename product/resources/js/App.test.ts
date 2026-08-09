@@ -303,6 +303,7 @@ describe('application lobby and island entry', () => {
         let summaryCalls = 0;
         let nationCalls = 0;
         let privateChunkCalls = 0;
+        let ownerEventCalls = 0;
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             if (path.endsWith('/summary')) {
@@ -331,10 +332,14 @@ describe('application lobby and island entry', () => {
                 privateChunkCalls++;
                 return response(emptyChunk);
             }
-            if (path === '/api/v1/nations/3/events?page=1') return response({
-                groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
-                turns_per_page: 24, has_newer_page: false, has_older_page: false,
-            });
+            if (path === '/api/v1/nations/3/events?page=1') {
+                ownerEventCalls++;
+                return response({
+                    groups: [], page: 1, anchor_turn: ownerEventCalls,
+                    turn_range: { start: 1, end: ownerEventCalls },
+                    turns_per_page: 24, has_newer_page: false, has_older_page: false,
+                });
+            }
             if (path.includes('command-definitions')) return response({
                 commands: [],
                 quantity_contract: { type: 'integer', minimum: 1, maximum: 99, default: 1, quick_presets: [1, 5, 10, 25, 50, 99] },
@@ -358,6 +363,7 @@ describe('application lobby and island entry', () => {
         expect(summaryCalls).toBe(2);
         expect(nationCalls).toBe(2);
         expect(privateChunkCalls).toBeGreaterThan(initialChunkCalls);
+        expect(ownerEventCalls).toBe(2);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
         wrapper.unmount();
     });

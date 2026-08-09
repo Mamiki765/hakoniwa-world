@@ -791,7 +791,7 @@ async function updateProfile(): Promise<void> {
                     />
                 </div>
             </div>
-            <IslandEventLog :nation-id="nation.id" />
+            <IslandEventLog :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" />
         </section>
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
