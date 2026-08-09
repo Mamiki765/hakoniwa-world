@@ -104,7 +104,7 @@ function chooseCommand(definition: CommandDefinition): void {
         key,
         schema.default ?? null,
     ]));
-    if (definition.quantity_semantics === 'selector' || Object.keys(definition.parameters).length > 0) {
+    if (definition.quantity_semantics !== 'unused' || Object.keys(definition.parameters).length > 0) {
         pendingDefinition.value = definition;
         return;
     }
@@ -118,7 +118,9 @@ const parametersAreValid = computed(() => {
     return Object.entries(definition.parameters).every(([key, schema]) => {
         const value = commandParameters.value[key];
         if (value === null || value === undefined) return !schema.required || schema.nullable === true;
-        return Number.isInteger(value) && value >= schema.minimum && value <= schema.maximum;
+        if (!Number.isInteger(value) || value < schema.minimum || value > schema.maximum) return false;
+        return schema.input_semantics !== 'nation_selector'
+            || schema.options.some((option) => option.value === value);
     });
 });
 
@@ -341,9 +343,29 @@ onBeforeUnmount(() => {
                                 <option v-for="option in pendingDefinition.quantity_options" :key="option.key" :value="option.value">{{ option.label }}</option>
                             </select>
                         </label>
+                        <template v-else-if="pendingDefinition.quantity_semantics === 'ordinary'">
+                            <div class="preset-row">
+                                <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
+                            </div>
+                            <label>数量
+                                <input v-model.number="quantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
+                            </label>
+                        </template>
                         <label v-for="(schema, key) in pendingDefinition.parameters" :key="key">
                             {{ schema.label }}
+                            <select
+                                v-if="schema.input_semantics === 'nation_selector'"
+                                v-model.number="commandParameters[key]"
+                                class="nation-target-select"
+                                :required="schema.required && !schema.nullable"
+                            >
+                                <option :value="null" disabled>対象島を選択してください</option>
+                                <option v-for="option in schema.options" :key="option.value" :value="option.value">
+                                    {{ option.label }} ({{ option.nation_number }})
+                                </option>
+                            </select>
                             <input
+                                v-else
                                 v-model.number="commandParameters[key]"
                                 type="number"
                                 step="1"

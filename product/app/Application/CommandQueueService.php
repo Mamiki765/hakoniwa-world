@@ -33,6 +33,7 @@ final class CommandQueueService
         private readonly CurrentRulesetGuard $rulesetGuard,
         private readonly LegacyCommandQueueOrder $legacyOrder,
         private readonly CommandQuantitySemantics $quantitySemantics,
+        private readonly NationCommandTargetService $nationTargets,
     ) {}
 
     /**
@@ -107,6 +108,7 @@ final class CommandQueueService
                 throw new DomainException('command parameter schemaが不正です。');
             }
             $parameters = $this->parameters->validate($schemas, $parameters);
+            $this->nationTargets->validateRegistration($nation, $definition, $parameters);
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')

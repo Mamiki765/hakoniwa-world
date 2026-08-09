@@ -262,6 +262,12 @@ export interface CommandDefinition {
     parameters: Record<string, {
         label: string;
         type: 'integer';
+        input_semantics: 'number' | 'nation_selector';
+        options: Array<{
+            value: number;
+            label: string;
+            nation_number: number;
+        }>;
         minimum: number;
         maximum: number;
         required: boolean;

@@ -221,6 +221,8 @@ describe('command plan workspace', () => {
         expect(button.text()).toContain('掘削');
         expect(button.attributes('title')).toContain('海底油田');
         await button.trigger('click');
+        expect(wrapper.find('.parameter-popover input[type="number"]').exists()).toBe(true);
+        await wrapper.find('.parameter-popover').trigger('submit');
         await flushPromises();
 
         const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
@@ -249,10 +251,10 @@ describe('command plan workspace', () => {
 
     it('uses command-specific defaults and requires an explicit selector choice', async () => {
         const commands = [
-            definition({ key: 'missile', name: 'ミサイル', quantity_default: 99 }),
-            definition({ key: 'pp_missile', name: 'PPミサイル', quantity_default: 99 }),
-            definition({ key: 'land_destruction_missile', name: '陸地破壊弾', quantity_default: 99 }),
-            definition({ key: 'spp_missile', name: 'SPPミサイル', quantity_default: 1 }),
+            definition({ key: 'missile', name: 'ミサイル', quantity_semantics: 'ordinary', quantity_default: 99 }),
+            definition({ key: 'pp_missile', name: 'PPミサイル', quantity_semantics: 'ordinary', quantity_default: 99 }),
+            definition({ key: 'land_destruction_missile', name: '陸地破壊弾', quantity_semantics: 'ordinary', quantity_default: 99 }),
+            definition({ key: 'spp_missile', name: 'SPPミサイル', quantity_semantics: 'ordinary', quantity_default: 1 }),
             definition({
                 key: 'build_monument', name: '記念碑建設', quantity_semantics: 'selector', quantity_default: null,
                 quantity_options: [{ value: 1, key: 'peace', label: '平和記念碑' }],
@@ -274,6 +276,8 @@ describe('command plan workspace', () => {
         const buttons = wrapper.findAll('.command-grid button');
         for (const button of buttons.slice(0, 4)) {
             await button.trigger('click');
+            expect(wrapper.find('.parameter-popover input[type="number"]').exists()).toBe(true);
+            await wrapper.find('.parameter-popover').trigger('submit');
             await flushPromises();
         }
         expect(posted).toEqual([99, 99, 99, 1]);
@@ -295,6 +299,8 @@ describe('command plan workspace', () => {
             parameters: {
                 target_nation_id: {
                     label: '対象Nation ID', type: 'integer', minimum: 1, maximum: 2_147_483_647, required: true,
+                    input_semantics: 'nation_selector',
+                    options: [{ value: 42, label: '援助対象島', nation_number: 7 }],
                 },
             },
         });
@@ -314,8 +320,11 @@ describe('command plan workspace', () => {
 
         await wrapper.find('.command-grid button').trigger('click');
         const inputs = wrapper.findAll('.parameter-popover input');
-        expect(inputs).toHaveLength(1);
-        await inputs[0]!.setValue('42');
+        expect(inputs).toHaveLength(0);
+        const targetSelector = wrapper.find<HTMLSelectElement>('.nation-target-select');
+        expect(targetSelector.exists()).toBe(true);
+        expect(targetSelector.text()).toContain('援助対象島 (7)');
+        await targetSelector.setValue('42');
         await wrapper.find('.parameter-popover').trigger('submit');
         await flushPromises();
 
@@ -324,6 +333,49 @@ describe('command plan workspace', () => {
             command_key: 'monster_dispatch',
             target_x: null,
             target_y: null,
+            parameters: { target_nation_id: 42 },
+        });
+    });
+
+    it('keeps a nation target selector separate from ordinary aid quantity', async () => {
+        const moneyAid = definition({
+            key: 'money_aid',
+            name: '資金援助',
+            target_type: 'nation',
+            quantity_semantics: 'ordinary',
+            parameters: {
+                target_nation_id: {
+                    label: '対象島', type: 'integer', minimum: 1, maximum: 2_147_483_647, required: true,
+                    input_semantics: 'nation_selector',
+                    options: [{ value: 42, label: '援助対象島', nation_number: 7 }],
+                },
+            },
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                return jsonResponse({ queue: commandQueue(2), message: '登録しました。' }, 201);
+            }
+            return jsonResponse(String(input).includes('command-definitions')
+                ? catalog([moneyAid])
+                : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected: null } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        const popover = wrapper.find('.parameter-popover');
+        expect(popover.findAll('input[type="number"]')).toHaveLength(1);
+        expect(popover.findAll('select')).toHaveLength(1);
+        await popover.find('.nation-target-select').setValue('42');
+        await popover.find('input[type="number"]').setValue('5');
+        await popover.trigger('submit');
+        await flushPromises();
+
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+            command_key: 'money_aid',
+            quantity: 5,
             parameters: { target_nation_id: 42 },
         });
     });

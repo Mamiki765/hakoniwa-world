@@ -231,11 +231,13 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
 
     if (page.value === 'island' && refreshedNation !== null && refreshedNation.capital !== null && mapSpace.value !== null) {
         await map.loadAround(mapSpace.value, refreshedNation.capital.x, refreshedNation.capital.y, { kind: 'private' });
+        if (map.error.value !== null) refreshed = false;
     } else if (page.value === 'preview' && refreshedPreview !== null && refreshedPreview.capital !== null) {
         await map.loadAround(refreshedPreview.map_space, refreshedPreview.capital.x, refreshedPreview.capital.y, {
             kind: 'public',
             nationId: refreshedPreview.id,
         });
+        if (map.error.value !== null) refreshed = false;
     }
 
     if (refreshed) turnViewCurrentTurn = summary.current_turn;

@@ -18,6 +18,7 @@ use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
+use App\Models\MonumentDefinition;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
@@ -799,12 +800,14 @@ class DomesticCommandExecutionTest extends TestCase
             $target->population = 0;
             $target->save();
         }
+        $prosperity = MonumentDefinition::query()->where('key', 'prosperity')->firstOrFail();
+        $prosperityId = (int) $prosperity->id;
 
         $items = [
             $this->queue($user, $nation, $space, 'build_farm', $targets[0], 1, 1),
             $this->queue($user, $nation, $space, 'build_factory', $targets[1], 1, 2),
             $this->queue($user, $nation, $space, 'build_defense_facility', $targets[2], 1, 3),
-            $this->queue($user, $nation, $space, 'build_monument', $targets[3], 1, 4),
+            $this->queue($user, $nation, $space, 'build_monument', $targets[3], $prosperityId, 4),
             $this->queue($user, $nation, $space, 'build_factory', $targets[4], 1, 5),
             $this->queue($user, $nation, $space, 'build_farm', $capital, 1, 6),
         ];
@@ -823,6 +826,8 @@ class DomesticCommandExecutionTest extends TestCase
             $targets[$index]->population = 1_000 * ($index + 1);
             $targets[$index]->save();
         }
+        MonumentDefinition::query()->where('key', 'peace')->update(['enabled' => false]);
+        $prosperity->update(['sort_order' => 1]);
 
         $executor = app(DomesticCommandExecutor::class);
         for ($turn = 2; $turn <= 5; $turn++) {
@@ -848,6 +853,7 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(2, $failureResult['failures']);
         $this->assertSame(['farm', 'factory', 'defense', 'monument'],
             $targets->take(4)->map(fn (MapCell $cell): string => $cell->fresh()->facility()->value('key'))->all());
+        $this->assertSame('prosperity', $targets[3]->fresh()->monumentDefinition()->value('key'));
         $this->assertSame([0, 0, 0, 0],
             $targets->take(4)->map(fn (MapCell $cell): int => $cell->fresh()->population)->all());
         $this->assertSame('defense', $targets[4]->fresh()->facility()->value('key'));

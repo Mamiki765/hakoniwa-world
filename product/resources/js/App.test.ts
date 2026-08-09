@@ -304,6 +304,7 @@ describe('application lobby and island entry', () => {
         let nationCalls = 0;
         let privateChunkCalls = 0;
         let ownerEventCalls = 0;
+        let failTurnRefreshChunk = true;
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             if (path.endsWith('/summary')) {
@@ -330,6 +331,10 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/worlds/1/map-spaces') return response([publicDetail.map_space]);
             if (path.includes('/api/v1/map-spaces/2/chunks/')) {
                 privateChunkCalls++;
+                if (summaryCalls >= 2 && failTurnRefreshChunk) {
+                    failTurnRefreshChunk = false;
+                    return response(null, 500);
+                }
                 return response(emptyChunk);
             }
             if (path === '/api/v1/nations/3/events?page=1') {
@@ -365,6 +370,15 @@ describe('application lobby and island entry', () => {
         expect(privateChunkCalls).toBeGreaterThan(initialChunkCalls);
         expect(ownerEventCalls).toBe(2);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
+        const failedRefreshChunkCalls = privateChunkCalls;
+
+        await vi.advanceTimersByTimeAsync(2_000);
+        await flushPromises();
+
+        expect(summaryCalls).toBe(3);
+        expect(nationCalls).toBe(3);
+        expect(privateChunkCalls).toBeGreaterThan(failedRefreshChunkCalls);
+        expect(ownerEventCalls).toBe(2);
         wrapper.unmount();
     });
 

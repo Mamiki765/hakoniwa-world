@@ -56,14 +56,15 @@ final class CommandQuantitySemantics
             throw new DomainException('未対応のquantity selector catalogです。');
         }
 
+        // PR22 catalog ids 1..3 are the original persisted selector values. Unlike display order,
+        // the primary key remains stable when an option is disabled or reordered.
         return MonumentDefinition::query()
             ->where('enabled', true)
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get()
-            ->values()
-            ->map(static fn (MonumentDefinition $option, int $index): array => [
-                'value' => $index + 1,
+            ->map(static fn (MonumentDefinition $option): array => [
+                'value' => (int) $option->id,
                 'key' => $option->key,
                 'label' => $option->name,
             ])->all();
@@ -100,12 +101,11 @@ final class CommandQuantitySemantics
             return null;
         }
 
-        foreach ($this->options($definition) as $option) {
-            if ($option['value'] === $quantity) {
-                return $option['label'];
-            }
+        $option = MonumentDefinition::query()->find($quantity);
+        if ($option !== null) {
+            return $option->name;
         }
 
-        return '利用停止済みの選択肢';
+        return '存在しない選択肢';
     }
 }

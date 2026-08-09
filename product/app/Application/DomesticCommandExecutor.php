@@ -325,8 +325,7 @@ final class DomesticCommandExecutor
             return ['reason' => CommandFailureReason::InvalidFacility, 'observed' => $observed];
         }
         if ($definition->key === 'build_monument'
-            && ! MonumentDefinition::query()->where('enabled', true)
-                ->orderBy('sort_order')->orderBy('id')->offset($item->quantity - 1)->exists()) {
+            && ! MonumentDefinition::query()->whereKey($item->quantity)->exists()) {
             return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
         }
         if ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true)) {
@@ -646,8 +645,7 @@ final class DomesticCommandExecutor
             $cell->owner_nation_id = $nation->id;
         }
         if ($definition->key === 'build_monument') {
-            $monument = MonumentDefinition::query()->where('enabled', true)
-                ->orderBy('sort_order')->orderBy('id')->offset($item->quantity - 1)->firstOrFail();
+            $monument = MonumentDefinition::query()->findOrFail($item->quantity);
             $cell->monument_definition_id = $monument->id;
         }
         $cell->population = 0;

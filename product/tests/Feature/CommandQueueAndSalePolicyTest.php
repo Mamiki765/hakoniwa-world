@@ -10,6 +10,7 @@ use App\Domain\Map\MapCellStateService;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonumentDefinition;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationResourceSalePolicy;
@@ -442,6 +443,15 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
             ->firstOrFail();
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $peace = MonumentDefinition::query()->where('key', 'peace')->firstOrFail();
+        $prosperity = MonumentDefinition::query()->where('key', 'prosperity')->firstOrFail();
+        $peaceId = (int) $peace->id;
+        $prosperityId = (int) $prosperity->id;
+        $this->assertSame(
+            ['peace' => 1, 'prosperity' => 2, 'victory' => 3],
+            MonumentDefinition::query()->orderBy('id')->pluck('id', 'key')
+                ->map(static fn (mixed $id): int => (int) $id)->all(),
+        );
 
         $this->actingAs($owner)->postJson($path, [
             'command_key' => 'build_monument',
@@ -455,15 +465,30 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'command_key' => 'build_monument',
             'target_x' => $target->x,
             'target_y' => $target->y,
-            'quantity' => 1,
+            'quantity' => $peaceId,
             'request_key' => (string) Str::uuid(),
             'expected_version' => 1,
         ])->assertCreated()
             ->assertJsonPath('data.queue.items.0.quantity_semantics', 'selector')
             ->assertJsonPath('data.queue.items.0.quantity_label', '平和記念碑');
 
+        $peace->update(['enabled' => false]);
+        $prosperity->update(['sort_order' => 1]);
+        $this->getJson($path)->assertOk()
+            ->assertJsonPath('data.items.0.quantity', $peaceId)
+            ->assertJsonPath('data.items.0.quantity_label', '平和記念碑');
+
+        $this->postJson($path, [
+            'command_key' => 'build_monument',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'quantity' => $peaceId,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertUnprocessable();
+
         $this->patchJson("{$path}/{$monument->json('data.item_id')}", [
-            'quantity' => 2,
+            'quantity' => $prosperityId,
             'expected_version' => 2,
         ])->assertUnprocessable();
 
@@ -761,9 +786,21 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $catalog = $this->actingAs($owner)->getJson("{$base}/command-definitions")->assertOk();
         $finance = collect($catalog->json('data.commands'))->firstWhere('key', 'finance');
         $aid = collect($catalog->json('data.commands'))->firstWhere('key', 'money_aid');
+        $foodAid = collect($catalog->json('data.commands'))->firstWhere('key', 'food_aid');
+        $dispatch = collect($catalog->json('data.commands'))->firstWhere('key', 'monster_dispatch');
         $this->assertTrue($finance['applicable']);
         $this->assertSame('nation', $finance['target_type']);
         $this->assertSame('integer', $aid['parameters']['target_nation_id']['type']);
+        $this->assertSame('nation_selector', $aid['parameters']['target_nation_id']['input_semantics']);
+        $this->assertSame('対象島', $aid['parameters']['target_nation_id']['label']);
+        $this->assertSame([[
+            'value' => $target->id,
+            'label' => $target->name,
+            'nation_number' => $target->nation_number,
+        ]], $aid['parameters']['target_nation_id']['options']);
+        $this->assertSame('ordinary', $aid['quantity_semantics']);
+        $this->assertSame('ordinary', $foodAid['quantity_semantics']);
+        $this->assertSame('unused', $dispatch['quantity_semantics']);
 
         $created = $this->postJson("{$base}/command-queue", [
             'command_key' => 'finance',
@@ -779,6 +816,25 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 2,
             'parameters' => ['target_nation_id' => $target->id],
         ])->assertCreated()->assertJsonPath('data.queue.items.1.parameters.target_nation_id', $target->id);
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'money_aid',
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+            'parameters' => ['target_nation_id' => $nation->id],
+        ])->assertUnprocessable();
+
+        $target->update(['state' => 'dormant_frozen']);
+        $catalogWithoutTarget = $this->getJson("{$base}/command-definitions")->assertOk();
+        $unavailableAid = collect($catalogWithoutTarget->json('data.commands'))->firstWhere('key', 'money_aid');
+        $this->assertFalse($unavailableAid['applicable']);
+        $this->assertFalse($unavailableAid['available']);
+        $this->assertSame([], $unavailableAid['parameters']['target_nation_id']['options']);
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'money_aid',
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+            'parameters' => ['target_nation_id' => $target->id],
+        ])->assertUnprocessable();
         $this->postJson("{$base}/command-queue", [
             'command_key' => 'money_aid',
             'request_key' => (string) Str::uuid(),
