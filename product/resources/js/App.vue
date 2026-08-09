@@ -54,6 +54,7 @@ let clockTimer: ReturnType<typeof setInterval> | null = null;
 let summaryDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
 let summaryRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let summaryFallbackTimer: ReturnType<typeof setInterval> | null = null;
+let turnViewCurrentTurn: number | null = null;
 const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as const;
 const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
@@ -155,6 +156,7 @@ async function loadPublicLobby(): Promise<void> {
         scheduleDeadlineRefresh();
         rankings.value = nextRankings;
         publicEvents.value = events;
+        turnViewCurrentTurn = summary.current_turn;
         startSummaryFallbackPolling();
     } catch {
         message.value = '公開ロビーを取得できませんでした。';
@@ -178,11 +180,67 @@ async function refreshWorldSummary(reschedule = true): Promise<PublicWorldSummar
 
 async function refreshFallbackSummary(): Promise<void> {
     const summary = await refreshWorldSummary(false);
+    if (summary !== null) await refreshTurnDependentViewsIfNeeded(summary);
     if (summary !== null
         && summary.turn_status === 'normal'
         && new Date(summary.next_scheduled_turn_at).getTime() > Date.now()) {
         scheduleDeadlineRefresh();
     }
+}
+
+async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): Promise<boolean> {
+    if (turnViewCurrentTurn === summary.current_turn) return true;
+
+    const world = worlds.value[0];
+    if (world === undefined) return false;
+    const currentNation = nation.value;
+    const currentPreview = page.value === 'preview' ? previewNation.value : null;
+    const [rankingResult, eventResult, nationResult, previewResult] = await Promise.allSettled([
+        api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
+        api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
+        currentNation === null ? Promise.resolve(null) : api<Nation | null>('/api/v1/me/nation'),
+        currentPreview === null
+            ? Promise.resolve(null)
+            : api<PublicNationDetail>(`/api/v1/public/nations/${currentPreview.id}`),
+    ] as const);
+
+    let refreshed = true;
+    if (rankingResult.status === 'fulfilled') rankings.value = rankingResult.value;
+    else refreshed = false;
+    if (eventResult.status === 'fulfilled') publicEvents.value = eventResult.value;
+    else refreshed = false;
+
+    let refreshedNation = currentNation;
+    if (nationResult.status === 'fulfilled') {
+        refreshedNation = nationResult.value;
+        nation.value = refreshedNation;
+    } else {
+        refreshed = false;
+    }
+
+    let refreshedPreview = currentPreview;
+    if (previewResult.status === 'fulfilled') {
+        refreshedPreview = previewResult.value;
+        if (refreshedPreview !== null) {
+            previewNation.value = refreshedPreview;
+            mapSpace.value = refreshedPreview.map_space;
+        }
+    } else {
+        refreshed = false;
+    }
+
+    if (page.value === 'island' && refreshedNation !== null && refreshedNation.capital !== null && mapSpace.value !== null) {
+        await map.loadAround(mapSpace.value, refreshedNation.capital.x, refreshedNation.capital.y, { kind: 'private' });
+    } else if (page.value === 'preview' && refreshedPreview !== null && refreshedPreview.capital !== null) {
+        await map.loadAround(refreshedPreview.map_space, refreshedPreview.capital.x, refreshedPreview.capital.y, {
+            kind: 'public',
+            nationId: refreshedPreview.id,
+        });
+    }
+
+    if (refreshed) turnViewCurrentTurn = summary.current_turn;
+
+    return refreshed;
 }
 
 function scheduleDeadlineRefresh(): void {
@@ -212,11 +270,17 @@ async function refreshAfterDeadline(attempt: number): Promise<void> {
         return;
     }
 
+    const viewsWereStale = turnViewCurrentTurn !== summary.current_turn;
+    if (viewsWereStale && ! await refreshTurnDependentViewsIfNeeded(summary)) {
+        scheduleSummaryRetry(attempt);
+        return;
+    }
+
     const unchanged = summary.turn_status === 'normal'
         && summary.current_turn === before.current_turn
         && summary.last_successful_turn_at === before.last_successful_turn_at
         && summary.next_scheduled_turn_at === before.next_scheduled_turn_at;
-    if (unchanged) {
+    if (unchanged && ! viewsWereStale) {
         scheduleSummaryRetry(attempt);
     } else {
         if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);

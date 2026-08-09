@@ -248,7 +248,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.announcement-pager button')[1]!.attributes('disabled')).toBeDefined();
     });
 
-    it('refreshes only the summary at the deadline and retries until the turn advances', async () => {
+    it('retries the summary then refreshes turn dependent public views when the turn advances', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
         let summaryCalls = 0;
@@ -282,8 +282,83 @@ describe('application lobby and island entry', () => {
         expect(summaryCalls).toBe(3);
         expect(wrapper.find('.world-stats dd').text()).toBe('2');
         expect(fetchMock.mock.calls.filter(([path]) => String(path).includes('/announcements/latest'))).toHaveLength(1);
-        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/rankings'))).toHaveLength(1);
-        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/events'))).toHaveLength(1);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/rankings'))).toHaveLength(2);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/events'))).toHaveLength(2);
+        wrapper.unmount();
+    });
+
+    it('refreshes the owner Nation and loaded private map when the turn advances', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        const ownerNation = {
+            id: 3, world_id: 1, nation_number: 1, name: '自島', owner_name: '自島主', comment: '',
+            money: 500, money_display: '500億円', money_capacity: 9999, money_remaining_capacity: 9499,
+            money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
+            food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
+            farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
+            food_resources: [], resources: [], state: 'active', current_turn: 1, registered_turn: 1,
+            survival_turns: 0, finance_only_turns: 0, activity_status: 'active', total_population: 1000,
+            territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
+        } as Nation;
+        let summaryCalls = 0;
+        let nationCalls = 0;
+        let privateChunkCalls = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) {
+                summaryCalls++;
+                return response({
+                    id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: summaryCalls === 1 ? 1 : 2,
+                    nation_count: 1, total_population: summaryCalls === 1 ? 1000 : 1500, contact_url: null,
+                    turn_status: 'normal', last_successful_turn_at: summaryCalls === 1 ? '2026-08-09T10:00:00Z' : '2026-08-09T12:00:02Z',
+                    next_scheduled_turn_at: summaryCalls === 1 ? '2026-08-09T12:00:01Z' : '2026-08-09T14:00:00Z',
+                    turn_schedule_timezone: 'Asia/Tokyo',
+                });
+            }
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
+            if (path === '/api/v1/me/nation') {
+                nationCalls++;
+                return response({
+                    ...ownerNation,
+                    current_turn: nationCalls === 1 ? 1 : 2,
+                    total_population: nationCalls === 1 ? 1000 : 1500,
+                });
+            }
+            if (path === '/api/v1/worlds/1/map-spaces') return response([publicDetail.map_space]);
+            if (path.includes('/api/v1/map-spaces/2/chunks/')) {
+                privateChunkCalls++;
+                return response(emptyChunk);
+            }
+            if (path === '/api/v1/nations/3/events?page=1') return response({
+                groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
+                turns_per_page: 24, has_newer_page: false, has_older_page: false,
+            });
+            if (path.includes('command-definitions')) return response({
+                commands: [],
+                quantity_contract: { type: 'integer', minimum: 1, maximum: 99, default: 1, quick_presets: [1, 5, 10, 25, 50, 99] },
+            });
+            if (path.includes('command-queue')) return response({
+                version: 1, limit: 20, explicit_count: 0, items: [], plan: [],
+            });
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.find('.session-actions button').trigger('click');
+        await flushPromises();
+        const initialChunkCalls = privateChunkCalls;
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        await flushPromises();
+
+        expect(summaryCalls).toBe(2);
+        expect(nationCalls).toBe(2);
+        expect(privateChunkCalls).toBeGreaterThan(initialChunkCalls);
+        expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
         wrapper.unmount();
     });
 
