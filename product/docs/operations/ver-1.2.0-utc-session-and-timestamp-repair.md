@@ -14,7 +14,7 @@ Migration `2026_08_09_030000_repair_deterministic_application_timestamps.php` re
 affected_timestamp = anchor_timestamp AT TIME ZONE 'Asia/Tokyo'
 ```
 
-The replacement is the same anchor interpreted as UTC. Extra terminal-state predicates are applied where appropriate. Rows that do not match exactly are left unchanged, and rerunning the conversion is idempotent.
+The replacement is the same anchor interpreted as UTC. State predicates are applied where appropriate. A queued multi-turn quantity command is included when its latest successful decrement left `execution_completed_at` equal to `updated_at`; completed dry-run TurnRuns are terminal history and are included as well. Rows that do not match exactly are left unchanged, and rerunning the conversion is idempotent.
 
 The migration deliberately does not change announcement timestamps, general TurnRun or command execution start timestamps, or monster kill aggregate timestamps. Those records lack a deterministic in-database anchor or can mix provenance. Repairing them requires an independent reviewed operator conversion backed by an external trusted record; guessing or applying a blanket nine-hour shift is prohibited.
 

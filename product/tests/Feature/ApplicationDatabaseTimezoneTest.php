@@ -101,7 +101,7 @@ class ApplicationDatabaseTimezoneTest extends TestCase
         $generationId = (int) DB::table('world_generation_runs')->where('map_space_id', $mapSpace->id)->value('id');
 
         $queueItems = [];
-        foreach (range(1, 8) as $expectedVersion) {
+        foreach (range(1, 9) as $expectedVersion) {
             $queueItems[] = app(CommandQueueService::class)->add(
                 user: $user,
                 nation: $nation,
@@ -116,6 +116,7 @@ class ApplicationDatabaseTimezoneTest extends TestCase
 
         $completedRun = $this->turnRunFixture($world->id, $world->ruleset_version_id, 10, TurnRun::STATUS_COMPLETED);
         $pendingRun = $this->turnRunFixture($world->id, $world->ruleset_version_id, 11, TurnRun::STATUS_PENDING);
+        $dryRun = $this->turnRunFixture($world->id, $world->ruleset_version_id, 12, TurnRun::STATUS_DRY_RUN);
         $monsterDefinition = MonsterDefinition::query()
             ->where('ruleset_version_id', $world->ruleset_version_id)->firstOrFail();
         $monster = MonsterInstance::query()->create([
@@ -142,10 +143,13 @@ class ApplicationDatabaseTimezoneTest extends TestCase
         $this->setLegacyTimestamp('nation_command_queue_items', $queueItems[5]->id, 'execution_failed_at', 'updated_at');
         $this->setLegacyTimestamp('nation_command_queue_items', $queueItems[6]->id, 'execution_failed_at', 'updated_at');
         $this->setLegacyTimestamp('nation_command_queue_items', $queueItems[7]->id, 'execution_started_at', 'updated_at');
+        DB::table('nation_command_queue_items')->where('id', $queueItems[8]->id)->update(['status' => 'cancelled']);
+        $this->setLegacyTimestamp('nation_command_queue_items', $queueItems[8]->id, 'execution_completed_at', 'updated_at');
 
         $this->setLegacyTimestamp('turn_runs', $completedRun->id, 'completed_at', 'updated_at');
         $this->setLegacyTimestamp('turn_runs', $pendingRun->id, 'completed_at', 'updated_at');
         $this->setLegacyTimestamp('turn_runs', $pendingRun->id, 'started_at', 'updated_at');
+        $this->setLegacyTimestamp('turn_runs', $dryRun->id, 'completed_at', 'updated_at');
         $this->setLegacyTimestamp('monster_instances', $monster->id, 'removed_at', 'updated_at');
 
         $announcement = Announcement::query()->create(['title' => '除外告知', 'body' => '推測修復しない']);
@@ -170,8 +174,10 @@ class ApplicationDatabaseTimezoneTest extends TestCase
             ['nation_command_queue_items', $queueItems[0]->id, 'queued_at'],
             ['nation_command_queue_items', $queueItems[1]->id, 'cancelled_at'],
             ['nation_command_queue_items', $queueItems[3]->id, 'execution_completed_at'],
+            ['nation_command_queue_items', $queueItems[4]->id, 'execution_completed_at'],
             ['nation_command_queue_items', $queueItems[5]->id, 'execution_failed_at'],
             ['turn_runs', $completedRun->id, 'completed_at'],
+            ['turn_runs', $dryRun->id, 'completed_at'],
             ['monster_instances', $monster->id, 'removed_at'],
         ] as [$table, $id, $column]) {
             $this->assertSame('2026-08-09 12:34:56', $this->utcColumn($table, $id, $column), "{$table}.{$column}");
@@ -179,9 +185,9 @@ class ApplicationDatabaseTimezoneTest extends TestCase
 
         foreach ([
             ['nation_command_queue_items', $queueItems[2]->id, 'cancelled_at'],
-            ['nation_command_queue_items', $queueItems[4]->id, 'execution_completed_at'],
             ['nation_command_queue_items', $queueItems[6]->id, 'execution_failed_at'],
             ['nation_command_queue_items', $queueItems[7]->id, 'execution_started_at'],
+            ['nation_command_queue_items', $queueItems[8]->id, 'execution_completed_at'],
             ['turn_runs', $pendingRun->id, 'completed_at'],
             ['turn_runs', $pendingRun->id, 'started_at'],
         ] as [$table, $id, $column]) {

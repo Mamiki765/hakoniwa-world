@@ -14,9 +14,9 @@ return new class extends Migration
             $this->repair('world_generation_runs', 'completed_at', 'created_at', "status = 'completed'");
             $this->repair('nation_command_queue_items', 'queued_at', 'created_at');
             $this->repair('nation_command_queue_items', 'cancelled_at', 'updated_at', "status = 'cancelled'");
-            $this->repair('nation_command_queue_items', 'execution_completed_at', 'updated_at', "status = 'completed'");
+            $this->repair('nation_command_queue_items', 'execution_completed_at', 'updated_at', "status IN ('queued', 'completed')");
             $this->repair('nation_command_queue_items', 'execution_failed_at', 'updated_at', "status = 'failed'");
-            $this->repair('turn_runs', 'completed_at', 'updated_at', "status IN ('completed', 'failed', 'blocked')");
+            $this->repair('turn_runs', 'completed_at', 'updated_at', "status IN ('dry_run', 'completed', 'failed', 'blocked')");
             $this->repair('monster_instances', 'removed_at', 'updated_at');
         });
     }
