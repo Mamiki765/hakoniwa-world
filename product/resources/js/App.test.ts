@@ -91,17 +91,39 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('10,000トン');
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
-        expect(wrapper.find('.ranking-owner-row').text()).toBe('島主：公開島主');
+        expect(wrapper.find('.ranking-owner-row').text()).toBe('公開島主：公開コメント');
         expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
-        expect(wrapper.find('.ranking-card tbody').text()).not.toContain('公開コメント');
         expect(wrapper.text()).toContain('公開できる出来事はまだありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.3.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.3.1');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
         expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
         expect(wrapper.find('.turn-status-card').text()).toContain('次回更新まで');
         expect(wrapper.find('.turn-countdown').exists()).toBe(true);
+    });
+
+    it('renders a 100-character Latin comment in the wrapping ranking owner row', async () => {
+        const comment = `https://example.com/${'a'.repeat(80)}`;
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/rankings')) return response([{
+                rank: 1, id: 7, world_id: 1, nation_number: 1, name: '長文島', state: 'active',
+                total_population: 1000, owner_name: '長文島主', territory_cell_count: 19, owned_land_cells: 17,
+                money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+                farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
+                registered_turn: 1, survival_turns: 0, finance_only_turns: 0, activity_status: 'active',
+                last_updated_turn: 1, comment,
+                achievements: { awards: [], monster_kills: null },
+            }]);
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const ownerCell = wrapper.find('.ranking-owner-row td');
+        expect(comment).toHaveLength(100);
+        expect(ownerCell.text()).toBe(`長文島主：${comment}`);
     });
 
     it('marks dormant islands beside the name without an activity-status column', async () => {
@@ -123,6 +145,7 @@ describe('application lobby and island entry', () => {
         const name = wrapper.find('.ranking-card tbody button');
         expect(name.text()).toBe('休止島（休止中）');
         expect(name.classes()).toContain('is-dormant');
+        expect(wrapper.find('.ranking-owner-row').text()).toBe('休止島主');
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('保有せず');
     });
