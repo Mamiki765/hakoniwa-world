@@ -72,4 +72,4 @@ application更新時は暗号化off-host backupとdeploy前backupを取得し、
 
 ## Production integration
 
-実運用のreverse proxyはDocker network上の`hakoniwa-web:80`へ接続する。repositoryのlocal port mappingをOCI Composeへそのままcopyせず、実在するnetwork、secret、off-host backup、monitoringに合わせてoperatorが設定する。turn cronは`docs/operations/turn-cron.md`、backupとrestore rehearsalは`docs/operations/database-backup-and-restore.md`を正本とする。
+実運用のreverse proxyはDocker network上の`hakoniwa-web:80`へ接続する。repositoryのlocal port mappingをOCI Composeへそのままcopyせず、実在するnetwork、secret、off-host backup、monitoringに合わせてoperatorが設定する。turn cronは`docs/operations/turn-cron.md`、backupとrestore rehearsalは`product/docs/operations/database-backup-and-restore.md`を正本とする。

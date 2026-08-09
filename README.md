@@ -25,7 +25,7 @@ Docker Composeを起動
 - Apache + PHPの単一Web image（document rootは `public/`）
 - Docker Compose services: `hakoniwa-web`, `hakoniwa-postgres`
 
-ローカル起動、APP_KEY生成、OAuth設定は [local-development.md](docs/operations/local-development.md)、Compose操作は [docker-compose.md](docs/operations/docker-compose.md)、backup/restoreは [database-backup-and-restore.md](docs/operations/database-backup-and-restore.md)を参照してください。
+ローカル起動、APP_KEY生成、OAuth設定は [local-development.md](docs/operations/local-development.md)、Compose操作は [docker-compose.md](docs/operations/docker-compose.md)、backup/restoreは [database-backup-and-restore.md](product/docs/operations/database-backup-and-restore.md)を参照してください。
 
 ## データと秘密情報
 
