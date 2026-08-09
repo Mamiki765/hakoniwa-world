@@ -208,7 +208,7 @@ class MonsterApiAssetTest extends TestCase
         $this->assertArrayNotHasKey('monster_award', $response);
     }
 
-    public function test_only_target_nation_detail_queries_monster_kill_stats_once(): void
+    public function test_rankings_batch_monster_kill_stats_once_and_detail_queries_only_its_target(): void
     {
         [$world, $nation] = $this->worldAndNation('照会境界国');
         $queries = [];
@@ -217,11 +217,19 @@ class MonsterApiAssetTest extends TestCase
         });
 
         $this->getJson("/api/v1/public/worlds/{$world->id}/summary")->assertOk();
-        $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")->assertOk();
         $this->assertCount(0, array_filter(
             $queries,
             static fn (array $query): bool => str_contains($query['sql'], 'nation_monster_kill_stats'),
         ));
+
+        $queries = [];
+        $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")->assertOk();
+        $rankingQueries = array_values(array_filter(
+            $queries,
+            static fn (array $query): bool => str_contains($query['sql'], 'nation_monster_kill_stats'),
+        ));
+        $this->assertCount(1, $rankingQueries);
+        $this->assertContains($nation->id, $rankingQueries[0]['bindings']);
 
         $queries = [];
         $this->getJson("/api/v1/public/nations/{$nation->id}")->assertOk();

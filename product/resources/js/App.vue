@@ -5,6 +5,7 @@ import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import HexMap from './components/HexMap.vue';
 import IslandEventLog from './components/IslandEventLog.vue';
+import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
@@ -20,7 +21,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.2.0';
+const applicationVersion = '1.3.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -75,6 +76,10 @@ const turnStatusMessage = computed(() => matchTurnStatus(worldSummary.value?.tur
 
 function formatResource(amount: number, unitLabel: string | null): string {
     return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
+}
+
+function formatFacilityScale(population: number): string {
+    return population === 0 ? '保有せず' : `${population.toLocaleString('ja-JP')}人`;
 }
 
 function formatAnnouncementDate(value: string): string {
@@ -588,10 +593,11 @@ async function updateProfile(): Promise<void> {
                     </div>
                     <div class="ranking-scroll">
                         <table>
-                            <thead><tr><th>島名</th><th>島主</th><th>生存ターン</th><th>面積</th><th>農場規模</th><th>工場規模</th><th>採掘場規模</th><th>人口</th><th>資金</th><th>食料</th></tr></thead>
-                            <tbody>
-                                <tr v-for="entry in rankings" :key="entry.id">
-                                    <td>
+                            <thead><tr><th>順位</th><th>島名＋賞/討伐</th><th>人口</th><th>面積</th><th>資金</th><th>食料</th><th>農場規模</th><th>工場規模</th><th>採掘場規模</th><th>生存ターン</th></tr></thead>
+                            <tbody v-for="entry in rankings" :key="entry.id" class="ranking-entry">
+                                <tr class="ranking-primary-row">
+                                    <td rowspan="2" class="ranking-rank">{{ entry.rank }}</td>
+                                    <td class="ranking-island">
                                         <button
                                             type="button"
                                             :class="{
@@ -602,20 +608,20 @@ async function updateProfile(): Promise<void> {
                                         >
                                             {{ entry.name }}<template v-if="entry.state === 'dormant_frozen' || entry.state === 'dormant_contestable'">（休止中）</template><template v-else-if="entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
                                         </button>
-                                        <span v-if="entry.comment" class="ranking-comment">{{ entry.comment }}</span>
+                                        <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
                                     </td>
-                                    <td>{{ entry.owner_name }}</td>
-                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
-                                    <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
-                                    <td>{{ entry.farm_capacity_people.toLocaleString() }}人</td>
-                                    <td>{{ entry.factory_capacity_people.toLocaleString() }}人</td>
-                                    <td>{{ entry.mine_capacity_people.toLocaleString() }}人</td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
+                                    <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
                                     <td>{{ entry.money_display }}</td>
                                     <td>{{ entry.food_total_tons.toLocaleString() }}トン</td>
+                                    <td>{{ formatFacilityScale(entry.farm_capacity_people) }}</td>
+                                    <td>{{ formatFacilityScale(entry.factory_capacity_people) }}</td>
+                                    <td>{{ formatFacilityScale(entry.mine_capacity_people) }}</td>
+                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
                                 </tr>
-                                <tr v-if="rankings.length === 0"><td colspan="10" class="empty-state">まだ島がありません。</td></tr>
+                                <tr class="ranking-owner-row"><td colspan="9">島主：{{ entry.owner_name }}</td></tr>
                             </tbody>
+                            <tbody v-if="rankings.length === 0"><tr><td colspan="10" class="empty-state">まだ島がありません。</td></tr></tbody>
                         </table>
                     </div>
                 </section>

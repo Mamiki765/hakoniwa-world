@@ -82,6 +82,35 @@ class TileAssetTest extends TestCase
         $this->assertStringContainsString('/land13.gif?v=', (string) $resolver->resolve('tile.scorched', '焼け跡')['url']);
     }
 
+    public function test_awards_use_only_the_allowlisted_original_prize_zero_through_ten_assets(): void
+    {
+        foreach (range(0, 11) as $index) {
+            $this->writeGif("prize{$index}.gif");
+        }
+        $resolver = app(AssetManifestResolver::class);
+        $keys = [
+            'award.turn',
+            'award.prosperity', 'award.prosperity_great', 'award.prosperity_ultimate',
+            'award.peace', 'award.peace_great', 'award.peace_ultimate',
+            'award.calamity', 'award.calamity_great', 'award.calamity_ultimate',
+            'award.monster_turn',
+        ];
+
+        foreach ($keys as $index => $key) {
+            $asset = $resolver->resolve($key, '賞');
+            $this->assertTrue($asset['available'], $key);
+            $this->assertStringContainsString("/prize{$index}.gif?v=", (string) $asset['url'], $key);
+        }
+
+        $this->assertNull($resolver->pathForFilename('prize11.gif'));
+        $this->assertFalse($resolver->resolve('award.prize11', '未使用')['available']);
+
+        unlink($this->assetDirectory.DIRECTORY_SEPARATOR.'prize10.gif');
+        $missing = $resolver->resolve('award.monster_turn', '討伐ターン賞');
+        $this->assertFalse($missing['available']);
+        $this->assertSame('討伐ターン賞', $missing['fallback_label']);
+    }
+
     public function test_replacing_same_filename_changes_version_url_and_route_cache_headers(): void
     {
         $path = $this->writeGif('land0.gif');

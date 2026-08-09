@@ -109,7 +109,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .turn-status-card .turn-countdown { font-variant-numeric: tabular-nums; font-size: 1.25rem; }
 .turn-status-card > p { grid-column: 1 / -1; margin: 0; padding: 14px 18px; color: #75271f; background: #ffe8df; font-weight: 850; }
 .turn-status-card[data-status="delayed"] > p { color: #674600; background: #fff2c8; }
-.lobby-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, .8fr); gap: 18px; }
+.lobby-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .announcement-window { padding: 16px 20px; border: 1px solid var(--line); background: rgba(255, 253, 244, .82); }
 .announcement-window .section-heading button, .announcement-actions button, .announcement-pager button {
     min-height: 38px; padding: 6px 12px; border: 1px solid var(--line); background: var(--paper); cursor: pointer;
@@ -138,7 +138,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .section-heading h2, .plan-heading h3 { margin: 0; font-size: 1.22rem; }
 .section-heading > span, .plan-heading > span { color: var(--muted); font-size: .76rem; }
 .ranking-scroll { overflow: auto; margin: 18px -10px -8px; }
-.ranking-card table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: .84rem; }
+.ranking-card table { width: 100%; min-width: 1120px; border-collapse: collapse; white-space: nowrap; font-size: .84rem; }
 .ranking-card th, .ranking-card td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: right; }
 .ranking-card th:nth-child(1), .ranking-card td:nth-child(1), .ranking-card th:nth-child(2), .ranking-card td:nth-child(2) { text-align: left; }
 .ranking-card th { color: var(--muted); font-size: .72rem; }
@@ -147,6 +147,19 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ranking-card td button.is-dormant { color: #9a5a28; }
 .ranking-owner { display: block; margin-top: 3px; color: var(--muted); font-size: .72rem; font-weight: 650; text-decoration: none; }
 .ranking-comment { display: block; max-width: 24rem; margin-top: 3px; color: var(--ink); font-size: .72rem; white-space: normal; }
+.ranking-rank { width: 3.5rem; color: var(--coral-dark); font-size: 1rem; font-weight: 900; vertical-align: top; }
+.ranking-island { min-width: 15rem; }
+.ranking-owner-row td { padding-top: 3px; color: var(--muted); font-size: .72rem; font-weight: 700; text-align: left; }
+.ranking-entry + .ranking-entry .ranking-primary-row td { border-top: 2px solid rgba(18, 63, 73, .16); }
+.ranking-achievements { display: inline-flex; align-items: center; gap: 2px; margin-left: 7px; vertical-align: middle; }
+.achievement-badge { position: relative; display: inline-flex; }
+.achievement-trigger { display: inline-flex; min-width: 16px; min-height: 20px; align-items: center; gap: 1px; padding: 1px; border: 1px solid transparent; background: transparent; text-decoration: none !important; }
+.achievement-trigger:hover, .achievement-trigger:focus-visible, .achievement-trigger[aria-expanded="true"] { border-color: var(--coral); outline: none; }
+.achievement-icon, .achievement-fallback { width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; image-rendering: pixelated; }
+.achievement-fallback { display: inline-grid; place-items: center; border: 1px solid var(--line); background: var(--paper-deep); color: var(--navy); font-size: .58rem; font-weight: 900; line-height: 1; }
+.achievement-count { color: var(--ink); font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; }
+.achievement-tooltip { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; display: grid; min-width: 9rem; gap: 5px; padding: 8px 10px; border: 1px solid var(--navy); background: var(--paper); color: var(--ink); box-shadow: 0 8px 20px rgba(18, 63, 73, .18); font-size: .7rem; font-weight: 650; line-height: 1.45; text-align: left; white-space: normal; }
+.achievement-turns { display: grid; }
 .event-list { list-style: none; display: grid; gap: 16px; margin: 18px 0 0; padding: 0; }
 .event-list li { display: grid; grid-template-columns: 10px 1fr; gap: 10px; }
 .event-mark { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--coral); }
