@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ApiError, api } from './api/client';
+import { ApiError, api, apiEnvelope } from './api/client';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import HexMap from './components/HexMap.vue';
@@ -20,7 +20,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.1.1';
+const applicationVersion = '1.2.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -30,6 +30,7 @@ const latestAnnouncements = ref<Announcement[]>([]);
 const announcementItems = ref<Announcement[]>([]);
 const announcementDetail = ref<Announcement | null>(null);
 const announcementPageNumber = ref(1);
+const announcementLastPage = ref(1);
 const announcementView = ref<'list' | 'detail' | 'form'>('list');
 const announcementFormId = ref<number | null>(null);
 const announcementTitle = ref('');
@@ -51,6 +52,11 @@ const busy = ref(true);
 const message = ref('');
 const clockNow = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
+let summaryDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
+let summaryRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let summaryFallbackTimer: ReturnType<typeof setInterval> | null = null;
+const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as const;
+const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
@@ -116,7 +122,20 @@ onMounted(async () => {
 
 onUnmounted(() => {
     if (clockTimer !== null) clearInterval(clockTimer);
+    if (summaryDeadlineTimer !== null) clearTimeout(summaryDeadlineTimer);
+    if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+    stopSummaryFallbackPolling();
 });
+
+function stopSummaryFallbackPolling(): void {
+    if (summaryFallbackTimer !== null) clearInterval(summaryFallbackTimer);
+    summaryFallbackTimer = null;
+}
+
+function startSummaryFallbackPolling(): void {
+    stopSummaryFallbackPolling();
+    summaryFallbackTimer = setInterval(() => { void refreshFallbackSummary(); }, 60_000);
+}
 
 async function loadPublicLobby(): Promise<void> {
     try {
@@ -134,19 +153,96 @@ async function loadPublicLobby(): Promise<void> {
             api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
         ]);
         worldSummary.value = summary;
+        scheduleDeadlineRefresh();
         rankings.value = nextRankings;
         publicEvents.value = events;
+        startSummaryFallbackPolling();
     } catch {
         message.value = '公開ロビーを取得できませんでした。';
     }
+}
+
+async function refreshWorldSummary(reschedule = true): Promise<PublicWorldSummary | null> {
+    const world = worlds.value[0];
+    if (world === undefined) return null;
+
+    try {
+        const summary = await api<PublicWorldSummary>(`/api/v1/public/worlds/${world.id}/summary`);
+        worldSummary.value = summary;
+        if (reschedule) scheduleDeadlineRefresh();
+
+        return summary;
+    } catch {
+        return null;
+    }
+}
+
+async function refreshFallbackSummary(): Promise<void> {
+    const summary = await refreshWorldSummary(false);
+    if (summary !== null
+        && summary.turn_status === 'normal'
+        && new Date(summary.next_scheduled_turn_at).getTime() > Date.now()) {
+        scheduleDeadlineRefresh();
+    }
+}
+
+function scheduleDeadlineRefresh(): void {
+    if (summaryDeadlineTimer !== null) clearTimeout(summaryDeadlineTimer);
+    summaryDeadlineTimer = null;
+    if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+    summaryRetryTimer = null;
+    if (worldSummary.value?.turn_status !== 'normal') return;
+
+    const remaining = new Date(worldSummary.value.next_scheduled_turn_at).getTime() - Date.now();
+    const delay = Math.min(maximumTimeoutDelay, Math.max(0, remaining));
+    summaryDeadlineTimer = setTimeout(() => {
+        if (remaining > maximumTimeoutDelay) {
+            scheduleDeadlineRefresh();
+            return;
+        }
+        void refreshAfterDeadline(0);
+    }, delay);
+}
+
+async function refreshAfterDeadline(attempt: number): Promise<void> {
+    const before = worldSummary.value;
+    if (before === null || before.turn_status !== 'normal') return;
+    const summary = await refreshWorldSummary(false);
+    if (summary === null) {
+        scheduleSummaryRetry(attempt);
+        return;
+    }
+
+    const unchanged = summary.turn_status === 'normal'
+        && summary.current_turn === before.current_turn
+        && summary.last_successful_turn_at === before.last_successful_turn_at
+        && summary.next_scheduled_turn_at === before.next_scheduled_turn_at;
+    if (unchanged) {
+        scheduleSummaryRetry(attempt);
+    } else {
+        if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+        summaryRetryTimer = null;
+        scheduleDeadlineRefresh();
+    }
+}
+
+function scheduleSummaryRetry(attempt: number): void {
+    const delay = summaryRetryDelays[attempt];
+    if (delay === undefined) return;
+    if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+    summaryRetryTimer = setTimeout(() => { void refreshAfterDeadline(attempt + 1); }, delay);
 }
 
 async function openAnnouncements(pageNumber = 1): Promise<void> {
     busy.value = true;
     message.value = '';
     try {
-        announcementItems.value = await api<Announcement[]>(`/api/v1/public/announcements?page=${pageNumber}`);
-        announcementPageNumber.value = pageNumber;
+        const envelope = await apiEnvelope<Announcement[]>(`/api/v1/public/announcements?page=${pageNumber}`);
+        announcementItems.value = envelope.data;
+        const currentPage = Number(envelope.meta?.current_page ?? pageNumber);
+        const lastPage = Number(envelope.meta?.last_page ?? currentPage);
+        announcementPageNumber.value = Number.isInteger(currentPage) && currentPage > 0 ? currentPage : pageNumber;
+        announcementLastPage.value = Number.isInteger(lastPage) && lastPage > 0 ? lastPage : announcementPageNumber.value;
         announcementView.value = 'list';
         page.value = 'announcements';
     } catch (error) {
@@ -427,24 +523,27 @@ async function updateProfile(): Promise<void> {
                     </div>
                     <div class="ranking-scroll">
                         <table>
-                            <thead><tr><th>島名</th><th>島主</th><th>人口</th><th>資金</th><th>生存ターン</th><th>活動状態</th></tr></thead>
+                            <thead><tr><th>島名</th><th>島主</th><th>生存ターン</th><th>人口</th><th>資金</th><th>食料</th></tr></thead>
                             <tbody>
                                 <tr v-for="entry in rankings" :key="entry.id">
                                     <td>
                                         <button
                                             type="button"
-                                            :class="{ 'is-finance-only': entry.finance_only_turns > 0 }"
+                                            :class="{
+                                                'is-finance-only': entry.finance_only_turns > 0,
+                                                'is-dormant': entry.state === 'dormant_frozen' || entry.state === 'dormant_contestable',
+                                            }"
                                             @click="openPreview(entry.id)"
                                         >
-                                            {{ entry.name }}<template v-if="entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
+                                            {{ entry.name }}<template v-if="entry.state === 'dormant_frozen' || entry.state === 'dormant_contestable'">（休止中）</template><template v-else-if="entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
                                         </button>
                                         <span v-if="entry.comment" class="ranking-comment">{{ entry.comment }}</span>
                                     </td>
                                     <td>{{ entry.owner_name }}</td>
+                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
                                     <td>{{ entry.money_display }}</td>
-                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
-                                    <td>{{ entry.finance_only_turns > 0 ? '資金繰りのみ' : '活動中' }}</td>
+                                    <td>{{ entry.food_total_tons.toLocaleString() }}トン</td>
                                 </tr>
                                 <tr v-if="rankings.length === 0"><td colspan="6" class="empty-state">まだ島がありません。</td></tr>
                             </tbody>
@@ -462,7 +561,7 @@ async function updateProfile(): Promise<void> {
                             <ol class="event-list">
                                 <li v-for="event in group.events" :key="event.id">
                                     <span class="event-mark" aria-hidden="true"></span>
-                                    <div><strong>{{ event.message }}</strong><time :datetime="event.occurred_at">{{ event.occurred_at }}</time></div>
+                                    <div><strong>{{ event.message }}</strong><time :datetime="event.occurred_at">{{ formatAnnouncementDate(event.occurred_at) }}</time></div>
                                 </li>
                             </ol>
                         </section>
@@ -525,7 +624,7 @@ async function updateProfile(): Promise<void> {
                 <nav class="announcement-pager" aria-label="お知らせのページ">
                     <button type="button" :disabled="announcementPageNumber <= 1" @click="openAnnouncements(announcementPageNumber - 1)">前へ</button>
                     <span>{{ announcementPageNumber }}ページ</span>
-                    <button type="button" :disabled="announcementItems.length < 10" @click="openAnnouncements(announcementPageNumber + 1)">次へ</button>
+                    <button type="button" :disabled="announcementPageNumber >= announcementLastPage" @click="openAnnouncements(announcementPageNumber + 1)">次へ</button>
                 </nav>
             </template>
 
@@ -567,11 +666,11 @@ async function updateProfile(): Promise<void> {
                 <div class="hud-identity">
                     <p class="eyebrow">MY ISLAND</p>
                     <h1>N{{ nation.nation_number }} {{ nation.name }}</h1>
+                    <p class="turn-indicator">現在ターン {{ nation.current_turn }}</p>
                     <p class="profile-owner">島主：{{ nation.owner_name }}</p>
                     <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
                 </div>
                 <dl class="hud-primary">
-                    <div><dt>ターン</dt><dd>{{ nation.current_turn }}</dd></div>
                     <div class="hud-money">
                         <dt>資金</dt>
                         <dd class="hud-capacity-value">
@@ -607,6 +706,9 @@ async function updateProfile(): Promise<void> {
                             <button type="button" @click="foodDetailOpen = false">閉じる</button>
                         </div>
                     </div>
+                    <div><dt>農場規模</dt><dd>{{ nation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                    <div><dt>工場規模</dt><dd>{{ nation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                    <div><dt>採掘場規模</dt><dd>{{ nation.mine_capacity_people.toLocaleString() }}人</dd></div>
                     <div v-for="resource in nonFoodResources" :key="resource.key">
                         <dt>{{ resource.name }}</dt>
                         <dd v-if="resource.capacity !== null" class="hud-capacity-value">

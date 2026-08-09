@@ -16,7 +16,17 @@ function formatTime(value: string): string {
         ? value
         : new Intl.DateTimeFormat('ja-JP', {
             month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+            timeZone: 'Asia/Tokyo',
         }).format(date);
+}
+
+function formatDelta(value: number): string {
+    const sign = value > 0 ? '+' : value < 0 ? '-' : '±';
+    return `${sign}${Math.abs(value).toLocaleString('ja-JP')}`;
+}
+
+function deltaClass(value: number): string {
+    return value > 0 ? 'delta-positive' : value < 0 ? 'delta-negative' : 'delta-neutral';
 }
 
 async function loadPage(page: number): Promise<void> {
@@ -85,6 +95,11 @@ watch(() => props.nationId, resetAndLoad);
                         <span class="island-event-mark" aria-hidden="true"></span>
                         <div>
                             <p>{{ event.message }}</p>
+                            <div v-if="event.summary" class="turn-summary-values" aria-label="ターン終了時の純変化">
+                                <span :class="deltaClass(event.summary.money.delta)">資金 {{ formatDelta(event.summary.money.delta) }}億円</span>
+                                <span :class="deltaClass(event.summary.population.delta)">人口 {{ formatDelta(event.summary.population.delta) }}人</span>
+                                <span :class="deltaClass(event.summary.food.delta)">食料 {{ formatDelta(event.summary.food.delta) }}トン</span>
+                            </div>
                             <div class="island-event-meta">
                                 <span v-if="event.coordinate">
                                     座標 ({{ event.coordinate.x }}, {{ event.coordinate.y }})

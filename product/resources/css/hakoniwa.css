@@ -144,6 +144,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ranking-card th { color: var(--muted); font-size: .72rem; }
 .ranking-card td button { border: 0; background: none; color: var(--navy); font-weight: 850; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
 .ranking-card td button.is-finance-only { color: var(--muted); }
+.ranking-card td button.is-dormant { color: #9a5a28; }
 .ranking-owner { display: block; margin-top: 3px; color: var(--muted); font-size: .72rem; font-weight: 650; text-decoration: none; }
 .ranking-comment { display: block; max-width: 24rem; margin-top: 3px; color: var(--ink); font-size: .72rem; white-space: normal; }
 .event-list { list-style: none; display: grid; gap: 16px; margin: 18px 0 0; padding: 0; }
@@ -187,6 +188,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     color: white;
 }
 .hud-identity h1 { margin: 0; font-size: 1.35rem; }
+.turn-indicator { margin: 2px 0 0; color: #d6eeee; font-size: .76rem; font-weight: 800; }
 .hud-primary { display: grid; grid-template-columns: repeat(8, minmax(70px, 1fr)); gap: 6px; margin: 0; }
 .hud-primary > div { min-width: 0; padding: 6px 8px; border-left: 1px solid rgba(255,255,255,.16); }
 .hud-primary dt { color: #b9d2d2; font-size: .64rem; }
@@ -283,6 +285,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .importance-notable .island-event-mark { background: var(--coral); }
 .importance-warning .island-event-mark { background: #aa3f32; }
 .island-event-group p { margin: 0; line-height: 1.55; overflow-wrap: anywhere; }
+.turn-summary-values { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-weight: 850; }
+.turn-summary-values .delta-positive { color: #1769aa; }
+.turn-summary-values .delta-negative { color: #b43d2d; }
+.turn-summary-values .delta-neutral { color: var(--muted); }
 .island-event-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; color: var(--muted); font-size: .72rem; }
 .island-event-meta span { white-space: nowrap; }
 .island-event-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 18px; }
@@ -503,7 +509,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
         overflow: hidden;
     }
     .command-panel { bottom: max(8px, env(safe-area-inset-bottom)); }
-    .plan-panel { top: 260px; box-shadow: 0 10px 40px rgba(18,63,73,.2); }
+    .plan-panel { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 52px); box-shadow: 0 10px 40px rgba(18,63,73,.2); }
+    .command-panel.mobile-peer-expanded, .plan-panel.mobile-peer-expanded { display: none; }
     .command-panel-body, .plan-panel-body { display: none; height: auto; }
     .command-panel.expanded .command-panel-body {
         display: block;

@@ -8,6 +8,11 @@ const response = (data: unknown, status = 200) => new Response(JSON.stringify({ 
     headers: { 'Content-Type': 'application/json' },
 });
 
+const envelopeResponse = (data: unknown, meta: Record<string, unknown>) => new Response(JSON.stringify({ data, meta }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+});
+
 const validationResponse = (errors: Record<string, string[]>) => new Response(JSON.stringify({
     message: '入力内容を確認してください。',
     errors,
@@ -20,7 +25,7 @@ const emptyChunk: MapChunk = {
 
 const publicDetail: PublicNationDetail = {
     id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
-    owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500',
+    owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
     registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
     last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '箱庭諸島２S＋', current_turn: 1 },
     capital: { x: 12, y: 8 },
@@ -44,7 +49,7 @@ function publicResponse(path: string): Response | null {
     });
     if (path.endsWith('/rankings')) return response([{
         rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
-        owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500',
+        owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
         registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
         last_updated_turn: 1, comment: '公開コメント',
     }]);
@@ -55,7 +60,10 @@ function publicResponse(path: string): Response | null {
     return null;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+});
 
 describe('application lobby and island entry', () => {
     it('continues rendering the public lobby after the normal guest /me 401', async () => {
@@ -70,17 +78,41 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
+        expect(wrapper.find('.ranking-card thead').text()).toBe('島名島主生存ターン人口資金食料');
+        expect(wrapper.find('.ranking-card tbody').text()).toContain('10,000トン');
+        expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
         expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開コメント');
         expect(wrapper.text()).toContain('公開できる出来事はまだありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.1.1');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.2.0');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
         expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
         expect(wrapper.find('.turn-status-card').text()).toContain('次回更新まで');
         expect(wrapper.find('.turn-countdown').exists()).toBe(true);
+    });
+
+    it('marks dormant islands beside the name without an activity-status column', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/rankings')) return response([{
+                rank: 1, id: 7, world_id: 1, nation_number: 1, name: '休止島', state: 'dormant_frozen',
+                total_population: 1000, owner_name: '休止島主', territory_cell_count: 19, owned_land_cells: 17,
+                money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+                registered_turn: 1, survival_turns: 10, finance_only_turns: 7, activity_status: 'finance_only',
+                last_updated_turn: 11, comment: '',
+            }]);
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const name = wrapper.find('.ranking-card tbody button');
+        expect(name.text()).toBe('休止島（休止中）');
+        expect(name.classes()).toContain('is-dormant');
+        expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
     });
 
     it('suppresses the normal countdown for a failed turn', async () => {
@@ -97,6 +129,24 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         expect(wrapper.find('.turn-status-card').text()).toContain('ターン更新が停止しています。');
+        expect(wrapper.find('.turn-countdown').exists()).toBe(false);
+    });
+
+    it('shows delayed status without a countdown after the grace boundary', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) return response({
+                id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 7, nation_count: 1,
+                total_population: 1000, contact_url: null, turn_status: 'delayed',
+                last_successful_turn_at: '2026-08-09T13:00:00Z', next_scheduled_turn_at: '2026-08-09T15:00:00Z',
+                turn_schedule_timezone: 'Asia/Tokyo',
+            });
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        expect(wrapper.find('.turn-status-card').text()).toContain('ターン更新が遅延しています。');
         expect(wrapper.find('.turn-countdown').exists()).toBe(false);
     });
 
@@ -126,6 +176,139 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         expect(wrapper.find('.announcement-body').text()).toContain('<b>タグではありません</b>\n二行目');
         expect(wrapper.find('.announcement-body b').exists()).toBe(false);
+    });
+
+    it('uses paginator metadata even when an announcement page is not full', async () => {
+        const article = {
+            id: 5, title: '1ページ目', body: '本文',
+            created_at: '2026-08-09T10:30:00+09:00', updated_at: '2026-08-09T10:30:00+09:00',
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path === '/api/v1/public/announcements?page=1') {
+                return envelopeResponse([article], { current_page: 1, last_page: 2 });
+            }
+            if (path === '/api/v1/public/announcements?page=2') {
+                return envelopeResponse([{ ...article, id: 6, title: '2ページ目' }], { current_page: 2, last_page: 2 });
+            }
+            return publicResponse(path) ?? response(null, 401);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await flushPromises();
+        const pager = wrapper.findAll('.announcement-pager button');
+        expect(pager[1]!.attributes('disabled')).toBeUndefined();
+        await pager[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.find('.announcement-page').text()).toContain('2ページ目');
+        expect(wrapper.findAll('.announcement-pager button')[1]!.attributes('disabled')).toBeDefined();
+    });
+
+    it.each([
+        { total: 10, page: 1, lastPage: 1 },
+        { total: 20, page: 2, lastPage: 2 },
+    ])('disables Next on the full final page for exactly $total announcements', async ({ total, page, lastPage }) => {
+        const articles = Array.from({ length: 10 }, (_, index) => ({
+            id: index + 1, title: `記事${index + 1}`, body: '本文',
+            created_at: '2026-08-09T10:30:00+09:00', updated_at: '2026-08-09T10:30:00+09:00',
+        }));
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path === '/api/v1/public/announcements?page=1') {
+                return envelopeResponse(articles, { current_page: 1, last_page: lastPage, total });
+            }
+            if (path === `/api/v1/public/announcements?page=${page}`) {
+                return envelopeResponse(articles, { current_page: page, last_page: lastPage, total });
+            }
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        if (page === 1) {
+            await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        } else {
+            await wrapper.find('.announcement-window .section-heading button').trigger('click');
+            await flushPromises();
+            await wrapper.findAll('.announcement-pager button')[1]!.trigger('click');
+        }
+        await flushPromises();
+        expect(wrapper.findAll('.announcement-list.full li')).toHaveLength(10);
+        expect(wrapper.find('.announcement-pager').text()).toContain(`${page}ページ`);
+        expect(wrapper.findAll('.announcement-pager button')[1]!.attributes('disabled')).toBeDefined();
+    });
+
+    it('refreshes only the summary at the deadline and retries until the turn advances', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        let summaryCalls = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) {
+                summaryCalls++;
+                return response(summaryCalls < 3 ? {
+                    id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 1, nation_count: 1,
+                    total_population: 1000, contact_url: null, turn_status: 'normal',
+                    last_successful_turn_at: '2026-08-09T10:00:00Z', next_scheduled_turn_at: '2026-08-09T12:00:01Z',
+                    turn_schedule_timezone: 'Asia/Tokyo',
+                } : {
+                    id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 2, nation_count: 1,
+                    total_population: 1000, contact_url: null, turn_status: 'normal',
+                    last_successful_turn_at: '2026-08-09T12:00:02Z', next_scheduled_turn_at: '2026-08-09T14:00:00Z',
+                    turn_schedule_timezone: 'Asia/Tokyo',
+                });
+            }
+            return publicResponse(path) ?? response(null, 401);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        await flushPromises();
+        expect(summaryCalls).toBe(2);
+        await vi.advanceTimersByTimeAsync(2_000);
+        await flushPromises();
+        expect(summaryCalls).toBe(3);
+        expect(wrapper.find('.world-stats dd').text()).toBe('2');
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).includes('/announcements/latest'))).toHaveLength(1);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/rankings'))).toHaveLength(1);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/events'))).toHaveLength(1);
+        wrapper.unmount();
+    });
+
+    it('stops deadline retries when the refreshed summary reports a failed turn', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        let summaryCalls = 0;
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) {
+                summaryCalls++;
+                return response({
+                    id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 1, nation_count: 1,
+                    total_population: 1000, contact_url: null,
+                    turn_status: summaryCalls === 1 ? 'normal' : 'failed',
+                    last_successful_turn_at: '2026-08-09T10:00:00Z',
+                    next_scheduled_turn_at: '2026-08-09T12:00:01Z', turn_schedule_timezone: 'Asia/Tokyo',
+                });
+            }
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        await flushPromises();
+        expect(summaryCalls).toBe(2);
+        expect(wrapper.find('.turn-status-card').text()).toContain('ターン更新が停止しています。');
+        expect(wrapper.find('.turn-countdown').exists()).toBe(false);
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(summaryCalls).toBe(2);
+        wrapper.unmount();
     });
 
     it('allows only a capability-bearing user to create edit and delete announcements', async () => {
@@ -238,11 +421,13 @@ describe('application lobby and island entry', () => {
     });
 
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {
+        vi.useFakeTimers();
         const nation: Nation = {
             id: 3, world_id: 1, nation_number: 1, name: '自島', owner_name: '自島主', comment: '自島コメント', money: 62728, money_display: '62,728億円',
             money_capacity: 9999, money_remaining_capacity: 0, money_is_at_capacity: true,
             total_food_tons: 10000, food_total_tons: 10000,
             food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
+            farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
             food_resources: [
                 { key: 'wheat', name: '小麦', balance: 10000, unit: 'ton', unit_label: 'トン' },
                 { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },
@@ -345,5 +530,15 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ owner_name: '更新島主', comment: '<b>更新コメント</b>' });
         const patchIndex = fetchMock.mock.calls.findIndex(([path]) => String(path) === '/api/v1/nations/3/profile');
         expect(fetchMock.mock.calls.slice(patchIndex + 1).some(([path]) => String(path).includes('/api/v1/map-spaces/2/chunks/'))).toBe(true);
+
+        const summaryCallCount = () => fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/summary')).length;
+        expect(summaryCallCount()).toBe(2);
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flushPromises();
+        expect(summaryCallCount()).toBe(3);
+        wrapper.unmount();
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flushPromises();
+        expect(summaryCallCount()).toBe(3);
     });
 });

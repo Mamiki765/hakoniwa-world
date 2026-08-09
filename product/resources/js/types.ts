@@ -40,6 +40,9 @@ export interface Nation {
     food_capacity_tons: number;
     food_remaining_capacity_tons: number;
     food_is_at_capacity: boolean;
+    farm_capacity_people: number;
+    factory_capacity_people: number;
+    mine_capacity_people: number;
     food_resources: FoodResource[];
     resources: NationResource[];
     state: string;
@@ -80,6 +83,7 @@ export interface PublicNationSummary {
     owned_land_cells: number;
     money_display: string;
     money_bucket: string;
+    food_total_tons: number;
     registered_turn: number;
     survival_turns: number;
     finance_only_turns: number;
@@ -133,6 +137,11 @@ export interface PlayerIslandEvent {
     target_turn: number;
     coordinate: { x: number; y: number } | null;
     occurred_at: string;
+    summary: null | {
+        money: { start: number; end: number; delta: number };
+        population: { start: number; end: number; delta: number };
+        food: { start: number; end: number; delta: number };
+    };
 }
 
 export interface PlayerIslandEventGroup {
@@ -244,6 +253,9 @@ export interface CommandDefinition {
     name: string;
     description: string;
     target_type: 'cell' | 'nation';
+    quantity_semantics: 'ordinary' | 'selector' | 'unused';
+    quantity_default: number | null;
+    quantity_options: Array<{ value: number; key: string; label: string }>;
     parameters: Record<string, {
         label: string;
         type: 'integer';
@@ -294,6 +306,8 @@ export interface CommandQueueItem {
     target_x: number;
     target_y: number;
     quantity: number;
+    quantity_semantics: 'ordinary' | 'selector' | 'unused';
+    quantity_label: string | null;
     parameters: Record<string, unknown>;
     status: string;
     queued_at: string | null;
