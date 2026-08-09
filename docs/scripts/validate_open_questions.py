@@ -40,7 +40,7 @@ EXPECTED_STATUSES = {
     "AUTH-07": "Deferred",
     "AUTH-08": "Deferred",
     "AUTH-09": "Deferred",
-    "AWARD-01": "Open",
+    "AWARD-01": "Decided",
     "B-01": "Decided",
     "B-02": "Decided",
     "B-03": "Open",

@@ -12,7 +12,7 @@
 
 | Milestone | Blocking Open IDs | 実装境界 |
 |---|---|---|
-| monster | — | MONSTER-01〜04はPR21で決定・実装済み。将来のawardはAWARD-01を別gateとして維持する。 |
+| monster | — | MONSTER-01〜04はPR21、AWARD-01はver 1.3.0のowner decisionで決定・実装済み。 |
 | missile / commands / combat | B-03、B-05、B-07、B-12、B-13 | 対応するattack、territory、dormancy機能の実装前にだけ停止する。B-10のPR22 missile visibilityは決定済み。怪獣単体PRの一律blockerではない。 |
 | lifecycle / automatic turn operations | T-02 | 30日休眠Jobは公開後roadmapまで実装しない。production cronと手動retry境界はD-02で決定済み。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
@@ -289,7 +289,6 @@
 ### AWARD-01 Nation awards
 
 - Status: Decided
-- Required before: award system実装前
 - Decision: owner提示のver 1.3.0条件表を正本とし、災難50,000/100,000/200,000人純減、繁栄300,000/500,000/1,000,000人最終人口、平和20,000/50,000/80,000人実受入とする。各系列は下位から1 turn 1段階、一度限りで取消なし。100 turnごとの人口最大全Nationへturn賞、同区間のNation attributed final blow最大全Nationへ最大0を除き討伐turn賞を反復付与する。公開TOPだけへ全受賞turn、種類別永久討伐count、stable source kind由来markを表示する。pre-1.3.0の周期countはexplicit operator seedだけ、award backfillは行わない。gameplay bonusはない。
 - Implemented: ver 1.3.0
 - Decision record: `docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`、`product/docs/operations/ver-1.3.0-monster-cycle-seed.md`
