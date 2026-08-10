@@ -41,6 +41,7 @@ final class CompleteTurnEngine
         private readonly MonsterTurnService $monsters,
         private readonly MissileImpactResolver $missiles,
         private readonly AwardTurnFinalizer $awards,
+        private readonly TerritoryInfluenceService $territoryInfluence,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -48,7 +49,7 @@ final class CompleteTurnEngine
         $metrics = match ($phase) {
             'prepare_turn' => $this->prepareTurn($context),
             'calculate_terrain_context' => $this->calculateTerrainContext($context),
-            'resolve_territory_influence' => ['mutations' => 0, 'extension_boundary' => true],
+            'resolve_territory_influence' => $this->territoryInfluence->execute($context),
             'nation_economy' => $this->nationEconomy($context),
             'resource_sales' => $this->sellResources($context),
             'development_commands' => $this->commands->execute($context),

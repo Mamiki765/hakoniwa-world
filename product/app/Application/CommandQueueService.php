@@ -2,18 +2,23 @@
 
 namespace App\Application;
 
+use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\SettlementOverbuildPolicy;
+use App\Domain\Command\TerritoryExpansionFacts;
+use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonsterOccupancy;
 use App\Models\Nation;
+use App\Models\NationCapital;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
@@ -34,6 +39,8 @@ final class CommandQueueService
         private readonly LegacyCommandQueueOrder $legacyOrder,
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
+        private readonly TerritoryExpansionPolicy $territoryExpansion,
+        private readonly CapitalCorePolicy $capitalCores,
     ) {}
 
     /**
@@ -362,6 +369,22 @@ final class CommandQueueService
     {
         $terrainKey = $cell->terrain->key;
         $facilityKey = $cell->facility?->key;
+        if ($definition->key === 'territory_expand') {
+            $this->validateTerritoryExpansionState(
+                $nation,
+                $mapSpace,
+                $definition,
+                $cell,
+                [
+                    'terrain_key' => $terrainKey,
+                    'facility_key' => $facilityKey,
+                    'owner_nation_id' => $cell->owner_nation_id,
+                ],
+                $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false),
+            );
+
+            return;
+        }
         if (! in_array($terrainKey, $definition->target_terrain_keys, true)) {
             throw new DomainException('対象地形ではこのcommandをqueueへ追加できません。');
         }
@@ -418,6 +441,76 @@ final class CommandQueueService
         if ($cell->owner_nation_id !== $nation->id) {
             throw new DomainException('自国領のcellだけを対象にできます。');
         }
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    public function validateTerritoryExpansionState(
+        Nation $nation,
+        MapSpace $mapSpace,
+        CommandDefinition $definition,
+        MapCell $cell,
+        array $state,
+        bool $adjacentActorTerritory,
+    ): void {
+        $world = World::query()->whereKey($nation->world_id)->with('rulesetVersion')->firstOrFail();
+        if ($cell->map_space_id !== $mapSpace->id || $mapSpace->world_id !== $world->id) {
+            throw new DomainException('領土拡張のtargetはactorと同じWorldのsurface cellである必要があります。');
+        }
+        $targetOwner = $state['owner_nation_id'] === null
+            ? null
+            : Nation::query()->whereKey($state['owner_nation_id'])->first();
+        $monsterOccupied = MonsterOccupancy::query()->where('map_cell_id', $cell->id)->exists();
+        $facts = new TerritoryExpansionFacts(
+            actorNationId: $nation->id,
+            actorNationState: $nation->state,
+            targetOwnerNationId: $state['owner_nation_id'],
+            targetOwnerNationState: $targetOwner?->world_id === $world->id ? $targetOwner->state : null,
+            targetOwnerInActorWorld: $state['owner_nation_id'] === null || $targetOwner?->world_id === $world->id,
+            terrainKey: $state['terrain_key'],
+            facilityKey: $state['facility_key'],
+            monsterOccupied: $monsterOccupied,
+            capitalCoreProtected: $this->capitalCoreProtected(
+                $world,
+                new GridCoordinate($cell->x, $cell->y),
+                $nation->id,
+            ),
+            adjacentActorTerritory: $adjacentActorTerritory,
+            definitionTargetTerrainKeys: $definition->target_terrain_keys,
+            definitionRequiresEmptyFacility: $definition->requires_empty_facility,
+        );
+        $reason = $this->territoryExpansion->failureReason($definition->metadata, $facts);
+        if ($reason !== null) {
+            throw new DomainException($this->territoryExpansion->message($reason));
+        }
+    }
+
+    private function capitalCoreProtected(World $world, GridCoordinate $target, int $newOwnerNationId): bool
+    {
+        $transfer = $world->rulesetVersion->settings['territory_transfer']['capital_core'] ?? null;
+        if (! is_array($transfer) || ($transfer['ownership_transfer_protected'] ?? false) !== true) {
+            return false;
+        }
+        $ownerStates = is_array($transfer['owner_states'] ?? null) ? $transfer['owner_states'] : [];
+        $capitals = NationCapital::query()
+            ->whereHas('nation', fn ($query) => $query
+                ->where('world_id', $world->id)
+                ->whereIn('state', $ownerStates))
+            ->orderBy('nation_id')
+            ->get(['nation_id', 'x', 'y'])
+            ->map(static fn (NationCapital $capital): array => [
+                'nation_id' => (int) $capital->nation_id,
+                'x' => (int) $capital->x,
+                'y' => (int) $capital->y,
+            ])->all();
+
+        return $this->capitalCores->protectsTransfer(
+            $target,
+            $newOwnerNationId,
+            $capitals,
+            (int) ($transfer['radius'] ?? 0),
+        );
     }
 
     private function membership(User $user, Nation $nation): NationMembership

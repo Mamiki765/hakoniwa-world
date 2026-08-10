@@ -69,6 +69,7 @@ final class PlayerIslandEventService
         'command.logging_public',
         'command.logging_private',
         'command.territory_expanded',
+        'territory.influenced',
         'command.capital_relocated',
         'command.attraction_started',
         'command.money_aid_transferred',
@@ -642,7 +643,8 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'y')),
                 number_format($this->integer($metadata, 'applied_money')),
             ),
-            'command.territory_expanded' => '領土拡張が完了しました。',
+            'command.territory_expanded' => $this->ownershipTransferMessage($metadata, '領土拡張'),
+            'territory.influenced' => $this->ownershipTransferMessage($metadata, '領地感化'),
             'command.capital_relocated' => sprintf(
                 '首都を(%s,%s)から(%s,%s)へ遷都しました。',
                 number_format($this->integer($metadata, 'from_x')),
@@ -1166,6 +1168,20 @@ final class PlayerIslandEventService
             'fire' => '火災',
             default => '災害',
         };
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function ownershipTransferMessage(array $metadata, string $cause): string
+    {
+        return sprintf(
+            '%sにより、%s(%s,%s)の所有権が%sから%sへ移りました。',
+            $cause,
+            $metadata['new_owner_nation_name'] ?? 'Nation',
+            number_format($this->integer($metadata, 'x')),
+            number_format($this->integer($metadata, 'y')),
+            $metadata['old_owner_nation_name'] ?? '中立',
+            $metadata['new_owner_nation_name'] ?? 'Nation',
+        );
     }
 
     /** @param array<string, mixed> $metadata */

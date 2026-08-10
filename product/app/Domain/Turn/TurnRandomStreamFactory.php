@@ -12,6 +12,8 @@ final class TurnRandomStreamFactory
 
     public const SURFACE_CELL_ORDER = 'process_cells:surface_cell_order';
 
+    public const TERRITORY_INFLUENCE_DIRECTION = 'territory_influence:direction:v1';
+
     public const LAND_CLEAR_BURIED_TREASURE = 'development_commands:land_clear:buried_treasure';
 
     public const SEABED_OIL_SEARCH = 'development_commands:excavate:seabed_oil_search';
