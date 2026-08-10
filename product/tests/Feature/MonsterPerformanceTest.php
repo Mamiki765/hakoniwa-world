@@ -32,7 +32,8 @@ final class MonsterPerformanceTest extends TestCase
         $baseline = $this->measuredTurn($world);
         $this->assertSame(0, $baseline['metrics']['monsters_loaded']);
         $this->assertSame(0, $baseline['metrics']['monster_actions']);
-        $this->assertLessThan(100, $baseline['queries']);
+        // ver 1.4.0 adds one constant-query territory influence phase to every turn.
+        $this->assertLessThan(110, $baseline['queries']);
         $this->assertLessThan(5_000.0, $baseline['duration_ms']);
         $this->assertMonsterPhaseMetricSchema($baseline['metrics']);
 

@@ -215,10 +215,10 @@ class CommandAndMissileTest extends TestCase
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->count());
     }
 
-    public function test_v2_explicit_targeting_accepts_own_foreign_neutral_and_unowned_sea_cells(): void
+    public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v2', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v3', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);

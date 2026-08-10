@@ -2,9 +2,12 @@
 
 namespace App\Application;
 
+use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CommandFailureReason;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\SettlementOverbuildPolicy;
+use App\Domain\Command\TerritoryExpansionFacts;
+use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Economy\CappedAddition;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
@@ -43,6 +46,8 @@ final class DomesticCommandExecutor
         private readonly MonsterSpawnService $monsterSpawn,
         private readonly NationIdleCounterFinalizer $idleCounters,
         private readonly LegacyCommandQueueOrder $legacyOrder,
+        private readonly TerritoryExpansionPolicy $territoryExpansion,
+        private readonly CapitalCorePolicy $capitalCores,
     ) {}
 
     /**
@@ -247,22 +252,13 @@ final class DomesticCommandExecutor
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             return $this->missileValidationFailure($context, $nation, $definition, $cell, $observed);
         }
-        if ($occupancy !== null) {
-            return ['reason' => CommandFailureReason::OccupiedByMonster, 'observed' => $observed];
-        }
         if ($definition->key === 'territory_expand') {
-            if ($cell->owner_nation_id === $nation->id) {
-                return ['reason' => CommandFailureReason::AlreadyOwned, 'observed' => $observed];
+            $reason = $this->territoryExpansionFailure($context, $nation, $definition, $cell, $occupancy !== null);
+            if ($reason !== null) {
+                return ['reason' => $reason, 'observed' => $observed];
             }
-            if ($cell->owner_nation_id !== null) {
-                return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
-            }
-            if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
-                return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
-            }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
-                return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
-            }
+        } elseif ($occupancy !== null) {
+            return ['reason' => CommandFailureReason::OccupiedByMonster, 'observed' => $observed];
         } elseif ($definition->key === 'build_seabed_base') {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
@@ -755,14 +751,73 @@ final class DomesticCommandExecutor
 
     private function applyTerritoryExpand(TurnContext $context, Nation $nation, MapCell $cell): void
     {
+        $cell->loadMissing('ownerNation');
+        $oldOwnerNationId = $cell->owner_nation_id;
+        $oldOwnerNationName = $oldOwnerNationId === null ? '中立' : $cell->ownerNation->name;
         $cell->owner_nation_id = $nation->id;
         $cell->version++;
         $cell->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $this->events->record($context, 'command.territory_expanded', $cell, [
-            'nation_id' => $nation->id, 'x' => $cell->x, 'y' => $cell->y,
-            'terrain_key' => $cell->terrain->key,
-        ]);
+            'nation_id' => $nation->id,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'old_owner_nation_id' => $oldOwnerNationId,
+            'old_owner_nation_name' => $oldOwnerNationName,
+            'new_owner_nation_id' => $nation->id,
+            'new_owner_nation_name' => $nation->name,
+            'ownership_changed' => true,
+        ], 'public');
+    }
+
+    private function territoryExpansionFailure(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $cell,
+        bool $monsterOccupied,
+    ): ?CommandFailureReason {
+        $transfer = $context->ruleset->settings['territory_transfer']['capital_core'] ?? null;
+        $capitalProtected = false;
+        if (is_array($transfer) && ($transfer['ownership_transfer_protected'] ?? false) === true) {
+            $ownerStates = is_array($transfer['owner_states'] ?? null) ? $transfer['owner_states'] : [];
+            $capitals = NationCapital::query()
+                ->whereHas('nation', fn ($query) => $query
+                    ->where('world_id', $context->world->id)
+                    ->whereIn('state', $ownerStates))
+                ->orderBy('nation_id')
+                ->lockForUpdate()
+                ->get(['nation_id', 'x', 'y'])
+                ->map(static fn (NationCapital $capital): array => [
+                    'nation_id' => (int) $capital->nation_id,
+                    'x' => (int) $capital->x,
+                    'y' => (int) $capital->y,
+                ])->all();
+            $capitalProtected = $this->capitalCores->protectsTransfer(
+                new GridCoordinate($cell->x, $cell->y),
+                $nation->id,
+                $capitals,
+                (int) ($transfer['radius'] ?? 0),
+            );
+        }
+
+        $facts = new TerritoryExpansionFacts(
+            actorNationId: $nation->id,
+            actorNationState: $nation->state,
+            targetOwnerNationId: $cell->owner_nation_id,
+            targetOwnerNationState: $cell->ownerNation?->state,
+            targetOwnerInActorWorld: $cell->owner_nation_id === null
+                || $cell->ownerNation?->world_id === $context->world->id,
+            terrainKey: $cell->terrain->key,
+            facilityKey: $cell->facility?->key,
+            monsterOccupied: $monsterOccupied,
+            capitalCoreProtected: $capitalProtected,
+            adjacentActorTerritory: $this->hasOwnedCellWithin($nation, $cell, 1, false),
+            definitionTargetTerrainKeys: $definition->target_terrain_keys,
+            definitionRequiresEmptyFacility: $definition->requires_empty_facility,
+        );
+
+        return $this->territoryExpansion->failureReason($definition->metadata, $facts);
     }
 
     private function applyCapitalRelocation(TurnContext $context, Nation $nation, MapCell $target): void

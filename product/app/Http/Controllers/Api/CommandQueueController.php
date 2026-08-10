@@ -11,6 +11,7 @@ use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Models\CommandDefinition;
@@ -68,8 +69,26 @@ final class CommandQueueController extends Controller
                             $service->validateTarget($nation, $mapSpace, $definition, $cell);
                         } catch (DomainException $exception) {
                             $unavailableReason = $exception->getMessage();
-                            $projected = $this->projectedCellState($cell, $queue, $position, $nation);
-                            $projectedExecutable = $this->matchesProjectedTarget($definition, $projected, $nation);
+                            $projected = $this->projectedCellState(
+                                $service,
+                                $cell,
+                                $queue,
+                                $position,
+                                $nation,
+                                $mapSpace,
+                            );
+                            $projectedExecutable = $definition->key === 'territory_expand'
+                                ? $this->matchesProjectedTerritoryTarget(
+                                    $service,
+                                    $definition,
+                                    $projected,
+                                    $cell,
+                                    $queue,
+                                    $position,
+                                    $nation,
+                                    $mapSpace,
+                                )
+                                : $this->matchesProjectedTarget($definition, $projected, $nation);
                         }
                     }
 
@@ -328,10 +347,12 @@ final class CommandQueueController extends Controller
      * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
      */
     private function projectedCellState(
+        CommandQueueService $service,
         MapCell $cell,
         NationCommandQueue $queue,
         int $beforePosition,
         Nation $nation,
+        MapSpace $mapSpace,
     ): array {
         $state = [
             'terrain_key' => $cell->terrain->key,
@@ -346,7 +367,19 @@ final class CommandQueueController extends Controller
                 continue;
             }
             $definition = $item->definition;
-            if (! $this->matchesProjectedTarget($definition, $state, $nation)) {
+            $matches = $definition->key === 'territory_expand'
+                ? $this->matchesProjectedTerritoryTarget(
+                    $service,
+                    $definition,
+                    $state,
+                    $cell,
+                    $queue,
+                    (int) $item->queue_position,
+                    $nation,
+                    $mapSpace,
+                )
+                : $this->matchesProjectedTarget($definition, $state, $nation);
+            if (! $matches) {
                 continue;
             }
             $state = $this->applyProjectedResult($definition, $state, $nation);
@@ -423,6 +456,65 @@ final class CommandQueueController extends Controller
         }
 
         return $state['owner_nation_id'] === $nation->id;
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    private function matchesProjectedTerritoryTarget(
+        CommandQueueService $service,
+        CommandDefinition $definition,
+        array $state,
+        MapCell $cell,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+    ): bool {
+        $coordinates = (new GridCoordinate($cell->x, $cell->y))->neighborsWithin(
+            $mapSpace->min_x,
+            $mapSpace->max_x,
+            $mapSpace->min_y,
+            $mapSpace->max_y,
+        );
+        $neighbors = MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where(function ($query) use ($coordinates): void {
+                foreach ($coordinates as $coordinate) {
+                    $query->orWhere(fn ($pair) => $pair
+                        ->where('x', $coordinate->x)
+                        ->where('y', $coordinate->y));
+                }
+            })
+            ->with(['terrain', 'facility'])
+            ->get();
+        $adjacentActorTerritory = $neighbors->contains(function (MapCell $neighbor) use ($service, $queue, $beforePosition, $nation, $mapSpace): bool {
+            $projected = $this->projectedCellState(
+                $service,
+                $neighbor,
+                $queue,
+                $beforePosition,
+                $nation,
+                $mapSpace,
+            );
+
+            return $projected['owner_nation_id'] === $nation->id;
+        });
+
+        try {
+            $service->validateTerritoryExpansionState(
+                $nation,
+                $mapSpace,
+                $definition,
+                $cell,
+                $state,
+                $adjacentActorTerritory,
+            );
+
+            return true;
+        } catch (DomainException) {
+            return false;
+        }
     }
 
     private function domainError(DomainException $exception): JsonResponse
