@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\MessageBoard\MessageBoardContract;
 use App\Domain\MessageBoard\MessageBoardCooldownException;
 use App\Domain\MessageBoard\MessageBoardValidationException;
+use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Models\IslandMessage;
 use App\Models\Nation;
 use App\Models\NationMembership;
@@ -23,6 +24,7 @@ final class MessageBoardService
     public function __construct(
         private readonly VisitorCodeAllocator $visitorCodes,
         private readonly MessageBoardAuditRecorder $audit,
+        private readonly CurrentRulesetGuard $rulesetGuard,
     ) {}
 
     /** @return array<string, mixed> */
@@ -129,6 +131,7 @@ final class MessageBoardService
             if ($membership !== null && ! $authorNation instanceof Nation) {
                 throw new MessageBoardValidationException('target_nation', '投稿者の島情報が一致しません。');
             }
+            $this->assertWorldMutable($world);
 
             $now = now();
             $this->assertCooldown($lockedUser, $now);
@@ -187,6 +190,7 @@ final class MessageBoardService
             if (! $this->isReachable($sender) || ! $this->isReachable($lockedTarget)) {
                 throw new MessageBoardValidationException('target_nation', 'この島とは秘密通信できません。');
             }
+            $this->assertWorldMutable($world);
 
             $now = now();
             $this->assertCooldown($lockedUser, $now);
@@ -395,5 +399,10 @@ final class MessageBoardService
     private function isReachable(Nation $nation): bool
     {
         return $nation->state !== 'sunken_archived';
+    }
+
+    private function assertWorldMutable(World $world): void
+    {
+        $this->rulesetGuard->assertMutable($world, $world->rulesetVersion()->firstOrFail());
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Application\MessageBoardService;
 use App\Domain\MessageBoard\MessageBoardCooldownException;
 use App\Domain\MessageBoard\MessageBoardValidationException;
+use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Models\Nation;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +27,8 @@ final class MessageBoardController extends Controller
             $timeline = $service->postPublic($request->user(), $nation, $validated['body']);
         } catch (MessageBoardCooldownException $exception) {
             return $this->cooldown($exception);
+        } catch (ResetRequiredException $exception) {
+            return $this->resetRequired($exception);
         } catch (MessageBoardValidationException $exception) {
             throw ValidationException::withMessages([$exception->field => $exception->getMessage()]);
         }
@@ -41,6 +44,8 @@ final class MessageBoardController extends Controller
             $timeline = $service->postSecret($request->user(), $nation, $validated['body']);
         } catch (MessageBoardCooldownException $exception) {
             return $this->cooldown($exception);
+        } catch (ResetRequiredException $exception) {
+            return $this->resetRequired($exception);
         } catch (MessageBoardValidationException $exception) {
             throw ValidationException::withMessages([$exception->field => $exception->getMessage()]);
         }
@@ -55,5 +60,13 @@ final class MessageBoardController extends Controller
             'retry_after_seconds' => $exception->retryAfterSeconds,
             'retry_at' => $exception->retryAt->toIso8601String(),
         ], 429)->header('Retry-After', (string) $exception->retryAfterSeconds);
+    }
+
+    private function resetRequired(ResetRequiredException $exception): JsonResponse
+    {
+        return response()->json([
+            'code' => ResetRequiredException::ERROR_CODE,
+            'message' => $exception->getMessage(),
+        ], 409);
     }
 }

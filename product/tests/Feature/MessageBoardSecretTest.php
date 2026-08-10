@@ -8,6 +8,7 @@ use App\Models\AuthIdentity;
 use App\Models\IslandMessage;
 use App\Models\Nation;
 use App\Models\NationMembership;
+use App\Models\RulesetVersion;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -166,6 +167,32 @@ class MessageBoardSecretTest extends TestCase
         Carbon::setTestNow(now()->addSeconds(10));
         $this->actingAs($owner)->postJson("/api/v1/nations/{$target->id}/message-board/secret", ['body' => 'archive'])
             ->assertUnprocessable();
+    }
+
+    public function test_historical_world_rejects_public_and_secret_posts_without_any_mutation(): void
+    {
+        $world = $this->lightweightWorld();
+        [$owner, $sender] = $this->ownerAndNation($world, '履歴送信島', 500);
+        [, $target] = $this->ownerAndNation($world, '履歴受信島', 500);
+        $historical = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
+        $world->update(['ruleset_version_id' => $historical->id]);
+
+        $this->actingAs($owner)
+            ->postJson("/api/v1/nations/{$target->id}/message-board", ['body' => '通常拒否'])
+            ->assertConflict()
+            ->assertJsonPath('code', 'reset_required');
+        $this->actingAs($owner)
+            ->postJson("/api/v1/nations/{$target->id}/message-board/secret", ['body' => '秘密拒否'])
+            ->assertConflict()
+            ->assertJsonPath('code', 'reset_required');
+
+        $this->assertSame(0, IslandMessage::query()->count());
+        $this->assertSame(500, $sender->fresh()->money);
+        $this->assertNull($owner->fresh()->message_board_last_posted_at);
+        $this->assertSame(
+            0,
+            DB::table('audit_events')->where('event_type', 'message_board.secret_sent')->count(),
+        );
     }
 
     public function test_transaction_rollback_restores_money_message_cooldown_and_audit(): void
