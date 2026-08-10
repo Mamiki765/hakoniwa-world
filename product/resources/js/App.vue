@@ -5,6 +5,7 @@ import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import HexMap from './components/HexMap.vue';
 import IslandEventLog from './components/IslandEventLog.vue';
+import MessageBoard from './components/MessageBoard.vue';
 import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import { formatExactMoney } from './formatters/money';
@@ -419,6 +420,10 @@ async function openOwnIsland(): Promise<void> {
 }
 
 async function openPreview(nationId: number): Promise<void> {
+    if (nation.value?.id === nationId) {
+        await openOwnIsland();
+        return;
+    }
     busy.value = true;
     message.value = '';
     try {
@@ -435,6 +440,15 @@ async function openPreview(nationId: number): Promise<void> {
         message.value = error instanceof Error ? error.message : '島previewを読み込めませんでした。';
     } finally {
         busy.value = false;
+    }
+}
+
+async function refreshMyNation(): Promise<void> {
+    if (user.value === null) return;
+    try {
+        nation.value = await api<Nation | null>('/api/v1/me/nation');
+    } catch {
+        // The authoritative message response is already rendered; account data can refresh later.
     }
 }
 
@@ -802,6 +816,12 @@ async function updateProfile(): Promise<void> {
                 </div>
             </div>
             <IslandEventLog :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" />
+            <MessageBoard
+                :key="`development:${nation.id}`"
+                :nation-id="nation.id"
+                context="development"
+                @posted="refreshMyNation"
+            />
         </section>
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
@@ -848,6 +868,12 @@ async function updateProfile(): Promise<void> {
                     @request-all="map.loadAllChunks"
                 />
             </div>
+            <MessageBoard
+                :key="`public:${previewNation.id}`"
+                :nation-id="previewNation.id"
+                context="public"
+                @posted="refreshMyNation"
+            />
         </section>
 
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
