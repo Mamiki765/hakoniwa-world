@@ -60,6 +60,14 @@ function publicResponse(path: string): Response | null {
         groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
         turns_per_page: 24, has_newer_page: false, has_older_page: false,
     });
+    if (/^\/api\/v1\/nations\/\d+\/message-board$/.test(path)) return response({
+        board: { nation_number: 1, name: '公開島' }, entries: [],
+        viewer: { authenticated: false, can_post: false, author_type: null, can_send_secret: false },
+        contract: {
+            latest_limit: 16, body_max_characters: 140, cooldown_seconds: 10,
+            secret_cost_money: 100, secret_cost_display: '100億円',
+        },
+    });
     return null;
 }
 
@@ -554,6 +562,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('島主：公開島主');
         expect(wrapper.text()).toContain('公開コメント');
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
+        expect(wrapper.find('.preview-page > .message-board').exists()).toBe(true);
         expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toBe(true);
     });
 
@@ -584,6 +593,24 @@ describe('application lobby and island entry', () => {
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
+            if (path.endsWith('/rankings')) return response([
+                {
+                    rank: 1, id: 3, world_id: 1, nation_number: 1, name: '自島', state: 'active',
+                    total_population: 1000, owner_name: '自島主', territory_cell_count: 19, owned_land_cells: 17,
+                    money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+                    farm_capacity_people: 10_000, factory_capacity_people: 20_000, mine_capacity_people: 30_000,
+                    registered_turn: 1, survival_turns: 0, finance_only_turns: 0, activity_status: 'active',
+                    last_updated_turn: 1, comment: '自島コメント', achievements: { awards: [], monster_kills: null },
+                },
+                {
+                    rank: 2, id: 7, world_id: 1, nation_number: 2, name: '公開島', state: 'active',
+                    total_population: 1000, owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17,
+                    money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+                    farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
+                    registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
+                    last_updated_turn: 1, comment: '公開コメント', achievements: { awards: [], monster_kills: null },
+                },
+            ]);
             const lobby = publicResponse(path);
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
@@ -646,12 +673,22 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000トン');
         expect(wrapper.find('.island-grid').exists()).toBe(true);
         expect(wrapper.find('.island-events-panel').text()).toContain('島の出来事');
+        expect(wrapper.find('.island-page > .message-board').exists()).toBe(true);
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
 
         const lobbyButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === '公開ロビー')!;
         await lobbyButton.trigger('click');
-        await wrapper.find('.ranking-card tbody button').trigger('click');
+        const ownRankingButton = wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('自島'))!;
+        await ownRankingButton.trigger('click');
+        await flushPromises();
+        expect(wrapper.find('.island-page').exists()).toBe(true);
+        expect(wrapper.find('.preview-page').exists()).toBe(false);
+        expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/public/nations/3')).toBe(false);
+
+        await lobbyButton.trigger('click');
+        const publicRankingButton = wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('公開島'))!;
+        await publicRankingButton.trigger('click');
         await flushPromises();
         expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
 

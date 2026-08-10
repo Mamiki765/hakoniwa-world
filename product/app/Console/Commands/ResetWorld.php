@@ -117,6 +117,7 @@ final class ResetWorld extends Command
             DB::transaction(function () use ($world, $worldKey, $profile, $bounds, $generator, $userCount, $identityCount): void {
                 $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
                 $this->deleteWorldAuditEvents($lockedWorld);
+                $this->deleteWorldMessages($lockedWorld);
                 $this->deleteQueueItems($lockedWorld);
                 $lockedWorld->delete();
 
@@ -157,6 +158,7 @@ final class ResetWorld extends Command
 
         return [
             'audit_events' => $this->worldAuditEvents($world)->count(),
+            'island_messages' => DB::table('island_messages')->where('world_id', $world->id)->count(),
             'turn_runs' => DB::table('turn_runs')->where('world_id', $world->id)->count(),
             'nation_awards' => DB::table('nation_awards')->where('world_id', $world->id)->count(),
             'nation_monster_cycle_stats' => DB::table('nation_monster_cycle_stats')->where('world_id', $world->id)->count(),
@@ -187,6 +189,11 @@ final class ResetWorld extends Command
     private function deleteWorldAuditEvents(World $world): void
     {
         $this->worldAuditEvents($world)->delete();
+    }
+
+    private function deleteWorldMessages(World $world): void
+    {
+        DB::table('island_messages')->where('world_id', $world->id)->delete();
     }
 
     private function worldAuditEvents(World $world): Builder

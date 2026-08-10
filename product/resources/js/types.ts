@@ -189,6 +189,51 @@ export interface PlayerIslandEventPage {
     has_older_page: boolean;
 }
 
+export type MessageBoardEntry = {
+    key: string;
+    created_at: string;
+} & ({
+    kind: 'public';
+    body: string;
+    author: {
+        type: 'owner' | 'other_nation';
+        label: '島主' | '他島';
+        nation: { nation_number: number; name: string };
+    } | {
+        type: 'visitor';
+        label: '観光客';
+        display_name: string;
+        visitor_code: string;
+    };
+} | {
+    kind: 'secret_placeholder';
+    text: '--秘密通信あり--';
+} | {
+    kind: 'secret';
+    label: '秘密通信';
+    direction: 'incoming' | 'outgoing';
+    body: string;
+    counterpart: { nation_number: number; name: string };
+});
+
+export interface MessageBoardTimeline {
+    board: { nation_number: number; name: string };
+    entries: MessageBoardEntry[];
+    viewer: {
+        authenticated: boolean;
+        can_post: boolean;
+        author_type: 'owner' | 'other_nation' | 'visitor' | null;
+        can_send_secret: boolean;
+    };
+    contract: {
+        latest_limit: 16;
+        body_max_characters: 140;
+        cooldown_seconds: 10;
+        secret_cost_money?: 100;
+        secret_cost_display?: '100億円';
+    };
+}
+
 export interface NationResource {
     key: string;
     name: string;
