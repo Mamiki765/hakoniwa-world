@@ -272,17 +272,29 @@ final class MissileImpactResolver
                 $cell,
                 $context,
             );
+            $terrainScorched = $result->killed && $result->status === 'killed'
+                ? $this->scorchWasteland($context, $cell)
+                : false;
+            $scorchMetadata = $terrainScorched
+                ? [
+                    'terrain_scorched' => true,
+                    'from_terrain_key' => 'wasteland',
+                    'to_terrain_key' => 'scorched',
+                ]
+                : ['terrain_scorched' => false];
             $this->recordMeaningfulImpact($context, $firingNation, $cell, $missileKey, 'monster_hit', [
                 'monster_key' => $occupancy->monster->definition->key,
                 'damage_status' => $result->status,
                 'before_hp' => $result->beforeHp,
                 'after_hp' => $result->afterHp,
+                ...$scorchMetadata,
             ]);
 
             return [
                 ...$base, 'meaningful' => true, 'effect' => $result->status,
                 'monster_key' => $occupancy->monster->definition->key,
                 'before_hp' => $result->beforeHp, 'after_hp' => $result->afterHp,
+                ...$scorchMetadata,
             ];
         }
         $beforeTerrain = $cell->terrain->key;
@@ -290,6 +302,23 @@ final class MissileImpactResolver
         $beforePopulation = $cell->population;
         $targetNationId = $cell->owner_nation_id;
         $targetNationName = $cell->ownerNation?->name;
+        if ($beforeTerrain === 'wasteland') {
+            $this->scorchWasteland($context, $cell);
+            $this->recordMeaningfulImpact($context, $firingNation, $cell, $missileKey, 'land_scorched', [
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $cell->terrain->key,
+                'terrain_only' => true,
+            ], $targetNationId, $targetNationName);
+
+            return [
+                ...$base, 'meaningful' => true, 'effect' => 'land_scorched',
+                'target_nation_id' => $targetNationId, 'target_nation_name' => $targetNationName,
+                'from_terrain_key' => $beforeTerrain, 'to_terrain_key' => $cell->terrain->key,
+                'preserved_facility_key' => $beforeFacility,
+                'before_population' => $beforePopulation, 'after_population' => $cell->population,
+                'terrain_only' => true,
+            ];
+        }
         if ($beforeFacility === 'capital') {
             $loss = $this->damageCapital($context, $firingNation, $cell, $missileKey, 10);
             $refugees = $this->generateAndReceiveRefugees(
@@ -312,8 +341,7 @@ final class MissileImpactResolver
         if ($isWater && $beforeFacility === null) {
             return $base;
         }
-        if (in_array($beforeTerrain, ['wasteland', 'scorched'], true)
-            && $beforeFacility === null && $beforePopulation === 0) {
+        if ($beforeTerrain === 'scorched' && $beforeFacility === null && $beforePopulation === 0) {
             return [...$base, 'effect' => 'ineffective_barren_land'];
         }
         $settlement = in_array($beforeFacility, ['village', 'town', 'city'], true);
@@ -557,6 +585,23 @@ final class MissileImpactResolver
     {
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $this->changedCellIds[$cell->id] = true;
+    }
+
+    private function scorchWasteland(TurnContext $context, MapCell $cell): bool
+    {
+        if ($cell->terrain->key !== 'wasteland') {
+            return false;
+        }
+
+        $scorched = TerrainDefinition::query()->where('key', 'scorched')->firstOrFail();
+        if (! $this->cells->scorchWasteland($cell, $scorched)) {
+            throw new DomainException('Wasteland missile impact could not transition to scorched terrain.');
+        }
+        $cell->version++;
+        $cell->save();
+        $this->markCellChanged($context, $cell);
+
+        return true;
     }
 
     /**

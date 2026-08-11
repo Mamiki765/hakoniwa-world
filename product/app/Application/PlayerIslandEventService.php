@@ -1635,11 +1635,15 @@ final class PlayerIslandEventService
             }
             $x = is_numeric($impact['x'] ?? null) ? (int) $impact['x'] : 0;
             $y = is_numeric($impact['y'] ?? null) ? (int) $impact['y'] : 0;
+            $effect = $this->missileEffectLabel($impact['effect'] ?? null);
+            if (($impact['terrain_scorched'] ?? false) === true) {
+                $effect .= '（怪獣がいた荒地は焦土化しました）';
+            }
             $details[] = sprintf(
                 '(%s,%s): %s',
                 number_format($x),
                 number_format($y),
-                $this->missileEffectLabel($impact['effect'] ?? null),
+                $effect,
             );
         }
 

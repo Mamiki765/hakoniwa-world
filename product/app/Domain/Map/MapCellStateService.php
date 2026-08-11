@@ -29,6 +29,19 @@ final class MapCellStateService
         }
     }
 
+    public function scorchWasteland(MapCell $cell, TerrainDefinition $scorched): bool
+    {
+        if ($cell->terrain->key !== 'wasteland' || $scorched->key !== 'scorched') {
+            return false;
+        }
+
+        $cell->terrain_definition_id = $scorched->id;
+        $cell->terrain_quantity = $scorched->quantity_key === null ? null : $scorched->initial_quantity;
+        $cell->setRelation('terrain', $scorched);
+
+        return true;
+    }
+
     public function setFacility(
         MapCell $cell,
         ?FacilityDefinition $facility,
