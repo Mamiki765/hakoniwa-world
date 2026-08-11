@@ -7,6 +7,7 @@ use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\MissileTargetPolicy;
+use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
@@ -71,7 +72,7 @@ final class CommandQueueService
                 ->where('enabled', true)
                 ->first();
             if ($definition === null) {
-                throw new DomainException('利用できないcommandです。');
+                throw new PlayerFacingCommandException('利用できないcommandです。');
             }
 
             [$targetX, $targetY] = $this->resolveTargetCoordinates(
@@ -106,7 +107,7 @@ final class CommandQueueService
             // target state and assets are revalidated immediately before execution.
             $target = $this->targetCell($mapSpace, $targetX, $targetY);
             if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
-                throw new DomainException('首都を通常建設commandで上書きすることはできません。');
+                throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
             }
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
             $this->quantitySemantics->validateForRegistration($definition, $quantity, $quantityProvided);
@@ -125,7 +126,7 @@ final class CommandQueueService
                 ->get();
             $limit = $this->queueLimit($world);
             if ($activeItems->count() >= $limit) {
-                throw new DomainException("command queueの上限{$limit}件に達しています。");
+                throw new PlayerFacingCommandException("command queueの上限{$limit}件に達しています。");
             }
             if ($activeItems->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position === null || $item->queue_position < 1 || $item->queue_position > $limit
             )) {
@@ -140,7 +141,7 @@ final class CommandQueueService
             }
             $position ??= $this->firstAutomaticPosition($activeItems->pluck('queue_position')->all(), $limit);
             if ($position < 1 || $position > $limit) {
-                throw new DomainException("挿入位置は1から{$limit}の範囲で指定してください。");
+                throw new PlayerFacingCommandException("挿入位置は1から{$limit}の範囲で指定してください。");
             }
             $byPosition = $activeItems->keyBy(
                 static fn (NationCommandQueueItem $item): int => (int) $item->queue_position,
@@ -149,7 +150,7 @@ final class CommandQueueService
             $shifted = new Collection;
             for ($shiftPosition = $position; $byPosition->has($shiftPosition); $shiftPosition++) {
                 if ($shiftPosition >= $limit) {
-                    throw new DomainException('選択した位置へ挿入すると開発計画の末尾を超えます。');
+                    throw new PlayerFacingCommandException('選択した位置へ挿入すると開発計画の末尾を超えます。');
                 }
 
                 $shifted->push($byPosition->get($shiftPosition));
@@ -218,10 +219,10 @@ final class CommandQueueService
             $positions = collect($placements)->pluck('position')->all();
             $limit = $this->queueLimit($world);
             if ($currentIds !== $receivedIds || count($positions) !== count(array_unique($positions))) {
-                throw new DomainException('並べ替え対象が現在の開発計画と一致しません。');
+                throw new PlayerFacingCommandException('並べ替え対象が現在の開発計画と一致しません。');
             }
             if (collect($positions)->contains(static fn (mixed $position): bool => $position < 1 || $position > $limit)) {
-                throw new DomainException("開発計画の位置は1から{$limit}の範囲で指定してください。");
+                throw new PlayerFacingCommandException("開発計画の位置は1から{$limit}の範囲で指定してください。");
             }
 
             if ($currentIds !== []) {
@@ -254,7 +255,7 @@ final class CommandQueueService
             $this->assertVersion($queue, $expectedVersion);
             $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
-                throw new DomainException('編集できないcommandです。');
+                throw new PlayerFacingCommandException('編集できないcommandです。');
             }
             $item->loadMissing('definition');
             $this->quantitySemantics->assertEditable($item->definition);
@@ -293,7 +294,7 @@ final class CommandQueueService
             sort($expected);
             sort($received);
             if ($expected !== $received) {
-                throw new DomainException('reorder対象が現在のqueueと一致しません。');
+                throw new PlayerFacingCommandException('reorder対象が現在のqueueと一致しません。');
             }
 
             NationCommandQueueItem::query()->whereIn('id', $orderedIds)
@@ -318,7 +319,7 @@ final class CommandQueueService
             $this->assertVersion($queue, $expectedVersion);
             $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
-                throw new DomainException('取消できないcommandです。');
+                throw new PlayerFacingCommandException('取消できないcommandです。');
             }
             $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
             $this->compact($queue);
@@ -386,17 +387,17 @@ final class CommandQueueService
             return;
         }
         if (! in_array($terrainKey, $definition->target_terrain_keys, true)) {
-            throw new DomainException('対象地形ではこのcommandをqueueへ追加できません。');
+            throw new PlayerFacingCommandException('対象地形ではこのcommandをqueueへ追加できません。');
         }
         if (SettlementOverbuildPolicy::protectsCapital($definition->key, $facilityKey)) {
-            throw new DomainException('首都を通常建設commandで上書きすることはできません。');
+            throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
         }
         if ($definition->requires_empty_facility && $facilityKey !== null
             && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey)) {
-            throw new DomainException('施設のあるcellにはこのcommandをqueueへ追加できません。');
+            throw new PlayerFacingCommandException('施設のあるcellにはこのcommandをqueueへ追加できません。');
         }
         if ($definition->target_facility_keys !== [] && ! in_array($facilityKey, $definition->target_facility_keys, true)) {
-            throw new DomainException('対象施設ではこのcommandをqueueへ追加できません。');
+            throw new PlayerFacingCommandException('対象施設ではこのcommandをqueueへ追加できません。');
         }
 
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
@@ -409,7 +410,7 @@ final class CommandQueueService
                 ? null
                 : Nation::query()->whereKey($cell->owner_nation_id)->first();
             if ($targetNation === null || $targetNation->world_id !== $world->id || $targetNation->state !== 'active') {
-                throw new DomainException('active Nation所有のcellだけを対象にできます。');
+                throw new PlayerFacingCommandException('active Nation所有のcellだけを対象にできます。');
             }
 
             return;
@@ -417,29 +418,29 @@ final class CommandQueueService
 
         if (in_array($definition->key, ['reclaim'], true)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
-                throw new DomainException('他国所有の水域は埋め立てできません。');
+                throw new PlayerFacingCommandException('他国所有の水域は埋め立てできません。');
             }
             if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false)) {
-                throw new DomainException('埋め立て対象の隣に自国領がありません。');
+                throw new PlayerFacingCommandException('埋め立て対象の隣に自国領がありません。');
             }
 
             return;
         }
         if ($definition->key === 'excavate' && in_array($terrainKey, ['sea', 'shallow'], true)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
-                throw new DomainException('他国所有の水域は掘削できません。');
+                throw new PlayerFacingCommandException('他国所有の水域は掘削できません。');
             }
             if ($terrainKey === 'sea' && $cell->facility_definition_id !== null) {
-                throw new DomainException('施設のある海では油田探索できません。');
+                throw new PlayerFacingCommandException('施設のある海では油田探索できません。');
             }
             if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 3)) {
-                throw new DomainException('掘削対象の3hex以内に自国領がありません。');
+                throw new PlayerFacingCommandException('掘削対象の3hex以内に自国領がありません。');
             }
 
             return;
         }
         if ($cell->owner_nation_id !== $nation->id) {
-            throw new DomainException('自国領のcellだけを対象にできます。');
+            throw new PlayerFacingCommandException('自国領のcellだけを対象にできます。');
         }
     }
 
@@ -482,7 +483,7 @@ final class CommandQueueService
         );
         $reason = $this->territoryExpansion->failureReason($definition->metadata, $facts);
         if ($reason !== null) {
-            throw new DomainException($this->territoryExpansion->message($reason));
+            throw new PlayerFacingCommandException($this->territoryExpansion->message($reason));
         }
     }
 
@@ -576,7 +577,7 @@ final class CommandQueueService
     private function targetCell(MapSpace $mapSpace, int $x, int $y): MapCell
     {
         if ($x < $mapSpace->min_x || $x > $mapSpace->max_x || $y < $mapSpace->min_y || $y > $mapSpace->max_y) {
-            throw new DomainException('target x/yがmap bounds外です。');
+            throw new PlayerFacingCommandException('target x/yがmap bounds外です。');
         }
 
         $cell = MapCell::query()
@@ -586,7 +587,7 @@ final class CommandQueueService
             ->with(['terrain', 'facility'])
             ->first();
         if ($cell === null) {
-            throw new DomainException('target cellが存在しません。');
+            throw new PlayerFacingCommandException('target cellが存在しません。');
         }
 
         return $cell;
@@ -610,7 +611,7 @@ final class CommandQueueService
             return [(int) $capital->x, (int) $capital->y];
         }
         if ($targetX === null || $targetY === null) {
-            throw new DomainException('cell対象commandにはtarget x/yが必要です。');
+            throw new PlayerFacingCommandException('cell対象commandにはtarget x/yが必要です。');
         }
 
         return [$targetX, $targetY];
