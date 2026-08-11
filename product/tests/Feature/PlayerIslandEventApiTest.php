@@ -55,6 +55,46 @@ class PlayerIslandEventApiTest extends TestCase
         }
     }
 
+    public function test_monster_spawn_failure_is_audit_only_across_every_player_projection(): void
+    {
+        [$world, $owner, $nation] = $this->nation('監査島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $eventId = $this->audit('monster.spawn_failed_no_settlement', $nation, $nation, 'public', 2, [
+            'nation_id' => $nation->id,
+            'nation_number' => $nation->nation_number,
+            'owned_land_cells' => 987654321,
+            'population' => 876543210,
+        ]);
+
+        $responses = [
+            $this->getJson("/api/v1/public/worlds/{$world->id}/major-news")->assertOk(),
+            $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk(),
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+            $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
+        ];
+
+        foreach ($responses as $response) {
+            $body = (string) $response->getContent();
+            $eventIds = collect($response->json('data.groups'))->flatMap(
+                static fn (array $group): array => $group['events'],
+            )->pluck('id');
+
+            $this->assertNotContains($eventId, $eventIds);
+            foreach (['monster.spawn_failed_no_settlement', 'owned_land_cells', 'population', '987654321', '876543210'] as $hidden) {
+                $this->assertStringNotContainsString($hidden, $body);
+            }
+        }
+
+        $this->assertDatabaseHas('audit_events', [
+            'id' => $eventId,
+            'event_type' => 'monster.spawn_failed_no_settlement',
+            'visibility' => 'public',
+            'nation_id' => $nation->id,
+        ]);
+    }
+
     public function test_world_public_log_pages_by_two_turns_and_island_public_log_filters_to_that_island(): void
     {
         [$world, , $first] = $this->nation('第一島');

@@ -19,6 +19,9 @@ final class PlayerIslandEventService
 
     public const MAJOR_NEWS_LIMIT = 15;
 
+    // monster.spawn_failed_no_settlement is intentionally audit-only and absent
+    // from every player-facing allowlist. PR2 may make its writer visibility explicit.
+
     /** @var list<string> */
     private const OWNER_EVENT_TYPES = [
         'command.failed',
@@ -41,7 +44,6 @@ final class PlayerIslandEventService
         'facility.riot',
         'resource.automatic_sale',
         'capacity.overflow',
-        'monster.spawn_failed_no_settlement',
         'monster.stayed',
         'command.automatic_finance',
         'command.finance',
@@ -978,7 +980,6 @@ final class PlayerIslandEventService
                 $this->monsterLabel($metadata['monster_key'] ?? null),
                 number_format($this->integer($metadata, 'initial_hp')),
             ),
-            'monster.spawn_failed_no_settlement' => '怪獣出現判定が発生しましたが、対象となる集落がありませんでした。',
             'monster.moved' => sprintf(
                 '%sが移動しました。',
                 $this->monsterLabel($metadata['monster_key'] ?? null),
