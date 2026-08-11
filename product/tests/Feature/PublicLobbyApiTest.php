@@ -251,14 +251,14 @@ class PublicLobbyApiTest extends TestCase
         }
     }
 
-    public function test_public_monster_reward_news_is_third_party_safe_when_killer_and_host_differ(): void
+    public function test_public_monster_reward_event_is_hidden_when_killer_and_host_differ(): void
     {
-        $this->assertPublicMonsterRewardNews(987_654_321, 876_543_210);
+        $this->assertPublicMonsterRewardHidden(987_654_321, 876_543_210);
     }
 
-    public function test_public_monster_reward_news_is_third_party_safe_when_killer_and_host_are_same(): void
+    public function test_public_monster_reward_event_is_hidden_when_killer_and_host_are_same(): void
     {
-        $this->assertPublicMonsterRewardNews(987_654_321, 987_654_321);
+        $this->assertPublicMonsterRewardHidden(987_654_321, 987_654_321);
     }
 
     public function test_guest_nation_preview_uses_viewer_safe_cells_and_never_leaks_exact_money(): void
@@ -428,7 +428,7 @@ class PublicLobbyApiTest extends TestCase
         return $cell;
     }
 
-    private function assertPublicMonsterRewardNews(int $killerNationId, int $hostNationId): void
+    private function assertPublicMonsterRewardHidden(int $killerNationId, int $hostNationId): void
     {
         $world = $this->lightweightWorld();
         DB::table('audit_events')->insert([
@@ -462,14 +462,11 @@ class PublicLobbyApiTest extends TestCase
 
         $response = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()
-            ->assertJsonCount(1, 'data.groups.0.events')
-            ->assertJsonPath('data.groups.0.events.0.type', 'monster.reward_distributed')
-            ->assertJsonPath(
-                'data.groups.0.events.0.message',
-                'いのらが倒され、撃破報酬が配分されました。',
-            );
+            ->assertJsonPath('data.groups', []);
 
         foreach ([
+            'monster.reward_distributed',
+            '撃破報酬',
             '受け取りました',
             (string) $killerNationId,
             (string) $hostNationId,

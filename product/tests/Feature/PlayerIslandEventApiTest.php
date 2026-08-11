@@ -126,8 +126,8 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertJsonPath('data.turns_per_page', 24);
         $body = (string) $islandPage->getContent();
         $messages = $this->messages($islandPage->json('data.groups'));
-        $this->assertContains('第一島(1,2)で農場が建設されました。', $messages);
-        $this->assertContains('第一島(5,6)で採掘場が建設されました。', $messages);
+        $this->assertContains('第一島(1,2)で農場整備が行われました。', $messages);
+        $this->assertContains('第一島(5,6)で採掘場整備が行われました。', $messages);
         $this->assertFalse(collect($messages)->contains(
             static fn (string $message): bool => str_contains($message, '第二島'),
         ));
@@ -149,24 +149,40 @@ class PlayerIslandEventApiTest extends TestCase
             'monster_key' => 'inora', 'x' => 12, 'y' => 8,
         ]);
         $damagedWithHost = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
-            'monster_key' => 'inora', 'host_nation_id' => $host->id, 'x' => 12, 'y' => 8,
+            'monster_key' => 'inora', 'host_nation_id' => $host->id,
+            'host_nation_name' => $host->name, 'x' => 12, 'y' => 8,
+        ]);
+        $legacyDamagedWithHostId = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
+            'monster_key' => 'inora', 'host_nation_id' => $host->id, 'x' => 10, 'y' => 9,
         ]);
         $killedWithHost = $this->audit('monster.killed', $attacker, $attacker, 'public', 2, [
             'monster_key' => 'inora',
             'killer_nation_id' => $attacker->id,
             'host_nation_id' => $host->id,
+            'host_nation_name' => $host->name,
             'x' => 12,
             'y' => 8,
         ]);
+        $host->update(['name' => '現在怪獣島']);
 
         $worldResponse = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
         $worldEvents = collect($worldResponse->json('data.groups'))->flatMap(
             static fn (array $group): array => $group['events'],
         );
-        $this->assertSame([$killedWithHost, $damagedWithHost], $worldEvents->pluck('id')->all());
-        $this->assertSame('怪獣島(12,8)のいのらは力尽き、倒れました。', $worldEvents->first()['message']);
+        $this->assertSame(
+            [$killedWithHost, $legacyDamagedWithHostId, $damagedWithHost],
+            $worldEvents->pluck('id')->all(),
+        );
+        $this->assertSame(
+            '怪獣島(12,8)のいのらは力尽き、倒れました。怪獣は解体され、報酬が分配されました。',
+            $worldEvents->first()['message'],
+        );
         $this->assertContains(
             '怪獣島(12,8)のいのらに攻撃が命中し、苦しそうに咆哮しました。',
+            $worldEvents->pluck('message')->all(),
+        );
+        $this->assertContains(
+            '現在怪獣島(10,9)のいのらに攻撃が命中し、苦しそうに咆哮しました。',
             $worldEvents->pluck('message')->all(),
         );
 
@@ -174,7 +190,10 @@ class PlayerIslandEventApiTest extends TestCase
         $hostEvents = collect($hostResponse->json('data.groups'))->flatMap(
             static fn (array $group): array => $group['events'],
         );
-        $this->assertSame([$killedWithHost, $damagedWithHost], $hostEvents->pluck('id')->all());
+        $this->assertSame(
+            [$killedWithHost, $legacyDamagedWithHostId, $damagedWithHost],
+            $hostEvents->pluck('id')->all(),
+        );
 
         $attackerResponse = $this->getJson("/api/v1/public/nations/{$attacker->id}/events")->assertOk();
         $attackerEventIds = collect($attackerResponse->json('data.groups'))->flatMap(
@@ -183,7 +202,47 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertNotContains($blockedWithoutHost, $attackerEventIds);
         $this->assertNotContains($damagedWithoutHost, $attackerEventIds);
         $this->assertNotContains($damagedWithHost, $attackerEventIds);
+        $this->assertNotContains($legacyDamagedWithHostId, $attackerEventIds);
         $this->assertNotContains($killedWithHost, $attackerEventIds);
+    }
+
+    public function test_public_aid_is_one_world_event_related_to_both_snapshot_nations_and_exposes_only_actual_transfer(): void
+    {
+        [$world, , $sender] = $this->nation('援助元島');
+        [, , $receiver] = $this->nation('援助先島', $world);
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $eventId = $this->audit('command.money_aid_public', $sender, $sender, 'public', 2, [
+            'sender_nation_id' => $sender->id,
+            'sender_nation_name' => '援助元島',
+            'receiver_nation_id' => $receiver->id,
+            'receiver_nation_name' => '援助先島',
+            'transferred_money' => 100,
+            'requested_money' => 9_876_543,
+            'receiver_capacity' => 8_765_432,
+            'sender_balance' => 7_654_321,
+        ]);
+        $sender->update(['name' => '現在援助元島']);
+        $receiver->update(['name' => '現在援助先島']);
+
+        $worldResponse = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $senderResponse = $this->getJson("/api/v1/public/nations/{$sender->id}/events")->assertOk();
+        $receiverResponse = $this->getJson("/api/v1/public/nations/{$receiver->id}/events")->assertOk();
+        foreach ([$worldResponse, $senderResponse, $receiverResponse] as $response) {
+            $events = collect($response->json('data.groups'))->flatMap(
+                static fn (array $group): array => $group['events'],
+            );
+            $this->assertSame([$eventId], $events->pluck('id')->all());
+            $this->assertSame(
+                '援助元島から援助先島へ100億円の資金援助が行われました。',
+                $events->first()['message'],
+            );
+            $body = (string) $response->getContent();
+            foreach (['requested_money', 'receiver_capacity', 'sender_balance', '9,876,543', '8,765,432', '7,654,321'] as $hidden) {
+                $this->assertStringNotContainsString($hidden, $body);
+            }
+        }
     }
 
     public function test_monster_defense_self_destruct_uses_defense_cell_for_public_log(): void
@@ -257,6 +316,53 @@ class PlayerIslandEventApiTest extends TestCase
         foreach (['99,999', 'command.facility_built_public', 'message_board.secret_sent', '秘密通信本文', '誤分類されても非表示', 'money_before'] as $hidden) {
             $this->assertStringNotContainsString($hidden, $body);
         }
+    }
+
+    public function test_legacy_public_monster_reward_remains_visible_only_to_related_owners(): void
+    {
+        [$world, $killerOwner, $killer] = $this->nation('旧撃破島');
+        [, $hostOwner, $host] = $this->nation('旧所在島', $world);
+        [, $spectatorOwner, $spectator] = $this->nation('無関係島', $world);
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $rewardId = $this->audit('monster.reward_distributed', $killer, $killer, 'public', 2, [
+            'monster_key' => 'inora',
+            'killer_nation_id' => $killer->id,
+            'host_nation_id' => $host->id,
+            'killer_money' => ['applied' => 321],
+            'host_meat_food' => ['applied' => 654],
+        ]);
+
+        $killerResponse = $this->actingAs($killerOwner)
+            ->getJson("/api/v1/nations/{$killer->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.events.0.id', $rewardId);
+        $this->assertContains(
+            'いのらを撃破し、賞金321億円を受け取りました。',
+            $this->messages($killerResponse->json('data.groups')),
+        );
+        $hostResponse = $this->actingAs($hostOwner)
+            ->getJson("/api/v1/nations/{$host->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.events.0.id', $rewardId);
+        $this->assertContains(
+            'いのらが倒され、怪獣肉654トンを受け取りました。',
+            $this->messages($hostResponse->json('data.groups')),
+        );
+        $this->actingAs($spectatorOwner)
+            ->getJson("/api/v1/nations/{$spectator->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups', []);
+        $this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups', []);
+        $this->getJson("/api/v1/public/nations/{$killer->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups', []);
+        $this->getJson("/api/v1/public/nations/{$host->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups', []);
     }
 
     public function test_secret_facilities_are_blurred_publicly_and_exact_only_for_the_owner(): void
@@ -386,6 +492,9 @@ class PlayerIslandEventApiTest extends TestCase
         $this->audit('missile.launch_detail', $firing, $firing, 'private', 2, [
             'command_key' => 'pp_missile', 'target_x' => 50, 'target_y' => 51,
             'cost_money' => 900, 'fired_shots' => 3,
+            'firing_bases' => [
+                ['x' => 44, 'y' => 45, 'facility_key' => 'missile_base', 'fired_shots' => 3],
+            ],
             'impacts' => [
                 ['x' => 12, 'y' => 8, 'effect' => 'capital_damaged', 'meaningful' => true],
                 ['x' => 1, 'y' => 1, 'effect' => 'ineffective_sea', 'meaningful' => false],
@@ -400,7 +509,7 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertTrue(collect($publicMessages)->contains(
             static fn (string $message): bool => str_contains($message, '効果のない着弾8件はまとめて記録されました。'),
         ));
-        foreach (['(50,51)', '費用900', 'all_impacts', 'cost_money', 'target_x', 'impacts'] as $hidden) {
+        foreach (['(50,51)', '(44,45)', '費用900', 'all_impacts', 'cost_money', 'target_x', 'firing_bases', 'impacts'] as $hidden) {
             $this->assertStringNotContainsString($hidden, $publicBody);
         }
 
@@ -411,6 +520,7 @@ class PlayerIslandEventApiTest extends TestCase
         $ownerMessages = implode("\n", $this->messages($ownerResponse->json('data.groups')));
         $this->assertStringContainsString('狙点(50,51)', $ownerMessages);
         $this->assertStringContainsString('費用900億円', $ownerMessages);
+        $this->assertStringContainsString('発射基地: (44,45)から3発', $ownerMessages);
         $this->assertStringContainsString('(12,8)', $ownerMessages);
         $this->assertStringContainsString('(1,1)', $ownerMessages);
     }

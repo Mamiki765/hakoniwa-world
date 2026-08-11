@@ -4,13 +4,17 @@ namespace App\Application;
 
 use App\Domain\Award\NationAwardCatalog;
 use App\Domain\Turn\TurnContext;
+use App\Models\Nation;
 use App\Models\NationAward;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
 final class AwardTurnFinalizer
 {
-    public function __construct(private readonly MonsterKillCycleService $monsterCycles) {}
+    public function __construct(
+        private readonly MonsterKillCycleService $monsterCycles,
+        private readonly TurnEventRecorder $events,
+    ) {}
 
     /**
      * @return array{
@@ -123,11 +127,12 @@ final class AwardTurnFinalizer
 
     private function grant(TurnContext $context, int $nationId, string $awardKey, bool $recurring): bool
     {
-        if (NationAwardCatalog::definition($awardKey) === null) {
+        $definition = NationAwardCatalog::definition($awardKey);
+        if ($definition === null) {
             throw new DomainException("Unknown Nation award key {$awardKey}.");
         }
 
-        return DB::table('nation_awards')->insertOrIgnore([
+        $inserted = DB::table('nation_awards')->insertOrIgnore([
             'world_id' => $context->world->id,
             'nation_id' => $nationId,
             'award_key' => $awardKey,
@@ -135,5 +140,22 @@ final class AwardTurnFinalizer
             'award_occurrence_key' => $recurring ? "turn:{$context->targetTurn}" : 'once',
             'created_at' => now(),
         ]) === 1;
+        if (! $inserted) {
+            return false;
+        }
+
+        $nation = Nation::query()
+            ->where('world_id', $context->world->id)
+            ->whereKey($nationId)
+            ->firstOrFail();
+        $this->events->record($context, 'award.granted', $nation, [
+            'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
+            'award_key' => $awardKey,
+            'award_name' => $definition['name'],
+            'awarded_turn' => $context->targetTurn,
+        ], 'public');
+
+        return true;
     }
 }

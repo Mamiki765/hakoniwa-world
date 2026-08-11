@@ -507,6 +507,10 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(500, $detailMetadata['cost_money']);
         $this->assertCount(1, $detailMetadata['impacts']);
         $this->assertSame('capital_damaged', $detailMetadata['impacts'][0]['effect']);
+        $this->assertCount(1, $detailMetadata['firing_bases']);
+        $this->assertSame($base->x, $detailMetadata['firing_bases'][0]['x']);
+        $this->assertSame($base->y, $detailMetadata['firing_bases'][0]['y']);
+        $this->assertSame(1, $detailMetadata['firing_bases'][0]['fired_shots']);
         $this->assertSame('completed', $item->fresh()->status);
 
         $targetMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($target, 1, 2)['groups'])
@@ -523,6 +527,7 @@ class CommandAndMissileTest extends TestCase
         $this->assertTrue($firingMessages->contains(
             fn (string $message): bool => str_contains($message, 'SPPミサイルを狙点')
                 && str_contains($message, '費用500億円')
+                && str_contains($message, sprintf('発射基地: (%d,%d)から1発', $base->x, $base->y))
                 && str_contains($message, '着弾結果:'),
         ));
     }
@@ -1184,6 +1189,16 @@ class CommandAndMissileTest extends TestCase
         ));
         $this->assertSame(2, $publicEvents->where('type', 'command.facility_built_public')
             ->filter(fn (array $event): bool => str_contains($event['message'], '防衛施設'))->count());
+        $this->assertTrue($publicEvents->contains(
+            fn (array $event): bool => $event['type'] === 'command.capital_relocated_public'
+                && $event['message'] === sprintf(
+                    '残存開発国の首都が(%d,%d)から(%d,%d)へ移転しました。',
+                    $capital->x,
+                    $capital->y,
+                    $cityTarget->x,
+                    $cityTarget->y,
+                ),
+        ));
     }
 
     public function test_aid_attraction_and_monster_dispatch_execute_as_nation_commands(): void
@@ -1228,6 +1243,8 @@ class CommandAndMissileTest extends TestCase
             'cell',
             fn ($query) => $query->where('owner_nation_id', $receiver->id),
         )->count());
+        Nation::query()->whereKey($sender->id)->update(['name' => '現在送信国']);
+        Nation::query()->whereKey($receiver->id)->update(['name' => '現在受信国']);
         $senderMessages = collect(app(PlayerIslandEventService::class)->ownerPage($sender, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $receiverMessages = collect(app(PlayerIslandEventService::class)->ownerPage($receiver, 1, 2)['groups'])
@@ -1244,7 +1261,29 @@ class CommandAndMissileTest extends TestCase
         $this->assertTrue($receiverMessages->contains(
             fn (string $message): bool => str_contains($message, '支援派遣国から食料援助として2,000トン'),
         ));
+        $eventService = app(PlayerIslandEventService::class);
+        $worldAidEvents = collect($eventService->publicWorldPage($world, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->whereIn('type', ['command.money_aid_public', 'command.food_aid_public'])->values();
+        $senderAidEvents = collect($eventService->publicNationPage($sender->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->whereIn('type', ['command.money_aid_public', 'command.food_aid_public'])->values();
+        $receiverAidEvents = collect($eventService->publicNationPage($receiver->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->whereIn('type', ['command.money_aid_public', 'command.food_aid_public'])->values();
+        $this->assertCount(2, $worldAidEvents);
+        $this->assertSame($worldAidEvents->pluck('id')->all(), $senderAidEvents->pluck('id')->all());
+        $this->assertSame($worldAidEvents->pluck('id')->all(), $receiverAidEvents->pluck('id')->all());
+        $this->assertEqualsCanonicalizing([
+            '支援派遣国から支援受領国へ200億円の資金援助が行われました。',
+            '支援派遣国から支援受領国へ食料2,000トンの援助が行われました。',
+        ], $worldAidEvents->pluck('message')->all());
+        $publicAidJson = json_encode($worldAidEvents->all(), JSON_THROW_ON_ERROR);
+        foreach (['requested_money', 'receiver_capacity', 'requested_food_tons', 'sender_money_before'] as $privateKey) {
+            $this->assertStringNotContainsString($privateKey, $publicAidJson);
+        }
 
+        $sender->refresh();
         $attraction = $this->queue($service, $user, $sender, $space, 'attraction', null);
         $sender->update(['money' => 1_000]);
         $attractionContext = $this->context($world, 3, hash('sha256', 'attraction command'), [$sender->id]);
@@ -1252,6 +1291,12 @@ class CommandAndMissileTest extends TestCase
         $this->assertTrue($attractionContext->state->hasAttraction($sender->id));
         $this->assertSame(0, $sender->fresh()->money);
         $this->assertSame('completed', $attraction->fresh()->status);
+        $attractionEvents = collect($eventService->publicNationPage($sender->fresh(), 1, 3)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $this->assertTrue($attractionEvents->contains(
+            fn (array $event): bool => $event['type'] === 'command.attraction_started_public'
+                && $event['message'] === '現在送信国で誘致活動が行われました。',
+        ));
     }
 
     public function test_zero_effect_money_and_food_aid_preserve_assets_and_increment_idle_through_automatic_finance(): void
@@ -1303,10 +1348,18 @@ class CommandAndMissileTest extends TestCase
             ->value(DB::raw("(metadata->>'transferred_money')::integer")));
         $this->assertSame(0, (int) DB::table('audit_events')->where('event_type', 'command.food_aid_transferred')
             ->value(DB::raw("(metadata->>'transferred_food_tons')::integer")));
-        $messages = collect(app(PlayerIslandEventService::class)->ownerPage($sender, 1, 2)['groups'])
+        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', [
+            'command.money_aid_public', 'command.food_aid_public',
+        ])->count());
+        $events = app(PlayerIslandEventService::class);
+        $messages = collect($events->ownerPage($sender, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
+        $receiverMessages = collect($events->ownerPage($receiver, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($messages->contains(fn (string $message): bool => str_contains($message, '資金収容上限')));
         $this->assertTrue($messages->contains(fn (string $message): bool => str_contains($message, '食料収容上限')));
+        $this->assertTrue($receiverMessages->contains(fn (string $message): bool => str_contains($message, '資金収容上限')));
+        $this->assertTrue($receiverMessages->contains(fn (string $message): bool => str_contains($message, '食料収容上限')));
     }
 
     public function test_partial_aid_is_meaningful_and_resets_idle_with_exact_transfer_and_overflow(): void
