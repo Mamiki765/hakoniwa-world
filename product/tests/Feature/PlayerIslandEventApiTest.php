@@ -152,6 +152,9 @@ class PlayerIslandEventApiTest extends TestCase
             'monster_key' => 'inora', 'host_nation_id' => $host->id,
             'host_nation_name' => $host->name, 'x' => 12, 'y' => 8,
         ]);
+        $legacyDamagedWithHostId = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
+            'monster_key' => 'inora', 'host_nation_id' => $host->id, 'x' => 10, 'y' => 9,
+        ]);
         $killedWithHost = $this->audit('monster.killed', $attacker, $attacker, 'public', 2, [
             'monster_key' => 'inora',
             'killer_nation_id' => $attacker->id,
@@ -166,7 +169,10 @@ class PlayerIslandEventApiTest extends TestCase
         $worldEvents = collect($worldResponse->json('data.groups'))->flatMap(
             static fn (array $group): array => $group['events'],
         );
-        $this->assertSame([$killedWithHost, $damagedWithHost], $worldEvents->pluck('id')->all());
+        $this->assertSame(
+            [$killedWithHost, $legacyDamagedWithHostId, $damagedWithHost],
+            $worldEvents->pluck('id')->all(),
+        );
         $this->assertSame(
             '怪獣島(12,8)のいのらは力尽き、倒れました。怪獣は解体され、報酬が分配されました。',
             $worldEvents->first()['message'],
@@ -175,12 +181,19 @@ class PlayerIslandEventApiTest extends TestCase
             '怪獣島(12,8)のいのらに攻撃が命中し、苦しそうに咆哮しました。',
             $worldEvents->pluck('message')->all(),
         );
+        $this->assertContains(
+            '現在怪獣島(10,9)のいのらに攻撃が命中し、苦しそうに咆哮しました。',
+            $worldEvents->pluck('message')->all(),
+        );
 
         $hostResponse = $this->getJson("/api/v1/public/nations/{$host->id}/events")->assertOk();
         $hostEvents = collect($hostResponse->json('data.groups'))->flatMap(
             static fn (array $group): array => $group['events'],
         );
-        $this->assertSame([$killedWithHost, $damagedWithHost], $hostEvents->pluck('id')->all());
+        $this->assertSame(
+            [$killedWithHost, $legacyDamagedWithHostId, $damagedWithHost],
+            $hostEvents->pluck('id')->all(),
+        );
 
         $attackerResponse = $this->getJson("/api/v1/public/nations/{$attacker->id}/events")->assertOk();
         $attackerEventIds = collect($attackerResponse->json('data.groups'))->flatMap(
@@ -189,6 +202,7 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertNotContains($blockedWithoutHost, $attackerEventIds);
         $this->assertNotContains($damagedWithoutHost, $attackerEventIds);
         $this->assertNotContains($damagedWithHost, $attackerEventIds);
+        $this->assertNotContains($legacyDamagedWithHostId, $attackerEventIds);
         $this->assertNotContains($killedWithHost, $attackerEventIds);
     }
 
@@ -302,6 +316,53 @@ class PlayerIslandEventApiTest extends TestCase
         foreach (['99,999', 'command.facility_built_public', 'message_board.secret_sent', '秘密通信本文', '誤分類されても非表示', 'money_before'] as $hidden) {
             $this->assertStringNotContainsString($hidden, $body);
         }
+    }
+
+    public function test_legacy_public_monster_reward_remains_visible_only_to_related_owners(): void
+    {
+        [$world, $killerOwner, $killer] = $this->nation('旧撃破島');
+        [, $hostOwner, $host] = $this->nation('旧所在島', $world);
+        [, $spectatorOwner, $spectator] = $this->nation('無関係島', $world);
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $rewardId = $this->audit('monster.reward_distributed', $killer, $killer, 'public', 2, [
+            'monster_key' => 'inora',
+            'killer_nation_id' => $killer->id,
+            'host_nation_id' => $host->id,
+            'killer_money' => ['applied' => 321],
+            'host_meat_food' => ['applied' => 654],
+        ]);
+
+        $killerResponse = $this->actingAs($killerOwner)
+            ->getJson("/api/v1/nations/{$killer->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.events.0.id', $rewardId);
+        $this->assertContains(
+            'いのらを撃破し、賞金321億円を受け取りました。',
+            $this->messages($killerResponse->json('data.groups')),
+        );
+        $hostResponse = $this->actingAs($hostOwner)
+            ->getJson("/api/v1/nations/{$host->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.events.0.id', $rewardId);
+        $this->assertContains(
+            'いのらが倒され、怪獣肉654トンを受け取りました。',
+            $this->messages($hostResponse->json('data.groups')),
+        );
+        $this->actingAs($spectatorOwner)
+            ->getJson("/api/v1/nations/{$spectator->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups', []);
+        $this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups', []);
+        $this->getJson("/api/v1/public/nations/{$killer->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups', []);
+        $this->getJson("/api/v1/public/nations/{$host->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups', []);
     }
 
     public function test_secret_facilities_are_blurred_publicly_and_exact_only_for_the_owner(): void

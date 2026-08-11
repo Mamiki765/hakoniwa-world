@@ -163,7 +163,8 @@ final class PlayerIslandEventService
                         ->where('events.nation_id', $nation->id);
                 })->orWhere(function (Builder $reward) use ($nation): void {
                     $reward->where('events.event_type', 'monster.reward_distributed')
-                        ->where('events.visibility', 'private')
+                        // Legacy rows were public, but this branch remains role-gated.
+                        ->whereIn('events.visibility', ['public', 'private'])
                         ->where(function (Builder $role) use ($nation): void {
                             $role->whereRaw("events.metadata->>'killer_nation_id' = ?", [(string) $nation->id])
                                 ->orWhereRaw("events.metadata->>'host_nation_id' = ?", [(string) $nation->id]);
@@ -410,10 +411,15 @@ final class PlayerIslandEventService
                 return true;
             }
 
-            $destinationNationId = $this->metadata($row->metadata)[$destinationKey] ?? null;
+            $metadata = $this->metadata($row->metadata);
+            $destinationNationId = $metadata[$destinationKey] ?? null;
+            $snapshotKey = $destinationKey === 'host_nation_id'
+                ? 'host_nation_name'
+                : 'defense_owner_nation_name';
 
             return is_numeric($destinationNationId)
-                && array_key_exists((int) $destinationNationId, $destinationNationNames);
+                && (is_string($metadata[$snapshotKey] ?? null)
+                    || array_key_exists((int) $destinationNationId, $destinationNationNames));
         });
         $events = $rows->map(function (object $row) use ($destinationNationNames): array {
             $rawMetadata = $this->metadata($row->metadata);
@@ -459,8 +465,9 @@ final class PlayerIslandEventService
      */
     private function publicDestinationNationNames(World $world, array $rows): array
     {
+        // Snapshot names stay row-local. Resolve current names only for legacy
+        // rows that captured the destination ID but not its name.
         $nationIds = [];
-        $names = [];
         foreach ($rows as $row) {
             $eventType = (string) $row->event_type;
             $metadata = $this->metadata($row->metadata);
@@ -474,26 +481,22 @@ final class PlayerIslandEventService
                 $nameKey = $key === 'host_nation_id'
                     ? 'host_nation_name'
                     : 'defense_owner_nation_name';
-                if (is_string($metadata[$nameKey] ?? null)) {
-                    $names[$nationId] = $metadata[$nameKey];
-                } else {
+                if (! is_string($metadata[$nameKey] ?? null)) {
                     $nationIds[] = $nationId;
                 }
             }
         }
 
         if ($nationIds === []) {
-            return $names;
+            return [];
         }
 
-        $fallbackNames = Nation::query()
+        return Nation::query()
             ->where('world_id', $world->id)
             ->whereIn('id', array_values(array_unique($nationIds)))
             ->pluck('name', 'id')
             ->mapWithKeys(static fn (string $name, int|string $id): array => [(int) $id => $name])
             ->all();
-
-        return $names + $fallbackNames;
     }
 
     /**
