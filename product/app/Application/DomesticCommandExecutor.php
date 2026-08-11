@@ -667,7 +667,7 @@ final class DomesticCommandExecutor
             'y' => $cell->y,
             'monument_definition_key' => $monument?->key,
         ], $constructionVisibility);
-        $this->recordConstructionProjection($context, $nation, $definition, $cell, $expanded);
+        $this->recordConstructionProjection($context, $nation, $definition, $cell, $expanded, $beforeScale);
 
         return true;
     }
@@ -678,11 +678,15 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
         MapCell $cell,
         bool $expanded,
+        ?int $beforeScale,
     ): void {
         $metadata = [
             'nation_id' => $nation->id, 'nation_name' => $nation->name,
             'command_key' => $definition->key,
             'facility_key' => $definition->result_facility_key,
+            'expanded' => $expanded,
+            'before_scale' => $beforeScale,
+            'facility_scale' => $cell->facility_scale,
             'x' => $cell->x, 'y' => $cell->y,
         ];
         if ($definition->key === 'build_missile_base') {

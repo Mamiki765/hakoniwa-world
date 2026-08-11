@@ -740,7 +740,9 @@ final class PlayerIslandEventService
             'command.forest_planted_public', 'command.logging_public',
             'command.seabed_base_built_public', 'land_subsidence.triggered',
             'refugee_generated' => ['nation_name'],
-            'command.facility_built_public' => ['nation_name', 'facility_key', 'x', 'y'],
+            'command.facility_built_public' => [
+                'nation_name', 'facility_key', 'expanded', 'before_scale', 'facility_scale', 'x', 'y',
+            ],
             'command.capital_relocated_public' => ['nation_name', 'from_x', 'from_y', 'x', 'y'],
             'command.attraction_started_public' => ['nation_name'],
             'command.money_aid_public' => [
@@ -798,15 +800,47 @@ final class PlayerIslandEventService
     private function publicFacilityBuiltMessage(array $metadata): string
     {
         $nation = is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '島';
+        $maskedFacility = $metadata['masked_facility'] ?? null;
+        if ($maskedFacility === 'forest') {
+            return "こころなしか、{$nation}のどこかで森が増えた気がします。";
+        }
+        if ($maskedFacility === 'seabed_base') {
+            return "{$nation}で海底基地が建設されたようです(?,?)。";
+        }
 
-        return match ($metadata['masked_facility'] ?? null) {
-            'forest' => "こころなしか、{$nation}のどこかで森が増えた気がします。",
-            'seabed_base' => "{$nation}で海底基地が建設されたようです(?,?)。",
-            default => $this->constructionMessage(
+        $facilityKey = $metadata['facility_key'] ?? null;
+        if (in_array($facilityKey, ['farm', 'factory', 'mine'], true)) {
+            return $this->productiveFacilityMessage(
                 $metadata,
-                $this->facilityLabel($metadata['facility_key'] ?? null),
-            ),
-        };
+                $this->facilityLabel($facilityKey),
+            );
+        }
+
+        return $this->constructionMessage(
+            $metadata,
+            $this->facilityLabel($facilityKey),
+        );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function productiveFacilityMessage(array $metadata, string $facility): string
+    {
+        $message = sprintf(
+            '%s(%s,%s)で%s整備が行われました。',
+            $metadata['nation_name'] ?? 'Nation',
+            number_format($this->integer($metadata, 'x')),
+            number_format($this->integer($metadata, 'y')),
+            $facility,
+        );
+        if (($metadata['expanded'] ?? false) !== true) {
+            return $message;
+        }
+
+        return $message.sprintf(
+            '（規模 %s → %s）',
+            number_format($this->integer($metadata, 'before_scale')),
+            number_format($this->integer($metadata, 'facility_scale')),
+        );
     }
 
     /** @param array<string, mixed> $metadata */
@@ -1119,10 +1153,7 @@ final class PlayerIslandEventService
             'command.seabed_base_built_private' => $this->privateConstructionMessage($metadata, '海底基地'),
             'command.decoy_built_public' => $this->constructionMessage($metadata, '防衛施設'),
             'command.decoy_built_private' => $this->privateConstructionMessage($metadata, 'ハリボテ'),
-            'command.facility_built_public' => $this->constructionMessage(
-                $metadata,
-                $this->facilityLabel($metadata['facility_key'] ?? null),
-            ),
+            'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
             'command.logging_public' => 'こころなしか、どこかで森が減った気がします。',
             'command.logging_private' => sprintf(
                 '%s(%s,%s)で伐採し、%s億円を得ました。',

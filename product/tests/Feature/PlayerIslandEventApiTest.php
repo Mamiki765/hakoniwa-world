@@ -126,8 +126,8 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertJsonPath('data.turns_per_page', 24);
         $body = (string) $islandPage->getContent();
         $messages = $this->messages($islandPage->json('data.groups'));
-        $this->assertContains('第一島(1,2)で農場が建設されました。', $messages);
-        $this->assertContains('第一島(5,6)で採掘場が建設されました。', $messages);
+        $this->assertContains('第一島(1,2)で農場整備が行われました。', $messages);
+        $this->assertContains('第一島(5,6)で採掘場整備が行われました。', $messages);
         $this->assertFalse(collect($messages)->contains(
             static fn (string $message): bool => str_contains($message, '第二島'),
         ));
