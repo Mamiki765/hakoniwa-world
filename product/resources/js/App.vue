@@ -63,6 +63,7 @@ const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as cons
 const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
+const islandWorkspaceScroll = ref<HTMLElement | null>(null);
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
 const nonFoodResources = computed(() => nation.value?.resources.filter((resource) => resource.category !== 'food') ?? []);
 const nextTurnCountdown = computed(() => {
@@ -76,6 +77,17 @@ const nextTurnCountdown = computed(() => {
     return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 });
 const turnStatusMessage = computed(() => matchTurnStatus(worldSummary.value?.turn_status));
+
+function scrollIslandWorkspaceTo(selector: string): void {
+    const scroller = islandWorkspaceScroll.value;
+    const section = scroller?.querySelector<HTMLElement>(selector);
+    if (!scroller || !section) return;
+
+    scroller.scrollTo({
+        left: section.offsetLeft,
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+}
 
 function formatResource(amount: number, unitLabel: string | null): string {
     return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
@@ -821,23 +833,39 @@ async function updateProfile(): Promise<void> {
                     <span>出来事は24ターンごとに表示</span>
                 </details>
             </header>
-            <div class="island-grid">
-                <CommandQueuePanel :nation-id="nation.id" :map-space-id="mapSpace.id" :selected="map.selected.value" />
-                <div class="map-column">
-                    <HexMap
-                        :cells="map.visibleCells.value"
-                        :selected="map.selected.value"
-                        :capital="nation.capital"
-                        :bounds="mapSpace.bounds"
-                        :own-nation-id="nation.id"
-                        :loading="map.loading.value"
-                        :error="map.error.value"
-                        :empty-chunks="map.emptyChunks.value"
-                        @select="map.select"
-                        @move="map.moveSelection"
-                        @request-range="map.loadVisibleRange"
-                        @request-all="map.loadAllChunks"
-                    />
+            <div class="island-workspace-region">
+                <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
+                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
+                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.map-column')">地図</button>
+                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.plan-panel')">開発計画</button>
+                </nav>
+                <div
+                    id="island-development-workspace"
+                    ref="islandWorkspaceScroll"
+                    class="island-workspace-scroll"
+                    role="region"
+                    aria-label="島開発ワークスペース（横スクロール）"
+                    tabindex="0"
+                >
+                    <div class="island-grid">
+                        <CommandQueuePanel :nation-id="nation.id" :map-space-id="mapSpace.id" :selected="map.selected.value" />
+                        <div class="map-column">
+                            <HexMap
+                                :cells="map.visibleCells.value"
+                                :selected="map.selected.value"
+                                :capital="nation.capital"
+                                :bounds="mapSpace.bounds"
+                                :own-nation-id="nation.id"
+                                :loading="map.loading.value"
+                                :error="map.error.value"
+                                :empty-chunks="map.emptyChunks.value"
+                                @select="map.select"
+                                @move="map.moveSelection"
+                                @request-range="map.loadVisibleRange"
+                                @request-all="map.loadAllChunks"
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
             <IslandEventLog :key="`public:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="public" />

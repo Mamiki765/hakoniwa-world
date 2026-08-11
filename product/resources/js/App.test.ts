@@ -678,6 +678,21 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.hud-details').text()).toContain('鉱物0トン');
         expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000トン');
         expect(wrapper.find('.island-grid').exists()).toBe(true);
+        const workspaceScroll = wrapper.get('.island-workspace-scroll');
+        expect(workspaceScroll.attributes('role')).toBe('region');
+        expect(workspaceScroll.attributes('tabindex')).toBe('0');
+        expect(workspaceScroll.find('.island-grid').exists()).toBe(true);
+        expect(workspaceScroll.find('.command-panel').exists()).toBe(true);
+        expect(workspaceScroll.find('.map-column').exists()).toBe(true);
+        expect(workspaceScroll.find('.plan-panel').exists()).toBe(true);
+        expect(workspaceScroll.find('.island-events-panel').exists()).toBe(false);
+        const workspaceJumpButtons = wrapper.findAll('.workspace-jump button');
+        expect(workspaceJumpButtons).toHaveLength(3);
+        expect(workspaceJumpButtons.every((button) => button.attributes('aria-controls') === workspaceScroll.attributes('id'))).toBe(true);
+        const scrollTo = vi.fn();
+        Object.defineProperty(workspaceScroll.element, 'scrollTo', { configurable: true, value: scrollTo });
+        await workspaceJumpButtons[2]!.trigger('click');
+        expect(scrollTo).toHaveBeenCalledWith({ left: expect.any(Number), behavior: 'smooth' });
         expect(wrapper.findAll('.island-events-panel')).toHaveLength(2);
         expect(wrapper.findAll('.island-events-panel').map((panel) => panel.get('h2').text()))
             .toEqual(['公開島ログ', 'owner-onlyログ']);
