@@ -118,6 +118,8 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, MonsterInstance::query()->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.spawn_failed_no_settlement')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+        $this->assertSame('admin', DB::table('audit_events')
+            ->where('event_type', 'monster.spawn_failed_no_settlement')->value('visibility'));
     }
 
     public function test_natural_spawn_replays_the_same_actor_after_transaction_rollback(): void
@@ -206,16 +208,45 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, $occupiedCell->population);
         $this->assertContains($origin->map_chunk_id, $context->state->changedMapChunkIds());
         $this->assertContains($occupiedCell->map_chunk_id, $context->state->changedMapChunkIds());
-        $playerEvents = collect(app(PlayerIslandEventService::class)->page($second->fresh(), 1, 2)['groups'])
+        $destinationEvents = collect(app(PlayerIslandEventService::class)->publicNationPage($second->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
-            ->filter(fn (array $event): bool => str_starts_with($event['type'], 'monster.'))
+            ->filter(fn (array $event): bool => in_array($event['type'], ['monster.moved', 'monster.trampled'], true))
             ->values();
-        $this->assertCount(2, $playerEvents);
-        $this->assertSame(['monster.trampled', 'monster.trampled'], $playerEvents->pluck('type')->all());
-        foreach ($playerEvents as $event) {
-            $this->assertStringContainsString('村(', $event['message']);
-            $this->assertStringContainsString('を踏み荒らしました。', $event['message']);
+        $movedEvents = $destinationEvents->where('type', 'monster.moved')->values();
+        $trampledEvents = $destinationEvents->where('type', 'monster.trampled')->values();
+        $this->assertCount(2, $movedEvents);
+        $this->assertCount(2, $trampledEvents);
+        $messages = $destinationEvents->pluck('message')->all();
+        $this->assertContains(
+            sprintf(
+                '%s(%d,%d)へダークいのらが移動した模様です。',
+                $second->name,
+                $firstDestination->x,
+                $firstDestination->y,
+            ),
+            $messages,
+        );
+        $this->assertContains(
+            sprintf(
+                '%s(%d,%d)の村がダークいのらに踏み荒らされました。',
+                $second->name,
+                $firstDestination->x,
+                $firstDestination->y,
+            ),
+            $messages,
+        );
+        $this->assertStringNotContainsString(
+            sprintf('%s(%d,%d)', $second->name, $origin->x, $origin->y),
+            implode("\n", $messages),
+        );
+        foreach ($trampledEvents as $event) {
+            $this->assertStringContainsString('の村がダークいのらに踏み荒らされました。', $event['message']);
         }
+
+        $originEvents = collect(app(PlayerIslandEventService::class)->publicNationPage($first->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->filter(fn (array $event): bool => in_array($event['type'], ['monster.moved', 'monster.trampled'], true));
+        $this->assertCount(0, $originEvents);
     }
 
     public function test_normal_monster_moves_once_then_stops_at_its_definition_limit(): void
@@ -303,6 +334,49 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(2, $monster->fresh()->current_hp);
         $this->assertSame($cell->id, $monster->fresh()->occupancy()->value('map_cell_id'));
         $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.damage_blocked')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($nation->id, $metadata['attacker_nation_id']);
+        $this->assertSame('硬化国', $metadata['attacker_nation_name']);
+        $this->assertSame($nation->id, $metadata['host_nation_id']);
+        $this->assertSame('硬化国', $metadata['host_nation_name']);
+    }
+
+    public function test_nonlethal_damage_snapshots_attacker_and_host_for_public_projection(): void
+    {
+        [$world, $host, $ruleset] = $this->worldAndNation('損傷所在国');
+        $attacker = $this->createNation($world, '損傷攻撃国');
+        $cell = $this->ownedNonCapitalCell($host);
+        $this->setCell($cell, 'wasteland', null, $host->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 2);
+        [$context] = $this->context($world, $ruleset, 2, 'nonlethal-damage-snapshot', [$host->id, $attacker->id]);
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            1,
+            'monster_missile',
+            $attacker,
+            null,
+            $cell,
+            $context,
+        );
+
+        $this->assertSame('damaged', $result->status);
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.damaged')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($attacker->id, $metadata['attacker_nation_id']);
+        $this->assertSame('損傷攻撃国', $metadata['attacker_nation_name']);
+        $this->assertSame($host->id, $metadata['host_nation_id']);
+        $this->assertSame('損傷所在国', $metadata['host_nation_name']);
+
+        $host->update(['name' => '現在損傷所在国']);
+        $events = collect(app(PlayerIslandEventService::class)->publicNationPage($host->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $this->assertSame(1, $events->where('type', 'monster.damaged')->count());
+        $this->assertSame(
+            sprintf('損傷所在国(%d,%d)のいのらに攻撃が命中し、苦しそうに咆哮しました。', $cell->x, $cell->y),
+            $events->firstWhere('type', 'monster.damaged')['message'],
+        );
     }
 
     public function test_monster_movement_replays_the_same_result_after_transaction_rollback(): void
@@ -453,6 +527,7 @@ class MonsterSystemTest extends TestCase
         $this->setCell($base, 'plain', 'missile_base', $killer->id, 0);
         $base->update(['facility_experience' => 195]);
         $killer->update(['money' => 9_500]);
+        $hostMoneyBefore = (int) $host->money;
         $monsterMeat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
         NationResource::query()->where('nation_id', $host->id)->where('resource_definition_id', $wheat->id)
@@ -483,21 +558,34 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(9_999, (int) $killer->fresh()->money);
         $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
+        $this->assertSame($hostMoneyBefore + 498, (int) $host->fresh()->money);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'monster.reward_distributed',
+            'visibility' => 'private',
+        ]);
 
         $playerEvents = app(PlayerIslandEventService::class);
-        $killerReward = collect($playerEvents->page($killer->fresh(), 1, 2)['groups'])
+        $killerReward = collect($playerEvents->ownerPage($killer->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
-        $hostReward = collect($playerEvents->page($host->fresh(), 1, 2)['groups'])
+        $hostReward = collect($playerEvents->ownerPage($host->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
-        $spectatorReward = collect($playerEvents->page($spectator->fresh(), 1, 2)['groups'])
+        $hostOverflow = collect($playerEvents->ownerPage($host->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->firstWhere('type', 'resource.food_overflow_resolved');
+        $spectatorReward = collect($playerEvents->ownerPage($spectator->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
         $this->assertIsArray($killerReward);
         $this->assertSame('レッドいのらを撃破し、賞金499億円を受け取りました。', $killerReward['message']);
         $this->assertIsArray($hostReward);
         $this->assertSame('レッドいのらが倒され、怪獣肉100トンを受け取りました。', $hostReward['message']);
+        $this->assertIsArray($hostOverflow);
+        $this->assertSame(
+            '食料上限を超えた怪獣肉249,900トンのうち249,000トンを売却して498億円を得て、900トンを破棄しました。',
+            $hostOverflow['message'],
+        );
         $this->assertNull($spectatorReward);
         $this->assertSame(200, $base->fresh()->facility_experience);
         $stat = NationMonsterKillStat::query()->sole();
@@ -520,7 +608,9 @@ class MonsterSystemTest extends TestCase
         $this->assertSame($monster->id, $metadata['monster_instance_id']);
         $this->assertSame('red_inora', $metadata['monster_definition_key']);
         $this->assertSame($killer->id, $metadata['killer_nation_id']);
+        $this->assertSame('撃破国', $metadata['killer_nation_name']);
         $this->assertSame($host->id, $metadata['host_nation_id']);
+        $this->assertSame('所在国', $metadata['host_nation_name']);
         $this->assertSame(2, $metadata['target_turn']);
         $this->assertSame(0, $metadata['previous_kill_count']);
         $this->assertSame(1, $metadata['new_kill_count']);
@@ -529,10 +619,28 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(500, $metadata['killer_money']['requested']);
         $this->assertSame(250_000, $metadata['host_meat_food']['requested']);
         $this->assertSame(249_900, $metadata['host_meat_food']['overflow']);
+        $overflowMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'resource.food_overflow_resolved')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('monster_meat', $overflowMetadata['resource_key']);
+        $this->assertSame(249_900, $overflowMetadata['requested_overflow_tons']);
+        $this->assertSame(249_000, $overflowMetadata['sold_tons']);
+        $this->assertSame(498, $overflowMetadata['revenue']);
+        $this->assertSame(900, $overflowMetadata['discarded_tons']);
+        $this->assertSame(1_000, $overflowMetadata['inventory_units_per_batch']);
+        $this->assertSame(2, $overflowMetadata['money_units_per_batch']);
         $this->assertSame($base->id, $metadata['firing_base_id']);
         $this->assertSame('killed', $monster->fresh()->state);
         $this->assertFalse($monster->fresh()->occupancy()->exists());
         $this->assertContains($hostCell->map_chunk_id, $context->state->changedMapChunkIds());
+        $publicEvents = collect($playerEvents->publicWorldPage($world, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $this->assertSame(1, $publicEvents->where('type', 'monster.killed')->count());
+        $this->assertSame(0, $publicEvents->where('type', 'monster.reward_distributed')->count());
+        $this->assertSame(0, $publicEvents->where('type', 'resource.food_overflow_resolved')->count());
+        $publicJson = json_encode($publicEvents->all(), JSON_THROW_ON_ERROR);
+        foreach (['killer_money', 'host_meat_food', '499', '100トン', '249,900', '498億円'] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $publicJson);
+        }
 
         $retry = app(MonsterDamageService::class)->applyDamage(
             $monster,
@@ -650,7 +758,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(200, $sameResult->killerMoney['requested']);
         $this->assertSame(100_000, $sameResult->hostMeat['requested']);
         $this->assertSame(1, $sameResult->newKillCount);
-        $sameNationReward = collect(app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 2)['groups'])
+        $sameNationReward = collect(app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
         $this->assertIsArray($sameNationReward);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import { formatExactMoney } from '../formatters/money';
 import type {
@@ -11,6 +11,18 @@ import type {
     MapCell,
 } from '../types';
 import CellDetails from './CellDetails.vue';
+
+type CommandStatusKind = 'idle' | 'success' | 'error';
+
+interface CommandStatus {
+    kind: CommandStatusKind;
+    text: string;
+}
+
+interface QueueContext {
+    nationId: number;
+    mapSpaceId: number;
+}
 
 const props = defineProps<{
     nationId: number;
@@ -36,29 +48,37 @@ const queue = ref<CommandQueue>({
 const refreshing = ref(false);
 const mutating = ref(false);
 const busy = computed(() => refreshing.value || mutating.value);
-const message = ref('');
+const commandStatus = ref<CommandStatus>({ kind: 'idle', text: '未送信' });
 const selectedPosition = ref(1);
 const draggedItemId = ref<number | null>(null);
 const pendingDefinition = ref<CommandDefinition | null>(null);
 const editingItem = ref<CommandQueueItem | null>(null);
-const quantity = ref<number | null>(1);
+const pendingQuantity = ref<number | null>(1);
+const editingQuantity = ref<number | null>(1);
 const commandParameters = ref<Record<string, number | null>>({});
-const mobileCommandExpanded = ref(false);
-const mobilePlanExpanded = ref(false);
 let refreshGeneration = 0;
 let activeRefreshController: AbortController | null = null;
+let refreshRequestedAfterMutation = false;
+let disposed = false;
 
 const basePath = (nationId = props.nationId, mapSpaceId = props.mapSpaceId) => `/api/v1/nations/${nationId}/map-spaces/${mapSpaceId}`;
 const applicableDefinitions = computed(() => definitions.value.filter((definition) => definition.applicable));
-const quantityIsValid = computed(() => typeof quantity.value === 'number' && Number.isInteger(quantity.value)
-    && quantity.value >= quantityContract.value.minimum
-    && quantity.value <= quantityContract.value.maximum);
+const pendingQuantityIsValid = computed(() => quantityIsValid(pendingQuantity.value));
+const editingQuantityIsValid = computed(() => quantityIsValid(editingQuantity.value));
 
 watch(
     () => [props.selected?.x, props.selected?.y, props.nationId, props.mapSpaceId, selectedPosition.value],
-    () => void refresh(),
+    () => requestRefresh(),
     { immediate: true },
 );
+
+function requestRefresh(): void {
+    if (mutating.value) {
+        refreshRequestedAfterMutation = true;
+        return;
+    }
+    void refresh();
+}
 
 async function refresh(): Promise<void> {
     const generation = ++refreshGeneration;
@@ -74,8 +94,6 @@ async function refresh(): Promise<void> {
     }
 
     refreshing.value = true;
-    message.value = '';
-
     try {
         const [nextDefinitions, nextQueue] = await Promise.all([
             api<CommandCatalog>(`${path}/command-definitions?${query}`, { signal: controller.signal }),
@@ -85,10 +103,11 @@ async function refresh(): Promise<void> {
         if (generation !== refreshGeneration) return;
         definitions.value = nextDefinitions.commands;
         quantityContract.value = nextDefinitions.quantity_contract;
+        pendingDefinition.value = null;
         applyServerQueue(nextQueue);
     } catch (error) {
         if (generation !== refreshGeneration || isAbortError(error)) return;
-        message.value = error instanceof Error ? error.message : '開発計画を取得できませんでした。';
+        setCommandError(playerFacingReason(error, '開発計画を取得できませんでした'));
     } finally {
         if (generation === refreshGeneration) {
             if (activeRefreshController === controller) activeRefreshController = null;
@@ -99,7 +118,7 @@ async function refresh(): Promise<void> {
 
 function chooseCommand(definition: CommandDefinition): void {
     if (!definition.available || (definition.target_type === 'cell' && props.selected === null)) return;
-    quantity.value = definition.quantity_default;
+    pendingQuantity.value = definition.quantity_default;
     commandParameters.value = Object.fromEntries(Object.entries(definition.parameters).map(([key, schema]) => [
         key,
         schema.default ?? null,
@@ -127,12 +146,12 @@ const parametersAreValid = computed(() => {
 
 async function addPendingCommand(): Promise<void> {
     const definition = pendingDefinition.value;
-    if (definition === null || !quantityIsValid.value || !parametersAreValid.value || quantity.value === null) return;
+    if (definition === null || !pendingQuantityIsValid.value || !parametersAreValid.value || pendingQuantity.value === null) return;
     const parameters: Record<string, number> = {};
     for (const [key, value] of Object.entries(commandParameters.value)) {
         if (value !== null) parameters[key] = value;
     }
-    if (await addCommand(definition, quantity.value, parameters)) pendingDefinition.value = null;
+    if (await addCommand(definition, pendingQuantity.value, parameters)) pendingDefinition.value = null;
 }
 
 async function addCommand(
@@ -141,47 +160,53 @@ async function addCommand(
     parameters: Record<string, number>,
 ): Promise<boolean> {
     if ((definition.target_type === 'cell' && props.selected === null) || !definition.available) return false;
-    const generation = refreshGeneration;
+    if (busy.value) return false;
+    const context = queueContext();
     const selected = props.selected === null ? null : { x: props.selected.x, y: props.selected.y };
-    const path = basePath(props.nationId, props.mapSpaceId);
-    mutating.value = true;
+    const submittedPosition = selectedPosition.value;
+    const path = basePath(context.nationId, context.mapSpaceId);
+    beginMutation();
 
     try {
-        const result = await api<{ queue: CommandQueue; message: string }>(`${path}/command-queue`, {
+        const result = await api<{ queue: CommandQueue }>(`${path}/command-queue`, {
             method: 'POST',
             body: JSON.stringify({
                 command_key: definition.key,
                 target_x: definition.target_type === 'cell' ? selected?.x : null,
                 target_y: definition.target_type === 'cell' ? selected?.y : null,
-                position: selectedPosition.value,
+                position: submittedPosition,
                 request_key: crypto.randomUUID(),
                 expected_version: queue.value.version,
                 quantity: requestedQuantity,
                 parameters,
             }),
         });
-        if (generation !== refreshGeneration) return false;
+        if (!isCurrentQueueContext(context)) {
+            refreshRequestedAfterMutation = true;
+            return false;
+        }
         applyServerQueue(result.queue);
-        selectedPosition.value = clampPosition(selectedPosition.value + 1, result.queue.limit);
-        message.value = result.message;
-        mobileCommandExpanded.value = false;
+        if (selectedPosition.value === submittedPosition) {
+            selectedPosition.value = clampPosition(submittedPosition + 1, result.queue.limit);
+        }
+        setCommandSuccess();
         return true;
     } catch (error) {
-        if (generation !== refreshGeneration || isAbortError(error)) return false;
-        message.value = error instanceof ApiError && error.status === 409
-            ? '開発計画が更新されています。再読み込みしました。'
-            : error instanceof Error ? error.message : '開発計画へ登録できませんでした。';
-        if (error instanceof ApiError && error.status === 409) await refresh();
+        if (!isCurrentQueueContext(context) || isAbortError(error)) {
+            refreshRequestedAfterMutation = true;
+            return false;
+        }
+        handleMutationError(error);
         return false;
     } finally {
-        mutating.value = false;
+        await finishMutation();
     }
 }
 
 function selectPlanSlot(slot: EffectivePlanSlot): void {
     selectedPosition.value = slot.position;
     if (slot.kind === 'explicit' && slot.quantity_semantics === 'ordinary'
-        && window.matchMedia?.('(max-width: 820px)').matches) {
+        && window.matchMedia?.('(max-width: 900px)').matches) {
         openQuantityEditor(slot);
     }
 }
@@ -233,14 +258,14 @@ async function cancel(itemId: number): Promise<void> {
 function openQuantityEditor(item: CommandQueueItem): void {
     if (item.quantity_semantics !== 'ordinary') return;
     editingItem.value = item;
-    quantity.value = item.quantity;
+    editingQuantity.value = item.quantity;
 }
 
 async function saveQuantity(): Promise<void> {
     const item = editingItem.value;
-    if (item === null || !quantityIsValid.value || quantity.value === null) return;
+    if (item === null || !editingQuantityIsValid.value || editingQuantity.value === null) return;
     if (await mutateQueue('PATCH', `${basePath()}/command-queue/${item.id}`, {
-        quantity: quantity.value,
+        quantity: editingQuantity.value,
         expected_version: queue.value.version,
     })) editingItem.value = null;
 }
@@ -266,41 +291,29 @@ function planKeydown(event: KeyboardEvent, slot: EffectivePlanSlot): void {
     }
 }
 
-function toggleCommandSheet(): void {
-    mobileCommandExpanded.value = !mobileCommandExpanded.value;
-    if (mobileCommandExpanded.value) mobilePlanExpanded.value = false;
-}
-
-function togglePlanDrawer(): void {
-    mobilePlanExpanded.value = !mobilePlanExpanded.value;
-    if (mobilePlanExpanded.value) mobileCommandExpanded.value = false;
-}
-
 async function mutateQueue(method: 'PUT' | 'PATCH' | 'DELETE', path: string, body: object): Promise<boolean> {
-    const generation = refreshGeneration;
-    mutating.value = true;
-    message.value = '';
+    if (busy.value) return false;
+    const context = queueContext();
+    beginMutation();
     try {
         const nextQueue = await api<CommandQueue>(path, { method, body: JSON.stringify(body) });
-        if (generation !== refreshGeneration) return false;
+        if (!isCurrentQueueContext(context)) {
+            refreshRequestedAfterMutation = true;
+            return false;
+        }
         applyServerQueue(nextQueue);
+        setCommandSuccess();
         return true;
     } catch (error) {
-        if (generation !== refreshGeneration || isAbortError(error)) return false;
-        message.value = error instanceof Error ? error.message : '開発計画を更新できませんでした。';
-        if (error instanceof ApiError && error.status === 409) await refresh();
-        const authoritative = editingItem.value === null
-            ? null
-            : queue.value.items.find((item) => item.id === editingItem.value?.id);
-        if (authoritative === undefined || authoritative === null) {
-            editingItem.value = null;
-        } else {
-            editingItem.value = authoritative;
-            quantity.value = authoritative.quantity;
+        if (!isCurrentQueueContext(context) || isAbortError(error)) {
+            refreshRequestedAfterMutation = true;
+            return false;
         }
+        handleMutationError(error);
+        synchronizeEditingItem(queue.value);
         return false;
     } finally {
-        mutating.value = false;
+        await finishMutation();
     }
 }
 
@@ -311,13 +324,89 @@ function clampPosition(position: number, limit = queue.value.limit): number {
 function applyServerQueue(nextQueue: CommandQueue): void {
     queue.value = nextQueue;
     selectedPosition.value = clampPosition(selectedPosition.value, nextQueue.limit);
+    synchronizeEditingItem(nextQueue);
+}
+
+function synchronizeEditingItem(nextQueue: CommandQueue): void {
+    if (editingItem.value === null) return;
+    const authoritative = nextQueue.items.find((item) => item.id === editingItem.value?.id);
+    if (authoritative === undefined || authoritative.quantity_semantics !== 'ordinary') {
+        editingItem.value = null;
+        return;
+    }
+    editingItem.value = authoritative;
+    editingQuantity.value = authoritative.quantity;
+}
+
+function quantityIsValid(value: number | null): value is number {
+    return typeof value === 'number' && Number.isInteger(value)
+        && value >= quantityContract.value.minimum
+        && value <= quantityContract.value.maximum;
+}
+
+function queueContext(): QueueContext {
+    return { nationId: props.nationId, mapSpaceId: props.mapSpaceId };
+}
+
+function isCurrentQueueContext(context: QueueContext): boolean {
+    return !disposed && context.nationId === props.nationId && context.mapSpaceId === props.mapSpaceId;
+}
+
+function beginMutation(): void {
+    refreshGeneration++;
+    activeRefreshController?.abort();
+    activeRefreshController = null;
+    refreshing.value = false;
+    mutating.value = true;
+}
+
+async function finishMutation(): Promise<void> {
+    while (!disposed) {
+        await nextTick();
+        if (!refreshRequestedAfterMutation) break;
+        refreshRequestedAfterMutation = false;
+        await refresh();
+    }
+    mutating.value = false;
 }
 
 function isAbortError(error: unknown): boolean {
     return error instanceof Error && error.name === 'AbortError';
 }
 
+function setCommandSuccess(): void {
+    commandStatus.value = { kind: 'success', text: '送信完了' };
+}
+
+function setCommandError(reason: string): void {
+    commandStatus.value = { kind: 'error', text: `送信エラー：${reason}` };
+}
+
+function handleMutationError(error: unknown): void {
+    if (error instanceof ApiError && error.status === 409 && error.code === 'reset_required') {
+        setCommandError('この島は現在のルールでは変更できません');
+        return;
+    }
+    if (error instanceof ApiError && error.status === 409) {
+        setCommandError('開発計画が更新されたため再読み込みしました');
+        refreshRequestedAfterMutation = true;
+        return;
+    }
+    setCommandError(playerFacingReason(error, '通信に失敗しました'));
+    if (!(error instanceof ApiError) || error.status >= 500) refreshRequestedAfterMutation = true;
+}
+
+function playerFacingReason(error: unknown, fallback: string): string {
+    if (!(error instanceof ApiError) || error.status !== 422) return fallback;
+    const safeValidationMessage = Object.values(error.errors).flat().find((message) => message.trim() !== '');
+    if (safeValidationMessage === undefined) return '入力内容を確認してください';
+    const concise = safeValidationMessage.replace(/\s+/g, ' ').trim();
+    if (concise === '') return fallback;
+    return concise.length <= 100 ? concise : `${concise.slice(0, 99)}…`;
+}
+
 onBeforeUnmount(() => {
+    disposed = true;
     refreshGeneration++;
     activeRefreshController?.abort();
     activeRefreshController = null;
@@ -326,30 +415,34 @@ onBeforeUnmount(() => {
 
 <template>
     <div class="command-workspace">
-        <aside class="command-panel" :class="{ expanded: mobileCommandExpanded, 'mobile-peer-expanded': mobilePlanExpanded }" aria-label="セル情報と開発コマンド" :aria-busy="busy">
-            <button class="mobile-panel-toggle" type="button" @click="toggleCommandSheet">
-                セルとコマンド <span>{{ mobileCommandExpanded ? '閉じる' : '開く' }}</span>
-            </button>
+        <aside class="command-panel" aria-label="セル情報と開発コマンド" :aria-busy="busy">
             <div class="command-panel-body">
                 <CellDetails :cell="selected" />
                 <section class="available-commands">
                     <h3>適用できるコマンド</h3>
-                    <p class="queue-notice">開発計画に登録されます。実行はターン更新時に行われ、登録時点では資金・地形・施設は変化しません。</p>
-                    <p v-if="message" class="compact-message" role="status">{{ message }}</p>
-                                        <form v-if="pendingDefinition" class="parameter-popover" @submit.prevent="addPendingCommand">
+                    <p
+                        class="command-status"
+                        :class="`command-status--${commandStatus.kind}`"
+                        :role="commandStatus.kind === 'error' ? 'alert' : 'status'"
+                        :aria-live="commandStatus.kind === 'error' ? 'assertive' : 'polite'"
+                        aria-atomic="true"
+                    >
+                        {{ commandStatus.text }}
+                    </p>
+                    <form v-if="pendingDefinition" class="parameter-popover" @submit.prevent="addPendingCommand">
                         <strong>{{ pendingDefinition.name }}の設定</strong>
                         <label v-if="pendingDefinition.quantity_semantics === 'selector'">種類
-                            <select v-model.number="quantity" required>
+                            <select v-model.number="pendingQuantity" required>
                                 <option :value="null" disabled>選択してください</option>
                                 <option v-for="option in pendingDefinition.quantity_options" :key="option.key" :value="option.value">{{ option.label }}</option>
                             </select>
                         </label>
                         <template v-else-if="pendingDefinition.quantity_semantics === 'ordinary'">
                             <div class="preset-row">
-                                <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
+                                <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="pendingQuantity = preset">{{ preset }}</button>
                             </div>
                             <label>数量
-                                <input v-model.number="quantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
+                                <input v-model.number="pendingQuantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
                             </label>
                         </template>
                         <label v-for="(schema, key) in pendingDefinition.parameters" :key="key">
@@ -377,7 +470,7 @@ onBeforeUnmount(() => {
                         </label>
                         <div class="popover-actions">
                             <button type="button" @click="pendingDefinition = null">閉じる</button>
-                            <button type="submit" :disabled="!quantityIsValid || !parametersAreValid">計画へ登録</button>
+                            <button type="submit" :disabled="busy || !pendingQuantityIsValid || !parametersAreValid">計画へ登録</button>
                         </div>
                     </form>
                     <div v-if="applicableDefinitions.length" class="command-grid">
@@ -401,10 +494,7 @@ onBeforeUnmount(() => {
             </div>
         </aside>
 
-        <aside class="plan-panel" :class="{ expanded: mobilePlanExpanded, 'mobile-peer-expanded': mobileCommandExpanded }" aria-label="開発計画">
-            <button class="mobile-panel-toggle" type="button" @click="togglePlanDrawer">
-                開発計画 {{ queue.limit }}枠 <span>{{ mobilePlanExpanded ? '閉じる' : '開く' }}</span>
-            </button>
+        <aside class="plan-panel" aria-label="開発計画" :aria-busy="busy">
             <div class="plan-panel-body">
                 <div class="plan-heading">
                     <div>
@@ -419,7 +509,7 @@ onBeforeUnmount(() => {
                         :key="slot.kind === 'explicit' ? `item-${slot.id}` : `auto-${slot.position}`"
                         class="plan-row"
                         :class="{ selected: selectedPosition === slot.position, automatic: slot.kind === 'automatic_finance' }"
-                        :draggable="slot.kind === 'explicit'"
+                        :draggable="slot.kind === 'explicit' && !busy"
                         tabindex="0"
                         @click="selectPlanSlot(slot)"
                         @dblclick="slot.kind === 'explicit' && openQuantityEditor(slot)"
@@ -445,22 +535,22 @@ onBeforeUnmount(() => {
                         <span v-if="slot.kind === 'explicit'" class="plan-row-actions">
                             <button type="button" aria-label="前へ移動" :disabled="busy || slot.position === 1" @click.stop="move(slot.id, -1)">↑</button>
                             <button type="button" aria-label="後へ移動" :disabled="busy || slot.position === queue.limit" @click.stop="move(slot.id, 1)">↓</button>
-                            <button v-if="slot.quantity_semantics === 'ordinary'" type="button" @click.stop="openQuantityEditor(slot)">数量</button>
-                            <button type="button" @click.stop="cancel(slot.id)">取消</button>
+                            <button v-if="slot.quantity_semantics === 'ordinary'" type="button" :disabled="busy" @click.stop="openQuantityEditor(slot)">数量</button>
+                            <button type="button" :disabled="busy" @click.stop="cancel(slot.id)">取消</button>
                         </span>
                     </li>
                 </ol>
                 <form v-if="editingItem" class="parameter-popover plan-parameter-popover" @submit.prevent="saveQuantity">
                     <strong>{{ editingItem.command_name }}の数量</strong>
                     <div class="preset-row">
-                        <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="quantity = preset">{{ preset }}</button>
+                        <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="editingQuantity = preset">{{ preset }}</button>
                     </div>
                     <label>数量
-                        <input v-model.number="quantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
+                        <input v-model.number="editingQuantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
                     </label>
                     <div class="popover-actions">
                         <button type="button" @click="editingItem = null">閉じる</button>
-                        <button type="submit" :disabled="!quantityIsValid">保存</button>
+                        <button type="submit" :disabled="busy || !editingQuantityIsValid">保存</button>
                     </div>
                 </form>
             </div>

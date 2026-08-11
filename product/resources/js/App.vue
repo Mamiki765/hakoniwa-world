@@ -5,6 +5,7 @@ import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import HexMap from './components/HexMap.vue';
 import IslandEventLog from './components/IslandEventLog.vue';
+import MessageBoard from './components/MessageBoard.vue';
 import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import { formatExactMoney } from './formatters/money';
@@ -12,6 +13,7 @@ import { useMapState } from './state/mapState';
 import type {
     Announcement,
     CurrentUser,
+    MajorNewsFeed,
     MapSpace,
     Nation,
     PublicEventPage,
@@ -21,11 +23,12 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.3.2';
+const applicationVersion = '1.4.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
 const rankings = ref<PublicRankingEntry[]>([]);
+const majorNews = ref<MajorNewsFeed | null>(null);
 const publicEvents = ref<PublicEventPage | null>(null);
 const latestAnnouncements = ref<Announcement[]>([]);
 const announcementItems = ref<Announcement[]>([]);
@@ -60,6 +63,7 @@ const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as cons
 const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
+const islandWorkspaceScroll = ref<HTMLElement | null>(null);
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
 const nonFoodResources = computed(() => nation.value?.resources.filter((resource) => resource.category !== 'food') ?? []);
 const nextTurnCountdown = computed(() => {
@@ -73,6 +77,17 @@ const nextTurnCountdown = computed(() => {
     return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 });
 const turnStatusMessage = computed(() => matchTurnStatus(worldSummary.value?.turn_status));
+
+function scrollIslandWorkspaceTo(selector: string): void {
+    const scroller = islandWorkspaceScroll.value;
+    const section = scroller?.querySelector<HTMLElement>(selector);
+    if (!scroller || !section) return;
+
+    scroller.scrollTo({
+        left: section.offsetLeft,
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+}
 
 function formatResource(amount: number, unitLabel: string | null): string {
     return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
@@ -152,14 +167,16 @@ async function loadPublicLobby(): Promise<void> {
         latestAnnouncements.value = announcements;
         const world = worlds.value[0];
         if (world === undefined) return;
-        const [summary, nextRankings, events] = await Promise.all([
+        const [summary, nextRankings, news, events] = await Promise.all([
             api<PublicWorldSummary>(`/api/v1/public/worlds/${world.id}/summary`),
             api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
+            api<MajorNewsFeed>(`/api/v1/public/worlds/${world.id}/major-news`),
             api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
         ]);
         worldSummary.value = summary;
         scheduleDeadlineRefresh();
         rankings.value = nextRankings;
+        majorNews.value = news;
         publicEvents.value = events;
         turnViewCurrentTurn = summary.current_turn;
         startSummaryFallbackPolling();
@@ -200,8 +217,9 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
     if (world === undefined) return false;
     const currentNation = nation.value;
     const currentPreview = page.value === 'preview' ? previewNation.value : null;
-    const [rankingResult, eventResult, nationResult, previewResult] = await Promise.allSettled([
+    const [rankingResult, newsResult, eventResult, nationResult, previewResult] = await Promise.allSettled([
         api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
+        api<MajorNewsFeed>(`/api/v1/public/worlds/${world.id}/major-news`),
         api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
         currentNation === null ? Promise.resolve(null) : api<Nation | null>('/api/v1/me/nation'),
         currentPreview === null
@@ -211,6 +229,8 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
 
     let refreshed = true;
     if (rankingResult.status === 'fulfilled') rankings.value = rankingResult.value;
+    else refreshed = false;
+    if (newsResult.status === 'fulfilled') majorNews.value = newsResult.value;
     else refreshed = false;
     if (eventResult.status === 'fulfilled') publicEvents.value = eventResult.value;
     else refreshed = false;
@@ -395,7 +415,7 @@ async function loadPublicEvents(pageNumber: number): Promise<void> {
             `/api/v1/public/worlds/${world.id}/events?page=${pageNumber}&anchor_turn=${anchor}`,
         );
     } catch {
-        message.value = '公開ニュースを取得できませんでした。';
+        message.value = '公開島ログを取得できませんでした。';
     }
 }
 
@@ -419,6 +439,10 @@ async function openOwnIsland(): Promise<void> {
 }
 
 async function openPreview(nationId: number): Promise<void> {
+    if (nation.value?.id === nationId) {
+        await openOwnIsland();
+        return;
+    }
     busy.value = true;
     message.value = '';
     try {
@@ -435,6 +459,15 @@ async function openPreview(nationId: number): Promise<void> {
         message.value = error instanceof Error ? error.message : '島previewを読み込めませんでした。';
     } finally {
         busy.value = false;
+    }
+}
+
+async function refreshMyNation(): Promise<void> {
+    if (user.value === null) return;
+    try {
+        nation.value = await api<Nation | null>('/api/v1/me/nation');
+    } catch {
+        // The authoritative message response is already rendered; account data can refresh later.
     }
 }
 
@@ -630,24 +663,42 @@ async function updateProfile(): Promise<void> {
 
                 <section class="events-card">
                     <div class="section-heading">
-                        <div><p class="eyebrow">PUBLIC NEWS</p><h2>世界のニュース</h2></div>
+                        <div><p class="eyebrow">MAJOR NEWS</p><h2>重大ニュース</h2></div>
                     </div>
-                    <template v-if="publicEvents?.groups.length">
-                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="public-event-group">
-                            <h3>ターン {{ group.target_turn }}</h3>
+                    <template v-if="majorNews?.groups.length">
+                        <section v-for="group in majorNews.groups" :key="group.target_turn" class="public-event-group">
+                            <h3>第{{ group.target_turn }}ターン</h3>
                             <ol class="event-list">
                                 <li v-for="event in group.events" :key="event.id">
                                     <span class="event-mark" aria-hidden="true"></span>
-                                    <div><strong>{{ event.message }}</strong><time :datetime="event.occurred_at">{{ formatAnnouncementDate(event.occurred_at) }}</time></div>
+                                    <strong>{{ event.message }}</strong>
                                 </li>
                             </ol>
                         </section>
                     </template>
-                    <p v-else class="empty-state">公開できる出来事はまだありません。最初の島の成立を待っています。</p>
-                    <nav v-if="publicEvents" class="event-pager" aria-label="世界のニュースのページ">
-                        <button type="button" :disabled="!publicEvents.has_newer_page" @click="loadPublicEvents(publicEvents.page - 1)">新しいニュース</button>
+                    <p v-else class="empty-state">重大ニュースはまだありません。</p>
+                </section>
+
+                <section class="events-card">
+                    <div class="section-heading">
+                        <div><p class="eyebrow">PUBLIC ISLAND LOG</p><h2>公開島ログ</h2></div>
+                    </div>
+                    <template v-if="publicEvents?.groups.length">
+                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="public-event-group">
+                            <h3>第{{ group.target_turn }}ターン</h3>
+                            <ol class="event-list">
+                                <li v-for="event in group.events" :key="event.id">
+                                    <span class="event-mark" aria-hidden="true"></span>
+                                    <strong>{{ event.message }}</strong>
+                                </li>
+                            </ol>
+                        </section>
+                    </template>
+                    <p v-else class="empty-state">このターン範囲には公開島ログがありません。</p>
+                    <nav v-if="publicEvents" class="event-pager" aria-label="公開島ログのページ">
+                        <button type="button" :disabled="!publicEvents.has_newer_page" @click="loadPublicEvents(publicEvents.page - 1)">新しい2ターン</button>
                         <span>{{ publicEvents.page }}ページ</span>
-                        <button type="button" :disabled="!publicEvents.has_older_page" @click="loadPublicEvents(publicEvents.page + 1)">古いニュース</button>
+                        <button type="button" :disabled="!publicEvents.has_older_page" @click="loadPublicEvents(publicEvents.page + 1)">過去2ターン</button>
                     </nav>
                     <p class="community-contact">
                         <a href="/community-guidelines">禁止行為と連絡方法</a>
@@ -782,26 +833,49 @@ async function updateProfile(): Promise<void> {
                     <span>出来事は24ターンごとに表示</span>
                 </details>
             </header>
-            <div class="island-grid">
-                <CommandQueuePanel :nation-id="nation.id" :map-space-id="mapSpace.id" :selected="map.selected.value" />
-                <div class="map-column">
-                    <HexMap
-                        :cells="map.visibleCells.value"
-                        :selected="map.selected.value"
-                        :capital="nation.capital"
-                        :bounds="mapSpace.bounds"
-                        :own-nation-id="nation.id"
-                        :loading="map.loading.value"
-                        :error="map.error.value"
-                        :empty-chunks="map.emptyChunks.value"
-                        @select="map.select"
-                        @move="map.moveSelection"
-                        @request-range="map.loadVisibleRange"
-                        @request-all="map.loadAllChunks"
-                    />
+            <div class="island-workspace-region">
+                <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
+                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
+                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.map-column')">地図</button>
+                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.plan-panel')">開発計画</button>
+                </nav>
+                <div
+                    id="island-development-workspace"
+                    ref="islandWorkspaceScroll"
+                    class="island-workspace-scroll"
+                    role="region"
+                    aria-label="島開発ワークスペース（横スクロール）"
+                    tabindex="0"
+                >
+                    <div class="island-grid">
+                        <CommandQueuePanel :nation-id="nation.id" :map-space-id="mapSpace.id" :selected="map.selected.value" />
+                        <div class="map-column">
+                            <HexMap
+                                :cells="map.visibleCells.value"
+                                :selected="map.selected.value"
+                                :capital="nation.capital"
+                                :bounds="mapSpace.bounds"
+                                :own-nation-id="nation.id"
+                                :loading="map.loading.value"
+                                :error="map.error.value"
+                                :empty-chunks="map.emptyChunks.value"
+                                @select="map.select"
+                                @move="map.moveSelection"
+                                @request-range="map.loadVisibleRange"
+                                @request-all="map.loadAllChunks"
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
-            <IslandEventLog :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" />
+            <IslandEventLog :key="`public:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="public" />
+            <IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" />
+            <MessageBoard
+                :key="`development:${nation.id}`"
+                :nation-id="nation.id"
+                context="development"
+                @posted="refreshMyNation"
+            />
         </section>
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
@@ -848,6 +922,13 @@ async function updateProfile(): Promise<void> {
                     @request-all="map.loadAllChunks"
                 />
             </div>
+            <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
+            <MessageBoard
+                :key="`public:${previewNation.id}`"
+                :nation-id="previewNation.id"
+                context="public"
+                @posted="refreshMyNation"
+            />
         </section>
 
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />

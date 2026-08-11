@@ -15,6 +15,8 @@ class RulesetAuthoringValidatorTest extends TestCase
 
     private const SECOND_PRODUCTION_PAYLOAD_HASH = '8c865b7e53593ad90a97357d50fa39e3ebdaf4e97bc925118b1012e01ea38234';
 
+    private const THIRD_PRODUCTION_PAYLOAD_HASH = '3d03cb6912ba7082376e9b262fb95d03ca30917d8eecbbc521bf63b27a53ce36';
+
     /** @var array<string, string> */
     private const PRE_SPLIT_PAYLOAD_HASHES = [
         'roadmap-pr2-v1' => '091494cae4988c2517417f91bb9810e277ee665525c98ff67eeb305b23592fe3',
@@ -73,6 +75,79 @@ class RulesetAuthoringValidatorTest extends TestCase
         $summary = app(RulesetAuthoringValidator::class)->validate($v2);
         $this->assertSame('hakoniwa-2s-plus-v2', $summary['key']);
         $this->assertSame(2, $summary['version']);
+    }
+
+    public function test_v3_payload_contains_only_the_approved_territory_contract_delta(): void
+    {
+        $v2 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v2');
+        $v3 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v3');
+        $this->assertIsArray($v2);
+        $this->assertIsArray($v3);
+        $this->assertSame(
+            self::SECOND_PRODUCTION_PAYLOAD_HASH,
+            hash('sha256', json_encode($v2, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
+        $this->assertSame(
+            self::THIRD_PRODUCTION_PAYLOAD_HASH,
+            hash('sha256', json_encode($v3, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
+
+        $normalized = $v3;
+        $normalized['key'] = 'hakoniwa-2s-plus-v2';
+        $normalized['version'] = 2;
+        unset($normalized['territory_transfer']);
+        unset($normalized['turn_processing']['territory_influence']);
+        $v2Territory = collect($v2['command_definitions'])->firstWhere('key', 'territory_expand');
+        foreach ($normalized['command_definitions'] as $index => $definition) {
+            if ($definition['key'] === 'territory_expand') {
+                $normalized['command_definitions'][$index] = $v2Territory;
+            }
+        }
+        $this->assertSame($v2, $normalized);
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($v3);
+        $this->assertSame('hakoniwa-2s-plus-v3', $summary['key']);
+        $this->assertSame(3, $summary['version']);
+    }
+
+    public function test_v3_territory_contract_drift_is_rejected(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $mutations = [
+            static function (array &$settings): void {
+                foreach ($settings['command_definitions'] as &$definition) {
+                    if ($definition['key'] === 'territory_expand') {
+                        $definition['description'] = 'drifted territory contract';
+                    }
+                }
+                unset($definition);
+            },
+            static function (array &$settings): void {
+                $settings['territory_transfer']['capital_core']['radius'] = 3;
+            },
+            static function (array &$settings): void {
+                $settings['turn_processing']['territory_influence']['neighbor']['reroll_on_missing_or_ineligible'] = true;
+            },
+            static function (array &$settings): void {
+                foreach ($settings['command_definitions'] as &$definition) {
+                    if ($definition['key'] === 'territory_expand') {
+                        $definition['metadata']['foreign_target']['terrain_keys'][] = 'plain';
+                    }
+                }
+                unset($definition);
+            },
+        ];
+
+        foreach ($mutations as $mutation) {
+            $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v3');
+            $mutation($settings);
+            try {
+                $validator->validate($settings);
+                $this->fail('Expected ver 1.4.0 territory contract drift to be rejected.');
+            } catch (DomainException) {
+                $this->addToAssertionCount(1);
+            }
+        }
     }
 
     public function test_architecture_chunk_size_and_canonical_initial_bounds_are_valid(): void

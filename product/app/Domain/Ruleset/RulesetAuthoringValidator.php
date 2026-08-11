@@ -372,7 +372,11 @@ final class RulesetAuthoringValidator
         $this->requireKeys($dormant, [
             'explicit_target_state', 'no_effect_owner_states', 'preserve', 'monster_exception',
         ], "{$path}.dormant_impact");
-        $explicitTargetState = ($settings['key'] ?? null) === 'hakoniwa-2s-plus-v2'
+        $explicitTargetState = in_array(
+            $settings['key'] ?? null,
+            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3'],
+            true,
+        )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
             : MissileTargetPolicy::ACTIVE_NATION;
         if ($dormant !== [
@@ -1007,6 +1011,8 @@ final class RulesetAuthoringValidator
         int $reservationRadius,
         int $landRadius,
     ): void {
+        $this->validateTerritoryContracts($settings);
+
         if (array_key_exists('development_plan_quantity', $settings)
             && ! DevelopmentPlanQuantity::matchesContract($settings['development_plan_quantity'])) {
             throw new DomainException('ruleset.development_plan_quantity does not match the canonical quantity contract.');
@@ -1156,6 +1162,126 @@ final class RulesetAuthoringValidator
         }
     }
 
+    /** @param array<string, mixed> $settings */
+    private function validateTerritoryContracts(array $settings): void
+    {
+        if (($settings['key'] ?? null) !== 'hakoniwa-2s-plus-v3') {
+            return;
+        }
+
+        $expectedTransfer = [
+            'capital_core' => [
+                'ownership_transfer_protected' => true,
+                'owner_states' => ['active'],
+                'radius' => 2,
+            ],
+        ];
+        if (($settings['territory_transfer'] ?? null) !== $expectedTransfer) {
+            throw new DomainException('ruleset.territory_transfer differs from the ver 1.4.0 Capital core contract.');
+        }
+
+        $expectedInfluence = [
+            'enabled' => true,
+            'policy_version' => 1,
+            'owner_states' => ['active'],
+            'target' => [
+                'unfacilitated_terrain_keys' => ['forest', 'mountain'],
+                'facility_keys' => [
+                    'village', 'town', 'city',
+                    'farm', 'factory', 'mine', 'missile_base', 'defense',
+                ],
+                'excluded_terrain_keys' => ['sea', 'shallow', 'wasteland', 'scorched'],
+                'excluded_facility_keys' => ['seabed_base', 'seabed_oil_field', 'monument'],
+                'monster_occupancy' => 'exclude',
+                'capital_core' => 'exclude',
+            ],
+            'source' => [
+                'excluded_terrain_keys' => ['sea', 'shallow', 'wasteland', 'scorched'],
+                'excluded_facility_keys' => ['seabed_base', 'seabed_oil_field'],
+                'monster_occupancy' => 'exclude',
+                'monument' => 'allowed',
+            ],
+            'neighbor' => [
+                'directions' => 6,
+                'selection' => 'uniform_one',
+                'reroll_on_missing_or_ineligible' => false,
+            ],
+            'resolution' => [
+                'cell_visit_order' => 'shared_surface_shuffle_once',
+                'attempts_per_eligible_target' => 1,
+                'source_state' => 'evaluate_at_visit',
+                'mutation_timing' => 'immediate',
+                'direction_stream' => 'territory_influence:direction:v1',
+            ],
+            'effect' => [
+                'owner' => 'source_owner',
+                'terrain' => 'preserve',
+                'population' => 'preserve',
+                'facility' => 'preserve',
+                'facility_scale' => 'preserve',
+                'resource_and_state' => 'preserve',
+            ],
+        ];
+        if (($settings['turn_processing']['territory_influence'] ?? null) !== $expectedInfluence) {
+            throw new DomainException('ruleset.turn_processing.territory_influence differs from the ver 1.4.0 contract.');
+        }
+
+        $territoryCommand = null;
+        foreach ($settings['command_definitions'] ?? [] as $definition) {
+            if (is_array($definition) && ($definition['key'] ?? null) === 'territory_expand') {
+                $territoryCommand = $definition;
+                break;
+            }
+        }
+        $expectedMetadata = [
+            'consumes_turn' => true,
+            'parameters' => [],
+            'legacy_command' => 'Widen',
+            'policy_version' => 3,
+            'actor_states' => ['active'],
+            'adjacency' => ['source_owner' => 'actor', 'directions' => 6],
+            'neutral_target' => [
+                'allowed' => true,
+                'terrain_keys' => ['wasteland', 'scorched', 'plain', 'forest', 'mountain'],
+                'requires_empty_facility' => true,
+            ],
+            'foreign_target' => [
+                'owner_states' => ['active'],
+                'terrain_keys' => ['wasteland', 'scorched'],
+                'requires_empty_facility' => true,
+            ],
+            'monster_occupancy' => 'reject',
+            'capital_core' => 'reject',
+            'effect' => [
+                'owner' => 'actor',
+                'terrain' => 'preserve',
+                'population' => 'preserve',
+                'facility' => 'preserve',
+                'facility_scale' => 'preserve',
+                'resource_and_state' => 'preserve',
+            ],
+        ];
+        $expectedTerritoryCommand = [
+            'key' => 'territory_expand',
+            'name' => '領土拡張',
+            'description' => '自国領に隣接する中立陸地、またはactiveな他国の荒地・焼け野原を領有します。',
+            'target_type' => 'cell',
+            'target_terrain_keys' => ['wasteland', 'scorched', 'plain', 'forest', 'mountain'],
+            'target_facility_keys' => [],
+            'requires_empty_facility' => true,
+            'cost_money' => 100,
+            'required_resources' => [],
+            'execution_phase' => 'territory',
+            'result_terrain_key' => null,
+            'result_facility_key' => null,
+            'sort_order' => 90,
+            'metadata' => $expectedMetadata,
+        ];
+        if ($territoryCommand !== $expectedTerritoryCommand) {
+            throw new DomainException('territory_expand differs from the ver 1.4.0 manual expansion contract.');
+        }
+    }
+
     /**
      * @param  list<string>  $resourceKeys
      * @param  list<string>  $facilityKeys
@@ -1265,7 +1391,7 @@ final class RulesetAuthoringValidator
             'attraction_growth', 'attraction_maximum_population',
         ];
         if (in_array($settings['key'] ?? null, [
-            'roadmap-pr22-v1', 'hakoniwa-2s-plus-v1', 'hakoniwa-2s-plus-v2',
+            'roadmap-pr22-v1', 'hakoniwa-2s-plus-v1', 'hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3',
         ], true)) {
             $settlementKeys[] = 'post_ordinary_attraction_growth';
         }

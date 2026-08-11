@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Application\CommandQueueService;
+use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
 use App\Application\MissileImpactResolver;
+use App\Application\MonsterRemovalService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Domain\Economy\NationCapacityResolver;
@@ -80,7 +82,7 @@ class CommandAndMissileTest extends TestCase
         $this->assertArrayHasKey('observed', $metadata);
         $this->assertArrayHasKey('original_parameters', $metadata);
 
-        $page = app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 4);
+        $page = app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 4);
         $messages = collect($page['groups'])->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($messages->contains(
             fn (string $message): bool => str_contains($message, '農場建設可能な平地ではありませんでした'),
@@ -215,10 +217,10 @@ class CommandAndMissileTest extends TestCase
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->count());
     }
 
-    public function test_v2_explicit_targeting_accepts_own_foreign_neutral_and_unowned_sea_cells(): void
+    public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v2', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v3', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -460,7 +462,7 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('completed', $finance->fresh()->status);
         $this->assertSame($moneyBefore + 10, (int) $nation->fresh()->money);
         $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
-        $page = app(PlayerIslandEventService::class)->page($nation, 1, 2);
+        $page = app(PlayerIslandEventService::class)->ownerPage($nation, 1, 2);
         $messages = collect($page['groups'])->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertContains(sprintf(
             '%s(%d,%d)で行われようとしていた埋め立ては、隣接する自国領地がないため実行できませんでした。',
@@ -507,21 +509,27 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(500, $detailMetadata['cost_money']);
         $this->assertCount(1, $detailMetadata['impacts']);
         $this->assertSame('capital_damaged', $detailMetadata['impacts'][0]['effect']);
+        $this->assertCount(1, $detailMetadata['firing_bases']);
+        $this->assertSame($base->x, $detailMetadata['firing_bases'][0]['x']);
+        $this->assertSame($base->y, $detailMetadata['firing_bases'][0]['y']);
+        $this->assertSame(1, $detailMetadata['firing_bases'][0]['fired_shots']);
         $this->assertSame('completed', $item->fresh()->status);
 
-        $targetMessages = collect(app(PlayerIslandEventService::class)->page($target, 1, 2)['groups'])
+        $targetMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($target, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($targetMessages->contains(
-            fn (string $message): bool => str_contains($message, '発射国がSPPミサイルを1発を発射しました。'),
+            fn (string $message): bool => str_contains($message, '標的国')
+                && str_contains($message, '発射国のSPPミサイルが着弾'),
         ));
         $this->assertFalse($targetMessages->contains(
             fn (string $message): bool => str_contains($message, '狙点'),
         ));
-        $firingMessages = collect(app(PlayerIslandEventService::class)->page($firing, 1, 2)['groups'])
+        $firingMessages = collect(app(PlayerIslandEventService::class)->ownerPage($firing, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($firingMessages->contains(
-            fn (string $message): bool => str_contains($message, '（秘密）SPPミサイルを狙点')
+            fn (string $message): bool => str_contains($message, 'SPPミサイルを狙点')
                 && str_contains($message, '費用500億円')
+                && str_contains($message, sprintf('発射基地: (%d,%d)から1発', $base->x, $base->y))
                 && str_contains($message, '着弾結果:'),
         ));
     }
@@ -609,6 +617,337 @@ class CommandAndMissileTest extends TestCase
         $this->assertStringContainsString('/land13.gif?v=', $presented['asset']['url']);
         unlink($assetDirectory.DIRECTORY_SEPARATOR.'land13.gif');
         rmdir($assetDirectory);
+    }
+
+    public function test_effective_wasteland_impact_scorches_only_terrain_and_updates_the_map_chunk(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->with(['terrain', 'facility'])->firstOrFail();
+        $cells = app(MapCellStateService::class);
+        $cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail());
+        $cells->setFacility($cell, FacilityDefinition::query()->where('key', 'factory')->firstOrFail());
+        $cell->population = 4_321;
+        $cell->version++;
+        $cell->save();
+        $cell = $cell->fresh(['terrain', 'facility', 'ownerNation']);
+        $identity = $cell->only([
+            'id', 'map_space_id', 'map_chunk_id', 'x', 'y', 'chunk_x', 'chunk_y', 'local_x', 'local_y',
+            'facility_definition_id', 'facility_scale', 'facility_experience',
+            'facility_operational_state', 'owner_nation_id', 'population', 'state',
+        ]);
+        $cellVersion = $cell->version;
+        $chunkVersion = (int) DB::table('map_chunks')->where('id', $cell->map_chunk_id)->value('version');
+        $item = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cell,
+        );
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'effective wasteland scorch'),
+            [$firing->id, $target->id],
+        );
+
+        $metrics = $this->resolveMissile($context, $base);
+
+        $cell = $cell->fresh(['terrain', 'facility', 'ownerNation']);
+        $this->assertSame('scorched', $cell->terrain->key);
+        $this->assertSame($identity, $cell->only(array_keys($identity)));
+        $this->assertSame($cellVersion + 1, $cell->version);
+        $this->assertSame(1, $metrics['meaningful_impacts']);
+        $this->assertSame(0, $metrics['ineffective_impacts']);
+        $this->assertSame([$cell->id], $metrics['changed_cell_ids']);
+        $this->assertSame([$cell->map_chunk_id], $context->state->changedMapChunkIds());
+        $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('land_scorched', $impact['effect']);
+        $this->assertSame('wasteland', $impact['from_terrain_key']);
+        $this->assertSame('scorched', $impact['to_terrain_key']);
+        $this->assertTrue($impact['terrain_only']);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('factory', $detail['impacts'][0]['preserved_facility_key']);
+        $this->assertSame(4_321, $detail['impacts'][0]['before_population']);
+        $this->assertSame(4_321, $detail['impacts'][0]['after_population']);
+
+        app(CompleteTurnEngine::class)->execute('aggregate_nations', $context);
+        $this->assertSame(
+            $chunkVersion + 1,
+            (int) DB::table('map_chunks')->where('id', $cell->map_chunk_id)->value('version'),
+        );
+    }
+
+    public function test_wasteland_scorch_transition_rejects_other_terrains_and_existing_scorched(): void
+    {
+        $world = $this->lightweightWorld();
+        $space = $this->surfaceMapSpace($world);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->orderBy('id')->limit(4)->get();
+        $this->assertCount(4, $cells);
+        $state = app(MapCellStateService::class);
+        $scorched = TerrainDefinition::query()->where('key', 'scorched')->firstOrFail();
+
+        foreach (['plain', 'forest', 'sea', 'scorched'] as $index => $terrainKey) {
+            $cell = $cells[$index];
+            $state->transitionTerrain(
+                $cell,
+                TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail(),
+            );
+            $snapshot = $cell->only([
+                'terrain_definition_id', 'terrain_quantity', 'facility_definition_id',
+                'owner_nation_id', 'population', 'version',
+            ]);
+
+            $this->assertFalse($state->scorchWasteland($cell, $scorched), $terrainKey);
+            $this->assertSame($snapshot, $cell->only(array_keys($snapshot)), $terrainKey);
+            $this->assertSame($terrainKey, $cell->terrain->key);
+        }
+
+        $wasteland = $cells->firstOrFail();
+        $state->transitionTerrain(
+            $wasteland,
+            TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
+        );
+        $snapshot = $wasteland->only([
+            'terrain_definition_id', 'terrain_quantity', 'facility_definition_id',
+            'owner_nation_id', 'population', 'version',
+        ]);
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+
+        $this->assertFalse($state->scorchWasteland($wasteland, $plain));
+        $this->assertSame($snapshot, $wasteland->only(array_keys($snapshot)));
+        $this->assertSame('wasteland', $wasteland->terrain->key);
+    }
+
+    public function test_existing_scorched_barren_land_is_an_ineffective_no_op(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility($cell, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'scorched')->firstOrFail(),
+        );
+        $cell->population = 0;
+        $cell->version++;
+        $cell->save();
+        $snapshot = $cell->fresh()->only([
+            'terrain_definition_id', 'terrain_quantity', 'facility_definition_id',
+            'owner_nation_id', 'population', 'version',
+        ]);
+        $chunkVersion = (int) DB::table('map_chunks')->where('id', $cell->map_chunk_id)->value('version');
+        $item = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cell,
+        );
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'existing scorched barren land'),
+            [$firing->id, $target->id],
+        );
+
+        $metrics = $this->resolveMissile($context, $base);
+
+        $this->assertSame($snapshot, $cell->fresh()->only(array_keys($snapshot)));
+        $this->assertSame(0, $metrics['meaningful_impacts']);
+        $this->assertSame(1, $metrics['ineffective_impacts']);
+        $this->assertSame([], $metrics['changed_cell_ids']);
+        $this->assertSame([], $context->state->changedMapChunkIds());
+        $this->assertSame($chunkVersion, (int) DB::table('map_chunks')->where('id', $cell->map_chunk_id)->value('version'));
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('ineffective_barren_land', $detail['impacts'][0]['effect']);
+    }
+
+    public function test_monster_hit_scorches_wasteland_only_when_that_impact_kills_the_monster_once(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility($cell, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
+        );
+        $cell->population = 0;
+        $cell->save();
+        $monster = $this->monster($world, $cell);
+        $monster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
+
+        $first = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cell,
+        );
+        $firstMetrics = $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'nonlethal monster wasteland hit'), [$firing->id, $target->id]),
+            $base,
+        );
+
+        $this->assertSame('alive', $monster->fresh()->state);
+        $this->assertSame(1, $monster->fresh()->current_hp);
+        $this->assertSame('wasteland', $cell->fresh()->terrain()->value('key'));
+        $this->assertSame(1, $firstMetrics['meaningful_impacts']);
+        $firstImpact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->orderBy('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertFalse($firstImpact['terrain_scorched']);
+
+        $second = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cell,
+        );
+        $secondMetrics = $this->resolveMissile(
+            $this->context($world, 3, hash('sha256', 'lethal monster wasteland hit'), [$firing->id, $target->id]),
+            $base,
+        );
+
+        $this->assertSame('killed', $monster->fresh()->state);
+        $this->assertFalse(MonsterOccupancy::query()->where('monster_instance_id', $monster->id)->exists());
+        $this->assertSame('scorched', $cell->fresh()->terrain()->value('key'));
+        $this->assertSame(1, $secondMetrics['meaningful_impacts']);
+        $this->assertSame(0, $secondMetrics['ineffective_impacts']);
+        $this->assertSame([$cell->id], $secondMetrics['changed_cell_ids']);
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.killed')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.reward_distributed')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.kill_stat_incremented')->count());
+        $this->assertSame(1, DB::table('nation_monster_kill_stats')->where('nation_id', $firing->id)->value('kill_count'));
+        $secondImpact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->orderByDesc('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertTrue($secondImpact['terrain_scorched']);
+        $this->assertSame('monster_hit', $secondImpact['effect']);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $second->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('killed', $detail['impacts'][0]['effect']);
+        $this->assertTrue($detail['impacts'][0]['terrain_scorched']);
+        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame('completed', $second->fresh()->status);
+    }
+
+    public function test_monster_kill_on_non_wasteland_and_non_missile_removal_do_not_scorch(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $plain = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility($plain, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $plain,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        $plain->population = 0;
+        $plain->save();
+        $missileMonster = $this->monster($world, $plain);
+        $missileMonster->update(['current_hp' => 1, 'spawned_max_hp' => 1]);
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $plain);
+
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'monster killed on plain'), [$firing->id, $target->id]),
+            $base,
+        );
+
+        $this->assertSame('killed', $missileMonster->fresh()->state);
+        $this->assertSame('plain', $plain->fresh()->terrain()->value('key'));
+        $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertFalse($impact['terrain_scorched']);
+
+        $wasteland = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereKeyNot($plain->id)->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility($wasteland, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $wasteland,
+            TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
+        );
+        $wasteland->population = 0;
+        $wasteland->save();
+        $removed = $this->monster($world, $wasteland);
+        $removedByTerrain = app(MonsterRemovalService::class)->removeAtCell(
+            $this->context($world, 3, hash('sha256', 'non missile monster removal'), [$firing->id, $target->id]),
+            $wasteland,
+            'test_non_missile_removal',
+        );
+
+        $this->assertTrue($removedByTerrain);
+        $this->assertSame('removed', $removed->fresh()->state);
+        $this->assertSame('wasteland', $wasteland->fresh()->terrain()->value('key'));
+    }
+
+    public function test_wasteland_scorch_rolls_back_and_same_seed_retry_repeats_the_terrain_result(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'factory')->firstOrFail(),
+        );
+        $cell->population = 321;
+        $cell->version++;
+        $cell->save();
+        $snapshot = $cell->fresh()->only([
+            'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population', 'version',
+        ]);
+        $chunkVersion = (int) DB::table('map_chunks')->where('id', $cell->map_chunk_id)->value('version');
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $cell);
+        $seed = $this->seedForImpactIndex($item, $cell, 2, $cell);
+        $rolledBackMetrics = null;
+
+        try {
+            DB::transaction(function () use (
+                $world,
+                $firing,
+                $target,
+                $base,
+                $cell,
+                $seed,
+                &$rolledBackMetrics,
+            ): void {
+                $rolledBackMetrics = $this->resolveMissile(
+                    $this->context($world, 2, $seed, [$firing->id, $target->id]),
+                    $base,
+                );
+                $this->assertSame('scorched', $cell->fresh()->terrain()->value('key'));
+                throw new RuntimeException('force wasteland scorch rollback');
+            });
+            $this->fail('The forced wasteland scorch rollback did not occur.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('force wasteland scorch rollback', $exception->getMessage());
+        }
+
+        $this->assertIsArray($rolledBackMetrics);
+        $this->assertSame($snapshot, $cell->fresh()->only(array_keys($snapshot)));
+        $this->assertSame('queued', $item->fresh()->status);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        $this->assertSame($chunkVersion, (int) DB::table('map_chunks')->where('id', $cell->map_chunk_id)->value('version'));
+
+        $retryContext = $this->context($world, 2, $seed, [$firing->id, $target->id]);
+        $retryMetrics = $this->resolveMissile($retryContext, $base);
+
+        $this->assertSame($rolledBackMetrics, $retryMetrics);
+        $this->assertSame('scorched', $cell->fresh()->terrain()->value('key'));
+        $this->assertSame('factory', $cell->fresh()->facility()->value('key'));
+        $this->assertSame($target->id, $cell->fresh()->owner_nation_id);
+        $this->assertSame(321, $cell->fresh()->population);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        app(CompleteTurnEngine::class)->execute('aggregate_nations', $retryContext);
+        $this->assertSame(
+            $chunkVersion + 1,
+            (int) DB::table('map_chunks')->where('id', $cell->map_chunk_id)->value('version'),
+        );
     }
 
     public function test_land_destruction_missile_at_minimum_capital_is_a_complete_no_op(): void
@@ -894,13 +1233,13 @@ class CommandAndMissileTest extends TestCase
         $generatedTotal = (int) $generated->sum(DB::raw("(metadata->>'generated_population')::integer"));
         $receivedTotal = (int) $received->sum(DB::raw("(metadata->>'received_population')::integer"));
 
-        $targetEvents = collect(app(PlayerIslandEventService::class)->page($target, 1, 2)['groups'])
+        $targetEvents = collect(app(PlayerIslandEventService::class)->publicNationPage($target, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events']);
-        $firingEvents = collect(app(PlayerIslandEventService::class)->page($firing, 1, 2)['groups'])
+        $firingEvents = collect(app(PlayerIslandEventService::class)->ownerPage($firing, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events']);
         $this->assertCount(1, $targetEvents->where('type', 'refugee_generated'));
         $this->assertCount(1, $firingEvents->where('type', 'refugee_received'));
-        $this->assertTrue($targetEvents->where('type', 'refugee_generated')->contains(
+        $this->assertFalse($targetEvents->where('type', 'refugee_generated')->contains(
             fn (array $event): bool => str_contains($event['message'], number_format($generatedTotal).'人'),
         ));
         $this->assertTrue($firingEvents->where('type', 'refugee_received')->contains(
@@ -962,7 +1301,7 @@ class CommandAndMissileTest extends TestCase
             ->where('x', $coordinate->x)->where('y', $coordinate->y)->firstOrFail();
         app(MapCellStateService::class)->transitionTerrain(
             $dormantCell,
-            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+            TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
         );
         app(MapCellStateService::class)->setFacility(
             $dormantCell,
@@ -1161,16 +1500,15 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame($oldCapitalPopulation, $capital->fresh()->population);
         $this->assertSame($cityTarget->id, $nation->capital()->value('map_cell_id'));
 
-        [, $spectator] = $this->nation($world, '公開ログ確認国');
-        $publicEvents = collect(app(PlayerIslandEventService::class)->page($spectator, 1, 9)['groups'])
+        $publicEvents = collect(app(PlayerIslandEventService::class)->publicNationPage($nation, 1, 9)['groups'])
             ->flatMap(fn (array $group): array => $group['events']);
         $forestMessages = $publicEvents->filter(
-            fn (array $event): bool => $event['message'] === 'こころなしか、どこかで森が増えた気がします。',
+            fn (array $event): bool => str_contains($event['message'], 'どこかで森が増えた気がします。'),
         );
         $this->assertCount(2, $forestMessages);
         $this->assertTrue($forestMessages->every(
             fn (array $event): bool => $event['type'] === 'command.forest_planted_public'
-                && $event['coordinate'] === null,
+                && ! str_contains($event['message'], '('),
         ));
         $this->assertFalse($publicEvents->contains(
             fn (array $event): bool => in_array($event['type'], [
@@ -1180,11 +1518,20 @@ class CommandAndMissileTest extends TestCase
         ));
         $this->assertTrue($publicEvents->contains(
             fn (array $event): bool => $event['type'] === 'command.seabed_base_built_public'
-                && $event['coordinate'] === null
                 && str_contains($event['message'], '(?,?)'),
         ));
         $this->assertSame(2, $publicEvents->where('type', 'command.facility_built_public')
             ->filter(fn (array $event): bool => str_contains($event['message'], '防衛施設'))->count());
+        $this->assertTrue($publicEvents->contains(
+            fn (array $event): bool => $event['type'] === 'command.capital_relocated_public'
+                && $event['message'] === sprintf(
+                    '残存開発国の首都が(%d,%d)から(%d,%d)へ移転しました。',
+                    $capital->x,
+                    $capital->y,
+                    $cityTarget->x,
+                    $cityTarget->y,
+                ),
+        ));
     }
 
     public function test_aid_attraction_and_monster_dispatch_execute_as_nation_commands(): void
@@ -1229,9 +1576,11 @@ class CommandAndMissileTest extends TestCase
             'cell',
             fn ($query) => $query->where('owner_nation_id', $receiver->id),
         )->count());
-        $senderMessages = collect(app(PlayerIslandEventService::class)->page($sender, 1, 2)['groups'])
+        Nation::query()->whereKey($sender->id)->update(['name' => '現在送信国']);
+        Nation::query()->whereKey($receiver->id)->update(['name' => '現在受信国']);
+        $senderMessages = collect(app(PlayerIslandEventService::class)->ownerPage($sender, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
-        $receiverMessages = collect(app(PlayerIslandEventService::class)->page($receiver, 1, 2)['groups'])
+        $receiverMessages = collect(app(PlayerIslandEventService::class)->ownerPage($receiver, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($senderMessages->contains(
             fn (string $message): bool => str_contains($message, '支援受領国へ資金援助として200億円'),
@@ -1245,7 +1594,29 @@ class CommandAndMissileTest extends TestCase
         $this->assertTrue($receiverMessages->contains(
             fn (string $message): bool => str_contains($message, '支援派遣国から食料援助として2,000トン'),
         ));
+        $eventService = app(PlayerIslandEventService::class);
+        $worldAidEvents = collect($eventService->publicWorldPage($world, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->whereIn('type', ['command.money_aid_public', 'command.food_aid_public'])->values();
+        $senderAidEvents = collect($eventService->publicNationPage($sender->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->whereIn('type', ['command.money_aid_public', 'command.food_aid_public'])->values();
+        $receiverAidEvents = collect($eventService->publicNationPage($receiver->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->whereIn('type', ['command.money_aid_public', 'command.food_aid_public'])->values();
+        $this->assertCount(2, $worldAidEvents);
+        $this->assertSame($worldAidEvents->pluck('id')->all(), $senderAidEvents->pluck('id')->all());
+        $this->assertSame($worldAidEvents->pluck('id')->all(), $receiverAidEvents->pluck('id')->all());
+        $this->assertEqualsCanonicalizing([
+            '支援派遣国から支援受領国へ200億円の資金援助が行われました。',
+            '支援派遣国から支援受領国へ食料2,000トンの援助が行われました。',
+        ], $worldAidEvents->pluck('message')->all());
+        $publicAidJson = json_encode($worldAidEvents->all(), JSON_THROW_ON_ERROR);
+        foreach (['requested_money', 'receiver_capacity', 'requested_food_tons', 'sender_money_before'] as $privateKey) {
+            $this->assertStringNotContainsString($privateKey, $publicAidJson);
+        }
 
+        $sender->refresh();
         $attraction = $this->queue($service, $user, $sender, $space, 'attraction', null);
         $sender->update(['money' => 1_000]);
         $attractionContext = $this->context($world, 3, hash('sha256', 'attraction command'), [$sender->id]);
@@ -1253,6 +1624,12 @@ class CommandAndMissileTest extends TestCase
         $this->assertTrue($attractionContext->state->hasAttraction($sender->id));
         $this->assertSame(0, $sender->fresh()->money);
         $this->assertSame('completed', $attraction->fresh()->status);
+        $attractionEvents = collect($eventService->publicNationPage($sender->fresh(), 1, 3)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $this->assertTrue($attractionEvents->contains(
+            fn (array $event): bool => $event['type'] === 'command.attraction_started_public'
+                && $event['message'] === '現在送信国で誘致活動が行われました。',
+        ));
     }
 
     public function test_zero_effect_money_and_food_aid_preserve_assets_and_increment_idle_through_automatic_finance(): void
@@ -1304,10 +1681,18 @@ class CommandAndMissileTest extends TestCase
             ->value(DB::raw("(metadata->>'transferred_money')::integer")));
         $this->assertSame(0, (int) DB::table('audit_events')->where('event_type', 'command.food_aid_transferred')
             ->value(DB::raw("(metadata->>'transferred_food_tons')::integer")));
-        $messages = collect(app(PlayerIslandEventService::class)->page($sender, 1, 2)['groups'])
+        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', [
+            'command.money_aid_public', 'command.food_aid_public',
+        ])->count());
+        $events = app(PlayerIslandEventService::class);
+        $messages = collect($events->ownerPage($sender, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
+        $receiverMessages = collect($events->ownerPage($receiver, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($messages->contains(fn (string $message): bool => str_contains($message, '資金収容上限')));
         $this->assertTrue($messages->contains(fn (string $message): bool => str_contains($message, '食料収容上限')));
+        $this->assertTrue($receiverMessages->contains(fn (string $message): bool => str_contains($message, '資金収容上限')));
+        $this->assertTrue($receiverMessages->contains(fn (string $message): bool => str_contains($message, '食料収容上限')));
     }
 
     public function test_partial_aid_is_meaningful_and_resets_idle_with_exact_transfer_and_overflow(): void

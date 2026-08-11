@@ -124,13 +124,91 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(3, DB::table('audit_events')->where('event_type', 'facility.constructed')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'facility.expanded')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.automatic_finance')->count());
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'command.terrain_changed_public')
+            ->where('visibility', 'public')->count());
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'command.facility_built_public')
+            ->where('visibility', 'public')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'like', '%earthquake%')->count());
+
+        $publicMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($first, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
+        foreach ([
+            sprintf('開発一号(%d,%d)で地ならしが行われました。', $landLevelTarget->x, $landLevelTarget->y),
+            sprintf('開発一号(%d,%d)で埋め立てが行われました。', $reclaimTarget->x, $reclaimTarget->y),
+            sprintf('開発一号(%d,%d)で整地が行われました。', $landClearTarget->x, $landClearTarget->y),
+            sprintf('開発一号(%d,%d)で掘削が行われました。', $excavateTarget->x, $excavateTarget->y),
+            sprintf('開発一号(%d,%d)で農場整備が行われました。', $farmTarget->x, $farmTarget->y),
+            sprintf('開発一号(%d,%d)で農場整備が行われました。（規模 10 → 12）', $farmTarget->x, $farmTarget->y),
+            sprintf('開発一号(%d,%d)で工場整備が行われました。', $factoryTarget->x, $factoryTarget->y),
+            sprintf('開発一号(%d,%d)で採掘場整備が行われました。', $mineTarget->x, $mineTarget->y),
+        ] as $message) {
+            $this->assertContains($message, $publicMessages->all());
+        }
 
         $landLevelEvent = $this->eventMetadata('command.success', function ($query): void {
             $query->whereRaw("metadata->>'command_key' = ?", ['land_level']);
         });
         $this->assertFalse($landLevelEvent['consumes_turn']);
         $this->assertArrayNotHasKey('earthquake', $landLevelEvent);
+    }
+
+    public function test_public_facility_log_uses_actual_scale_snapshots_for_construction_expansion_and_maximum(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '規模表示島');
+        $nation->update(['money' => 1_000]);
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        FacilityDefinition::query()->where('key', 'farm')->firstOrFail()->update([
+            'initial_scale' => 10_000,
+            'scale_increment' => 2_000,
+            'maximum_scale' => 50_000,
+        ]);
+        $this->queue($user, $nation, $space, 'build_farm', $target, 3, 1);
+        $executor = app(DomesticCommandExecutor::class);
+        $context = $this->context($world, [$nation->id], str_repeat('c', 64));
+
+        $executor->execute($context);
+        $this->assertSame(10_000, $target->fresh()->facility_scale);
+        $executor->execute($context);
+        $this->assertSame(12_000, $target->fresh()->facility_scale);
+        $target->update(['facility_scale' => 50_000]);
+        $executor->execute($context);
+        $this->assertSame(50_000, $target->fresh()->facility_scale);
+
+        $projectionSnapshots = DB::table('audit_events')
+            ->where('event_type', 'command.facility_built_public')
+            ->where('subject_id', $target->id)
+            ->orderBy('id')
+            ->pluck('metadata')
+            ->map(static function (mixed $metadata): array {
+                $decoded = json_decode((string) $metadata, true, 512, JSON_THROW_ON_ERROR);
+
+                return [$decoded['expanded'], $decoded['before_scale'], $decoded['facility_scale']];
+            })->all();
+        $this->assertSame([
+            [false, null, 10_000],
+            [true, 10_000, 12_000],
+            [true, 50_000, 50_000],
+        ], $projectionSnapshots);
+
+        $publicMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($nation, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message')->all();
+        $this->assertContains(
+            sprintf('規模表示島(%d,%d)で農場整備が行われました。', $target->x, $target->y),
+            $publicMessages,
+        );
+        $this->assertContains(
+            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 10,000 → 12,000）', $target->x, $target->y),
+            $publicMessages,
+        );
+        $this->assertContains(
+            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 50,000 → 50,000）', $target->x, $target->y),
+            $publicMessages,
+        );
     }
 
     public function test_turn_execution_repairs_a_split_queue_without_stopping_the_world(): void
@@ -422,7 +500,7 @@ class DomesticCommandExecutionTest extends TestCase
             ));
         $this->assertSame(['excavate', 'reclaim'], $successes->pluck('command_key')->all());
         $this->assertSame([200, 150], $successes->pluck('cost_money')->all());
-        $page = app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 3);
+        $page = app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 3);
         $messages = collect($page['groups'])->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($messages->contains(
             static fn (string $message): bool => str_contains($message, '掘削') && str_contains($message, '浅瀬'),
@@ -587,7 +665,7 @@ class DomesticCommandExecutionTest extends TestCase
         $success = $this->eventMetadataForSubject('command.success', $item->id);
         $this->assertSame(800, $success['cost_money']);
         $world->update(['current_turn' => 2]);
-        $playerEvents = collect(app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 2)['groups'])
+        $playerEvents = collect(app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 2)['groups'])
             ->flatMap(static fn (array $group): array => $group['events']);
         $this->assertStringContainsString(
             '800',

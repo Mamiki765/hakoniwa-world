@@ -15,6 +15,8 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property string $display_name
+ * @property string|null $visitor_code
+ * @property Carbon|null $message_board_last_posted_at
  * @property Carbon|null $created_at
  * @property-read Collection<int, AuthIdentity> $authIdentities
  */
@@ -34,6 +36,7 @@ class User extends Authenticatable
     {
         return [
             'created_at' => 'immutable_datetime',
+            'message_board_last_posted_at' => 'datetime',
         ];
     }
 

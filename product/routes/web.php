@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
+use App\Http\Controllers\Api\MessageBoardController;
 use App\Http\Controllers\Api\NationProfileController;
 use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
@@ -39,8 +40,10 @@ Route::prefix('api/v1/public')
         Route::get('/worlds', [PublicApiController::class, 'worlds']);
         Route::get('/worlds/{world}/summary', [PublicApiController::class, 'summary']);
         Route::get('/worlds/{world}/rankings', [PublicApiController::class, 'rankings']);
+        Route::get('/worlds/{world}/major-news', [PublicApiController::class, 'majorNews']);
         Route::get('/worlds/{world}/events', [PublicApiController::class, 'events']);
         Route::get('/worlds/{world}/map-spaces', [PublicApiController::class, 'mapSpaces']);
+        Route::get('/nations/{nation}/events', [PublicApiController::class, 'nationEvents']);
         Route::get('/nations/{nation}', [PublicApiController::class, 'nation']);
         Route::get('/nations/{nation}/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}', [PublicApiController::class, 'chunk'])
             ->where(['chunkX' => '-?\d+', 'chunkY' => '-?\d+']);
@@ -54,6 +57,9 @@ Route::prefix('api/v1/admin')
         Route::delete('/announcements/{announcement}', [AnnouncementController::class, 'destroy']);
     });
 
+Route::get('/api/v1/nations/{nation}/message-board', [MessageBoardController::class, 'show'])
+    ->middleware(['throttle:60,1', PrivateApiResponse::class]);
+
 Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(function (): void {
     Route::get('/me', [ApiController::class, 'me']);
     Route::get('/worlds', [ApiController::class, 'worlds']);
@@ -62,6 +68,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->where(['chunkX' => '-?\d+', 'chunkY' => '-?\d+']);
     Route::post('/nations', [ApiController::class, 'createNation']);
     Route::get('/nations/{nation}', [ApiController::class, 'nation']);
+    Route::post('/nations/{nation}/message-board', [MessageBoardController::class, 'storePublic']);
+    Route::post('/nations/{nation}/message-board/secret', [MessageBoardController::class, 'storeSecret']);
     Route::patch('/nations/{nation}/profile', [NationProfileController::class, 'update']);
     Route::get('/me/nation', [ApiController::class, 'myNation']);
     Route::get('/nations/{nation}/events', [PlayerEventController::class, 'index']);

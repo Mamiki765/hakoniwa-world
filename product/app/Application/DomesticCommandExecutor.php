@@ -2,9 +2,12 @@
 
 namespace App\Application;
 
+use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CommandFailureReason;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\SettlementOverbuildPolicy;
+use App\Domain\Command\TerritoryExpansionFacts;
+use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Economy\CappedAddition;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
@@ -43,6 +46,8 @@ final class DomesticCommandExecutor
         private readonly MonsterSpawnService $monsterSpawn,
         private readonly NationIdleCounterFinalizer $idleCounters,
         private readonly LegacyCommandQueueOrder $legacyOrder,
+        private readonly TerritoryExpansionPolicy $territoryExpansion,
+        private readonly CapitalCorePolicy $capitalCores,
     ) {}
 
     /**
@@ -247,22 +252,13 @@ final class DomesticCommandExecutor
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             return $this->missileValidationFailure($context, $nation, $definition, $cell, $observed);
         }
-        if ($occupancy !== null) {
-            return ['reason' => CommandFailureReason::OccupiedByMonster, 'observed' => $observed];
-        }
         if ($definition->key === 'territory_expand') {
-            if ($cell->owner_nation_id === $nation->id) {
-                return ['reason' => CommandFailureReason::AlreadyOwned, 'observed' => $observed];
+            $reason = $this->territoryExpansionFailure($context, $nation, $definition, $cell, $occupancy !== null);
+            if ($reason !== null) {
+                return ['reason' => $reason, 'observed' => $observed];
             }
-            if ($cell->owner_nation_id !== null) {
-                return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
-            }
-            if (! in_array($cell->terrain->key, $definition->target_terrain_keys, true)) {
-                return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
-            }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
-                return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
-            }
+        } elseif ($occupancy !== null) {
+            return ['reason' => CommandFailureReason::OccupiedByMonster, 'observed' => $observed];
         } elseif ($definition->key === 'build_seabed_base') {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
@@ -563,11 +559,13 @@ final class DomesticCommandExecutor
         }
         if ($definition->key === 'reclaim') {
             $this->applyReclaim($context, $nation, $definition, $cell);
+            $this->recordPublicCommandCompanion($context, $nation, $definition, $cell);
 
             return true;
         }
         if ($this->isSeabedOilSearch($definition, $cell)) {
             $this->applySeabedOilSearch($context, $nation, $item, $definition, $cell, $executionCost);
+            $this->recordPublicCommandCompanion($context, $nation, $definition, $cell);
 
             return true;
         }
@@ -606,6 +604,7 @@ final class DomesticCommandExecutor
                 'to_terrain_key' => $terrainKey,
                 'removed_facility_key' => $oldFacility,
             ], $terrainEventVisibility);
+            $this->recordPublicCommandCompanion($context, $nation, $definition, $cell);
             if ($definition->key === 'plant_forest') {
                 $metadata = [
                     'nation_id' => $nation->id, 'nation_name' => $nation->name,
@@ -668,9 +667,7 @@ final class DomesticCommandExecutor
             'y' => $cell->y,
             'monument_definition_key' => $monument?->key,
         ], $constructionVisibility);
-        if (! $expanded) {
-            $this->recordConstructionProjection($context, $nation, $definition, $cell);
-        }
+        $this->recordConstructionProjection($context, $nation, $definition, $cell, $expanded, $beforeScale);
 
         return true;
     }
@@ -680,14 +677,22 @@ final class DomesticCommandExecutor
         Nation $nation,
         CommandDefinition $definition,
         MapCell $cell,
+        bool $expanded,
+        ?int $beforeScale,
     ): void {
         $metadata = [
             'nation_id' => $nation->id, 'nation_name' => $nation->name,
             'command_key' => $definition->key,
             'facility_key' => $definition->result_facility_key,
+            'expanded' => $expanded,
+            'before_scale' => $beforeScale,
+            'facility_scale' => $cell->facility_scale,
             'x' => $cell->x, 'y' => $cell->y,
         ];
         if ($definition->key === 'build_missile_base') {
+            if ($expanded) {
+                return;
+            }
             $this->events->record($context, 'command.forest_planted_public', $nation, [
                 'nation_id' => $nation->id, 'nation_name' => $nation->name,
             ], 'public');
@@ -696,6 +701,9 @@ final class DomesticCommandExecutor
             return;
         }
         if ($definition->key === 'build_seabed_base') {
+            if ($expanded) {
+                return;
+            }
             $this->events->record($context, 'command.seabed_base_built_public', $nation, [
                 'nation_id' => $nation->id, 'nation_name' => $nation->name,
             ], 'public');
@@ -704,6 +712,9 @@ final class DomesticCommandExecutor
             return;
         }
         if ($definition->key === 'build_decoy') {
+            if ($expanded) {
+                return;
+            }
             $this->events->record($context, 'command.facility_built_public', $cell, [
                 ...$metadata,
                 'command_key' => 'build_defense_facility',
@@ -713,9 +724,35 @@ final class DomesticCommandExecutor
 
             return;
         }
-        if (in_array($definition->key, ['build_defense_facility', 'build_monument'], true)) {
+        if (in_array($definition->key, [
+            'build_farm',
+            'build_factory',
+            'build_mine',
+            'build_defense_facility',
+            'build_monument',
+        ], true)) {
             $this->events->record($context, 'command.facility_built_public', $cell, $metadata, 'public');
         }
+    }
+
+    private function recordPublicCommandCompanion(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $cell,
+    ): void {
+        if (! in_array($definition->key, ['land_clear', 'land_level', 'reclaim', 'excavate'], true)) {
+            return;
+        }
+
+        $this->events->record($context, 'command.terrain_changed_public', $cell, [
+            'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
+            'command_key' => $definition->key,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'result_terrain_key' => $cell->fresh()->terrain()->value('key'),
+        ], 'public');
     }
 
     private function applyLogging(
@@ -755,14 +792,73 @@ final class DomesticCommandExecutor
 
     private function applyTerritoryExpand(TurnContext $context, Nation $nation, MapCell $cell): void
     {
+        $cell->loadMissing('ownerNation');
+        $oldOwnerNationId = $cell->owner_nation_id;
+        $oldOwnerNationName = $oldOwnerNationId === null ? '中立' : $cell->ownerNation->name;
         $cell->owner_nation_id = $nation->id;
         $cell->version++;
         $cell->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $this->events->record($context, 'command.territory_expanded', $cell, [
-            'nation_id' => $nation->id, 'x' => $cell->x, 'y' => $cell->y,
-            'terrain_key' => $cell->terrain->key,
-        ]);
+            'nation_id' => $nation->id,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'old_owner_nation_id' => $oldOwnerNationId,
+            'old_owner_nation_name' => $oldOwnerNationName,
+            'new_owner_nation_id' => $nation->id,
+            'new_owner_nation_name' => $nation->name,
+            'ownership_changed' => true,
+        ], 'public');
+    }
+
+    private function territoryExpansionFailure(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $cell,
+        bool $monsterOccupied,
+    ): ?CommandFailureReason {
+        $transfer = $context->ruleset->settings['territory_transfer']['capital_core'] ?? null;
+        $capitalProtected = false;
+        if (is_array($transfer) && ($transfer['ownership_transfer_protected'] ?? false) === true) {
+            $ownerStates = is_array($transfer['owner_states'] ?? null) ? $transfer['owner_states'] : [];
+            $capitals = NationCapital::query()
+                ->whereHas('nation', fn ($query) => $query
+                    ->where('world_id', $context->world->id)
+                    ->whereIn('state', $ownerStates))
+                ->orderBy('nation_id')
+                ->lockForUpdate()
+                ->get(['nation_id', 'x', 'y'])
+                ->map(static fn (NationCapital $capital): array => [
+                    'nation_id' => (int) $capital->nation_id,
+                    'x' => (int) $capital->x,
+                    'y' => (int) $capital->y,
+                ])->all();
+            $capitalProtected = $this->capitalCores->protectsTransfer(
+                new GridCoordinate($cell->x, $cell->y),
+                $nation->id,
+                $capitals,
+                (int) ($transfer['radius'] ?? 0),
+            );
+        }
+
+        $facts = new TerritoryExpansionFacts(
+            actorNationId: $nation->id,
+            actorNationState: $nation->state,
+            targetOwnerNationId: $cell->owner_nation_id,
+            targetOwnerNationState: $cell->ownerNation?->state,
+            targetOwnerInActorWorld: $cell->owner_nation_id === null
+                || $cell->ownerNation?->world_id === $context->world->id,
+            terrainKey: $cell->terrain->key,
+            facilityKey: $cell->facility?->key,
+            monsterOccupied: $monsterOccupied,
+            capitalCoreProtected: $capitalProtected,
+            adjacentActorTerritory: $this->hasOwnedCellWithin($nation, $cell, 1, false),
+            definitionTargetTerrainKeys: $definition->target_terrain_keys,
+            definitionRequiresEmptyFacility: $definition->requires_empty_facility,
+        );
+
+        return $this->territoryExpansion->failureReason($definition->metadata, $facts);
     }
 
     private function applyCapitalRelocation(TurnContext $context, Nation $nation, MapCell $target): void
@@ -788,6 +884,14 @@ final class DomesticCommandExecutor
             'old_population_preserved' => $old->population,
             'new_population_preserved' => $target->population,
         ]);
+        $this->events->record($context, 'command.capital_relocated_public', $target, [
+            'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
+            'from_x' => $old->x,
+            'from_y' => $old->y,
+            'x' => $target->x,
+            'y' => $target->y,
+        ], 'public');
     }
 
     private function applyNationCommand(
@@ -801,6 +905,10 @@ final class DomesticCommandExecutor
             $this->events->record($context, 'command.attraction_started', $nation, [
                 'nation_id' => $nation->id,
             ]);
+            $this->events->record($context, 'command.attraction_started_public', $nation, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+            ], 'public');
 
             return true;
         }
@@ -814,20 +922,31 @@ final class DomesticCommandExecutor
                 $target->update(['money' => $addition->after]);
                 $nation->refresh();
             }
-            $this->events->record($context, 'command.money_aid_transferred', $nation, [
-                'nation_id' => $nation->id, 'receiver_nation_id' => $target->id,
+            $metadata = [
+                'sender_nation_id' => $nation->id,
+                'sender_nation_name' => $nation->name,
+                'receiver_nation_id' => $target->id,
                 'receiver_nation_name' => $target->name,
                 'requested_money' => $requested, 'transferred_money' => $addition->applied,
                 'receiver_capacity_money' => $capacity,
                 'receiver_capacity_overflow' => $addition->overflow,
+            ];
+            $this->events->record($context, 'command.money_aid_transferred', $nation, [
+                ...$metadata, 'nation_id' => $nation->id,
             ]);
             $this->events->record($context, 'command.money_aid_received', $target, [
-                'nation_id' => $target->id, 'sender_nation_id' => $nation->id,
-                'sender_nation_name' => $nation->name,
-                'requested_money' => $requested, 'transferred_money' => $addition->applied,
-                'receiver_capacity_money' => $capacity,
-                'receiver_capacity_overflow' => $addition->overflow,
+                ...$metadata, 'nation_id' => $target->id,
             ]);
+            if ($addition->applied > 0) {
+                $this->events->record($context, 'command.money_aid_public', $nation, [
+                    'nation_id' => $nation->id,
+                    'sender_nation_id' => $nation->id,
+                    'sender_nation_name' => $nation->name,
+                    'receiver_nation_id' => $target->id,
+                    'receiver_nation_name' => $target->name,
+                    'transferred_money' => $addition->applied,
+                ], 'public');
+            }
 
             return $addition->applied > 0;
         }
@@ -847,20 +966,31 @@ final class DomesticCommandExecutor
                 ], ['amount' => 0]);
                 $balance->increment('amount', $addition->applied);
             }
-            $this->events->record($context, 'command.food_aid_transferred', $nation, [
-                'nation_id' => $nation->id, 'receiver_nation_id' => $target->id,
+            $metadata = [
+                'sender_nation_id' => $nation->id,
+                'sender_nation_name' => $nation->name,
+                'receiver_nation_id' => $target->id,
                 'receiver_nation_name' => $target->name,
                 'requested_food_tons' => $requested, 'transferred_food_tons' => $addition->applied,
                 'receiver_capacity_food_tons' => $capacity,
                 'receiver_capacity_overflow_tons' => $addition->overflow,
+            ];
+            $this->events->record($context, 'command.food_aid_transferred', $nation, [
+                ...$metadata, 'nation_id' => $nation->id,
             ]);
             $this->events->record($context, 'command.food_aid_received', $target, [
-                'nation_id' => $target->id, 'sender_nation_id' => $nation->id,
-                'sender_nation_name' => $nation->name,
-                'requested_food_tons' => $requested, 'transferred_food_tons' => $addition->applied,
-                'receiver_capacity_food_tons' => $capacity,
-                'receiver_capacity_overflow_tons' => $addition->overflow,
+                ...$metadata, 'nation_id' => $target->id,
             ]);
+            if ($addition->applied > 0) {
+                $this->events->record($context, 'command.food_aid_public', $nation, [
+                    'nation_id' => $nation->id,
+                    'sender_nation_id' => $nation->id,
+                    'sender_nation_name' => $nation->name,
+                    'receiver_nation_id' => $target->id,
+                    'receiver_nation_name' => $target->name,
+                    'transferred_food_tons' => $addition->applied,
+                ], 'public');
+            }
 
             return $addition->applied > 0;
         }

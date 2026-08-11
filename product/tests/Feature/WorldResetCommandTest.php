@@ -11,6 +11,7 @@ use App\Application\RulesetPublisher;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\WorldGenerationProfile;
+use App\Models\IslandMessage;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
@@ -36,13 +37,17 @@ class WorldResetCommandTest extends TestCase
     public function test_dry_run_and_wrong_confirmation_do_not_change_world(): void
     {
         [$world, $user] = $this->populatedWorld();
+        $user->forceFill(['visitor_code' => 'RESET001'])->save();
+        $boardMessage = $this->boardMessage($world, $user);
         $nationCount = Nation::query()->count();
         $cellCount = MapCell::query()->count();
 
         $this->artisan('hakoniwa:world:reset', [
             '--world' => $world->key,
             '--dry-run' => true,
-        ])->expectsOutputToContain('No data was changed.')->assertSuccessful();
+        ])->expectsOutputToContain('island_messages')
+            ->expectsOutputToContain('No data was changed.')
+            ->assertSuccessful();
         $this->artisan('hakoniwa:world:reset', [
             '--world' => $world->key,
             '--confirm' => 'RESET-wrong-world',
@@ -51,17 +56,43 @@ class WorldResetCommandTest extends TestCase
         $this->assertSame($nationCount, Nation::query()->count());
         $this->assertSame($cellCount, MapCell::query()->count());
         $this->assertNotNull(User::query()->find($user->id));
+        $this->assertNotNull(IslandMessage::query()->find($boardMessage->id));
+        $this->assertSame('RESET001', $user->fresh()->visitor_code);
     }
 
     public function test_reset_isolated_world_preserves_users_identities_and_other_worlds(): void
     {
         $this->assertTrue($this->app->environment('testing'));
         [$world, $user] = $this->populatedWorld(WorldGenerationProfile::Production);
+        $user->forceFill(['visitor_code' => 'RESET002'])->save();
+        $boardMessage = $this->boardMessage($world, $user);
         $otherWorld = World::query()->create([
             'key' => 'other-world',
             'name' => '別世界',
             'ruleset_version_id' => $world->ruleset_version_id,
             'current_turn' => 7,
+        ]);
+        $otherNation = Nation::query()->create([
+            'world_id' => $otherWorld->id,
+            'nation_number' => 1,
+            'registered_turn' => 1,
+            'name' => '別世界島',
+            'owner_name' => '別世界島主',
+            'profile_comment' => '',
+            'money' => 500,
+            'state' => 'active',
+            'idle_counter' => 0,
+        ]);
+        $otherWorldMessage = IslandMessage::query()->create([
+            'public_id' => (string) Str::uuid(),
+            'world_id' => $otherWorld->id,
+            'target_nation_id' => $otherNation->id,
+            'author_user_id' => $user->id,
+            'author_kind' => IslandMessage::AUTHOR_VISITOR,
+            'author_nation_id' => null,
+            'secret_sender_nation_id' => null,
+            'message_type' => IslandMessage::TYPE_PUBLIC,
+            'body' => 'other World message must survive',
         ]);
         $identityCount = DB::table('auth_identities')->count();
         $identityAuditCount = DB::table('audit_events')
@@ -84,6 +115,7 @@ class WorldResetCommandTest extends TestCase
         $this->assertNotSame($world->id, $resetWorld->id);
         $this->assertNotNull(World::query()->find($otherWorld->id));
         $this->assertSame(7, World::query()->findOrFail($otherWorld->id)->current_turn);
+        $this->assertNotNull(IslandMessage::query()->find($otherWorldMessage->id));
         $this->assertSame(0, Nation::query()->where('world_id', $resetWorld->id)->count());
         $this->assertSame(3600, MapCell::query()->where('map_space_id', $mapSpace->id)->count());
         $this->assertSame(60, DB::table('map_cells')->where('map_space_id', $mapSpace->id)
@@ -91,6 +123,8 @@ class WorldResetCommandTest extends TestCase
         $this->assertSame(0, MapCell::query()->where('map_space_id', $mapSpace->id)->min('x'));
         $this->assertSame(59, MapCell::query()->where('map_space_id', $mapSpace->id)->max('x'));
         $this->assertNotNull(User::query()->find($user->id));
+        $this->assertNull(IslandMessage::query()->find($boardMessage->id));
+        $this->assertSame('RESET002', $user->fresh()->visitor_code);
         $this->assertSame($identityCount, DB::table('auth_identities')->count());
         $this->assertSame($identityAuditCount, DB::table('audit_events')
             ->where('event_type', 'auth.identity_registered')
@@ -103,6 +137,7 @@ class WorldResetCommandTest extends TestCase
             ->count());
 
         $worldLockIndex = null;
+        $messageDeleteIndex = null;
         $queueItemDeleteIndex = null;
         foreach ($resetQueries as $index => $sql) {
             if ($worldLockIndex === null && str_contains($sql, 'from "worlds"') && str_contains($sql, 'for update')) {
@@ -111,15 +146,21 @@ class WorldResetCommandTest extends TestCase
             if ($queueItemDeleteIndex === null && str_contains($sql, 'delete from "nation_command_queue_items"')) {
                 $queueItemDeleteIndex = $index;
             }
+            if ($messageDeleteIndex === null && str_contains($sql, 'delete from "island_messages"')) {
+                $messageDeleteIndex = $index;
+            }
         }
         $this->assertIsInt($worldLockIndex);
+        $this->assertIsInt($messageDeleteIndex);
         $this->assertIsInt($queueItemDeleteIndex);
+        $this->assertLessThan($messageDeleteIndex, $worldLockIndex);
         $this->assertLessThan($queueItemDeleteIndex, $worldLockIndex);
     }
 
     public function test_generator_failure_rolls_back_deletion_and_never_reports_success(): void
     {
-        [$world] = $this->populatedWorld();
+        [$world, $user] = $this->populatedWorld();
+        $boardMessage = $this->boardMessage($world, $user);
         $nationCount = Nation::query()->count();
         $cellCount = MapCell::query()->count();
         $this->app->bind(OceanWorldGenerator::class, fn () => new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class)) extends OceanWorldGenerator
@@ -139,6 +180,7 @@ class WorldResetCommandTest extends TestCase
         $this->assertNotNull(World::query()->find($world->id));
         $this->assertSame($nationCount, Nation::query()->count());
         $this->assertSame($cellCount, MapCell::query()->count());
+        $this->assertNotNull(IslandMessage::query()->find($boardMessage->id));
     }
 
     public function test_reset_reports_and_cascades_only_the_target_world_turn_runs(): void
@@ -424,6 +466,23 @@ class WorldResetCommandTest extends TestCase
             'started_at' => now(),
             'completed_at' => now(),
             'failure_context' => [],
+        ]);
+    }
+
+    private function boardMessage(World $world, User $user): IslandMessage
+    {
+        $nation = Nation::query()->where('world_id', $world->id)->firstOrFail();
+
+        return IslandMessage::query()->create([
+            'public_id' => (string) Str::uuid(),
+            'world_id' => $world->id,
+            'target_nation_id' => $nation->id,
+            'author_user_id' => $user->id,
+            'author_kind' => IslandMessage::AUTHOR_NATION,
+            'author_nation_id' => $nation->id,
+            'secret_sender_nation_id' => null,
+            'message_type' => IslandMessage::TYPE_PUBLIC,
+            'body' => 'reset integration message',
         ]);
     }
 

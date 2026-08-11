@@ -2,8 +2,6 @@
 
 namespace App\Domain\Command;
 
-use DomainException;
-
 final class DevelopmentPlanQuantity
 {
     public const MINIMUM = 1;
@@ -21,10 +19,10 @@ final class DevelopmentPlanQuantity
             return self::DEFAULT;
         }
         if (! is_int($value)) {
-            throw new DomainException('quantityは整数で指定してください。');
+            throw new PlayerFacingCommandException('quantityは整数で指定してください。');
         }
         if ($value < self::MINIMUM || $value > self::MAXIMUM) {
-            throw new DomainException('quantityは1から99の範囲で指定してください。');
+            throw new PlayerFacingCommandException('quantityは1から99の範囲で指定してください。');
         }
 
         return $value;

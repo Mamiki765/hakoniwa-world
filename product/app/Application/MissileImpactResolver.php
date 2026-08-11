@@ -28,7 +28,8 @@ final class MissileImpactResolver
      *     fired: int,
      *     cost: int,
      *     ineffective: int,
-     *     impacts: list<array<string, mixed>>
+     *     impacts: list<array<string, mixed>>,
+     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>
      * }>
      */
     private array $launches = [];
@@ -106,6 +107,13 @@ final class MissileImpactResolver
                 $launch['fired']++;
                 $launch['cost'] += $cost;
                 $launch['impacts'][] = $impact;
+                $launch['firing_bases'][$base->id] ??= [
+                    'x' => $base->x,
+                    'y' => $base->y,
+                    'facility_key' => (string) $base->facility->key,
+                    'fired_shots' => 0,
+                ];
+                $launch['firing_bases'][$base->id]['fired_shots']++;
                 $metrics['shots_fired']++;
                 $metrics['money_spent'] += $cost;
                 if ($impact['meaningful']) {
@@ -137,7 +145,7 @@ final class MissileImpactResolver
             $nation = Nation::query()->findOrFail($intent->nationId);
             $launch = $this->launches[$intent->queueItemId] ?? [
                 'intent' => $intent, 'nation' => $nation, 'fired' => 0,
-                'cost' => 0, 'ineffective' => 0, 'impacts' => [],
+                'cost' => 0, 'ineffective' => 0, 'impacts' => [], 'firing_bases' => [],
             ];
             $shotsFiredByNation[$nation->id] = ($shotsFiredByNation[$nation->id] ?? 0) + $launch['fired'];
             if ($launch['fired'] === 0) {
@@ -174,6 +182,7 @@ final class MissileImpactResolver
                 'requested_shots' => $intent->requestedShots,
                 'remaining_shots' => $intent->remainingShots(),
                 'cost_money' => $launch['cost'],
+                'firing_bases' => array_values($launch['firing_bases']),
                 'impacts' => $launch['impacts'],
             ], 'private');
         }
@@ -263,17 +272,29 @@ final class MissileImpactResolver
                 $cell,
                 $context,
             );
+            $terrainScorched = $result->killed && $result->status === 'killed'
+                ? $this->scorchWasteland($context, $cell)
+                : false;
+            $scorchMetadata = $terrainScorched
+                ? [
+                    'terrain_scorched' => true,
+                    'from_terrain_key' => 'wasteland',
+                    'to_terrain_key' => 'scorched',
+                ]
+                : ['terrain_scorched' => false];
             $this->recordMeaningfulImpact($context, $firingNation, $cell, $missileKey, 'monster_hit', [
                 'monster_key' => $occupancy->monster->definition->key,
                 'damage_status' => $result->status,
                 'before_hp' => $result->beforeHp,
                 'after_hp' => $result->afterHp,
+                ...$scorchMetadata,
             ]);
 
             return [
                 ...$base, 'meaningful' => true, 'effect' => $result->status,
                 'monster_key' => $occupancy->monster->definition->key,
                 'before_hp' => $result->beforeHp, 'after_hp' => $result->afterHp,
+                ...$scorchMetadata,
             ];
         }
         $beforeTerrain = $cell->terrain->key;
@@ -281,6 +302,23 @@ final class MissileImpactResolver
         $beforePopulation = $cell->population;
         $targetNationId = $cell->owner_nation_id;
         $targetNationName = $cell->ownerNation?->name;
+        if ($beforeTerrain === 'wasteland') {
+            $this->scorchWasteland($context, $cell);
+            $this->recordMeaningfulImpact($context, $firingNation, $cell, $missileKey, 'land_scorched', [
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $cell->terrain->key,
+                'terrain_only' => true,
+            ], $targetNationId, $targetNationName);
+
+            return [
+                ...$base, 'meaningful' => true, 'effect' => 'land_scorched',
+                'target_nation_id' => $targetNationId, 'target_nation_name' => $targetNationName,
+                'from_terrain_key' => $beforeTerrain, 'to_terrain_key' => $cell->terrain->key,
+                'preserved_facility_key' => $beforeFacility,
+                'before_population' => $beforePopulation, 'after_population' => $cell->population,
+                'terrain_only' => true,
+            ];
+        }
         if ($beforeFacility === 'capital') {
             $loss = $this->damageCapital($context, $firingNation, $cell, $missileKey, 10);
             $refugees = $this->generateAndReceiveRefugees(
@@ -303,8 +341,7 @@ final class MissileImpactResolver
         if ($isWater && $beforeFacility === null) {
             return $base;
         }
-        if (in_array($beforeTerrain, ['wasteland', 'scorched'], true)
-            && $beforeFacility === null && $beforePopulation === 0) {
+        if ($beforeTerrain === 'scorched' && $beforeFacility === null && $beforePopulation === 0) {
             return [...$base, 'effect' => 'ineffective_barren_land'];
         }
         $settlement = in_array($beforeFacility, ['village', 'town', 'city'], true);
@@ -550,6 +587,23 @@ final class MissileImpactResolver
         $this->changedCellIds[$cell->id] = true;
     }
 
+    private function scorchWasteland(TurnContext $context, MapCell $cell): bool
+    {
+        if ($cell->terrain->key !== 'wasteland') {
+            return false;
+        }
+
+        $scorched = TerrainDefinition::query()->where('key', 'scorched')->firstOrFail();
+        if (! $this->cells->scorchWasteland($cell, $scorched)) {
+            throw new DomainException('Wasteland missile impact could not transition to scorched terrain.');
+        }
+        $cell->version++;
+        $cell->save();
+        $this->markCellChanged($context, $cell);
+
+        return true;
+    }
+
     /**
      * @return array{
      *     intent: LaunchIntent,
@@ -557,7 +611,8 @@ final class MissileImpactResolver
      *     fired: int,
      *     cost: int,
      *     ineffective: int,
-     *     impacts: list<array<string, mixed>>
+     *     impacts: list<array<string, mixed>>,
+     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>
      * }
      */
     private function &launch(LaunchIntent $intent, Nation $nation): array
@@ -568,7 +623,8 @@ final class MissileImpactResolver
         if (! isset($this->launches[$intent->queueItemId])) {
             $this->launches[$intent->queueItemId] = [
                 'intent' => $intent, 'nation' => $nation,
-                'fired' => 0, 'cost' => 0, 'ineffective' => 0, 'impacts' => [],
+                'fired' => 0, 'cost' => 0, 'ineffective' => 0,
+                'impacts' => [], 'firing_bases' => [],
             ];
         }
 

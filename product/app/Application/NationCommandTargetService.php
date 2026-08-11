@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Command\PlayerFacingCommandException;
 use App\Models\CommandDefinition;
 use App\Models\Nation;
 use DomainException;
@@ -71,7 +72,7 @@ final class NationCommandTargetService
 
         $targetNationId = $parameters['target_nation_id'] ?? null;
         if (! is_int($targetNationId) || ! $this->selectableQuery($sender)->whereKey($targetNationId)->exists()) {
-            throw new DomainException('対象島は同じWorldの選択可能なactive島から選んでください。');
+            throw new PlayerFacingCommandException('対象島は同じWorldの選択可能なactive島から選んでください。');
         }
     }
 

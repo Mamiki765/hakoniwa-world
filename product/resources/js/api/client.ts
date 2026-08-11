@@ -3,6 +3,7 @@ export class ApiError extends Error {
         public readonly status: number,
         message: string,
         public readonly errors: Record<string, string[]> = {},
+        public readonly code: string | null = null,
     ) {
         super(message);
     }
@@ -34,10 +35,16 @@ export async function apiEnvelope<T>(path: string, init: RequestInit = {}): Prom
         meta?: Record<string, unknown>;
         message?: string;
         errors?: Record<string, string[]>;
+        code?: string;
     };
 
     if (!response.ok) {
-        throw new ApiError(response.status, payload.message ?? `HTTP ${response.status}`, payload.errors ?? {});
+        throw new ApiError(
+            response.status,
+            payload.message ?? `HTTP ${response.status}`,
+            payload.errors ?? {},
+            payload.code ?? null,
+        );
     }
 
     return { data: payload.data as T, meta: payload.meta };

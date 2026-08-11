@@ -225,6 +225,7 @@ final class RulesetV2LiveMonsterReferenceRepairTest extends TestCase
 
         $this->v2Migration()->up();
         $world->refresh();
+        config(['hakoniwa.ruleset' => config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v2')]);
 
         $base = MapCell::query()->where('owner_nation_id', $firingNation->id)
             ->whereNull('facility_definition_id')

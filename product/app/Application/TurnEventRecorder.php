@@ -19,12 +19,70 @@ final class TurnEventRecorder
         ?string $severity = null,
         ?string $message = null,
     ): void {
+        DB::table('audit_events')->insert($this->row(
+            $context,
+            $eventType,
+            $subject,
+            $metadata,
+            $visibility,
+            $severity,
+            $message,
+            now(),
+        ));
+    }
+
+    /**
+     * @param  list<array{
+     *     event_type: string,
+     *     subject: Model|null,
+     *     metadata: array<string, mixed>,
+     *     visibility: string|null,
+     *     severity: string|null,
+     *     message: string|null
+     * }>  $events
+     */
+    public function recordMany(TurnContext $context, array $events, int $batchSize = 1_000): void
+    {
+        if ($events === []) {
+            return;
+        }
+        $timestamp = now();
+        $rows = array_map(fn (array $event): array => $this->row(
+            $context,
+            $event['event_type'],
+            $event['subject'],
+            $event['metadata'],
+            $event['visibility'],
+            $event['severity'],
+            $event['message'],
+            $timestamp,
+        ), $events);
+        foreach (array_chunk($rows, $batchSize) as $batch) {
+            DB::table('audit_events')->insert($batch);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     * @return array<string, mixed>
+     */
+    private function row(
+        TurnContext $context,
+        string $eventType,
+        ?Model $subject,
+        array $metadata,
+        ?string $visibility,
+        ?string $severity,
+        ?string $message,
+        mixed $timestamp,
+    ): array {
         $nationId = isset($metadata['nation_id']) && is_int($metadata['nation_id'])
             ? $metadata['nation_id']
             : ($subject instanceof Nation ? $subject->id : null);
         $x = isset($metadata['x']) && is_int($metadata['x']) ? $metadata['x'] : null;
         $y = isset($metadata['y']) && is_int($metadata['y']) ? $metadata['y'] : null;
-        DB::table('audit_events')->insert([
+
+        return [
             'actor_user_id' => null,
             'world_id' => $context->world->id,
             'turn' => $context->targetTurn,
@@ -43,20 +101,22 @@ final class TurnEventRecorder
                 'target_turn' => $context->targetTurn,
                 ...$metadata,
             ], JSON_THROW_ON_ERROR),
-            'occurred_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            'occurred_at' => $timestamp,
+            'created_at' => $timestamp,
+            'updated_at' => $timestamp,
+        ];
     }
 
     private function defaultVisibility(string $eventType, ?int $nationId): string
     {
         return match ($eventType) {
-            'command.queue_removed', 'command.quantity_decremented', 'monster.kill_stat_incremented' => 'admin',
+            'command.queue_removed', 'command.quantity_decremented', 'monster.kill_stat_incremented',
+            'monster.spawn_failed_no_settlement' => 'admin',
+            'monster.reward_distributed' => 'private',
             'turn.completed', 'disaster.triggered', 'land_subsidence.triggered',
-            'monster.spawned', 'monster.spawn_failed_no_settlement', 'monster.moved',
+            'monster.spawned', 'monster.moved',
             'monster.trampled', 'monster.stayed', 'monster.damage_blocked', 'monster.damaged',
-            'monster.killed', 'monster.reward_distributed', 'monster.defense_self_destructed',
+            'monster.killed', 'monster.defense_self_destructed',
             'monster.removed_by_terrain_event' => 'public',
             default => $nationId === null ? 'public' : 'nation',
         };

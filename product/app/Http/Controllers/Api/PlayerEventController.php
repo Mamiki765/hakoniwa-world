@@ -31,7 +31,7 @@ final class PlayerEventController extends Controller
             'anchor_turn' => ['nullable', 'integer', 'min:1', "max:{$currentTurn}"],
         ]);
 
-        return response()->json(['data' => $events->page(
+        return response()->json(['data' => $events->ownerPage(
             $nation,
             isset($validated['page']) ? (int) $validated['page'] : 1,
             isset($validated['anchor_turn']) ? (int) $validated['anchor_turn'] : null,

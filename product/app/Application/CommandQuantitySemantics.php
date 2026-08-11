@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Command\PlayerFacingCommandException;
 use App\Models\CommandDefinition;
 use App\Models\MonumentDefinition;
 use DomainException;
@@ -75,23 +76,23 @@ final class CommandQuantitySemantics
         $semantics = $this->for($definition);
         if ($semantics === self::SELECTOR) {
             if (! $provided) {
-                throw new DomainException('選択肢を明示してからcommandを登録してください。');
+                throw new PlayerFacingCommandException('選択肢を明示してからcommandを登録してください。');
             }
             if (! collect($this->options($definition))->contains(
                 static fn (array $option): bool => $option['value'] === $quantity,
             )) {
-                throw new DomainException('選択されたcatalog itemは利用できません。');
+                throw new PlayerFacingCommandException('選択されたcatalog itemは利用できません。');
             }
         }
         if ($semantics === self::UNUSED && $quantity !== 1) {
-            throw new DomainException('このcommandではquantityを指定できません。');
+            throw new PlayerFacingCommandException('このcommandではquantityを指定できません。');
         }
     }
 
     public function assertEditable(CommandDefinition $definition): void
     {
         if ($this->for($definition) !== self::ORDINARY) {
-            throw new DomainException('このcommandのquantityは汎用数量エディタでは変更できません。');
+            throw new PlayerFacingCommandException('このcommandのquantityは汎用数量エディタでは変更できません。');
         }
     }
 

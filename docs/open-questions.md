@@ -13,7 +13,7 @@
 | Milestone | Blocking Open IDs | 実装境界 |
 |---|---|---|
 | monster | — | MONSTER-01〜04はPR21、AWARD-01はver 1.3.0のowner decisionで決定・実装済み。 |
-| missile / commands / combat | B-03、B-05、B-07、B-12、B-13 | 対応するattack、territory、dormancy機能の実装前にだけ停止する。B-10のPR22 missile visibilityは決定済み。怪獣単体PRの一律blockerではない。 |
+| missile / commands / combat | B-03、B-05、B-12、B-13 | 対応するattack、占領抵抗、dormancy機能の実装前にだけ停止する。B-07のactive Nation間territory influenceとCapital core protection、B-10のPR22 missile visibilityは決定済み。怪獣単体PRの一律blockerではない。 |
 | lifecycle / automatic turn operations | T-02 | 30日休眠Jobは公開後roadmapまで実装しない。production cronと手動retry境界はD-02で決定済み。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、B-15、D-06、D-08、C-02、C-04、E-01、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
@@ -323,10 +323,11 @@
 
 ### B-07 国境影響の解決
 
-- Status: Open
-- Required before: territory influence実装前
-- Open decision: source-derived逐次因果を前提に、exact algorithm、同値競合、tie handlingを確定する。暗黙のsimultaneous resolutionは採用しない。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-world-map.md`
+- Status: Decided
+- Implemented: Yes
+- Decision: `hakoniwa-2s-plus-v3`ではactive Nation間だけを対象に、共有surface cell shuffle順で各対象cellを1回訪問し、6方向から1方向だけを専用乱数streamで選ぶ。失敗時の再抽選は行わず、成功したowner変更は即時反映して後続cellから観測できる。`territory_expand`は従来の中立陸地取得に加え、隣接自領がある別active Nation所有のwasteland/scorchedだけを取得できる。各active NationのCapitalからhex distance 2以内は他Nationへのownership transferを禁止するが、core内cellは外側へのinfluence sourceとして通常どおり機能する。neutral、dormant、sunken、monster occupancyは今回のinfluence対象にしない。v1/v2 payloadと既存semanticsは変更しない。
+- Remaining Open/Deferred: 防壁都市・占領抵抗はB-05、dormant territory占領はB-12、dormant Capital保護はB-13、報復・反撃は別roadmapの判断を維持する。
+- Decision record: `product/docs/territory-expansion-influence-ver-1.4.0.md`、`docs/reference-analysis/hakoniwa-2plus-world-map.md`
 
 ### MISSILE-01 launch intentと基地単位解決
 

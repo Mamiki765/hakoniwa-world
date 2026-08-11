@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\AwardTurnFinalizer;
 use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
+use App\Application\PlayerIslandEventService;
 use App\Application\TurnRunner;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -60,6 +61,18 @@ class AwardSystemTest extends TestCase
         ], NationAward::query()->orderBy('id')->pluck('award_key')->all());
         $this->assertSame([2, 2, 2, 3, 3, 3, 4, 4, 4],
             NationAward::query()->orderBy('id')->pluck('awarded_turn')->all());
+        $this->assertSame(9, DB::table('audit_events')->where('event_type', 'award.granted')
+            ->where('visibility', 'public')->count());
+        $awardMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'award.granted')->orderBy('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($nation->id, $awardMetadata['nation_id']);
+        $this->assertSame('条件賞国', $awardMetadata['nation_name']);
+        $this->assertSame('award.calamity', $awardMetadata['award_key']);
+        $this->assertSame('災難賞', $awardMetadata['award_name']);
+        $awardMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($nation, 1, 4)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
+        $this->assertContains('条件賞国に災難賞が進呈されました。', $awardMessages->all());
+        $this->assertContains('条件賞国に究極繁栄賞が進呈されました。', $awardMessages->all());
 
         $metrics = app(AwardTurnFinalizer::class)->finalize($this->context(
             $world,
@@ -204,6 +217,15 @@ class AwardSystemTest extends TestCase
         $this->assertSame(0, $retry['turn_awards']);
         $this->assertSame(0, $retry['monster_turn_awards']);
         $this->assertSame(0, $retry['monster_cycle_rows_initialized']);
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'award.granted')
+            ->where('turn', 100)->count());
+        $this->assertEqualsCanonicalizing(
+            ['award.turn', 'award.turn', 'award.monster_turn', 'award.monster_turn'],
+            DB::table('audit_events')->where('event_type', 'award.granted')
+                ->where('turn', 100)->get()->map(
+                    fn (object $event): string => json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR)['award_key'],
+                )->all(),
+        );
 
         $turn101 = $this->context($world, 101, [$first, $second]);
         app(MonsterKillCycleService::class)->increment($turn101, $first);

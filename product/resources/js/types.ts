@@ -132,7 +132,6 @@ export interface PublicEvent {
     message: string;
     importance: 'info' | 'notable' | 'warning';
     target_turn: number;
-    occurred_at: string;
 }
 
 export interface PublicEventPage {
@@ -140,9 +139,14 @@ export interface PublicEventPage {
     page: number;
     anchor_turn: number;
     turn_range: { start: number; end: number } | null;
-    turns_per_page: 24;
+    turns_per_page: number;
     has_newer_page: boolean;
     has_older_page: boolean;
+}
+
+export interface MajorNewsFeed {
+    groups: Array<{ target_turn: number; events: PublicEvent[] }>;
+    limit: number;
 }
 
 export interface PublicNationDetail extends PublicNationSummary {
@@ -165,8 +169,7 @@ export interface PlayerIslandEvent {
     message: string;
     importance: 'info' | 'notable' | 'warning';
     target_turn: number;
-    coordinate: { x: number; y: number } | null;
-    occurred_at: string;
+    confidential: boolean;
     summary: null | {
         money: { start: number; end: number; delta: number };
         population: { start: number; end: number; delta: number };
@@ -184,9 +187,54 @@ export interface PlayerIslandEventPage {
     page: number;
     anchor_turn: number;
     turn_range: { start: number; end: number } | null;
-    turns_per_page: 24;
+    turns_per_page: number;
     has_newer_page: boolean;
     has_older_page: boolean;
+}
+
+export type MessageBoardEntry = {
+    key: string;
+    created_at: string;
+} & ({
+    kind: 'public';
+    body: string;
+    author: {
+        type: 'owner' | 'other_nation';
+        label: '島主' | '他島';
+        nation: { nation_number: number; name: string };
+    } | {
+        type: 'visitor';
+        label: '観光客';
+        display_name: string;
+        visitor_code: string;
+    };
+} | {
+    kind: 'secret_placeholder';
+    text: '--秘密通信あり--';
+} | {
+    kind: 'secret';
+    label: '秘密通信';
+    direction: 'incoming' | 'outgoing';
+    body: string;
+    counterpart: { nation_number: number; name: string };
+});
+
+export interface MessageBoardTimeline {
+    board: { nation_number: number; name: string };
+    entries: MessageBoardEntry[];
+    viewer: {
+        authenticated: boolean;
+        can_post: boolean;
+        author_type: 'owner' | 'other_nation' | 'visitor' | null;
+        can_send_secret: boolean;
+    };
+    contract: {
+        latest_limit: 16;
+        body_max_characters: 140;
+        cooldown_seconds: 10;
+        secret_cost_money?: 100;
+        secret_cost_display?: '100億円';
+    };
 }
 
 export interface NationResource {
