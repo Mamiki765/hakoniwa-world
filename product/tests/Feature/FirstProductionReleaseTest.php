@@ -9,6 +9,7 @@ use App\Models\TurnRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -72,46 +73,86 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertStringNotContainsString('外部窓口から連絡を受領', $public);
     }
 
-    public function test_release_preflight_requires_contact_and_rejects_an_unresolved_next_turn(): void
+    public function test_release_preflight_requires_contact(): void
     {
-        $world = $this->lightweightWorld();
+        $this->lightweightWorld();
         config(['hakoniwa.community.contact_url' => null]);
         $this->artisan('hakoniwa:release:preflight')->assertFailed();
 
         config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
         $this->artisan('hakoniwa:release:preflight')->assertSuccessful();
+    }
 
-        $failedRun = TurnRun::query()->create([
+    #[DataProvider('unsafeNextTurnStatuses')]
+    public function test_release_preflight_rejects_each_unresolved_next_turn_status(string $status): void
+    {
+        $world = $this->lightweightWorld();
+        config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
+        TurnRun::query()->create([
             'world_id' => $world->id,
             'target_turn' => $world->current_turn + 1,
             'ruleset_version_id' => $world->ruleset_version_id,
             'random_seed' => str_repeat('a', 64),
             'source' => 'cron',
             'is_dry_run' => false,
-            'status' => TurnRun::STATUS_FAILED,
+            'status' => $status,
             'attempt_count' => 1,
             'pipeline' => [],
             'phase_results' => [],
-            'failure_code' => 'test_failure',
-            'failure_message' => 'test',
             'failure_context' => [],
         ]);
 
         $this->artisan('hakoniwa:release:preflight')
-            ->expectsOutputToContain('failed')
+            ->expectsOutputToContain('Deploy blocked')
+            ->expectsOutputToContain($status)
             ->assertFailed();
+    }
 
-        $failedRun->update([
+    /** @return array<string, array{string}> */
+    public static function unsafeNextTurnStatuses(): array
+    {
+        return [
+            'pending' => [TurnRun::STATUS_PENDING],
+            'running' => [TurnRun::STATUS_RUNNING],
+            'failed' => [TurnRun::STATUS_FAILED],
+            'blocked' => [TurnRun::STATUS_BLOCKED],
+        ];
+    }
+
+    #[DataProvider('safeNextTurnRuns')]
+    public function test_release_preflight_allows_completed_or_dry_run_records(
+        string $status,
+        bool $isDryRun,
+    ): void {
+        $world = $this->lightweightWorld();
+        config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
+        TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $world->current_turn + 1,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'random_seed' => str_repeat('b', 64),
-            'status' => TurnRun::STATUS_BLOCKED,
-            'failure_code' => 'test_blocked',
-            'failure_message' => 'blocked test',
+            'source' => $isDryRun ? 'manual' : 'cron',
+            'is_dry_run' => $isDryRun,
+            'status' => $status,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => [],
         ]);
 
         $this->artisan('hakoniwa:release:preflight')
-            ->expectsOutputToContain('Deploy blocked')
-            ->expectsOutputToContain('blocked')
-            ->assertFailed();
+            ->expectsOutputToContain('release_preflight=ok')
+            ->assertSuccessful();
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public static function safeNextTurnRuns(): array
+    {
+        return [
+            'completed production run' => [TurnRun::STATUS_COMPLETED, false],
+            'dry-run running record' => [TurnRun::STATUS_RUNNING, true],
+            'dry-run failed record' => [TurnRun::STATUS_FAILED, true],
+        ];
     }
 
     public function test_manual_and_player_facing_policy_are_available(): void
