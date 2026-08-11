@@ -6,11 +6,13 @@ use App\Application\CompleteTurnEngine;
 use App\Application\InitialIslandGenerator;
 use App\Application\LegacyInspiredInitialIslandGenerator;
 use App\Application\MonsterRemovalService;
+use App\Console\ProductionDestructiveDatabaseCommandGuard;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Turn\GameplayTurnPhase;
 use App\Domain\Turn\RandomTurnSeedGenerator;
 use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnSeedGenerator;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Discord\Provider;
@@ -23,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(ProductionDestructiveDatabaseCommandGuard::class);
         $this->app->singleton(ChunkCoordinateService::class, fn (): ChunkCoordinateService => new ChunkCoordinateService(
             (int) config('hakoniwa.ruleset.chunk_size'),
         ));
@@ -44,8 +47,11 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
-    public function boot(): void
+    public function boot(ProductionDestructiveDatabaseCommandGuard $databaseCommandGuard): void
     {
+        $databaseCommandGuard->configure();
+        Event::listen(CommandStarting::class, $databaseCommandGuard);
+
         Event::listen(function (SocialiteWasCalled $event): void {
             $event->extendSocialite('discord', Provider::class);
         });
