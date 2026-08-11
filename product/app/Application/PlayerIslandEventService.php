@@ -582,13 +582,7 @@ final class PlayerIslandEventService
                 ? '地盤沈下が発生しました。'
                 : "{$nation}で地盤沈下が発生しました。",
             'monster.spawned' => "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
-            'monster.moved' => sprintf(
-                '%s(%s,%s)にいた%sが動き出した模様です。',
-                $nation,
-                $this->publicCoordinate($metadata, 'from_x'),
-                $this->publicCoordinate($metadata, 'from_y'),
-                $monster,
-            ),
+            'monster.moved' => "{$nation}({$x},{$y})へ{$monster}が移動した模様です。",
             'monster.trampled' => sprintf(
                 '%s(%s,%s)の%sが%sに踏み荒らされました。',
                 $nation,
@@ -683,7 +677,7 @@ final class PlayerIslandEventService
             'monster.defense_self_destructed' => [
                 'nation_name', 'monster_key', 'center_x', 'center_y',
             ],
-            'monster.moved' => ['nation_name', 'monster_key', 'from_x', 'from_y'],
+            'monster.moved' => ['nation_name', 'monster_key', 'x', 'y'],
             'monster.trampled' => ['nation_name', 'monster_key', 'x', 'y'],
             'monster.reward_distributed' => ['monster_key'],
             'missile.launched' => ['nation_name', 'command_key', 'fired_shots'],
