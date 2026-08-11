@@ -103,6 +103,13 @@ final class PlayerIslandEventService
     ];
 
     /** @var list<string> */
+    private const HOST_ISLAND_MONSTER_EVENT_TYPES = [
+        'monster.damage_blocked',
+        'monster.damaged',
+        'monster.killed',
+    ];
+
+    /** @var list<string> */
     private const CONFIDENTIAL_EVENT_TYPES = [
         'command.forest_planted_private',
         'command.missile_base_built_private',
@@ -337,11 +344,30 @@ final class PlayerIslandEventService
             ->where('events.visibility', 'public')
             ->whereIn('events.event_type', self::PUBLIC_ISLAND_EVENT_TYPES)
             ->whereBetween('events.turn', [$rangeStart, $rangeEnd])
-            ->where(function (Builder $monsterRewardProjection): void {
-                $monsterRewardProjection->where('events.event_type', '!=', 'monster.killed')
-                    ->orWhereRaw("events.metadata->>'killer_nation_id' IS NULL");
+            ->where(function (Builder $historicalHostAttribution): void {
+                // PR1 must not infer historical ownership from the current map.
+                // MonsterDamageService will add host_nation_id in PR2; until
+                // then damage events without that snapshot stay fail-closed.
+                $historicalHostAttribution
+                    ->whereNotIn('events.event_type', self::HOST_ISLAND_MONSTER_EVENT_TYPES)
+                    ->orWhereRaw("events.metadata->>'host_nation_id' IS NOT NULL");
             })
-            ->when($nationId !== null, static fn (Builder $query): Builder => $query->where('events.nation_id', $nationId))
+            ->when($nationId !== null, function (Builder $query) use ($nationId): Builder {
+                return $query->where(function (Builder $destination) use ($nationId): void {
+                    $destination->where(function (Builder $monsterHost) use ($nationId): void {
+                        $monsterHost->whereIn('events.event_type', self::HOST_ISLAND_MONSTER_EVENT_TYPES)
+                            ->whereRaw("events.metadata->>'host_nation_id' = ?", [(string) $nationId]);
+                    })->orWhere(function (Builder $defenseHost) use ($nationId): void {
+                        $defenseHost->where('events.event_type', 'monster.defense_self_destructed')
+                            ->whereRaw("events.metadata->>'defense_owner_nation_id' = ?", [(string) $nationId]);
+                    })->orWhere(function (Builder $ordinaryEvent) use ($nationId): void {
+                        $ordinaryEvent->whereNotIn('events.event_type', [
+                            ...self::HOST_ISLAND_MONSTER_EVENT_TYPES,
+                            'monster.defense_self_destructed',
+                        ])->where('events.nation_id', $nationId);
+                    });
+                });
+            })
             ->orderByDesc('events.turn')
             ->orderByDesc('events.id')
             ->get([
@@ -354,14 +380,35 @@ final class PlayerIslandEventService
                 'event_nations.name as event_nation_name',
             ]);
 
-        $events = $rows->map(function (object $row): array {
+        $destinationNationNames = $this->publicDestinationNationNames($world, $rows->all());
+        $rows = $rows->filter(function (object $row) use ($destinationNationNames): bool {
+            $destinationKey = match ((string) $row->event_type) {
+                'monster.damage_blocked', 'monster.damaged', 'monster.killed' => 'host_nation_id',
+                'monster.defense_self_destructed' => 'defense_owner_nation_id',
+                default => null,
+            };
+            if ($destinationKey === null) {
+                return true;
+            }
+
+            $destinationNationId = $this->metadata($row->metadata)[$destinationKey] ?? null;
+
+            return is_numeric($destinationNationId)
+                && array_key_exists((int) $destinationNationId, $destinationNationNames);
+        });
+        $events = $rows->map(function (object $row) use ($destinationNationNames): array {
             $rawMetadata = $this->metadata($row->metadata);
-            $rawMetadata['nation_name'] ??= $row->event_nation_name;
+            $eventType = (string) $row->event_type;
+            $rawMetadata['nation_name'] = $this->publicDestinationNationName(
+                $eventType,
+                $rawMetadata,
+                $row,
+                $destinationNationNames,
+            );
             if ($row->x !== null && $row->y !== null) {
                 $rawMetadata['x'] ??= (int) $row->x;
                 $rawMetadata['y'] ??= (int) $row->y;
             }
-            $eventType = (string) $row->event_type;
             $metadata = $this->publicSafeMetadata($eventType, $rawMetadata);
             $targetTurn = (int) $row->turn;
 
@@ -385,6 +432,72 @@ final class PlayerIslandEventService
             'has_newer_page' => $page > 1,
             'has_older_page' => $rangeStart > 1,
         ];
+    }
+
+    /**
+     * @param  list<object>  $rows
+     * @return array<int, string>
+     */
+    private function publicDestinationNationNames(World $world, array $rows): array
+    {
+        $nationIds = [];
+        foreach ($rows as $row) {
+            $eventType = (string) $row->event_type;
+            $metadata = $this->metadata($row->metadata);
+            $key = match ($eventType) {
+                'monster.damage_blocked', 'monster.damaged', 'monster.killed' => 'host_nation_id',
+                'monster.defense_self_destructed' => 'defense_owner_nation_id',
+                default => null,
+            };
+            if ($key !== null && is_numeric($metadata[$key] ?? null)) {
+                $nationIds[] = (int) $metadata[$key];
+            }
+        }
+
+        if ($nationIds === []) {
+            return [];
+        }
+
+        return Nation::query()
+            ->where('world_id', $world->id)
+            ->whereIn('id', array_values(array_unique($nationIds)))
+            ->pluck('name', 'id')
+            ->mapWithKeys(static fn (string $name, int|string $id): array => [(int) $id => $name])
+            ->all();
+    }
+
+    /**
+     * Resolve the island whose public log owns the event. Monster damage is
+     * stored against the attacker in audit_events.nation_id, so using that
+     * column here would leak host coordinates into the attacker's island log.
+     *
+     * @param  array<string, mixed>  $metadata
+     * @param  array<int, string>  $destinationNationNames
+     */
+    private function publicDestinationNationName(
+        string $eventType,
+        array $metadata,
+        object $row,
+        array $destinationNationNames,
+    ): ?string {
+        $destinationKey = match ($eventType) {
+            'monster.damage_blocked', 'monster.damaged', 'monster.killed' => 'host_nation_id',
+            'monster.defense_self_destructed' => 'defense_owner_nation_id',
+            default => null,
+        };
+        if ($destinationKey !== null) {
+            if (is_numeric($metadata[$destinationKey] ?? null)) {
+                return $destinationNationNames[(int) $metadata[$destinationKey]] ?? null;
+            }
+
+            return null;
+        }
+
+        if (is_string($metadata['nation_name'] ?? null)) {
+            return $metadata['nation_name'];
+        }
+
+        return is_string($row->event_nation_name) ? $row->event_nation_name : null;
     }
 
     /** @return array{0: int, 1: int}|null */
@@ -488,7 +601,13 @@ final class PlayerIslandEventService
             'monster.damaged' => "{$nation}({$x},{$y})の{$monster}に攻撃が命中し、苦しそうに咆哮しました。",
             'monster.killed' => "{$nation}({$x},{$y})の{$monster}は力尽き、倒れました。",
             'monster.reward_distributed' => "{$monster}が倒され、撃破報酬が配分されました。",
-            'monster.defense_self_destructed' => "{$nation}({$x},{$y})で{$monster}が防衛施設へ接触し、施設とともに消滅しました。",
+            'monster.defense_self_destructed' => sprintf(
+                '%s(%s,%s)で%sが防衛施設へ接触し、施設とともに消滅しました。',
+                $nation,
+                $this->publicCoordinate($metadata, 'center_x'),
+                $this->publicCoordinate($metadata, 'center_y'),
+                $monster,
+            ),
             'monster.removed_by_terrain_event' => "{$nation}({$x},{$y})の{$monster}が地形変化により消滅しました。",
             'missile.launched' => sprintf(
                 '%sが%sを%s発発射しました。',
@@ -559,8 +678,11 @@ final class PlayerIslandEventService
             ],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y'],
             'monster.spawned', 'monster.damage_blocked', 'monster.damaged',
-            'monster.killed', 'monster.defense_self_destructed',
+            'monster.killed',
             'monster.removed_by_terrain_event' => ['nation_name', 'monster_key', 'x', 'y'],
+            'monster.defense_self_destructed' => [
+                'nation_name', 'monster_key', 'center_x', 'center_y',
+            ],
             'monster.moved' => ['nation_name', 'monster_key', 'from_x', 'from_y'],
             'monster.trampled' => ['nation_name', 'monster_key', 'x', 'y'],
             'monster.reward_distributed' => ['monster_key'],

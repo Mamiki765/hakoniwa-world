@@ -94,6 +94,100 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertStringNotContainsString('coordinate', $body);
     }
 
+    public function test_monster_damage_uses_historical_host_metadata_and_missing_host_events_fail_closed(): void
+    {
+        [$world, , $attacker] = $this->nation('攻撃島');
+        [, , $host] = $this->nation('怪獣島', $world);
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $blockedWithoutHost = $this->audit('monster.damage_blocked', $attacker, $attacker, 'public', 2, [
+            'monster_key' => 'inora', 'x' => 12, 'y' => 8,
+        ]);
+        $damagedWithoutHost = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
+            'monster_key' => 'inora', 'x' => 12, 'y' => 8,
+        ]);
+        $damagedWithHost = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
+            'monster_key' => 'inora', 'host_nation_id' => $host->id, 'x' => 12, 'y' => 8,
+        ]);
+        $killedWithHost = $this->audit('monster.killed', $attacker, $attacker, 'public', 2, [
+            'monster_key' => 'inora',
+            'killer_nation_id' => $attacker->id,
+            'host_nation_id' => $host->id,
+            'x' => 12,
+            'y' => 8,
+        ]);
+
+        $worldResponse = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $worldEvents = collect($worldResponse->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        );
+        $this->assertSame([$killedWithHost, $damagedWithHost], $worldEvents->pluck('id')->all());
+        $this->assertSame('怪獣島(12,8)のいのらは力尽き、倒れました。', $worldEvents->first()['message']);
+        $this->assertContains(
+            '怪獣島(12,8)のいのらに攻撃が命中し、苦しそうに咆哮しました。',
+            $worldEvents->pluck('message')->all(),
+        );
+
+        $hostResponse = $this->getJson("/api/v1/public/nations/{$host->id}/events")->assertOk();
+        $hostEvents = collect($hostResponse->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        );
+        $this->assertSame([$killedWithHost, $damagedWithHost], $hostEvents->pluck('id')->all());
+
+        $attackerResponse = $this->getJson("/api/v1/public/nations/{$attacker->id}/events")->assertOk();
+        $attackerEventIds = collect($attackerResponse->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->pluck('id');
+        $this->assertNotContains($blockedWithoutHost, $attackerEventIds);
+        $this->assertNotContains($damagedWithoutHost, $attackerEventIds);
+        $this->assertNotContains($damagedWithHost, $attackerEventIds);
+        $this->assertNotContains($killedWithHost, $attackerEventIds);
+    }
+
+    public function test_monster_defense_self_destruct_uses_defense_cell_for_public_log(): void
+    {
+        [$world, , $originNation] = $this->nation('移動元島');
+        [, , $defenseNation] = $this->nation('防衛島', $world);
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $eventId = $this->audit(
+            'monster.defense_self_destructed',
+            $originNation,
+            $originNation,
+            'public',
+            2,
+            [
+                'monster_key' => 'inora',
+                'x' => 3,
+                'y' => 4,
+                'center_x' => 12,
+                'center_y' => 8,
+                'defense_owner_nation_id' => $defenseNation->id,
+                'hardening_ignored' => true,
+            ],
+        );
+
+        $worldResponse = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $worldEvents = collect($worldResponse->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        );
+        $this->assertSame([$eventId], $worldEvents->pluck('id')->all());
+        $this->assertSame(
+            '防衛島(12,8)でいのらが防衛施設へ接触し、施設とともに消滅しました。',
+            $worldEvents->first()['message'],
+        );
+        $this->assertStringNotContainsString('(3,4)', (string) $worldResponse->getContent());
+        $this->assertStringNotContainsString('hardening_ignored', (string) $worldResponse->getContent());
+
+        $this->getJson("/api/v1/public/nations/{$defenseNation->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.events.0.id', $eventId);
+        $originResponse = $this->getJson("/api/v1/public/nations/{$originNation->id}/events")->assertOk();
+        $this->assertSame([], $originResponse->json('data.groups'));
+    }
+
     public function test_owner_log_requires_membership_and_never_reuses_public_world_or_other_nation_events(): void
     {
         [$world, $owner, $nation] = $this->nation('所有島');
