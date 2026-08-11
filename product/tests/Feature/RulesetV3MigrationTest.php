@@ -132,13 +132,15 @@ final class RulesetV3MigrationTest extends TestCase
         $this->assertSame($after['history'], $historical->fresh()->getAttributes());
     }
 
-    public function test_v3_migration_rejects_queued_v2_territory_expansion_without_partial_live_changes(): void
+    public function test_queued_v2_territory_expansion_is_stable_key_mapped_without_rewriting_the_queue_item(): void
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, 'v2領土拡張残存国', '移行前島主');
         $this->moveWorldToV2($world);
         $v2Id = $world->ruleset_version_id;
+        $v2Definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $v2Id)->where('key', 'territory_expand')->firstOrFail();
         $queue = NationCommandQueue::query()->create([
             'nation_id' => $nation->id,
             'map_space_id' => $this->surfaceMapSpace($world)->id,
@@ -146,31 +148,42 @@ final class RulesetV3MigrationTest extends TestCase
         ]);
         $item = NationCommandQueueItem::query()->create([
             'nation_command_queue_id' => $queue->id,
-            'command_definition_id' => CommandDefinition::query()
-                ->where('ruleset_version_id', $v2Id)->where('key', 'territory_expand')->value('id'),
-            'queue_position' => 1,
-            'target_x' => 1,
-            'target_y' => 1,
-            'quantity' => 1,
-            'parameters' => [],
+            'command_definition_id' => $v2Definition->id,
+            'queue_position' => 6,
+            'target_x' => 8,
+            'target_y' => 52,
+            'quantity' => 3,
+            'parameters' => ['preserve' => 'territory_expand'],
             'status' => 'queued',
             'queued_by_membership_id' => NationMembership::query()->where('nation_id', $nation->id)->value('id'),
             'request_key' => (string) Str::uuid(),
             'queued_at' => now(),
             'failure_metadata' => [],
         ]);
-        $snapshot = $item->fresh()->getAttributes();
+        $preserved = Arr::only($item->fresh()->getAttributes(), [
+            'id',
+            'nation_command_queue_id',
+            'queue_position',
+            'target_x',
+            'target_y',
+            'quantity',
+            'parameters',
+            'status',
+            'queued_by_membership_id',
+            'request_key',
+            'queued_at',
+        ]);
 
-        try {
-            $this->migration()->up();
-            $this->fail('Expected queued v2 territory expansion to block v3 migration.');
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('refusing to reinterpret it', $exception->getMessage());
-        }
+        $this->migration()->up();
 
-        $this->assertSame($v2Id, $world->fresh()->ruleset_version_id);
-        $this->assertSame($snapshot, $item->fresh()->getAttributes());
-        $this->assertSame($v2Id, $item->fresh()->definition()->value('ruleset_version_id'));
+        $v3 = $world->fresh()->rulesetVersion()->firstOrFail();
+        $v3Definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $v3->id)->where('key', 'territory_expand')->firstOrFail();
+        $migrated = $item->fresh();
+        $this->assertSame('hakoniwa-2s-plus-v3', $v3->key);
+        $this->assertNotSame($v2Definition->id, $v3Definition->id);
+        $this->assertSame($v3Definition->id, $migrated->command_definition_id);
+        $this->assertSame($preserved, Arr::only($migrated->getAttributes(), array_keys($preserved)));
     }
 
     #[DataProvider('unresolvedStatuses')]

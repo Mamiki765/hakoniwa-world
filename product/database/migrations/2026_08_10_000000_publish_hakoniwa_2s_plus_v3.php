@@ -157,7 +157,6 @@ return new class extends Migration
         }
 
         $this->assertLiveReferencesUseRuleset((int) $world->id, $fromRulesetId, 'before migration');
-        $this->assertNoQueuedLegacyTerritoryExpansion((int) $world->id, $fromRulesetId);
         $this->assertNoKillStatCollisions((int) $world->id, $fromRulesetId, $toRulesetId);
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' DEFERRED');
         DB::table('worlds')->where('id', $world->id)->update([
@@ -218,25 +217,6 @@ SQL, [$toRulesetId, $world->id, $fromRulesetId]);
         $this->assertKillStatGuardEnabled();
         $this->assertLiveReferencesUseRuleset((int) $world->id, $toRulesetId, 'after migration');
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' IMMEDIATE');
-    }
-
-    private function assertNoQueuedLegacyTerritoryExpansion(int $worldId, int $fromRulesetId): void
-    {
-        $item = DB::table('nation_command_queue_items as item')
-            ->join('nation_command_queues as queue', 'queue.id', '=', 'item.nation_command_queue_id')
-            ->join('nations as nation', 'nation.id', '=', 'queue.nation_id')
-            ->join('command_definitions as definition', 'definition.id', '=', 'item.command_definition_id')
-            ->where('nation.world_id', $worldId)
-            ->where('definition.ruleset_version_id', $fromRulesetId)
-            ->where('definition.key', 'territory_expand')
-            ->where('item.status', 'queued')
-            ->orderBy('item.id')
-            ->first(['item.id']);
-        if ($item !== null) {
-            throw new RuntimeException(
-                "Queued v2 territory_expand item {$item->id} must be explicitly resolved before v3 migration; refusing to reinterpret it.",
-            );
-        }
     }
 
     private function acquireWorldTurnMigrationLock(object $world): void
