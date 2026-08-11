@@ -77,6 +77,8 @@ B-12のPR22境界ではexplicit target cellのowner Nationがactiveでなけれ�
 
 canonical 12 phasesでは`resource_sales`を`nation_economy`の後、`development_commands`の前に置く。これにより同target turnの生産物売却益をcommand資金へ利用できる。個別capacity適用は後段`enforce_capacities`で行い、売れなかった超過だけを破棄する。
 
+aggregate foodは巨大な一時over-cap残高を作らず、`creditFood()`がhard-cap超過分を返す。新規発生したfood overflowはsale policyと独立してその場で解決し、対象food resourceのpublished `inventory_sale_rates`に従う完全batchだけをmoney capacityの範囲で売却し、端数と資金上限で売れない分を破棄する。小麦の1,000トン=1億円だけでなく、怪獣肉の1,000トン=2億円も同じ契約で扱い、必要な売却益全額の空きがないbatchは部分売却しない。`keep_amount`を含む通常policyの`current - keep_amount` semantics、鉱物・工業品のsale-before-capacity経路、canonical phase順は変更しない。owner向け`resource.food_overflow_resolved`だけがrequested overflow、売却量、収益、破棄量、food/money capacityを公開し、public logへ正確な資源量を出さない。
+
 `finance`は1件がturn-consuming commandである。成功通常commandがあれば`idle_counter=0`、通常成功がなくfinanceだけ成功、または空queue automatic financeならtarget turnあたり最大1増加する。missile commandはintent登録時点では通常command成功に数えず、`process_cells`で1発以上実発射された場合だけresetする。全intentが0発なら失敗として現在値を維持し、zero-shot確定後のautomatic financeは追加しない。失敗commandはresetにも増加にも数えない。
 
 turn eventの正本列は`world_id`、`turn`、`nation_id`、`x`、`y`、`message`、`visibility`、`event_type`、`severity`、`metadata`、timestampsである。visibilityは`public`、`nation`、`private`、`admin`。島詳細は同じWorldのpublicと自Nationのnation/privateだけを返し、private文頭へ「（秘密）」を付ける。TOP重要ログの分類はPR22で変更しない。

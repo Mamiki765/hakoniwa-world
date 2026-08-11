@@ -43,6 +43,7 @@ final class PlayerIslandEventService
         'resource.food_shortage',
         'facility.riot',
         'resource.automatic_sale',
+        'resource.food_overflow_resolved',
         'capacity.overflow',
         'monster.stayed',
         'command.automatic_finance',
@@ -1072,6 +1073,14 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'sold')),
                 number_format($this->integer($metadata, 'revenue')),
             ),
+            'resource.food_overflow_resolved' => sprintf(
+                '食料上限を超えた%s%sトンのうち%sトンを売却して%s億円を得て、%sトンを破棄しました。',
+                $this->resourceLabel($metadata['resource_key'] ?? null),
+                number_format($this->integer($metadata, 'requested_overflow_tons')),
+                number_format($this->integer($metadata, 'sold_tons')),
+                number_format($this->integer($metadata, 'revenue')),
+                number_format($this->integer($metadata, 'discarded_tons')),
+            ),
             'capacity.overflow' => $this->capacityOverflowMessage($metadata),
             'resource.food_produced' => sprintf(
                 '農場で小麦%sトンを生産しました。',
@@ -1847,7 +1856,7 @@ final class PlayerIslandEventService
     {
         return match ($eventType) {
             'command.failed', 'command.invalid', 'command.insufficient_assets', 'resource.food_shortage',
-            'famine.applied', 'facility.riot', 'capacity.overflow',
+            'famine.applied', 'facility.riot', 'capacity.overflow', 'resource.food_overflow_resolved',
             'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged', 'oil.depleted',
             'monster.damage_blocked', 'monster.damaged', 'monster.defense_self_destructed',
             'monster.removed_by_terrain_event' => 'warning',
