@@ -9,6 +9,7 @@ use Illuminate\Contracts\Console\Kernel as KernelContract;
 use Illuminate\Database\Console\Migrations\FreshCommand;
 use Illuminate\Database\Console\Migrations\RefreshCommand;
 use Illuminate\Database\Console\Migrations\ResetCommand;
+use Illuminate\Database\Console\Migrations\RollbackCommand;
 use Illuminate\Database\Console\WipeCommand;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
@@ -31,6 +32,7 @@ final class ProductionDestructiveDatabaseCommandGuardTest extends TestCase
         'migrate:fresh' => FreshCommand::class,
         'migrate:refresh' => RefreshCommand::class,
         'migrate:reset' => ResetCommand::class,
+        'migrate:rollback' => RollbackCommand::class,
         'db:wipe' => WipeCommand::class,
     ];
 
@@ -76,7 +78,7 @@ final class ProductionDestructiveDatabaseCommandGuardTest extends TestCase
         $this->assertSame(1, User::query()->whereKey($user->id)->count());
     }
 
-    public function test_local_and_testing_environments_can_run_all_four_commands_on_an_isolated_database(): void
+    public function test_local_and_testing_environments_can_run_all_five_commands_on_an_isolated_database(): void
     {
         foreach (['local', 'testing'] as $environment) {
             $this->setEnvironment($environment);
@@ -94,6 +96,9 @@ final class ProductionDestructiveDatabaseCommandGuardTest extends TestCase
             $this->assertTrue(Schema::connection('guard_test')->hasTable('guard_records'));
             $this->assertSame(0, Artisan::call('migrate:refresh', $migrationOptions));
             $this->assertTrue(Schema::connection('guard_test')->hasTable('guard_records'));
+            $this->assertSame(0, Artisan::call('migrate:rollback', $migrationOptions));
+            $this->assertFalse(Schema::connection('guard_test')->hasTable('guard_records'));
+            $this->assertSame(0, Artisan::call('migrate:fresh', $migrationOptions));
             $this->assertSame(0, Artisan::call('migrate:reset', $migrationOptions));
             $this->assertFalse(Schema::connection('guard_test')->hasTable('guard_records'));
             $this->assertSame(0, Artisan::call('migrate:fresh', $migrationOptions));

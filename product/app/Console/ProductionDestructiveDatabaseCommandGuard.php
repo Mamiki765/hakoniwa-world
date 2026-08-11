@@ -8,6 +8,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Database\Console\Migrations\FreshCommand;
 use Illuminate\Database\Console\Migrations\RefreshCommand;
 use Illuminate\Database\Console\Migrations\ResetCommand;
+use Illuminate\Database\Console\Migrations\RollbackCommand;
 use Illuminate\Database\Console\WipeCommand;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
@@ -21,6 +22,7 @@ final readonly class ProductionDestructiveDatabaseCommandGuard
         'migrate:fresh' => FreshCommand::class,
         'migrate:refresh' => RefreshCommand::class,
         'migrate:reset' => ResetCommand::class,
+        'migrate:rollback' => RollbackCommand::class,
         'db:wipe' => WipeCommand::class,
     ];
 
