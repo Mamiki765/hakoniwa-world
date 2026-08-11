@@ -17,7 +17,7 @@
 ## Production deploy前
 
 1. exact release SHA、image digest、World key、現在turn、migration一覧、TurnRun件数、queue item件数、monster instance件数、kill aggregate件数をdeployment recordへ記録する。
-2. player writeをmaintenanceで停止し、turn cronと手動turn実行を停止する。旧v2 imageのweb containerで以後のpreflightとread-only auditを行い、停止中に新しいTurnRunやcommand queue itemが増えないことを確認する。
+2. reverse proxyまたはload balancerでplayer write trafficを外部遮断し、turn cronと手動turn実行を停止する。repository既定ComposeのLaravel maintenance markerは`file` driverかつ`storage/`が非永続なので、container置換を跨ぐ停止境界には使わない。永続cache-backed maintenanceを別途構成済みの場合も、外部遮断を正本として併用する。旧v2 imageのweb containerで以後のpreflightとread-only auditを行い、外部からwrite routeが拒否され、停止中に新しいTurnRunやcommand queue itemが増えないことを確認する。
 3. `product/docs/operations/database-backup-and-restore.md`のproduction wrapperで最初のcheckpoint backupを取得する。wrapperのexit 0、暗号化、upload、HEAD、remote size/MD5、`.uploaded` marker、local encrypted fileを確認する。remote verification前にlocal backupを削除せず、失敗時はdeployを中止する。この後にTurnRun retry、queue cancelその他のproduction mutationが必要になれば、このbackupを変更前checkpointとして保持する。
 4. `php artisan hakoniwa:release:preflight --world=shared-world`を実行する。次target turnのnon-dry `pending`、`running`、`failed`、`blocked`はすべて停止要因である。検出時は現在のrelease windowを中止し、自動retryやreleaseを跨ぐretryを行わない。checkpoint backupを保持したまま旧v2運用として、同じruleset・seedのoperator retry境界を守って明示解消し、その後step 1から再開する。
 5. 次のread-only auditをproduction PostgreSQLで、1つのrepeatable-read snapshotとして実行する。最初のv2 deployではWorldと全live referenceがv2で、queued v2 `territory_expand`、次target turnのnon-dry TurnRun、kill aggregate collisionが0件、`nation_monster_kill_stat_guard`がenabledでなければ進めない。既に同じmigrationを完了したexact retryではWorldと全live referenceがv3であることを要求する。
@@ -167,7 +167,7 @@ ROLLBACK;
 
 ## Deployとmigration
 
-1. exact reviewed imageをdeployする。healthcheckが通るまでplayer writeとturn cronを再開しない。
+1. 外部write traffic blockを維持したままexact reviewed imageへcontainerを置換する。新containerのLaravel maintenance stateは引き継がれると仮定せず、healthcheckが通ってもplayer writeとturn cronを再開しない。
 2. 通常のforward pathとして`php artisan migrate --force`を1回実行する。migrationはWorld turn advisory lockを取得し、definition set、live reference、queued legacy command、次TurnRun、kill aggregate collisionをtransaction内でも再検証する。非ゼロなら停止したまま原因を調査し、migrationを手作業で部分適用しない。
 3. `php artisan migrate:status`で`2026_08_10_000000_publish_hakoniwa_2s_plus_v3`と`2026_08_11_000000_create_island_messages`が`Ran`であることを確認する。
 4. deploy前と同じread-only auditを実行し、Worldとqueue／monster instance／kill aggregateの全live referenceがv3、mismatchとcollisionが0件、kill-stat triggerがenabledであることを確認する。
@@ -238,7 +238,7 @@ ORDER BY relation.relname, constraint_record.conname;
 ROLLBACK;
 ```
 6. `php artisan hakoniwa:release:preflight --world=shared-world`を再実行する。`php artisan hakoniwa:turn:status --world=shared-world`とdry-run、public lobby、login、island map、command queue、event log、message boardのsmoke testを行う。
-7. player writeを再開し、最後にturn cronを再開する。次の公式turnを監視し、World turnとTurnRunが同じrulesetで完了したことを確認する。
+7. 外部からwrite routeがまだ拒否されていることを最終確認してから、外部write traffic blockと構成済みLaravel maintenanceを解除してplayer writeを再開し、最後にturn cronを再開する。次の公式turnを監視し、World turnとTurnRunが同じrulesetで完了したことを確認する。
 8. `product/docs/ver-1.4.0-announcement.md`のtitle/bodyを既存のお知らせ管理画面から1回だけ公開し、public lobbyと詳細を確認する。migration、seeder、deploy scriptでannouncementを作らず、既存記事を上書き・重複作成しない。
 
 ## Rollback禁止境界
