@@ -382,13 +382,13 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
             $this->assertArrayNotHasKey('terrain_key', $metadata);
             $this->assertArrayNotHasKey('facility_scale', $metadata);
         }
-        $public = app(PlayerIslandEventService::class)->publicPage($world, 1, $context->targetTurn);
+        $public = app(PlayerIslandEventService::class)->publicWorldPage($world, 1, $context->targetTurn);
         $publicInfluence = collect($public['groups'])
             ->flatMap(static fn (array $group): array => $group['events'])
             ->where('type', 'territory.influenced')
             ->values();
         $this->assertCount(2, $publicInfluence);
-        $this->assertStringContainsString('所有権', $publicInfluence[0]['message']);
+        $this->assertStringContainsString('領地となりました', $publicInfluence[0]['message']);
         $this->assertStringContainsString($first->name, $publicInfluence[0]['message']);
         $this->assertStringContainsString($second->name, $publicInfluence[0]['message']);
 

@@ -13,6 +13,7 @@ import { useMapState } from './state/mapState';
 import type {
     Announcement,
     CurrentUser,
+    MajorNewsFeed,
     MapSpace,
     Nation,
     PublicEventPage,
@@ -27,6 +28,7 @@ const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
 const rankings = ref<PublicRankingEntry[]>([]);
+const majorNews = ref<MajorNewsFeed | null>(null);
 const publicEvents = ref<PublicEventPage | null>(null);
 const latestAnnouncements = ref<Announcement[]>([]);
 const announcementItems = ref<Announcement[]>([]);
@@ -153,14 +155,16 @@ async function loadPublicLobby(): Promise<void> {
         latestAnnouncements.value = announcements;
         const world = worlds.value[0];
         if (world === undefined) return;
-        const [summary, nextRankings, events] = await Promise.all([
+        const [summary, nextRankings, news, events] = await Promise.all([
             api<PublicWorldSummary>(`/api/v1/public/worlds/${world.id}/summary`),
             api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
+            api<MajorNewsFeed>(`/api/v1/public/worlds/${world.id}/major-news`),
             api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
         ]);
         worldSummary.value = summary;
         scheduleDeadlineRefresh();
         rankings.value = nextRankings;
+        majorNews.value = news;
         publicEvents.value = events;
         turnViewCurrentTurn = summary.current_turn;
         startSummaryFallbackPolling();
@@ -201,8 +205,9 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
     if (world === undefined) return false;
     const currentNation = nation.value;
     const currentPreview = page.value === 'preview' ? previewNation.value : null;
-    const [rankingResult, eventResult, nationResult, previewResult] = await Promise.allSettled([
+    const [rankingResult, newsResult, eventResult, nationResult, previewResult] = await Promise.allSettled([
         api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
+        api<MajorNewsFeed>(`/api/v1/public/worlds/${world.id}/major-news`),
         api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
         currentNation === null ? Promise.resolve(null) : api<Nation | null>('/api/v1/me/nation'),
         currentPreview === null
@@ -212,6 +217,8 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
 
     let refreshed = true;
     if (rankingResult.status === 'fulfilled') rankings.value = rankingResult.value;
+    else refreshed = false;
+    if (newsResult.status === 'fulfilled') majorNews.value = newsResult.value;
     else refreshed = false;
     if (eventResult.status === 'fulfilled') publicEvents.value = eventResult.value;
     else refreshed = false;
@@ -396,7 +403,7 @@ async function loadPublicEvents(pageNumber: number): Promise<void> {
             `/api/v1/public/worlds/${world.id}/events?page=${pageNumber}&anchor_turn=${anchor}`,
         );
     } catch {
-        message.value = '公開ニュースを取得できませんでした。';
+        message.value = '公開島ログを取得できませんでした。';
     }
 }
 
@@ -644,24 +651,42 @@ async function updateProfile(): Promise<void> {
 
                 <section class="events-card">
                     <div class="section-heading">
-                        <div><p class="eyebrow">PUBLIC NEWS</p><h2>世界のニュース</h2></div>
+                        <div><p class="eyebrow">MAJOR NEWS</p><h2>重大ニュース</h2></div>
                     </div>
-                    <template v-if="publicEvents?.groups.length">
-                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="public-event-group">
-                            <h3>ターン {{ group.target_turn }}</h3>
+                    <template v-if="majorNews?.groups.length">
+                        <section v-for="group in majorNews.groups" :key="group.target_turn" class="public-event-group">
+                            <h3>第{{ group.target_turn }}ターン</h3>
                             <ol class="event-list">
                                 <li v-for="event in group.events" :key="event.id">
                                     <span class="event-mark" aria-hidden="true"></span>
-                                    <div><strong>{{ event.message }}</strong><time :datetime="event.occurred_at">{{ formatAnnouncementDate(event.occurred_at) }}</time></div>
+                                    <strong>{{ event.message }}</strong>
                                 </li>
                             </ol>
                         </section>
                     </template>
-                    <p v-else class="empty-state">公開できる出来事はまだありません。最初の島の成立を待っています。</p>
-                    <nav v-if="publicEvents" class="event-pager" aria-label="世界のニュースのページ">
-                        <button type="button" :disabled="!publicEvents.has_newer_page" @click="loadPublicEvents(publicEvents.page - 1)">新しいニュース</button>
+                    <p v-else class="empty-state">重大ニュースはまだありません。</p>
+                </section>
+
+                <section class="events-card">
+                    <div class="section-heading">
+                        <div><p class="eyebrow">PUBLIC ISLAND LOG</p><h2>公開島ログ</h2></div>
+                    </div>
+                    <template v-if="publicEvents?.groups.length">
+                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="public-event-group">
+                            <h3>第{{ group.target_turn }}ターン</h3>
+                            <ol class="event-list">
+                                <li v-for="event in group.events" :key="event.id">
+                                    <span class="event-mark" aria-hidden="true"></span>
+                                    <strong>{{ event.message }}</strong>
+                                </li>
+                            </ol>
+                        </section>
+                    </template>
+                    <p v-else class="empty-state">このターン範囲には公開島ログがありません。</p>
+                    <nav v-if="publicEvents" class="event-pager" aria-label="公開島ログのページ">
+                        <button type="button" :disabled="!publicEvents.has_newer_page" @click="loadPublicEvents(publicEvents.page - 1)">新しい2ターン</button>
                         <span>{{ publicEvents.page }}ページ</span>
-                        <button type="button" :disabled="!publicEvents.has_older_page" @click="loadPublicEvents(publicEvents.page + 1)">古いニュース</button>
+                        <button type="button" :disabled="!publicEvents.has_older_page" @click="loadPublicEvents(publicEvents.page + 1)">過去2ターン</button>
                     </nav>
                     <p class="community-contact">
                         <a href="/community-guidelines">禁止行為と連絡方法</a>
@@ -815,7 +840,8 @@ async function updateProfile(): Promise<void> {
                     />
                 </div>
             </div>
-            <IslandEventLog :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" />
+            <IslandEventLog :key="`public:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="public" />
+            <IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" />
             <MessageBoard
                 :key="`development:${nation.id}`"
                 :nation-id="nation.id"
@@ -868,6 +894,7 @@ async function updateProfile(): Promise<void> {
                     @request-all="map.loadAllChunks"
                 />
             </div>
+            <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
             <MessageBoard
                 :key="`public:${previewNation.id}`"
                 :nation-id="previewNation.id"

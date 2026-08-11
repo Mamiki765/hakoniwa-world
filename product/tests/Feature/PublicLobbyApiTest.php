@@ -174,15 +174,12 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.anchor_turn', 1)
             ->assertJsonPath('data.groups.0.target_turn', 1)
             ->assertJsonPath('data.groups.0.events.0.type', 'disaster.triggered')
-            ->assertJsonPath('data.groups.0.events.0.message', '地震が発生しました（中心 30, 31）。')
+            ->assertJsonPath('data.groups.0.events.0.message', '地震発生！！ 震源地は(30,31)地点！！')
             ->assertJsonStructure(['data' => ['groups' => [['target_turn', 'events' => [
-                ['id', 'type', 'message', 'importance', 'target_turn', 'occurred_at'],
+                ['id', 'type', 'message', 'importance', 'target_turn'],
             ]]]]]);
         $eventsBody = $events->getContent();
-        $this->assertMatchesRegularExpression(
-            '/T\d{2}:\d{2}:\d{2}\+00:00$/',
-            (string) $events->json('data.groups.0.events.0.occurred_at'),
-        );
+        $this->assertStringNotContainsString('occurred_at', $eventsBody);
         $this->assertStringNotContainsString('metadata', $eventsBody);
         $this->assertStringNotContainsString('"draw"', $eventsBody);
         $this->assertStringNotContainsString('"numerator"', $eventsBody);
@@ -248,9 +245,8 @@ class PublicLobbyApiTest extends TestCase
 
         $response = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()
-            ->assertJsonCount(1, 'data.groups.0.events')
-            ->assertJsonPath('data.groups.0.events.0.type', 'turn.completed');
-        foreach (['misclassified-secret', 'nation-secret', 'private-secret', 'admin-secret', 'target_x', 'target_y', 'metadata'] as $secret) {
+            ->assertJsonPath('data.groups', []);
+        foreach (['public-safe', 'misclassified-secret', 'nation-secret', 'private-secret', 'admin-secret', 'target_x', 'target_y', 'metadata'] as $secret) {
             $this->assertStringNotContainsString($secret, $response->getContent());
         }
     }

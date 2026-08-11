@@ -40,8 +40,10 @@ Route::prefix('api/v1/public')
         Route::get('/worlds', [PublicApiController::class, 'worlds']);
         Route::get('/worlds/{world}/summary', [PublicApiController::class, 'summary']);
         Route::get('/worlds/{world}/rankings', [PublicApiController::class, 'rankings']);
+        Route::get('/worlds/{world}/major-news', [PublicApiController::class, 'majorNews']);
         Route::get('/worlds/{world}/events', [PublicApiController::class, 'events']);
         Route::get('/worlds/{world}/map-spaces', [PublicApiController::class, 'mapSpaces']);
+        Route::get('/nations/{nation}/events', [PublicApiController::class, 'nationEvents']);
         Route::get('/nations/{nation}', [PublicApiController::class, 'nation']);
         Route::get('/nations/{nation}/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}', [PublicApiController::class, 'chunk'])
             ->where(['chunkX' => '-?\d+', 'chunkY' => '-?\d+']);

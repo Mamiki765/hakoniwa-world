@@ -36,11 +36,31 @@ final class PublicApiController extends Controller
     {
         $validated = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
-            'anchor_turn' => ['sometimes', 'integer', 'min:1'],
+            'anchor_turn' => ['sometimes', 'integer', 'min:1', "max:{$world->current_turn}"],
         ]);
 
-        return response()->json(['data' => $events->publicPage(
+        return response()->json(['data' => $events->publicWorldPage(
             $world,
+            (int) ($validated['page'] ?? 1),
+            isset($validated['anchor_turn']) ? (int) $validated['anchor_turn'] : null,
+        )]);
+    }
+
+    public function majorNews(World $world, PlayerIslandEventService $events): JsonResponse
+    {
+        return response()->json(['data' => $events->majorNews($world)]);
+    }
+
+    public function nationEvents(Request $request, Nation $nation, PlayerIslandEventService $events): JsonResponse
+    {
+        $currentTurn = (int) $nation->world()->value('current_turn');
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'anchor_turn' => ['sometimes', 'integer', 'min:1', "max:{$currentTurn}"],
+        ]);
+
+        return response()->json(['data' => $events->publicNationPage(
+            $nation,
             (int) ($validated['page'] ?? 1),
             isset($validated['anchor_turn']) ? (int) $validated['anchor_turn'] : null,
         )]);

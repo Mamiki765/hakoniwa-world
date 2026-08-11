@@ -132,7 +132,6 @@ export interface PublicEvent {
     message: string;
     importance: 'info' | 'notable' | 'warning';
     target_turn: number;
-    occurred_at: string;
 }
 
 export interface PublicEventPage {
@@ -140,9 +139,14 @@ export interface PublicEventPage {
     page: number;
     anchor_turn: number;
     turn_range: { start: number; end: number } | null;
-    turns_per_page: 24;
+    turns_per_page: number;
     has_newer_page: boolean;
     has_older_page: boolean;
+}
+
+export interface MajorNewsFeed {
+    groups: Array<{ target_turn: number; events: PublicEvent[] }>;
+    limit: number;
 }
 
 export interface PublicNationDetail extends PublicNationSummary {
@@ -165,8 +169,7 @@ export interface PlayerIslandEvent {
     message: string;
     importance: 'info' | 'notable' | 'warning';
     target_turn: number;
-    coordinate: { x: number; y: number } | null;
-    occurred_at: string;
+    confidential: boolean;
     summary: null | {
         money: { start: number; end: number; delta: number };
         population: { start: number; end: number; delta: number };
@@ -184,7 +187,7 @@ export interface PlayerIslandEventPage {
     page: number;
     anchor_turn: number;
     turn_range: { start: number; end: number } | null;
-    turns_per_page: 24;
+    turns_per_page: number;
     has_newer_page: boolean;
     has_older_page: boolean;
 }

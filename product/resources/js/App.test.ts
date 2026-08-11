@@ -56,7 +56,12 @@ function publicResponse(path: string): Response | null {
         last_updated_turn: 1, comment: '公開コメント',
         achievements: { awards: [], monster_kills: null },
     }]);
-    if (path.endsWith('/events')) return response({
+    if (path.endsWith('/major-news')) return response({ groups: [], limit: 15 });
+    if (/^\/api\/v1\/public\/worlds\/\d+\/events/.test(path)) return response({
+        groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
+        turns_per_page: 2, has_newer_page: false, has_older_page: false,
+    });
+    if (/^\/api\/v1\/public\/nations\/\d+\/events/.test(path)) return response({
         groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
         turns_per_page: 24, has_newer_page: false, has_older_page: false,
     });
@@ -101,7 +106,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
         expect(wrapper.find('.ranking-owner-row').text()).toBe('公開島主：公開コメント');
         expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
-        expect(wrapper.text()).toContain('公開できる出来事はまだありません');
+        expect(wrapper.text()).toContain('重大ニュースはまだありません');
+        expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
         expect(wrapper.find('.app-version').text()).toBe('ver 1.3.2');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
@@ -672,7 +678,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.hud-details').text()).toContain('鉱物0トン');
         expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000トン');
         expect(wrapper.find('.island-grid').exists()).toBe(true);
-        expect(wrapper.find('.island-events-panel').text()).toContain('島の出来事');
+        expect(wrapper.findAll('.island-events-panel')).toHaveLength(2);
+        expect(wrapper.findAll('.island-events-panel').map((panel) => panel.get('h2').text()))
+            .toEqual(['公開島ログ', 'owner-onlyログ']);
         expect(wrapper.find('.island-page > .message-board').exists()).toBe(true);
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
