@@ -49,4 +49,21 @@ class EconomyBoundaryTest extends TestCase
         $this->assertSame(1, $capacityBound->appliedMoney);
         $this->assertSame(2, $capacityBound->overflowMoney);
     }
+
+    public function test_inventory_sale_requires_room_for_the_complete_authored_revenue_batch(): void
+    {
+        $planner = new InventorySalePlanner(new CappedAddition);
+
+        $blocked = $planner->plan(2_500, 9_998, 9_999, 1_000, 2);
+        $this->assertSame(0, $blocked->inventorySold);
+        $this->assertSame(2_500, $blocked->inventoryRemaining);
+        $this->assertSame(0, $blocked->appliedMoney);
+        $this->assertSame(4, $blocked->overflowMoney);
+
+        $sold = $planner->plan(2_500, 9_997, 9_999, 1_000, 2);
+        $this->assertSame(1_000, $sold->inventorySold);
+        $this->assertSame(1_500, $sold->inventoryRemaining);
+        $this->assertSame(2, $sold->appliedMoney);
+        $this->assertSame(2, $sold->overflowMoney);
+    }
 }

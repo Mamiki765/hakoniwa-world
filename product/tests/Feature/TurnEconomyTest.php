@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Application\CompleteTurnEngine;
 use App\Application\NationCreationService;
+use App\Application\PlayerIslandEventService;
+use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -28,6 +30,109 @@ class TurnEconomyTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_food_hard_cap_overflow_is_sold_before_discard_independently_of_keep_amount(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '食料超過国', '試験島主');
+        $capacity = app(NationCapacityResolver::class)->resolve($nation, $world->rulesetVersion()->firstOrFail());
+        $this->facilityCell($nation, 'farm', 2);
+        $this->setPopulation($nation, 1_100);
+        $this->setResources($nation, ['wheat' => $capacity->foodTons, 'fish' => 0, 'monster_meat' => 0]);
+        $this->setPolicy($nation, 'wheat', 'keep_amount', $capacity->foodTons + 10_000);
+        $nation->update(['money' => 0]);
+        [$context, $run] = $this->context($world, $nation);
+
+        $economy = app(CompleteTurnEngine::class)->execute('nation_economy', $context);
+
+        $this->assertSame(1_000, $economy->metrics['food_overflow_sold']);
+        $this->assertSame(1, $economy->metrics['food_overflow_revenue']);
+        $this->assertSame(100, $economy->metrics['food_overflow_discarded']);
+        $this->assertSame(1, (int) $nation->fresh()->money);
+        $this->assertSame($capacity->foodTons - 220, $this->resourceAmount($nation, 'wheat'));
+        $overflow = $this->event($run, 'resource.food_overflow_resolved', 'wheat');
+        $this->assertSame(1_100, $overflow['requested_overflow_tons']);
+        $this->assertSame(1_000, $overflow['sold_tons']);
+        $this->assertSame(1, $overflow['revenue']);
+        $this->assertSame(100, $overflow['discarded_tons']);
+        $this->assertSame($capacity->foodTons, $overflow['food_capacity_tons']);
+        $this->assertSame($capacity->money, $overflow['money_capacity']);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'resource.food_overflow_resolved',
+            'nation_id' => $nation->id,
+            'visibility' => 'nation',
+        ]);
+
+        $sales = app(CompleteTurnEngine::class)->execute('resource_sales', $context);
+        $this->assertSame(0, $sales->metrics['sales']);
+        $this->assertSame(1, (int) $nation->fresh()->money);
+        $normalSale = $this->event($run, 'resource.automatic_sale', 'wheat');
+        $this->assertSame(0, $normalSale['requested']);
+        $this->assertSame(0, $normalSale['sold']);
+
+        $events = app(PlayerIslandEventService::class);
+        $ownerOverflow = collect($events->ownerPage($nation->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->firstWhere('type', 'resource.food_overflow_resolved');
+        $this->assertIsArray($ownerOverflow);
+        $this->assertSame(
+            '食料上限を超えた小麦1,100トンのうち1,000トンを売却して1億円を得て、100トンを破棄しました。',
+            $ownerOverflow['message'],
+        );
+        $publicEvents = collect($events->publicWorldPage($world, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $this->assertSame(0, $publicEvents->where('type', 'resource.food_overflow_resolved')->count());
+        $this->assertStringNotContainsString('1,100', json_encode($publicEvents->all(), JSON_THROW_ON_ERROR));
+    }
+
+    public function test_food_hard_cap_overflow_is_discarded_when_money_capacity_is_full(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '資金上限国', '試験島主');
+        $capacity = app(NationCapacityResolver::class)->resolve($nation, $world->rulesetVersion()->firstOrFail());
+        $this->facilityCell($nation, 'farm', 2);
+        $this->setPopulation($nation, 1_100);
+        $this->setResources($nation, ['wheat' => $capacity->foodTons, 'fish' => 0, 'monster_meat' => 0]);
+        $this->setPolicy($nation, 'wheat', 'keep_amount', $capacity->foodTons + 10_000);
+        $nation->update(['money' => $capacity->money]);
+        [$context, $run] = $this->context($world, $nation);
+
+        $economy = app(CompleteTurnEngine::class)->execute('nation_economy', $context);
+
+        $this->assertSame(0, $economy->metrics['food_overflow_sold']);
+        $this->assertSame(0, $economy->metrics['food_overflow_revenue']);
+        $this->assertSame(1_100, $economy->metrics['food_overflow_discarded']);
+        $this->assertSame($capacity->money, (int) $nation->fresh()->money);
+        $overflow = $this->event($run, 'resource.food_overflow_resolved', 'wheat');
+        $this->assertSame(0, $overflow['sold_tons']);
+        $this->assertSame(0, $overflow['revenue']);
+        $this->assertSame(1_100, $overflow['discarded_tons']);
+    }
+
+    public function test_keep_amount_below_current_and_no_hard_cap_overflow_keep_existing_sale_semantics(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '通常売却国', '試験島主');
+        $this->setPopulation($nation, 0);
+        $this->setResources($nation, ['wheat' => 5_000, 'fish' => 0, 'monster_meat' => 0]);
+        $this->setPolicy($nation, 'wheat', 'keep_amount', 1_000);
+        $nation->update(['money' => 0]);
+        [$context, $run] = $this->context($world, $nation);
+
+        app(CompleteTurnEngine::class)->execute('nation_economy', $context);
+        $this->assertSame(0, DB::table('audit_events')
+            ->where('event_type', 'resource.food_overflow_resolved')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+
+        $sales = app(CompleteTurnEngine::class)->execute('resource_sales', $context);
+        $this->assertSame(1, $sales->metrics['sales']);
+        $this->assertSame(4, $sales->metrics['revenue']);
+        $this->assertSame(1_000, $this->resourceAmount($nation, 'wheat'));
+        $this->assertSame(4, (int) $nation->fresh()->money);
+        $normalSale = $this->event($run, 'resource.automatic_sale', 'wheat');
+        $this->assertSame(4_000, $normalSale['requested']);
+        $this->assertSame(4_000, $normalSale['sold']);
+    }
 
     public function test_integer_workforce_food_sale_and_capacity_contracts(): void
     {

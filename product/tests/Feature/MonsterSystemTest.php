@@ -527,6 +527,7 @@ class MonsterSystemTest extends TestCase
         $this->setCell($base, 'plain', 'missile_base', $killer->id, 0);
         $base->update(['facility_experience' => 195]);
         $killer->update(['money' => 9_500]);
+        $hostMoneyBefore = (int) $host->money;
         $monsterMeat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
         NationResource::query()->where('nation_id', $host->id)->where('resource_definition_id', $wheat->id)
@@ -557,6 +558,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(9_999, (int) $killer->fresh()->money);
         $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
+        $this->assertSame($hostMoneyBefore + 498, (int) $host->fresh()->money);
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'monster.reward_distributed',
             'visibility' => 'private',
@@ -569,6 +571,9 @@ class MonsterSystemTest extends TestCase
         $hostReward = collect($playerEvents->ownerPage($host->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
+        $hostOverflow = collect($playerEvents->ownerPage($host->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->firstWhere('type', 'resource.food_overflow_resolved');
         $spectatorReward = collect($playerEvents->ownerPage($spectator->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
@@ -576,6 +581,11 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('レッドいのらを撃破し、賞金499億円を受け取りました。', $killerReward['message']);
         $this->assertIsArray($hostReward);
         $this->assertSame('レッドいのらが倒され、怪獣肉100トンを受け取りました。', $hostReward['message']);
+        $this->assertIsArray($hostOverflow);
+        $this->assertSame(
+            '食料上限を超えた怪獣肉249,900トンのうち249,000トンを売却して498億円を得て、900トンを破棄しました。',
+            $hostOverflow['message'],
+        );
         $this->assertNull($spectatorReward);
         $this->assertSame(200, $base->fresh()->facility_experience);
         $stat = NationMonsterKillStat::query()->sole();
@@ -609,6 +619,15 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(500, $metadata['killer_money']['requested']);
         $this->assertSame(250_000, $metadata['host_meat_food']['requested']);
         $this->assertSame(249_900, $metadata['host_meat_food']['overflow']);
+        $overflowMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'resource.food_overflow_resolved')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('monster_meat', $overflowMetadata['resource_key']);
+        $this->assertSame(249_900, $overflowMetadata['requested_overflow_tons']);
+        $this->assertSame(249_000, $overflowMetadata['sold_tons']);
+        $this->assertSame(498, $overflowMetadata['revenue']);
+        $this->assertSame(900, $overflowMetadata['discarded_tons']);
+        $this->assertSame(1_000, $overflowMetadata['inventory_units_per_batch']);
+        $this->assertSame(2, $overflowMetadata['money_units_per_batch']);
         $this->assertSame($base->id, $metadata['firing_base_id']);
         $this->assertSame('killed', $monster->fresh()->state);
         $this->assertFalse($monster->fresh()->occupancy()->exists());
@@ -617,8 +636,9 @@ class MonsterSystemTest extends TestCase
             ->flatMap(fn (array $group): array => $group['events']);
         $this->assertSame(1, $publicEvents->where('type', 'monster.killed')->count());
         $this->assertSame(0, $publicEvents->where('type', 'monster.reward_distributed')->count());
+        $this->assertSame(0, $publicEvents->where('type', 'resource.food_overflow_resolved')->count());
         $publicJson = json_encode($publicEvents->all(), JSON_THROW_ON_ERROR);
-        foreach (['killer_money', 'host_meat_food', '499', '100トン'] as $privateValue) {
+        foreach (['killer_money', 'host_meat_food', '499', '100トン', '249,900', '498億円'] as $privateValue) {
             $this->assertStringNotContainsString($privateValue, $publicJson);
         }
 

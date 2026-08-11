@@ -14,7 +14,8 @@ final readonly class InventorySaleQuote
         public int $moneyBefore,
         public int $moneyAfter,
         public int $moneyCapacity,
-        public int $inventoryUnitsPerMoney,
+        public int $inventoryUnitsPerBatch,
+        public int $moneyUnitsPerBatch,
     ) {}
 
     /** @return array<string, int> */
@@ -30,7 +31,8 @@ final readonly class InventorySaleQuote
             'money_before' => $this->moneyBefore,
             'money_after' => $this->moneyAfter,
             'money_capacity' => $this->moneyCapacity,
-            'inventory_units_per_money' => $this->inventoryUnitsPerMoney,
+            'inventory_units_per_batch' => $this->inventoryUnitsPerBatch,
+            'money_units_per_batch' => $this->moneyUnitsPerBatch,
         ];
     }
 }

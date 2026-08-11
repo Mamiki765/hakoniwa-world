@@ -19,6 +19,7 @@ final class MonsterDamageService
     public function __construct(
         private readonly MonsterHardening $hardening,
         private readonly CapacityBoundedAssetService $boundedAssets,
+        private readonly FoodOverflowResolver $foodOverflow,
         private readonly MonsterRemovalService $removal,
         private readonly TurnEventRecorder $events,
         private readonly MonsterKillCycleService $monsterCycles,
@@ -143,9 +144,12 @@ final class MonsterDamageService
                     ->toArray();
                 if ($hostNation !== null) {
                     $meat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
-                    $hostMeat = $this->boundedAssets
-                        ->creditFood($hostNation, $meat, $hostShare * 500, $context->ruleset)
-                        ->toArray();
+                    $hostMeatCredit = $this->boundedAssets
+                        ->creditFood($hostNation, $meat, $hostShare * 500, $context->ruleset);
+                    $hostMeat = $hostMeatCredit->toArray();
+                    if ($hostMeatCredit->overflow > 0) {
+                        $this->foodOverflow->resolve($context, $hostNation, $meat, $hostMeatCredit);
+                    }
                 }
             }
 

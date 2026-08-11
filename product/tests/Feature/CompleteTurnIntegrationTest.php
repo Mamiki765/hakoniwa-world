@@ -8,6 +8,7 @@ use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
+use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\GameplayTurnPhase;
@@ -210,6 +211,37 @@ class CompleteTurnIntegrationTest extends TestCase
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '原子性国', '試験島主');
+        $farmCell = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->first();
+        if ($farmCell === null) {
+            $farmCell = MapCell::query()->where('owner_nation_id', $nation->id)
+                ->whereNull('facility_definition_id')->firstOrFail();
+            $farmCell = $farmCell->fresh(['terrain', 'facility']);
+            app(MapCellStateService::class)->transitionTerrain(
+                $farmCell,
+                TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+            );
+            $farmCell->save();
+        }
+        app(MapCellStateService::class)->setFacility(
+            $farmCell,
+            FacilityDefinition::query()->where('key', 'farm')->firstOrFail(),
+        );
+        $farmCell->facility_scale = 2;
+        $farmCell->save();
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $nation->capital()->firstOrFail()->cell()->update(['population' => 1_100]);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $capacity = app(NationCapacityResolver::class)->resolve($nation, $ruleset);
+        $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
+        NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $wheat->id)
+            ->update(['amount' => $capacity->foodTons]);
+        NationResourceSalePolicy::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $wheat->id)
+            ->update(['policy' => 'keep_amount', 'keep_amount' => $capacity->foodTons + 10_000]);
         NationResource::query()->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('key', 'industrial_goods'))
             ->update(['amount' => 10_000_000]);
@@ -263,6 +295,8 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame($seed, $failed->random_seed);
         $this->assertIsArray($capturedResult);
         $this->assertSame($snapshot, $this->gameplaySnapshot($world, $nation->id, $item->id));
+        $this->assertSame(0, DB::table('audit_events')
+            ->where('event_type', 'resource.food_overflow_resolved')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'turn.summary')->count());
 
         $completed = app(TurnRunner::class)->run($world->fresh());
@@ -287,6 +321,12 @@ class CompleteTurnIntegrationTest extends TestCase
             ->whereRaw("metadata->>'asset' = ?", ['resource'])
             ->whereRaw("metadata->>'resource_key' = ?", ['minerals'])
             ->whereRaw("metadata->>'overflow' = ?", ['500'])->count());
+        $foodOverflow = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'resource.food_overflow_resolved')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1_100, $foodOverflow['requested_overflow_tons']);
+        $this->assertSame(1_000, $foodOverflow['sold_tons']);
+        $this->assertSame(1, $foodOverflow['revenue']);
+        $this->assertSame(100, $foodOverflow['discarded_tons']);
         $this->assertGreaterThan($snapshot['audit_count'], DB::table('audit_events')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.summary')->count());

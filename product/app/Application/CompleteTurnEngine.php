@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Economy\CapacityBoundedAssetService;
+use App\Domain\Economy\InventorySalePlanner;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Map\GridCoordinate;
@@ -33,6 +34,8 @@ final class CompleteTurnEngine
         private readonly TurnOrderService $orders,
         private readonly DomesticCommandExecutor $commands,
         private readonly CapacityBoundedAssetService $boundedAssets,
+        private readonly FoodOverflowResolver $foodOverflow,
+        private readonly InventorySalePlanner $salePlanner,
         private readonly NationCapacityResolver $capacities,
         private readonly MapCellStateService $cells,
         private readonly NationLandAreaCalculator $landArea,
@@ -124,6 +127,8 @@ final class CompleteTurnEngine
             'nations' => 0, 'wheat_produced' => 0, 'industrial_goods_produced' => 0,
             'minerals_produced' => 0, 'nutrition_required' => 0,
             'nutrition_shortage' => 0, 'famine_nations' => 0,
+            'food_overflow_sold' => 0, 'food_overflow_revenue' => 0,
+            'food_overflow_discarded' => 0,
         ];
         $workforceRules = $context->ruleset->settings['turn_processing']['workforce'];
         $foodRules = $context->ruleset->settings['turn_processing']['food'];
@@ -146,11 +151,10 @@ final class CompleteTurnEngine
                 'overflow_tons' => $foodCredit->overflow,
             ]);
             if ($foodCredit->overflow > 0) {
-                $this->events->record($context, 'capacity.overflow', $nation, [
-                    'asset' => 'aggregate_food', 'requested' => $foodCredit->requested,
-                    'applied' => $foodCredit->applied, 'overflow' => $foodCredit->overflow,
-                    'capacity' => $foodCredit->capacity,
-                ]);
+                $overflow = $this->foodOverflow->resolve($context, $nation, $wheat, $foodCredit);
+                $metrics['food_overflow_sold'] += $overflow['sold_tons'];
+                $metrics['food_overflow_revenue'] += $overflow['revenue'];
+                $metrics['food_overflow_discarded'] += $overflow['discarded_tons'];
             }
 
             $remainingWorkers = max(0, $population - $agriculturalWorkers);
@@ -412,14 +416,22 @@ final class CompleteTurnEngine
                     default => 0,
                 };
                 $rate = $rates[$resource->key] ?? null;
-                if (! is_array($rate) || $rate['money_units'] < 1) {
+                if (! is_array($rate)
+                    || ! is_int($rate['inventory_units'] ?? null)
+                    || $rate['inventory_units'] < 1
+                    || ! is_int($rate['money_units'] ?? null)
+                    || $rate['money_units'] < 1) {
                     throw new DomainException("Inventory sale rate is missing or invalid for {$resource->key}.");
                 }
-                $requestedBatches = intdiv($requested, $rate['inventory_units']);
-                $moneyRoom = max(0, $capacity->money - (int) $nation->money);
-                $soldBatches = min($requestedBatches, intdiv($moneyRoom, $rate['money_units']));
-                $sold = $soldBatches * $rate['inventory_units'];
-                $revenue = $soldBatches * $rate['money_units'];
+                $quote = $this->salePlanner->plan(
+                    $requested,
+                    (int) $nation->money,
+                    $capacity->money,
+                    $rate['inventory_units'],
+                    $rate['money_units'],
+                );
+                $sold = $quote->inventorySold;
+                $revenue = $quote->appliedMoney;
                 if ($sold > 0) {
                     $balance->decrement('amount', $sold);
                     $nation->increment('money', $revenue);

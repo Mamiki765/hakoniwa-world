@@ -12,27 +12,32 @@ final class InventorySalePlanner
         int $inventoryUnits,
         int $moneyBefore,
         int $moneyCapacity,
-        int $inventoryUnitsPerMoney = 1_000,
+        int $inventoryUnitsPerBatch = 1_000,
+        int $moneyUnitsPerBatch = 1,
     ): InventorySaleQuote {
-        if ($inventoryUnits < 0 || $inventoryUnitsPerMoney < 1) {
+        if ($inventoryUnits < 0 || $inventoryUnitsPerBatch < 1 || $moneyUnitsPerBatch < 1) {
             throw new DomainException('Inventory sale values are invalid.');
         }
 
-        $requestedMoney = intdiv($inventoryUnits, $inventoryUnitsPerMoney);
+        $requestedBatches = intdiv($inventoryUnits, $inventoryUnitsPerBatch);
+        $requestedMoney = $requestedBatches * $moneyUnitsPerBatch;
         $money = $this->addition->calculate($moneyBefore, $requestedMoney, $moneyCapacity);
-        $inventorySold = $money->applied * $inventoryUnitsPerMoney;
+        $soldBatches = min($requestedBatches, intdiv($money->applied, $moneyUnitsPerBatch));
+        $inventorySold = $soldBatches * $inventoryUnitsPerBatch;
+        $appliedMoney = $soldBatches * $moneyUnitsPerBatch;
 
         return new InventorySaleQuote(
             inventoryBefore: $inventoryUnits,
             inventorySold: $inventorySold,
             inventoryRemaining: $inventoryUnits - $inventorySold,
             requestedMoney: $money->requested,
-            appliedMoney: $money->applied,
-            overflowMoney: $money->overflow,
+            appliedMoney: $appliedMoney,
+            overflowMoney: $money->requested - $appliedMoney,
             moneyBefore: $money->before,
-            moneyAfter: $money->after,
+            moneyAfter: $money->before + $appliedMoney,
             moneyCapacity: $money->capacity,
-            inventoryUnitsPerMoney: $inventoryUnitsPerMoney,
+            inventoryUnitsPerBatch: $inventoryUnitsPerBatch,
+            moneyUnitsPerBatch: $moneyUnitsPerBatch,
         );
     }
 }
