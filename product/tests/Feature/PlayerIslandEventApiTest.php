@@ -44,7 +44,8 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertJsonPath('data.limit', 15)
             ->assertJsonPath('data.groups.0.target_turn', 9)
             ->assertJsonPath('data.groups.0.events.0.id', $created)
-            ->assertJsonPath('data.groups.0.events.0.message', 'ニュース島ができました。');
+            ->assertJsonPath('data.groups.0.events.0.message', 'ニュース島ができました。')
+            ->assertJsonPath('data.groups.0.events.0.importance', 'notable');
 
         $this->assertCount(1, $response->json('data.groups.0.events'));
         $this->assertCount(15, collect($response->json('data.groups'))->flatMap(

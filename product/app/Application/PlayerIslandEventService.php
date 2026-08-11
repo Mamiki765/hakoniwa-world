@@ -317,7 +317,7 @@ final class PlayerIslandEventService
                 'id' => (int) $row->id,
                 'type' => (string) $row->event_type,
                 'message' => $this->majorNewsMessage((string) $row->event_type, $nationName),
-                'importance' => 'important',
+                'importance' => 'notable',
                 'target_turn' => (int) $row->turn,
             ];
         })->all();
