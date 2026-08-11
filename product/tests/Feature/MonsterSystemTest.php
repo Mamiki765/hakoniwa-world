@@ -118,6 +118,8 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, MonsterInstance::query()->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.spawn_failed_no_settlement')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+        $this->assertSame('admin', DB::table('audit_events')
+            ->where('event_type', 'monster.spawn_failed_no_settlement')->value('visibility'));
     }
 
     public function test_natural_spawn_replays_the_same_actor_after_transaction_rollback(): void
@@ -332,6 +334,49 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(2, $monster->fresh()->current_hp);
         $this->assertSame($cell->id, $monster->fresh()->occupancy()->value('map_cell_id'));
         $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.damage_blocked')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($nation->id, $metadata['attacker_nation_id']);
+        $this->assertSame('硬化国', $metadata['attacker_nation_name']);
+        $this->assertSame($nation->id, $metadata['host_nation_id']);
+        $this->assertSame('硬化国', $metadata['host_nation_name']);
+    }
+
+    public function test_nonlethal_damage_snapshots_attacker_and_host_for_public_projection(): void
+    {
+        [$world, $host, $ruleset] = $this->worldAndNation('損傷所在国');
+        $attacker = $this->createNation($world, '損傷攻撃国');
+        $cell = $this->ownedNonCapitalCell($host);
+        $this->setCell($cell, 'wasteland', null, $host->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 2);
+        [$context] = $this->context($world, $ruleset, 2, 'nonlethal-damage-snapshot', [$host->id, $attacker->id]);
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            1,
+            'monster_missile',
+            $attacker,
+            null,
+            $cell,
+            $context,
+        );
+
+        $this->assertSame('damaged', $result->status);
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.damaged')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($attacker->id, $metadata['attacker_nation_id']);
+        $this->assertSame('損傷攻撃国', $metadata['attacker_nation_name']);
+        $this->assertSame($host->id, $metadata['host_nation_id']);
+        $this->assertSame('損傷所在国', $metadata['host_nation_name']);
+
+        $host->update(['name' => '現在損傷所在国']);
+        $events = collect(app(PlayerIslandEventService::class)->publicNationPage($host->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $this->assertSame(1, $events->where('type', 'monster.damaged')->count());
+        $this->assertSame(
+            sprintf('損傷所在国(%d,%d)のいのらに攻撃が命中し、苦しそうに咆哮しました。', $cell->x, $cell->y),
+            $events->firstWhere('type', 'monster.damaged')['message'],
+        );
     }
 
     public function test_monster_movement_replays_the_same_result_after_transaction_rollback(): void
@@ -512,6 +557,10 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(9_999, (int) $killer->fresh()->money);
         $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'monster.reward_distributed',
+            'visibility' => 'private',
+        ]);
 
         $playerEvents = app(PlayerIslandEventService::class);
         $killerReward = collect($playerEvents->ownerPage($killer->fresh(), 1, 2)['groups'])
@@ -549,7 +598,9 @@ class MonsterSystemTest extends TestCase
         $this->assertSame($monster->id, $metadata['monster_instance_id']);
         $this->assertSame('red_inora', $metadata['monster_definition_key']);
         $this->assertSame($killer->id, $metadata['killer_nation_id']);
+        $this->assertSame('撃破国', $metadata['killer_nation_name']);
         $this->assertSame($host->id, $metadata['host_nation_id']);
+        $this->assertSame('所在国', $metadata['host_nation_name']);
         $this->assertSame(2, $metadata['target_turn']);
         $this->assertSame(0, $metadata['previous_kill_count']);
         $this->assertSame(1, $metadata['new_kill_count']);
@@ -562,6 +613,14 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('killed', $monster->fresh()->state);
         $this->assertFalse($monster->fresh()->occupancy()->exists());
         $this->assertContains($hostCell->map_chunk_id, $context->state->changedMapChunkIds());
+        $publicEvents = collect($playerEvents->publicWorldPage($world, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $this->assertSame(1, $publicEvents->where('type', 'monster.killed')->count());
+        $this->assertSame(0, $publicEvents->where('type', 'monster.reward_distributed')->count());
+        $publicJson = json_encode($publicEvents->all(), JSON_THROW_ON_ERROR);
+        foreach (['killer_money', 'host_meat_food', '499', '100トン'] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $publicJson);
+        }
 
         $retry = app(MonsterDamageService::class)->applyDamage(
             $monster,

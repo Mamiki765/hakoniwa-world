@@ -71,10 +71,17 @@ final class MonsterDamageService
             if ($killerNation !== null && $killerNation->world_id !== $context->world->id) {
                 throw new DomainException('Monster killer Nation cannot cross World boundaries.');
             }
+            $hostNationSnapshot = $hostCell->owner_nation_id === null
+                ? null
+                : Nation::query()->whereKey($hostCell->owner_nation_id)->first(['id', 'name']);
             if ($this->hardening->isHardened($locked->definition, $context->targetTurn)) {
                 $this->events->record($context, 'monster.damage_blocked', $locked, [
                     'monster_key' => $locked->definition->key,
                     'nation_id' => $killerNation?->id,
+                    'attacker_nation_id' => $killerNation?->id,
+                    'attacker_nation_name' => $killerNation?->name,
+                    'host_nation_id' => $hostNationSnapshot?->id,
+                    'host_nation_name' => $hostNationSnapshot?->name,
                     'x' => $hostCell->x,
                     'y' => $hostCell->y,
                     'damage_type' => $damageType,
@@ -101,6 +108,10 @@ final class MonsterDamageService
                 $this->events->record($context, 'monster.damaged', $locked, [
                     'monster_key' => $locked->definition->key,
                     'nation_id' => $killerNation?->id,
+                    'attacker_nation_id' => $killerNation?->id,
+                    'attacker_nation_name' => $killerNation?->name,
+                    'host_nation_id' => $hostNationSnapshot?->id,
+                    'host_nation_name' => $hostNationSnapshot?->name,
                     'x' => $hostCell->x,
                     'y' => $hostCell->y,
                     'damage_type' => $damageType,
@@ -167,8 +178,12 @@ final class MonsterDamageService
                 'monster_definition_key' => $locked->definition->key,
                 'monster_key' => $locked->definition->key,
                 'nation_id' => $killerNation->id ?? $hostNation?->id,
+                'attacker_nation_id' => $killerNation?->id,
+                'attacker_nation_name' => $killerNation?->name,
                 'killer_nation_id' => $killerNation?->id,
+                'killer_nation_name' => $killerNation?->name,
                 'host_nation_id' => $hostNation?->id,
+                'host_nation_name' => $hostNation?->name,
                 'x' => $hostCell->x,
                 'y' => $hostCell->y,
                 'damage_type' => $damageType,

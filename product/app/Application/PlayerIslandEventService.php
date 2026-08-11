@@ -20,7 +20,7 @@ final class PlayerIslandEventService
     public const MAJOR_NEWS_LIMIT = 15;
 
     // monster.spawn_failed_no_settlement is intentionally audit-only and absent
-    // from every player-facing allowlist. PR2 may make its writer visibility explicit.
+    // from every player-facing allowlist.
 
     /** @var list<string> */
     private const OWNER_EVENT_TYPES = [
@@ -73,10 +73,16 @@ final class PlayerIslandEventService
 
     /** @var list<string> */
     private const PUBLIC_ISLAND_EVENT_TYPES = [
+        'award.granted',
+        'command.terrain_changed_public',
         'command.forest_planted_public',
         'command.seabed_base_built_public',
         'command.facility_built_public',
         'command.logging_public',
+        'command.capital_relocated_public',
+        'command.attraction_started_public',
+        'command.money_aid_public',
+        'command.food_aid_public',
         'command.territory_expanded',
         'territory.influenced',
         'disaster.triggered',
@@ -87,7 +93,6 @@ final class PlayerIslandEventService
         'monster.damage_blocked',
         'monster.damaged',
         'monster.killed',
-        'monster.reward_distributed',
         'monster.defense_self_destructed',
         'monster.removed_by_terrain_event',
         'missile.launched',
@@ -109,6 +114,12 @@ final class PlayerIslandEventService
         'monster.damage_blocked',
         'monster.damaged',
         'monster.killed',
+    ];
+
+    /** @var list<string> */
+    private const CROSS_NATION_PUBLIC_EVENT_TYPES = [
+        'command.money_aid_public',
+        'command.food_aid_public',
     ];
 
     /** @var list<string> */
@@ -152,7 +163,7 @@ final class PlayerIslandEventService
                         ->where('events.nation_id', $nation->id);
                 })->orWhere(function (Builder $reward) use ($nation): void {
                     $reward->where('events.event_type', 'monster.reward_distributed')
-                        ->where('events.visibility', 'public')
+                        ->where('events.visibility', 'private')
                         ->where(function (Builder $role) use ($nation): void {
                             $role->whereRaw("events.metadata->>'killer_nation_id' = ?", [(string) $nation->id])
                                 ->orWhereRaw("events.metadata->>'host_nation_id' = ?", [(string) $nation->id]);
@@ -347,9 +358,8 @@ final class PlayerIslandEventService
             ->whereIn('events.event_type', self::PUBLIC_ISLAND_EVENT_TYPES)
             ->whereBetween('events.turn', [$rangeStart, $rangeEnd])
             ->where(function (Builder $historicalHostAttribution): void {
-                // PR1 must not infer historical ownership from the current map.
-                // MonsterDamageService will add host_nation_id in PR2; until
-                // then damage events without that snapshot stay fail-closed.
+                // Historical ownership is taken only from the event snapshot.
+                // Legacy damage rows without host_nation_id stay fail-closed.
                 $historicalHostAttribution
                     ->whereNotIn('events.event_type', self::HOST_ISLAND_MONSTER_EVENT_TYPES)
                     ->orWhereRaw("events.metadata->>'host_nation_id' IS NOT NULL");
@@ -362,9 +372,16 @@ final class PlayerIslandEventService
                     })->orWhere(function (Builder $defenseHost) use ($nationId): void {
                         $defenseHost->where('events.event_type', 'monster.defense_self_destructed')
                             ->whereRaw("events.metadata->>'defense_owner_nation_id' = ?", [(string) $nationId]);
+                    })->orWhere(function (Builder $aid) use ($nationId): void {
+                        $aid->whereIn('events.event_type', self::CROSS_NATION_PUBLIC_EVENT_TYPES)
+                            ->where(function (Builder $related) use ($nationId): void {
+                                $related->whereRaw("events.metadata->>'sender_nation_id' = ?", [(string) $nationId])
+                                    ->orWhereRaw("events.metadata->>'receiver_nation_id' = ?", [(string) $nationId]);
+                            });
                     })->orWhere(function (Builder $ordinaryEvent) use ($nationId): void {
                         $ordinaryEvent->whereNotIn('events.event_type', [
                             ...self::HOST_ISLAND_MONSTER_EVENT_TYPES,
+                            ...self::CROSS_NATION_PUBLIC_EVENT_TYPES,
                             'monster.defense_self_destructed',
                         ])->where('events.nation_id', $nationId);
                     });
@@ -443,6 +460,7 @@ final class PlayerIslandEventService
     private function publicDestinationNationNames(World $world, array $rows): array
     {
         $nationIds = [];
+        $names = [];
         foreach ($rows as $row) {
             $eventType = (string) $row->event_type;
             $metadata = $this->metadata($row->metadata);
@@ -452,20 +470,30 @@ final class PlayerIslandEventService
                 default => null,
             };
             if ($key !== null && is_numeric($metadata[$key] ?? null)) {
-                $nationIds[] = (int) $metadata[$key];
+                $nationId = (int) $metadata[$key];
+                $nameKey = $key === 'host_nation_id'
+                    ? 'host_nation_name'
+                    : 'defense_owner_nation_name';
+                if (is_string($metadata[$nameKey] ?? null)) {
+                    $names[$nationId] = $metadata[$nameKey];
+                } else {
+                    $nationIds[] = $nationId;
+                }
             }
         }
 
         if ($nationIds === []) {
-            return [];
+            return $names;
         }
 
-        return Nation::query()
+        $fallbackNames = Nation::query()
             ->where('world_id', $world->id)
             ->whereIn('id', array_values(array_unique($nationIds)))
             ->pluck('name', 'id')
             ->mapWithKeys(static fn (string $name, int|string $id): array => [(int) $id => $name])
             ->all();
+
+        return $names + $fallbackNames;
     }
 
     /**
@@ -488,6 +516,12 @@ final class PlayerIslandEventService
             default => null,
         };
         if ($destinationKey !== null) {
+            $snapshotKey = $destinationKey === 'host_nation_id'
+                ? 'host_nation_name'
+                : 'defense_owner_nation_name';
+            if (is_string($metadata[$snapshotKey] ?? null)) {
+                return $metadata[$snapshotKey];
+            }
             if (is_numeric($metadata[$destinationKey] ?? null)) {
                 return $destinationNationNames[(int) $metadata[$destinationKey]] ?? null;
             }
@@ -568,10 +602,43 @@ final class PlayerIslandEventService
         $monster = $this->monsterLabel($metadata['monster_key'] ?? null);
 
         return match ($eventType) {
+            'award.granted' => sprintf(
+                '%sに%sが進呈されました。',
+                $nation,
+                is_string($metadata['award_name'] ?? null) ? $metadata['award_name'] : '賞',
+            ),
+            'command.terrain_changed_public' => sprintf(
+                '%s(%s,%s)で%sが行われました。',
+                $nation,
+                $x,
+                $y,
+                $this->commandLabel($metadata),
+            ),
             'command.forest_planted_public' => "こころなしか、{$nation}のどこかで森が増えた気がします。",
             'command.logging_public' => "こころなしか、{$nation}のどこかで森が減った気がします。",
             'command.seabed_base_built_public' => "{$nation}で海底基地が建設されたようです(?,?)。",
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
+            'command.capital_relocated_public' => sprintf(
+                '%sの首都が(%s,%s)から(%s,%s)へ移転しました。',
+                $nation,
+                $this->publicCoordinate($metadata, 'from_x'),
+                $this->publicCoordinate($metadata, 'from_y'),
+                $x,
+                $y,
+            ),
+            'command.attraction_started_public' => "{$nation}で誘致活動が行われました。",
+            'command.money_aid_public' => sprintf(
+                '%sから%sへ%s億円の資金援助が行われました。',
+                $metadata['sender_nation_name'] ?? '送信島',
+                $metadata['receiver_nation_name'] ?? '受信島',
+                number_format($this->integer($metadata, 'transferred_money')),
+            ),
+            'command.food_aid_public' => sprintf(
+                '%sから%sへ食料%sトンの援助が行われました。',
+                $metadata['sender_nation_name'] ?? '送信島',
+                $metadata['receiver_nation_name'] ?? '受信島',
+                number_format($this->integer($metadata, 'transferred_food_tons')),
+            ),
             'command.territory_expanded', 'territory.influenced' => sprintf(
                 '%s(%s,%s)の土地は、%sの領地となりました。',
                 $metadata['old_owner_nation_name'] ?? '中立地域',
@@ -595,8 +662,10 @@ final class PlayerIslandEventService
             ),
             'monster.damage_blocked' => "{$nation}({$x},{$y})の{$monster}に攻撃が命中しましたが、硬化中のため効果がありませんでした。",
             'monster.damaged' => "{$nation}({$x},{$y})の{$monster}に攻撃が命中し、苦しそうに咆哮しました。",
-            'monster.killed' => "{$nation}({$x},{$y})の{$monster}は力尽き、倒れました。",
-            'monster.reward_distributed' => "{$monster}が倒され、撃破報酬が配分されました。",
+            'monster.killed' => "{$nation}({$x},{$y})の{$monster}は力尽き、倒れました。"
+                .(($metadata['reward_distributed'] ?? false) === true
+                    ? '怪獣は解体され、報酬が分配されました。'
+                    : ''),
             'monster.defense_self_destructed' => sprintf(
                 '%s(%s,%s)で%sが防衛施設へ接触し、施設とともに消滅しました。',
                 $nation,
@@ -656,8 +725,9 @@ final class PlayerIslandEventService
 
     /**
      * Reduce raw audit metadata to an event-specific public DTO before the
-     * formatter sees it. Secret coordinates, amounts, identities, draws, and
-     * complete missile impacts cannot cross this boundary by accident.
+     * formatter sees it. Secret coordinates, identities, draws, complete
+     * missile impacts, and non-aid asset details cannot cross this boundary
+     * by accident. Aid's applied transfer is an explicit public exception.
      *
      * @param  array<string, mixed>  $metadata
      * @return array<string, mixed>
@@ -665,10 +735,20 @@ final class PlayerIslandEventService
     private function publicSafeMetadata(string $eventType, array $metadata): array
     {
         $keys = match ($eventType) {
+            'award.granted' => ['nation_name', 'award_key', 'award_name'],
+            'command.terrain_changed_public' => ['nation_name', 'command_key', 'x', 'y'],
             'command.forest_planted_public', 'command.logging_public',
             'command.seabed_base_built_public', 'land_subsidence.triggered',
             'refugee_generated' => ['nation_name'],
             'command.facility_built_public' => ['nation_name', 'facility_key', 'x', 'y'],
+            'command.capital_relocated_public' => ['nation_name', 'from_x', 'from_y', 'x', 'y'],
+            'command.attraction_started_public' => ['nation_name'],
+            'command.money_aid_public' => [
+                'sender_nation_name', 'receiver_nation_name', 'transferred_money',
+            ],
+            'command.food_aid_public' => [
+                'sender_nation_name', 'receiver_nation_name', 'transferred_food_tons',
+            ],
             'command.territory_expanded', 'territory.influenced' => [
                 'nation_name', 'old_owner_nation_name', 'new_owner_nation_name', 'x', 'y',
             ],
@@ -681,7 +761,6 @@ final class PlayerIslandEventService
             ],
             'monster.moved' => ['nation_name', 'monster_key', 'x', 'y'],
             'monster.trampled' => ['nation_name', 'monster_key', 'x', 'y'],
-            'monster.reward_distributed' => ['monster_key'],
             'missile.launched' => ['nation_name', 'command_key', 'fired_shots'],
             'missile.ineffective_aggregated' => [
                 'nation_name', 'command_key', 'ineffective_impacts',
@@ -704,6 +783,9 @@ final class PlayerIslandEventService
                 'decoy' => 'defense',
                 default => $safe['facility_key'] ?? null,
             };
+        }
+        if ($eventType === 'monster.killed' && is_numeric($metadata['killer_nation_id'] ?? null)) {
+            $safe['reward_distributed'] = true;
         }
         if ($eventType === 'monster.trampled') {
             $safe['location_label'] = $this->publicAffectedLocationLabel($metadata);
@@ -1489,6 +1571,19 @@ final class PlayerIslandEventService
     /** @param array<string, mixed> $metadata */
     private function missileLaunchDetailMessage(array $metadata): string
     {
+        $firingBases = is_array($metadata['firing_bases'] ?? null) ? $metadata['firing_bases'] : [];
+        $baseDetails = [];
+        foreach ($firingBases as $base) {
+            if (! is_array($base)) {
+                continue;
+            }
+            $baseDetails[] = sprintf(
+                '(%s,%s)から%s発',
+                number_format(is_numeric($base['x'] ?? null) ? (int) $base['x'] : 0),
+                number_format(is_numeric($base['y'] ?? null) ? (int) $base['y'] : 0),
+                number_format(is_numeric($base['fired_shots'] ?? null) ? (int) $base['fired_shots'] : 0),
+            );
+        }
         $impacts = is_array($metadata['impacts'] ?? null) ? $metadata['impacts'] : [];
         $details = [];
         foreach ($impacts as $impact) {
@@ -1506,12 +1601,13 @@ final class PlayerIslandEventService
         }
 
         return sprintf(
-            '%sを狙点(%s,%s)へ%s発を発射し、費用%s億円。着弾結果: %s',
+            '%sを狙点(%s,%s)へ%s発を発射し、費用%s億円。発射基地: %s。着弾結果: %s',
             $this->missileLabel($metadata['command_key'] ?? null),
             number_format($this->integer($metadata, 'target_x')),
             number_format($this->integer($metadata, 'target_y')),
             number_format($this->integer($metadata, 'fired_shots')),
             number_format($this->integer($metadata, 'cost_money')),
+            $baseDetails === [] ? '記録なし' : implode('、', $baseDetails),
             $details === [] ? '着弾なし' : implode('、', $details),
         );
     }
@@ -1724,9 +1820,10 @@ final class PlayerIslandEventService
             'missile.launch_failed' => 'warning',
             'command.buried_treasure', 'command.seabed_oil_search',
             'command.land_level_earthquake', 'disaster.triggered', 'fire.prevented', 'oil.income',
-            'land_subsidence.triggered', 'monster.spawned', 'monster.reward_distributed',
+            'land_subsidence.triggered', 'monster.spawned', 'monster.reward_distributed', 'award.granted',
             'settlement.appeared', 'settlement.stage_transitioned' => 'notable',
-            'missile.launched', 'missile.impact', 'command.capital_relocated' => 'notable',
+            'missile.launched', 'missile.impact', 'command.capital_relocated',
+            'command.capital_relocated_public' => 'notable',
             default => 'info',
         };
     }

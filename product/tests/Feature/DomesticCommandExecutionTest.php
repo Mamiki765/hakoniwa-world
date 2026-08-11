@@ -124,7 +124,25 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(3, DB::table('audit_events')->where('event_type', 'facility.constructed')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'facility.expanded')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.automatic_finance')->count());
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'command.terrain_changed_public')
+            ->where('visibility', 'public')->count());
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'command.facility_built_public')
+            ->where('visibility', 'public')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'like', '%earthquake%')->count());
+
+        $publicMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($first, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
+        foreach ([
+            sprintf('開発一号(%d,%d)で地ならしが行われました。', $landLevelTarget->x, $landLevelTarget->y),
+            sprintf('開発一号(%d,%d)で埋め立てが行われました。', $reclaimTarget->x, $reclaimTarget->y),
+            sprintf('開発一号(%d,%d)で整地が行われました。', $landClearTarget->x, $landClearTarget->y),
+            sprintf('開発一号(%d,%d)で掘削が行われました。', $excavateTarget->x, $excavateTarget->y),
+            sprintf('開発一号(%d,%d)で農場が建設されました。', $farmTarget->x, $farmTarget->y),
+            sprintf('開発一号(%d,%d)で工場が建設されました。', $factoryTarget->x, $factoryTarget->y),
+            sprintf('開発一号(%d,%d)で採掘場が建設されました。', $mineTarget->x, $mineTarget->y),
+        ] as $message) {
+            $this->assertContains($message, $publicMessages->all());
+        }
 
         $landLevelEvent = $this->eventMetadata('command.success', function ($query): void {
             $query->whereRaw("metadata->>'command_key' = ?", ['land_level']);

@@ -28,7 +28,8 @@ final class MissileImpactResolver
      *     fired: int,
      *     cost: int,
      *     ineffective: int,
-     *     impacts: list<array<string, mixed>>
+     *     impacts: list<array<string, mixed>>,
+     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>
      * }>
      */
     private array $launches = [];
@@ -106,6 +107,13 @@ final class MissileImpactResolver
                 $launch['fired']++;
                 $launch['cost'] += $cost;
                 $launch['impacts'][] = $impact;
+                $launch['firing_bases'][$base->id] ??= [
+                    'x' => $base->x,
+                    'y' => $base->y,
+                    'facility_key' => (string) $base->facility->key,
+                    'fired_shots' => 0,
+                ];
+                $launch['firing_bases'][$base->id]['fired_shots']++;
                 $metrics['shots_fired']++;
                 $metrics['money_spent'] += $cost;
                 if ($impact['meaningful']) {
@@ -137,7 +145,7 @@ final class MissileImpactResolver
             $nation = Nation::query()->findOrFail($intent->nationId);
             $launch = $this->launches[$intent->queueItemId] ?? [
                 'intent' => $intent, 'nation' => $nation, 'fired' => 0,
-                'cost' => 0, 'ineffective' => 0, 'impacts' => [],
+                'cost' => 0, 'ineffective' => 0, 'impacts' => [], 'firing_bases' => [],
             ];
             $shotsFiredByNation[$nation->id] = ($shotsFiredByNation[$nation->id] ?? 0) + $launch['fired'];
             if ($launch['fired'] === 0) {
@@ -174,6 +182,7 @@ final class MissileImpactResolver
                 'requested_shots' => $intent->requestedShots,
                 'remaining_shots' => $intent->remainingShots(),
                 'cost_money' => $launch['cost'],
+                'firing_bases' => array_values($launch['firing_bases']),
                 'impacts' => $launch['impacts'],
             ], 'private');
         }
@@ -557,7 +566,8 @@ final class MissileImpactResolver
      *     fired: int,
      *     cost: int,
      *     ineffective: int,
-     *     impacts: list<array<string, mixed>>
+     *     impacts: list<array<string, mixed>>,
+     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>
      * }
      */
     private function &launch(LaunchIntent $intent, Nation $nation): array
@@ -568,7 +578,8 @@ final class MissileImpactResolver
         if (! isset($this->launches[$intent->queueItemId])) {
             $this->launches[$intent->queueItemId] = [
                 'intent' => $intent, 'nation' => $nation,
-                'fired' => 0, 'cost' => 0, 'ineffective' => 0, 'impacts' => [],
+                'fired' => 0, 'cost' => 0, 'ineffective' => 0,
+                'impacts' => [], 'firing_bases' => [],
             ];
         }
 
