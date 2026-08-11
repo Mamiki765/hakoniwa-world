@@ -23,7 +23,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.4.0';
+const applicationVersion = '1.4.1';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -868,14 +868,14 @@ async function updateProfile(): Promise<void> {
                     </div>
                 </div>
             </div>
-            <IslandEventLog :key="`public:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="public" />
-            <IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" />
             <MessageBoard
                 :key="`development:${nation.id}`"
                 :nation-id="nation.id"
                 context="development"
                 @posted="refreshMyNation"
             />
+            <IslandEventLog :key="`public:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="public" />
+            <IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" />
         </section>
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
@@ -922,13 +922,13 @@ async function updateProfile(): Promise<void> {
                     @request-all="map.loadAllChunks"
                 />
             </div>
-            <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
             <MessageBoard
                 :key="`public:${previewNation.id}`"
                 :nation-id="previewNation.id"
                 context="public"
                 @posted="refreshMyNation"
             />
+            <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
         </section>
 
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />

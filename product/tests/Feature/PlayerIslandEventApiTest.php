@@ -288,7 +288,7 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertSame([], $originResponse->json('data.groups'));
     }
 
-    public function test_owner_log_requires_membership_and_never_reuses_public_world_or_other_nation_events(): void
+    public function test_owner_log_requires_membership_and_includes_only_its_own_public_island_events(): void
     {
         [$world, $owner, $nation] = $this->nation('所有島');
         [, $otherOwner, $other] = $this->nation('他島', $world);
@@ -296,6 +296,7 @@ class PlayerIslandEventApiTest extends TestCase
         DB::table('audit_events')->delete();
 
         $finance = $this->audit('command.finance', $nation, $nation, 'nation', 2, ['applied' => 50]);
+        $ownPublic = $this->publicFacility($nation, 2, 6, 7, 'farm');
         $this->audit('command.finance', $other, $other, 'nation', 2, ['applied' => 99_999]);
         $this->publicFacility($other, 2, 8, 8, 'farm');
         $this->audit('message_board.secret_sent', $nation, $nation, 'private', 2, [
@@ -309,11 +310,15 @@ class PlayerIslandEventApiTest extends TestCase
         $this->actingAs($otherOwner)->getJson("/api/v1/nations/{$nation->id}/events")->assertForbidden();
         $response = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")
             ->assertOk()
-            ->assertJsonPath('data.groups.0.events.0.id', $finance)
+            ->assertJsonPath('data.groups.0.events.0.id', $ownPublic)
             ->assertJsonPath('data.groups.0.events.0.confidential', false);
 
         $body = (string) $response->getContent();
-        foreach (['99,999', 'command.facility_built_public', 'message_board.secret_sent', '秘密通信本文', '誤分類されても非表示', 'money_before'] as $hidden) {
+        $this->assertContains('所有島(6,7)で農場整備が行われました。', $this->messages($response->json('data.groups')));
+        $this->assertTrue(collect($response->json('data.groups.0.events'))->contains(
+            static fn (array $event): bool => $event['id'] === $finance,
+        ));
+        foreach (['99,999', '(8,8)', 'message_board.secret_sent', '秘密通信本文', '誤分類されても非表示', 'money_before'] as $hidden) {
             $this->assertStringNotContainsString($hidden, $body);
         }
     }
@@ -377,15 +382,29 @@ class PlayerIslandEventApiTest extends TestCase
         $this->audit('command.forest_planted_private', $nation, $nation, 'private', 2, [
             'nation_name' => $nation->name, 'x' => 12, 'y' => 13,
         ]);
+        $this->audit('terrain.changed', $nation, $nation, 'private', 2, [
+            'command_key' => 'plant_forest', 'x' => 12, 'y' => 13,
+            'from_terrain_key' => 'plain', 'to_terrain_key' => 'forest',
+        ]);
         $this->audit('command.seabed_base_built_public', $nation, $nation, 'public', 2, [
             'nation_name' => $nation->name, 'x' => 22, 'y' => 23, 'cost_money' => 800,
         ]);
         $this->audit('command.seabed_base_built_private', $nation, $nation, 'private', 2, [
             'nation_name' => $nation->name, 'x' => 22, 'y' => 23,
         ]);
+        $this->audit('facility.constructed', $nation, $nation, 'private', 2, [
+            'command_key' => 'build_seabed_base', 'facility_key' => 'seabed_base', 'x' => 22, 'y' => 23,
+        ]);
         $this->audit('command.facility_built_public', $nation, $nation, 'public', 2, [
             'nation_name' => $nation->name, 'facility_key' => 'defense', 'x' => 7, 'y' => 8,
             'actual_facility_key' => 'decoy',
+        ]);
+        $this->audit('facility.constructed', $nation, $nation, 'private', 2, [
+            'command_key' => 'build_decoy', 'facility_key' => 'decoy', 'x' => 7, 'y' => 8,
+        ]);
+        $this->audit('command.decoy_built_private', $nation, $nation, 'private', 2, [
+            'nation_name' => $nation->name, 'command_key' => 'build_decoy',
+            'facility_key' => 'decoy', 'x' => 7, 'y' => 8,
         ]);
         $this->audit('command.facility_built_public', $nation, $nation, 'public', 2, [
             'nation_name' => $nation->name, 'facility_key' => 'missile_base', 'x' => 44, 'y' => 45,
@@ -413,11 +432,21 @@ class PlayerIslandEventApiTest extends TestCase
 
         $ownerResponse = $this->actingAs($owner)
             ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk()
-            ->assertJsonPath('data.groups.0.events.0.confidential', true);
+            ->assertOk();
         $ownerMessages = $this->messages($ownerResponse->json('data.groups'));
         $this->assertContains('秘密島(22,23)で海底基地を建設しました。', $ownerMessages);
         $this->assertContains('秘密島(12,13)で植林しました。', $ownerMessages);
+        $this->assertContains('秘密島(7,8)でハリボテを建設しました。', $ownerMessages);
+        $ownerTypes = collect($ownerResponse->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->pluck('type');
+        $this->assertFalse($ownerTypes->contains('command.forest_planted_public'));
+        $this->assertFalse($ownerTypes->contains('command.seabed_base_built_public'));
+        $this->assertFalse($ownerTypes->contains('terrain.changed'));
+        $this->assertFalse($ownerTypes->contains('facility.constructed'));
+        $this->assertTrue(collect($ownerResponse->json('data.groups.0.events'))->contains(
+            static fn (array $event): bool => $event['confidential'] === true,
+        ));
         $this->assertFalse(collect($ownerMessages)->contains(
             static fn (string $message): bool => str_contains($message, '（秘密）'),
         ));
@@ -468,6 +497,68 @@ class PlayerIslandEventApiTest extends TestCase
             static fn (array $event): bool => $event['type'] === 'turn.summary'
                 && $event['summary']['money']['delta'] === 600,
         ));
+        $this->assertFalse(collect($owner->json('data.groups.0.events'))->contains(
+            static fn (array $event): bool => $event['type'] === 'command.logging_public',
+        ));
+    }
+
+    public function test_owner_log_hides_routine_turn_noise_but_keeps_summary_and_meaningful_results(): void
+    {
+        [$world, $owner, $nation] = $this->nation('通知整理島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $routine = [
+            ['fire.prevented', ['x' => 1, 'y' => 1]],
+            ['monster.stayed', ['x' => 2, 'y' => 2]],
+            ['command.automatic_finance', ['applied' => 10]],
+            ['nation.idle_counter_changed', ['before' => 0, 'after' => 1]],
+            ['resource.food_produced', ['produced' => 0]],
+            ['resource.food_produced', ['produced' => 100]],
+            ['resource.industrial_produced', ['produced' => 200]],
+            ['resource.mineral_produced', ['produced' => 300]],
+            ['resource.food_consumed', ['consumed' => 32_775]],
+            ['capacity.applied', ['resource_key' => 'money', 'applied' => 10]],
+        ];
+        foreach ($routine as [$type, $metadata]) {
+            $this->audit($type, $nation, $nation, 'nation', 2, $metadata);
+        }
+        $this->audit('turn.summary', $nation, $nation, 'nation', 2, [
+            'summary' => [
+                'money' => ['start' => 100, 'end' => 110, 'delta' => 10],
+                'population' => ['start' => 10_000, 'end' => 10_100, 'delta' => 100],
+                'food' => ['start' => 50_000, 'end' => 17_225, 'delta' => -32_775],
+            ],
+        ]);
+        $this->audit('fire.damaged', $nation, $nation, 'nation', 2, [
+            'x' => 4, 'y' => 5, 'facility_key' => 'farm',
+        ]);
+        $this->audit('resource.food_shortage', $nation, $nation, 'nation', 2, [
+            'required_food' => 40_000, 'available_food' => 10_000,
+        ]);
+        $this->audit('famine.applied', $nation, $nation, 'nation', 2, [
+            'x' => 6, 'y' => 7, 'before' => 5_000, 'actual_loss' => 500, 'after' => 4_500,
+        ]);
+        $this->audit('population.decreased', $nation, $nation, 'nation', 2, [
+            'x' => 6, 'y' => 7, 'reason' => 'famine', 'before' => 5_000,
+            'actual_loss' => 500, 'after' => 4_500,
+        ]);
+
+        $response = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
+        $types = collect($response->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->pluck('type');
+        foreach (array_column($routine, 0) as $hiddenType) {
+            $this->assertFalse($types->contains($hiddenType), "{$hiddenType} should remain audit-only.");
+        }
+        $this->assertTrue($types->contains('turn.summary'));
+        $this->assertTrue($types->contains('fire.damaged'));
+        $this->assertTrue($types->contains('resource.food_shortage'));
+        $this->assertSame(1, $types->filter(
+            static fn (string $type): bool => in_array($type, ['famine.applied', 'population.decreased'], true),
+        )->count());
+        $this->assertTrue($types->contains('famine.applied'));
+        $this->assertSame(count($routine), DB::table('audit_events')->whereIn('event_type', array_column($routine, 0))->count());
     }
 
     public function test_missile_public_projection_exposes_b10_summary_but_not_private_launch_detail(): void
@@ -479,7 +570,7 @@ class PlayerIslandEventApiTest extends TestCase
 
         $this->audit('missile.launched', $firing, $firing, 'public', 2, [
             'nation_name' => $firing->name, 'command_key' => 'pp_missile', 'fired_shots' => 3,
-            'target_x' => 50, 'target_y' => 51, 'cost_money' => 900,
+            'queue_item_id' => 88, 'target_x' => 50, 'target_y' => 51, 'cost_money' => 900,
         ]);
         $this->audit('missile.impact', $target, $target, 'public', 2, [
             'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
@@ -496,7 +587,7 @@ class PlayerIslandEventApiTest extends TestCase
             'nation_name' => $firing->name, 'command_key' => 'pp_missile', 'ineffective_impacts' => 8,
         ]);
         $this->audit('missile.launch_detail', $firing, $firing, 'private', 2, [
-            'command_key' => 'pp_missile', 'target_x' => 50, 'target_y' => 51,
+            'command_key' => 'pp_missile', 'queue_item_id' => 88, 'target_x' => 50, 'target_y' => 51,
             'cost_money' => 900, 'fired_shots' => 3,
             'firing_bases' => [
                 ['x' => 44, 'y' => 45, 'facility_key' => 'missile_base', 'fired_shots' => 3],
@@ -541,6 +632,9 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertStringContainsString('(14,10): 怪獣へ命中しました', $ownerMessages);
         $this->assertStringContainsString('(15,11): 怪獣を撃破しました', $ownerMessages);
         $this->assertSame(1, substr_count($ownerMessages, '怪獣がいた荒地は焦土化しました'));
+        $this->assertFalse(collect($ownerResponse->json('data.groups.0.events'))->contains(
+            static fn (array $event): bool => $event['type'] === 'missile.launched',
+        ));
     }
 
     /** @return array{World, User, Nation} */

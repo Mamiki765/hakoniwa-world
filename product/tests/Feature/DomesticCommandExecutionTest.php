@@ -145,6 +145,27 @@ class DomesticCommandExecutionTest extends TestCase
             $this->assertContains($message, $publicMessages->all());
         }
 
+        // Regression for the final TOP public log path: normal command rows
+        // must survive execution, projection, controller, and JSON response.
+        $world->update(['current_turn' => 2]);
+        $topMessages = collect($this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()->json('data.groups'))
+            ->flatMap(static fn (array $group): array => $group['events'])
+            ->pluck('message')
+            ->all();
+        foreach ([
+            sprintf('開発一号(%d,%d)で地ならしが行われました。', $landLevelTarget->x, $landLevelTarget->y),
+            sprintf('開発一号(%d,%d)で埋め立てが行われました。', $reclaimTarget->x, $reclaimTarget->y),
+            sprintf('開発一号(%d,%d)で整地が行われました。', $landClearTarget->x, $landClearTarget->y),
+            sprintf('開発一号(%d,%d)で掘削が行われました。', $excavateTarget->x, $excavateTarget->y),
+            sprintf('開発一号(%d,%d)で農場整備が行われました。', $farmTarget->x, $farmTarget->y),
+            sprintf('開発一号(%d,%d)で農場整備が行われました。（規模 10 → 12）', $farmTarget->x, $farmTarget->y),
+            sprintf('開発一号(%d,%d)で工場整備が行われました。', $factoryTarget->x, $factoryTarget->y),
+            sprintf('開発一号(%d,%d)で採掘場整備が行われました。', $mineTarget->x, $mineTarget->y),
+        ] as $message) {
+            $this->assertContains($message, $topMessages);
+        }
+
         $landLevelEvent = $this->eventMetadata('command.success', function ($query): void {
             $query->whereRaw("metadata->>'command_key' = ?", ['land_level']);
         });
@@ -195,8 +216,10 @@ class DomesticCommandExecutionTest extends TestCase
             [true, 50_000, 50_000],
         ], $projectionSnapshots);
 
-        $publicMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($nation, 1, 2)['groups'])
-            ->flatMap(fn (array $group): array => $group['events'])->pluck('message')->all();
+        $world->update(['current_turn' => 2]);
+        $publicMessages = collect($this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()->json('data.groups'))
+            ->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
         $this->assertContains(
             sprintf('規模表示島(%d,%d)で農場整備が行われました。', $target->x, $target->y),
             $publicMessages,
@@ -209,6 +232,45 @@ class DomesticCommandExecutionTest extends TestCase
             sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 50,000 → 50,000）', $target->x, $target->y),
             $publicMessages,
         );
+    }
+
+    public function test_factory_and_mine_construction_and_expansion_reach_the_top_public_api(): void
+    {
+        $world = $this->lightweightWorld();
+        [$factoryUser, $factoryNation] = $this->createNation($world, '工場API島');
+        [$mineUser, $mineNation] = $this->createNation($world, '採掘API島');
+        $factoryNation->update(['money' => 10_000]);
+        $mineNation->update(['money' => 10_000]);
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $factoryTarget = MapCell::query()->where('owner_nation_id', $factoryNation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $mineTarget = MapCell::query()->where('owner_nation_id', $mineNation->id)
+            ->whereNull('facility_definition_id')
+            ->firstOrFail();
+        $this->changeTerrain($mineTarget, 'mountain');
+        $this->queue($factoryUser, $factoryNation, $space, 'build_factory', $factoryTarget, 2, 1);
+        $this->queue($mineUser, $mineNation, $space, 'build_mine', $mineTarget, 2, 1);
+        $executor = app(DomesticCommandExecutor::class);
+        $context = $this->context($world, [$factoryNation->id, $mineNation->id], str_repeat('e', 64));
+        $executor->execute($context);
+        $executor->execute($context);
+
+        $world->update(['current_turn' => 2]);
+        $messages = collect($this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()->json('data.groups'))
+            ->flatMap(static fn (array $group): array => $group['events'])->pluck('message');
+        foreach ([
+            ['工場API島', '工場', $factoryTarget],
+            ['採掘API島', '採掘場', $mineTarget],
+        ] as [$nationName, $facilityName, $target]) {
+            $prefix = sprintf('%s(%d,%d)で%s整備が行われました。', $nationName, $target->x, $target->y, $facilityName);
+            $this->assertTrue($messages->contains($prefix));
+            $this->assertTrue($messages->contains(
+                static fn (string $message): bool => str_starts_with($message, $prefix.'（規模 '),
+            ));
+        }
     }
 
     public function test_turn_execution_repairs_a_split_queue_without_stopping_the_world(): void
@@ -936,6 +998,19 @@ class DomesticCommandExecutionTest extends TestCase
             $targets->take(4)->map(fn (MapCell $cell): int => $cell->fresh()->population)->all());
         $this->assertSame('defense', $targets[4]->fresh()->facility()->value('key'));
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+
+        $world->update(['current_turn' => 5]);
+        $topMessages = collect($this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()->json('data.groups'))
+            ->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
+        $this->assertContains(
+            sprintf('集落建設国(%d,%d)で防衛施設が建設されました。', $targets[2]->x, $targets[2]->y),
+            $topMessages,
+        );
+        $this->assertContains(
+            sprintf('集落建設国(%d,%d)で記念碑が建設されました。', $targets[3]->x, $targets[3]->y),
+            $topMessages,
+        );
     }
 
     public function test_plant_forest_preview_registration_and_execution_replace_only_settlements(): void

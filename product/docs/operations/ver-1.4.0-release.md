@@ -1,5 +1,7 @@
 # ver 1.4.0 release checklist
 
+> ver 1.4.1以降の通常更新は、初回`main` tracking branch作成、build、temporary container migration、常駐web置換、post-deploy smokeを整理した[`ver-1.4.1-release.md`](ver-1.4.1-release.md)も併せて使用する。
+
 ## Scope
 
 この手順は、review済み`release/1.4.0`をproductionへdeployするときだけoperatorが実行する。`release/1.4.0`の`main` mergeはdeploy、database migration、cron変更、announcement公開を含まない。

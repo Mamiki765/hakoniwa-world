@@ -169,6 +169,44 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.cancelled')->count());
     }
 
+    public function test_decoy_uses_its_stable_key_for_the_owner_label_in_catalog_and_queue(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('ハリボテ表示国');
+        $target = MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+            ->where('key', 'build_decoy')
+            ->firstOrFail();
+        $this->assertSame('防衛施設建設', $definition->name);
+        $this->assertSame(1, $definition->cost_money);
+        $definition->update(['cost_money' => 2]);
+
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+        $catalog = $this->actingAs($owner)->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk();
+        $decoy = collect($catalog->json('data.commands'))->firstWhere('key', 'build_decoy');
+        $defense = collect($catalog->json('data.commands'))->firstWhere('key', 'build_defense_facility');
+        $this->assertSame('防衛施設建設', $defense['name']);
+        $this->assertSame('ハリボテ建築', $decoy['name']);
+        $this->assertStringContainsString('ハリボテ', $decoy['description']);
+        $this->assertSame(2, $decoy['cost_money']);
+
+        $queued = $this->postJson("{$base}/command-queue", [
+            'command_key' => 'build_decoy',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated();
+        $queued->assertJsonPath('data.queue.items.0.command_name', 'ハリボテ建築')
+            ->assertJsonPath('data.queue.plan.0.command_name', 'ハリボテ建築');
+    }
+
     public function test_queue_accepts_future_state_but_rejects_unauthorized_structural_stale_and_cross_world_requests(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('検証国');

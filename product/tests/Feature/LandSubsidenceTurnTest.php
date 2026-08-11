@@ -225,7 +225,10 @@ class LandSubsidenceTurnTest extends TestCase
         $playerEvents = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")
             ->assertOk();
         $body = $playerEvents->getContent();
-        $this->assertStringNotContainsString('land_subsidence.triggered', $body);
+        $this->assertTrue(collect($playerEvents->json('data.groups'))
+            ->flatMap(static fn (array $group): array => $group['events'])
+            ->contains(static fn (array $event): bool => $event['type'] === 'land_subsidence.triggered'
+                && $event['confidential'] === false));
         $capitalEvent = collect($playerEvents->json('data.groups'))
             ->flatMap(static fn (array $group): array => $group['events'])
             ->firstWhere('type', 'capital.disaster_damaged');
