@@ -206,15 +206,14 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, $occupiedCell->population);
         $this->assertContains($origin->map_chunk_id, $context->state->changedMapChunkIds());
         $this->assertContains($occupiedCell->map_chunk_id, $context->state->changedMapChunkIds());
-        $playerEvents = collect(app(PlayerIslandEventService::class)->page($second->fresh(), 1, 2)['groups'])
+        $playerEvents = collect(app(PlayerIslandEventService::class)->publicNationPage($second->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
-            ->filter(fn (array $event): bool => str_starts_with($event['type'], 'monster.'))
+            ->filter(fn (array $event): bool => $event['type'] === 'monster.trampled')
             ->values();
         $this->assertCount(2, $playerEvents);
         $this->assertSame(['monster.trampled', 'monster.trampled'], $playerEvents->pluck('type')->all());
         foreach ($playerEvents as $event) {
-            $this->assertStringContainsString('村(', $event['message']);
-            $this->assertStringContainsString('を踏み荒らしました。', $event['message']);
+            $this->assertStringContainsString('の村がダークいのらに踏み荒らされました。', $event['message']);
         }
     }
 
@@ -485,13 +484,13 @@ class MonsterSystemTest extends TestCase
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
 
         $playerEvents = app(PlayerIslandEventService::class);
-        $killerReward = collect($playerEvents->page($killer->fresh(), 1, 2)['groups'])
+        $killerReward = collect($playerEvents->ownerPage($killer->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
-        $hostReward = collect($playerEvents->page($host->fresh(), 1, 2)['groups'])
+        $hostReward = collect($playerEvents->ownerPage($host->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
-        $spectatorReward = collect($playerEvents->page($spectator->fresh(), 1, 2)['groups'])
+        $spectatorReward = collect($playerEvents->ownerPage($spectator->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
         $this->assertIsArray($killerReward);
@@ -650,7 +649,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(200, $sameResult->killerMoney['requested']);
         $this->assertSame(100_000, $sameResult->hostMeat['requested']);
         $this->assertSame(1, $sameResult->newKillCount);
-        $sameNationReward = collect(app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 2)['groups'])
+        $sameNationReward = collect(app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
         $this->assertIsArray($sameNationReward);

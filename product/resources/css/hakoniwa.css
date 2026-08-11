@@ -269,11 +269,12 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .island-event-group { min-width: 0; }
 .island-event-group h3 { margin: 0 0 8px; color: var(--navy); font-size: .92rem; }
 .island-event-group ol { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
-.island-event-group li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 9px; padding: 9px 10px; border: 1px solid #d9e1dd; background: #fff; }
+.island-event-group li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 9px; padding: 3px 0; }
 .island-event-mark { width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: #6a8c86; }
 .importance-notable .island-event-mark { background: var(--coral); }
 .importance-warning .island-event-mark { background: #aa3f32; }
 .island-event-group p { margin: 0; line-height: 1.55; overflow-wrap: anywhere; }
+.event-confidential-label { display: inline-block; margin-right: .35rem; padding: 0 .35rem; border: 1px solid #9d6b28; border-radius: 2px; color: #774d18; font-size: .72rem; font-weight: 850; vertical-align: .08em; }
 .turn-summary-values { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-weight: 850; }
 .turn-summary-values .delta-positive { color: #1769aa; }
 .turn-summary-values .delta-negative { color: #b43d2d; }

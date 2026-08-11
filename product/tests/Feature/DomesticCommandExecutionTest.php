@@ -422,7 +422,7 @@ class DomesticCommandExecutionTest extends TestCase
             ));
         $this->assertSame(['excavate', 'reclaim'], $successes->pluck('command_key')->all());
         $this->assertSame([200, 150], $successes->pluck('cost_money')->all());
-        $page = app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 3);
+        $page = app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 3);
         $messages = collect($page['groups'])->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($messages->contains(
             static fn (string $message): bool => str_contains($message, '掘削') && str_contains($message, '浅瀬'),
@@ -587,7 +587,7 @@ class DomesticCommandExecutionTest extends TestCase
         $success = $this->eventMetadataForSubject('command.success', $item->id);
         $this->assertSame(800, $success['cost_money']);
         $world->update(['current_turn' => 2]);
-        $playerEvents = collect(app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 2)['groups'])
+        $playerEvents = collect(app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 2)['groups'])
             ->flatMap(static fn (array $group): array => $group['events']);
         $this->assertStringContainsString(
             '800',

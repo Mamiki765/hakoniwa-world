@@ -3,8 +3,6 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Application\PlayerIslandEventService;
-use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\User;
 use App\Models\World;
@@ -19,420 +17,267 @@ class PlayerIslandEventApiTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_owner_receives_only_allowlisted_projected_events_for_their_nation_and_world(): void
+    public function test_major_news_is_a_fixed_public_lifecycle_feed_and_excludes_commands_awards_and_turn_completion(): void
     {
-        [$world, $owner, $nation] = $this->nation('投影国');
-        [, , $rival] = $this->nation('競合国', $world);
-        $world->update(['current_turn' => 2]);
-        $ownCell = MapCell::query()->where('owner_nation_id', $nation->id)->firstOrFail();
-        $rivalCell = MapCell::query()->where('owner_nation_id', $rival->id)->firstOrFail();
+        [$world, , $nation] = $this->nation('ニュース島');
+        $world->update(['current_turn' => 9]);
+        DB::table('audit_events')->delete();
 
-        $terrainId = $this->audit('terrain.changed', $ownCell, [
-            'world_id' => $world->id,
-            'target_turn' => 2,
-            'nation_id' => $nation->id,
-            'command_key' => 'land_level',
-            'from_terrain_key' => 'wasteland',
-            'to_terrain_key' => 'plain',
-            'draw' => 987654,
-            'operator_metadata' => 'never expose',
-        ]);
-        $this->audit('forest.grown', $ownCell, [
-            'world_id' => $world->id, 'target_turn' => 2, 'nation_id' => $nation->id,
-        ]);
-        $this->audit('terrain.changed', $rivalCell, [
-            'world_id' => $world->id, 'target_turn' => 2, 'nation_id' => $rival->id,
-            'command_key' => 'land_level', 'from_terrain_key' => 'wasteland', 'to_terrain_key' => 'plain',
-        ]);
-        $this->audit('turn.completed', $world, [
-            'world_id' => $world->id,
-            'target_turn' => 2,
-            'random_seed' => str_repeat('a', 64),
-            'exception_class' => 'Internal\\TurnFailure',
-            'operations_only' => ['lock_ms' => 123],
-        ]);
-
-        $response = $this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk()
-            ->assertJsonPath('data.page', 1)
-            ->assertJsonPath('data.anchor_turn', 2)
-            ->assertJsonPath('data.turn_range.start', 1)
-            ->assertJsonPath('data.turn_range.end', 2)
-            ->assertJsonPath('data.groups.0.target_turn', 2)
-            ->assertJsonPath('data.groups.0.events.0.id', $terrainId)
-            ->assertJsonPath('data.groups.0.events.0.coordinate.x', $ownCell->x)
-            ->assertJsonPath('data.groups.0.events.0.coordinate.y', $ownCell->y)
-            ->assertHeader('Vary', 'Cookie');
-
-        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
-        $this->assertMatchesRegularExpression(
-            '/T\d{2}:\d{2}:\d{2}\+00:00$/',
-            (string) $response->json('data.groups.0.events.0.occurred_at'),
-        );
-        $body = $response->getContent();
-        foreach (['turn.completed', 'random_seed', 'exception_class', 'operations_only', 'operator_metadata', '987654', 'forest.grown'] as $secret) {
-            $this->assertStringNotContainsString($secret, $body);
-        }
-        $this->assertStringNotContainsString('metadata', $body);
-    }
-
-    public function test_event_endpoint_requires_authentication_and_membership_of_the_requested_nation(): void
-    {
-        [$world, $owner, $nation] = $this->nation('認可国');
-        [, $otherUser, $otherNation] = $this->nation('他国', $world);
-
-        $this->getJson("/api/v1/nations/{$nation->id}/events")->assertUnauthorized();
-        $this->actingAs($otherUser)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertForbidden()
-            ->assertJsonPath('message', '自国の出来事だけを取得できます。');
-        $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
-        $this->actingAs($owner)->getJson("/api/v1/nations/{$otherNation->id}/events")->assertForbidden();
-    }
-
-    public function test_pagination_uses_fixed_24_turn_ranges_and_never_returns_events_outside_the_selected_range(): void
-    {
-        [$world, $owner, $nation] = $this->nation('ページ国');
-        $world->update(['current_turn' => 50]);
-        foreach ([51, 50, 27, 26, 3, 2] as $turn) {
-            $this->audit('command.finance', $nation, [
-                'world_id' => $world->id,
-                'target_turn' => $turn,
-                'nation_id' => $nation->id,
-                'applied' => 10,
+        foreach (range(1, 16) as $index) {
+            $this->audit('nation.created', $world, $nation, 'public', 1, [
+                'nation_name' => "履歴{$index}島",
             ]);
         }
+        $created = $this->audit('nation.created', $world, $nation, 'public', 9, [
+            'nation_name' => $nation->name,
+        ]);
+        $this->audit('award.granted', $nation, $nation, 'public', 9, [
+            'nation_name' => $nation->name, 'award_key' => 'prosperity',
+        ]);
+        $this->audit('command.facility_built_public', $nation, $nation, 'public', 9, [
+            'nation_name' => $nation->name, 'facility_key' => 'farm', 'x' => 2, 'y' => 3,
+        ]);
+        $this->audit('turn.completed', $world, null, 'public', 9, ['random_seed' => 'secret-seed']);
 
-        $first = $this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
+        $response = $this->getJson("/api/v1/public/worlds/{$world->id}/major-news")
             ->assertOk()
-            ->assertJsonPath('data.turns_per_page', 24)
-            ->assertJsonPath('data.turn_range.start', 27)
-            ->assertJsonPath('data.turn_range.end', 50)
-            ->assertJsonPath('data.has_newer_page', false)
-            ->assertJsonPath('data.has_older_page', true);
-        $this->assertSame([50, 27], $this->turns($first->json('data.groups')));
+            ->assertJsonPath('data.limit', 15)
+            ->assertJsonPath('data.groups.0.target_turn', 9)
+            ->assertJsonPath('data.groups.0.events.0.id', $created)
+            ->assertJsonPath('data.groups.0.events.0.message', 'ニュース島ができました。');
 
-        $world->update(['current_turn' => 51]);
-        $this->audit('command.finance', $nation, [
-            'world_id' => $world->id, 'target_turn' => 51, 'nation_id' => $nation->id, 'applied' => 10,
-        ]);
-        $second = $this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events?page=2&anchor_turn=50")
-            ->assertOk()
-            ->assertJsonPath('data.page', 2)
-            ->assertJsonPath('data.anchor_turn', 50)
-            ->assertJsonPath('data.turn_range.start', 3)
-            ->assertJsonPath('data.turn_range.end', 26)
-            ->assertJsonPath('data.has_newer_page', true)
-            ->assertJsonPath('data.has_older_page', true);
-        $this->assertSame([26, 3], $this->turns($second->json('data.groups')));
-        $this->assertNotContains(51, $this->turns($second->json('data.groups')));
-        $this->assertNotContains(50, $this->turns($second->json('data.groups')));
-
-        $third = $this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events?page=3&anchor_turn=50")
-            ->assertOk()
-            ->assertJsonPath('data.turn_range.start', 1)
-            ->assertJsonPath('data.turn_range.end', 2)
-            ->assertJsonPath('data.has_older_page', false);
-        $this->assertSame([2], $this->turns($third->json('data.groups')));
-    }
-
-    public function test_projection_suppresses_duplicate_and_high_volume_events(): void
-    {
-        [$world, $owner, $nation] = $this->nation('重複抑制国');
-        $world->update(['current_turn' => 2]);
-        $cell = MapCell::query()->where('owner_nation_id', $nation->id)->firstOrFail();
-        $base = [
-            'world_id' => $world->id,
-            'target_turn' => 2,
-            'nation_id' => $nation->id,
-        ];
-        $terrainId = $this->audit('terrain.changed', $cell, [
-            ...$base,
-            'command_key' => 'land_clear',
-            'from_terrain_key' => 'wasteland',
-            'to_terrain_key' => 'plain',
-            'x' => $cell->x,
-            'y' => $cell->y,
-        ]);
-        $this->audit('command.success', $cell, [
-            ...$base,
-            'command_key' => 'land_clear',
-            'after' => ['x' => $cell->x, 'y' => $cell->y],
-        ]);
-        $this->audit('famine.applied', $cell, [
-            ...$base, 'actual_loss' => 300, 'after' => 700,
-        ]);
-        $this->audit('population.decreased', $cell, [
-            ...$base, 'reason' => 'famine', 'actual_loss' => 300, 'after' => 700,
-        ]);
-        $this->audit('command.buried_treasure', $nation, [
-            ...$base, 'found' => false, 'reward_money' => 0, 'applied_money' => 0, 'overflow_money' => 0,
-        ]);
-        $treasureId = $this->audit('command.buried_treasure', $nation, [
-            ...$base, 'found' => true, 'reward_money' => 500, 'applied_money' => 500, 'overflow_money' => 0,
-        ]);
-        $this->audit('resource.food_produced', $nation, $base);
-        $this->audit('resource.food_consumed', $nation, $base);
-        $this->audit('forest.grown', $cell, $base);
-
-        $response = $this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk();
-        $events = collect($response->json('data.groups'))->flatMap(
+        $this->assertCount(1, $response->json('data.groups.0.events'));
+        $this->assertCount(15, collect($response->json('data.groups'))->flatMap(
             static fn (array $group): array => $group['events'],
-        );
-
-        $this->assertSame([$treasureId, $terrainId], $events->pluck('id')->all());
-        $this->assertSame(
-            ['command.buried_treasure', 'terrain.changed'],
-            $events->pluck('type')->all(),
-        );
-    }
-
-    public function test_resource_capacity_overflow_events_identify_stock_and_unit(): void
-    {
-        [$world, $owner, $nation] = $this->nation('資源超過ログ国');
-        $world->update(['current_turn' => 2]);
-        $base = [
-            'world_id' => $world->id,
-            'target_turn' => 2,
-            'nation_id' => $nation->id,
-            'asset' => 'resource',
-        ];
-        $industrialId = $this->audit('capacity.overflow', $nation, [
-            ...$base, 'resource_key' => 'industrial_goods', 'overflow' => 123,
-        ]);
-        $mineralId = $this->audit('capacity.overflow', $nation, [
-            ...$base, 'resource_key' => 'minerals', 'overflow' => 1_000,
-        ]);
-
-        $events = collect($this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk()
-            ->json('data.groups'))->flatMap(
-                static fn (array $group): array => $group['events'],
-            );
-
-        $this->assertSame([$mineralId, $industrialId], $events->pluck('id')->all());
-        $this->assertSame(
-            '鉱物が収容上限を1,000トン超過し、超過分を破棄しました。',
-            $events[0]['message'],
-        );
-        $this->assertSame(
-            '工業品が収容上限を123ユニット超過し、超過分を破棄しました。',
-            $events[1]['message'],
-        );
-    }
-
-    public function test_seabed_oil_search_logs_success_and_failure_without_exposing_random_draws(): void
-    {
-        [$world, $owner, $nation] = $this->nation('油田ログ国');
-        $world->update(['current_turn' => 2]);
-        $cell = MapCell::query()->where('owner_nation_id', $nation->id)->firstOrFail();
-        $base = [
-            'world_id' => $world->id,
-            'target_turn' => 2,
-            'nation_id' => $nation->id,
-            'command_key' => 'excavate',
-            'x' => $cell->x,
-            'y' => $cell->y,
-            'spent_money' => 600,
-            'success_threshold' => 3,
-            'denominator' => 100,
-        ];
-        $successId = $this->audit('command.seabed_oil_search', $cell, [
-            ...$base,
-            'draw' => 987_650,
-            'found' => true,
-            'facility_key' => 'seabed_oil_field',
-        ]);
-        $failureId = $this->audit('command.seabed_oil_search', $cell, [
-            ...$base,
-            'draw' => 987_651,
-            'found' => false,
-            'facility_key' => null,
-        ]);
-
-        $response = $this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk();
-        $events = collect($response->json('data.groups'))->flatMap(
-            static fn (array $group): array => $group['events'],
-        );
-
-        $this->assertSame([$failureId, $successId], $events->pluck('id')->all());
-        $this->assertStringContainsString('海底油田は発見できませんでした', $events[0]['message']);
-        $this->assertStringContainsString('投入 600億円、成功率 3%', $events[0]['message']);
-        $this->assertStringContainsString('海底油田の探索に成功しました', $events[1]['message']);
-        foreach (['987650', '987651', 'draw', 'metadata'] as $secret) {
-            $this->assertStringNotContainsString($secret, (string) $response->getContent());
-        }
-    }
-
-    public function test_disaster_and_oil_projection_shows_only_player_safe_world_and_own_nation_details(): void
-    {
-        [$world, $owner, $nation] = $this->nation('災害ログ国');
-        [, , $rival] = $this->nation('災害競合国', $world);
-        $world->update(['current_turn' => 2]);
-        $ownCell = MapCell::query()->where('owner_nation_id', $nation->id)->firstOrFail();
-        $rivalCell = MapCell::query()->where('owner_nation_id', $rival->id)->firstOrFail();
-        $base = ['world_id' => $world->id, 'target_turn' => 2];
-
-        $this->audit('disaster.triggered', $world, [
-            ...$base, 'disaster_key' => 'earthquake', 'center_x' => 30, 'center_y' => 30,
-            'draw' => 987_661, 'numerator' => 80, 'denominator' => 2_000,
-        ]);
-        $this->audit('capital.disaster_damaged', $ownCell, [
-            ...$base, 'nation_id' => $nation->id, 'disaster_key' => 'earthquake',
-            'damage_percent' => 10, 'after_population' => 9_000, 'raw_draw' => 987_662,
-        ]);
-        $this->audit('disaster.cell_damaged', $rivalCell, [
-            ...$base, 'nation_id' => $rival->id, 'disaster_key' => 'earthquake',
-            'from_terrain_key' => 'plain', 'to_terrain_key' => 'wasteland', 'draw' => 987_663,
-        ]);
-        $this->audit('oil.income', $ownCell, [
-            ...$base, 'nation_id' => $nation->id, 'requested_money' => 1_000,
-            'applied_money' => 499, 'overflow_money' => 501, 'money_capacity' => 9_999,
-        ]);
-        $this->audit('oil.depleted', $ownCell, [
-            ...$base, 'nation_id' => $nation->id, 'result_terrain_key' => 'sea', 'draw' => 987_664,
-        ]);
-        $this->audit('fire.prevented', $ownCell, [
-            ...$base, 'nation_id' => $nation->id, 'protection_count' => 1,
-        ]);
-
-        $response = $this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk();
-        $events = collect($response->json('data.groups'))->flatMap(
-            static fn (array $group): array => $group['events'],
-        );
-
-        $this->assertSame([
-            'oil.depleted', 'oil.income', 'capital.disaster_damaged', 'disaster.triggered',
-        ], $events->pluck('type')->all());
-        $this->assertStringContainsString('収容上限超過 501億円', $events->firstWhere('type', 'oil.income')['message']);
-        $body = (string) $response->getContent();
-        foreach (['987661', '987662', '987663', '987664', 'raw_draw', 'draw', 'metadata'] as $secret) {
-            $this->assertStringNotContainsString($secret, $body);
-        }
-        $this->assertStringNotContainsString('disaster.cell_damaged', $body);
-    }
-
-    public function test_food_shortage_trample_and_turn_summary_are_concise_and_structured(): void
-    {
-        [$world, $owner, $nation] = $this->nation('要約国');
-        $world->update(['current_turn' => 2]);
-        $cell = MapCell::query()->where('owner_nation_id', $nation->id)->firstOrFail();
-        $base = ['world_id' => $world->id, 'target_turn' => 2, 'nation_id' => $nation->id];
-        $this->audit('resource.food_shortage', $nation, [...$base, 'shortage' => 100]);
-        $this->audit('monster.trampled', $cell, [
-            ...$base, 'monster_key' => 'inora', 'x' => $cell->x, 'y' => $cell->y,
-            'from_terrain_key' => 'wasteland', 'removed_facility_key' => null,
-        ]);
-        $this->audit('turn.summary', $nation, [
-            ...$base,
-            'summary' => [
-                'money' => ['start' => 100, 'end' => 120, 'delta' => 20],
-                'population' => ['start' => 1_000, 'end' => 900, 'delta' => -100],
-                'food' => ['start' => 10_000, 'end' => 10_000, 'delta' => 0],
-            ],
-        ]);
-
-        $response = $this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk();
-        $events = collect($response->json('data.groups'))->flatMap(
-            static fn (array $group): array => $group['events'],
-        );
-
-        $this->assertSame('要約国で食料が不足しています！', $events->firstWhere('type', 'resource.food_shortage')['message']);
-        $this->assertStringContainsString('荒地(', $events->firstWhere('type', 'monster.trampled')['message']);
-        $this->assertStringNotContainsString('荒地を荒地に', $events->firstWhere('type', 'monster.trampled')['message']);
-        $summary = $events->firstWhere('type', 'turn.summary');
-        $this->assertSame(20, $summary['summary']['money']['delta']);
-        $this->assertSame(-100, $summary['summary']['population']['delta']);
-        $this->assertSame(0, $summary['summary']['food']['delta']);
-        $this->assertStringNotContainsString('<', (string) $response->getContent());
-    }
-
-    public function test_high_volume_audit_noise_remains_raw_but_is_absent_from_player_page(): void
-    {
-        [$world, $owner, $nation] = $this->nation('静音国');
-        $world->update(['current_turn' => 2]);
-        $base = ['world_id' => $world->id, 'target_turn' => 2, 'nation_id' => $nation->id];
-        $noise = [
-            'population.increased', 'famine.applied', 'settlement.stage_transitioned', 'settlement.appeared',
-            'turn.completed', 'nation.idle_counter_changed', 'command.automatic_finance', 'monster.moved',
-            'monster.stayed', 'fire.prevented', 'missile.ineffective_aggregated',
-        ];
-        foreach ($noise as $eventType) {
-            $this->audit($eventType, $nation, $base);
-        }
-        $this->audit('command.finance', $nation, [...$base, 'applied' => 10]);
-
-        $events = collect($this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk()->json('data.groups'))->flatMap(
-                static fn (array $group): array => $group['events'],
-            );
-        $this->assertSame(['command.finance'], $events->pluck('type')->all());
-        $this->assertSame(count($noise), DB::table('audit_events')->whereIn('event_type', $noise)->count());
-    }
-
-    public function test_ineffective_missiles_are_private_per_coordinate_for_firer_but_stay_publicly_aggregated_raw(): void
-    {
-        [$world, $owner, $nation] = $this->nation('発射国');
-        [, , $otherNation] = $this->nation('第三国', $world);
-        $world->update(['current_turn' => 2]);
-        $base = ['world_id' => $world->id, 'target_turn' => 2, 'nation_id' => $nation->id];
-        $this->audit('missile.launch_detail', $nation, [
-            ...$base, 'command_key' => 'missile', 'target_x' => 10, 'target_y' => 10,
-            'cost_money' => 60, 'fired_shots' => 4,
-            'impacts' => [
-                ['x' => 3, 'y' => 4, 'effect' => 'ineffective_sea', 'meaningful' => false, 'terrain_key' => 'sea'],
-                ['x' => 3, 'y' => 4, 'effect' => 'ineffective_sea', 'meaningful' => false, 'terrain_key' => 'sea'],
-                ['x' => 8, 'y' => 9, 'effect' => 'ineffective_barren_land', 'meaningful' => false, 'terrain_key' => 'wasteland'],
-                ['x' => 5, 'y' => 6, 'effect' => 'facility_destroyed', 'meaningful' => true, 'terrain_key' => 'plain'],
-            ],
-        ]);
-        $aggregateId = $this->audit('missile.ineffective_aggregated', $world, [
-            ...$base, 'ineffective_impacts' => 3, 'command_key' => 'missile',
-        ]);
-        DB::table('audit_events')->where('id', $aggregateId)->update(['visibility' => 'public']);
-
-        $playerEvents = collect($this->actingAs($owner)
-            ->getJson("/api/v1/nations/{$nation->id}/events")
-            ->assertOk()->json('data.groups'))->flatMap(
-                static fn (array $group): array => $group['events'],
-            );
-        $launchDetail = $playerEvents->firstWhere('type', 'missile.launch_detail');
-        $this->assertNotNull($launchDetail);
-        $this->assertStringContainsString('狙点(10,10)', $launchDetail['message']);
-        $this->assertStringContainsString('費用60億円', $launchDetail['message']);
-        $this->assertStringContainsString('(5,6)', $launchDetail['message']);
-
-        $events = $playerEvents->where('type', 'missile.ineffective_impact')->values();
-        $this->assertCount(2, $events);
-        $this->assertSame([[3, 4], [8, 9]], $events->map(
-            static fn (array $event): array => [$event['coordinate']['x'], $event['coordinate']['y']],
-        )->all());
-        $this->assertStringContainsString('2発着弾', $events[0]['message']);
-        $this->assertStringContainsString('荒地(8,9)', $events[1]['message']);
-
-        $spectatorEvents = collect(app(PlayerIslandEventService::class)->page($otherNation, 1, 2)['groups'])
-            ->flatMap(fn (array $group): array => $group['events']);
-        $this->assertFalse($spectatorEvents->contains(
-            fn (array $event): bool => str_starts_with($event['type'], 'missile.ineffective'),
         ));
-        $publicEvents = collect(app(PlayerIslandEventService::class)->publicPage($world, 1, 2)['groups'])
-            ->flatMap(fn (array $group): array => $group['events']);
-        $this->assertNotNull($publicEvents->firstWhere('id', $aggregateId));
-        $this->assertSame(1, DB::table('audit_events')->where('id', $aggregateId)->count());
+        foreach (['award.granted', 'command.facility_built_public', 'turn.completed', 'secret-seed'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, (string) $response->getContent());
+        }
+    }
+
+    public function test_world_public_log_pages_by_two_turns_and_island_public_log_filters_to_that_island(): void
+    {
+        [$world, , $first] = $this->nation('第一島');
+        [, , $second] = $this->nation('第二島', $world);
+        $world->update(['current_turn' => 5]);
+        DB::table('audit_events')->delete();
+
+        $this->publicFacility($first, 5, 1, 2, 'farm');
+        $this->publicFacility($second, 4, 3, 4, 'factory');
+        $this->publicFacility($first, 3, 5, 6, 'mine');
+
+        $firstPage = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.turns_per_page', 2)
+            ->assertJsonPath('data.turn_range.start', 4)
+            ->assertJsonPath('data.turn_range.end', 5)
+            ->assertJsonPath('data.has_older_page', true);
+        $this->assertSame([5, 4], $this->turns($firstPage->json('data.groups')));
+
+        $secondPage = $this->getJson("/api/v1/public/worlds/{$world->id}/events?page=2&anchor_turn=5")
+            ->assertOk()
+            ->assertJsonPath('data.turn_range.start', 2)
+            ->assertJsonPath('data.turn_range.end', 3);
+        $this->assertSame([3], $this->turns($secondPage->json('data.groups')));
+
+        $islandPage = $this->getJson("/api/v1/public/nations/{$first->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.turns_per_page', 24);
+        $body = (string) $islandPage->getContent();
+        $messages = $this->messages($islandPage->json('data.groups'));
+        $this->assertContains('第一島(1,2)で農場が建設されました。', $messages);
+        $this->assertContains('第一島(5,6)で採掘場が建設されました。', $messages);
+        $this->assertFalse(collect($messages)->contains(
+            static fn (string $message): bool => str_contains($message, '第二島'),
+        ));
+        $this->assertStringNotContainsString('occurred_at', $body);
+        $this->assertStringNotContainsString('coordinate', $body);
+    }
+
+    public function test_owner_log_requires_membership_and_never_reuses_public_world_or_other_nation_events(): void
+    {
+        [$world, $owner, $nation] = $this->nation('所有島');
+        [, $otherOwner, $other] = $this->nation('他島', $world);
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $finance = $this->audit('command.finance', $nation, $nation, 'nation', 2, ['applied' => 50]);
+        $this->audit('command.finance', $other, $other, 'nation', 2, ['applied' => 99_999]);
+        $this->publicFacility($other, 2, 8, 8, 'farm');
+        $this->audit('message_board.secret_sent', $nation, $nation, 'private', 2, [
+            'body' => '秘密通信本文', 'money_before' => 9999,
+        ]);
+        $this->audit('message_board.secret_sent', $nation, $nation, 'public', 2, [
+            'body' => '誤分類されても非表示', 'money_before' => 8888,
+        ]);
+
+        $this->getJson("/api/v1/nations/{$nation->id}/events")->assertUnauthorized();
+        $this->actingAs($otherOwner)->getJson("/api/v1/nations/{$nation->id}/events")->assertForbidden();
+        $response = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.events.0.id', $finance)
+            ->assertJsonPath('data.groups.0.events.0.confidential', false);
+
+        $body = (string) $response->getContent();
+        foreach (['99,999', 'command.facility_built_public', 'message_board.secret_sent', '秘密通信本文', '誤分類されても非表示', 'money_before'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, $body);
+        }
+    }
+
+    public function test_secret_facilities_are_blurred_publicly_and_exact_only_for_the_owner(): void
+    {
+        [$world, $owner, $nation] = $this->nation('秘密島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $this->audit('command.forest_planted_public', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'x' => 12, 'y' => 13, 'money' => 9999,
+        ]);
+        $this->audit('command.forest_planted_private', $nation, $nation, 'private', 2, [
+            'nation_name' => $nation->name, 'x' => 12, 'y' => 13,
+        ]);
+        $this->audit('command.seabed_base_built_public', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'x' => 22, 'y' => 23, 'cost_money' => 800,
+        ]);
+        $this->audit('command.seabed_base_built_private', $nation, $nation, 'private', 2, [
+            'nation_name' => $nation->name, 'x' => 22, 'y' => 23,
+        ]);
+        $this->audit('command.facility_built_public', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'facility_key' => 'defense', 'x' => 7, 'y' => 8,
+            'actual_facility_key' => 'decoy',
+        ]);
+        $this->audit('command.facility_built_public', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'facility_key' => 'missile_base', 'x' => 44, 'y' => 45,
+        ]);
+        $this->audit('monster.trampled', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'monster_key' => 'inora', 'x' => 9, 'y' => 9,
+            'removed_facility_key' => 'decoy',
+        ]);
+        $this->audit('monster.trampled', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'monster_key' => 'inora', 'x' => 10, 'y' => 10,
+            'removed_facility_key' => 'missile_base',
+        ]);
+
+        $public = $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk();
+        $publicBody = (string) $public->getContent();
+        $publicMessages = $this->messages($public->json('data.groups'));
+        $this->assertContains('こころなしか、秘密島のどこかで森が増えた気がします。', $publicMessages);
+        $this->assertContains('秘密島で海底基地が建設されたようです(?,?)。', $publicMessages);
+        $this->assertContains('秘密島(7,8)で防衛施設が建設されました。', $publicMessages);
+        $this->assertContains('秘密島(9,9)の防衛施設がいのらに踏み荒らされました。', $publicMessages);
+        $this->assertContains('秘密島(10,10)の森がいのらに踏み荒らされました。', $publicMessages);
+        foreach (['12,13', '22,23', '44,45', '9999', '800', 'actual_facility_key', 'decoy', 'missile_base', 'metadata'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, $publicBody);
+        }
+
+        $ownerResponse = $this->actingAs($owner)
+            ->getJson("/api/v1/nations/{$nation->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.events.0.confidential', true);
+        $ownerMessages = $this->messages($ownerResponse->json('data.groups'));
+        $this->assertContains('秘密島(22,23)で海底基地を建設しました。', $ownerMessages);
+        $this->assertContains('秘密島(12,13)で植林しました。', $ownerMessages);
+        $this->assertFalse(collect($ownerMessages)->contains(
+            static fn (string $message): bool => str_contains($message, '（秘密）'),
+        ));
+    }
+
+    public function test_logging_and_assets_remain_owner_only_with_exact_values(): void
+    {
+        [$world, $owner, $nation] = $this->nation('資産島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $this->audit('command.logging_public', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'x' => 4, 'y' => 8, 'applied_money' => 777,
+        ]);
+        $this->audit('command.logging_private', $nation, $nation, 'private', 2, [
+            'nation_name' => $nation->name, 'x' => 4, 'y' => 8, 'applied_money' => 777,
+        ]);
+        $this->audit('resource.automatic_sale', $nation, $nation, 'nation', 2, [
+            'resource_key' => 'minerals', 'sold' => 300, 'revenue' => 600,
+        ]);
+        $this->audit('turn.summary', $nation, $nation, 'nation', 2, [
+            'summary' => [
+                'money' => ['start' => 100, 'end' => 700, 'delta' => 600],
+                'population' => ['start' => 1000, 'end' => 1000, 'delta' => 0],
+                'food' => ['start' => 2000, 'end' => 1900, 'delta' => -100],
+            ],
+        ]);
+
+        $publicResponse = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $publicBody = (string) $publicResponse->getContent();
+        $publicMessages = $this->messages($publicResponse->json('data.groups'));
+        $this->assertContains('こころなしか、資産島のどこかで森が減った気がします。', $publicMessages);
+        foreach (['4,8', '777', '300', '600', '資源変化'] as $hidden) {
+            $this->assertFalse(collect($publicMessages)->contains(
+                static fn (string $message): bool => str_contains($message, $hidden),
+            ));
+        }
+        foreach (['turn.summary', 'resource.automatic_sale', 'metadata'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, $publicBody);
+        }
+
+        $owner = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
+        $ownerMessages = $this->messages($owner->json('data.groups'));
+        $this->assertContains('資産島(4,8)で伐採し、777億円を得ました。', $ownerMessages);
+        $this->assertContains('鉱物を300売却し、600億円を得ました。', $ownerMessages);
+        $this->assertContains('第2ターンの資源変化', $ownerMessages);
+        $this->assertTrue(collect($owner->json('data.groups.0.events'))->contains(
+            static fn (array $event): bool => $event['type'] === 'turn.summary'
+                && $event['summary']['money']['delta'] === 600,
+        ));
+    }
+
+    public function test_missile_public_projection_exposes_b10_summary_but_not_private_launch_detail(): void
+    {
+        [$world, $owner, $firing] = $this->nation('発射島');
+        [, , $target] = $this->nation('被弾島', $world);
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $this->audit('missile.launched', $firing, $firing, 'public', 2, [
+            'nation_name' => $firing->name, 'command_key' => 'pp_missile', 'fired_shots' => 3,
+            'target_x' => 50, 'target_y' => 51, 'cost_money' => 900,
+        ]);
+        $this->audit('missile.impact', $target, $target, 'public', 2, [
+            'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
+            'missile_key' => 'pp_missile', 'effect' => 'capital_damaged', 'x' => 12, 'y' => 8,
+            'cost_money' => 900, 'all_impacts' => [['x' => 1, 'y' => 1]],
+        ]);
+        $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 2, [
+            'nation_name' => $firing->name, 'command_key' => 'pp_missile', 'ineffective_impacts' => 8,
+        ]);
+        $this->audit('missile.launch_detail', $firing, $firing, 'private', 2, [
+            'command_key' => 'pp_missile', 'target_x' => 50, 'target_y' => 51,
+            'cost_money' => 900, 'fired_shots' => 3,
+            'impacts' => [
+                ['x' => 12, 'y' => 8, 'effect' => 'capital_damaged', 'meaningful' => true],
+                ['x' => 1, 'y' => 1, 'effect' => 'ineffective_sea', 'meaningful' => false],
+            ],
+        ]);
+
+        $public = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $publicBody = (string) $public->getContent();
+        $publicMessages = $this->messages($public->json('data.groups'));
+        $this->assertContains('発射島がPPミサイルを3発発射しました。', $publicMessages);
+        $this->assertContains('被弾島(12,8)に発射島のPPミサイルが着弾し、首都人口へ被害を与えました。', $publicMessages);
+        $this->assertTrue(collect($publicMessages)->contains(
+            static fn (string $message): bool => str_contains($message, '効果のない着弾8件はまとめて記録されました。'),
+        ));
+        foreach (['(50,51)', '費用900', 'all_impacts', 'cost_money', 'target_x', 'impacts'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, $publicBody);
+        }
+
+        $ownerResponse = $this->actingAs($owner)
+            ->getJson("/api/v1/nations/{$firing->id}/events")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.events.0.confidential', true);
+        $ownerMessages = implode("\n", $this->messages($ownerResponse->json('data.groups')));
+        $this->assertStringContainsString('狙点(50,51)', $ownerMessages);
+        $this->assertStringContainsString('費用900億円', $ownerMessages);
+        $this->assertStringContainsString('(12,8)', $ownerMessages);
+        $this->assertStringContainsString('(1,1)', $ownerMessages);
     }
 
     /** @return array{World, User, Nation} */
@@ -445,21 +290,30 @@ class PlayerIslandEventApiTest extends TestCase
         return [$world, $user, $nation];
     }
 
-    /** @param array<string, mixed> $metadata */
-    private function audit(string $eventType, Model $subject, array $metadata): int
+    private function publicFacility(Nation $nation, int $turn, int $x, int $y, string $facility): int
     {
-        $nationId = is_numeric($metadata['nation_id'] ?? null) ? (int) $metadata['nation_id'] : null;
-        $visibility = match ($eventType) {
-            'turn.completed', 'disaster.triggered' => 'public',
-            'missile.launch_detail' => 'private',
-            default => 'nation',
-        };
+        return $this->audit('command.facility_built_public', $nation, $nation, 'public', $turn, [
+            'nation_name' => $nation->name,
+            'facility_key' => $facility,
+            'x' => $x,
+            'y' => $y,
+        ]);
+    }
 
+    /** @param array<string, mixed> $metadata */
+    private function audit(
+        string $eventType,
+        Model $subject,
+        ?Nation $nation,
+        string $visibility,
+        int $turn,
+        array $metadata,
+    ): int {
         return (int) DB::table('audit_events')->insertGetId([
             'actor_user_id' => null,
-            'world_id' => (int) $metadata['world_id'],
-            'turn' => (int) $metadata['target_turn'],
-            'nation_id' => $nationId,
+            'world_id' => $subject instanceof World ? $subject->id : $nation?->world_id,
+            'turn' => $turn,
+            'nation_id' => $nation?->id,
             'x' => is_numeric($metadata['x'] ?? null) ? (int) $metadata['x'] : null,
             'y' => is_numeric($metadata['y'] ?? null) ? (int) $metadata['y'] : null,
             'message' => null,
@@ -479,5 +333,13 @@ class PlayerIslandEventApiTest extends TestCase
     private function turns(array $groups): array
     {
         return array_map(static fn (array $group): int => (int) $group['target_turn'], $groups);
+    }
+
+    /** @param list<array<string, mixed>> $groups @return list<string> */
+    private function messages(array $groups): array
+    {
+        return collect($groups)->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->pluck('message')->all();
     }
 }

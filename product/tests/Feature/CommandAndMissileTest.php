@@ -80,7 +80,7 @@ class CommandAndMissileTest extends TestCase
         $this->assertArrayHasKey('observed', $metadata);
         $this->assertArrayHasKey('original_parameters', $metadata);
 
-        $page = app(PlayerIslandEventService::class)->page($nation->fresh(), 1, 4);
+        $page = app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 4);
         $messages = collect($page['groups'])->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($messages->contains(
             fn (string $message): bool => str_contains($message, '農場建設可能な平地ではありませんでした'),
@@ -460,7 +460,7 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('completed', $finance->fresh()->status);
         $this->assertSame($moneyBefore + 10, (int) $nation->fresh()->money);
         $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
-        $page = app(PlayerIslandEventService::class)->page($nation, 1, 2);
+        $page = app(PlayerIslandEventService::class)->ownerPage($nation, 1, 2);
         $messages = collect($page['groups'])->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertContains(sprintf(
             '%s(%d,%d)で行われようとしていた埋め立ては、隣接する自国領地がないため実行できませんでした。',
@@ -509,18 +509,19 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('capital_damaged', $detailMetadata['impacts'][0]['effect']);
         $this->assertSame('completed', $item->fresh()->status);
 
-        $targetMessages = collect(app(PlayerIslandEventService::class)->page($target, 1, 2)['groups'])
+        $targetMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($target, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($targetMessages->contains(
-            fn (string $message): bool => str_contains($message, '発射国がSPPミサイルを1発を発射しました。'),
+            fn (string $message): bool => str_contains($message, '標的国')
+                && str_contains($message, '発射国のSPPミサイルが着弾'),
         ));
         $this->assertFalse($targetMessages->contains(
             fn (string $message): bool => str_contains($message, '狙点'),
         ));
-        $firingMessages = collect(app(PlayerIslandEventService::class)->page($firing, 1, 2)['groups'])
+        $firingMessages = collect(app(PlayerIslandEventService::class)->ownerPage($firing, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($firingMessages->contains(
-            fn (string $message): bool => str_contains($message, '（秘密）SPPミサイルを狙点')
+            fn (string $message): bool => str_contains($message, 'SPPミサイルを狙点')
                 && str_contains($message, '費用500億円')
                 && str_contains($message, '着弾結果:'),
         ));
@@ -894,13 +895,13 @@ class CommandAndMissileTest extends TestCase
         $generatedTotal = (int) $generated->sum(DB::raw("(metadata->>'generated_population')::integer"));
         $receivedTotal = (int) $received->sum(DB::raw("(metadata->>'received_population')::integer"));
 
-        $targetEvents = collect(app(PlayerIslandEventService::class)->page($target, 1, 2)['groups'])
+        $targetEvents = collect(app(PlayerIslandEventService::class)->publicNationPage($target, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events']);
-        $firingEvents = collect(app(PlayerIslandEventService::class)->page($firing, 1, 2)['groups'])
+        $firingEvents = collect(app(PlayerIslandEventService::class)->ownerPage($firing, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events']);
         $this->assertCount(1, $targetEvents->where('type', 'refugee_generated'));
         $this->assertCount(1, $firingEvents->where('type', 'refugee_received'));
-        $this->assertTrue($targetEvents->where('type', 'refugee_generated')->contains(
+        $this->assertFalse($targetEvents->where('type', 'refugee_generated')->contains(
             fn (array $event): bool => str_contains($event['message'], number_format($generatedTotal).'人'),
         ));
         $this->assertTrue($firingEvents->where('type', 'refugee_received')->contains(
@@ -1161,16 +1162,15 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame($oldCapitalPopulation, $capital->fresh()->population);
         $this->assertSame($cityTarget->id, $nation->capital()->value('map_cell_id'));
 
-        [, $spectator] = $this->nation($world, '公開ログ確認国');
-        $publicEvents = collect(app(PlayerIslandEventService::class)->page($spectator, 1, 9)['groups'])
+        $publicEvents = collect(app(PlayerIslandEventService::class)->publicNationPage($nation, 1, 9)['groups'])
             ->flatMap(fn (array $group): array => $group['events']);
         $forestMessages = $publicEvents->filter(
-            fn (array $event): bool => $event['message'] === 'こころなしか、どこかで森が増えた気がします。',
+            fn (array $event): bool => str_contains($event['message'], 'どこかで森が増えた気がします。'),
         );
         $this->assertCount(2, $forestMessages);
         $this->assertTrue($forestMessages->every(
             fn (array $event): bool => $event['type'] === 'command.forest_planted_public'
-                && $event['coordinate'] === null,
+                && ! str_contains($event['message'], '('),
         ));
         $this->assertFalse($publicEvents->contains(
             fn (array $event): bool => in_array($event['type'], [
@@ -1180,7 +1180,6 @@ class CommandAndMissileTest extends TestCase
         ));
         $this->assertTrue($publicEvents->contains(
             fn (array $event): bool => $event['type'] === 'command.seabed_base_built_public'
-                && $event['coordinate'] === null
                 && str_contains($event['message'], '(?,?)'),
         ));
         $this->assertSame(2, $publicEvents->where('type', 'command.facility_built_public')
@@ -1229,9 +1228,9 @@ class CommandAndMissileTest extends TestCase
             'cell',
             fn ($query) => $query->where('owner_nation_id', $receiver->id),
         )->count());
-        $senderMessages = collect(app(PlayerIslandEventService::class)->page($sender, 1, 2)['groups'])
+        $senderMessages = collect(app(PlayerIslandEventService::class)->ownerPage($sender, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
-        $receiverMessages = collect(app(PlayerIslandEventService::class)->page($receiver, 1, 2)['groups'])
+        $receiverMessages = collect(app(PlayerIslandEventService::class)->ownerPage($receiver, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($senderMessages->contains(
             fn (string $message): bool => str_contains($message, '支援受領国へ資金援助として200億円'),
@@ -1304,7 +1303,7 @@ class CommandAndMissileTest extends TestCase
             ->value(DB::raw("(metadata->>'transferred_money')::integer")));
         $this->assertSame(0, (int) DB::table('audit_events')->where('event_type', 'command.food_aid_transferred')
             ->value(DB::raw("(metadata->>'transferred_food_tons')::integer")));
-        $messages = collect(app(PlayerIslandEventService::class)->page($sender, 1, 2)['groups'])
+        $messages = collect(app(PlayerIslandEventService::class)->ownerPage($sender, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
         $this->assertTrue($messages->contains(fn (string $message): bool => str_contains($message, '資金収容上限')));
         $this->assertTrue($messages->contains(fn (string $message): bool => str_contains($message, '食料収容上限')));
