@@ -303,9 +303,10 @@ class DisasterAndOilTurnTest extends TestCase
             $earthquake['probability'] = ['numerator' => 1, 'denominator' => 1];
             $earthquake['damage_probability'] = ['numerator' => 1, 'denominator' => 1];
         });
-        $target = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'wasteland'))->firstOrFail();
         $capitalCellId = $nation->capital()->value('map_cell_id');
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capitalCellId)->firstOrFail();
+        $this->setCell($target, 'wasteland', null, $nation->id, 0);
         $victim = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNotIn('id', [$target->id, $capitalCellId])->firstOrFail();
         $this->setCell($victim, 'plain', 'factory', $nation->id, 0);

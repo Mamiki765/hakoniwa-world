@@ -7,6 +7,7 @@ use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -29,6 +30,62 @@ class CommandQueueAndSalePolicyTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_corrupt_parameter_schema_fails_closed_without_publishing_internal_reason(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('schema破損国');
+        $definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+            ->where('key', 'land_clear')
+            ->firstOrFail();
+        $metadata = $definition->metadata;
+        $metadata['parameters'] = [
+            'design_id' => ['type' => 'string', 'required' => false, 'nullable' => true],
+        ];
+        $definition->update(['metadata' => $metadata]);
+        $target = MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $basePayload = [
+            'command_key' => 'land_clear',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'expected_version' => 1,
+        ];
+
+        foreach ([[], ['design_id' => null]] as $parameters) {
+            $this->actingAs($owner)->postJson($path, [
+                ...$basePayload,
+                'request_key' => (string) Str::uuid(),
+                'parameters' => $parameters,
+            ])->assertUnprocessable()
+                ->assertJsonPath('message', '入力内容を確認してください。')
+                ->assertDontSee('design_idのparameter schema typeが不正です。', false)
+                ->assertJsonMissingPath('code')
+                ->assertJsonMissingPath('errors.command');
+        }
+
+        $metadata['parameters']['design_id'] = [
+            'type' => 'integer',
+            'minimum' => 1,
+            'maximum' => 9,
+            'default' => 10,
+        ];
+        $definition->update(['metadata' => $metadata]);
+        $this->postJson($path, [
+            ...$basePayload,
+            'request_key' => (string) Str::uuid(),
+            'parameters' => [],
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', '入力内容を確認してください。')
+            ->assertDontSee('design_idのparameter schema default rangeが不正です。', false)
+            ->assertJsonMissingPath('code')
+            ->assertJsonMissingPath('errors.command');
+    }
 
     public function test_queue_read_validates_ruleset_without_locking_the_shared_world(): void
     {
@@ -123,7 +180,9 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->actingAs($owner)->postJson($path, [
             'command_key' => 'not_a_command', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'command_rejected')
+            ->assertJsonPath('errors.command.0', '利用できないcommandです。');
         $this->postJson($path, [
             'command_key' => 'build_mine', 'target_x' => $target->x, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 1,
@@ -131,7 +190,9 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->postJson($path, [
             'command_key' => 'land_clear', 'target_x' => $mapSpace->max_x + 1, 'target_y' => $target->y,
             'request_key' => (string) Str::uuid(), 'expected_version' => 2,
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'command_rejected')
+            ->assertJsonPath('errors.command.0', 'target x/yがmap bounds外です。');
 
         $this->postJson($path, [
             'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
@@ -150,7 +211,23 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'world_id' => $otherWorld->id, 'key' => 'surface', 'name' => '別地上',
             'coordinate_system' => 'staggered_square_offset', 'min_x' => 0, 'max_x' => 1, 'min_y' => 0, 'max_y' => 1,
         ]);
-        $this->getJson("/api/v1/nations/{$nation->id}/map-spaces/{$otherSpace->id}/command-queue")->assertUnprocessable();
+        $this->getJson("/api/v1/nations/{$nation->id}/map-spaces/{$otherSpace->id}/command-queue")
+            ->assertUnprocessable()
+            ->assertJsonPath('message', '入力内容を確認してください。')
+            ->assertDontSee('Nationとmap spaceのworldが一致しません。', false)
+            ->assertJsonMissingPath('errors.command');
+
+        $ruleset = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['military']['dormant_impact']['explicit_target_state'] = 'invalid-test-policy';
+        $ruleset->update(['settings' => $settings]);
+        $this->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-definitions"
+                ."?target_x={$target->x}&target_y={$target->y}",
+        )->assertUnprocessable()
+            ->assertJsonPath('message', '入力内容を確認してください。')
+            ->assertDontSee('The active ruleset has an invalid explicit missile target policy.', false)
+            ->assertJsonMissingPath('data.commands');
     }
 
     public function test_seabed_oil_search_availability_and_queue_validation_match_terrain_ownership_and_facility_state(): void
@@ -770,7 +847,9 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'target_y' => $capital->y,
             'request_key' => (string) Str::uuid(),
             'expected_version' => 2,
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'command_rejected')
+            ->assertJsonPath('errors.command.0', '首都を通常建設commandで上書きすることはできません。');
     }
 
     public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void

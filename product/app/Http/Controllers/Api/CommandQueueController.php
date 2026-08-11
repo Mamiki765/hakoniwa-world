@@ -8,6 +8,7 @@ use App\Application\LegacyCommandQueueOrder;
 use App\Application\NationCommandTargetService;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
@@ -67,7 +68,7 @@ final class CommandQueueController extends Controller
                     if ($definition->target_type === 'cell' && $cell !== null) {
                         try {
                             $service->validateTarget($nation, $mapSpace, $definition, $cell);
-                        } catch (DomainException $exception) {
+                        } catch (PlayerFacingCommandException $exception) {
                             $unavailableReason = $exception->getMessage();
                             $projected = $this->projectedCellState(
                                 $service,
@@ -519,7 +520,12 @@ final class CommandQueueController extends Controller
 
     private function domainError(DomainException $exception): JsonResponse
     {
-        $payload = ['message' => $exception->getMessage()];
+        $playerFacing = $exception instanceof PlayerFacingCommandException;
+        $payload = ['message' => $playerFacing ? $exception->getMessage() : '入力内容を確認してください。'];
+        if ($playerFacing) {
+            $payload['code'] = 'command_rejected';
+            $payload['errors'] = ['command' => [$exception->getMessage()]];
+        }
         if ($exception instanceof ResetRequiredException) {
             $payload['code'] = ResetRequiredException::ERROR_CODE;
         }

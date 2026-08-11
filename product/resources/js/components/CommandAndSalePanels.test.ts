@@ -63,6 +63,15 @@ const jsonResponse = (data: unknown, status = 200) => new Response(JSON.stringif
     headers: { 'Content-Type': 'application/json' },
 });
 
+const errorResponse = (
+    message: string,
+    status: number,
+    extra: { errors?: Record<string, string[]>; code?: string } = {},
+) => new Response(JSON.stringify({ message, ...extra }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+});
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('command plan workspace', () => {
@@ -84,6 +93,9 @@ describe('command plan workspace', () => {
 
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(wrapper.findAll('.plan-row.automatic')).toHaveLength(20);
+        expect(wrapper.get('.command-status').text()).toBe('未送信');
+        expect(wrapper.get('.command-status').classes()).toContain('command-status--idle');
+        expect(wrapper.get('.command-status').attributes('role')).toBe('status');
         await wrapper.findAll('.plan-row')[4]!.trigger('click');
         await flushPromises();
         expect(wrapper.findAll('.plan-row')[4]!.classes()).toContain('selected');
@@ -98,7 +110,50 @@ describe('command plan workspace', () => {
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(wrapper.findAll('.plan-row')[4]!.text()).toContain('整地');
         expect(wrapper.findAll('.plan-row')[5]!.classes()).toContain('selected');
-        expect(wrapper.text()).toContain('実行はターン更新時');
+        expect(wrapper.get('.command-status').text()).toBe('送信完了');
+        expect(wrapper.get('.command-status').classes()).toContain('command-status--success');
+        expect(wrapper.get('.command-status').attributes('aria-live')).toBe('polite');
+        expect(wrapper.text()).not.toContain('実行はターン更新時');
+        expect(wrapper.text()).not.toContain('登録されました');
+        expect(wrapper.find('.command-panel').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel').exists()).toBe(true);
+    });
+
+    it('shows a concise player-facing validation error with semantic alert styling', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') return errorResponse('The given data was invalid.', 422, {
+                errors: { target_x: ['首都の上には建設できません'] },
+            });
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        await flushPromises();
+
+        const status = wrapper.get('.command-status');
+        expect(status.text()).toBe('送信エラー：首都の上には建設できません');
+        expect(status.classes()).toContain('command-status--error');
+        expect(status.attributes('role')).toBe('alert');
+        expect(status.attributes('aria-live')).toBe('assertive');
+    });
+
+    it('does not expose an untyped domain exception from a 422 response', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') return errorResponse('Command definition no longer matches the locked World ruleset.', 422);
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.command-status').text()).toBe('送信エラー：入力内容を確認してください');
+        expect(wrapper.text()).not.toContain('locked World ruleset');
     });
 
     it('supports drag and keyboard reorder without permanent button clutter', async () => {
@@ -122,6 +177,8 @@ describe('command plan workspace', () => {
             expected_version: 3,
         });
         expect(wrapper.find('.plan-row-actions').classes()).not.toContain('always-visible');
+        expect(wrapper.find('.command-panel').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel').exists()).toBe(true);
 
         await wrapper.findAll('.plan-row')[0]!.trigger('keydown', { key: 'ArrowDown', altKey: true });
         await flushPromises();
@@ -141,7 +198,7 @@ describe('command plan workspace', () => {
 
         expect(wrapper.findAll('.plan-row')).toHaveLength(30);
         expect(wrapper.find('.plan-list').exists()).toBe(true);
-        expect(wrapper.find('.plan-panel .mobile-panel-toggle').text()).toContain('30');
+        expect(wrapper.find('.mobile-panel-toggle').exists()).toBe(false);
         expect(wrapper.findAll('.plan-row')[29]!.attributes('draggable')).toBe('true');
 
         await wrapper.findAll('.plan-row')[29]!.trigger('keydown', { key: 'ArrowUp', altKey: true });
@@ -174,6 +231,8 @@ describe('command plan workspace', () => {
         expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
             quantity: 99, expected_version: 1,
         });
+        expect(wrapper.find('.command-panel').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel').exists()).toBe(true);
 
         await row.trigger('click');
         expect(row.classes()).toContain('selected');
@@ -410,8 +469,9 @@ describe('command plan workspace', () => {
         expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ command_key: 'land_clear' });
     });
 
-    it('opens quantity editing from a single mobile plan-row tap', async () => {
-        vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    it('opens quantity editing from a single plan-row tap through landscape touch width', async () => {
+        const matchMedia = vi.fn((query: string) => ({ matches: query === '(max-width: 900px)' }));
+        vi.stubGlobal('matchMedia', matchMedia);
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
             String(input).includes('command-definitions')
                 ? catalog([definition({ key: 'excavate', quantity_semantics: 'ordinary' })])
@@ -422,6 +482,122 @@ describe('command plan workspace', () => {
 
         await wrapper.find('.plan-row').trigger('click');
         expect(wrapper.find('.plan-parameter-popover').exists()).toBe(true);
+        expect(matchMedia).toHaveBeenCalledWith('(max-width: 900px)');
+        expect(wrapper.findAll('.plan-row-actions button').map((button) => button.attributes('aria-label')))
+            .toEqual(['前へ移動', '後へ移動', undefined, undefined]);
+    });
+
+    it('keeps pending-command and plan-editor quantities independent', async () => {
+        const excavate = definition({ key: 'excavate', quantity_semantics: 'ordinary' });
+        const queued = item(9, 1, {
+            command_key: 'excavate', command_name: '掘削', quantity: 2, quantity_semantics: 'ordinary',
+        });
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
+            String(input).includes('command-definitions') ? catalog([excavate]) : commandQueue(1, [queued]),
+        )));
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        const pendingInput = wrapper.find<HTMLInputElement>('.available-commands .parameter-popover input');
+        await pendingInput.setValue('5');
+        await wrapper.find('.plan-row').trigger('dblclick');
+        const editingInput = wrapper.find<HTMLInputElement>('.plan-parameter-popover input');
+        expect(editingInput.element.value).toBe('2');
+        await editingInput.setValue('9');
+
+        expect(pendingInput.element.value).toBe('5');
+        expect(editingInput.element.value).toBe('9');
+    });
+
+    it('defers refresh during a committed add and finishes with the authoritative queue', async () => {
+        let resolvePost!: (response: Response) => void;
+        const pendingPost = new Promise<Response>((resolve) => { resolvePost = resolve; });
+        let queueReads = 0;
+        let serverQueue = commandQueue();
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+            if (init?.method === 'POST') return pendingPost;
+            if (String(input).includes('command-definitions')) return Promise.resolve(jsonResponse(catalog([definition()])));
+            queueReads++;
+            return Promise.resolve(jsonResponse(serverQueue));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true));
+        await wrapper.setProps({ selected: { ...selected, x: 9 } });
+        await wrapper.findAll('.plan-row')[9]!.trigger('click');
+        await flushPromises();
+        expect(queueReads).toBe(1);
+
+        serverQueue = commandQueue(2, [item(1, 1)]);
+        resolvePost(jsonResponse({ queue: serverQueue }, 201));
+        await vi.waitFor(() => expect(wrapper.get('.command-status').text()).toBe('送信完了'));
+        await vi.waitFor(() => expect(queueReads).toBe(2));
+        expect(wrapper.find('.plan-row').text()).toContain('整地');
+        expect(wrapper.findAll('.plan-row')[9]!.classes()).toContain('selected');
+        expect(wrapper.find('.command-panel').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel').exists()).toBe(true);
+    });
+
+    it('does not let an old pending form abort an active cell refresh', async () => {
+        let resolveDefinitions!: (response: Response) => void;
+        const pendingDefinitions = new Promise<Response>((resolve) => { resolveDefinitions = resolve; });
+        let definitionReads = 0;
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+            if (init?.method === 'POST') return Promise.resolve(jsonResponse({ queue: commandQueue(2) }, 201));
+            if (String(input).includes('command-definitions')) {
+                definitionReads++;
+                return definitionReads === 1
+                    ? Promise.resolve(jsonResponse(catalog([definition({ quantity_semantics: 'ordinary' })])))
+                    : pendingDefinitions;
+            }
+            return Promise.resolve(jsonResponse(commandQueue()));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        const pendingForm = wrapper.get('.available-commands .parameter-popover');
+        await wrapper.setProps({ selected: { ...selected, x: 9 } });
+        await vi.waitFor(() => expect(definitionReads).toBe(2));
+        expect(pendingForm.get('button[type="submit"]').attributes('disabled')).toBeDefined();
+        await pendingForm.trigger('submit');
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+
+        resolveDefinitions(jsonResponse(catalog([definition({ name: '更新後コマンド', quantity_semantics: 'ordinary' })])));
+        await vi.waitFor(() => expect(wrapper.text()).toContain('更新後コマンド'));
+        expect(wrapper.find('.available-commands .parameter-popover').exists()).toBe(false);
+        await pendingForm.trigger('submit');
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+        expect(wrapper.get('.plan-panel').attributes('aria-busy')).toBe('false');
+    });
+
+    it('reconciles the authoritative queue after a committed add loses its response', async () => {
+        let serverQueue = commandQueue();
+        let queueReads = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                serverQueue = commandQueue(2, [item(1, 1)]);
+                throw new TypeError('network response lost');
+            }
+            if (String(input).includes('command-definitions')) return jsonResponse(catalog([definition()]));
+            queueReads++;
+            return jsonResponse(serverQueue);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        await vi.waitFor(() => expect(queueReads).toBe(2));
+
+        expect(wrapper.find('.plan-row').text()).toContain('整地');
+        expect(wrapper.get('.command-status').text()).toBe('送信エラー：通信に失敗しました');
+        expect(wrapper.text()).not.toContain('network response lost');
     });
 
     it('keeps the insertion cursor on a failed add and advances only after its successful retry', async () => {
@@ -530,6 +706,31 @@ describe('command plan workspace', () => {
         expect(wrapper.find('.plan-row').text()).toContain('×1');
     });
 
+    it('synchronizes an open quantity editor on a normal authoritative refresh', async () => {
+        const queued = item(9, 1, {
+            command_key: 'excavate', command_name: '掘削', quantity: 1, quantity_semantics: 'ordinary',
+        });
+        let queueReads = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            if (String(input).includes('command-definitions')) {
+                return jsonResponse(catalog([definition({ key: 'excavate', quantity_semantics: 'ordinary' })]));
+            }
+            queueReads++;
+            return jsonResponse(commandQueue(queueReads, [{ ...queued, quantity: queueReads === 1 ? 1 : 5 }]));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.plan-row').trigger('dblclick');
+        await wrapper.find('.plan-parameter-popover input').setValue('99');
+        await wrapper.setProps({ selected: { ...selected, x: 9 } });
+        await vi.waitFor(() => expect(queueReads).toBe(2));
+
+        await vi.waitFor(() => expect(wrapper.find<HTMLInputElement>('.plan-parameter-popover input').element.value).toBe('5'));
+        expect(wrapper.find('.plan-row').text()).toContain('×5');
+    });
+
     it('closes a stale quantity editor when a 409 refresh shows the item was cancelled elsewhere', async () => {
         const queued = item(9, 1, {
             command_key: 'excavate', command_name: '掘削', quantity: 1, quantity_semantics: 'ordinary',
@@ -553,6 +754,9 @@ describe('command plan workspace', () => {
         await flushPromises();
         expect(wrapper.find('.plan-parameter-popover').exists()).toBe(false);
         expect(wrapper.find('.plan-row').classes()).toContain('automatic');
+        expect(wrapper.get('.command-status').text()).toBe('送信エラー：開発計画が更新されたため再読み込みしました');
+        expect(wrapper.find('.command-panel').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel').exists()).toBe(true);
     });
 
     it('redraws cancellation from the authoritative server queue and Escape never clears the cursor', async () => {
@@ -573,23 +777,68 @@ describe('command plan workspace', () => {
         await flushPromises();
         expect(wrapper.findAll('.plan-row')[0]!.text()).toContain('掘削');
         expect(wrapper.findAll('.plan-row')[1]!.classes()).toContain('automatic');
+        expect(wrapper.get('.command-status').text()).toBe('送信完了');
+        expect(wrapper.find('.command-panel').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel').exists()).toBe(true);
     });
 
-    it('mutually collapses the mobile command sheet and plan drawer', async () => {
+    it('keeps the authoritative plan and all panels after cancellation fails', async () => {
+        const initial = commandQueue(1, [item(1, 1)]);
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'DELETE') return errorResponse('internal queue invariant', 422);
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : initial);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        const cancel = wrapper.findAll('.plan-row-actions button').find((button) => button.text() === '取消')!;
+        await cancel.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.find('.plan-row').text()).toContain('整地');
+        expect(wrapper.get('.command-status').text()).toBe('送信エラー：入力内容を確認してください');
+        expect(wrapper.text()).not.toContain('internal queue invariant');
+        expect(wrapper.find('.command-panel').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel').exists()).toBe(true);
+    });
+
+    it('does not treat reset_required as an optimistic queue conflict', async () => {
+        let queueReads = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                return errorResponse('reset_required: internal World details', 409, { code: 'reset_required' });
+            }
+            if (String(input).includes('command-definitions')) return jsonResponse(catalog([definition()]));
+            queueReads++;
+            return jsonResponse(commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.find('.command-grid button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.command-status').text()).toBe('送信エラー：この島は現在のルールでは変更できません');
+        expect(wrapper.text()).not.toContain('internal World details');
+        expect(queueReads).toBe(1);
+    });
+
+    it('keeps command and plan panels permanently mounted without mobile drawer controls', async () => {
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
             String(input).includes('command-definitions') ? catalog([]) : commandQueue(),
         )));
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await flushPromises();
-        const toggles = wrapper.findAll('.mobile-panel-toggle');
 
-        await toggles[0]!.trigger('click');
-        expect(wrapper.find('.command-panel').classes()).toContain('expanded');
-        expect(wrapper.find('.plan-panel').classes()).toContain('mobile-peer-expanded');
-        await toggles[1]!.trigger('click');
+        expect(wrapper.find('.command-workspace').exists()).toBe(true);
+        expect(wrapper.find('.command-panel').exists()).toBe(true);
+        expect(wrapper.find('.plan-panel').exists()).toBe(true);
+        expect(wrapper.find('.mobile-panel-toggle').exists()).toBe(false);
         expect(wrapper.find('.command-panel').classes()).not.toContain('expanded');
-        expect(wrapper.find('.command-panel').classes()).toContain('mobile-peer-expanded');
-        expect(wrapper.find('.plan-panel').classes()).toContain('expanded');
+        expect(wrapper.find('.command-panel').classes()).not.toContain('mobile-peer-expanded');
+        expect(wrapper.find('.plan-panel').classes()).not.toContain('expanded');
         expect(wrapper.find('.plan-panel').classes()).not.toContain('mobile-peer-expanded');
     });
 
