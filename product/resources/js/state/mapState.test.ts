@@ -146,4 +146,41 @@ describe('lazy map chunk loading', () => {
 
         expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/-1/-1'))).toHaveLength(1);
     });
+
+    it('clears cells, selection, loaded state, empty state, and ignores stale in-flight responses on revision change', async () => {
+        let releaseStale: (value: Response) => void = () => undefined;
+        const staleResponse = new Promise<Response>((resolve) => { releaseStale = resolve; });
+        const fetchMock = vi.fn((input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/chunks/2/0')) return staleResponse;
+            return Promise.resolve(response(chunkFromPath(path, path.endsWith('/chunks/0/0') ? 'generated' : 'empty')));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const map = useMapState();
+        await map.loadAround(mapSpace, 5, 5);
+
+        expect(map.visibleCells.value).toHaveLength(1);
+        expect(map.selected.value).not.toBeNull();
+        expect(map.emptyChunks.value.length).toBeGreaterThan(0);
+
+        const stale = map.loadVisibleRange({ minX: 32, maxX: 47, minY: 0, maxY: 15 });
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/2/0'))).toHaveLength(1);
+
+        expect(map.synchronizeMapSpace({
+            ...mapSpace,
+            bounds_revision: 'bounds-negative-16-63',
+            bounds: { min_x: -16, max_x: 63, min_y: 0, max_y: 63 },
+        })).toBe(true);
+        expect(map.visibleCells.value).toEqual([]);
+        expect(map.selected.value).toBeNull();
+        expect(map.emptyChunks.value).toEqual([]);
+
+        releaseStale(response(chunkFromPath('/chunks/2/0')));
+        await stale;
+        expect(map.visibleCells.value).toEqual([]);
+
+        await map.loadVisibleRange({ minX: 0, maxX: 15, minY: 0, maxY: 15 });
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/0/0'))).toHaveLength(2);
+        expect(map.visibleCells.value).toHaveLength(1);
+    });
 });

@@ -35,13 +35,7 @@ final class ReleasePreflight extends Command
         $unsafe = TurnRun::query()
             ->where('world_id', $world->id)
             ->where('target_turn', $targetTurn)
-            ->where('is_dry_run', false)
-            ->whereIn('status', [
-                TurnRun::STATUS_PENDING,
-                TurnRun::STATUS_RUNNING,
-                TurnRun::STATUS_FAILED,
-                TurnRun::STATUS_BLOCKED,
-            ])
+            ->unresolvedProduction()
             ->orderBy('id')
             ->get(['id', 'status', 'attempt_count']);
         if ($unsafe->isNotEmpty()) {

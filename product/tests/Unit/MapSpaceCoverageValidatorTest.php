@@ -70,6 +70,18 @@ final class MapSpaceCoverageValidatorTest extends TestCase
         }
     }
 
+    public function test_wrong_map_space_fails_when_operation_boundary_supplies_the_expected_id(): void
+    {
+        $bounds = new MapBounds(0, 0, 0, 0, 16);
+        $cells = $this->cells($bounds);
+        $cells[0]['map_space_id'] = 9;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('different MapSpace');
+
+        (new MapSpaceCoverageValidator)->assertComplete($bounds, $cells, 10);
+    }
+
     /** @return list<array{x: int, y: int, chunk_x: int, chunk_y: int, local_x: int, local_y: int}> */
     private function cells(MapBounds $bounds): array
     {

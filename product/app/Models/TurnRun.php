@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -38,6 +39,14 @@ class TurnRun extends Model
 
     public const STATUS_DRY_RUN = 'dry_run';
 
+    /** @var list<string> */
+    public const UNRESOLVED_PRODUCTION_STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_RUNNING,
+        self::STATUS_FAILED,
+        self::STATUS_BLOCKED,
+    ];
+
     protected $fillable = [
         'world_id', 'target_turn', 'ruleset_version_id', 'random_seed', 'source', 'is_dry_run',
         'status', 'attempt_count', 'pipeline', 'phase_results', 'started_at', 'completed_at',
@@ -54,6 +63,17 @@ class TurnRun extends Model
     public function rulesetVersion(): BelongsTo
     {
         return $this->belongsTo(RulesetVersion::class);
+    }
+
+    /**
+     * @param  Builder<TurnRun>  $query
+     * @return Builder<TurnRun>
+     */
+    public function scopeUnresolvedProduction(Builder $query): Builder
+    {
+        return $query
+            ->where('is_dry_run', false)
+            ->whereIn('status', self::UNRESOLVED_PRODUCTION_STATUSES);
     }
 
     /** @return array<string, string> */

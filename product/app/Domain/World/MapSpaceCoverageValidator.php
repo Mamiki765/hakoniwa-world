@@ -12,12 +12,20 @@ final readonly class MapSpaceCoverageValidator
      *
      * @param  iterable<array<string, mixed>|object>  $cells
      */
-    public function assertComplete(MapBounds $bounds, iterable $cells): void
-    {
+    public function assertComplete(
+        MapBounds $bounds,
+        iterable $cells,
+        ?int $expectedMapSpaceId = null,
+    ): void {
         $chunks = new ChunkCoordinateService($bounds->chunkSize);
         $coordinates = [];
 
         foreach ($cells as $cell) {
+            if ($expectedMapSpaceId !== null
+                && $this->field($cell, 'map_space_id') !== $expectedMapSpaceId) {
+                throw new DomainException('MapCell belongs to a different MapSpace.');
+            }
+
             $x = $this->field($cell, 'x');
             $y = $this->field($cell, 'y');
             if (! $bounds->contains($x, $y)) {
