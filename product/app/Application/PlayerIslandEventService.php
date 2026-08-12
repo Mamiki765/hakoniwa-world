@@ -1415,7 +1415,9 @@ final class PlayerIslandEventService
 
                 continue;
             }
-            $detailCounts[$key]--;
+            if (! str_starts_with($key, 'missile:')) {
+                $detailCounts[$key]--;
+            }
         }
 
         return $result;
@@ -1474,7 +1476,7 @@ final class PlayerIslandEventService
             'command.attraction_started_public' => "attraction:{$turn}",
             'command.money_aid_public' => $this->ownerAidKey('money', $turn, $metadata),
             'command.food_aid_public' => $this->ownerAidKey('food', $turn, $metadata),
-            'missile.launched' => is_numeric($metadata['queue_item_id'] ?? null)
+            'missile.launched', 'missile.ineffective_aggregated' => is_numeric($metadata['queue_item_id'] ?? null)
                 ? "missile:{$turn}:".(int) $metadata['queue_item_id']
                 : null,
             default => null,

@@ -584,7 +584,12 @@ class PlayerIslandEventApiTest extends TestCase
             'terrain_only' => true, 'terrain_scorched' => true,
         ]);
         $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 2, [
-            'nation_name' => $firing->name, 'command_key' => 'pp_missile', 'ineffective_impacts' => 8,
+            'nation_name' => $firing->name, 'command_key' => 'pp_missile',
+            'queue_item_id' => 88, 'ineffective_impacts' => 8,
+        ]);
+        $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 2, [
+            'nation_name' => $firing->name, 'command_key' => 'pp_missile',
+            'queue_item_id' => 99, 'ineffective_impacts' => 2,
         ]);
         $this->audit('missile.launch_detail', $firing, $firing, 'private', 2, [
             'command_key' => 'pp_missile', 'queue_item_id' => 88, 'target_x' => 50, 'target_y' => 51,
@@ -610,6 +615,9 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertTrue(collect($publicMessages)->contains(
             static fn (string $message): bool => str_contains($message, '効果のない着弾8件はまとめて記録されました。'),
         ));
+        $this->assertTrue(collect($publicMessages)->contains(
+            static fn (string $message): bool => str_contains($message, '効果のない着弾2件はまとめて記録されました。'),
+        ));
         foreach ([
             '(50,51)', '(44,45)', '費用900', 'all_impacts', 'cost_money', 'target_x',
             'firing_bases', 'impacts', 'from_terrain_key', 'to_terrain_key', 'terrain_only',
@@ -632,9 +640,13 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertStringContainsString('(14,10): 怪獣へ命中しました', $ownerMessages);
         $this->assertStringContainsString('(15,11): 怪獣を撃破しました', $ownerMessages);
         $this->assertSame(1, substr_count($ownerMessages, '怪獣がいた荒地は焦土化しました'));
-        $this->assertFalse(collect($ownerResponse->json('data.groups.0.events'))->contains(
-            static fn (array $event): bool => $event['type'] === 'missile.launched',
-        ));
+        $ownerTypes = collect($ownerResponse->json('data.groups.0.events'))->pluck('type');
+        $this->assertFalse($ownerTypes->contains('missile.launched'));
+        $this->assertSame(1, $ownerTypes->filter(
+            static fn (string $type): bool => $type === 'missile.ineffective_aggregated',
+        )->count());
+        $this->assertStringNotContainsString('効果のない着弾8件はまとめて記録されました。', $ownerMessages);
+        $this->assertStringContainsString('効果のない着弾2件はまとめて記録されました。', $ownerMessages);
     }
 
     /** @return array{World, User, Nation} */
