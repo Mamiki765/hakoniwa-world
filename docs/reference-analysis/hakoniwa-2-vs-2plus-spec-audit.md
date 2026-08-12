@@ -42,7 +42,7 @@
 - runtime: 同refの`product/app/Application/CompleteTurnEngine.php`、`DisasterTurnService.php`、`DomesticCommandExecutor.php`、`MissileImpactResolver.php`、`MonsterTurnService.php`、`LegacyInspiredInitialIslandGenerator.php`、`PlayerIslandEventService.php`等。
 - owner decision: 同refの`docs/open-questions.md`、`docs/decisions/`、各`product/docs/*-audit-*.md`。
 
-`origin/release/1.4.0..63e332c`では上記gameplay ruleset/runtimeと`PlayerIslandEventService`に差がないことも確認した。1.4.1差分はこの確認から除外した。
+`origin/release/1.4.0..HEAD`では上記gameplay ruleset/runtimeと`PlayerIslandEventService`に差がないことも確認した。1.4.1差分はこの確認から除外した。
 
 ## 分類方法
 
@@ -76,8 +76,8 @@
 | ownership / territory | 島単位でowner、島内cell ownershipなし | cell ownershipと周囲影響 | Nation別cell ownership、領土、active Nation間influence | C | `KEEP-SHARED` | 削除対象外。2＋ `map.c:211-260`; v3 ruleset `territory_influence`。 |
 | Capital | 独立概念なし | 島中心はあるがCapital facilityなし | 永続Capital、初期1,000人、最低100人 | D | `KEEP-EXPLICIT` | B-01/B-19。共有Worldのidentity core。 |
 | 村・町・都市閾値 | 村100–2,900、町3,000–9,900、都市10,000以上 | 同じ | 同じ | A | `MATCH-H2` | H2 `hako-map.txt:446-461`; 2＋ `map.c:1336-1345`; PR11 `:60-64`。 |
-| 通常人口成長 | 全村町が100–1,000人、通常cap 10,000人。海隣接不問 | 海際度で100–300/100–600/100–900人、cap 2,000/5,000/10,000人 | 2＋と同じ3 band | E | `KEEP-EXPLICIT` | H2 `hako-turn.txt:1421-1464`; 2＋ `map.c:343-377`; engine `:933-981`。owner decisionにより現行仕様を維持する。 |
-| 誘致人口成長 | 10,000人未満は100–3,000人、以後100–300人、cap 20,000人 | 海際度bandごとに通常cap前100–1,000/100–2,000/100–3,000人、通常cap後100/100–200/100–300人、最終cap 20,000人 | 2＋と同じ | E | `KEEP-EXPLICIT` | H2 `hako-turn.txt:1427-1468`; 2＋ `map.c:343-377`; PR11/PR22。owner decisionにより現行仕様を維持する。 |
+| 通常人口成長 | 全村町が100–1,000人、通常cap 10,000人。海隣接不問 | 海際度で100–300/600/900人、cap 2,000/5,000/10,000人 | 2＋と同じ3 band | E | `CANDIDATE-H2-REALIGN` | H2 `hako-turn.txt:1421-1464`; 2＋ `map.c:343-377`; engine `:933-981`。owner decision待ち。 |
+| 誘致人口成長 | 10,000人未満は100–3,000人、以後100–300人、cap 20,000人 | 海際度倍率つき100–1,000/2,000/3,000人、通常cap後100/200/300人、cap 20,000人 | 2＋と同じ | E | `CANDIDATE-H2-REALIGN` | H2 `hako-turn.txt:1427-1468`; 2＋ `map.c:343-377`; PR11/PR22。 |
 | 食料不足時人口減 | 食料<0で各集落100–3,000人減、0以下で平地 | 同じ | 同じ。Capitalだけ最低100人を維持 | A | `MATCH-H2` | H2 `hako-turn.txt:1424-1451`; 2＋ `map.c:313-320`; engine `:891-926`。Capital差は別行。 |
 | 平地への集落発生 | 各平地20%。隣接6セルの有人集落または規模のある農場 | 20%。海際度別ratioを計算するが判定は固定20% | 20%。隣接有人集落または農場 | A | `MATCH-H2` | H2 `hako-turn.txt:1470-1477,1625-1650`; 2＋ `map.c:321-341`; engine `:844-888`。 |
 | 海際度による農工場立地 | なし | 農場は12以上、工場は24以上 | 海際度制限なし | A | `MATCH-H2` | 2＋独自制約を継承していない。2＋ `command.c:442-459`; PR2 `:57-73,91-93`。 |
@@ -175,12 +175,11 @@
 
 ### 4. 影響範囲
 
-| 海際度band | 2＋ raw behavior | 現行2S＋ |
+| 影響先 | 2＋ raw behavior | 現行2S＋ |
 |---|---|---|
-| `0..11` | 通常成長100–300、通常cap 2,000。誘致は通常cap前100–1,000、通常cap後100、最終cap 20,000 | 同じ |
-| `12..23` | 通常成長100–600、通常cap 5,000。誘致は通常cap前100–2,000、通常cap後100–200、最終cap 20,000 | 同じ |
-| `>=24` | 通常成長100–900、通常cap 10,000。誘致は通常cap前100–3,000、通常cap後100–300、最終cap 20,000 | 同じ |
-| Capital例外 | 該当なし | 通常・誘致ともcap 25,000。選択bandの成長幅は使い、誘致中は誘致用成長を選ぶが、最終capは20,000ではなく25,000を維持 |
+| 通常人口上限 | `<12`: 2,000、`12..23`: 5,000、`>=24`: 10,000 | 同じ |
+| 通常成長 | 100–300 × 1/2/3 | 同じ |
+| 誘致 | 通常cap前100–1,000 × 1/2/3、以後100 × 1/2/3、最終20,000 | 同じ |
 | 集落発生 | ratio 20/10/5を計算するが、実判定は固定20%。実効影響なし | 固定20%、影響なし |
 | 農場建設 | 12以上 | 海際度不問 |
 | 工場建設 | 24以上 | 海際度不問 |
@@ -192,11 +191,17 @@
 
 海際度は共有mapの永続化、ownership、territory、influence、Nation identity、配置予約に参照されないturn-local派生値である。したがって、共有Worldを成立させる技術的必要条件ではなく、2＋由来のgameplay extensionと判断する。
 
-### 6. 現行仕様を維持するowner decision
+### 6. 将来原版2へ寄せる場合の影響
 
-ownerは、通常人口が海際度に応じて2,000人または5,000人でいったん止まり得る現行仕様を維持し、原版2の一律10,000人capへ変更しないと決定した。本監査は仕様の由来と現在値を明文化するだけで、人口処理、公開済みv1/v2/v3 payload、既存World、既存人口を変更しない。
+変更するかどうかはowner decision待ちである。変更する場合も公開済みv1/v2/v3 payloadを変更してはならず、新しいimmutable rulesetとforward migration/compatibility方針が必要になる。影響点は少なくとも次のとおり。
 
-将来、別のowner decisionでこの仕様を再検討する場合でも、公開済みpayloadを上書きしてはならない。`sea_edge_bands`、ruleset authoring validator、`CompleteTurnEngine`、event metadata、preview/UI、deterministic random stream、turn regression、既存人口とWorld compatibilityを一体で評価し、新しいimmutable rulesetとforward migrationまたはcompatible runtimeの方針が必要になる。
+- `sea_edge_bands`とruleset authoring validator。
+- `CompleteTurnEngine`の通常成長・誘致とevent metadata。
+- すでに2,000/5,000人capで止まった集落、または過去の誘致でcapを超えた既存人口の扱い。
+- preview/UI説明、deterministic random stream、turn regression tests。
+- 既存Worldを旧rulesetで継続するか、新rulesetへforward migrationするかというrelease判断。
+
+本監査では削除、新ruleset追加、migration、既存人口補正を行っていない。
 
 ## Command詳細比較
 
@@ -300,10 +305,10 @@ catalog値は3系統で概ね一致する。大きな差は共有World向け自�
 | 主分類 | 件数 |
 |---|---:|
 | `KEEP-SHARED` | 5 |
-| `KEEP-EXPLICIT` | 23 |
+| `KEEP-EXPLICIT` | 21 |
 | `MATCH-H2` | 33 |
 | `PLUS-DIVERGENCE` | 3 |
-| `CANDIDATE-H2-REALIGN` | 8 |
+| `CANDIDATE-H2-REALIGN` | 10 |
 | `UNKNOWN` | 4 |
 
 <!-- CLASSIFICATION_COUNTS_END -->
@@ -325,15 +330,17 @@ catalog値は3系統で概ね一致する。大きな差は共有World向け自�
 
 この一覧は将来patch候補のdecision backlogであり、ver 1.4.1 scopeではない。
 
-1. 伐採後terrainを荒地のまま維持するか、原版/2＋の平地へ寄せるか。
-2. 災害のWorld scopeと率を維持するか、共有Worldに適応した原版感覚の率を新rulesetで設計するか。
-3. 台風・火災で森林を防御として扱う原版semanticsへ寄せるか。
-4. 食料不足riotの対象setを原版の農場/工場/基地/防衛へ絞るか、現行拡張を維持するか。
-5. 防衛施設の同cell再建による自爆を採用するか。
-6. 記念碑再建による飛翔攻撃を採用するか。採用する場合はcombat roadmapとCapital/territory damage decisionが先に必要。
-7. 海底基地の浅瀬建設、経験値/1–3発capacity、通常弾耐性をそれぞれどうするか。
-8. 食料援助を1,000トン×quantityのまま維持するか、原版/2＋の10,000トンへ寄せるか。
-9. 将来の明示放棄・自動放棄・dormancy・territory解放をどう接続するか。現行ADR-0004/0008を前提に別roadmapで決める。
+1. 人口用海際度を維持するか、原版2の通常10,000人cap・成長100–1,000人へ寄せるか。
+2. 海際度を維持する場合、2＋の農場12/工場24という立地制約を採用しない現状を明示仕様にするか。
+3. 伐採後terrainを荒地のまま維持するか、原版/2＋の平地へ寄せるか。
+4. 災害のWorld scopeと率を維持するか、共有Worldに適応した原版感覚の率を新rulesetで設計するか。
+5. 台風・火災で森林を防御として扱う原版semanticsへ寄せるか。
+6. 食料不足riotの対象setを原版の農場/工場/基地/防衛へ絞るか、現行拡張を維持するか。
+7. 防衛施設の同cell再建による自爆を採用するか。
+8. 記念碑再建による飛翔攻撃を採用するか。採用する場合はcombat roadmapとCapital/territory damage decisionが先に必要。
+9. 海底基地の浅瀬建設、経験値/1–3発capacity、通常弾耐性をそれぞれどうするか。
+10. 食料援助を1,000トン×quantityのまま維持するか、原版/2＋の10,000トンへ寄せるか。
+11. 将来の明示放棄・自動放棄・dormancy・territory解放をどう接続するか。現行ADR-0004/0008を前提に別roadmapで決める。
 
 次はowner decision不要、または既に決定済みである。
 
