@@ -16,7 +16,7 @@ use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnSeedGenerator;
 use App\Domain\Turn\TurnState;
-use App\Domain\Turn\WorldTurnLock;
+use App\Domain\World\WorldMutationLock;
 use App\Models\Nation;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
@@ -425,7 +425,7 @@ class TurnRunnerTest extends TestCase
     {
         return new TurnRunner(
             $pipeline,
-            new WorldTurnLock,
+            new WorldMutationLock,
             new FixedTurnSeedGenerator(self::SEED),
             app(CurrentRulesetGuard::class),
             app(MonsterKillCycleService::class),

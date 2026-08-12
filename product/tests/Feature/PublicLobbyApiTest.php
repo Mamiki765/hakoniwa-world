@@ -280,6 +280,7 @@ class PublicLobbyApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.capital.x', $nation->capital()->value('x'))
             ->assertJsonPath('data.map_space.id', $mapSpace->id)
+            ->assertJsonPath('data.map_space.bounds_revision', $mapSpace->boundsRevision())
             ->assertJsonPath('data.map_space.bounds.max_x', $mapSpace->max_x)
             ->assertJsonPath('data.money_display', '約62,000億円')
             ->assertJsonPath('data.food_total_tons', 10000)

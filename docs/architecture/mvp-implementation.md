@@ -38,7 +38,7 @@ Controllerは入力、認証、DTO変換だけを扱い、配置や島生成を�
 
 `hakoniwa:world:init`は3,600セルを全て海で作る。国家作成時だけ海域を予約し、旧作の初期島生成を基礎に島を生成する。Nation、初期資源、Island、Capital、Territory、Membership、auditを同じtransactionへ含める。
 
-同時登録はWorld row lockと`pg_advisory_xact_lock`でworld単位に直列化する。候補を確定後に再検査し、DB一意制約も最終防衛線とする。
+同時登録はtransaction開始前の共通`WorldMutationLock`と、その後のWorld row lockでworld単位に直列化する。turnと同じPostgreSQL session advisory keyを使い、将来の拡張・放棄も同じ順序へ参加させる。候補を確定後に再検査し、DB一意制約も最終防衛線とする。
 
 ## APIとVue
 

@@ -23,7 +23,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.4.1';
+const applicationVersion = '1.5.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -211,13 +211,62 @@ async function refreshFallbackSummary(): Promise<void> {
 }
 
 async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): Promise<boolean> {
-    if (turnViewCurrentTurn === summary.current_turn) return true;
+    if (turnViewCurrentTurn === summary.current_turn) {
+        const currentPreview = page.value === 'preview' ? previewNation.value : null;
+        if (currentPreview !== null) {
+            try {
+                const refreshedPreview = await api<PublicNationDetail>(`/api/v1/public/nations/${currentPreview.id}`);
+                const nextMapSpace = refreshedPreview.map_space;
+                const mapNeedsReload = mapSpace.value?.id !== nextMapSpace.id
+                    || mapSpace.value?.bounds_revision !== nextMapSpace.bounds_revision
+                    || map.error.value !== null;
+                previewNation.value = refreshedPreview;
+                map.synchronizeMapSpace(nextMapSpace);
+                mapSpace.value = nextMapSpace;
+                if (! mapNeedsReload || refreshedPreview.capital === null) return true;
+
+                await map.loadAround(nextMapSpace, refreshedPreview.capital.x, refreshedPreview.capital.y, {
+                    kind: 'public',
+                    nationId: refreshedPreview.id,
+                });
+
+                return map.error.value === null;
+            } catch {
+                return false;
+            }
+        }
+
+        const currentNation = nation.value;
+        if (page.value !== 'island' || currentNation === null || currentNation.capital === null) return true;
+
+        try {
+            const spaces = await api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`);
+            const nextMapSpace = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
+            if (nextMapSpace === null) return false;
+
+            const mapNeedsReload = mapSpace.value?.id !== nextMapSpace.id
+                || mapSpace.value?.bounds_revision !== nextMapSpace.bounds_revision
+                || map.error.value !== null;
+            map.synchronizeMapSpace(nextMapSpace);
+            mapSpace.value = nextMapSpace;
+            if (! mapNeedsReload) return true;
+
+            await map.loadAround(nextMapSpace, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
+
+            return map.error.value === null;
+        } catch {
+            return false;
+        }
+    }
 
     const world = worlds.value[0];
     if (world === undefined) return false;
     const currentNation = nation.value;
     const currentPreview = page.value === 'preview' ? previewNation.value : null;
-    const [rankingResult, newsResult, eventResult, nationResult, previewResult] = await Promise.allSettled([
+    const ownerMapSpaceRequest = page.value === 'island' && currentNation !== null
+        ? api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`)
+        : Promise.resolve(null);
+    const [rankingResult, newsResult, eventResult, nationResult, previewResult, ownerMapSpacesResult] = await Promise.allSettled([
         api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
         api<MajorNewsFeed>(`/api/v1/public/worlds/${world.id}/major-news`),
         api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
@@ -225,6 +274,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         currentPreview === null
             ? Promise.resolve(null)
             : api<PublicNationDetail>(`/api/v1/public/nations/${currentPreview.id}`),
+        ownerMapSpaceRequest,
     ] as const);
 
     let refreshed = true;
@@ -254,8 +304,25 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         refreshed = false;
     }
 
-    if (page.value === 'island' && refreshedNation !== null && refreshedNation.capital !== null && mapSpace.value !== null) {
-        await map.loadAround(mapSpace.value, refreshedNation.capital.x, refreshedNation.capital.y, { kind: 'private' });
+    let refreshedMapSpace = mapSpace.value;
+    if (ownerMapSpacesResult.status === 'fulfilled') {
+        if (ownerMapSpacesResult.value !== null) {
+            refreshedMapSpace = ownerMapSpacesResult.value.find((space) => space.key === 'surface')
+                ?? ownerMapSpacesResult.value[0]
+                ?? null;
+            if (refreshedMapSpace === null) {
+                refreshed = false;
+            } else {
+                map.synchronizeMapSpace(refreshedMapSpace);
+                mapSpace.value = refreshedMapSpace;
+            }
+        }
+    } else {
+        refreshed = false;
+    }
+
+    if (page.value === 'island' && refreshedNation !== null && refreshedNation.capital !== null && refreshedMapSpace !== null) {
+        await map.loadAround(refreshedMapSpace, refreshedNation.capital.x, refreshedNation.capital.y, { kind: 'private' });
         if (map.error.value !== null) refreshed = false;
     } else if (page.value === 'preview' && refreshedPreview !== null && refreshedPreview.capital !== null) {
         await map.loadAround(refreshedPreview.map_space, refreshedPreview.capital.x, refreshedPreview.capital.y, {

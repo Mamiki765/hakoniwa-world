@@ -113,6 +113,7 @@ final class PublicWorldService
                 'world_id' => $mapSpace->world_id,
                 'key' => $mapSpace->key,
                 'name' => $mapSpace->name,
+                'bounds_revision' => $mapSpace->boundsRevision(),
                 'bounds' => [
                     'min_x' => $mapSpace->min_x,
                     'max_x' => $mapSpace->max_x,

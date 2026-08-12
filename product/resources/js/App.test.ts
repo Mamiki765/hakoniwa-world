@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
+import HexMap from './components/HexMap.vue';
 import type { MapChunk, Nation, PublicNationDetail } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
@@ -34,7 +35,7 @@ const publicDetail: PublicNationDetail = {
     monster_kill_stats: [{
         key: 'inora', name: 'いのら', kill_count: 1, first_killed_turn: 12, last_killed_turn: 12,
     }],
-    map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
+    map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
 };
 
 function publicResponse(path: string): Response | null {
@@ -109,7 +110,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.4.1');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.5.0');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
         expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
@@ -329,7 +330,7 @@ describe('application lobby and island entry', () => {
         wrapper.unmount();
     });
 
-    it('refreshes the owner Nation and loaded private map when the turn advances', async () => {
+    it('refreshes the owner Nation, MapSpace bounds revision, and loaded private map when the turn advances', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
         const ownerNation = {
@@ -344,9 +345,11 @@ describe('application lobby and island entry', () => {
         } as Nation;
         let summaryCalls = 0;
         let nationCalls = 0;
+        let mapSpaceCalls = 0;
         let privateChunkCalls = 0;
         let ownerEventCalls = 0;
         let failTurnRefreshChunk = true;
+        let failExpansionRefreshChunk = true;
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             if (path.endsWith('/summary')) {
@@ -370,11 +373,22 @@ describe('application lobby and island entry', () => {
                     total_population: nationCalls === 1 ? 1000 : 1500,
                 });
             }
-            if (path === '/api/v1/worlds/1/map-spaces') return response([publicDetail.map_space]);
+            if (path === '/api/v1/worlds/1/map-spaces') {
+                mapSpaceCalls++;
+                return response([mapSpaceCalls < 4 ? publicDetail.map_space : {
+                    ...publicDetail.map_space,
+                    bounds_revision: 'bounds-0-63',
+                    bounds: { min_x: 0, max_x: 63, min_y: 0, max_y: 63 },
+                }]);
+            }
             if (path.includes('/api/v1/map-spaces/2/chunks/')) {
                 privateChunkCalls++;
                 if (summaryCalls >= 2 && failTurnRefreshChunk) {
                     failTurnRefreshChunk = false;
+                    return response(null, 500);
+                }
+                if (mapSpaceCalls >= 4 && failExpansionRefreshChunk) {
+                    failExpansionRefreshChunk = false;
                     return response(null, 500);
                 }
                 return response(emptyChunk);
@@ -409,8 +423,10 @@ describe('application lobby and island entry', () => {
 
         expect(summaryCalls).toBe(2);
         expect(nationCalls).toBe(2);
+        expect(mapSpaceCalls).toBe(2);
         expect(privateChunkCalls).toBeGreaterThan(initialChunkCalls);
         expect(ownerEventCalls).toBe(2);
+        expect(wrapper.findComponent(HexMap).props('bounds')).toEqual(publicDetail.map_space.bounds);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
         const failedRefreshChunkCalls = privateChunkCalls;
 
@@ -419,8 +435,24 @@ describe('application lobby and island entry', () => {
 
         expect(summaryCalls).toBe(3);
         expect(nationCalls).toBe(3);
+        expect(mapSpaceCalls).toBe(3);
         expect(privateChunkCalls).toBeGreaterThan(failedRefreshChunkCalls);
         expect(ownerEventCalls).toBe(2);
+
+        await vi.advanceTimersByTimeAsync(57_000);
+        await flushPromises();
+
+        expect(summaryCalls).toBe(4);
+        expect(mapSpaceCalls).toBe(4);
+        expect(wrapper.findComponent(HexMap).props('bounds')).toEqual({ min_x: 0, max_x: 63, min_y: 0, max_y: 63 });
+        const failedExpansionChunkCalls = privateChunkCalls;
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flushPromises();
+
+        expect(summaryCalls).toBe(5);
+        expect(mapSpaceCalls).toBe(5);
+        expect(privateChunkCalls).toBeGreaterThan(failedExpansionChunkCalls);
         wrapper.unmount();
     });
 
@@ -575,6 +607,50 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toBe(true);
     });
 
+    it('refreshes an open public preview when bounds change without a turn advance', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        let detailCalls = 0;
+        let publicChunkCalls = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/nations/7') {
+                detailCalls++;
+                return response(detailCalls === 1 ? publicDetail : {
+                    ...publicDetail,
+                    map_space: {
+                        ...publicDetail.map_space,
+                        bounds_revision: 'bounds-0-63',
+                        bounds: { min_x: 0, max_x: 63, min_y: 0, max_y: 63 },
+                    },
+                });
+            }
+            if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) {
+                publicChunkCalls++;
+                return response(emptyChunk);
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.find('.ranking-card tbody button').trigger('click');
+        await flushPromises();
+        const initialChunkCalls = publicChunkCalls;
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flushPromises();
+
+        expect(detailCalls).toBe(2);
+        expect(publicChunkCalls).toBeGreaterThan(initialChunkCalls);
+        expect(wrapper.findComponent(HexMap).props('bounds')).toEqual({ min_x: 0, max_x: 63, min_y: 0, max_y: 63 });
+        wrapper.unmount();
+    });
+
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {
         vi.useFakeTimers();
         const nation: Nation = {
@@ -630,7 +706,7 @@ describe('application lobby and island entry', () => {
                 ...nation, owner_name: '更新島主', comment: '<b>更新コメント</b>',
             });
             if (path === '/api/v1/worlds/1/map-spaces') return response([{
-                id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
+                id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
             }]);
             if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path === '/api/v1/nations/3/events?page=1') return response({

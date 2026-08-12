@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\World\MapBounds;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -50,5 +51,21 @@ class MapSpace extends Model
     public function chunks(): HasMany
     {
         return $this->hasMany(MapChunk::class);
+    }
+
+    public function currentBounds(): MapBounds
+    {
+        return new MapBounds(
+            $this->min_x,
+            $this->max_x,
+            $this->min_y,
+            $this->max_y,
+            (int) config('hakoniwa.ruleset.chunk_size'),
+        );
+    }
+
+    public function boundsRevision(): string
+    {
+        return $this->currentBounds()->revision();
     }
 }

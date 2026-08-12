@@ -13,7 +13,7 @@ use App\Domain\Turn\TurnOrderService;
 use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnSeedGenerator;
-use App\Domain\Turn\WorldTurnLock;
+use App\Domain\World\WorldMutationLock;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -278,7 +278,7 @@ final class RulesetV2LiveMonsterReferenceRepairTest extends TestCase
 
         $run = (new TurnRunner(
             app(TurnPipeline::class),
-            new WorldTurnLock,
+            new WorldMutationLock,
             new HotfixFixedTurnSeedGenerator(str_repeat('f', 64)),
             app(CurrentRulesetGuard::class),
             app(MonsterKillCycleService::class),

@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use Illuminate\Database\ConnectionInterface;
+use App\Domain\World\WorldMutationLock;
+use App\Models\User;
+use DomainException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
@@ -39,82 +41,55 @@ class PostgresRegistrationLockTest extends TestCase
 
     protected function tearDown(): void
     {
+        DB::setDefaultConnection($this->primaryConnection);
         foreach ([$this->primaryConnection, self::PROBE_CONNECTION] as $connectionName) {
             $connection = DB::connection($connectionName);
             while ($connection->transactionLevel() > 0) {
                 $connection->rollBack();
             }
+            $connection->selectOne('SELECT pg_advisory_unlock_all()');
         }
         DB::purge(self::PROBE_CONNECTION);
         parent::tearDown();
     }
 
-    public function test_second_connection_cannot_acquire_the_same_world_registration_lock(): void
+    public function test_registration_acquires_the_common_world_mutation_lock_before_its_transaction(): void
     {
         $world = $this->lightweightWorld();
-        $primary = DB::connection($this->primaryConnection);
-        $primary->beginTransaction();
-        $primary->select('SELECT pg_advisory_xact_lock(?, ?)', [NationCreationService::REGISTRATION_LOCK_NAMESPACE, $world->id]);
+        $user = User::factory()->create();
+        $lock = app(WorldMutationLock::class);
+        $probe = DB::connection(self::PROBE_CONNECTION);
+        $acquired = $probe->selectOne(
+            'SELECT pg_try_advisory_lock(hashtextextended(?, 0)) AS acquired',
+            [$lock->key($world)],
+        );
+        $this->assertTrue($acquired->acquired);
 
         try {
-            $result = DB::connection(self::PROBE_CONNECTION)->selectOne(
-                'SELECT pg_try_advisory_xact_lock(?, ?) AS acquired',
-                [NationCreationService::REGISTRATION_LOCK_NAMESPACE, $world->id],
-            );
-
-            $this->assertFalse($result->acquired);
+            app(NationCreationService::class)->create($user, $world, '競合登録国', '試験島主');
+            $this->fail('Registration unexpectedly passed the World mutation lock.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('World', $exception->getMessage());
         } finally {
-            $primary->rollBack();
+            $released = $probe->selectOne(
+                'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released',
+                [$lock->key($world)],
+            );
+            $this->assertTrue($released->released);
         }
+
+        $this->assertDatabaseMissing('nation_memberships', [
+            'user_id' => $user->id,
+            'world_id' => $world->id,
+        ]);
+        $this->assertDatabaseCount('nation_creation_requests', 0);
     }
 
-    public function test_serialized_concurrent_registration_allocates_distinct_per_world_numbers(): void
+    public function test_common_lock_keeps_the_legacy_turn_key_for_rolling_deploy_serialization(): void
     {
         $world = $this->lightweightWorld();
-        $primary = DB::connection($this->primaryConnection);
-        $probe = DB::connection(self::PROBE_CONNECTION);
-        $now = now();
+        $lock = new WorldMutationLock;
 
-        $primary->beginTransaction();
-        $primary->select('SELECT pg_advisory_xact_lock(?, ?)', [
-            NationCreationService::REGISTRATION_LOCK_NAMESPACE, $world->id,
-        ]);
-        $this->insertNextNation($primary, $world->id, 'First registration', $now);
-
-        $probe->beginTransaction();
-        $blocked = $probe->selectOne('SELECT pg_try_advisory_xact_lock(?, ?) AS acquired', [
-            NationCreationService::REGISTRATION_LOCK_NAMESPACE, $world->id,
-        ]);
-        $this->assertFalse($blocked->acquired);
-
-        $primary->commit();
-        $probe->select('SELECT pg_advisory_xact_lock(?, ?)', [
-            NationCreationService::REGISTRATION_LOCK_NAMESPACE, $world->id,
-        ]);
-        $this->insertNextNation($probe, $world->id, 'Second registration', $now);
-        $probe->commit();
-
-        $this->assertSame(
-            [1, 2],
-            DB::table('nations')->where('world_id', $world->id)->orderBy('id')->pluck('nation_number')->all(),
-        );
-    }
-
-    private function insertNextNation(
-        ConnectionInterface $connection,
-        int $worldId,
-        string $name,
-        mixed $now,
-    ): void {
-        $next = (int) $connection->table('nations')->where('world_id', $worldId)->max('nation_number') + 1;
-        $connection->table('nations')->insert([
-            'world_id' => $worldId,
-            'nation_number' => $next,
-            'name' => $name,
-            'money' => 100,
-            'state' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        $this->assertSame("hakoniwa.turn.world.{$world->id}", $lock->key($world));
     }
 }

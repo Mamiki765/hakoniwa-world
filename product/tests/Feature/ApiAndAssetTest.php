@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
+use App\Application\MapChunkService;
 use App\Domain\Map\MapCellStateService;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -14,6 +15,7 @@ use App\Models\ResourceDefinition;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Services\AssetManifestResolver;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
@@ -40,6 +42,12 @@ class ApiAndAssetTest extends TestCase
         $user = User::factory()->create();
         $mapSpace = MapSpace::query()->firstOrFail();
         DB::statement("SELECT setval(pg_get_serial_sequence('nations', 'id'), 18, false)");
+
+        $this->actingAs($user)->getJson("/api/v1/worlds/{$world->id}/map-spaces")
+            ->assertOk()
+            ->assertJsonPath('data.0.bounds.min_x', 0)
+            ->assertJsonPath('data.0.bounds.max_x', 31)
+            ->assertJsonPath('data.0.bounds_revision', $mapSpace->boundsRevision());
 
         $this->actingAs($user)->getJson("/api/v1/map-spaces/{$mapSpace->id}/chunks/-1/-1")
             ->assertOk()->assertJsonPath('data.chunk_x', -1)->assertJsonPath('data.chunk_y', -1)
@@ -169,6 +177,22 @@ class ApiAndAssetTest extends TestCase
                 $this->assertStringNotContainsString($privateValue, $publicBody);
             }
         }
+    }
+
+    public function test_chunk_row_is_not_exposed_as_generated_when_current_bounds_intersection_is_incomplete(): void
+    {
+        $world = $this->lightweightWorld();
+        $mapSpace = $this->surfaceMapSpace($world);
+        MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where('chunk_x', 0)
+            ->where('chunk_y', 0)
+            ->orderBy('id')
+            ->firstOrFail()
+            ->delete();
+
+        $this->expectException(DomainException::class);
+        app(MapChunkService::class)->present($mapSpace, 0, 0, null);
     }
 
     public function test_assets_fall_back_without_external_gifs_including_capital(): void

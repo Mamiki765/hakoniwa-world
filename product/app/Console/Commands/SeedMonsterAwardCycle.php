@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Application\MonsterKillCycleService;
 use App\Domain\Turn\TurnAlreadyRunningException;
-use App\Domain\Turn\WorldTurnLock;
+use App\Domain\World\WorldMutationLock;
 use App\Models\Nation;
 use App\Models\NationMonsterCycleStat;
 use App\Models\TurnRun;
@@ -24,7 +24,7 @@ final class SeedMonsterAwardCycle extends Command
 
     protected $description = 'Seed one pre-1.3.0 Nation monster-award cycle total without inferring history.';
 
-    public function handle(WorldTurnLock $turnLock, MonsterKillCycleService $cycles): int
+    public function handle(WorldMutationLock $mutationLock, MonsterKillCycleService $cycles): int
     {
         $worldKey = (string) $this->option('world');
         $nationOption = (string) $this->option('nation');
@@ -49,7 +49,7 @@ final class SeedMonsterAwardCycle extends Command
         }
 
         try {
-            $turnLock->acquire($world);
+            $mutationLock->acquire($world);
         } catch (TurnAlreadyRunningException) {
             $this->error("World '{$worldKey}' is currently processing a turn. Seed was not started.");
 
@@ -146,7 +146,7 @@ final class SeedMonsterAwardCycle extends Command
 
             return self::FAILURE;
         } finally {
-            $turnLock->release($world);
+            $mutationLock->release($world);
         }
 
         $this->info(

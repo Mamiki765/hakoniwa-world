@@ -4,9 +4,9 @@ namespace App\Console\Commands;
 
 use App\Application\OceanWorldGenerator;
 use App\Domain\Turn\TurnAlreadyRunningException;
-use App\Domain\Turn\WorldTurnLock;
-use App\Domain\World\WorldBounds;
+use App\Domain\World\InitialWorldBounds;
 use App\Domain\World\WorldGenerationProfile;
+use App\Domain\World\WorldMutationLock;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
@@ -31,7 +31,7 @@ final class ResetWorld extends Command
 
     protected $description = 'Reset one configured world in local or testing while preserving users and authentication identities.';
 
-    public function handle(OceanWorldGenerator $generator, WorldTurnLock $turnLock): int
+    public function handle(OceanWorldGenerator $generator, WorldMutationLock $mutationLock): int
     {
         if (app()->environment('production')) {
             $this->error('World reset is disabled in production. Use forward migrations or an explicit conversion path.');
@@ -68,7 +68,7 @@ final class ResetWorld extends Command
         }
 
         try {
-            $turnLock->acquire($world);
+            $mutationLock->acquire($world);
         } catch (TurnAlreadyRunningException) {
             $this->error("World '{$worldKey}' is currently processing a turn. Reset was not started.");
 
@@ -78,7 +78,7 @@ final class ResetWorld extends Command
         try {
             return $this->handleLockedWorld($world, $worldKey, $profile, $generator);
         } finally {
-            $turnLock->release($world);
+            $mutationLock->release($world);
         }
     }
 
@@ -240,7 +240,7 @@ final class ResetWorld extends Command
             ->delete();
     }
 
-    private function assertGeneratedWorld(World $world, WorldBounds $bounds): void
+    private function assertGeneratedWorld(World $world, InitialWorldBounds $bounds): void
     {
         $mapSpace = MapSpace::query()
             ->where('world_id', $world->id)

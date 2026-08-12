@@ -16,11 +16,20 @@ class StaggeredGridCoordinateTest extends TestCase
         $service = new ChunkCoordinateService(16);
         $this->assertSame($chunk, $service->floorDiv($value));
         $this->assertSame($local, $service->floorMod($value));
+        $this->assertSame([
+            'chunk_x' => $chunk,
+            'chunk_y' => $chunk,
+            'local_x' => $local,
+            'local_y' => $local,
+        ], $service->locate($value, $value));
     }
 
     public static function chunkBoundaries(): array
     {
-        return [[0, 0, 0], [15, 0, 15], [16, 1, 0], [-1, -1, 15], [-16, -1, 0], [-17, -2, 15]];
+        return [
+            [-17, -2, 15], [-16, -1, 0], [-1, -1, 15], [0, 0, 0], [15, 0, 15],
+            [16, 1, 0], [59, 3, 11], [63, 3, 15], [64, 4, 0], [79, 4, 15],
+        ];
     }
 
     public function test_chunk_and_local_coordinates_use_xy_names(): void
@@ -49,6 +58,29 @@ class StaggeredGridCoordinateTest extends TestCase
         $this->assertSame([
             [11, 9], [10, 8], [9, 8], [9, 9], [9, 10], [10, 10],
         ], $this->pairs($origin));
+    }
+
+    public function test_negative_rows_preserve_staggered_parity_neighbors_distance_and_projection(): void
+    {
+        $negativeEven = new GridCoordinate(10, -2);
+        $negativeOdd = new GridCoordinate(10, -1);
+        $projection = new StaggeredProjection;
+
+        $this->assertSame([
+            [11, -2], [11, -3], [10, -3], [9, -2], [10, -1], [11, -1],
+        ], $this->pairs($negativeEven));
+        $this->assertSame([
+            [11, -1], [10, -2], [9, -2], [9, -1], [9, 0], [10, 0],
+        ], $this->pairs($negativeOdd));
+        foreach (range(0, 5) as $direction) {
+            $this->assertSame(1, $negativeOdd->distanceTo($negativeOdd->neighbor($direction)));
+        }
+        $this->assertSame(
+            (new GridCoordinate(0, 0))->distanceTo(new GridCoordinate(4, 4)),
+            (new GridCoordinate(-20, -16))->distanceTo(new GridCoordinate(-16, -12)),
+        );
+        $this->assertSame(['x' => 336, 'y' => -64], $projection->toPixel($negativeEven));
+        $this->assertSame(['x' => 320, 'y' => -32], $projection->toPixel($negativeOdd));
     }
 
     public function test_corner_and_edge_neighbors_exclude_world_bounds(): void

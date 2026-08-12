@@ -10,7 +10,7 @@ use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnSeedGenerator;
 use App\Domain\Turn\TurnState;
-use App\Domain\Turn\WorldTurnLock;
+use App\Domain\World\WorldMutationLock;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
@@ -26,7 +26,7 @@ class TurnRunner
 
     public function __construct(
         private readonly TurnPipeline $pipeline,
-        private readonly WorldTurnLock $lock,
+        private readonly WorldMutationLock $lock,
         private readonly TurnSeedGenerator $seeds,
         private readonly CurrentRulesetGuard $rulesetGuard,
         private readonly MonsterKillCycleService $monsterCycles,

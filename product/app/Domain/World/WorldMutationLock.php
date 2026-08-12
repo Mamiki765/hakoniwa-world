@@ -1,12 +1,13 @@
 <?php
 
-namespace App\Domain\Turn;
+namespace App\Domain\World;
 
+use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Models\World;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
-final class WorldTurnLock
+class WorldMutationLock
 {
     /** @var array<int, string> */
     private array $heldLocks = [];
@@ -14,7 +15,10 @@ final class WorldTurnLock
     public function acquire(World $world): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
-            throw new DomainException('Turn execution requires PostgreSQL advisory locks.');
+            throw new DomainException('World mutation requires PostgreSQL advisory locks.');
+        }
+        if (isset($this->heldLocks[$world->id])) {
+            return;
         }
 
         $key = $this->key($world);
@@ -24,7 +28,7 @@ final class WorldTurnLock
         );
         $acquired = $row?->acquired;
         if (! in_array($acquired, [true, 1, '1', 't'], true)) {
-            throw new TurnAlreadyRunningException("World {$world->key} already has a running turn operation.");
+            throw new TurnAlreadyRunningException("World {$world->key} already has a running mutation.");
         }
         $this->heldLocks[$world->id] = $key;
     }
@@ -43,7 +47,11 @@ final class WorldTurnLock
         unset($this->heldLocks[$world->id]);
     }
 
-    private function key(World $world): string
+    /**
+     * The legacy key is retained so rolling deploys serialize old turn workers
+     * with registration and future expansion/abandonment operations.
+     */
+    public function key(World $world): string
     {
         return "hakoniwa.turn.world.{$world->id}";
     }

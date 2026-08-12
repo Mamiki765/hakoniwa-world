@@ -10,16 +10,16 @@ enum WorldGenerationProfile: string
     case Debug32x32 = 'debug-32x32';
 
     /** @param array<string, mixed> $rules */
-    public function bounds(array $rules): WorldBounds
+    public function bounds(array $rules): InitialWorldBounds
     {
         return match ($this) {
-            self::Production => WorldBounds::fromRuleset($rules),
-            self::Debug32x32 => WorldBounds::debug32x32((int) $rules['chunk_size']),
+            self::Production => InitialWorldBounds::fromRuleset($rules),
+            self::Debug32x32 => InitialWorldBounds::debug32x32((int) $rules['chunk_size']),
         };
     }
 
     /** @param array<string, mixed> $rules */
-    public static function matchingBounds(WorldBounds $bounds, array $rules): ?self
+    public static function matchingBounds(MapBounds $bounds, array $rules): ?self
     {
         foreach (self::cases() as $profile) {
             if ($profile->bounds($rules)->equals($bounds)) {

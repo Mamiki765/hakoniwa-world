@@ -21,7 +21,14 @@ export interface Announcement {
 
 export interface World { id: number; key: string; name: string; turn: number }
 export interface MapBounds { min_x: number; max_x: number; min_y: number; max_y: number }
-export interface MapSpace { id: number; world_id: number; key: string; name: string; bounds: MapBounds }
+export interface MapSpace {
+    id: number;
+    world_id: number;
+    key: string;
+    name: string;
+    bounds_revision: string;
+    bounds: MapBounds;
+}
 
 export interface Nation {
     id: number;

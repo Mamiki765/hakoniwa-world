@@ -4,6 +4,8 @@ namespace App\Application;
 
 use App\Domain\Nation\NationProfileText;
 use App\Domain\Ruleset\CurrentRulesetGuard;
+use App\Domain\Turn\TurnAlreadyRunningException;
+use App\Domain\World\WorldMutationLock;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationMembership;
@@ -15,13 +17,12 @@ use Illuminate\Support\Str;
 
 final class NationCreationService
 {
-    public const REGISTRATION_LOCK_NAMESPACE = 121315;
-
     public function __construct(
         private readonly CapitalPlacementService $placement,
         private readonly InitialIslandGenerator $islands,
         private readonly NationResourceService $resources,
         private readonly CurrentRulesetGuard $rulesetGuard,
+        private readonly WorldMutationLock $worldMutationLock,
     ) {}
 
     public function create(
@@ -34,94 +35,96 @@ final class NationCreationService
         $ownerName = NationProfileText::ownerName($ownerName);
         $profileComment = NationProfileText::comment($profileComment);
 
-        return DB::transaction(function () use ($user, $world, $name, $ownerName, $profileComment): Nation {
-            $world = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
-            $ruleset = $world->rulesetVersion()->firstOrFail();
-            $this->rulesetGuard->assertMutable($world, $ruleset);
-            $this->lockRegistration($world);
-            $rules = $ruleset->settings;
+        try {
+            $this->worldMutationLock->acquire($world);
+        } catch (TurnAlreadyRunningException $exception) {
+            throw new DomainException('このWorldは現在更新中です。後でもう一度登録してください。', previous: $exception);
+        }
 
-            if (NationMembership::query()->where('user_id', $user->id)->where('world_id', $world->id)->exists()) {
-                throw new DomainException('このWorldにはすでにNationがあります。');
-            }
+        try {
+            return DB::transaction(function () use ($user, $world, $name, $ownerName, $profileComment): Nation {
+                $world = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+                $ruleset = $world->rulesetVersion()->firstOrFail();
+                $this->rulesetGuard->assertMutable($world, $ruleset);
+                $rules = $ruleset->settings;
 
-            $largestNationNumber = (int) Nation::query()
-                ->where('world_id', $world->id)
-                ->max('nation_number');
-            if ($largestNationNumber >= 2_147_483_647) {
-                throw new DomainException('このWorldではこれ以上Nation番号を採番できません。');
-            }
-            $nationNumber = $largestNationNumber + 1;
+                if (NationMembership::query()->where('user_id', $user->id)->where('world_id', $world->id)->exists()) {
+                    throw new DomainException('このWorldにはすでにNationがあります。');
+                }
 
-            $mapSpace = MapSpace::query()
-                ->where('world_id', $world->id)
-                ->where('key', config('hakoniwa.world.map_space_key'))
-                ->firstOrFail();
-            $requestKey = (string) Str::uuid();
-            $seed = hash('sha256', implode(':', [
-                $world->id, $user->id, mb_strtolower($name), config('hakoniwa.initial_island.generator_version'),
-            ]));
+                $largestNationNumber = (int) Nation::query()
+                    ->where('world_id', $world->id)
+                    ->max('nation_number');
+                if ($largestNationNumber >= 2_147_483_647) {
+                    throw new DomainException('このWorldではこれ以上Nation番号を採番できません。');
+                }
+                $nationNumber = $largestNationNumber + 1;
 
-            DB::table('nation_creation_requests')->insert([
-                'request_key' => $requestKey, 'user_id' => $user->id, 'world_id' => $world->id,
-                'status' => 'reserving', 'generation_seed' => $seed,
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
+                $mapSpace = MapSpace::query()
+                    ->where('world_id', $world->id)
+                    ->where('key', config('hakoniwa.world.map_space_key'))
+                    ->firstOrFail();
+                $requestKey = (string) Str::uuid();
+                $seed = hash('sha256', implode(':', [
+                    $world->id, $user->id, mb_strtolower($name), config('hakoniwa.initial_island.generator_version'),
+                ]));
 
-            $center = $this->placement->choose($mapSpace);
-            DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
-                'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
-            ]);
+                DB::table('nation_creation_requests')->insert([
+                    'request_key' => $requestKey, 'user_id' => $user->id, 'world_id' => $world->id,
+                    'status' => 'reserving', 'generation_seed' => $seed,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
 
-            $nation = Nation::query()->create([
-                'world_id' => $world->id, 'nation_number' => $nationNumber,
-                'registered_turn' => $world->current_turn, 'name' => $name,
-                'owner_name' => $ownerName, 'profile_comment' => $profileComment,
-                'money' => $rules['initial_money'],
-                'state' => 'active',
-                'idle_counter' => 100,
-            ]);
-            $this->resources->initialize($nation);
-            $this->islands->generate($mapSpace, $nation, $center, $seed);
-            NationMembership::query()->create([
-                'user_id' => $user->id, 'world_id' => $world->id,
-                'nation_id' => $nation->id, 'role' => 'owner',
-            ]);
+                $center = $this->placement->choose($mapSpace);
+                DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
+                    'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
+                ]);
 
-            DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
-                'nation_id' => $nation->id, 'status' => 'completed', 'updated_at' => now(),
-            ]);
-            DB::table('audit_events')->insert([
-                'actor_user_id' => $user->id,
-                'world_id' => $world->id,
-                'turn' => $world->current_turn,
-                'nation_id' => $nation->id,
-                'x' => $center->x,
-                'y' => $center->y,
-                'message' => null,
-                'visibility' => 'public',
-                'event_type' => 'nation.created',
-                'severity' => 'info',
-                'subject_type' => Nation::class, 'subject_id' => $nation->id,
-                'metadata' => json_encode([
+                $nation = Nation::query()->create([
+                    'world_id' => $world->id, 'nation_number' => $nationNumber,
+                    'registered_turn' => $world->current_turn, 'name' => $name,
+                    'owner_name' => $ownerName, 'profile_comment' => $profileComment,
+                    'money' => $rules['initial_money'],
+                    'state' => 'active',
+                    'idle_counter' => 100,
+                ]);
+                $this->resources->initialize($nation);
+                $this->islands->generate($mapSpace, $nation, $center, $seed);
+                NationMembership::query()->create([
+                    'user_id' => $user->id, 'world_id' => $world->id,
+                    'nation_id' => $nation->id, 'role' => 'owner',
+                ]);
+
+                DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
+                    'nation_id' => $nation->id, 'status' => 'completed', 'updated_at' => now(),
+                ]);
+                DB::table('audit_events')->insert([
+                    'actor_user_id' => $user->id,
                     'world_id' => $world->id,
-                    'target_turn' => $world->current_turn,
-                    'nation_number' => $nation->nation_number,
-                    'nation_name' => $nation->name,
+                    'turn' => $world->current_turn,
+                    'nation_id' => $nation->id,
                     'x' => $center->x,
                     'y' => $center->y,
-                ], JSON_THROW_ON_ERROR),
-                'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
-            ]);
+                    'message' => null,
+                    'visibility' => 'public',
+                    'event_type' => 'nation.created',
+                    'severity' => 'info',
+                    'subject_type' => Nation::class, 'subject_id' => $nation->id,
+                    'metadata' => json_encode([
+                        'world_id' => $world->id,
+                        'target_turn' => $world->current_turn,
+                        'nation_number' => $nation->nation_number,
+                        'nation_name' => $nation->name,
+                        'x' => $center->x,
+                        'y' => $center->y,
+                    ], JSON_THROW_ON_ERROR),
+                    'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
 
-            return $nation->load(['capital', 'resourceBalances.definition']);
-        }, 3);
-    }
-
-    private function lockRegistration(World $world): void
-    {
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            DB::select('SELECT pg_advisory_xact_lock(?, ?)', [self::REGISTRATION_LOCK_NAMESPACE, $world->id]);
+                return $nation->load(['capital', 'resourceBalances.definition']);
+            }, 3);
+        } finally {
+            $this->worldMutationLock->release($world);
         }
     }
 }
