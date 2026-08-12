@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
+import HexMap from './components/HexMap.vue';
 import type { MapChunk, Nation, PublicNationDetail } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
@@ -329,7 +330,7 @@ describe('application lobby and island entry', () => {
         wrapper.unmount();
     });
 
-    it('refreshes the owner Nation and loaded private map when the turn advances', async () => {
+    it('refreshes the owner Nation, MapSpace bounds revision, and loaded private map when the turn advances', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
         const ownerNation = {
@@ -344,6 +345,7 @@ describe('application lobby and island entry', () => {
         } as Nation;
         let summaryCalls = 0;
         let nationCalls = 0;
+        let mapSpaceCalls = 0;
         let privateChunkCalls = 0;
         let ownerEventCalls = 0;
         let failTurnRefreshChunk = true;
@@ -370,7 +372,14 @@ describe('application lobby and island entry', () => {
                     total_population: nationCalls === 1 ? 1000 : 1500,
                 });
             }
-            if (path === '/api/v1/worlds/1/map-spaces') return response([publicDetail.map_space]);
+            if (path === '/api/v1/worlds/1/map-spaces') {
+                mapSpaceCalls++;
+                return response([mapSpaceCalls < 4 ? publicDetail.map_space : {
+                    ...publicDetail.map_space,
+                    bounds_revision: 'bounds-0-63',
+                    bounds: { min_x: 0, max_x: 63, min_y: 0, max_y: 63 },
+                }]);
+            }
             if (path.includes('/api/v1/map-spaces/2/chunks/')) {
                 privateChunkCalls++;
                 if (summaryCalls >= 2 && failTurnRefreshChunk) {
@@ -409,8 +418,10 @@ describe('application lobby and island entry', () => {
 
         expect(summaryCalls).toBe(2);
         expect(nationCalls).toBe(2);
+        expect(mapSpaceCalls).toBe(2);
         expect(privateChunkCalls).toBeGreaterThan(initialChunkCalls);
         expect(ownerEventCalls).toBe(2);
+        expect(wrapper.findComponent(HexMap).props('bounds')).toEqual(publicDetail.map_space.bounds);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
         const failedRefreshChunkCalls = privateChunkCalls;
 
@@ -419,8 +430,16 @@ describe('application lobby and island entry', () => {
 
         expect(summaryCalls).toBe(3);
         expect(nationCalls).toBe(3);
+        expect(mapSpaceCalls).toBe(3);
         expect(privateChunkCalls).toBeGreaterThan(failedRefreshChunkCalls);
         expect(ownerEventCalls).toBe(2);
+
+        await vi.advanceTimersByTimeAsync(57_000);
+        await flushPromises();
+
+        expect(summaryCalls).toBe(4);
+        expect(mapSpaceCalls).toBe(4);
+        expect(wrapper.findComponent(HexMap).props('bounds')).toEqual({ min_x: 0, max_x: 63, min_y: 0, max_y: 63 });
         wrapper.unmount();
     });
 
