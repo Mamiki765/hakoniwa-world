@@ -67,6 +67,17 @@ final class ExpandWorld extends Command
 
             return self::FAILURE;
         }
+        $approvedTarget = new MapBounds(0, 63, 0, 63, (int) config('hakoniwa.ruleset.chunk_size'));
+        if (! $target->equals($approvedTarget)) {
+            $this->line('operation_contract=failed');
+            $this->error(
+                'preflight_blocker=This operator command is approved only for '
+                .'shared-world x=0..59,y=0..59 to x=0..63,y=0..63.',
+            );
+            $this->error('preflight=failed execution=not_started');
+
+            return self::FAILURE;
+        }
 
         $world = World::query()->where('key', $worldKey)->first();
         if ($world === null) {
@@ -94,7 +105,7 @@ final class ExpandWorld extends Command
         $approvedOperation = $this->isApprovedProductionOperation($expected, $target);
 
         if (! $approvedOperation) {
-            $blockers[] = 'This operator command is approved only for shared-world x=0..59,y=0..59 to x=0..63,y=0..63.';
+            $blockers[] = 'Expected-before bounds do not match the approved x=0..59,y=0..59 operation contract.';
         }
         if (! $dryRun && ! $productionEnvironment) {
             $blockers[] = 'World expansion execution is allowed only when APP_ENV is production; use --dry-run elsewhere.';

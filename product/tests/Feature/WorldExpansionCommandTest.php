@@ -127,13 +127,32 @@ final class WorldExpansionCommandTest extends TestCase
 
         try {
             $this->artisan('hakoniwa:world:expand', $options)
-                ->expectsOutputToContain('operation_contract=failed production_guard=ok')
+                ->expectsOutputToContain('operation_contract=failed')
                 ->expectsOutputToContain('approved only for shared-world x=0..59,y=0..59 to x=0..63,y=0..63')
                 ->expectsOutputToContain('preflight=failed execution=not_started')
                 ->assertFailed();
         } finally {
             $this->setEnvironment('testing');
         }
+
+        $mapSpace = $this->surfaceMapSpace($world);
+        $this->assertSame(3600, $mapSpace->cells()->count());
+        $this->assertSame(16, $mapSpace->chunks()->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
+    }
+
+    public function test_unapproved_huge_target_is_rejected_before_prediction_enumeration(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $options = $this->productionExpansionOptions();
+        $options['--target-max-x'] = (string) PHP_INT_MAX;
+
+        $this->artisan('hakoniwa:world:expand', [
+            ...$options,
+            '--dry-run' => true,
+        ])->expectsOutputToContain('operation_contract=failed')
+            ->expectsOutputToContain('preflight=failed execution=not_started')
+            ->assertFailed();
 
         $mapSpace = $this->surfaceMapSpace($world);
         $this->assertSame(3600, $mapSpace->cells()->count());
