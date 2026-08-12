@@ -44,6 +44,33 @@ export function useMapState() {
         emptyChunks.value = [...confirmedEmptyChunks].sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
     }
 
+    function resetForMapSpace(nextMapSpace: MapSpace): void {
+        generation++;
+        mapSpace = nextMapSpace;
+        loading.value = false;
+        error.value = null;
+        cells.clear();
+        selected.value = null;
+        emptyChunks.value = [];
+        loadedChunks = new Set<string>();
+        confirmedEmptyChunks = new Set<string>();
+        inFlightChunks = new Map<string, Promise<void>>();
+    }
+
+    function synchronizeMapSpace(nextMapSpace: MapSpace): boolean {
+        const revisionChanged = mapSpace === null
+            || mapSpace.id !== nextMapSpace.id
+            || mapSpace.bounds_revision !== nextMapSpace.bounds_revision;
+
+        if (revisionChanged) {
+            resetForMapSpace(nextMapSpace);
+        } else {
+            mapSpace = nextMapSpace;
+        }
+
+        return revisionChanged;
+    }
+
     function chunkPath(mapSpaceId: number, chunkX: number, chunkY: number): string {
         return source.kind === 'public'
             ? `/api/v1/public/nations/${source.nationId}/map-spaces/${mapSpaceId}/chunks/${chunkX}/${chunkY}`
@@ -116,16 +143,9 @@ export function useMapState() {
         y: number,
         nextSource: MapSource = { kind: 'private' },
     ): Promise<void> {
-        generation++;
-        mapSpace = nextMapSpace;
+        resetForMapSpace(nextMapSpace);
         source = nextSource;
         loading.value = true;
-        error.value = null;
-        cells.clear();
-        emptyChunks.value = [];
-        loadedChunks = new Set<string>();
-        confirmedEmptyChunks = new Set<string>();
-        inFlightChunks = new Map<string, Promise<void>>();
         const centerX = floorDiv(x, CHUNK_SIZE);
         const centerY = floorDiv(y, CHUNK_SIZE);
         const coordinates: Array<{ x: number; y: number }> = [];
@@ -185,6 +205,7 @@ export function useMapState() {
         loading,
         error,
         emptyChunks,
+        synchronizeMapSpace,
         loadAround,
         loadVisibleRange,
         loadAllChunks,

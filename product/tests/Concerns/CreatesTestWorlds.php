@@ -3,7 +3,7 @@
 namespace Tests\Concerns;
 
 use App\Application\OceanWorldGenerator;
-use App\Domain\World\WorldBounds;
+use App\Domain\World\MapBounds;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapSpace;
 use App\Models\World;
@@ -23,11 +23,11 @@ trait CreatesTestWorlds
             ->firstOrFail();
     }
 
-    protected function boundsFor(World $world): WorldBounds
+    protected function boundsFor(World $world): MapBounds
     {
         $mapSpace = $this->surfaceMapSpace($world);
 
-        return new WorldBounds(
+        return new MapBounds(
             $mapSpace->min_x,
             $mapSpace->max_x,
             $mapSpace->min_y,

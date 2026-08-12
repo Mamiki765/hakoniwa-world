@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\AuthIdentityService;
 use App\Application\CommandQueueService;
 use App\Application\ExternalIdentityData;
+use App\Application\MapSpaceCoveragePreflight;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
@@ -163,7 +164,7 @@ class WorldResetCommandTest extends TestCase
         $boardMessage = $this->boardMessage($world, $user);
         $nationCount = Nation::query()->count();
         $cellCount = MapCell::query()->count();
-        $this->app->bind(OceanWorldGenerator::class, fn () => new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class)) extends OceanWorldGenerator
+        $this->app->bind(OceanWorldGenerator::class, fn () => new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class), app(MapSpaceCoveragePreflight::class)) extends OceanWorldGenerator
         {
             public function initialize(
                 WorldGenerationProfile $profile = WorldGenerationProfile::Production,

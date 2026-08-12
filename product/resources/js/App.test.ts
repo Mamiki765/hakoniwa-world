@@ -34,7 +34,7 @@ const publicDetail: PublicNationDetail = {
     monster_kill_stats: [{
         key: 'inora', name: 'いのら', kill_count: 1, first_killed_turn: 12, last_killed_turn: 12,
     }],
-    map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
+    map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
 };
 
 function publicResponse(path: string): Response | null {
@@ -630,7 +630,7 @@ describe('application lobby and island entry', () => {
                 ...nation, owner_name: '更新島主', comment: '<b>更新コメント</b>',
             });
             if (path === '/api/v1/worlds/1/map-spaces') return response([{
-                id: 2, world_id: 1, key: 'surface', name: '地上', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
+                id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
             }]);
             if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path === '/api/v1/nations/3/events?page=1') return response({

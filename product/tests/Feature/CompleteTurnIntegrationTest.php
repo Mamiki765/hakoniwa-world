@@ -17,7 +17,7 @@ use App\Domain\Turn\TurnPhase;
 use App\Domain\Turn\TurnPhaseResult;
 use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnSeedGenerator;
-use App\Domain\Turn\WorldTurnLock;
+use App\Domain\World\WorldMutationLock;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -119,7 +119,7 @@ class CompleteTurnIntegrationTest extends TestCase
 
         $run = (new TurnRunner(
             app(TurnPipeline::class),
-            new WorldTurnLock,
+            new WorldMutationLock,
             new Pr11FixedTurnSeedGenerator(str_repeat('7', 64)),
             app(CurrentRulesetGuard::class),
             app(MonsterKillCycleService::class),
@@ -276,7 +276,7 @@ class CompleteTurnIntegrationTest extends TestCase
         $seed = str_repeat('7', 64);
         $runner = new TurnRunner(
             $pipeline,
-            new WorldTurnLock,
+            new WorldMutationLock,
             new Pr11FixedTurnSeedGenerator($seed),
             app(CurrentRulesetGuard::class),
             app(MonsterKillCycleService::class),

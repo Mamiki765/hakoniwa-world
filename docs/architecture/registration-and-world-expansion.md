@@ -21,7 +21,7 @@ MVPではサーバーによる自動配置を採用する。利用者の座標�
 
 1. 入力を検証する。Nation名、表示設定、参加World、利用規約同意など。
 2. `(user_id, world_id)`とclient request IDに対応するregistration requestまたは同等の冪等keyを確保する。
-3. Worldのregistration lockを取得し、同じUserが同じWorldにNationを持たないことと、Worldの状態を再確認する。
+3. transaction開始前に共通`WorldMutationLock`を取得し、transaction内でWorld rowをlockして、同じUserが同じWorldにNationを持たないこととWorldの状態を再確認する。
 4. 現在の地上生成境界内から、ruleset条件を満たすCapital候補をサーバーが探索する。
 5. 候補がなければ、`chunk_size = 16`に整列した必要最小のWorld拡張計画を作る。
 6. 拡張後の地形を決定的seedで生成し、候補を再探索する。
@@ -140,7 +140,7 @@ sunken_archivedの国家は旧領土・旧首都を地図へ巻き戻さない�
 
 ## MVP実装記録（2026-07-26）
 
-国家作成はWorld row lockとworld単位のPostgreSQL transaction advisory lockで直列化する。要求予約、候補選定、Nation、初期資源、島、Capital、Territory、Membership、audit eventを1 transactionに含め、例外時は全てrollbackする。
+国家作成はtransaction開始前にworld単位のPostgreSQL session advisory `WorldMutationLock`を取得し、その後にWorld rowをlockして直列化する。turn、将来のWorld expansion、将来のNation abandonmentも同じkeyと順序を使う。要求予約、候補選定、Nation、初期資源、島、Capital、Territory、Membership、audit eventを1 transactionに含め、例外時は全てrollbackする。
 
 PR19では登録入力に公開用の`owner_name`（必須、1–30文字）と`comment`（任意、0–100文字）を追加する。どちらも1行のplain textとして保存し、制御文字・改行・Unicode line/paragraph separatorを拒否する。前後のUnicode space separatorは除去するが、HTMLやURLを解釈・展開しない。OAuthの表示名、provider ID、emailから島主名を暗黙補完しない。
 

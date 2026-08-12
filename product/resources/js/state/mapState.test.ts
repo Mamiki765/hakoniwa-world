@@ -7,6 +7,7 @@ const mapSpace: MapSpace = {
     world_id: 1,
     key: 'surface',
     name: '地上',
+    bounds_revision: 'bounds-0-59',
     bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
 };
 
@@ -125,5 +126,24 @@ describe('lazy map chunk loading', () => {
             expect(Number(match?.[2])).toBeGreaterThanOrEqual(0);
             expect(Number(match?.[2])).toBeLessThanOrEqual(3);
         }
+    });
+
+    it('invalidates loaded and confirmed-empty chunks when bounds revision changes for the same MapSpace id', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => response(chunkFromPath(String(input), 'empty')));
+        vi.stubGlobal('fetch', fetchMock);
+        const map = useMapState();
+        await map.loadAround(mapSpace, 5, 5);
+
+        expect(map.emptyChunks.value).toContain('0:0');
+        expect(map.synchronizeMapSpace({
+            ...mapSpace,
+            bounds_revision: 'bounds-negative-16-59',
+            bounds: { min_x: -16, max_x: 59, min_y: -16, max_y: 59 },
+        })).toBe(true);
+        expect(map.emptyChunks.value).toEqual([]);
+
+        await map.loadVisibleRange({ minX: -16, maxX: -1, minY: -16, maxY: -1 });
+
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/-1/-1'))).toHaveLength(1);
     });
 });

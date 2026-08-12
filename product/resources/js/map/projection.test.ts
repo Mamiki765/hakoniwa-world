@@ -46,5 +46,15 @@ describe('staggered square-tile x/y grid', () => {
             { x: 11, y: 9 }, { x: 10, y: 8 }, { x: 9, y: 8 },
             { x: 9, y: 9 }, { x: 9, y: 10 }, { x: 10, y: 10 },
         ]);
+        expect(Array.from({ length: 6 }, (_, direction) => neighbor({ x: 10, y: -2 }, direction))).toEqual([
+            { x: 11, y: -2 }, { x: 11, y: -3 }, { x: 10, y: -3 },
+            { x: 9, y: -2 }, { x: 10, y: -1 }, { x: 11, y: -1 },
+        ]);
+        expect(Array.from({ length: 6 }, (_, direction) => neighbor({ x: 10, y: -1 }, direction))).toEqual([
+            { x: 11, y: -1 }, { x: 10, y: -2 }, { x: 9, y: -2 },
+            { x: 9, y: -1 }, { x: 9, y: 0 }, { x: 10, y: 0 },
+        ]);
+        expect(gridToPixel({ x: 10, y: -2 })).toEqual({ x: 336, y: -64 });
+        expect(gridToPixel({ x: 10, y: -1 })).toEqual({ x: 320, y: -32 });
     });
 });

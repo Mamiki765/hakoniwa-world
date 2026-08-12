@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Services\MapCellPresenter;
+use DomainException;
 
 final class MapChunkService
 {
@@ -28,6 +29,19 @@ final class MapChunkService
             ->orderBy('y')
             ->orderBy('x')
             ->get();
+
+        if ($chunk !== null) {
+            $expected = $mapSpace->currentBounds()->cellCountWithinChunk($chunkX, $chunkY);
+            if ($expected === 0 || $cells->count() !== $expected) {
+                throw new DomainException(
+                    "MapSpace {$mapSpace->id} chunk ({$chunkX}, {$chunkY}) violates completed current-bounds coverage.",
+                );
+            }
+        } elseif ($cells->isNotEmpty()) {
+            throw new DomainException(
+                "MapSpace {$mapSpace->id} chunk ({$chunkX}, {$chunkY}) has cells without completion metadata.",
+            );
+        }
 
         $currentTurn = (int) $mapSpace->world()->value('current_turn');
         $presentedCells = $cells->map(fn (MapCell $cell): array => $this->presenter->present(

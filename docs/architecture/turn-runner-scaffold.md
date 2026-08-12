@@ -69,7 +69,7 @@ The run snapshots the exact `ruleset_version_id` referenced by the World. Before
 
 ## Lock and transaction
 
-`WorldTurnLock` uses a PostgreSQL session advisory lock derived from the World ID. It uses a non-blocking try operation so a duplicate trigger fails quickly. The lock spans run preparation, validation, transaction, and final history update, and is released in `finally`.
+`WorldMutationLock` uses a PostgreSQL session advisory lock derived from the World ID. It retains the historical turn key so turn, registration, and future expansion/abandonment operations serialize across rolling deploys. It uses a non-blocking try operation so a duplicate mutation fails quickly. The lock spans run preparation, validation, transaction, and final history update, and is released in `finally`.
 
 Within that lock, all game-state phase effects and `worlds.current_turn` are one PostgreSQL transaction. `current_turn` is updated only after every required phase succeeds. An exception rolls back every game-state effect from the target turn, including any phase result written inside that transaction.
 

@@ -19,6 +19,7 @@ class OceanWorldGenerator
         private readonly ChunkCoordinateService $chunks,
         private readonly RulesetPublisher $rulesets,
         private readonly CurrentRulesetGuard $rulesetGuard,
+        private readonly MapSpaceCoveragePreflight $coverage,
     ) {}
 
     public function initialize(
@@ -60,15 +61,6 @@ class OceanWorldGenerator
                     'min_y' => $bounds->minY, 'max_y' => $bounds->maxY,
                 ],
             );
-            if ($mapSpace->coordinate_system !== 'staggered_square_offset'
-                || $mapSpace->min_x !== $bounds->minX || $mapSpace->max_x !== $bounds->maxX
-                || $mapSpace->min_y !== $bounds->minY || $mapSpace->max_y !== $bounds->maxY) {
-                throw new DomainException(
-                    "World {$world->key} already uses different map bounds. "
-                    ."Run an explicit World reset before selecting profile {$profile->value}.",
-                );
-            }
-
             $completed = DB::table('world_generation_runs')
                 ->where('map_space_id', $mapSpace->id)
                 ->where('generator_id', $worldConfig['generator_id'])
@@ -78,7 +70,24 @@ class OceanWorldGenerator
                 ->exists();
 
             if ($completed) {
+                if ($mapSpace->coordinate_system !== 'staggered_square_offset'
+                    || ! $mapSpace->currentBounds()->containsBounds($bounds)) {
+                    throw new DomainException(
+                        "World {$world->key} current bounds do not contain its immutable initial bounds.",
+                    );
+                }
+                $this->coverage->assertComplete($mapSpace);
+
                 return $world;
+            }
+
+            if ($mapSpace->coordinate_system !== 'staggered_square_offset'
+                || $mapSpace->min_x !== $bounds->minX || $mapSpace->max_x !== $bounds->maxX
+                || $mapSpace->min_y !== $bounds->minY || $mapSpace->max_y !== $bounds->maxY) {
+                throw new DomainException(
+                    "World {$world->key} already uses different map bounds. "
+                    ."Run an explicit World reset before selecting profile {$profile->value}.",
+                );
             }
 
             if ($mapSpace->cells()->exists()) {
@@ -143,6 +152,10 @@ class OceanWorldGenerator
                 $inserted += count($batch);
                 $this->afterBatchInserted($inserted);
             }
+
+            // MapSpace bounds become externally visible only when this transaction commits.
+            // A future expansion must likewise validate coverage before updating current bounds.
+            $this->coverage->assertComplete($mapSpace);
 
             DB::table('world_generation_runs')->updateOrInsert(
                 [

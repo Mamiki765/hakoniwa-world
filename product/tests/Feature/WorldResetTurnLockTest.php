@@ -13,7 +13,7 @@ use App\Domain\Turn\ScaffoldTurnPhase;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnSeedGenerator;
-use App\Domain\Turn\WorldTurnLock;
+use App\Domain\World\WorldMutationLock;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\NationCommandQueueItem;
@@ -252,7 +252,7 @@ class WorldResetTurnLockTest extends TestCase
 
         return new TurnRunner(
             $pipeline,
-            new WorldTurnLock,
+            new WorldMutationLock,
             $seeds,
             app(CurrentRulesetGuard::class),
             app(MonsterKillCycleService::class),

@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Application\OceanWorldGenerator;
-use App\Domain\World\WorldBounds;
+use App\Domain\World\MapBounds;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapSpace;
 use App\Models\World;
@@ -40,7 +40,7 @@ class InitializeWorld extends Command
         }
 
         $rules = $world->rulesetVersion()->firstOrFail()->settings;
-        $bounds = new WorldBounds(
+        $bounds = new MapBounds(
             $mapSpace->min_x,
             $mapSpace->max_x,
             $mapSpace->min_y,
