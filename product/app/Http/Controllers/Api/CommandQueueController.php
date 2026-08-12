@@ -116,7 +116,7 @@ final class CommandQueueController extends Controller
 
                     return [
                         'key' => $definition->key,
-                        'name' => $definition->name,
+                        'name' => $this->ownerCommandName($definition),
                         'description' => $definition->description,
                         'target_type' => $definition->target_type,
                         'parameters' => $parameters === [] ? (object) [] : $parameters,
@@ -287,7 +287,7 @@ final class CommandQueueController extends Controller
             ->map(fn (NationCommandQueueItem $item): array => [
                 'id' => $item->id,
                 'command_key' => $item->definition->key,
-                'command_name' => $item->definition->name,
+                'command_name' => $this->ownerCommandName($item->definition),
                 'queue_position' => $item->queue_position,
                 'target_x' => $item->target_x,
                 'target_y' => $item->target_y,
@@ -335,6 +335,11 @@ final class CommandQueueController extends Controller
             'items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'),
             'items.definition',
         ]);
+    }
+
+    private function ownerCommandName(CommandDefinition $definition): string
+    {
+        return $definition->key === 'build_decoy' ? 'ハリボテ建築' : $definition->name;
     }
 
     private function queueLimit(Nation $nation): int

@@ -17,6 +17,7 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
@@ -186,6 +187,57 @@ final class RulesetV3MigrationTest extends TestCase
         $this->assertSame($preserved, Arr::only($migrated->getAttributes(), array_keys($preserved)));
     }
 
+    public function test_production_v2_territory_queue_migrates_through_v3_then_message_board(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '連続移行島', '連続移行島主');
+        $this->moveWorldToV2($world);
+        $v2Definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'territory_expand')
+            ->firstOrFail();
+        $queue = NationCommandQueue::query()->create([
+            'nation_id' => $nation->id,
+            'map_space_id' => $this->surfaceMapSpace($world)->id,
+            'version' => 14,
+        ]);
+        $item = NationCommandQueueItem::query()->create([
+            'nation_command_queue_id' => $queue->id,
+            'command_definition_id' => $v2Definition->id,
+            'queue_position' => 9,
+            'target_x' => 51,
+            'target_y' => 8,
+            'quantity' => 7,
+            'parameters' => ['production_shape' => true],
+            'status' => 'queued',
+            'queued_by_membership_id' => NationMembership::query()->where('nation_id', $nation->id)->value('id'),
+            'request_key' => (string) Str::uuid(),
+            'queued_at' => now()->subMinutes(5),
+            'failure_metadata' => ['preserve' => 'exactly'],
+        ]);
+        $preserved = Arr::except($item->fresh()->getAttributes(), ['command_definition_id']);
+        $messageBoardMigration = $this->messageBoardMigration();
+        $messageBoardMigration->down();
+        $this->assertFalse(Schema::hasTable('island_messages'));
+
+        $this->migration()->up();
+
+        $v3 = $world->fresh()->rulesetVersion()->firstOrFail();
+        $this->assertSame('hakoniwa-2s-plus-v3', $v3->key);
+        $this->assertSame($v3->id, $item->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame('territory_expand', $item->fresh()->definition()->value('key'));
+        $this->assertSame($preserved, Arr::except($item->fresh()->getAttributes(), ['command_definition_id']));
+
+        $messageBoardMigration->up();
+        $this->assertTrue(Schema::hasTable('island_messages'));
+        $this->assertTrue(Schema::hasColumn('users', 'visitor_code'));
+        $this->actingAs($user)->postJson("/api/v1/nations/{$nation->id}/message-board", [
+            'body' => '連続移行後の伝言',
+        ])->assertCreated()
+            ->assertJsonPath('data.entries.0.body', '連続移行後の伝言');
+    }
+
     #[DataProvider('unresolvedStatuses')]
     public function test_v3_migration_rejects_unresolved_next_turn_without_partial_changes(string $status): void
     {
@@ -308,5 +360,10 @@ final class RulesetV3MigrationTest extends TestCase
     private function migration(): object
     {
         return require database_path('migrations/2026_08_10_000000_publish_hakoniwa_2s_plus_v3.php');
+    }
+
+    private function messageBoardMigration(): object
+    {
+        return require database_path('migrations/2026_08_11_000000_create_island_messages.php');
     }
 }

@@ -109,7 +109,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.4.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.4.1');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
         expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
@@ -569,6 +569,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('公開コメント');
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
         expect(wrapper.find('.preview-page > .message-board').exists()).toBe(true);
+        const previewBoard = wrapper.get('.preview-page > .message-board').element;
+        const previewLog = wrapper.get('.preview-page > .island-events-panel').element;
+        expect(previewBoard.compareDocumentPosition(previewLog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toBe(true);
     });
 
@@ -686,6 +689,12 @@ describe('application lobby and island entry', () => {
         expect(workspaceScroll.find('.map-column').exists()).toBe(true);
         expect(workspaceScroll.find('.plan-panel').exists()).toBe(true);
         expect(workspaceScroll.find('.island-events-panel').exists()).toBe(false);
+        const developmentBoard = wrapper.get('.island-page > .message-board').element;
+        const developmentLogs = wrapper.findAll('.island-page > .island-events-panel');
+        expect(developmentLogs).toHaveLength(2);
+        for (const log of developmentLogs) {
+            expect(developmentBoard.compareDocumentPosition(log.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        }
         const workspaceJumpButtons = wrapper.findAll('.workspace-jump button');
         expect(workspaceJumpButtons).toHaveLength(3);
         expect(workspaceJumpButtons.every((button) => button.attributes('aria-controls') === workspaceScroll.attributes('id'))).toBe(true);
