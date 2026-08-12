@@ -110,7 +110,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.4.1');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.5.0');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
         expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
@@ -605,6 +605,50 @@ describe('application lobby and island entry', () => {
         const previewLog = wrapper.get('.preview-page > .island-events-panel').element;
         expect(previewBoard.compareDocumentPosition(previewLog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toBe(true);
+    });
+
+    it('refreshes an open public preview when bounds change without a turn advance', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        let detailCalls = 0;
+        let publicChunkCalls = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/nations/7') {
+                detailCalls++;
+                return response(detailCalls === 1 ? publicDetail : {
+                    ...publicDetail,
+                    map_space: {
+                        ...publicDetail.map_space,
+                        bounds_revision: 'bounds-0-63',
+                        bounds: { min_x: 0, max_x: 63, min_y: 0, max_y: 63 },
+                    },
+                });
+            }
+            if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) {
+                publicChunkCalls++;
+                return response(emptyChunk);
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.find('.ranking-card tbody button').trigger('click');
+        await flushPromises();
+        const initialChunkCalls = publicChunkCalls;
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flushPromises();
+
+        expect(detailCalls).toBe(2);
+        expect(publicChunkCalls).toBeGreaterThan(initialChunkCalls);
+        expect(wrapper.findComponent(HexMap).props('bounds')).toEqual({ min_x: 0, max_x: 63, min_y: 0, max_y: 63 });
+        wrapper.unmount();
     });
 
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {

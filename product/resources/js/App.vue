@@ -23,7 +23,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.4.1';
+const applicationVersion = '1.5.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -212,6 +212,30 @@ async function refreshFallbackSummary(): Promise<void> {
 
 async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): Promise<boolean> {
     if (turnViewCurrentTurn === summary.current_turn) {
+        const currentPreview = page.value === 'preview' ? previewNation.value : null;
+        if (currentPreview !== null) {
+            try {
+                const refreshedPreview = await api<PublicNationDetail>(`/api/v1/public/nations/${currentPreview.id}`);
+                const nextMapSpace = refreshedPreview.map_space;
+                const mapNeedsReload = mapSpace.value?.id !== nextMapSpace.id
+                    || mapSpace.value?.bounds_revision !== nextMapSpace.bounds_revision
+                    || map.error.value !== null;
+                previewNation.value = refreshedPreview;
+                map.synchronizeMapSpace(nextMapSpace);
+                mapSpace.value = nextMapSpace;
+                if (! mapNeedsReload || refreshedPreview.capital === null) return true;
+
+                await map.loadAround(nextMapSpace, refreshedPreview.capital.x, refreshedPreview.capital.y, {
+                    kind: 'public',
+                    nationId: refreshedPreview.id,
+                });
+
+                return map.error.value === null;
+            } catch {
+                return false;
+            }
+        }
+
         const currentNation = nation.value;
         if (page.value !== 'island' || currentNation === null || currentNation.capital === null) return true;
 
