@@ -220,11 +220,12 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
             const nextMapSpace = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
             if (nextMapSpace === null) return false;
 
-            const boundsChanged = mapSpace.value?.id !== nextMapSpace.id
-                || mapSpace.value?.bounds_revision !== nextMapSpace.bounds_revision;
+            const mapNeedsReload = mapSpace.value?.id !== nextMapSpace.id
+                || mapSpace.value?.bounds_revision !== nextMapSpace.bounds_revision
+                || map.error.value !== null;
             map.synchronizeMapSpace(nextMapSpace);
             mapSpace.value = nextMapSpace;
-            if (! boundsChanged) return true;
+            if (! mapNeedsReload) return true;
 
             await map.loadAround(nextMapSpace, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
 

@@ -349,6 +349,7 @@ describe('application lobby and island entry', () => {
         let privateChunkCalls = 0;
         let ownerEventCalls = 0;
         let failTurnRefreshChunk = true;
+        let failExpansionRefreshChunk = true;
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             if (path.endsWith('/summary')) {
@@ -384,6 +385,10 @@ describe('application lobby and island entry', () => {
                 privateChunkCalls++;
                 if (summaryCalls >= 2 && failTurnRefreshChunk) {
                     failTurnRefreshChunk = false;
+                    return response(null, 500);
+                }
+                if (mapSpaceCalls >= 4 && failExpansionRefreshChunk) {
+                    failExpansionRefreshChunk = false;
                     return response(null, 500);
                 }
                 return response(emptyChunk);
@@ -440,6 +445,14 @@ describe('application lobby and island entry', () => {
         expect(summaryCalls).toBe(4);
         expect(mapSpaceCalls).toBe(4);
         expect(wrapper.findComponent(HexMap).props('bounds')).toEqual({ min_x: 0, max_x: 63, min_y: 0, max_y: 63 });
+        const failedExpansionChunkCalls = privateChunkCalls;
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flushPromises();
+
+        expect(summaryCalls).toBe(5);
+        expect(mapSpaceCalls).toBe(5);
+        expect(privateChunkCalls).toBeGreaterThan(failedExpansionChunkCalls);
         wrapper.unmount();
     });
 
