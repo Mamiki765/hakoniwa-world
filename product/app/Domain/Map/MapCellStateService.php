@@ -77,8 +77,13 @@ final class MapCellStateService
         }
 
         $cell->facility_scale = null;
-        $cell->facility_experience = $facility->key === 'missile_base'
-            ? ($experience ?? $this->missiles->initialExperience($facility))
-            : null;
+        $cell->facility_experience = match (true) {
+            $facility->key === 'missile_base' => $experience ?? $this->missiles->initialExperience($facility),
+            $experience !== null => $experience,
+            default => null,
+        };
+        if ($cell->facility_experience !== null) {
+            $this->missiles->level($facility, $cell->facility_experience);
+        }
     }
 }

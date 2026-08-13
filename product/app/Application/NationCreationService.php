@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Nation\NationProfileText;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\TurnAlreadyRunningException;
+use App\Domain\World\RegistrationWorldExpansionPlanner;
 use App\Domain\World\WorldMutationLock;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -21,6 +22,8 @@ final class NationCreationService
         private readonly CapitalPlacementService $placement,
         private readonly InitialIslandGenerator $islands,
         private readonly NationResourceService $resources,
+        private readonly WorldExpansionService $expansion,
+        private readonly RegistrationWorldExpansionPlanner $expansionPlanner,
         private readonly CurrentRulesetGuard $rulesetGuard,
         private readonly WorldMutationLock $worldMutationLock,
     ) {}
@@ -31,6 +34,7 @@ final class NationCreationService
         string $name,
         string $ownerName,
         string $profileComment = '',
+        ?string $requestKey = null,
     ): Nation {
         $ownerName = NationProfileText::ownerName($ownerName);
         $profileComment = NationProfileText::comment($profileComment);
@@ -42,14 +46,35 @@ final class NationCreationService
         }
 
         try {
-            return DB::transaction(function () use ($user, $world, $name, $ownerName, $profileComment): Nation {
+            return DB::transaction(function () use ($user, $world, $name, $ownerName, $profileComment, $requestKey): Nation {
                 $world = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
                 $ruleset = $world->rulesetVersion()->firstOrFail();
                 $this->rulesetGuard->assertMutable($world, $ruleset);
                 $rules = $ruleset->settings;
 
+                $requestKey ??= (string) Str::uuid();
+                $existingRequest = DB::table('nation_creation_requests')
+                    ->where('request_key', $requestKey)->lockForUpdate()->first();
+                if ($existingRequest !== null) {
+                    if ((int) $existingRequest->user_id !== $user->id
+                        || (int) $existingRequest->world_id !== $world->id) {
+                        throw new DomainException('この登録request keyは別の登録要求で使用済みです。');
+                    }
+                    if ($existingRequest->status !== 'completed' || $existingRequest->nation_id === null) {
+                        throw new DomainException('同一登録要求が未完了状態です。追加処理せず調査が必要です。');
+                    }
+
+                    return Nation::query()->whereKey($existingRequest->nation_id)
+                        ->where('world_id', $world->id)
+                        ->with(['capital', 'resourceBalances.definition'])
+                        ->firstOrFail();
+                }
+
                 if (NationMembership::query()->where('user_id', $user->id)->where('world_id', $world->id)->exists()) {
                     throw new DomainException('このWorldにはすでにNationがあります。');
+                }
+                if (Nation::query()->where('world_id', $world->id)->where('name', $name)->exists()) {
+                    throw new DomainException('この島名はすでに使用されています。');
                 }
 
                 $largestNationNumber = (int) Nation::query()
@@ -64,7 +89,6 @@ final class NationCreationService
                     ->where('world_id', $world->id)
                     ->where('key', config('hakoniwa.world.map_space_key'))
                     ->firstOrFail();
-                $requestKey = (string) Str::uuid();
                 $seed = hash('sha256', implode(':', [
                     $world->id, $user->id, mb_strtolower($name), config('hakoniwa.initial_island.generator_version'),
                 ]));
@@ -75,7 +99,25 @@ final class NationCreationService
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
 
-                $center = $this->placement->choose($mapSpace);
+                $candidates = $this->placement->candidates($mapSpace, 1);
+                if ($candidates === []) {
+                    $before = $mapSpace->currentBounds();
+                    $target = $this->expansionPlanner->nextBounds($before);
+                    $mapSpace = $this->expansion->expandWithinCurrentMutation(
+                        $world,
+                        $before,
+                        $target,
+                        $user,
+                        'nation_registration_capacity',
+                    );
+                    $candidates = $this->placement->candidates($mapSpace->fresh(), 1);
+                    if ($candidates === []) {
+                        throw new DomainException(
+                            'Worldを1chunk拡張しても初期島候補が生成されませんでした。登録処理を中止します。',
+                        );
+                    }
+                }
+                $center = $candidates[0];
                 DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
                     'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
                 ]);

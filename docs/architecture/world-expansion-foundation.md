@@ -48,8 +48,22 @@ rolling deploy with older turn workers. The mandatory ordering is:
 5. commit or roll back, then release the advisory lock in `finally`.
 
 Turn, Nation registration, reset, monster award-cycle seeding, and `WorldExpansionService` share
-this boundary now. Future Nation abandonment must use the same ordering. This release does not
-implement Nation abandonment, automatic expansion planning, or registration-triggered expansion.
+this boundary now. Future Nation abandonment must use the same ordering. Nation registration owns
+the lock while it searches for a Capital placement candidate; only when that search returns zero
+candidates does it derive the next canonical signed bounds and call `WorldExpansionService` inside
+the same registration transaction. It then searches once more. No candidate after that one
+expansion is an invariant failure and rolls back both expansion and registration. Nation
+abandonment remains outside this release.
+
+## Registration expansion rotation
+
+Starting at 64 by 64, registration expansion adds one 16-cell chunk band per request in the fixed
+`LEFT -> UP -> RIGHT -> DOWN` rotation. The phase is not stored separately: the signed current
+bounds are decomposed into complete cycles and the canonical partial cycle. Bounds that cannot be
+explained by that sequence fail closed. The first step from `0..63 x 0..63` is
+`-16..63 x 0..63`, adding 1,024 cells and four chunk rows. A legacy 60 by 60 current range is
+completed to 64 by 64 and extended through that first LEFT band in one atomic expansion; merely
+filling the four partial chunks is not treated as new placement capacity.
 
 ## Cache invalidation
 

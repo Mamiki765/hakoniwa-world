@@ -147,8 +147,8 @@ final class MapCellPresenter
             $details[] = $this->detail('facility_capacity', '規模', $capacity, '人', number_format($capacity).'人規模', 'public');
         }
 
-        if ($facility?->key === 'missile_base' && $isOwner) {
-            $experience = (int) ($cell->facility_experience ?? 0);
+        if ($facility !== null && $cell->facility_experience !== null && $isOwner) {
+            $experience = (int) $cell->facility_experience;
             $level = $this->missiles->level($facility, $experience);
             $launchCapacity = $this->missiles->launchCapacity($facility, $experience);
             $details[] = $this->detail('facility_experience', '経験値', $experience, null, number_format($experience), 'owner');

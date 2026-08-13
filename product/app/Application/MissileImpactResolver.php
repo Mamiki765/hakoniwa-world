@@ -39,6 +39,7 @@ final class MissileImpactResolver
 
     public function __construct(
         private readonly MissileBaseRules $baseRules,
+        private readonly LaunchBaseExperienceService $baseExperience,
         private readonly MapCellStateService $cells,
         private readonly MonsterDamageService $monsterDamage,
         private readonly MonsterRemovalService $monsterRemoval,
@@ -71,7 +72,7 @@ final class MissileImpactResolver
         if ($nation === null || $nation->state !== 'active') {
             return [...$metrics, 'changed_cell_ids' => []];
         }
-        $capacity = $base->facility->key === 'missile_base'
+        $capacity = $base->facility_experience !== null
             ? $this->baseRules->launchCapacity($base->facility, (int) ($base->facility_experience ?? 0))
             : 1;
         $remainingCapacity = $capacity;
@@ -260,6 +261,13 @@ final class MissileImpactResolver
         string $missileKey,
         int $queueItemId,
     ): array {
+        $resistance = $context->ruleset->settings['military']['seabed_base_resistance'] ?? null;
+        if (is_array($resistance)
+            && $cell->facility?->key === ($resistance['facility_key'] ?? null)
+            && in_array($missileKey, $resistance['ineffective_missile_keys'] ?? [], true)) {
+            return [...$base, 'effect' => 'seabed_base_resisted'];
+        }
+
         $occupancy = MonsterOccupancy::query()->where('map_cell_id', $cell->id)
             ->with('monster.definition')->lockForUpdate()->first();
         if ($occupancy !== null) {
@@ -268,7 +276,7 @@ final class MissileImpactResolver
                 1,
                 $missileKey,
                 $firingNation,
-                $firingBase->facility?->key === 'missile_base' ? $firingBase : null,
+                $firingBase->facility_experience !== null ? $firingBase : null,
                 $cell,
                 $context,
             );
@@ -321,6 +329,20 @@ final class MissileImpactResolver
         }
         if ($beforeFacility === 'capital') {
             $loss = $this->damageCapital($context, $firingNation, $cell, $missileKey, 10);
+            $experienceContract = $context->ruleset->settings['military']['launch_base_experience'] ?? null;
+            $capitalMultiplier = is_array($experienceContract)
+                ? ($experienceContract['settlement_hit']['capital_population_loss_multiplier'] ?? null)
+                : null;
+            if (is_array($experienceContract) && (! is_int($capitalMultiplier) || $capitalMultiplier < 1)) {
+                throw new DomainException('The active ruleset has an invalid Capital experience multiplier.');
+            }
+            $experience = $this->creditSettlementExperience(
+                $context,
+                $firingNation,
+                $firingBase,
+                $missileKey,
+                $capitalMultiplier === null ? $loss : $loss * $capitalMultiplier,
+            );
             $refugees = $this->generateAndReceiveRefugees(
                 $context,
                 $firingNation,
@@ -335,6 +357,7 @@ final class MissileImpactResolver
                 'effect' => $loss > 0 ? 'capital_damaged' : 'capital_at_minimum',
                 'before_population' => $beforePopulation, 'after_population' => $cell->population,
                 'refugees' => $refugees,
+                'firing_base_experience_applied' => $experience,
             ];
         }
         $isWater = in_array($beforeTerrain, ['sea', 'shallow'], true);
@@ -365,6 +388,15 @@ final class MissileImpactResolver
                 $queueItemId,
             )
             : 0;
+        $experience = $settlement
+            ? $this->creditSettlementExperience(
+                $context,
+                $firingNation,
+                $firingBase,
+                $missileKey,
+                $beforePopulation,
+            )
+            : 0;
         $effect = $isWater ? 'water_facility_destroyed' : 'land_scorched';
         $this->recordMeaningfulImpact($context, $firingNation, $cell, $missileKey, $effect, [
             'from_terrain_key' => $beforeTerrain,
@@ -373,6 +405,7 @@ final class MissileImpactResolver
             'before_population' => $beforePopulation,
             'after_population' => 0,
             'refugees_generated' => $refugees,
+            'firing_base_experience_applied' => $experience,
         ], $targetNationId, $targetNationName);
 
         return [
@@ -380,8 +413,34 @@ final class MissileImpactResolver
             'target_nation_id' => $targetNationId, 'target_nation_name' => $targetNationName,
             'from_terrain_key' => $beforeTerrain, 'to_terrain_key' => $cell->terrain->key,
             'removed_facility_key' => $beforeFacility, 'before_population' => $beforePopulation,
-            'refugees' => $refugees,
+            'refugees' => $refugees, 'firing_base_experience_applied' => $experience,
         ];
+    }
+
+    private function creditSettlementExperience(
+        TurnContext $context,
+        Nation $firingNation,
+        MapCell $firingBase,
+        string $missileKey,
+        int $populationBasis,
+    ): int {
+        $settings = $context->ruleset->settings['military']['launch_base_experience']['settlement_hit'] ?? null;
+        if (! is_array($settings)
+            || ! in_array($missileKey, $settings['missile_keys'] ?? [], true)
+            || $firingBase->facility_experience === null) {
+            return 0;
+        }
+        $divisor = $settings['population_divisor'] ?? null;
+        if (! is_int($divisor) || $divisor < 1) {
+            throw new DomainException('The active ruleset has an invalid settlement-hit experience divisor.');
+        }
+
+        return $this->baseExperience->credit(
+            $firingBase,
+            $firingNation,
+            intdiv(max(0, $populationBasis), $divisor),
+            $context,
+        );
     }
 
     /** @param array<string, mixed> $base

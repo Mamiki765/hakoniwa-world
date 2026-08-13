@@ -72,6 +72,8 @@ final class TurnRandomStreamFactory
 
     private const LAND_SUBSIDENCE_TRIGGER_PREFIX = 'global_disasters:land_subsidence:nation:';
 
+    private const WORLD_DISASTER_AREA_FRACTION_PREFIX = 'global_disasters:world_area_fraction:';
+
     private const MONSTER_MOVEMENT_PREFIX = 'process_cells:monster:';
 
     private const MONSTER_SPAWN_PREFIX = 'global_disasters:monster_spawn:nation:';
@@ -125,6 +127,17 @@ final class TurnRandomStreamFactory
         }
 
         return self::LAND_SUBSIDENCE_TRIGGER_PREFIX.$nationId.':trigger:v'.$streamVersion;
+    }
+
+    public static function worldDisasterAreaFraction(string $disasterKey): string
+    {
+        if (! in_array($disasterKey, [
+            'earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption',
+        ], true)) {
+            throw new InvalidArgumentException('World-disaster area stream key is invalid.');
+        }
+
+        return self::WORLD_DISASTER_AREA_FRACTION_PREFIX.$disasterKey.':v1';
     }
 
     public static function monsterMovement(int $monsterId, int $streamVersion): string

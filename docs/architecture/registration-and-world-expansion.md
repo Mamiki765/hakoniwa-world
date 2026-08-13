@@ -146,5 +146,12 @@ PR19では登録入力に公開用の`owner_name`（必須、1–30文字）と`
 
 登録後はNation ownerだけが`PATCH /api/v1/nations/{nation}/profile`で島主名と一言コメントを変更できる。変更はWorldとNationをlockし、最新ruleset Worldだけを対象にして、変更前後・変更field・actor user IDを`nation.profile_updated`へ記録する。同値更新は保存もaudit eventも作らない。過去ruleset Worldの更新は`reset_required`で拒否する。
 
-候補は中心からdistance 5以内の91セルが生成済みの海・無所有・施設なしで、他Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、y/xで安定tie-breakする。現在は先頭候補を使用するが、serviceの結果を上位3候補へ拡張できる。初期範囲に候補がない場合の自動拡張はMVP外である。
+候補は中心からdistance 5以内の91セルが生成済みの海・無所有・施設なしで、他Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、y/xで安定tie-breakする。現在は先頭候補を使用するが、serviceの結果を上位3候補へ拡張できる。
+
+候補が0件の場合だけ、同じ`WorldMutationLock`と登録transaction内でcurrent signed boundsから
+`LEFT → UP → RIGHT → DOWN`の次の1chunk帯を導出し、`WorldExpansionService`によるcoverage検証済み
+拡張後に候補を一度だけ再取得する。64×64からの最初の結果は`-16..63 × 0..63`であり、4 chunks・
+1,024 cellsを追加する。60×60の場合は64×64のpartial chunks補完だけでは成功扱いにせず、同一の
+原子的拡張で最初のLEFT帯まで追加する。rotation専用DB stateは持たず、正規sequenceとして解釈
+できないbounds、または一度の拡張後も候補0件なら推測・追加拡張せず全処理をrollbackする。
 - Status: Deferred / Required before: MVP後 — 放棄Territory再利用、World運用上限と新World作成、sunken_archivedからの再入植。

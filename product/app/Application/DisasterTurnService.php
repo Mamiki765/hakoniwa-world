@@ -58,37 +58,63 @@ final class DisasterTurnService
             'eruption' => [TurnRandomStreamFactory::GLOBAL_ERUPTION_TRIGGER, TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER],
         ];
 
+        $chunkCount = $space->currentBounds()->chunkCount();
+        $scaleNumerator = 16 * $chunkCount;
+        $fullOpportunities = intdiv($scaleNumerator, 225);
+        $fractionalNumerator = $scaleNumerator % 225;
+
         foreach ($definitions as $key => [$triggerLabel, $centerLabel]) {
             $settings = $rules[$key];
-            $trigger = $this->probabilityDraw($context, $settings['probability'], $triggerLabel);
-            if (! $trigger['success']) {
-                continue;
+            $opportunities = $fullOpportunities;
+            $fractionalGateDraw = null;
+            if ($fractionalNumerator > 0) {
+                $fractionalGateDraw = $context->random
+                    ->stream(TurnRandomStreamFactory::worldDisasterAreaFraction($key))
+                    ->integer(0, 224);
+                if ($fractionalGateDraw < $fractionalNumerator) {
+                    $opportunities++;
+                }
             }
-            $center = $this->center($context, $space, $settings['center_padding'], $centerLabel);
-            $this->events->record($context, 'disaster.triggered', $context->world, [
-                'disaster_key' => $key,
-                'center_x' => $center->x,
-                'center_y' => $center->y,
-                'draw' => $trigger['draw'],
-                'numerator' => $settings['probability']['numerator'],
-                'denominator' => $settings['probability']['denominator'],
-            ]);
-            $metrics['executed_disasters']++;
-            $metrics['damaged_cells'] += match ($key) {
-                'earthquake' => $this->earthquake(
-                    $context,
-                    $space,
-                    $center,
-                    $settings,
-                    TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_EFFECT,
-                    'global',
-                ),
-                'tsunami' => $this->tsunami($context, $space, $center, $settings),
-                'typhoon' => $this->typhoon($context, $space, $center, $settings),
-                'meteor_shower' => $this->meteorShower($context, $space, $center, $settings),
-                'huge_meteor' => $this->resolveHugeMeteorBlast($context, $space, $center, $settings),
-                'eruption' => $this->eruption($context, $space, $center, $settings),
-            };
+
+            for ($opportunity = 1; $opportunity <= $opportunities; $opportunity++) {
+                $trigger = $this->probabilityDraw($context, $settings['probability'], $triggerLabel);
+                if (! $trigger['success']) {
+                    continue;
+                }
+                $center = $this->center($context, $space, $settings['center_padding'], $centerLabel);
+                $isFractional = $opportunity > $fullOpportunities;
+                $this->events->record($context, 'disaster.triggered', $context->world, [
+                    'disaster_key' => $key,
+                    'center_x' => $center->x,
+                    'center_y' => $center->y,
+                    'draw' => $trigger['draw'],
+                    'numerator' => $settings['probability']['numerator'],
+                    'denominator' => $settings['probability']['denominator'],
+                    'world_chunk_count' => $chunkCount,
+                    'world_scale_numerator' => $scaleNumerator,
+                    'world_scale_denominator' => 225,
+                    'world_opportunity_index' => $opportunity,
+                    'world_opportunity_kind' => $isFractional ? 'fractional' : 'integer',
+                    'world_fractional_gate_draw' => $isFractional ? $fractionalGateDraw : null,
+                    'world_fractional_gate_numerator' => $fractionalNumerator,
+                ]);
+                $metrics['executed_disasters']++;
+                $metrics['damaged_cells'] += match ($key) {
+                    'earthquake' => $this->earthquake(
+                        $context,
+                        $space,
+                        $center,
+                        $settings,
+                        TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_EFFECT,
+                        'global',
+                    ),
+                    'tsunami' => $this->tsunami($context, $space, $center, $settings),
+                    'typhoon' => $this->typhoon($context, $space, $center, $settings),
+                    'meteor_shower' => $this->meteorShower($context, $space, $center, $settings),
+                    'huge_meteor' => $this->resolveHugeMeteorBlast($context, $space, $center, $settings),
+                    'eruption' => $this->eruption($context, $space, $center, $settings),
+                };
+            }
         }
 
         $subsidence = $this->landSubsidence($context, $space, $rules['land_subsidence'] ?? null);

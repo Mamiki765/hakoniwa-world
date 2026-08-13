@@ -10,6 +10,7 @@ use App\Application\MonsterRemovalService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -31,6 +32,7 @@ use App\Services\MapCellPresenter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -220,7 +222,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v3', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v4', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -1042,54 +1044,71 @@ class CommandAndMissileTest extends TestCase
         }
     }
 
-    public function test_ordinary_missiles_neutralize_destroyed_owned_water_facilities_and_keep_event_attribution(): void
+    #[DataProvider('ordinaryMissileKeys')]
+    public function test_ordinary_missiles_are_ineffective_against_seabed_base(string $missileKey): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
-        $firing->update(['money' => 2_000]);
+        $cell = $this->ownedWaterFacility($target, 'seabed_base');
+        $cell->update(['facility_experience' => 123]);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['military']['missiles'][$missileKey]['deviation_radius'] = 0;
+        $ruleset->update(['settings' => $settings]);
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, $missileKey, $cell);
 
-        foreach (['seabed_base', 'seabed_oil_field'] as $index => $facilityKey) {
-            $cell = $this->ownedWaterFacility($target, $facilityKey);
-            $cell->update(['population' => 321]);
-            $item = $this->queue(
-                app(CommandQueueService::class),
-                $firingUser,
-                $firing,
-                $space,
-                'spp_missile',
-                $cell,
-            );
+        $metrics = $this->resolveMissile(
+            $this->context(
+                $world,
+                2,
+                hash('sha256', 'seabed resistance '.$missileKey),
+                [$firing->id, $target->id],
+            ),
+            $base,
+        );
 
-            $this->resolveMissile(
-                $this->context($world, 2 + $index, hash('sha256', "ordinary water {$facilityKey}"), [$firing->id, $target->id]),
-                $base,
-            );
+        $cell = $cell->fresh(['terrain', 'facility']);
+        $this->assertSame('sea', $cell->terrain->key);
+        $this->assertSame('seabed_base', $cell->facility?->key);
+        $this->assertSame($target->id, $cell->owner_nation_id);
+        $this->assertSame(123, $cell->facility_experience);
+        $this->assertSame(0, $metrics['meaningful_impacts']);
+        $this->assertSame(1, $metrics['ineffective_impacts']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('seabed_base_resisted', $detail['impacts'][0]['effect']);
+    }
 
-            $cell = $cell->fresh(['terrain', 'facility', 'ownerNation']);
-            $this->assertSame('sea', $cell->terrain->key);
-            $this->assertNull($cell->facility_definition_id);
-            $this->assertNull($cell->owner_nation_id);
-            $this->assertSame(0, $cell->population);
-            $presented = app(MapCellPresenter::class)->present($cell, null, 2 + $index);
-            $this->assertSame('sea', $presented['terrain']);
-            $this->assertNull($presented['facility']);
-            $this->assertNull($presented['owner_nation_id']);
-            $this->assertNull($presented['owner_nation_number']);
-            $this->assertNull($presented['owner_name']);
-            $this->assertStringNotContainsString($target->name, $presented['aria_label']);
+    public static function ordinaryMissileKeys(): array
+    {
+        return [
+            'normal' => ['missile'],
+            'PP' => ['pp_missile'],
+            'SPP' => ['spp_missile'],
+        ];
+    }
 
-            $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
-                ->whereRaw("metadata->>'x' = ?", [(string) $cell->x])
-                ->whereRaw("metadata->>'y' = ?", [(string) $cell->y])
-                ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-            $this->assertSame($target->id, $impact['nation_id']);
-            $this->assertSame($target->name, $impact['target_nation_name']);
-            $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
-                ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-            $this->assertSame($target->id, $detail['impacts'][0]['target_nation_id']);
-            $this->assertSame($target->name, $detail['impacts'][0]['target_nation_name']);
-        }
+    public function test_ordinary_missiles_still_destroy_other_owned_water_facilities(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = $this->ownedWaterFacility($target, 'seabed_oil_field');
+        $cell->update(['population' => 321]);
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cell);
+
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'ordinary water oil field'), [$firing->id, $target->id]),
+            $base,
+        );
+
+        $cell = $cell->fresh(['terrain', 'facility']);
+        $this->assertSame('sea', $cell->terrain->key);
+        $this->assertNull($cell->facility_definition_id);
+        $this->assertNull($cell->owner_nation_id);
+        $this->assertSame(0, $cell->population);
     }
 
     public function test_land_destruction_neutralizes_a_destroyed_water_facility_but_preserves_its_terrain_contract(): void
@@ -1118,6 +1137,217 @@ class CommandAndMissileTest extends TestCase
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($target->id, $impact['nation_id']);
         $this->assertSame($target->name, $impact['target_nation_name']);
+    }
+
+    public function test_seabed_base_levels_provide_one_two_and_three_launches(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $firing->update(['money' => 9_999]);
+        $bases = [
+            $this->ownedWaterFacility($firing, 'seabed_base', 0),
+            $this->ownedWaterFacility($firing, 'seabed_base', 50),
+            $this->ownedWaterFacility($firing, 'seabed_base', 200),
+        ];
+        $rules = app(MissileBaseRules::class);
+        $definition = FacilityDefinition::query()->where('key', 'seabed_base')->firstOrFail();
+        $this->assertSame([1, 2, 2, 3], array_map(
+            fn (int $experience): int => $rules->launchCapacity($definition, $experience),
+            [49, 50, 199, 200],
+        ));
+        $targetCell = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))->firstOrFail();
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'spp_missile',
+            $targetCell,
+            6,
+        );
+        $context = $this->context($world, 2, hash('sha256', 'seabed capacities'), [$firing->id, $target->id]);
+        app(DomesticCommandExecutor::class)->execute($context);
+
+        $result = $this->processRegisteredMissiles($context, $bases);
+
+        $this->assertSame(6, $result['shots_fired']);
+        $this->assertSame(6, $result['finalize']['shots_fired']);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame([1, 2, 3], array_column($detail['firing_bases'], 'fired_shots'));
+    }
+
+    public function test_seabed_base_gains_h2_plus_settlement_experience_and_owner_only_level_details(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->ownedWaterFacility($firing, 'seabed_base', 49);
+        $settlement = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $settlement,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $settlement,
+            FacilityDefinition::query()->where('key', 'town')->firstOrFail(),
+        );
+        $settlement->population = 2_000;
+        $settlement->save();
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $settlement);
+
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'seabed town experience'), [$firing->id, $target->id]),
+            $base,
+        );
+
+        $base = $base->fresh(['terrain', 'facility', 'ownerNation']);
+        $this->assertSame(50, $base->facility_experience);
+        $owner = app(MapCellPresenter::class)->present($base, $firing->id, 2);
+        $this->assertSame(
+            [50, 2, 2],
+            collect($owner['details'])->whereIn('key', [
+                'facility_experience', 'facility_level', 'launch_capacity',
+            ])->pluck('value')->all(),
+        );
+        $public = app(MapCellPresenter::class)->present($base, null, 2);
+        $this->assertNull($public['facility']);
+        $this->assertSame([], $public['details']);
+    }
+
+    public function test_land_missile_base_also_gains_h2_plus_settlement_experience(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $base->update(['facility_experience' => 49]);
+        $settlement = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $settlement,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $settlement,
+            FacilityDefinition::query()->where('key', 'town')->firstOrFail(),
+        );
+        $settlement->population = 2_000;
+        $settlement->save();
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $settlement);
+
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'land-base town experience'), [$firing->id, $target->id]),
+            $base->fresh(['terrain', 'facility']),
+        );
+
+        $this->assertSame(50, $base->fresh()->facility_experience);
+    }
+
+    public function test_seabed_settlement_experience_rolls_back_and_same_seed_retry_applies_once(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->ownedWaterFacility($firing, 'seabed_base', 49);
+        $beforeVersion = $base->version;
+        $settlement = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $settlement,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $settlement,
+            FacilityDefinition::query()->where('key', 'town')->firstOrFail(),
+        );
+        $settlement->population = 2_000;
+        $settlement->save();
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $settlement);
+        $seed = hash('sha256', 'seabed experience deterministic retry');
+
+        try {
+            DB::transaction(function () use ($world, $firing, $target, $base, $seed): void {
+                $this->resolveMissile(
+                    $this->context($world, 2, $seed, [$firing->id, $target->id]),
+                    $base,
+                );
+                throw new RuntimeException('force rollback after launch-base experience');
+            });
+        } catch (RuntimeException $exception) {
+            $this->assertSame('force rollback after launch-base experience', $exception->getMessage());
+        }
+
+        $this->assertSame(49, $base->fresh()->facility_experience);
+        $this->assertSame($beforeVersion, $base->fresh()->version);
+        $this->assertSame('queued', $item->fresh()->status);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+
+        $this->resolveMissile(
+            $this->context($world, 2, $seed, [$firing->id, $target->id]),
+            $base->fresh(['terrain', 'facility']),
+        );
+        $this->assertSame(50, $base->fresh()->facility_experience);
+        $this->assertSame($beforeVersion + 1, $base->fresh()->version);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+    }
+
+    public function test_capital_experience_uses_actual_loss_times_two_and_land_destruction_adds_none(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->ownedWaterFacility($firing, 'seabed_base', 0);
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $capital->update(['population' => 10_000]);
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $capital);
+
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'capital experience'), [$firing->id, $target->id]),
+            $base,
+        );
+
+        $this->assertSame(9_000, $capital->fresh()->population);
+        $this->assertSame(1, $base->fresh()->facility_experience);
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'land_destruction_missile',
+            $capital,
+        );
+        $seed = $this->seedForImpactIndex($item, $capital, 2, $capital);
+        $this->resolveMissile($this->context($world, 3, $seed, [$firing->id, $target->id]), $base->fresh(['terrain', 'facility']));
+        $this->assertSame(1, $base->fresh()->facility_experience);
+    }
+
+    public function test_seabed_base_monster_experience_is_final_blow_only(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->ownedWaterFacility($firing, 'seabed_base', 0);
+        $host = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->firstOrFail();
+        $monster = $this->monster($world, $host);
+        $monster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $host);
+
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'seabed monster damage'), [$firing->id, $target->id]),
+            $base,
+        );
+        $this->assertSame(0, $base->fresh()->facility_experience);
+
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $host);
+        $this->resolveMissile(
+            $this->context($world, 3, hash('sha256', 'seabed monster final blow'), [$firing->id, $target->id]),
+            $base->fresh(['terrain', 'facility']),
+        );
+        $this->assertSame(
+            $monster->definition()->value('missile_base_experience'),
+            $base->fresh()->facility_experience,
+        );
     }
 
     public function test_water_ownership_cleanup_does_not_affect_land_facilities_or_empty_owned_water(): void
@@ -1164,7 +1394,7 @@ class CommandAndMissileTest extends TestCase
         [$world, $firingUser, $firing, $target] = $this->combatants();
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
-        $cell = $this->ownedWaterFacility($target, 'seabed_base');
+        $cell = $this->ownedWaterFacility($target, 'seabed_oil_field');
         $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cell);
 
         try {
@@ -1181,7 +1411,7 @@ class CommandAndMissileTest extends TestCase
         }
 
         $this->assertSame($target->id, $cell->fresh()->owner_nation_id);
-        $this->assertSame('seabed_base', $cell->fresh()->facility()->value('key'));
+        $this->assertSame('seabed_oil_field', $cell->fresh()->facility()->value('key'));
         $this->assertSame('queued', $item->fresh()->status);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
 
@@ -1828,7 +2058,7 @@ class CommandAndMissileTest extends TestCase
         return $cell->fresh(['terrain', 'facility']);
     }
 
-    private function ownedWaterFacility(Nation $nation, string $facilityKey): MapCell
+    private function ownedWaterFacility(Nation $nation, string $facilityKey, ?int $experience = null): MapCell
     {
         $cell = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereKeyNot($nation->capital()->value('map_cell_id'))
@@ -1840,6 +2070,7 @@ class CommandAndMissileTest extends TestCase
         app(MapCellStateService::class)->setFacility(
             $cell,
             FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail(),
+            experience: $experience,
         );
         $cell->owner_nation_id = $nation->id;
         $cell->population = 0;

@@ -63,6 +63,7 @@ class ApiController extends Controller
                 $request->string('name')->trim()->value(),
                 $request->string('owner_name')->value(),
                 $request->string('comment')->value(),
+                $request->string('request_key')->value(),
             );
         } catch (ResetRequiredException $exception) {
             return response()->json([

@@ -34,6 +34,11 @@ repository内のauthoring sourceは`product/config/hakoniwa/rulesets/<version-ke
 
 PR23でconfigured current rulesetを`hakoniwa-2s-plus-v1`へrebaselineする。`CurrentRulesetGuard`は既に読み込んだWorldの`ruleset_version_id`とimmutableなruleset key/versionから確定したcurrent ruleset row IDを比較し、`ruleset_versions.is_active`の意味を変更せず、guard専用SQLを追加しない。
 
+その後のproduction gameplay変更も同じimmutable contractに従い、v2、v3を経て現在は
+`hakoniwa-2s-plus-v4`をconfigured current rulesetとする。v4は海底基地の経験値・level・発射数、
+H2+命中経験値、海底基地耐性だけをv3へ追加し、v1–v3のpublished payloadを書き換えない。
+既存shared-worldとlive definition参照、既存海底基地経験値は専用forward-only migrationでv4へ移す。
+
 historical ruleset Worldの地図、audit/player event、TurnRun、ruleset snapshotはread-onlyで閲覧できる。turn、dry-run TurnRun作成、command queue追加・数量更新・並べ替え・取消、Nation作成、sale policy更新、standalone initはHTTPでは409 `reset_required`、console/application境界では同じcodeを含むexceptionで拒否する。拒否前後でgame stateとaudit eventを変更しない。go-live後のWorld resetは復旧経路としても許可せず、backup restore、forward migration、または明示的変換を使う。
 
 latest rulesetの必須runtime metadataが欠落している場合もhistorical behaviorへfallbackせず、transactionを失敗させてgame stateをrollbackする。advisory lock、World row lock、TurnRun retry、queue consistency trigger、unique/FK/check constraint、published payload immutabilityはこの期間も維持する。

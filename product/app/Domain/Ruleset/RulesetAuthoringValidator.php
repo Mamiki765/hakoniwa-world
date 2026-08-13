@@ -374,7 +374,7 @@ final class RulesetAuthoringValidator
         ], "{$path}.dormant_impact");
         $explicitTargetState = in_array(
             $settings['key'] ?? null,
-            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3'],
+            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4'],
             true,
         )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
@@ -402,6 +402,59 @@ final class RulesetAuthoringValidator
         $fraction = $this->map($refugees['generated_fraction'], "{$path}.refugees.generated_fraction");
         if ($fraction !== ['numerator' => 1, 'denominator' => 2]) {
             throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
+        }
+
+        if (($settings['key'] ?? null) === 'hakoniwa-2s-plus-v4') {
+            $this->validateLaunchBaseExperience($settings, $military, $facilityKeys, $path);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  array<string, mixed>  $military
+     * @param  list<string>  $facilityKeys
+     */
+    private function validateLaunchBaseExperience(
+        array $settings,
+        array $military,
+        array $facilityKeys,
+        string $path,
+    ): void {
+        $experience = $this->map($military['launch_base_experience'] ?? null, "{$path}.launch_base_experience");
+        $resistance = $this->map($military['seabed_base_resistance'] ?? null, "{$path}.seabed_base_resistance");
+        $expectedExperience = [
+            'facility_keys' => ['missile_base', 'seabed_base'],
+            'settlement_hit' => [
+                'missile_keys' => ['missile', 'pp_missile', 'spp_missile'],
+                'population_divisor' => 2_000,
+                'capital_population_loss_multiplier' => 2,
+            ],
+            'monster_damage_experience' => 0,
+            'monster_final_blow_experience' => 'monster_definition.missile_base_experience',
+        ];
+        $expectedResistance = [
+            'facility_key' => 'seabed_base',
+            'ineffective_missile_keys' => ['missile', 'pp_missile', 'spp_missile'],
+            'destructive_missile_keys' => ['land_destruction_missile'],
+        ];
+        if ($experience !== $expectedExperience || $resistance !== $expectedResistance) {
+            throw new DomainException("{$path} differs from the approved H2+ launch-base experience or seabed resistance contract.");
+        }
+        foreach ($experience['facility_keys'] as $facilityKey) {
+            $this->reference($facilityKey, $facilityKeys, "{$path}.launch_base_experience.facility_keys");
+        }
+
+        $seabedPath = 'ruleset.facility_definitions.seabed_base';
+        $seabed = $this->map($settings['facility_definitions']['seabed_base'] ?? null, $seabedPath);
+        foreach ([
+            'initial_experience' => 0,
+            'maximum_experience' => 200,
+            'level_thresholds' => [50, 200],
+            'launch_capacity_by_level' => [1 => 1, 2 => 2, 3 => 3],
+        ] as $key => $expected) {
+            if (($seabed[$key] ?? null) !== $expected) {
+                throw new DomainException("{$seabedPath}.{$key} differs from the approved H2+ contract.");
+            }
         }
     }
 
@@ -1165,7 +1218,7 @@ final class RulesetAuthoringValidator
     /** @param array<string, mixed> $settings */
     private function validateTerritoryContracts(array $settings): void
     {
-        if (($settings['key'] ?? null) !== 'hakoniwa-2s-plus-v3') {
+        if (! in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4'], true)) {
             return;
         }
 
@@ -1392,6 +1445,7 @@ final class RulesetAuthoringValidator
         ];
         if (in_array($settings['key'] ?? null, [
             'roadmap-pr22-v1', 'hakoniwa-2s-plus-v1', 'hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3',
+            'hakoniwa-2s-plus-v4',
         ], true)) {
             $settlementKeys[] = 'post_ordinary_attraction_growth';
         }
