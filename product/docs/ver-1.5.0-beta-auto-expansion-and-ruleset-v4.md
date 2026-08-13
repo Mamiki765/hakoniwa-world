@@ -25,6 +25,9 @@ point-in-time runbookであり、その当時の境界は書き換えない。
 未解決TurnRun、current coverage、expected-before boundsを再検証し、bounds更新をcomplete coverageの
 publication markerとする。runtime GETにcoverage full scanは追加しない。bounds revision変更時の既存
 frontend cache invalidationによりowner/public mapの再取得対象にはnegative chunkも含まれる。
+拡張成功時は詳細な`world.expanded` admin監査とは別に、bounds・actor・reasonを含まない
+`world.expanded_public`を同一transactionで1件記録し、重大ニュースへ
+「大きな地響きが鳴り響き、世界がより広くなりました」と表示する。no-op retryやrollback時は記録しない。
 登録APIはclient生成UUIDを既存`nation_creation_requests.request_key`へ保存する。完了応答を失って
 同じkeyで再送した場合は、候補検索・拡張・生成を繰り返さず同じNationを返す。別user/Worldでの
 key再利用、またはtransaction外に残り得ない未完了statusはfail closedする。

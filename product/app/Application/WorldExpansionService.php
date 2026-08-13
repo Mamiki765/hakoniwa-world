@@ -228,6 +228,27 @@ class WorldExpansionService
                 'updated_at' => $now,
             ]);
 
+            // Keep the detailed expansion record admin-only. The player-facing
+            // event deliberately carries no bounds, actor, or operator reason.
+            DB::table('audit_events')->insert([
+                'actor_user_id' => null,
+                'world_id' => $lockedWorld->id,
+                'turn' => $lockedWorld->current_turn,
+                'nation_id' => null,
+                'x' => null,
+                'y' => null,
+                'message' => null,
+                'visibility' => 'public',
+                'event_type' => 'world.expanded_public',
+                'severity' => 'info',
+                'subject_type' => $lockedWorld->getMorphClass(),
+                'subject_id' => $lockedWorld->id,
+                'metadata' => json_encode((object) [], JSON_THROW_ON_ERROR),
+                'occurred_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
             return $mapSpace;
         }, 1);
     }

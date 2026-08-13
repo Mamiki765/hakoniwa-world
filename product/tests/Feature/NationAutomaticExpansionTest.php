@@ -42,6 +42,7 @@ final class NationAutomaticExpansionTest extends TestCase
         $this->assertNotNull($nation->capital);
         $this->assertSame($beforeRevision, $space->fresh()->boundsRevision());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
     }
 
     public function test_zero_candidates_expand_64_left_once_and_registration_succeeds(): void
@@ -52,7 +53,7 @@ final class NationAutomaticExpansionTest extends TestCase
             new MapBounds(0, 59, 0, 59, 16),
             new MapBounds(0, 63, 0, 63, 16),
         );
-        DB::table('audit_events')->where('event_type', 'world.expanded')->delete();
+        DB::table('audit_events')->whereIn('event_type', ['world.expanded', 'world.expanded_public'])->delete();
         $wastelandId = TerrainDefinition::query()->where('key', 'wasteland')->valueOrFail('id');
         MapCell::query()->where('map_space_id', $space->id)->update(['terrain_definition_id' => $wastelandId]);
         $this->assertSame([], app(CapitalPlacementService::class)->candidates($space->fresh(), 1));
@@ -85,6 +86,13 @@ final class NationAutomaticExpansionTest extends TestCase
         $this->assertSame(1_024, $metadata['added_cell_count']);
         $this->assertSame(4, $metadata['created_chunk_count']);
         $this->assertSame('nation_registration_capacity', $metadata['reason']);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
+        $this->getJson("/api/v1/public/worlds/{$world->id}/major-news")
+            ->assertOk()
+            ->assertJsonPath(
+                'data.groups.0.events.1.message',
+                '大きな地響きが鳴り響き、世界がより広くなりました',
+            );
         $this->assertGreaterThanOrEqual(1, count(app(CapitalPlacementService::class)->candidates($expanded, 1)));
     }
 
@@ -96,7 +104,7 @@ final class NationAutomaticExpansionTest extends TestCase
             new MapBounds(0, 59, 0, 59, 16),
             new MapBounds(0, 63, 0, 63, 16),
         );
-        DB::table('audit_events')->where('event_type', 'world.expanded')->delete();
+        DB::table('audit_events')->whereIn('event_type', ['world.expanded', 'world.expanded_public'])->delete();
         $wastelandId = TerrainDefinition::query()->where('key', 'wasteland')->valueOrFail('id');
         MapCell::query()->where('map_space_id', $space->id)->update(['terrain_definition_id' => $wastelandId]);
         $user = User::factory()->create();
@@ -110,6 +118,7 @@ final class NationAutomaticExpansionTest extends TestCase
         $this->assertSame(1, Nation::query()->count());
         $this->assertSame(1, DB::table('nation_creation_requests')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
         $this->assertSame([-16, 63, 0, 63], [
             $space->fresh()->min_x, $space->fresh()->max_x, $space->fresh()->min_y, $space->fresh()->max_y,
         ]);
@@ -151,7 +160,7 @@ final class NationAutomaticExpansionTest extends TestCase
             new MapBounds(0, 59, 0, 59, 16),
             new MapBounds(0, 63, 0, 63, 16),
         );
-        DB::table('audit_events')->where('event_type', 'world.expanded')->delete();
+        DB::table('audit_events')->whereIn('event_type', ['world.expanded', 'world.expanded_public'])->delete();
         $wastelandId = TerrainDefinition::query()->where('key', 'wasteland')->valueOrFail('id');
         MapCell::query()->where('map_space_id', $space->id)->update(['terrain_definition_id' => $wastelandId]);
         $this->app->bind(WorldExpansionService::class, fn (): WorldExpansionService => new class(app(ChunkCoordinateService::class), app(CurrentRulesetGuard::class), app(WorldMutationLock::class), app(MapSpaceCoveragePreflight::class)) extends WorldExpansionService
@@ -183,6 +192,7 @@ final class NationAutomaticExpansionTest extends TestCase
         $this->assertSame(0, Nation::query()->count());
         $this->assertSame(0, DB::table('nation_creation_requests')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
     }
 
     /** @return list<array<string, mixed>> */
