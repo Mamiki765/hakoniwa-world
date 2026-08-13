@@ -92,4 +92,25 @@ class PostgresRegistrationLockTest extends TestCase
 
         $this->assertSame("hakoniwa.turn.world.{$world->id}", $lock->key($world));
     }
+
+    public function test_reentrant_common_lock_is_not_released_until_the_outer_owner_releases(): void
+    {
+        $world = $this->lightweightWorld();
+        $lock = app(WorldMutationLock::class);
+        $probe = DB::connection(self::PROBE_CONNECTION);
+
+        $lock->acquire($world);
+        $lock->acquire($world);
+        $lock->release($world);
+        $this->assertFalse($probe->selectOne(
+            'SELECT pg_try_advisory_lock(hashtextextended(?, 0)) AS acquired',
+            [$lock->key($world)],
+        )->acquired);
+
+        $lock->release($world);
+        $this->assertTrue($probe->selectOne(
+            'SELECT pg_try_advisory_lock(hashtextextended(?, 0)) AS acquired',
+            [$lock->key($world)],
+        )->acquired);
+    }
 }

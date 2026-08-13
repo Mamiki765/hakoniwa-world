@@ -350,6 +350,7 @@ class PublicLobbyApiTest extends TestCase
         app(MapCellStateService::class)->setFacility(
             $seabedBase,
             FacilityDefinition::query()->where('key', 'seabed_base')->firstOrFail(),
+            experience: 50,
         );
         $seabedBase->owner_nation_id = $nation->id;
         $seabedBase->save();
@@ -364,6 +365,12 @@ class PublicLobbyApiTest extends TestCase
         $this->assertSame($nation->id, $ownerCell['owner_nation_id']);
         $this->assertSame($nation->nation_number, $ownerCell['owner_nation_number']);
         $this->assertSame($nation->name, $ownerCell['owner_name']);
+        $this->assertSame(
+            [50, 2, 2],
+            collect($ownerCell['details'])->whereIn('key', [
+                'facility_experience', 'facility_level', 'launch_capacity',
+            ])->pluck('value')->all(),
+        );
         $this->assertStringContainsString('no-store', (string) $ownerResponse->headers->get('Cache-Control'));
         $this->assertSame('Cookie', $ownerResponse->headers->get('Vary'));
 

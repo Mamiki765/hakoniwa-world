@@ -6,12 +6,15 @@ use App\Application\CompleteTurnEngine;
 use App\Application\DisasterTurnService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
+use App\Application\OceanWorldGenerator;
+use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
+use App\Domain\World\MapBounds;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -42,6 +45,140 @@ class DisasterAndOilTurnTest extends TestCase
     private const GLOBAL_KEYS = [
         'earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption',
     ];
+
+    public function test_world_disaster_opportunities_scale_exactly_with_chunk_count(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '面積補正国',
+            '面積補正島主',
+        );
+        $space = app(WorldExpansionService::class)->expand(
+            $world,
+            new MapBounds(0, 59, 0, 59, 16),
+            new MapBounds(0, 63, 0, 63, 16),
+        );
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $originalSettings = $ruleset->settings;
+        $ruleset = $this->forceGlobal($ruleset, 'earthquake');
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForAreaGate('earthquake', 31, false),
+            [$nation->id],
+        );
+
+        $first = app(DisasterTurnService::class)->executeGlobal($context);
+        $firstEvent = $this->events($run, 'disaster.triggered');
+
+        $this->assertSame(16, $space->currentBounds()->chunkCount());
+        $this->assertSame(1, $first['executed_disasters']);
+        $this->assertCount(1, $firstEvent);
+        $this->assertSame(256, $firstEvent[0]['world_scale_numerator']);
+        $this->assertSame(225, $firstEvent[0]['world_scale_denominator']);
+        $this->assertSame('integer', $firstEvent[0]['world_opportunity_kind']);
+
+        $ruleset->settings = $originalSettings;
+        $ruleset->save();
+        $space = app(WorldExpansionService::class)->expand(
+            $world->fresh(),
+            new MapBounds(0, 63, 0, 63, 16),
+            new MapBounds(-16, 63, 0, 63, 16),
+        );
+        $ruleset = $this->forceGlobal($ruleset->fresh(), 'earthquake');
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForAreaGate('earthquake', 95, true),
+            [$nation->id],
+        );
+
+        $second = app(DisasterTurnService::class)->executeGlobal($context);
+        $secondEvents = $this->events($run, 'disaster.triggered');
+
+        $this->assertSame(20, $space->currentBounds()->chunkCount());
+        $this->assertSame(2, $second['executed_disasters']);
+        $this->assertCount(2, $secondEvents);
+        $this->assertSame([320, 320], array_column($secondEvents, 'world_scale_numerator'));
+        $this->assertSame(['integer', 'fractional'], array_column($secondEvents, 'world_opportunity_kind'));
+        $this->assertLessThan(95, $secondEvents[1]['world_fractional_gate_draw']);
+    }
+
+    public function test_signed_world_disaster_center_uses_negative_bounds_and_clips_neighbors(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '負座標災害国',
+            '負座標島主',
+        );
+        $expansion = app(WorldExpansionService::class);
+        $expansion->expand($world, new MapBounds(0, 59, 0, 59, 16), new MapBounds(0, 63, 0, 63, 16));
+        $expansion->expand($world->fresh(), new MapBounds(0, 63, 0, 63, 16), new MapBounds(-16, 63, 0, 63, 16));
+        $space = $expansion->expand(
+            $world->fresh(),
+            new MapBounds(-16, 63, 0, 63, 16),
+            new MapBounds(-16, 63, -16, 63, 16),
+        );
+        $ruleset = $this->forceGlobal($world->rulesetVersion()->firstOrFail(), 'eruption');
+        $center = new GridCoordinate(-16, -16);
+        $this->setCell($this->cellAt($space, $center->x, $center->y), 'sea', null, null, 0);
+        $seed = $this->seedForCenter(
+            TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER,
+            $center->x,
+            $center->y,
+            $space,
+        );
+        [$context, $run] = $this->context($world, $ruleset, $seed, [$nation->id]);
+
+        app(DisasterTurnService::class)->executeGlobal($context);
+
+        $event = $this->event($run, 'disaster.triggered');
+        $this->assertSame(-16, $event['center_x']);
+        $this->assertSame(-16, $event['center_y']);
+        $this->assertSame('mountain', $this->cellAt($space, -16, -16)->terrain()->value('key'));
+        $this->assertFalse(MapCell::query()->where('map_space_id', $space->id)
+            ->where(fn ($query) => $query->where('x', '<', -16)->orWhere('y', '<', -16)
+                ->orWhere('x', '>', 63)->orWhere('y', '>', 63))->exists());
+        $this->assertSame(6_400, MapCell::query()->where('map_space_id', $space->id)->count());
+    }
+
+    public function test_same_seed_retry_replays_scaled_disaster_opportunities_centers_and_effects(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $ruleset = $this->forceGlobal($world->rulesetVersion()->firstOrFail(), 'eruption');
+        $seed = $this->seedForAreaGate('eruption', 31, true);
+        [$firstContext, $run] = $this->context($world, $ruleset, $seed, []);
+
+        DB::beginTransaction();
+        try {
+            $firstMetrics = app(DisasterTurnService::class)->executeGlobal($firstContext);
+            $firstEvents = $this->turnEvents($run);
+            $firstCells = $this->cellState($world);
+        } finally {
+            DB::rollBack();
+        }
+
+        $retryState = new TurnState;
+        $retryContext = new TurnContext(
+            $world->fresh(),
+            $run->fresh(),
+            $ruleset->fresh(),
+            2,
+            $seed,
+            new TurnRandomStreamFactory($seed),
+            $retryState,
+        );
+        $retryMetrics = app(DisasterTurnService::class)->executeGlobal($retryContext);
+
+        $this->assertSame(2, $retryMetrics['executed_disasters']);
+        $this->assertSame($firstMetrics, $retryMetrics);
+        $this->assertSame($firstEvents, $this->turnEvents($run));
+        $this->assertSame($firstCells, $this->cellState($world));
+    }
 
     public function test_each_global_disaster_applies_its_normal_cell_contract_at_a_fixed_center(): void
     {
@@ -469,16 +606,50 @@ class DisasterAndOilTurnTest extends TestCase
 
     private function seedForCenter(string $label, int $x, int $y, MapSpace $space): string
     {
+        $disasterKey = match ($label) {
+            TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER => 'earthquake',
+            TurnRandomStreamFactory::GLOBAL_TSUNAMI_CENTER => 'tsunami',
+            TurnRandomStreamFactory::GLOBAL_TYPHOON_CENTER => 'typhoon',
+            TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER => 'meteor_shower',
+            TurnRandomStreamFactory::GLOBAL_HUGE_METEOR_CENTER => 'huge_meteor',
+            TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER => 'eruption',
+            default => throw new RuntimeException("Unknown disaster center stream {$label}."),
+        };
+        $scaleNumerator = 16 * $space->currentBounds()->chunkCount();
+        $full = intdiv($scaleNumerator, 225);
+        $remainder = $scaleNumerator % 225;
         for ($candidate = 0; $candidate < 100_000; $candidate++) {
             $seed = hash('sha256', "{$label}:{$x}:{$y}:{$candidate}");
-            $stream = (new TurnRandomStreamFactory($seed))->stream($label);
+            $factory = new TurnRandomStreamFactory($seed);
+            $stream = $factory->stream($label);
+            $gate = $remainder === 0 ? null : $factory
+                ->stream(TurnRandomStreamFactory::worldDisasterAreaFraction($disasterKey))
+                ->integer(0, 224);
+            $hasExactlyOneOpportunity = $remainder === 0
+                || ($full === 0 ? $gate < $remainder : $full === 1 && $gate >= $remainder);
             if ($stream->integer($space->min_x, $space->max_x) === $x
-                && $stream->integer($space->min_y, $space->max_y) === $y) {
+                && $stream->integer($space->min_y, $space->max_y) === $y
+                && $hasExactlyOneOpportunity) {
                 return $seed;
             }
         }
 
         $this->fail("Unable to find center seed for {$label} at {$x},{$y}.");
+    }
+
+    private function seedForAreaGate(string $disasterKey, int $threshold, bool $admitted): string
+    {
+        for ($candidate = 0; $candidate < 10_000; $candidate++) {
+            $seed = hash('sha256', "area-gate:{$disasterKey}:{$threshold}:{$candidate}");
+            $draw = (new TurnRandomStreamFactory($seed))
+                ->stream(TurnRandomStreamFactory::worldDisasterAreaFraction($disasterKey))
+                ->integer(0, 224);
+            if (($draw < $threshold) === $admitted) {
+                return $seed;
+            }
+        }
+
+        $this->fail("Unable to find area-gate seed for {$disasterKey}.");
     }
 
     private function queueItem(
@@ -520,5 +691,49 @@ class DisasterAndOilTurnTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->value('metadata');
 
         return json_decode((string) $metadata, true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function events(TurnRun $run, string $eventType): array
+    {
+        return DB::table('audit_events')->where('event_type', $eventType)
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->orderBy('id')->pluck('metadata')
+            ->map(static fn (string $metadata): array => json_decode($metadata, true, 512, JSON_THROW_ON_ERROR))
+            ->all();
+    }
+
+    /** @return list<array{event_type: string, metadata: array<string, mixed>}> */
+    private function turnEvents(TurnRun $run): array
+    {
+        return DB::table('audit_events')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->orderBy('id')
+            ->get(['event_type', 'metadata'])
+            ->map(static fn (object $event): array => [
+                'event_type' => $event->event_type,
+                'metadata' => json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR),
+            ])->all();
+    }
+
+    /** @return list<array<string, int|null>> */
+    private function cellState(World $world): array
+    {
+        $spaceId = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->value('id');
+
+        return MapCell::query()->where('map_space_id', $spaceId)
+            ->orderBy('id')
+            ->get([
+                'id', 'terrain_definition_id', 'facility_definition_id', 'owner_nation_id',
+                'population', 'facility_experience', 'version',
+            ])->map(static fn (MapCell $cell): array => [
+                'id' => $cell->id,
+                'terrain_definition_id' => $cell->terrain_definition_id,
+                'facility_definition_id' => $cell->facility_definition_id,
+                'owner_nation_id' => $cell->owner_nation_id,
+                'population' => $cell->population,
+                'facility_experience' => $cell->facility_experience,
+                'version' => $cell->version,
+            ])->all();
     }
 }

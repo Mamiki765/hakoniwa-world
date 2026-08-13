@@ -110,6 +110,35 @@ class RulesetAuthoringValidatorTest extends TestCase
         $this->assertSame(3, $summary['version']);
     }
 
+    public function test_v4_payload_preserves_v3_and_adds_only_the_approved_launch_base_contracts(): void
+    {
+        $v3 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v3');
+        $v4 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v4');
+        $this->assertIsArray($v3);
+        $this->assertIsArray($v4);
+        $this->assertSame(
+            self::THIRD_PRODUCTION_PAYLOAD_HASH,
+            hash('sha256', json_encode($v3, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
+
+        $normalized = $v4;
+        $normalized['key'] = 'hakoniwa-2s-plus-v3';
+        $normalized['version'] = 3;
+        unset(
+            $normalized['facility_definitions']['seabed_base']['initial_experience'],
+            $normalized['facility_definitions']['seabed_base']['maximum_experience'],
+            $normalized['facility_definitions']['seabed_base']['level_thresholds'],
+            $normalized['facility_definitions']['seabed_base']['launch_capacity_by_level'],
+            $normalized['military']['launch_base_experience'],
+            $normalized['military']['seabed_base_resistance'],
+        );
+        $this->assertSame($v3, $normalized);
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($v4);
+        $this->assertSame('hakoniwa-2s-plus-v4', $summary['key']);
+        $this->assertSame(4, $summary['version']);
+    }
+
     public function test_v3_territory_contract_drift_is_rejected(): void
     {
         $validator = app(RulesetAuthoringValidator::class);

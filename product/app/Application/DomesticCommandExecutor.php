@@ -638,7 +638,13 @@ final class DomesticCommandExecutor
                 (int) $cell->facility_scale + (int) $facility->scale_increment,
             );
         }
-        $this->cells->setFacility($cell, $facility, $scale);
+        $initialExperience = $context->ruleset->settings['facility_definitions'][$facilityKey]['initial_experience'] ?? null;
+        $this->cells->setFacility(
+            $cell,
+            $facility,
+            $scale,
+            is_int($initialExperience) ? $initialExperience : null,
+        );
         $monument = null;
         if ($definition->key === 'build_seabed_base') {
             $cell->owner_nation_id = $nation->id;

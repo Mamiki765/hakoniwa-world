@@ -23,6 +23,7 @@ final class MonsterDamageService
         private readonly MonsterRemovalService $removal,
         private readonly TurnEventRecorder $events,
         private readonly MonsterKillCycleService $monsterCycles,
+        private readonly LaunchBaseExperienceService $baseExperience,
     ) {}
 
     public function applyDamage(
@@ -266,28 +267,11 @@ SQL, [
         MonsterInstance $monster,
         TurnContext $context,
     ): int {
-        $base = MapCell::query()
-            ->whereKey($firingBase->id)
-            ->with('facility')
-            ->lockForUpdate()
-            ->firstOrFail();
-        if ($base->owner_nation_id !== $killerNation->id || $base->facility?->key !== 'missile_base') {
-            throw new DomainException('Firing base must be a missile base owned by the killer Nation.');
-        }
-        $maximum = $context->ruleset->settings['monster_system']['reward']['missile_base_experience_maximum'] ?? null;
-        if (! is_int($maximum) || $maximum !== 200) {
-            throw new DomainException('The active ruleset has an invalid missile-base experience cap.');
-        }
-        $before = (int) ($base->facility_experience ?? 0);
-        $after = min($maximum, $before + $monster->definition->missile_base_experience);
-        $applied = $after - $before;
-        if ($applied > 0) {
-            $base->facility_experience = $after;
-            $base->version++;
-            $base->save();
-            $context->state->markMapChunkChanged($base->map_chunk_id);
-        }
-
-        return $applied;
+        return $this->baseExperience->credit(
+            $firingBase,
+            $killerNation,
+            $monster->definition->missile_base_experience,
+            $context,
+        );
     }
 }

@@ -4,7 +4,6 @@ namespace App\Http\Requests;
 
 use App\Domain\Nation\NationProfileText;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class CreateNationRequest extends FormRequest
 {
@@ -17,10 +16,10 @@ class CreateNationRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'request_key' => ['required', 'uuid'],
             'world_id' => ['required', 'integer', 'exists:worlds,id'],
             'name' => [
                 'required', 'string', 'min:2', 'max:30', 'regex:/^[^\p{Cc}\p{Cs}<>]+$/u',
-                Rule::unique('nations', 'name')->where(fn ($query) => $query->where('world_id', $this->integer('world_id'))),
             ],
             'owner_name' => [
                 'required', 'string', 'min:1', 'max:'.NationProfileText::OWNER_NAME_MAX_LENGTH,

@@ -18,6 +18,7 @@ use App\Services\AssetManifestResolver;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -56,12 +57,15 @@ class ApiAndAssetTest extends TestCase
             ->assertOk()->assertJsonPath('data.chunk_x', 0)->assertJsonPath('data.chunk_y', 0)
             ->assertJsonCount(256, 'data.cells');
 
-        $nation = $this->actingAs($user)->postJson('/api/v1/nations', [
+        $registrationKey = (string) Str::uuid();
+        $registrationPayload = [
+            'request_key' => $registrationKey,
             'world_id' => $world->id,
             'name' => 'API国',
             'owner_name' => 'API島主',
             'comment' => '公開プロフィール',
-        ])
+        ];
+        $nation = $this->actingAs($user)->postJson('/api/v1/nations', $registrationPayload)
             ->assertCreated()
             ->assertJsonPath('data.id', 18)
             ->assertJsonPath('data.nation_number', 1)
@@ -87,6 +91,11 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.resources.4.unit_label', 'トン')
             ->assertJsonPath('data.resources.4.capacity', 9_999_000)
             ->json('data');
+        $this->actingAs($user)->postJson('/api/v1/nations', [
+            ...$registrationPayload,
+            'name' => '再送時変更名',
+        ])->assertCreated()->assertJsonPath('data.id', $nation['id']);
+        $this->assertSame(1, Nation::query()->where('world_id', $world->id)->count());
         $scaleCells = MapCell::query()->where('owner_nation_id', $nation['id'])
             ->whereNull('facility_definition_id')->limit(3)->get();
         foreach (['farm', 'factory', 'mine'] as $index => $facilityKey) {

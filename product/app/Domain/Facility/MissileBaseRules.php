@@ -14,7 +14,7 @@ final class MissileBaseRules
 
     public function level(FacilityDefinition $definition, int $experience): int
     {
-        $maximum = (int) ($definition->metadata['maximum_experience'] ?? 0);
+        $maximum = $this->maximumExperience($definition);
         if ($experience < 0 || $experience > $maximum) {
             throw new DomainException("Missile experience must be between 0 and {$maximum}.");
         }
@@ -27,6 +27,16 @@ final class MissileBaseRules
         }
 
         return $level;
+    }
+
+    public function maximumExperience(FacilityDefinition $definition): int
+    {
+        $maximum = $definition->metadata['maximum_experience'] ?? null;
+        if (! is_int($maximum) || $maximum < 0) {
+            throw new DomainException("Facility {$definition->key} does not define a valid experience maximum.");
+        }
+
+        return $maximum;
     }
 
     public function launchCapacity(FacilityDefinition $definition, int $experience): int

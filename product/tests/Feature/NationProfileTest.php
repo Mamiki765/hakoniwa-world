@@ -10,6 +10,7 @@ use App\Models\RulesetVersion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -28,6 +29,7 @@ class NationProfileTest extends TestCase
         $endpoint = '/api/v1/nations';
 
         $this->actingAs($user)->postJson($endpoint, [
+            'request_key' => (string) Str::uuid(),
             'world_id' => $world->id, 'name' => '不足島',
         ])->assertUnprocessable()->assertJsonValidationErrors('owner_name');
         $this->assertSame(0, Nation::query()->count());
@@ -43,6 +45,7 @@ class NationProfileTest extends TestCase
             ['owner_name' => '島主', 'comment' => "表示\u{202E}反転", 'error' => 'comment'],
         ] as $index => $case) {
             $this->postJson($endpoint, [
+                'request_key' => (string) Str::uuid(),
                 'world_id' => $world->id,
                 'name' => "検証島{$index}",
                 'owner_name' => $case['owner_name'],
@@ -51,6 +54,7 @@ class NationProfileTest extends TestCase
         }
 
         $first = $this->postJson($endpoint, [
+            'request_key' => (string) Str::uuid(),
             'world_id' => $world->id,
             'name' => '一文字島',
             'owner_name' => '　主　',
@@ -65,6 +69,7 @@ class NationProfileTest extends TestCase
 
         $secondUser = User::factory()->create();
         $this->actingAs($secondUser)->postJson($endpoint, [
+            'request_key' => (string) Str::uuid(),
             'world_id' => $world->id,
             'name' => '上限島',
             'owner_name' => str_repeat('主', 30),
@@ -75,6 +80,7 @@ class NationProfileTest extends TestCase
 
         $thirdUser = User::factory()->create();
         $this->actingAs($thirdUser)->postJson($endpoint, [
+            'request_key' => (string) Str::uuid(),
             'world_id' => $world->id,
             'name' => '無言島',
             'owner_name' => '無言島主',

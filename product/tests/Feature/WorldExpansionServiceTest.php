@@ -94,6 +94,22 @@ final class WorldExpansionServiceTest extends TestCase
             'actor_user_id' => $actor->id,
             'reason' => 'ver 1.5.0 expansion fixture',
         ], $metadata);
+        $publicEvent = DB::table('audit_events')->where('event_type', 'world.expanded_public')->sole();
+        $this->assertNull($publicEvent->actor_user_id);
+        $this->assertSame('public', $publicEvent->visibility);
+        $this->assertSame('{}', (string) $publicEvent->metadata);
+        $this->assertSame([], json_decode((string) $publicEvent->metadata, true, flags: JSON_THROW_ON_ERROR));
+        $publicNews = $this->getJson("/api/v1/public/worlds/{$world->id}/major-news")
+            ->assertOk()
+            ->assertJsonPath('data.groups.0.target_turn', $world->current_turn)
+            ->assertJsonPath('data.groups.0.events.0.type', 'world.expanded_public')
+            ->assertJsonPath(
+                'data.groups.0.events.0.message',
+                '大きな地響きが鳴り響き、世界がより広くなりました',
+            );
+        foreach (['before_bounds', 'after_bounds', 'actor_user_id', 'reason', 'metadata'] as $privateField) {
+            $this->assertStringNotContainsString($privateField, $publicNews->getContent());
+        }
         $this->assertSame($rulesets, $this->publishedRulesetPayloads());
 
         $sameRevision = $expanded->boundsRevision();
@@ -101,6 +117,7 @@ final class WorldExpansionServiceTest extends TestCase
         $this->assertSame(4096, $retried->cells()->count());
         $this->assertSame($sameRevision, $retried->boundsRevision());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
     }
 
     public function test_explicit_left_down_right_and_up_expansions_generate_signed_chunk_coordinates(): void
@@ -132,6 +149,7 @@ final class WorldExpansionServiceTest extends TestCase
 
         $events = DB::table('audit_events')->where('event_type', 'world.expanded')->orderBy('id')->get();
         $this->assertSame(5, $events->count());
+        $this->assertSame(5, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
         $this->assertSame(
             [0, 4, 5, 5, 6],
             $events->map(static fn (object $event): int => (int) json_decode(
@@ -172,6 +190,7 @@ final class WorldExpansionServiceTest extends TestCase
 
         $this->assertSame(3600, MapCell::query()->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
     }
 
     public static function invalidTargetBounds(): array

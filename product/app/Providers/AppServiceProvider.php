@@ -12,6 +12,7 @@ use App\Domain\Turn\GameplayTurnPhase;
 use App\Domain\Turn\RandomTurnSeedGenerator;
 use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnSeedGenerator;
+use App\Domain\World\WorldMutationLock;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -26,6 +27,9 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(ProductionDestructiveDatabaseCommandGuard::class);
+        // Advisory-lock ownership is process state shared by all World mutation
+        // services participating in one request or worker execution.
+        $this->app->singleton(WorldMutationLock::class);
         $this->app->singleton(ChunkCoordinateService::class, fn (): ChunkCoordinateService => new ChunkCoordinateService(
             (int) config('hakoniwa.ruleset.chunk_size'),
         ));

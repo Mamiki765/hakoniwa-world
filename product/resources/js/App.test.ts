@@ -565,9 +565,10 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         const request = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/nations');
-        expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+        expect(JSON.parse(String(request?.[1]?.body))).toEqual(expect.objectContaining({
+            request_key: expect.any(String),
             world_id: 1, name: '登録島', owner_name: '登録島主', comment: '登録コメント',
-        });
+        }));
         expect(wrapper.text()).toContain('島主名は必須です。');
         expect(wrapper.text()).toContain('一言コメントに改行は使用できません。');
     });

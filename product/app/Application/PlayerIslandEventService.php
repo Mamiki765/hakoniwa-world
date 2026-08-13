@@ -97,6 +97,7 @@ final class PlayerIslandEventService
 
     /** @var list<string> */
     private const MAJOR_NEWS_EVENT_TYPES = [
+        'world.expanded_public',
         'nation.created',
         'nation.disappeared',
         'nation.abandoned',
@@ -649,6 +650,7 @@ final class PlayerIslandEventService
         $nation = $nationName ?? '島';
 
         return match ($eventType) {
+            'world.expanded_public' => '大きな地響きが鳴り響き、世界がより広くなりました',
             'nation.created' => "{$nation}ができました。",
             'nation.disappeared', 'nation.abandoned', 'nation.depopulated' => "{$nation}が消えました。",
             default => '世界で大きな出来事がありました。',

@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 class WorldMutationLock
 {
-    /** @var array<int, string> */
+    /** @var array<int, array{key: string, depth: int}> */
     private array $heldLocks = [];
 
     public function acquire(World $world): void
@@ -18,6 +18,8 @@ class WorldMutationLock
             throw new DomainException('World mutation requires PostgreSQL advisory locks.');
         }
         if (isset($this->heldLocks[$world->id])) {
+            $this->heldLocks[$world->id]['depth']++;
+
             return;
         }
 
@@ -30,21 +32,33 @@ class WorldMutationLock
         if (! in_array($acquired, [true, 1, '1', 't'], true)) {
             throw new TurnAlreadyRunningException("World {$world->key} already has a running mutation.");
         }
-        $this->heldLocks[$world->id] = $key;
+        $this->heldLocks[$world->id] = ['key' => $key, 'depth' => 1];
     }
 
     public function release(World $world): void
     {
-        $key = $this->heldLocks[$world->id] ?? null;
-        if ($key === null) {
+        $held = $this->heldLocks[$world->id] ?? null;
+        if ($held === null) {
+            return;
+        }
+        if ($held['depth'] > 1) {
+            $this->heldLocks[$world->id]['depth']--;
+
             return;
         }
 
         DB::selectOne(
             'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released',
-            [$key],
+            [$held['key']],
         );
         unset($this->heldLocks[$world->id]);
+    }
+
+    public function assertHeld(World $world): void
+    {
+        if (! isset($this->heldLocks[$world->id])) {
+            throw new DomainException("World {$world->key} mutation lock is not held by this process.");
+        }
     }
 
     /**

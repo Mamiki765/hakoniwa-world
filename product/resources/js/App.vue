@@ -47,6 +47,7 @@ const page = ref<'home' | 'announcements' | 'island' | 'preview' | 'resources' |
 const nationName = ref('');
 const nationOwnerName = ref('');
 const nationComment = ref('');
+const nationRegistrationRequestKey = ref(crypto.randomUUID());
 const profileOwnerName = ref('');
 const profileComment = ref('');
 const registrationErrors = ref<Record<string, string>>({});
@@ -548,12 +549,14 @@ async function createNation(): Promise<void> {
         nation.value = await api<Nation>('/api/v1/nations', {
             method: 'POST',
             body: JSON.stringify({
+                request_key: nationRegistrationRequestKey.value,
                 world_id: world.id,
                 name: nationName.value,
                 owner_name: nationOwnerName.value,
                 comment: nationComment.value,
             }),
         });
+        nationRegistrationRequestKey.value = crypto.randomUUID();
         await loadPublicLobby();
         await openOwnIsland();
     } catch (error) {

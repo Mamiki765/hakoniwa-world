@@ -136,6 +136,7 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
         ])->assertConflict()->assertJsonPath('code', 'reset_required');
 
         $this->actingAs(User::factory()->create())->postJson('/api/v1/nations', [
+            'request_key' => (string) Str::uuid(),
             'world_id' => $world->id,
             'name' => '拒否国',
             'owner_name' => '拒否島主',
