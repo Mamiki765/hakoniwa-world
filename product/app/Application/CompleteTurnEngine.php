@@ -24,11 +24,23 @@ use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
 use App\Models\TerrainDefinition;
 use DomainException;
+use Illuminate\Database\Eloquent\Collection;
 
 final class CompleteTurnEngine
 {
     /** @var list<string> */
     private const SETTLEMENT_FACILITY_KEYS = ['village', 'town', 'city', 'capital'];
+
+    private ?int $definitionCatalogTurnRunId = null;
+
+    /** @var Collection<int, ResourceDefinition>|null */
+    private ?Collection $resourceCatalog = null;
+
+    /** @var array<string, FacilityDefinition> */
+    private array $facilityDefinitions = [];
+
+    /** @var array<string, TerrainDefinition> */
+    private array $terrainDefinitions = [];
 
     public function __construct(
         private readonly TurnOrderService $orders,
@@ -76,9 +88,8 @@ final class CompleteTurnEngine
         }
         $nationIds = $this->orders->stableNationIds($context->world);
         $context->state->setStableNationIds($nationIds);
-        foreach ($nationIds as $nationId) {
-            $nation = Nation::query()->findOrFail($nationId);
-            $context->state->setNationStartSummary($nationId, $this->summaryState($nation));
+        foreach ($this->summaryRecords($nationIds) as $nationId => $record) {
+            $context->state->setNationStartSummary($nationId, $record['summary']);
         }
 
         return ['nations' => count($nationIds), 'ruleset_validated' => true];
@@ -141,14 +152,15 @@ final class CompleteTurnEngine
         ];
         $workforceRules = $context->ruleset->settings['turn_processing']['workforce'];
         $foodRules = $context->ruleset->settings['turn_processing']['food'];
-        $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
+        $resources = $this->resourceDefinitions($context);
+        $wheat = $this->resourceDefinition($resources, 'wheat');
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             if ($nation->state !== 'active') {
                 continue;
             }
-            $aggregate = $this->nationAggregate($nation);
+            $aggregate = $this->nationEconomyAggregate($nation);
             $population = $aggregate['population'];
             $agriculturalWorkers = min($population, $aggregate['farm_capacity']);
             $wheatProduction = $agriculturalWorkers * $workforceRules['farm_output_per_worker'];
@@ -167,11 +179,18 @@ final class CompleteTurnEngine
             }
 
             $remainingWorkers = max(0, $population - $agriculturalWorkers);
-            $allocation = $this->allocateFactoryAndMineWorkers($nation, $remainingWorkers);
+            $allocation = $this->allocateFactoryAndMineWorkers(
+                $aggregate['industrial_facilities'],
+                $remainingWorkers,
+            );
             $industrial = $allocation['factory'] * $workforceRules['factory_output_per_worker'];
             $minerals = $allocation['mine'] * $workforceRules['mine_output_per_worker'];
-            $this->creditInventory($nation, 'industrial_goods', $industrial);
-            $this->creditInventory($nation, 'minerals', $minerals);
+            $this->creditInventory(
+                $nation,
+                $this->resourceDefinition($resources, 'industrial_goods'),
+                $industrial,
+            );
+            $this->creditInventory($nation, $this->resourceDefinition($resources, 'minerals'), $minerals);
             $this->events->record($context, 'resource.industrial_produced', $nation, [
                 'workers' => $allocation['factory'], 'produced_units' => $industrial,
             ]);
@@ -180,7 +199,12 @@ final class CompleteTurnEngine
             ]);
 
             $requiredNutrition = intdiv($population, $foodRules['population_per_nutrition']);
-            $consumption = $this->consumeFood($nation, $foodRules['consumption_priority'], $requiredNutrition);
+            $consumption = $this->consumeFood(
+                $nation,
+                $foodRules['consumption_priority'],
+                $requiredNutrition,
+                $resources,
+            );
             $this->events->record($context, 'resource.food_consumed', $nation, $consumption);
             if ($consumption['shortage'] > 0) {
                 $context->state->markFamine($nation->id);
@@ -330,7 +354,7 @@ final class CompleteTurnEngine
 
                 continue;
             }
-            if (! $famine && $this->appearSettlement($context, $cell)) {
+            if (! $famine && $this->appearSettlement($context, $space, $cell, $cellsByCoordinate)) {
                 $metrics['settlements_appeared']++;
             }
         }
@@ -348,9 +372,37 @@ final class CompleteTurnEngine
         $changedChunks = $this->updateChangedMapChunkVersions($context);
         $population = 0;
         $ownedLandCells = 0;
-        foreach ($context->state->stableNationIds() as $nationId) {
-            $nation = Nation::query()->findOrFail($nationId);
-            $aggregate = $this->nationAggregate($nation);
+        $nationIds = $context->state->stableNationIds();
+        $populationByNation = $this->populationByNation($nationIds);
+        $landByNation = $this->landArea->forNationIds($context->world, $nationIds);
+        $aggregates = [];
+        foreach ($nationIds as $nationId) {
+            $aggregates[$nationId] = [
+                'population' => $populationByNation[$nationId] ?? 0,
+                'farm_capacity' => 0,
+                'factory_capacity' => 0,
+                'mine_capacity' => 0,
+                'owned_land_cells' => $landByNation[$nationId] ?? 0,
+            ];
+        }
+        $facilities = $nationIds === []
+            ? new Collection
+            : MapCell::query()->whereIn('owner_nation_id', $nationIds)
+                ->whereNotNull('facility_definition_id')->with('facility')->orderBy('id')->get();
+        foreach ($facilities as $cell) {
+            $nationId = $cell->owner_nation_id;
+            $key = $cell->facility?->key;
+            if ($nationId === null || ! isset($aggregates[$nationId])
+                || ! in_array($key, ['farm', 'factory', 'mine'], true)) {
+                continue;
+            }
+            if ($cell->facility_scale === null || $cell->facility->scale_unit_people === null) {
+                throw new DomainException("Facility {$key} has incomplete workforce capacity state.");
+            }
+            $aggregates[$nationId]["{$key}_capacity"] +=
+                $cell->facility_scale * $cell->facility->scale_unit_people;
+        }
+        foreach ($aggregates as $nationId => $aggregate) {
             $context->state->setNationAggregate($nationId, $aggregate);
             $population += $aggregate['population'];
             $ownedLandCells += $aggregate['owned_land_cells'];
@@ -390,8 +442,9 @@ final class CompleteTurnEngine
         $settings = $context->ruleset->settings;
         $forbiddenSellAll = $settings['turn_processing']['sale_policy']['sell_all_forbidden_resource_keys'];
         $rates = $settings['inventory_sale_rates'];
-        $resources = ResourceDefinition::query()->orderBy('sort_order')->orderBy('id')->get();
+        $resources = $this->resourceDefinitions($context);
         $tradableResources = $resources->where('tradable', true);
+        $tradableResourceIds = $tradableResources->pluck('id')->all();
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
@@ -399,13 +452,21 @@ final class CompleteTurnEngine
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
+            $balances = NationResource::query()
+                ->where('nation_id', $nation->id)
+                ->whereIn('resource_definition_id', $tradableResourceIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('resource_definition_id');
+            $policies = NationResourceSalePolicy::query()
+                ->where('nation_id', $nation->id)
+                ->whereIn('resource_definition_id', $tradableResourceIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('resource_definition_id');
             foreach ($tradableResources as $resource) {
-                $balance = NationResource::query()->firstOrCreate([
-                    'nation_id' => $nation->id, 'resource_definition_id' => $resource->id,
-                ], ['amount' => 0]);
-                $balance = NationResource::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
-                $policyRecord = NationResourceSalePolicy::query()->where('nation_id', $nation->id)
-                    ->where('resource_definition_id', $resource->id)->lockForUpdate()->first();
+                $balance = $this->lockedOrCreatedBalance($balances, $nation, $resource);
+                $policyRecord = $policies->get($resource->id);
                 $policy = $policyRecord->policy ?? $settings['default_sale_policy'];
                 $keepAmount = $policyRecord?->keep_amount;
                 if (! SalePolicy::isSupported($policy)) {
@@ -444,7 +505,6 @@ final class CompleteTurnEngine
                 if ($sold > 0) {
                     $balance->decrement('amount', $sold);
                     $nation->increment('money', $revenue);
-                    $nation->refresh();
                     $metrics['sales']++;
                     $metrics['revenue'] += $revenue;
                 }
@@ -470,7 +530,9 @@ final class CompleteTurnEngine
         $metrics = ['overflow_reports' => 0];
         $settings = $context->ruleset->settings;
         $resourceOverflowEvent = $this->resourceOverflowEvent($settings);
-        $resources = ResourceDefinition::query()->orderBy('sort_order')->orderBy('id')->get();
+        $resources = $this->resourceDefinitions($context);
+        $resourcesByKey = $resources->keyBy('key');
+        $resourceIds = $resources->pluck('id')->all();
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
@@ -478,17 +540,20 @@ final class CompleteTurnEngine
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
+            $balances = NationResource::query()
+                ->where('nation_id', $nation->id)
+                ->whereIn('resource_definition_id', $resourceIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('resource_definition_id');
 
             $resourceAmounts = [];
             foreach ($capacity->resources as $resourceKey => $resourceCapacity) {
-                $resource = $resources->firstWhere('key', $resourceKey);
+                $resource = $resourcesByKey->get($resourceKey);
                 if (! $resource instanceof ResourceDefinition) {
                     throw new DomainException("Configured resource capacity references missing catalog key {$resourceKey}.");
                 }
-                $balance = NationResource::query()->firstOrCreate([
-                    'nation_id' => $nation->id, 'resource_definition_id' => $resource->id,
-                ], ['amount' => 0]);
-                $balance = NationResource::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
+                $balance = $this->lockedOrCreatedBalance($balances, $nation, $resource);
                 $before = (int) $balance->amount;
                 $after = min($before, $resourceCapacity);
                 $overflow = $before - $after;
@@ -511,8 +576,13 @@ final class CompleteTurnEngine
                 $resourceAmounts[$resourceKey] = $after;
             }
 
-            $foodTotal = (int) NationResource::query()->where('nation_id', $nation->id)
-                ->whereHas('definition', fn ($query) => $query->where('category', 'food'))->sum('amount');
+            $foodTotal = 0;
+            foreach ($balances as $balance) {
+                $definition = $resources->firstWhere('id', $balance->resource_definition_id);
+                if ($definition?->category === 'food') {
+                    $foodTotal += (int) $balance->amount;
+                }
+            }
             foreach ([
                 ['asset' => 'money', 'overflow' => max(0, (int) $nation->money - $capacity->money), 'capacity' => $capacity->money],
                 ['asset' => 'aggregate_food', 'overflow' => max(0, $foodTotal - $capacity->foodTons), 'capacity' => $capacity->foodTons],
@@ -553,10 +623,10 @@ final class CompleteTurnEngine
     private function finalizeTurn(TurnContext $context): array
     {
         $awardMetrics = $this->awards->finalize($context);
-        foreach ($context->state->stableNationIds() as $nationId) {
-            $nation = Nation::query()->findOrFail($nationId);
+        foreach ($this->summaryRecords($context->state->stableNationIds()) as $nationId => $record) {
+            $nation = $record['nation'];
             $start = $context->state->nationStartSummary($nationId);
-            $end = $this->summaryState($nation);
+            $end = $record['summary'];
             $summary = [];
             foreach (['money', 'population', 'food'] as $key) {
                 $summary[$key] = [
@@ -579,26 +649,159 @@ final class CompleteTurnEngine
         return ['completed' => true, 'target_turn' => $context->targetTurn, ...$awardMetrics];
     }
 
-    /** @return array{money: int, population: int, food: int} */
-    private function summaryState(Nation $nation): array
+    /**
+     * @param  list<int>  $nationIds
+     * @return array<int, array{nation: Nation, summary: array{money: int, population: int, food: int}}>
+     */
+    private function summaryRecords(array $nationIds): array
     {
-        $food = (int) NationResource::query()
-            ->where('nation_id', $nation->id)
+        if ($nationIds === []) {
+            return [];
+        }
+        $nations = Nation::query()->whereIn('id', $nationIds)->orderBy('id')->get()->keyBy('id');
+        if ($nations->count() !== count($nationIds)) {
+            throw new DomainException('Stable Nation order references a missing Nation.');
+        }
+        $populationByNation = $this->populationByNation($nationIds);
+        $foodRows = NationResource::query()
+            ->whereIn('nation_id', $nationIds)
             ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
-            ->sum('amount');
+            ->selectRaw('nation_id, SUM(amount) AS aggregate')
+            ->groupBy('nation_id')
+            ->pluck('aggregate', 'nation_id');
+        $foodByNation = [];
+        foreach ($foodRows as $nationId => $amount) {
+            $foodByNation[(int) $nationId] = (int) $amount;
+        }
 
-        return [
-            'money' => (int) $nation->fresh()->money,
-            'population' => (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population'),
-            'food' => $food,
-        ];
+        $records = [];
+        foreach ($nationIds as $nationId) {
+            $nation = $nations->get($nationId);
+            if (! $nation instanceof Nation) {
+                throw new DomainException("Stable Nation order references missing Nation {$nationId}.");
+            }
+            $records[$nationId] = [
+                'nation' => $nation,
+                'summary' => [
+                    'money' => (int) $nation->money,
+                    'population' => $populationByNation[$nationId] ?? 0,
+                    'food' => $foodByNation[$nationId] ?? 0,
+                ],
+            ];
+        }
+
+        return $records;
     }
 
-    /** @return array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int} */
-    private function nationAggregate(Nation $nation): array
+    /** @param list<int> $nationIds
+     * @return array<int, int>
+     */
+    private function populationByNation(array $nationIds): array
+    {
+        if ($nationIds === []) {
+            return [];
+        }
+        $rows = MapCell::query()
+            ->whereIn('owner_nation_id', $nationIds)
+            ->selectRaw('owner_nation_id, SUM(population) AS aggregate')
+            ->groupBy('owner_nation_id')
+            ->pluck('aggregate', 'owner_nation_id');
+        $populationByNation = [];
+        foreach ($rows as $nationId => $population) {
+            $populationByNation[(int) $nationId] = (int) $population;
+        }
+
+        return $populationByNation;
+    }
+
+    /** @return Collection<int, ResourceDefinition> */
+    private function resourceDefinitions(TurnContext $context): Collection
+    {
+        $this->ensureDefinitionCatalogContext($context);
+        $this->resourceCatalog ??= ResourceDefinition::query()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        return $this->resourceCatalog;
+    }
+
+    /** @param Collection<int, ResourceDefinition> $resources */
+    private function resourceDefinition(Collection $resources, string $key): ResourceDefinition
+    {
+        $resource = $resources->firstWhere('key', $key);
+        if (! $resource instanceof ResourceDefinition) {
+            throw new DomainException("Resource catalog is missing key {$key}.");
+        }
+
+        return $resource;
+    }
+
+    private function facilityDefinition(TurnContext $context, string $key): FacilityDefinition
+    {
+        $this->ensureDefinitionCatalogContext($context);
+
+        return $this->facilityDefinitions[$key] ??=
+            FacilityDefinition::query()->where('key', $key)->firstOrFail();
+    }
+
+    private function terrainDefinition(TurnContext $context, string $key): TerrainDefinition
+    {
+        $this->ensureDefinitionCatalogContext($context);
+
+        return $this->terrainDefinitions[$key] ??=
+            TerrainDefinition::query()->where('key', $key)->firstOrFail();
+    }
+
+    private function ensureDefinitionCatalogContext(TurnContext $context): void
+    {
+        if ($this->definitionCatalogTurnRunId === $context->run->id) {
+            return;
+        }
+        $this->definitionCatalogTurnRunId = $context->run->id;
+        $this->resourceCatalog = null;
+        $this->facilityDefinitions = [];
+        $this->terrainDefinitions = [];
+    }
+
+    /**
+     * @param  Collection<int, NationResource>  $balances
+     */
+    private function lockedOrCreatedBalance(
+        Collection $balances,
+        Nation $nation,
+        ResourceDefinition $resource,
+    ): NationResource {
+        $balance = $balances->get($resource->id);
+        if ($balance instanceof NationResource) {
+            return $balance;
+        }
+        $balance = NationResource::query()->firstOrCreate([
+            'nation_id' => $nation->id,
+            'resource_definition_id' => $resource->id,
+        ], ['amount' => 0]);
+        if (! $balance->wasRecentlyCreated) {
+            $balance = NationResource::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
+        }
+        $balances->put($resource->id, $balance);
+
+        return $balance;
+    }
+
+    /**
+     * @return array{
+     *     population: int,
+     *     farm_capacity: int,
+     *     factory_capacity: int,
+     *     mine_capacity: int,
+     *     industrial_facilities: list<array{cell_id: int, key: string, capacity: int, workers: int, remainder: int}>
+     * }
+     */
+    private function nationEconomyAggregate(Nation $nation): array
     {
         $population = (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population');
         $capacities = ['farm' => 0, 'factory' => 0, 'mine' => 0];
+        $industrialFacilities = [];
         $facilities = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNotNull('facility_definition_id')->with('facility')->orderBy('id')->get();
         foreach ($facilities as $cell) {
@@ -609,33 +812,32 @@ final class CompleteTurnEngine
             if ($cell->facility_scale === null || $cell->facility->scale_unit_people === null) {
                 throw new DomainException("Facility {$key} has incomplete workforce capacity state.");
             }
-            $capacities[$key] += $cell->facility_scale * $cell->facility->scale_unit_people;
+            $capacity = $cell->facility_scale * $cell->facility->scale_unit_people;
+            $capacities[$key] += $capacity;
+            if (in_array($key, ['factory', 'mine'], true)) {
+                $industrialFacilities[] = [
+                    'cell_id' => $cell->id,
+                    'key' => $key,
+                    'capacity' => $capacity,
+                    'workers' => 0,
+                    'remainder' => 0,
+                ];
+            }
         }
 
         return [
             'population' => $population, 'farm_capacity' => $capacities['farm'],
             'factory_capacity' => $capacities['factory'], 'mine_capacity' => $capacities['mine'],
-            'owned_land_cells' => $this->landArea->forNation($nation),
+            'industrial_facilities' => $industrialFacilities,
         ];
     }
 
-    /** @return array{factory: int, mine: int} */
-    private function allocateFactoryAndMineWorkers(Nation $nation, int $availableWorkers): array
+    /**
+     * @param  list<array{cell_id: int, key: string, capacity: int, workers: int, remainder: int}>  $facilities
+     * @return array{factory: int, mine: int}
+     */
+    private function allocateFactoryAndMineWorkers(array $facilities, int $availableWorkers): array
     {
-        $facilities = [];
-        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereHas('facility', fn ($query) => $query->whereIn('key', ['factory', 'mine']))
-            ->with('facility')->orderBy('id')->get();
-        foreach ($cells as $cell) {
-            if ($cell->facility_scale === null || $cell->facility?->scale_unit_people === null) {
-                throw new DomainException('Industrial facility has incomplete capacity state.');
-            }
-            $facilities[] = [
-                'cell_id' => $cell->id, 'key' => $cell->facility->key,
-                'capacity' => $cell->facility_scale * $cell->facility->scale_unit_people,
-                'workers' => 0, 'remainder' => 0,
-            ];
-        }
         $totalCapacity = array_sum(array_column($facilities, 'capacity'));
         $workers = min($availableWorkers, $totalCapacity);
         if ($workers === 0 || $totalCapacity === 0) {
@@ -665,12 +867,11 @@ final class CompleteTurnEngine
         return $result;
     }
 
-    private function creditInventory(Nation $nation, string $resourceKey, int $amount): void
+    private function creditInventory(Nation $nation, ResourceDefinition $resource, int $amount): void
     {
         if ($amount < 1) {
             return;
         }
-        $resource = ResourceDefinition::query()->where('key', $resourceKey)->firstOrFail();
         $balance = NationResource::query()->firstOrCreate([
             'nation_id' => $nation->id, 'resource_definition_id' => $resource->id,
         ], ['amount' => 0]);
@@ -678,15 +879,20 @@ final class CompleteTurnEngine
     }
 
     /** @param list<string> $priority
+     * @param  Collection<int, ResourceDefinition>  $catalog
      * @return array<string, mixed>
      */
-    private function consumeFood(Nation $nation, array $priority, int $requiredNutrition): array
-    {
+    private function consumeFood(
+        Nation $nation,
+        array $priority,
+        int $requiredNutrition,
+        Collection $catalog,
+    ): array {
         $remaining = $requiredNutrition;
         $totalSupplied = 0;
         $resources = [];
         foreach ($priority as $resourceKey) {
-            $resource = ResourceDefinition::query()->where('key', $resourceKey)->firstOrFail();
+            $resource = $this->resourceDefinition($catalog, $resourceKey);
             $nutrition = $this->integerNutrition($resource);
             if ($resource->category !== 'food' || $nutrition < 1) {
                 throw new DomainException("Food resource {$resourceKey} has invalid nutrition.");
@@ -747,7 +953,7 @@ final class CompleteTurnEngine
             return false;
         }
         $facilityKey = $cell->facility->key;
-        $wasteland = TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+        $wasteland = $this->terrainDefinition($context, 'wasteland');
         $this->cells->setFacility($cell, null);
         $this->cells->transitionTerrain($cell, $wasteland);
         $cell->population = 0;
@@ -798,7 +1004,7 @@ final class CompleteTurnEngine
 
         $beforeFacility = $cell->facility?->key;
         $this->cells->setFacility($cell, null);
-        $terrain = TerrainDefinition::query()->where('key', $rules['depleted_terrain_key'])->firstOrFail();
+        $terrain = $this->terrainDefinition($context, $rules['depleted_terrain_key']);
         $this->cells->transitionTerrain($cell, $terrain);
         $cell->owner_nation_id = null;
         $cell->population = 0;
@@ -850,8 +1056,13 @@ final class CompleteTurnEngine
             && ($cell->population > 0 || $cell->facility->key === 'capital');
     }
 
-    private function appearSettlement(TurnContext $context, MapCell $cell): bool
-    {
+    /** @param array<string, MapCell> $cellsByCoordinate */
+    private function appearSettlement(
+        TurnContext $context,
+        MapSpace $space,
+        MapCell $cell,
+        array $cellsByCoordinate,
+    ): bool {
         $rules = $context->ruleset->settings['turn_processing']['settlement'];
         if ($cell->terrain->key !== $rules['eligible_terrain_key']
             || $cell->facility_definition_id !== null || $cell->population !== 0) {
@@ -860,11 +1071,16 @@ final class CompleteTurnEngine
         $probability = $rules['appearance_probability'];
         $draw = $context->random->stream(TurnRandomStreamFactory::SETTLEMENT_APPEARANCE)
             ->integer(0, $probability['denominator'] - 1);
-        if ($draw >= $probability['numerator'] || ! $this->hasSettlementNeighbor($cell, $rules['adjacent_facility_key'])) {
+        if ($draw >= $probability['numerator'] || ! $this->hasSettlementNeighbor(
+            $space,
+            $cell,
+            $rules['adjacent_facility_key'],
+            $cellsByCoordinate,
+        )) {
             return false;
         }
         $villageKey = $rules['stages']['village']['facility_key'];
-        $village = FacilityDefinition::query()->where('key', $villageKey)->firstOrFail();
+        $village = $this->facilityDefinition($context, $villageKey);
         $this->cells->setFacility($cell, $village);
         $cell->population = $rules['initial_population'];
         $cell->version++;
@@ -878,15 +1094,23 @@ final class CompleteTurnEngine
         return true;
     }
 
-    private function hasSettlementNeighbor(MapCell $cell, string $farmKey): bool
-    {
-        $space = MapSpace::query()->findOrFail($cell->map_space_id);
+    /** @param array<string, MapCell> $cellsByCoordinate */
+    private function hasSettlementNeighbor(
+        MapSpace $space,
+        MapCell $cell,
+        string $farmKey,
+        array $cellsByCoordinate,
+    ): bool {
         $neighbors = (new GridCoordinate($cell->x, $cell->y))->neighborsWithin(
             $space->min_x, $space->max_x, $space->min_y, $space->max_y,
         );
         foreach ($neighbors as $neighbor) {
-            $neighborCell = MapCell::query()->where('map_space_id', $cell->map_space_id)
-                ->where('x', $neighbor->x)->where('y', $neighbor->y)->with('facility')->first();
+            $coordinateKey = $neighbor->x.':'.$neighbor->y;
+            $neighborCell = $cellsByCoordinate[$coordinateKey] ?? null;
+            if (! array_key_exists($coordinateKey, $cellsByCoordinate)) {
+                $neighborCell = MapCell::query()->where('map_space_id', $cell->map_space_id)
+                    ->where('x', $neighbor->x)->where('y', $neighbor->y)->with('facility')->first();
+            }
             if ($neighborCell !== null
                 && ($neighborCell->population > 0 || $neighborCell->facility?->key === $farmKey)) {
                 return true;
@@ -909,7 +1133,7 @@ final class CompleteTurnEngine
             : 0;
         $cell->population = max($minimumPopulation, $before - $loss);
         if ($cell->population === 0 && $facilityKey !== 'capital') {
-            $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+            $plain = $this->terrainDefinition($context, 'plain');
             $this->cells->setFacility($cell, null);
             $this->cells->transitionTerrain($cell, $plain);
         }
@@ -1022,7 +1246,7 @@ final class CompleteTurnEngine
         if ($before === $targetKey) {
             return 0;
         }
-        $facility = FacilityDefinition::query()->where('key', $targetKey)->firstOrFail();
+        $facility = $this->facilityDefinition($context, $targetKey);
         $this->cells->setFacility($cell, $facility);
         $cell->version++;
         $this->saveChangedCell($context, $cell);

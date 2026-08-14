@@ -51,37 +51,6 @@ final class MonsterSpawnService
             throw new DomainException('The active ruleset does not have the exact PR21 monster catalog.');
         }
 
-        $cells = MapCell::query()
-            ->where('map_space_id', $space->id)
-            ->with(['terrain', 'facility'])
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
-        $occupied = MonsterOccupancy::query()
-            ->whereIn('map_cell_id', $cells->pluck('id'))
-            ->pluck('map_cell_id')
-            ->map(static fn ($id): int => (int) $id)
-            ->flip();
-        $landByNation = $this->landArea->byNation($cells);
-
-        /** @var array<int, int> $populationByNation */
-        $populationByNation = [];
-        /** @var array<int, list<MapCell>> $candidatesByNation */
-        $candidatesByNation = [];
-        $settlementKeys = $system['settlement_facility_keys'] ?? [];
-        foreach ($cells as $cell) {
-            if ($cell->owner_nation_id === null) {
-                continue;
-            }
-            $populationByNation[$cell->owner_nation_id] = ($populationByNation[$cell->owner_nation_id] ?? 0)
-                + $cell->population;
-            if ($cell->population > 0
-                && in_array($cell->facility?->key, $settlementKeys, true)
-                && ! $occupied->has($cell->id)) {
-                $candidatesByNation[$cell->owner_nation_id][] = $cell;
-            }
-        }
-
         $nations = Nation::query()
             ->where('world_id', $context->world->id)
             ->where('state', $system['eligible_nation_state'])
@@ -94,6 +63,58 @@ final class MonsterSpawnService
             throw new DomainException('The active ruleset has invalid monster spawn arithmetic.');
         }
         $this->policy->probabilityForLand($system, 0);
+
+        $nationIds = $nations->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+        $populationRows = $nationIds === []
+            ? collect()
+            : MapCell::query()
+                ->where('map_space_id', $space->id)
+                ->whereIn('owner_nation_id', $nationIds)
+                ->selectRaw('owner_nation_id, SUM(population) AS aggregate')
+                ->groupBy('owner_nation_id')
+                ->pluck('aggregate', 'owner_nation_id');
+        /** @var array<int, int> $populationByNation */
+        $populationByNation = [];
+        /** @var list<int> $populationEligibleNationIds */
+        $populationEligibleNationIds = [];
+        foreach ($nations as $nation) {
+            $population = (int) ($populationRows[$nation->id] ?? 0);
+            $populationByNation[$nation->id] = $population;
+            if ($population >= $minimumPopulation && $this->policy->poolForPopulation($system, $population) !== []) {
+                $populationEligibleNationIds[] = $nation->id;
+            }
+        }
+        if ($populationEligibleNationIds === []) {
+            return $metrics;
+        }
+
+        $landByNation = $this->landArea->forNationIds($context->world, $populationEligibleNationIds);
+        $settlementKeys = $system['settlement_facility_keys'] ?? [];
+        $cells = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereIn('owner_nation_id', $populationEligibleNationIds)
+            ->where('population', '>', 0)
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', $settlementKeys))
+            ->with('facility')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        $occupied = MonsterOccupancy::query()
+            ->whereIn('map_cell_id', $cells->pluck('id'))
+            ->pluck('map_cell_id')
+            ->map(static fn ($id): int => (int) $id)
+            ->flip();
+
+        /** @var array<int, list<MapCell>> $candidatesByNation */
+        $candidatesByNation = [];
+        foreach ($cells as $cell) {
+            if ($cell->owner_nation_id === null) {
+                continue;
+            }
+            if (! $occupied->has($cell->id)) {
+                $candidatesByNation[$cell->owner_nation_id][] = $cell;
+            }
+        }
 
         // All eligibility data above is a single pre-application snapshot. Applying a
         // spawn for one Nation cannot change another Nation's candidate set or draw.

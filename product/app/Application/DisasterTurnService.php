@@ -162,35 +162,17 @@ final class DisasterTurnService
             return $empty;
         }
 
-        $cells = MapCell::query()->where('map_space_id', $space->id)
-            ->orderBy('id')->lockForUpdate()->with(['terrain', 'facility'])->get();
-        $landByNation = $this->landArea->byNation($cells);
-
-        /** @var array<int, MapCell> $cellsById */
-        $cellsById = [];
-        /** @var array<string, array{id: int, x: int, y: int, map_chunk_id: int, terrain_key: string, facility_key: string|null, owner_nation_id: int|null, population: int}> $snapshot */
-        $snapshot = [];
-        foreach ($cells as $cell) {
-            $cellsById[$cell->id] = $cell;
-            $snapshot[$cell->x.':'.$cell->y] = [
-                'id' => $cell->id,
-                'x' => $cell->x,
-                'y' => $cell->y,
-                'map_chunk_id' => $cell->map_chunk_id,
-                'terrain_key' => $cell->terrain->key,
-                'facility_key' => $cell->facility?->key,
-                'owner_nation_id' => $cell->owner_nation_id,
-                'population' => $cell->population,
-            ];
-        }
-
-        /** @var array<int, array{nation: Nation, owned_land_cells: int, threshold: int, draw: int, to_sea: array<int, true>, to_shallow: array<int, true>, protected_mountains: array<int, true>, capitals: array<int, true>}> $plans */
-        $plans = [];
         $nations = Nation::query()
             ->where('world_id', $context->world->id)
             ->where('state', 'active')
             ->orderBy('id')
             ->get();
+        $landByNation = $this->landArea->forNationIds(
+            $context->world,
+            $nations->pluck('id')->map(static fn ($id): int => (int) $id)->all(),
+        );
+        /** @var array<int, array{nation: Nation, owned_land_cells: int, threshold: int, draw: int, to_sea: array<int, true>, to_shallow: array<int, true>, protected_mountains: array<int, true>, capitals: array<int, true>}> $plans */
+        $plans = [];
         foreach ($nations as $nation) {
             $ownedLandCells = $landByNation[$nation->id] ?? 0;
             $threshold = $this->subsidenceThreshold->resolve($context->ruleset, $nation);
@@ -218,6 +200,26 @@ final class DisasterTurnService
         }
         if ($plans === []) {
             return $empty;
+        }
+
+        $cells = MapCell::query()->where('map_space_id', $space->id)
+            ->orderBy('id')->lockForUpdate()->with(['terrain', 'facility'])->get();
+        /** @var array<int, MapCell> $cellsById */
+        $cellsById = [];
+        /** @var array<string, array{id: int, x: int, y: int, map_chunk_id: int, terrain_key: string, facility_key: string|null, owner_nation_id: int|null, population: int}> $snapshot */
+        $snapshot = [];
+        foreach ($cells as $cell) {
+            $cellsById[$cell->id] = $cell;
+            $snapshot[$cell->x.':'.$cell->y] = [
+                'id' => $cell->id,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'map_chunk_id' => $cell->map_chunk_id,
+                'terrain_key' => $cell->terrain->key,
+                'facility_key' => $cell->facility?->key,
+                'owner_nation_id' => $cell->owner_nation_id,
+                'population' => $cell->population,
+            ];
         }
 
         foreach ($plans as $nationId => &$plan) {
