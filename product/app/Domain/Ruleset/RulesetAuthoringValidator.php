@@ -374,7 +374,7 @@ final class RulesetAuthoringValidator
         ], "{$path}.dormant_impact");
         $explicitTargetState = in_array(
             $settings['key'] ?? null,
-            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4'],
+            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5'],
             true,
         )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
@@ -404,7 +404,7 @@ final class RulesetAuthoringValidator
             throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
         }
 
-        if (($settings['key'] ?? null) === 'hakoniwa-2s-plus-v4') {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5'], true)) {
             $this->validateLaunchBaseExperience($settings, $military, $facilityKeys, $path);
         }
     }
@@ -1218,7 +1218,7 @@ final class RulesetAuthoringValidator
     /** @param array<string, mixed> $settings */
     private function validateTerritoryContracts(array $settings): void
     {
-        if (! in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4'], true)) {
+        if (! in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5'], true)) {
             return;
         }
 
@@ -1440,12 +1440,22 @@ final class RulesetAuthoringValidator
         $settlement = $this->map($turn['settlement'], "{$path}.settlement");
         $settlementKeys = [
             'appearance_probability', 'initial_population', 'eligible_terrain_key',
-            'adjacent_facility_key', 'stages', 'sea_edge_bands', 'ordinary_growth',
+            'adjacent_facility_key', 'stages', 'ordinary_growth',
             'attraction_growth', 'attraction_maximum_population',
         ];
+        $usesLegacySeaEdgeBands = array_key_exists('sea_edge_bands', $settlement);
+        $usesUniformOrdinaryMaximum = array_key_exists('ordinary_maximum_population', $settlement);
+        if ($usesLegacySeaEdgeBands === $usesUniformOrdinaryMaximum) {
+            throw new DomainException(
+                "{$path}.settlement must define exactly one of legacy sea_edge_bands or ordinary_maximum_population.",
+            );
+        }
+        $settlementKeys[] = $usesLegacySeaEdgeBands
+            ? 'sea_edge_bands'
+            : 'ordinary_maximum_population';
         if (in_array($settings['key'] ?? null, [
             'roadmap-pr22-v1', 'hakoniwa-2s-plus-v1', 'hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3',
-            'hakoniwa-2s-plus-v4',
+            'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5',
         ], true)) {
             $settlementKeys[] = 'post_ordinary_attraction_growth';
         }
@@ -1486,24 +1496,32 @@ final class RulesetAuthoringValidator
             || $initialSettlementPopulation > $village['maximum_population']) {
             throw new DomainException("{$path}.settlement initial population must be in the village stage.");
         }
-        $previousMinimumSeaCells = null;
-        $lastMinimumSeaCells = null;
         $largestOrdinaryMaximum = 0;
-        foreach ($this->list($settlement['sea_edge_bands'], "{$path}.settlement.sea_edge_bands") as $index => $bandValue) {
-            $band = $this->map($bandValue, "{$path}.settlement.sea_edge_bands.{$index}");
-            $this->requireKeys($band, ['minimum_sea_cells', 'maximum_population', 'growth_multiplier'], "{$path}.settlement.sea_edge_bands.{$index}");
-            $minimumSeaCells = $this->integer($band['minimum_sea_cells'], "{$path}.settlement.sea_edge_bands.{$index}.minimum_sea_cells", 0);
-            if ($previousMinimumSeaCells !== null && $minimumSeaCells >= $previousMinimumSeaCells) {
-                throw new DomainException("{$path}.settlement.sea_edge_bands must use descending minimums.");
+        if ($usesLegacySeaEdgeBands) {
+            $previousMinimumSeaCells = null;
+            $lastMinimumSeaCells = null;
+            foreach ($this->list($settlement['sea_edge_bands'], "{$path}.settlement.sea_edge_bands") as $index => $bandValue) {
+                $band = $this->map($bandValue, "{$path}.settlement.sea_edge_bands.{$index}");
+                $this->requireKeys($band, ['minimum_sea_cells', 'maximum_population', 'growth_multiplier'], "{$path}.settlement.sea_edge_bands.{$index}");
+                $minimumSeaCells = $this->integer($band['minimum_sea_cells'], "{$path}.settlement.sea_edge_bands.{$index}.minimum_sea_cells", 0);
+                if ($previousMinimumSeaCells !== null && $minimumSeaCells >= $previousMinimumSeaCells) {
+                    throw new DomainException("{$path}.settlement.sea_edge_bands must use descending minimums.");
+                }
+                $previousMinimumSeaCells = $minimumSeaCells;
+                $lastMinimumSeaCells = $minimumSeaCells;
+                $maximumPopulation = $this->integer($band['maximum_population'], "{$path}.settlement.sea_edge_bands.{$index}.maximum_population", 1);
+                $largestOrdinaryMaximum = max($largestOrdinaryMaximum, $maximumPopulation);
+                $this->integer($band['growth_multiplier'], "{$path}.settlement.sea_edge_bands.{$index}.growth_multiplier", 1);
             }
-            $previousMinimumSeaCells = $minimumSeaCells;
-            $lastMinimumSeaCells = $minimumSeaCells;
-            $maximumPopulation = $this->integer($band['maximum_population'], "{$path}.settlement.sea_edge_bands.{$index}.maximum_population", 1);
-            $largestOrdinaryMaximum = max($largestOrdinaryMaximum, $maximumPopulation);
-            $this->integer($band['growth_multiplier'], "{$path}.settlement.sea_edge_bands.{$index}.growth_multiplier", 1);
-        }
-        if ($lastMinimumSeaCells !== 0) {
-            throw new DomainException("{$path}.settlement.sea_edge_bands must end at minimum zero.");
+            if ($lastMinimumSeaCells !== 0) {
+                throw new DomainException("{$path}.settlement.sea_edge_bands must end at minimum zero.");
+            }
+        } else {
+            $largestOrdinaryMaximum = $this->integer(
+                $settlement['ordinary_maximum_population'],
+                "{$path}.settlement.ordinary_maximum_population",
+                1,
+            );
         }
         $growthKeys = ['ordinary_growth', 'attraction_growth'];
         if (array_key_exists('post_ordinary_attraction_growth', $settlement)) {

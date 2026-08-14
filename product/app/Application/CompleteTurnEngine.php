@@ -93,13 +93,25 @@ final class CompleteTurnEngine
         $surfaceCellIds = $this->orders->shuffledSurfaceCellIds($context->world, $context->random);
         $context->state->setSurfaceCellIds($surfaceCellIds);
 
+        $metrics = [
+            'development_nations' => count($context->state->developmentNationIds()),
+            'surface_cells' => count($surfaceCellIds),
+        ];
+        $settlementRules = $context->ruleset->settings['turn_processing']['settlement'] ?? null;
+        if (! is_array($settlementRules) || ! array_key_exists('sea_edge_bands', $settlementRules)) {
+            return $metrics;
+        }
+
+        // Immutable historical rulesets still need their authored behavior when an
+        // already-failed TurnRun is retried with the same seed. Current v5 never
+        // enters this compatibility path and pays none of its query/scan/state cost.
         $space = MapSpace::query()->where('world_id', $context->world->id)->where('key', 'surface')->firstOrFail();
         $cells = MapCell::query()->where('map_space_id', $space->id)->with('terrain')->orderBy('id')->get();
         $seaByCoordinate = [];
         foreach ($cells as $cell) {
             $seaByCoordinate[$cell->x.':'.$cell->y] = $cell->terrain->key === 'sea';
         }
-        $seaEdgeByCellId = [];
+        $legacySeaEdgeByCellId = [];
         foreach ($cells as $cell) {
             $seaEdge = 0;
             foreach ((new GridCoordinate($cell->x, $cell->y))->radius(4) as $coordinate) {
@@ -109,15 +121,12 @@ final class CompleteTurnEngine
                     $seaEdge++;
                 }
             }
-            $seaEdgeByCellId[$cell->id] = $seaEdge;
+            $legacySeaEdgeByCellId[$cell->id] = $seaEdge;
         }
-        $context->state->setSeaEdgeByCellId($seaEdgeByCellId);
+        $context->state->setLegacySeaEdgeByCellId($legacySeaEdgeByCellId);
+        $metrics['sea_edge_cells'] = count($legacySeaEdgeByCellId);
 
-        return [
-            'development_nations' => count($context->state->developmentNationIds()),
-            'surface_cells' => count($surfaceCellIds),
-            'sea_edge_cells' => count($seaEdgeByCellId),
-        ];
+        return $metrics;
     }
 
     /** @return array<string, int> */
@@ -933,23 +942,33 @@ final class CompleteTurnEngine
     private function growPopulation(TurnContext $context, MapCell $cell): array
     {
         $rules = $context->ruleset->settings['turn_processing']['settlement'];
-        $seaEdge = $context->state->seaEdgeForCell($cell->id);
-        $band = null;
-        foreach ($rules['sea_edge_bands'] as $candidate) {
-            if ($seaEdge >= $candidate['minimum_sea_cells']) {
-                $band = $candidate;
-                break;
+        $legacySeaEdge = null;
+        $growthMultiplier = 1;
+        $ordinaryMaximum = $rules['ordinary_maximum_population'] ?? null;
+        if (array_key_exists('sea_edge_bands', $rules)) {
+            $legacySeaEdge = $context->state->legacySeaEdgeForCell($cell->id);
+            $band = null;
+            foreach ($rules['sea_edge_bands'] as $candidate) {
+                if ($legacySeaEdge >= $candidate['minimum_sea_cells']) {
+                    $band = $candidate;
+                    break;
+                }
             }
+            if (! is_array($band)) {
+                throw new DomainException("Legacy settlement sea-edge band is missing for cell {$cell->id}.");
+            }
+            $ordinaryMaximum = $band['maximum_population'];
+            $growthMultiplier = $band['growth_multiplier'];
         }
-        if (! is_array($band)) {
-            throw new DomainException("Settlement sea-edge band is missing for cell {$cell->id}.");
+        if (! is_int($ordinaryMaximum)) {
+            throw new DomainException('Settlement ordinary maximum population is missing.');
         }
         $before = $cell->population;
         $attraction = $cell->owner_nation_id !== null
             && $context->state->hasAttraction($cell->owner_nation_id);
         $ordinaryMaximum = $cell->facility?->key === 'capital'
             ? $context->ruleset->settings['capital_growth_maximum_population']
-            : $band['maximum_population'];
+            : $ordinaryMaximum;
         $maximumPopulation = $attraction && $cell->facility?->key !== 'capital'
             ? $rules['attraction_maximum_population']
             : $ordinaryMaximum;
@@ -960,7 +979,7 @@ final class CompleteTurnEngine
                 default => $rules['post_ordinary_attraction_growth'],
             };
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
-                $growthRules['minimum'], $growthRules['maximum'] * $band['growth_multiplier'],
+                $growthRules['minimum'], $growthRules['maximum'] * $growthMultiplier,
             );
             $cell->population = min($maximumPopulation, $before + $growth);
         }
@@ -969,13 +988,17 @@ final class CompleteTurnEngine
         if ($increase > 0) {
             $cell->version++;
             $this->saveChangedCell($context, $cell);
-            $this->events->record($context, 'population.increased', $cell, [
+            $metadata = [
                 'nation_id' => $cell->owner_nation_id, 'before' => $before,
-                'increase' => $increase, 'after' => $cell->population, 'sea_edge' => $seaEdge,
+                'increase' => $increase, 'after' => $cell->population,
                 'ordinary_maximum' => $ordinaryMaximum,
                 'effective_maximum' => $maximumPopulation,
                 'attraction' => $attraction,
-            ]);
+            ];
+            if ($legacySeaEdge !== null) {
+                $metadata['sea_edge'] = $legacySeaEdge;
+            }
+            $this->events->record($context, 'population.increased', $cell, $metadata);
         }
 
         return ['increase' => $increase, 'stage_transition' => $transition];

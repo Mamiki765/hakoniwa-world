@@ -4,6 +4,8 @@
 
 この文書は、箱庭諸島2S＋の次期改修に先立つread-only監査である。gameplay code、公開済みruleset、migration、DB、World、production data、reset、backfill、`_references/`は変更していない。
 
+> 後日注記（ver 1.5.0-beta.3）: この監査の観測結果とbaselineは変更しない。owner directionは`hakoniwa-2s-plus-v5`で実装され、現在仕様は`product/docs/ver-1.5.0-beta3-sea-edge-removal.md`を正本とする。
+
 - `FACT` 比較baselineは最新の`origin/main`、commit `74e4ba76416db355c0b84c09425b677d24e23fe1`である。H2/H2＋はraw source、現行2S＋はこのcommitのsourceを正本とした。
 - `OWNER-DIRECTION` 共有World、cell ownership、領土、初期島の考え方、resource stock、現行の災害発生率・World event modelは維持する。原版H2との差だけを理由に削除しない。
 - `OWNER-DIRECTION` 人口から海際度依存を将来除去し、H2寄りへ戻す。これは公開済みpayloadの上書きではなく、新しいimmutable rulesetと明示的なWorld ruleset移行を要する。

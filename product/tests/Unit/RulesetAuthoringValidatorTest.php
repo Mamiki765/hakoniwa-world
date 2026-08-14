@@ -17,6 +17,10 @@ class RulesetAuthoringValidatorTest extends TestCase
 
     private const THIRD_PRODUCTION_PAYLOAD_HASH = '3d03cb6912ba7082376e9b262fb95d03ca30917d8eecbbc521bf63b27a53ce36';
 
+    private const FOURTH_PRODUCTION_PAYLOAD_HASH = 'b899c7cf92c47be3d464ec1d52c93ff2e5177605fe4453d32c6b529fcb37bd42';
+
+    private const FIFTH_PRODUCTION_PAYLOAD_HASH = '4d1a004332b79b298460c0316c6ec00972a27517e01079f2378fc5de78591ab6';
+
     /** @var array<string, string> */
     private const PRE_SPLIT_PAYLOAD_HASHES = [
         'roadmap-pr2-v1' => '091494cae4988c2517417f91bb9810e277ee665525c98ff67eeb305b23592fe3',
@@ -91,7 +95,6 @@ class RulesetAuthoringValidatorTest extends TestCase
             self::THIRD_PRODUCTION_PAYLOAD_HASH,
             hash('sha256', json_encode($v3, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
-
         $normalized = $v3;
         $normalized['key'] = 'hakoniwa-2s-plus-v2';
         $normalized['version'] = 2;
@@ -120,6 +123,10 @@ class RulesetAuthoringValidatorTest extends TestCase
             self::THIRD_PRODUCTION_PAYLOAD_HASH,
             hash('sha256', json_encode($v3, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
+        $this->assertSame(
+            self::FOURTH_PRODUCTION_PAYLOAD_HASH,
+            hash('sha256', json_encode($v4, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
 
         $normalized = $v4;
         $normalized['key'] = 'hakoniwa-2s-plus-v3';
@@ -137,6 +144,37 @@ class RulesetAuthoringValidatorTest extends TestCase
         $summary = app(RulesetAuthoringValidator::class)->validate($v4);
         $this->assertSame('hakoniwa-2s-plus-v4', $summary['key']);
         $this->assertSame(4, $summary['version']);
+    }
+
+    public function test_v5_payload_preserves_v4_and_removes_only_the_sea_edge_population_contract(): void
+    {
+        $v4 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v4');
+        $v5 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v5');
+        $this->assertIsArray($v4);
+        $this->assertIsArray($v5);
+        $this->assertSame(
+            self::FOURTH_PRODUCTION_PAYLOAD_HASH,
+            hash('sha256', json_encode($v4, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
+
+        $expected = $v4;
+        $expected['key'] = 'hakoniwa-2s-plus-v5';
+        $expected['version'] = 5;
+        unset($expected['turn_processing']['settlement']['sea_edge_bands']);
+        $expected['turn_processing']['settlement']['ordinary_maximum_population'] = 10_000;
+        $expected['turn_processing']['settlement']['ordinary_growth']['maximum'] = 1_000;
+        $expected['turn_processing']['settlement']['attraction_growth']['maximum'] = 3_000;
+        $expected['turn_processing']['settlement']['post_ordinary_attraction_growth']['maximum'] = 300;
+        $this->assertSame($expected, $v5);
+        $this->assertArrayNotHasKey('sea_edge_bands', $v5['turn_processing']['settlement']);
+        $this->assertSame(
+            self::FIFTH_PRODUCTION_PAYLOAD_HASH,
+            hash('sha256', json_encode($v5, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($v5);
+        $this->assertSame('hakoniwa-2s-plus-v5', $summary['key']);
+        $this->assertSame(5, $summary['version']);
     }
 
     public function test_v3_territory_contract_drift_is_rejected(): void
