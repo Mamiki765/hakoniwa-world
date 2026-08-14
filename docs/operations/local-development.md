@@ -34,7 +34,7 @@ docker compose exec hakoniwa-web php artisan hakoniwa:world:init
 新しいDB volumeではinit scriptが`hakoniwa_test`を作る。
 
 ```powershell
-docker compose exec -T -e APP_ENV=testing -e DB_DATABASE=hakoniwa_test hakoniwa-web php vendor/bin/phpunit --colors=never
+docker compose exec -T -e APP_ENV=testing -e DB_DATABASE=hakoniwa_test hakoniwa-web php -d memory_limit=512M vendor/bin/phpunit --colors=never
 docker compose exec hakoniwa-web ./vendor/bin/pint --test
 docker compose exec hakoniwa-web ./vendor/bin/phpstan analyse --memory-limit=1G
 ```

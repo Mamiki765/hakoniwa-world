@@ -74,7 +74,7 @@ jobs:
             vendor/bin/phpstan analyse "${changed_app_php[@]}" --memory-limit=1G
           fi
       - name: Run isolated PostgreSQL tests
-        run: php vendor/bin/phpunit --colors=never
+        run: php -d memory_limit=512M vendor/bin/phpunit --colors=never
 
   frontend:
     runs-on: ubuntu-latest

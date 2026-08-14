@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Application\InitialIslandGenerator;
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
 use App\Models\MapCell;
@@ -74,7 +73,7 @@ class NationCreationTest extends TestCase
 
     public function test_second_nation_does_not_overlap_and_capitals_are_at_least_twelve_apart(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $service = app(NationCreationService::class);
         $first = $service->create(User::factory()->create(), $world, '第一国', '試験島主');
         $second = $service->create(User::factory()->create(), $world, '第二国', '試験島主');

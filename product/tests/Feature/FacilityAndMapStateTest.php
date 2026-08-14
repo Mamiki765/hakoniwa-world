@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Application\OceanWorldGenerator;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\MapCellStateService;
@@ -13,20 +12,23 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\ProductionDefinition;
 use App\Models\ResourceDefinition;
+use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
-class RoadmapPr2StateTest extends TestCase
+final class FacilityAndMapStateTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_ruleset_defines_typed_facility_capacity_and_production(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $ruleset = RulesetVersion::query()->where('key', config('hakoniwa.ruleset.key'))->firstOrFail();
         $capacities = app(FacilityCapacityService::class);
 
         foreach ([
@@ -47,7 +49,7 @@ class RoadmapPr2StateTest extends TestCase
 
         $this->assertSame([
             'factory_industrial_goods', 'farm_wheat', 'mine_minerals',
-        ], ProductionDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)
+        ], ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)
             ->orderBy('key')->pluck('key')->all());
         $this->assertSame(['industrial_goods', 'minerals'], ResourceDefinition::query()
             ->whereIn('key', ['industrial_goods', 'minerals'])->orderBy('key')->pluck('key')->all());
@@ -86,7 +88,6 @@ class RoadmapPr2StateTest extends TestCase
 
     public function test_facility_scale_above_maximum_is_rejected(): void
     {
-        app(OceanWorldGenerator::class)->initialize();
         $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
 
         $this->expectException(DomainException::class);
@@ -169,7 +170,7 @@ class RoadmapPr2StateTest extends TestCase
     /** @return array{User, Nation, MapSpace} */
     private function nation(string $name): array
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, $name, '試験島主');
 

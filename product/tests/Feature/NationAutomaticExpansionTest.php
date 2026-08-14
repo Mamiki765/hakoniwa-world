@@ -20,15 +20,17 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 final class NationAutomaticExpansionTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_registration_with_a_candidate_does_not_expand_the_world(): void
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
+        $world = $this->lightweightWorld();
         $space = $this->space($world->id);
         $beforeRevision = $space->boundsRevision();
 
