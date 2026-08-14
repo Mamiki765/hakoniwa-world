@@ -236,6 +236,13 @@ final class RulesetV3MigrationTest extends TestCase
         $this->assertSame('territory_expand', $item->fresh()->definition()->value('key'));
         $this->assertSame($preserved, Arr::except($item->fresh()->getAttributes(), ['command_definition_id']));
 
+        $this->v5Migration()->up();
+        $v5 = $world->fresh()->rulesetVersion()->firstOrFail();
+        $this->assertSame('hakoniwa-2s-plus-v5', $v5->key);
+        $this->assertSame($v5->id, $item->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame('territory_expand', $item->fresh()->definition()->value('key'));
+        $this->assertSame($preserved, Arr::except($item->fresh()->getAttributes(), ['command_definition_id']));
+
         $messageBoardMigration->up();
         $this->assertTrue(Schema::hasTable('island_messages'));
         $this->assertTrue(Schema::hasColumn('users', 'visitor_code'));
@@ -377,5 +384,10 @@ final class RulesetV3MigrationTest extends TestCase
     private function messageBoardMigration(): object
     {
         return require database_path('migrations/2026_08_11_000000_create_island_messages.php');
+    }
+
+    private function v5Migration(): object
+    {
+        return require database_path('migrations/2026_08_14_000000_publish_hakoniwa_2s_plus_v5.php');
     }
 }

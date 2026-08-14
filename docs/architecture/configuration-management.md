@@ -34,10 +34,17 @@ repository内のauthoring sourceは`product/config/hakoniwa/rulesets/<version-ke
 
 PR23でconfigured current rulesetを`hakoniwa-2s-plus-v1`へrebaselineする。`CurrentRulesetGuard`は既に読み込んだWorldの`ruleset_version_id`とimmutableなruleset key/versionから確定したcurrent ruleset row IDを比較し、`ruleset_versions.is_active`の意味を変更せず、guard専用SQLを追加しない。
 
-その後のproduction gameplay変更も同じimmutable contractに従い、v2、v3を経て現在は
-`hakoniwa-2s-plus-v4`をconfigured current rulesetとする。v4は海底基地の経験値・level・発射数、
-H2+命中経験値、海底基地耐性だけをv3へ追加し、v1–v3のpublished payloadを書き換えない。
-既存shared-worldとlive definition参照、既存海底基地経験値は専用forward-only migrationでv4へ移す。
+その後のproduction gameplay変更も同じimmutable contractに従い、v2、v3、v4を経て現在は
+`hakoniwa-2s-plus-v5`をconfigured current rulesetとする。v4は海底基地の経験値・level・発射数、
+H2+命中経験値、海底基地耐性だけをv3へ追加した。v5は海際度による人口bandを削除し、位置に
+依存しない通常/誘致growth contractへ移行する。v1–v4のpublished payloadは書き換えない。
+既存shared-worldとlive definition参照は専用forward-only migrationでv5へ移し、historical TurnRun
+snapshot、seed、queue内容、既存人口を維持する。
+
+v5 migrationは次turnの未解決non-dry TurnRunを拒否し、releaseを跨ぐretryを発生させない。
+一方、公開済みv1〜v4 payloadを使う既存の明示的same-ruleset / same-seed recovery契約のため、
+TurnRunnerは旧payloadに`sea_edge_bands`がある場合だけ旧population計算を再現する。current v5の
+通常turnはこのcompatibility pathへ入らず、sea-edge query、radius走査、全cell turn stateを持たない。
 
 historical ruleset Worldの地図、audit/player event、TurnRun、ruleset snapshotはread-onlyで閲覧できる。turn、dry-run TurnRun作成、command queue追加・数量更新・並べ替え・取消、Nation作成、sale policy更新、standalone initはHTTPでは409 `reset_required`、console/application境界では同じcodeを含むexceptionで拒否する。拒否前後でgame stateとaudit eventを変更しない。go-live後のWorld resetは復旧経路としても許可せず、backup restore、forward migration、または明示的変換を使う。
 

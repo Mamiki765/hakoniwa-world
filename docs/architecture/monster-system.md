@@ -21,7 +21,7 @@ actorはspawn元Nationを保持しない。hostは常に現在cellの`owner_nati
 
 ## Turn order and determinism
 
-`calculate_terrain_context`がsurface cell orderを専用shuffle streamで固定する。`process_cells`は全cellとrelationを一括取得し、怪獣occupancy/definitionもWorld単位でbatch loadする。各cellでは怪獣actorを通常の人口・facility処理より先に実行し、actorが存在したcellの通常処理を終える。
+`calculate_terrain_context`がsurface cell orderを専用shuffle streamで固定する。ver 1.5.0-beta.3のcurrent v5では、このphaseはterrain/sea-edgeを計算せず、全cell IDのorderだけを保持する。immutableな旧rulesetのsame-seed retryだけは旧計算を条件付きで再現する。`process_cells`は全cellとrelationを一括取得し、怪獣occupancy/definitionもWorld単位でbatch loadする。各cellでは怪獣actorを通常の人口・facility処理より先に実行し、actorが存在したcellの通常処理を終える。
 
 movement、spawn trigger/candidate/type/HPは用途別labelled random streamを使い、raw seed/drawはpublic API/event projectionへ出さない。移動先が後続cellなら同じturnに再行動できる逐次因果を保ち、definition上限はturn-local `MonsterTurnBatch`で制限する。`moves_taken`はDBにもAPIにも置かない。
 

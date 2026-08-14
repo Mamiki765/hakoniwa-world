@@ -238,8 +238,8 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: randomized sequential cell processingで村発生、人口成長、飢餓減少を処理する。Capitalはidentityを維持し、minimum 100、ordinary growth cap 25,000を適用する。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、`docs/architecture/capital-and-territory.md`
+- Decision: randomized sequential cell processingで村発生、人口成長、飢餓減少を処理する。`hakoniwa-2s-plus-v5`では海際度を廃止し、通常settlementを位置不問の100〜1,000人増加・通常上限10,000人、誘致を上限前100〜3,000人・以後100〜300人・最終上限20,000人とする。Capitalはidentityを維持し、minimum 100、ordinary growth cap 25,000を適用する。
+- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/ver-1.5.0-beta3-sea-edge-removal.md`
 
 ### B-17 緊急農場
 

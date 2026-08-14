@@ -17,7 +17,7 @@ final class TurnState
     private array $surfaceCellIds = [];
 
     /** @var array<int, int> */
-    private array $seaEdgeByCellId = [];
+    private array $legacySeaEdgeByCellId = [];
 
     /** @var array<int, true> */
     private array $famineNationIds = [];
@@ -91,25 +91,25 @@ final class TurnState
     }
 
     /** @param array<array-key, mixed> $seaEdgeByCellId */
-    public function setSeaEdgeByCellId(array $seaEdgeByCellId): void
+    public function setLegacySeaEdgeByCellId(array $seaEdgeByCellId): void
     {
         $validated = [];
         foreach ($seaEdgeByCellId as $cellId => $seaEdge) {
             if (! is_int($cellId) || $cellId < 1 || ! is_int($seaEdge) || $seaEdge < 0) {
-                throw new InvalidArgumentException('Sea-edge context must map positive cell IDs to non-negative integers.');
+                throw new InvalidArgumentException('Legacy sea-edge context must map positive cell IDs to non-negative integers.');
             }
             $validated[$cellId] = $seaEdge;
         }
-        $this->seaEdgeByCellId = $validated;
+        $this->legacySeaEdgeByCellId = $validated;
     }
 
-    public function seaEdgeForCell(int $cellId): int
+    public function legacySeaEdgeForCell(int $cellId): int
     {
-        if (! array_key_exists($cellId, $this->seaEdgeByCellId)) {
-            throw new InvalidArgumentException("Sea-edge context is missing cell {$cellId}.");
+        if (! array_key_exists($cellId, $this->legacySeaEdgeByCellId)) {
+            throw new InvalidArgumentException("Legacy sea-edge context is missing cell {$cellId}.");
         }
 
-        return $this->seaEdgeByCellId[$cellId];
+        return $this->legacySeaEdgeByCellId[$cellId];
     }
 
     public function markFamine(int $nationId): void

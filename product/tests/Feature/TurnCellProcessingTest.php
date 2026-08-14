@@ -5,11 +5,14 @@ namespace Tests\Feature;
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
+use App\Application\OceanWorldGenerator;
+use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
+use App\Domain\World\MapBounds;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -59,7 +62,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$firstCandidate->id, $secondCandidate->id],
             $settlementSeed,
-            [$firstCandidate->id => 0, $secondCandidate->id => 0],
         );
         $appearance = $engine->execute('process_cells', $appearanceContext);
         $this->assertSame(2, $appearance->metrics['settlements_appeared']);
@@ -79,7 +81,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$firstCandidate->id],
             $failureSeed,
-            [$firstCandidate->id => 0],
         );
         $failure = $engine->execute('process_cells', $failureContext);
         $this->assertSame(0, $failure->metrics['settlements_appeared']);
@@ -92,20 +93,18 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$secondCandidate->id],
             $this->seedForFirstDraw(TurnRandomStreamFactory::SETTLEMENT_APPEARANCE, 0, 99, 19),
-            [$secondCandidate->id => 0],
         );
         $noNeighbor = $engine->execute('process_cells', $noNeighborContext);
         $this->assertSame(0, $noNeighbor->metrics['settlements_appeared']);
         $this->assertSame(0, $secondCandidate->fresh()->population);
 
-        $growthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 900, 100);
+        $growthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100);
         $this->settlement($firstCandidate, 'village', 2_900);
         [$townContext, $townRun] = $this->context(
             $world,
             $nation,
             [$firstCandidate->id],
             $growthSeed,
-            [$firstCandidate->id => 24],
         );
         $town = $engine->execute('process_cells', $townContext);
         $this->assertSame(100, $town->metrics['population_increased']);
@@ -146,32 +145,29 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$firstCandidate->id],
             $growthSeed,
-            [$firstCandidate->id => 24],
         );
         $engine->execute('process_cells', $cityContext);
         $this->assertSame(10_000, $firstCandidate->fresh()->population);
         $this->assertSame('city', $firstCandidate->fresh()->facility()->value('key'));
 
-        $this->settlement($firstCandidate, 'village', 1_999);
+        $this->settlement($firstCandidate, 'town', 9_950);
         [$maximumContext] = $this->context(
             $world,
             $nation,
             [$firstCandidate->id],
-            str_repeat('d', 64),
-            [$firstCandidate->id => 0],
+            $growthSeed,
         );
         $engine->execute('process_cells', $maximumContext);
-        $this->assertSame(2_000, $firstCandidate->fresh()->population);
-        $this->assertSame('village', $firstCandidate->fresh()->facility()->value('key'));
+        $this->assertSame(10_000, $firstCandidate->fresh()->population);
+        $this->assertSame('city', $firstCandidate->fresh()->facility()->value('key'));
 
         $this->settlement($capital, 'capital', 1_000);
-        $capitalGrowthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 300, 100);
+        $capitalGrowthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100);
         [$capitalContext] = $this->context(
             $world,
             $nation,
             [$capital->id],
             $capitalGrowthSeed,
-            [$capital->id => 0],
         );
         $engine->execute('process_cells', $capitalContext);
         $this->assertSame(1_100, $capital->fresh()->population);
@@ -184,7 +180,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$firstCandidate->id],
             $lossSeed,
-            [$firstCandidate->id => 0],
             true,
         );
         $famineStage = $engine->execute('process_cells', $famineStageContext);
@@ -200,7 +195,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$firstCandidate->id],
             $lossSeed,
-            [$firstCandidate->id => 0],
             true,
         );
         $famine = $engine->execute('process_cells', $famineContext);
@@ -217,7 +211,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$capital->id],
             $lossSeed,
-            [$capital->id => 0],
             true,
         );
         $capitalFamine = $engine->execute('process_cells', $capitalFamineContext);
@@ -234,7 +227,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$capital->id],
             $capitalGrowthSeed,
-            [$capital->id => 0],
         );
         $capitalRecovery = $engine->execute('process_cells', $capitalRecoveryContext);
         $this->assertSame(100, $capitalRecovery->metrics['population_increased']);
@@ -247,7 +239,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$capital->id],
             $capitalGrowthSeed,
-            [$capital->id => 0],
         );
         $capitalMaximum = $engine->execute('process_cells', $capitalMaximumContext);
         $this->assertSame(50, $capitalMaximum->metrics['population_increased']);
@@ -264,7 +255,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             array_map(static fn (MapCell $cell): int => $cell->id, $riotCells),
             $riotSeed,
-            [],
             true,
         );
         $riot = $engine->execute('process_cells', $riotContext);
@@ -283,7 +273,6 @@ class TurnCellProcessingTest extends TestCase
             $nation,
             [$firstCandidate->id],
             $riotFailureSeed,
-            [],
             true,
         );
         $engine->execute('process_cells', $riotFailureContext);
@@ -339,11 +328,11 @@ class TurnCellProcessingTest extends TestCase
         $engine = app(CompleteTurnEngine::class);
 
         $cases = [
-            ['before' => 7_000, 'sea_edge' => 24, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 10_000],
-            ['before' => 10_000, 'sea_edge' => 24, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 10_300],
-            ['before' => 5_000, 'sea_edge' => 12, 'minimum' => 100, 'maximum' => 200, 'draw' => 200, 'after' => 5_200],
-            ['before' => 2_000, 'sea_edge' => 0, 'minimum' => 100, 'maximum' => 100, 'draw' => 100, 'after' => 2_100],
-            ['before' => 19_950, 'sea_edge' => 24, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 20_000],
+            ['before' => 7_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 10_000],
+            ['before' => 10_000, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 10_300],
+            ['before' => 5_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 8_000],
+            ['before' => 2_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 5_000],
+            ['before' => 19_950, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 20_000],
         ];
         foreach ($cases as $index => $case) {
             $this->settlement($cell, 'city', $case['before']);
@@ -357,7 +346,6 @@ class TurnCellProcessingTest extends TestCase
                     $case['maximum'],
                     $case['draw'],
                 ),
-                [$cell->id => $case['sea_edge']],
             );
             $context->state->markAttraction($nation->id);
 
@@ -371,13 +359,110 @@ class TurnCellProcessingTest extends TestCase
             $world,
             $nation,
             [$cell->id],
-            $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 900, 900),
-            [$cell->id => 24],
+            $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 1_000),
         );
 
         $engine->execute('process_cells', $ordinaryContext);
 
-        $this->assertSame(1_900, $cell->fresh()->population);
+        $this->assertSame(2_000, $cell->fresh()->population);
+    }
+
+    public function test_uniform_population_growth_ignores_signed_world_edges_and_expansion_provenance(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '海際度廃止国',
+            '境界試験島主',
+        );
+        $expansion = app(WorldExpansionService::class);
+        $expansion->expand($world, new MapBounds(0, 59, 0, 59, 16), new MapBounds(0, 63, 0, 63, 16));
+        $expansion->expand($world->fresh(), new MapBounds(0, 63, 0, 63, 16), new MapBounds(-16, 63, 0, 63, 16));
+        $space = $expansion->expand(
+            $world->fresh(),
+            new MapBounds(-16, 63, 0, 63, 16),
+            new MapBounds(-16, 63, -16, 63, 16),
+        );
+        $seed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 1_000);
+        $coordinates = [
+            'former origin edge' => [0, 0],
+            'world center' => [20, 20],
+            'negative corner' => [-16, -16],
+            'negative x corner' => [-16, 63],
+            'negative y corner' => [63, -16],
+            'positive corner' => [63, 63],
+            'new negative chunk' => [-8, -8],
+        ];
+
+        [$terrainContext] = $this->context($world, $nation, [], str_repeat('7', 64));
+        DB::connection()->flushQueryLog();
+        DB::enableQueryLog();
+        $terrainContextResult = app(CompleteTurnEngine::class)->execute(
+            'calculate_terrain_context',
+            $terrainContext,
+        );
+        $terrainContextQueries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $this->assertSame(6_400, $terrainContextResult->metrics['surface_cells']);
+        $this->assertArrayNotHasKey('sea_edge_cells', $terrainContextResult->metrics);
+        $this->assertCount(2, $terrainContextQueries);
+        $this->assertCount(1, array_filter(
+            $terrainContextQueries,
+            static fn (array $query): bool => str_contains($query['query'], 'map_cells'),
+        ));
+        $this->assertCount(0, array_filter(
+            $terrainContextQueries,
+            static fn (array $query): bool => str_contains($query['query'], 'terrain_definitions'),
+        ));
+
+        foreach ($coordinates as $label => [$x, $y]) {
+            $cell = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $x)->where('y', $y)->firstOrFail();
+            $cell->owner_nation_id = $nation->id;
+            $cell->save();
+            $this->settlement($cell, 'village', 1_000);
+            [$context] = $this->context($world, $nation, [$cell->id], $seed);
+
+            app(CompleteTurnEngine::class)->execute('process_cells', $context);
+
+            $this->assertSame(2_000, $cell->fresh()->population, $label);
+            $event = DB::table('audit_events')->where('event_type', 'population.increased')
+                ->where('subject_id', $cell->id)->latest('id')->firstOrFail();
+            $metadata = json_decode((string) $event->metadata, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertArrayNotHasKey('sea_edge', $metadata, $label);
+        }
+
+        $appearanceSeed = $this->seedForFirstDraw(
+            TurnRandomStreamFactory::SETTLEMENT_APPEARANCE,
+            0,
+            99,
+            19,
+        );
+        foreach (['world center' => [20, 20], 'negative expanded edge' => [-16, -16]] as $label => [$x, $y]) {
+            $target = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $x)->where('y', $y)->firstOrFail();
+            $target->owner_nation_id = $nation->id;
+            $target->save();
+            $this->plain($target);
+            $neighborCoordinate = (new GridCoordinate($x, $y))->neighborsWithin(
+                $space->min_x,
+                $space->max_x,
+                $space->min_y,
+                $space->max_y,
+            )[0];
+            $neighbor = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $neighborCoordinate->x)->where('y', $neighborCoordinate->y)->firstOrFail();
+            $neighbor->owner_nation_id = $nation->id;
+            $neighbor->save();
+            $this->settlement($neighbor, 'village', 1_000);
+            [$context] = $this->context($world, $nation, [$target->id], $appearanceSeed);
+
+            app(CompleteTurnEngine::class)->execute('process_cells', $context);
+
+            $this->assertSame(100, $target->fresh()->population, $label);
+            $this->assertSame('village', $target->fresh()->facility()->value('key'), $label);
+        }
     }
 
     /** @return array{MapCell, MapCell} */
@@ -476,7 +561,6 @@ class TurnCellProcessingTest extends TestCase
 
     /**
      * @param  list<int>  $cellIds
-     * @param  array<int, int>  $seaEdges
      * @return array{TurnContext, TurnRun}
      */
     private function context(
@@ -484,7 +568,6 @@ class TurnCellProcessingTest extends TestCase
         Nation $nation,
         array $cellIds,
         string $seed,
-        array $seaEdges = [],
         bool $famine = false,
         ?RulesetVersion $ruleset = null,
     ): array {
@@ -506,7 +589,6 @@ class TurnCellProcessingTest extends TestCase
         $state->setStableNationIds([$nation->id]);
         $state->setDevelopmentNationIds([$nation->id]);
         $state->setSurfaceCellIds($cellIds);
-        $state->setSeaEdgeByCellId($seaEdges);
         if ($famine) {
             $state->markFamine($nation->id);
         }

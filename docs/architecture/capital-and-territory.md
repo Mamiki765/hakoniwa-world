@@ -63,7 +63,7 @@ Capitalのcanonical populationは人単位で、初期値1,000、固定下限100
 
 randomized sequential cell processingで、所有者がいる人口0・施設なしの平地を候補とする。候補ごとに100面20未満を先に抽選し、その後、隣接6 cellsに農場または人口1人以上の集落があれば人口100人の村を発生させる。先に発生した村は同じturnの後続cellから観測できる。
 
-海際度bandごとの通常成長rangeと上限、飢餓時の100〜3,000人減少は`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`と`docs/open-questions.md`のB-16を正本とする。Capitalはsettlement facilityへ置換せず、minimum 100とordinary growth cap 25,000を維持する。
+`hakoniwa-2s-plus-v5`では海際度をgameplayから廃止し、通常settlementは位置にかかわらず100〜1,000人、通常上限10,000人とする。誘致時は通常上限未満100〜3,000人、到達後100〜300人、最終上限20,000人である。飢餓時の100〜3,000人減少、stage transition、Capitalをsettlement facilityへ置換しないidentity、minimum 100、ordinary growth cap 25,000を維持する。実装記録は`product/docs/ver-1.5.0-beta3-sea-edge-removal.md`を正本とする。
 
 ## 緊急開拓のhistorical proposal
 
