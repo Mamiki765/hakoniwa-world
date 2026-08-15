@@ -53,6 +53,7 @@ final class DomesticCommandExecutor
         private readonly TerritoryExpansionPolicy $territoryExpansion,
         private readonly CapitalCorePolicy $capitalCores,
         private readonly ChunkCoordinateService $chunks,
+        private readonly NationCommandTargetService $nationTargets,
     ) {}
 
     /**
@@ -338,7 +339,8 @@ final class DomesticCommandExecutor
             }
             $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->first();
             if ($target === null || $target->id === $nation->id
-                || $target->world_id !== $context->world->id || $target->state !== 'active') {
+                || $target->world_id !== $context->world->id || $target->state !== 'active'
+                || ! $this->nationTargets->hasCompleteCapitalChunk($target)) {
                 return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
             }
         }

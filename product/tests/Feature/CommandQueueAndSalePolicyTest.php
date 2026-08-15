@@ -246,6 +246,18 @@ class CommandQueueAndSalePolicyTest extends TestCase
             '目標島',
             '目標島主',
         );
+        $eligibleCapitalCell = MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where('chunk_x', 1)
+            ->where('chunk_y', 1)
+            ->whereNotIn('id', DB::table('nation_capitals')->select('map_cell_id'))
+            ->orderBy('id')
+            ->firstOrFail();
+        $targetNation->capital()->update([
+            'map_cell_id' => $eligibleCapitalCell->id,
+            'x' => $eligibleCapitalCell->x,
+            'y' => $eligibleCapitalCell->y,
+        ]);
         $nation->update(['money' => 40_000]);
         $cells = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->orderBy('id')->limit(3)->get();
@@ -329,6 +341,59 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.queue.items.3.command_suffix', '（自爆）')
             ->assertJsonPath('data.queue.items.3.command_suffix_tone', 'danger');
+    }
+
+    public function test_monument_flight_rejects_partial_edge_capital_chunk_before_queueing(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('edge-chunk-flight-source');
+        $targetNation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $nation->world()->firstOrFail(),
+            'edge-chunk-flight-target',
+            'edge-chunk-flight-owner',
+        );
+        $partialCapitalCell = MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where('chunk_x', 1)
+            ->where('chunk_y', 1)
+            ->whereNotIn('id', DB::table('nation_capitals')->select('map_cell_id'))
+            ->orderByDesc('id')
+            ->firstOrFail();
+        $targetNation->capital()->update([
+            'map_cell_id' => $partialCapitalCell->id,
+            'x' => $partialCapitalCell->x,
+            'y' => $partialCapitalCell->y,
+        ]);
+        $mapSpace->update(['max_x' => 30]);
+        $nation->update(['money' => 20_000]);
+        $source = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->where('x', '<=', 30)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->firstOrFail();
+        $state = app(MapCellStateService::class);
+        $state->transitionTerrain($source, TerrainDefinition::query()->where('key', 'plain')->firstOrFail());
+        $state->setFacility($source, FacilityDefinition::query()->where('key', 'monument')->firstOrFail());
+        $source->monument_definition_id = MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $source->save();
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+
+        $definition = collect($this->actingAs($owner)->getJson(
+            "{$base}/command-definitions?target_x={$source->x}&target_y={$source->y}&position=1",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_monument');
+        $this->assertFalse($definition['applicable']);
+        $this->assertSame([], $definition['parameters']['target_nation_id']['options']);
+
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'build_monument',
+            'target_x' => $source->x,
+            'target_y' => $source->y,
+            'quantity' => $source->monument_definition_id,
+            'parameters' => ['target_nation_id' => $targetNation->id],
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.command.0', '対象島の首都海域が16×16セルに満たないため、記念碑を飛ばせません。');
+        $this->assertDatabaseCount('nation_command_queue_items', 0);
     }
 
     public function test_v6_logging_metadata_naturally_projects_following_farm_as_executable(): void

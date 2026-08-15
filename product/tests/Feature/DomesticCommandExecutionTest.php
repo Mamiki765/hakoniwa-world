@@ -210,6 +210,58 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('plain', $source->fresh()->terrain()->value('key'));
     }
 
+    public function test_monument_flight_revalidates_partial_edge_capital_chunk_before_charging(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'edge-flight-source');
+        [, $target] = $this->createNation($world, 'edge-flight-target');
+        $nation->update(['money' => 12_000]);
+        $space = $this->surfaceMapSpace($world);
+        $completeCapitalCell = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->where('chunk_x', 1)
+            ->where('chunk_y', 1)
+            ->whereNotIn('id', DB::table('nation_capitals')->select('map_cell_id'))
+            ->orderBy('id')
+            ->firstOrFail();
+        $target->capital()->update([
+            'map_cell_id' => $completeCapitalCell->id,
+            'x' => $completeCapitalCell->x,
+            'y' => $completeCapitalCell->y,
+        ]);
+        $source = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->where('x', '<=', 30)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->firstOrFail();
+        $state = app(MapCellStateService::class);
+        $state->transitionTerrain($source, TerrainDefinition::query()->where('key', 'plain')->firstOrFail());
+        $state->setFacility($source, FacilityDefinition::query()->where('key', 'monument')->firstOrFail());
+        $source->monument_definition_id = MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $source->save();
+        $item = $this->queue(
+            $user,
+            $nation,
+            $space,
+            'build_monument',
+            $source,
+            (int) $source->monument_definition_id,
+            parameters: ['target_nation_id' => $target->id],
+        );
+        $moneyBefore = (int) $nation->fresh()->money;
+        $space->update(['max_x' => 30]);
+
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'monument edge capital invalidated'),
+        ));
+
+        $this->assertSame(1, $result['failures']);
+        $this->assertSame('invalid_target_nation', $item->fresh()->failure_code);
+        $this->assertSame($moneyBefore, $nation->fresh()->money);
+        $this->assertSame('monument', $source->fresh()->facility()->value('key'));
+        $this->assertSame('plain', $source->fresh()->terrain()->value('key'));
+    }
+
     public function test_domestic_commands_revalidate_mutate_queue_and_honor_turn_consumption(): void
     {
         $world = $this->lightweightWorld();

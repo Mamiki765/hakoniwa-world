@@ -120,9 +120,13 @@ final class CommandQueueService
             }
             $parameters = $this->parameters->validate($schemas, $parameters);
             $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
-            if (OwnerFacilityOverbuildPolicy::effect($definition, $lockedNation, $target) === 'monument_flight'
-                && ! is_int($parameters['target_nation_id'] ?? null)) {
-                throw new PlayerFacingCommandException('この位置への記念碑建設には対象島を選択してください。');
+            $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $lockedNation, $target);
+            if ($ownerOverbuildEffect === 'monument_flight') {
+                $targetNationId = $parameters['target_nation_id'] ?? null;
+                if (! is_int($targetNationId)) {
+                    throw new PlayerFacingCommandException('この位置への記念碑建設には対象島を選択してください。');
+                }
+                $this->nationTargets->validateMonumentFlightRegistration($lockedNation, $targetNationId);
             }
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)

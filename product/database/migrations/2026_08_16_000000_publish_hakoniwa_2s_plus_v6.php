@@ -17,6 +17,13 @@ return new class extends Migration
 
     private const WORLD_KEY = 'shared-world';
 
+    /** @var list<string> */
+    private const BEHAVIOR_CHANGING_COMMAND_KEYS = [
+        'logging',
+        'build_defense_facility',
+        'build_monument',
+    ];
+
     public function up(): void
     {
         $sourceSettings = config('hakoniwa.published_rulesets.'.self::SOURCE_KEY);
@@ -110,6 +117,7 @@ return new class extends Migration
 
         $this->assertNoUnresolvedNextTurnRun($world);
         $this->assertLiveReferencesUseRuleset((int) $world->id, $fromRulesetId, 'before migration');
+        $this->assertNoBehaviorChangingQueuedItems((int) $world->id, $fromRulesetId);
         $this->assertNoKillStatCollisions((int) $world->id, $fromRulesetId, $toRulesetId);
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' DEFERRED');
         DB::table('worlds')->where('id', $world->id)->update([
@@ -170,6 +178,25 @@ SQL, [$toRulesetId, $world->id, $fromRulesetId]);
         $this->assertKillStatGuardEnabled();
         $this->assertLiveReferencesUseRuleset((int) $world->id, $toRulesetId, 'after migration');
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' IMMEDIATE');
+    }
+
+    private function assertNoBehaviorChangingQueuedItems(int $worldId, int $fromRulesetId): void
+    {
+        $item = DB::table('nation_command_queue_items as item')
+            ->join('nation_command_queues as queue', 'queue.id', '=', 'item.nation_command_queue_id')
+            ->join('nations as nation', 'nation.id', '=', 'queue.nation_id')
+            ->join('command_definitions as definition', 'definition.id', '=', 'item.command_definition_id')
+            ->where('nation.world_id', $worldId)
+            ->where('definition.ruleset_version_id', $fromRulesetId)
+            ->where('item.status', 'queued')
+            ->whereIn('definition.key', self::BEHAVIOR_CHANGING_COMMAND_KEYS)
+            ->orderBy('item.id')
+            ->first(['item.id', 'definition.key']);
+        if ($item !== null) {
+            throw new RuntimeException(
+                "Refusing v6 migration with queued v5 command {$item->id} ({$item->key}) whose behavior changes in v6.",
+            );
+        }
     }
 
     private function acquireWorldTurnMigrationLock(object $world): void

@@ -140,8 +140,44 @@ final class RulesetV6MigrationTest extends TestCase
         ];
     }
 
+    #[DataProvider('behaviorChangingV5CommandKeys')]
+    public function test_queued_v5_command_with_changed_v6_behavior_fails_closed(string $commandKey): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            "v6 queue guard {$commandKey}",
+            'migration owner',
+        );
+        [$v5, $v6, $item] = $this->moveWorldAndQueueToV5($world, $nation->id, $commandKey);
+        $before = [$world->fresh()->getAttributes(), $item->fresh()->getAttributes()];
+
+        try {
+            $this->migration()->up();
+            $this->fail("Expected queued v5 {$commandKey} to block v6 migration.");
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString($commandKey, $exception->getMessage());
+            $this->assertStringContainsString('whose behavior changes in v6', $exception->getMessage());
+        }
+
+        $this->assertSame($v5->id, $world->fresh()->ruleset_version_id);
+        $this->assertNotSame($v6->id, $item->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame($commandKey, $item->fresh()->definition()->value('key'));
+        $this->assertSame($before, [$world->fresh()->getAttributes(), $item->fresh()->getAttributes()]);
+    }
+
+    public static function behaviorChangingV5CommandKeys(): array
+    {
+        return [
+            'logging' => ['logging'],
+            'defense overbuild' => ['build_defense_facility'],
+            'monument overbuild' => ['build_monument'],
+        ];
+    }
+
     /** @return array{RulesetVersion, RulesetVersion, NationCommandQueueItem} */
-    private function moveWorldAndQueueToV5(World $world, int $nationId): array
+    private function moveWorldAndQueueToV5(World $world, int $nationId, string $commandKey = 'finance'): array
     {
         $v5 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v5')->firstOrFail();
         $v6 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v6')->firstOrFail();
@@ -152,7 +188,7 @@ final class RulesetV6MigrationTest extends TestCase
             'version' => 1,
         ]);
         $definition = CommandDefinition::query()->where('ruleset_version_id', $v5->id)
-            ->where('key', 'finance')->firstOrFail();
+            ->where('key', $commandKey)->firstOrFail();
         $membershipId = NationMembership::query()->where('nation_id', $nationId)->valueOrFail('id');
         $item = DB::transaction(function () use ($world, $v5, $queue, $definition, $membershipId): NationCommandQueueItem {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');

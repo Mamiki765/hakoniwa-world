@@ -104,14 +104,17 @@ final class CommandQueueController extends Controller
                         : $capacities->describe($resultFacility, $capacities->initialScale($resultFacility));
                     $requiresNationTarget = $this->nationTargets->requiresTarget($definition)
                         || $ownerOverbuildEffect === 'monument_flight';
-                    $parameters = $this->nationTargets->presentParameters($definition, $nationTargetOptions);
+                    $presentedTargetOptions = $ownerOverbuildEffect === 'monument_flight'
+                        ? $this->nationTargets->monumentFlightOptions($nation)
+                        : $nationTargetOptions;
+                    $parameters = $this->nationTargets->presentParameters($definition, $presentedTargetOptions);
                     if ($ownerOverbuildEffect === 'monument_flight'
                         && is_array($parameters['target_nation_id'] ?? null)) {
                         $parameters['target_nation_id']['required'] = true;
                         $parameters['target_nation_id']['nullable'] = false;
                     }
                     $applicable = ($definition->target_type === 'nation' || $cell !== null)
-                        && (! $requiresNationTarget || $nationTargetOptions !== []);
+                        && (! $requiresNationTarget || $presentedTargetOptions !== []);
                     $shortfall = max(0, $definition->cost_money - $nation->money);
                     $warnings = [];
                     if ($projectedExecutable) {
