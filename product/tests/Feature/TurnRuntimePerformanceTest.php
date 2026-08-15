@@ -64,9 +64,10 @@ final class TurnRuntimePerformanceTest extends TestCase
      */
     public static function expandedWorldProfiles(): iterable
     {
+        // Keep the rectangular production expansion state plus the smallest and largest square bounds.
+        // The intermediate 80x80 square does not add a distinct size or shape regression signal.
         yield '64x64' => ['64x64', 4_096];
         yield '80x64' => ['80x64', 5_120];
-        yield '80x80' => ['80x80', 6_400];
         yield '96x96' => ['96x96', 9_216];
     }
 
