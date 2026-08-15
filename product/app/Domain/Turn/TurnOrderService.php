@@ -13,6 +13,7 @@ final class TurnOrderService
     {
         return Nation::query()
             ->where('world_id', $world->id)
+            ->where('state', 'active')
             ->orderBy('id')
             ->pluck('id')
             ->map(static fn (mixed $id): int => (int) $id)

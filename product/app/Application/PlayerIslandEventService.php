@@ -652,7 +652,8 @@ final class PlayerIslandEventService
         return match ($eventType) {
             'world.expanded_public' => '大きな地響きが鳴り響き、世界がより広くなりました',
             'nation.created' => "{$nation}ができました。",
-            'nation.disappeared', 'nation.abandoned', 'nation.depopulated' => "{$nation}が消えました。",
+            'nation.abandoned' => "{$nation}は破棄され、忘れ去られた。",
+            'nation.disappeared', 'nation.depopulated' => "{$nation}が消えました。",
             default => '世界で大きな出来事がありました。',
         };
     }

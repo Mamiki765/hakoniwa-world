@@ -391,9 +391,9 @@
 ### B-14 明示的放棄の安全策
 
 - Status: Decided
-- Implemented: Not applicable; 初期公開版はplayer/operator向けNation放棄・削除機能を提供しない。
-- Decision: 放棄、取消期間、再認証、cooldown、復帰、削除処理は公開後TODOとし、PR23で通常のNation削除機能を新設しない。
-- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`
+- Implemented: ver 1.6.0でowner本人の手動破棄を実装。自動休眠・自動破棄は未実装。
+- Decision: 危険領域button、modal、現在の島名完全一致を二段階確認とする。backendもlocked active Nation名とowner membershipを再確認し、WorldMutationLockと単一transactionでsurface map、monster、現役asset、Capital、membershipを終了する。Nationと歴史recordは保持し、同じUserは別名の新Nationを登録できる。
+- Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`、`docs/decisions/ADR-0008-first-production-release.md`、`docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`
 
 ### D-01 scheduler・queue基盤
 
@@ -468,7 +468,7 @@
 
 - Status: Deferred
 - Activation gate: post-MVP re-colonization roadmap
-- Boundary: 初期resource、旧Nation名、identity、ranking、保護期間を決める。
+- Boundary: ver 1.6.0はabandoned Nationと旧名を保持したまま、同じUserが別名・新番号・新request keyで新しいNationを作る最小再登録だけを実装する。generation、lineage、転生bonus、award/account資産引き継ぎ、保護期間を伴う再入植systemは引き続きDeferredとする。
 
 ### D-06 通知dead letter
 

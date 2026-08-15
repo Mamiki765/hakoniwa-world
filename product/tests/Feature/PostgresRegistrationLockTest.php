@@ -85,6 +85,39 @@ class PostgresRegistrationLockTest extends TestCase
         $this->assertDatabaseCount('nation_creation_requests', 0);
     }
 
+    public function test_abandonment_fails_with_the_player_message_while_the_common_world_lock_is_held(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($owner, $world, '破棄競合島', '試験島主');
+        $lock = app(WorldMutationLock::class);
+        $probe = DB::connection(self::PROBE_CONNECTION);
+        $acquired = $probe->selectOne(
+            'SELECT pg_try_advisory_lock(hashtextextended(?, 0)) AS acquired',
+            [$lock->key($world)],
+        );
+        $this->assertTrue($acquired->acquired);
+
+        try {
+            $this->actingAs($owner)
+                ->postJson("/api/v1/nations/{$nation->id}/abandon", ['confirmation_name' => $nation->name])
+                ->assertConflict()
+                ->assertJsonPath('code', 'world_updating')
+                ->assertJsonPath('message', 'このWorldは現在更新中です。後でもう一度実行してください。');
+        } finally {
+            $released = $probe->selectOne(
+                'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released',
+                [$lock->key($world)],
+            );
+            $this->assertTrue($released->released);
+        }
+
+        $this->assertSame('active', $nation->fresh()->state);
+        $this->assertDatabaseHas('nation_memberships', ['nation_id' => $nation->id, 'user_id' => $owner->id]);
+        $this->assertDatabaseHas('nation_capitals', ['nation_id' => $nation->id]);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.abandoned')->count());
+    }
+
     public function test_common_lock_keeps_the_legacy_turn_key_for_rolling_deploy_serialization(): void
     {
         $world = $this->lightweightWorld();

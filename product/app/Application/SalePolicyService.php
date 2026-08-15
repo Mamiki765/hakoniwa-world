@@ -29,10 +29,18 @@ final class SalePolicyService
         int $expectedVersion,
     ): NationResourceSalePolicy {
         return DB::transaction(function () use ($user, $nation, $resource, $policy, $keepAmount, $expectedVersion): NationResourceSalePolicy {
-            $this->authorize($user, $nation);
             $world = World::query()->whereKey($nation->world_id)->lockForUpdate()->firstOrFail();
             $ruleset = $world->rulesetVersion()->firstOrFail();
             $this->rulesetGuard->assertMutable($world, $ruleset);
+            $lockedNation = Nation::query()
+                ->whereKey($nation->id)
+                ->where('world_id', $world->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($lockedNation->state !== 'active') {
+                throw new DomainException('現役ではない島のsale policyは変更できません。');
+            }
+            $this->authorize($user, $lockedNation);
             $policyRules = SalePolicyRules::fromSettings($ruleset->settings);
             if (! $resource->tradable) {
                 throw new DomainException('売却できないresourceです。');
@@ -49,7 +57,7 @@ final class SalePolicyService
             }
 
             $record = NationResourceSalePolicy::query()->firstOrCreate(
-                ['nation_id' => $nation->id, 'resource_definition_id' => $resource->id],
+                ['nation_id' => $lockedNation->id, 'resource_definition_id' => $resource->id],
                 ['policy' => $policyRules->defaultPolicy, 'keep_amount' => null, 'version' => 1],
             );
             $record = NationResourceSalePolicy::query()->whereKey($record->id)->lockForUpdate()->firstOrFail();
@@ -72,7 +80,14 @@ final class SalePolicyService
 
     private function authorize(User $user, Nation $nation): void
     {
-        if (! NationMembership::query()->where('user_id', $user->id)->where('nation_id', $nation->id)->exists()) {
+        $membership = NationMembership::query()
+            ->where('user_id', $user->id)
+            ->where('world_id', $nation->world_id)
+            ->where('nation_id', $nation->id)
+            ->where('role', 'owner')
+            ->lockForUpdate()
+            ->first();
+        if ($membership === null) {
             throw new AuthorizationException('自国のsale policyだけを変更できます。');
         }
     }

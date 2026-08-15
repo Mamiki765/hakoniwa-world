@@ -29,9 +29,12 @@ class TurnOrderServiceTest extends TestCase
         }
 
         $orders = app(TurnOrderService::class);
-        $stableNationIds = $orders->stableNationIds($world);
         $stableCellIds = $orders->stableSurfaceCellIds($world);
-        $expectedNationIds = Nation::query()->where('world_id', $world->id)->orderBy('id')->pluck('id')->all();
+        $abandoned = Nation::query()->where('world_id', $world->id)->orderBy('id')->firstOrFail();
+        $abandoned->update(['state' => 'abandoned']);
+        $stableNationIds = $orders->stableNationIds($world);
+        $expectedNationIds = Nation::query()->where('world_id', $world->id)
+            ->where('state', 'active')->orderBy('id')->pluck('id')->all();
         $expectedCellIds = MapCell::query()
             ->select('map_cells.id')
             ->join('map_spaces', 'map_spaces.id', '=', 'map_cells.map_space_id')
@@ -45,6 +48,7 @@ class TurnOrderServiceTest extends TestCase
             ->all();
 
         $this->assertSame($expectedNationIds, $stableNationIds);
+        $this->assertNotContains($abandoned->id, $stableNationIds);
         $this->assertSame($expectedCellIds, $stableCellIds);
 
         $firstAttempt = new TurnRandomStreamFactory(self::SEED_A);

@@ -398,7 +398,7 @@ final class MessageBoardService
 
     private function isReachable(Nation $nation): bool
     {
-        return $nation->state !== 'sunken_archived';
+        return ! in_array($nation->state, ['abandoned', 'sunken_archived'], true);
     }
 
     private function assertWorldMutable(World $world): void

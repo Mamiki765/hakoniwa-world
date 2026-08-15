@@ -1,0 +1,7 @@
+<?php
+
+namespace App\Domain\Nation;
+
+use DomainException;
+
+final class NationAbandonmentConfirmationException extends DomainException {}

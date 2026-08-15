@@ -29,7 +29,7 @@ final class PublicWorldService
             'key' => $world->key,
             'name' => $world->name,
             'current_turn' => $world->current_turn,
-            'nation_count' => $world->nations()->count(),
+            'nation_count' => $world->nations()->where('state', 'active')->count(),
             'contact_url' => $this->contactUrl(),
             'turn_status' => $turnSchedule['status'],
             'last_successful_turn_at' => $turnSchedule['last_successful_turn_at'],
@@ -129,6 +129,7 @@ final class PublicWorldService
     {
         $nations = Nation::query()
             ->where('world_id', $world->id)
+            ->where('state', 'active')
             ->with('capital')
             ->orderBy('id')
             ->get();

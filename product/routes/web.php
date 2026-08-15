@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
 use App\Http\Controllers\Api\MessageBoardController;
+use App\Http\Controllers\Api\NationAbandonmentController;
 use App\Http\Controllers\Api\NationProfileController;
 use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
@@ -71,6 +72,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/nations/{nation}/message-board', [MessageBoardController::class, 'storePublic']);
     Route::post('/nations/{nation}/message-board/secret', [MessageBoardController::class, 'storeSecret']);
     Route::patch('/nations/{nation}/profile', [NationProfileController::class, 'update']);
+    Route::post('/nations/{nation}/abandon', [NationAbandonmentController::class, 'store']);
     Route::get('/me/nation', [ApiController::class, 'myNation']);
     Route::get('/nations/{nation}/events', [PlayerEventController::class, 'index']);
     Route::get('/nations/{nation}/map-spaces/{mapSpace}/command-definitions', [CommandQueueController::class, 'definitions']);

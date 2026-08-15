@@ -7,6 +7,7 @@ use App\Domain\Turn\TurnContext;
 use App\Models\MapCell;
 use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
+use DomainException;
 
 final class MonsterRemovalService
 {
@@ -94,6 +95,22 @@ final class MonsterRemovalService
         return $this->removedCount;
     }
 
+    public function removeForWorldMutation(MonsterOccupancy $occupancy, string $reason): bool
+    {
+        $monster = MonsterInstance::query()
+            ->whereKey($occupancy->monster_instance_id)
+            ->lockForUpdate()
+            ->firstOrFail();
+        if ($monster->state !== 'alive') {
+            throw new DomainException('Only an alive occupied monster can be removed from the World.');
+        }
+
+        $occupancy->setRelation('monster', $monster);
+        $this->markRemoved($occupancy, $monster, $reason);
+
+        return true;
+    }
+
     public function detachForKill(
         TurnContext $context,
         MonsterOccupancy $occupancy,
@@ -115,15 +132,8 @@ final class MonsterRemovalService
     ): bool {
         $monster = $occupancy->monster;
         $definition = $monster->definition;
-        $occupancy->delete();
-        $this->batch?->forget($occupancy);
-        $monster->state = 'removed';
-        $monster->removal_reason = $reason;
-        $monster->removed_at = now();
-        $monster->version++;
-        $monster->save();
+        $this->markRemoved($occupancy, $monster, $reason);
         $context->state->markMapChunkChanged($cell->map_chunk_id);
-        $this->removedCount++;
         $this->events->record($context, $eventType, $monster, [
             'monster_key' => $definition->key,
             'x' => $cell->x,
@@ -136,5 +146,20 @@ final class MonsterRemovalService
         ]);
 
         return true;
+    }
+
+    private function markRemoved(
+        MonsterOccupancy $occupancy,
+        MonsterInstance $monster,
+        string $reason,
+    ): void {
+        $occupancy->delete();
+        $this->batch?->forget($occupancy);
+        $monster->state = 'removed';
+        $monster->removal_reason = $reason;
+        $monster->removed_at = now();
+        $monster->version++;
+        $monster->save();
+        $this->removedCount++;
     }
 }

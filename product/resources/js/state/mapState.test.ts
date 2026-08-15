@@ -183,4 +183,29 @@ describe('lazy map chunk loading', () => {
         expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/0/0'))).toHaveLength(2);
         expect(map.visibleCells.value).toHaveLength(1);
     });
+
+    it('clears the cached island immediately after a destructive lifecycle mutation', async () => {
+        let releaseStale: (value: Response) => void = () => undefined;
+        const staleResponse = new Promise<Response>((resolve) => { releaseStale = resolve; });
+        const fetchMock = vi.fn((input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/chunks/2/0')) return staleResponse;
+
+            return Promise.resolve(response(chunkFromPath(path, path.endsWith('/chunks/0/0') ? 'generated' : 'empty')));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const map = useMapState();
+        await map.loadAround(mapSpace, 5, 5);
+        const stale = map.loadVisibleRange({ minX: 32, maxX: 47, minY: 0, maxY: 15 });
+
+        expect(map.visibleCells.value).toHaveLength(1);
+        map.clear();
+        expect(map.visibleCells.value).toEqual([]);
+        expect(map.selected.value).toBeNull();
+        expect(map.emptyChunks.value).toEqual([]);
+
+        releaseStale(response(chunkFromPath('/chunks/2/0')));
+        await stale;
+        expect(map.visibleCells.value).toEqual([]);
+    });
 });

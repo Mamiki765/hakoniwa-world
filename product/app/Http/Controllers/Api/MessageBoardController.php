@@ -16,11 +16,15 @@ final class MessageBoardController extends Controller
 {
     public function show(Request $request, Nation $nation, MessageBoardService $service): JsonResponse
     {
+        abort_if($nation->state === 'abandoned', 404);
+
         return response()->json(['data' => $service->timeline($nation, $request->user())]);
     }
 
     public function storePublic(Request $request, Nation $nation, MessageBoardService $service): JsonResponse
     {
+        abort_if($nation->state === 'abandoned', 404);
+
         $validated = $request->validate(['body' => ['required', 'string']]);
 
         try {
@@ -38,6 +42,8 @@ final class MessageBoardController extends Controller
 
     public function storeSecret(Request $request, Nation $nation, MessageBoardService $service): JsonResponse
     {
+        abort_if($nation->state === 'abandoned', 404);
+
         $validated = $request->validate(['body' => ['required', 'string']]);
 
         try {
