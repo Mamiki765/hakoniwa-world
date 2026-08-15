@@ -888,6 +888,101 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-form').exists()).toBe(true);
     });
 
+    it('reconciles the authoritative Nation state when the abandonment response is lost', async () => {
+        let abandoned = false;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') return response(abandoned ? null : ownerNationFixture);
+            if (path === '/api/v1/nations/3/abandon' && init?.method === 'POST') {
+                abandoned = true;
+                throw new TypeError('Failed to fetch');
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const profileButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await profileButton.trigger('click');
+        await wrapper.get('.danger-zone .danger').trigger('click');
+        await wrapper.get('#abandonment-confirmation').setValue('自島');
+        await wrapper.get('.abandonment-modal form').trigger('submit');
+        await flushPromises();
+
+        expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(2);
+        expect(wrapper.find('.abandonment-modal').exists()).toBe(false);
+        expect(wrapper.find('.nation-form').exists()).toBe(true);
+        expect(wrapper.text()).toContain('島の破棄を確認しました。新しい島を登録できます。');
+    });
+
+    it('ignores an old turn refresh that completes after successful abandonment', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        let summaryCalls = 0;
+        let nationCalls = 0;
+        let resolveStaleNation!: (value: Response) => void;
+        const staleNationResponse = new Promise<Response>((resolve) => {
+            resolveStaleNation = resolve;
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) {
+                summaryCalls++;
+                return response({
+                    id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: summaryCalls === 1 ? 1 : 2,
+                    nation_count: summaryCalls < 3 ? 1 : 0, total_population: summaryCalls < 3 ? 1000 : 0, contact_url: null,
+                    turn_status: 'normal', last_successful_turn_at: summaryCalls === 1 ? '2026-08-09T10:00:00Z' : '2026-08-09T12:00:01Z',
+                    next_scheduled_turn_at: summaryCalls === 1 ? '2026-08-09T12:00:01Z' : '2026-08-09T14:00:00Z',
+                    turn_schedule_timezone: 'Asia/Tokyo',
+                });
+            }
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') {
+                nationCalls++;
+                if (nationCalls === 1) return response(ownerNationFixture);
+                if (nationCalls === 2) return staleNationResponse;
+
+                return response(null);
+            }
+            if (path === '/api/v1/nations/3/abandon' && init?.method === 'POST') {
+                return response({ nation_id: 3, state: 'abandoned' });
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        await flushPromises();
+        expect(nationCalls).toBe(2);
+
+        const profileButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await profileButton.trigger('click');
+        await wrapper.get('.danger-zone .danger').trigger('click');
+        await wrapper.get('#abandonment-confirmation').setValue('自島');
+        await wrapper.get('.abandonment-modal form').trigger('submit');
+        await flushPromises();
+
+        expect(nationCalls).toBe(3);
+        expect(wrapper.find('.nation-form').exists()).toBe(true);
+        resolveStaleNation(response(ownerNationFixture));
+        await flushPromises();
+        expect(wrapper.find('.nation-form').exists()).toBe(true);
+        expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === '自島へ')).toBe(false);
+        wrapper.unmount();
+    });
+
     it('does not clear the active Nation when the abandonment API fails', async () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -918,6 +1013,7 @@ describe('application lobby and island entry', () => {
 
         expect(wrapper.find('.abandonment-modal').exists()).toBe(true);
         expect(wrapper.find('.nation-form').exists()).toBe(false);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
         expect(wrapper.get('.abandonment-modal [role="alert"]').text()).toContain('このWorldは現在更新中です。');
     });
 });

@@ -63,6 +63,7 @@ let summaryDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
 let summaryRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let summaryFallbackTimer: ReturnType<typeof setInterval> | null = null;
 let turnViewCurrentTurn: number | null = null;
+let nationStateGeneration = 0;
 const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as const;
 const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
@@ -268,6 +269,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
     const world = worlds.value[0];
     if (world === undefined) return false;
     const currentNation = nation.value;
+    const nationRequestGeneration = nationStateGeneration;
     const currentPreview = page.value === 'preview' ? previewNation.value : null;
     const ownerMapSpaceRequest = page.value === 'island' && currentNation !== null
         ? api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`)
@@ -293,8 +295,12 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
 
     let refreshedNation = currentNation;
     if (nationResult.status === 'fulfilled') {
-        refreshedNation = nationResult.value;
-        nation.value = refreshedNation;
+        if (nationRequestGeneration === nationStateGeneration) {
+            refreshedNation = nationResult.value;
+            nation.value = refreshedNation;
+        } else {
+            refreshedNation = nation.value;
+        }
     } else {
         refreshed = false;
     }
@@ -537,8 +543,10 @@ async function openPreview(nationId: number): Promise<void> {
 
 async function refreshMyNation(): Promise<void> {
     if (user.value === null) return;
+    const requestGeneration = nationStateGeneration;
     try {
-        nation.value = await api<Nation | null>('/api/v1/me/nation');
+        const refreshedNation = await api<Nation | null>('/api/v1/me/nation');
+        if (requestGeneration === nationStateGeneration) nation.value = refreshedNation;
     } catch {
         // The authoritative message response is already rendered; account data can refresh later.
     }
@@ -551,7 +559,7 @@ async function createNation(): Promise<void> {
     message.value = '';
     registrationErrors.value = {};
     try {
-        nation.value = await api<Nation>('/api/v1/nations', {
+        const createdNation = await api<Nation>('/api/v1/nations', {
             method: 'POST',
             body: JSON.stringify({
                 request_key: nationRegistrationRequestKey.value,
@@ -561,6 +569,8 @@ async function createNation(): Promise<void> {
                 comment: nationComment.value,
             }),
         });
+        nationStateGeneration++;
+        nation.value = createdNation;
         nationRegistrationRequestKey.value = crypto.randomUUID();
         await loadPublicLobby();
         await openOwnIsland();
@@ -590,17 +600,22 @@ function openProfile(): void {
 
 async function updateProfile(): Promise<void> {
     if (nation.value === null) return;
+    const requestGeneration = nationStateGeneration;
+    const targetNationId = nation.value.id;
     busy.value = true;
     message.value = '';
     profileErrors.value = {};
     try {
-        nation.value = await api<Nation>(`/api/v1/nations/${nation.value.id}/profile`, {
+        const updatedNation = await api<Nation>(`/api/v1/nations/${targetNationId}/profile`, {
             method: 'PATCH',
             body: JSON.stringify({
                 owner_name: profileOwnerName.value,
                 comment: profileComment.value,
             }),
         });
+        if (requestGeneration !== nationStateGeneration) return;
+        nationStateGeneration++;
+        nation.value = updatedNation;
         await loadPublicLobby();
         await openOwnIsland();
     } catch (error) {
@@ -626,6 +641,44 @@ function closeAbandonmentModal(): void {
     abandonmentError.value = '';
 }
 
+function clearAbandonedNationState(): void {
+    map.clear();
+    nation.value = null;
+    mapSpace.value = null;
+    page.value = 'home';
+    abandonmentModalOpen.value = false;
+    abandonmentConfirmationName.value = '';
+    nationRegistrationRequestKey.value = crypto.randomUUID();
+}
+
+function shouldReconcileAbandonment(error: unknown): boolean {
+    if (!(error instanceof ApiError)) return true;
+
+    return error.status >= 500 || error.code === 'nation_not_active';
+}
+
+async function reconcileAmbiguousAbandonment(error: unknown): Promise<void> {
+    if (! shouldReconcileAbandonment(error)) return;
+
+    const reconciliationGeneration = ++nationStateGeneration;
+    try {
+        const currentNation = await api<Nation | null>('/api/v1/me/nation');
+        if (reconciliationGeneration !== nationStateGeneration) return;
+        if (currentNation === null) {
+            clearAbandonedNationState();
+            await loadPublicLobby();
+            abandonmentError.value = '';
+            message.value = '島の破棄を確認しました。新しい島を登録できます。';
+
+            return;
+        }
+
+        nation.value = currentNation;
+    } catch {
+        abandonmentError.value = '島の破棄結果を確認できませんでした。通信状態を確認して、しばらくしてから再度お試しください。';
+    }
+}
+
 async function abandonNation(): Promise<void> {
     const target = nation.value;
     if (target === null || !abandonmentConfirmed.value) return;
@@ -640,14 +693,10 @@ async function abandonNation(): Promise<void> {
             body: JSON.stringify({ confirmation_name: abandonmentConfirmationName.value }),
         });
         committed = true;
-        map.clear();
-        nation.value = null;
-        mapSpace.value = null;
-        page.value = 'home';
-        abandonmentModalOpen.value = false;
-        abandonmentConfirmationName.value = '';
-        nationRegistrationRequestKey.value = crypto.randomUUID();
-        nation.value = await api<Nation | null>('/api/v1/me/nation');
+        const reconciliationGeneration = ++nationStateGeneration;
+        clearAbandonedNationState();
+        const currentNation = await api<Nation | null>('/api/v1/me/nation');
+        if (reconciliationGeneration === nationStateGeneration) nation.value = currentNation;
         await loadPublicLobby();
         message.value = '島を破棄しました。新しい島を登録できます。';
     } catch (error) {
@@ -655,10 +704,10 @@ async function abandonNation(): Promise<void> {
         abandonmentError.value = errors.confirmation_name
             ?? (error instanceof Error ? error.message : '島を破棄できませんでした。');
         if (committed) {
-            nation.value = null;
-            page.value = 'home';
-            abandonmentModalOpen.value = false;
+            clearAbandonedNationState();
             message.value = '島は破棄されました。最新状態を再取得できなかったため、しばらくしてから再度お試しください。';
+        } else {
+            await reconcileAmbiguousAbandonment(error);
         }
     } finally {
         busy.value = false;
