@@ -1,5 +1,7 @@
 # 国家ライフサイクル
 
+> ver 1.6.0 current implementation: owner本人による手動破棄は`product/docs/ver-1.6.0-nation-lifecycle.md`を正本とする。Nationは物理削除せず`state = abandoned`とし、active membershipとCapitalを終了して同じUserの別名Nation再登録を許可する。以下の自動休眠、復帰、`dormant_*`、`sunken_archived`、batch lifecycle proposalは未実装の将来境界であり、ver 1.6.0の実装契約ではない。
+
 ## 目的
 
 共有世界における無活動国家を、短期保護、長期領土解放、地図からの退去へ段階的に移す。国家・ユーザー・歴史は物理削除せず、復帰と監査を可能にする。正式判断はADR-0004を正本とする。

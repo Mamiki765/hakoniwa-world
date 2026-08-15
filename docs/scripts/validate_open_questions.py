@@ -53,7 +53,7 @@ EXPECTED_STATUSES = {
     "B-12": "Open",
     "B-13": "Open",
     "B-14": "Decided",
-    "B-15": "Deferred",
+    "B-15": "Decided",
     "B-16": "Decided",
     "B-17": "Decided",
     "B-18": "Decided",

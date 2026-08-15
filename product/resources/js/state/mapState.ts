@@ -57,6 +57,20 @@ export function useMapState() {
         inFlightChunks = new Map<string, Promise<void>>();
     }
 
+    function clear(): void {
+        generation++;
+        mapSpace = null;
+        source = { kind: 'private' };
+        loading.value = false;
+        error.value = null;
+        cells.clear();
+        selected.value = null;
+        emptyChunks.value = [];
+        loadedChunks = new Set<string>();
+        confirmedEmptyChunks = new Set<string>();
+        inFlightChunks = new Map<string, Promise<void>>();
+    }
+
     function synchronizeMapSpace(nextMapSpace: MapSpace): boolean {
         const revisionChanged = mapSpace === null
             || mapSpace.id !== nextMapSpace.id
@@ -205,6 +219,7 @@ export function useMapState() {
         loading,
         error,
         emptyChunks,
+        clear,
         synchronizeMapSpace,
         loadAround,
         loadVisibleRange,

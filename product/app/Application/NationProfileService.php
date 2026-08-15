@@ -8,6 +8,7 @@ use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\User;
 use App\Models\World;
+use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 
@@ -19,11 +20,18 @@ final class NationProfileService
     public function update(User $user, Nation $nation, array $changes): Nation
     {
         return DB::transaction(function () use ($user, $nation, $changes): Nation {
-            $this->authorize($user, $nation);
             $world = World::query()->whereKey($nation->world_id)->lockForUpdate()->firstOrFail();
             $ruleset = $world->rulesetVersion()->firstOrFail();
             $this->rulesetGuard->assertMutable($world, $ruleset);
-            $lockedNation = Nation::query()->whereKey($nation->id)->lockForUpdate()->firstOrFail();
+            $lockedNation = Nation::query()
+                ->whereKey($nation->id)
+                ->where('world_id', $world->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($lockedNation->state !== 'active') {
+                throw new DomainException('現役ではない島のプロフィールは変更できません。');
+            }
+            $this->authorize($user, $lockedNation);
 
             $next = [
                 'owner_name' => array_key_exists('owner_name', $changes)
@@ -73,13 +81,14 @@ final class NationProfileService
 
     private function authorize(User $user, Nation $nation): void
     {
-        $isOwner = NationMembership::query()
+        $membership = NationMembership::query()
             ->where('user_id', $user->id)
             ->where('world_id', $nation->world_id)
             ->where('nation_id', $nation->id)
             ->where('role', 'owner')
-            ->exists();
-        if (! $isOwner) {
+            ->lockForUpdate()
+            ->first();
+        if ($membership === null) {
             throw new AuthorizationException('自国のプロフィールだけを変更できます。');
         }
     }

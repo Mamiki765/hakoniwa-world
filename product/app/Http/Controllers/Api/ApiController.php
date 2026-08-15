@@ -42,9 +42,11 @@ class ApiController extends Controller
     public function chunk(Request $request, MapSpace $mapSpace, int $chunkX, int $chunkY, MapChunkService $chunks): MapChunkResource
     {
         $viewerNationId = NationMembership::query()
-            ->where('user_id', $request->user()->id)
-            ->where('world_id', $mapSpace->world_id)
-            ->value('nation_id');
+            ->join('nations', 'nations.id', '=', 'nation_memberships.nation_id')
+            ->where('nation_memberships.user_id', $request->user()->id)
+            ->where('nation_memberships.world_id', $mapSpace->world_id)
+            ->where('nations.state', 'active')
+            ->value('nation_memberships.nation_id');
 
         return new MapChunkResource($chunks->present(
             $mapSpace,
@@ -79,6 +81,8 @@ class ApiController extends Controller
 
     public function nation(Request $request, Nation $nation): NationResource
     {
+        abort_unless($nation->state === 'active', 404);
+
         $nation->load('capital');
         $isOwner = NationMembership::query()
             ->where('user_id', $request->user()->id)
@@ -94,6 +98,7 @@ class ApiController extends Controller
     public function myNation(Request $request): NationResource|JsonResponse
     {
         $membership = NationMembership::query()->where('user_id', $request->user()->id)
+            ->whereHas('nation', fn ($query) => $query->where('state', 'active'))
             ->with(['nation.capital', 'nation.resourceBalances.definition'])->first();
 
         return $membership === null

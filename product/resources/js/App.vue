@@ -23,7 +23,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.5.1';
+const applicationVersion = '1.6.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -50,6 +50,9 @@ const nationComment = ref('');
 const nationRegistrationRequestKey = ref(crypto.randomUUID());
 const profileOwnerName = ref('');
 const profileComment = ref('');
+const abandonmentModalOpen = ref(false);
+const abandonmentConfirmationName = ref('');
+const abandonmentError = ref('');
 const registrationErrors = ref<Record<string, string>>({});
 const profileErrors = ref<Record<string, string>>({});
 const busy = ref(true);
@@ -60,12 +63,15 @@ let summaryDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
 let summaryRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let summaryFallbackTimer: ReturnType<typeof setInterval> | null = null;
 let turnViewCurrentTurn: number | null = null;
+let nationStateGeneration = 0;
 const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as const;
 const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
 const islandWorkspaceScroll = ref<HTMLElement | null>(null);
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
+const abandonmentConfirmed = computed(() => nation.value !== null
+    && abandonmentConfirmationName.value === nation.value.name);
 const nonFoodResources = computed(() => nation.value?.resources.filter((resource) => resource.category !== 'food') ?? []);
 const nextTurnCountdown = computed(() => {
     if (worldSummary.value?.turn_status !== 'normal') return null;
@@ -263,6 +269,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
     const world = worlds.value[0];
     if (world === undefined) return false;
     const currentNation = nation.value;
+    const nationRequestGeneration = nationStateGeneration;
     const currentPreview = page.value === 'preview' ? previewNation.value : null;
     const ownerMapSpaceRequest = page.value === 'island' && currentNation !== null
         ? api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`)
@@ -288,8 +295,12 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
 
     let refreshedNation = currentNation;
     if (nationResult.status === 'fulfilled') {
-        refreshedNation = nationResult.value;
-        nation.value = refreshedNation;
+        if (nationRequestGeneration === nationStateGeneration) {
+            refreshedNation = nationResult.value;
+            nation.value = refreshedNation;
+        } else {
+            refreshedNation = nation.value;
+        }
     } else {
         refreshed = false;
     }
@@ -532,8 +543,10 @@ async function openPreview(nationId: number): Promise<void> {
 
 async function refreshMyNation(): Promise<void> {
     if (user.value === null) return;
+    const requestGeneration = nationStateGeneration;
     try {
-        nation.value = await api<Nation | null>('/api/v1/me/nation');
+        const refreshedNation = await api<Nation | null>('/api/v1/me/nation');
+        if (requestGeneration === nationStateGeneration) nation.value = refreshedNation;
     } catch {
         // The authoritative message response is already rendered; account data can refresh later.
     }
@@ -546,7 +559,7 @@ async function createNation(): Promise<void> {
     message.value = '';
     registrationErrors.value = {};
     try {
-        nation.value = await api<Nation>('/api/v1/nations', {
+        const createdNation = await api<Nation>('/api/v1/nations', {
             method: 'POST',
             body: JSON.stringify({
                 request_key: nationRegistrationRequestKey.value,
@@ -556,6 +569,8 @@ async function createNation(): Promise<void> {
                 comment: nationComment.value,
             }),
         });
+        nationStateGeneration++;
+        nation.value = createdNation;
         nationRegistrationRequestKey.value = crypto.randomUUID();
         await loadPublicLobby();
         await openOwnIsland();
@@ -585,17 +600,22 @@ function openProfile(): void {
 
 async function updateProfile(): Promise<void> {
     if (nation.value === null) return;
+    const requestGeneration = nationStateGeneration;
+    const targetNationId = nation.value.id;
     busy.value = true;
     message.value = '';
     profileErrors.value = {};
     try {
-        nation.value = await api<Nation>(`/api/v1/nations/${nation.value.id}/profile`, {
+        const updatedNation = await api<Nation>(`/api/v1/nations/${targetNationId}/profile`, {
             method: 'PATCH',
             body: JSON.stringify({
                 owner_name: profileOwnerName.value,
                 comment: profileComment.value,
             }),
         });
+        if (requestGeneration !== nationStateGeneration) return;
+        nationStateGeneration++;
+        nation.value = updatedNation;
         await loadPublicLobby();
         await openOwnIsland();
     } catch (error) {
@@ -603,6 +623,92 @@ async function updateProfile(): Promise<void> {
         message.value = Object.keys(profileErrors.value).length === 0
             ? (error instanceof Error ? error.message : 'プロフィールを更新できませんでした。')
             : '';
+    } finally {
+        busy.value = false;
+    }
+}
+
+function openAbandonmentModal(): void {
+    abandonmentConfirmationName.value = '';
+    abandonmentError.value = '';
+    abandonmentModalOpen.value = true;
+}
+
+function closeAbandonmentModal(): void {
+    if (busy.value) return;
+    abandonmentModalOpen.value = false;
+    abandonmentConfirmationName.value = '';
+    abandonmentError.value = '';
+}
+
+function clearAbandonedNationState(): void {
+    map.clear();
+    nation.value = null;
+    mapSpace.value = null;
+    page.value = 'home';
+    abandonmentModalOpen.value = false;
+    abandonmentConfirmationName.value = '';
+    nationRegistrationRequestKey.value = crypto.randomUUID();
+}
+
+function shouldReconcileAbandonment(error: unknown): boolean {
+    if (!(error instanceof ApiError)) return true;
+
+    return error.status >= 500 || error.code === 'nation_not_active';
+}
+
+async function reconcileAmbiguousAbandonment(error: unknown): Promise<void> {
+    if (! shouldReconcileAbandonment(error)) return;
+
+    const reconciliationGeneration = ++nationStateGeneration;
+    try {
+        const currentNation = await api<Nation | null>('/api/v1/me/nation');
+        if (reconciliationGeneration !== nationStateGeneration) return;
+        if (currentNation === null) {
+            clearAbandonedNationState();
+            await loadPublicLobby();
+            abandonmentError.value = '';
+            message.value = '島の破棄を確認しました。新しい島を登録できます。';
+
+            return;
+        }
+
+        nation.value = currentNation;
+    } catch {
+        abandonmentError.value = '島の破棄結果を確認できませんでした。通信状態を確認して、しばらくしてから再度お試しください。';
+    }
+}
+
+async function abandonNation(): Promise<void> {
+    const target = nation.value;
+    if (target === null || !abandonmentConfirmed.value) return;
+
+    busy.value = true;
+    message.value = '';
+    abandonmentError.value = '';
+    let committed = false;
+    try {
+        await api(`/api/v1/nations/${target.id}/abandon`, {
+            method: 'POST',
+            body: JSON.stringify({ confirmation_name: abandonmentConfirmationName.value }),
+        });
+        committed = true;
+        const reconciliationGeneration = ++nationStateGeneration;
+        clearAbandonedNationState();
+        const currentNation = await api<Nation | null>('/api/v1/me/nation');
+        if (reconciliationGeneration === nationStateGeneration) nation.value = currentNation;
+        await loadPublicLobby();
+        message.value = '島を破棄しました。新しい島を登録できます。';
+    } catch (error) {
+        const errors = validationErrors(error);
+        abandonmentError.value = errors.confirmation_name
+            ?? (error instanceof Error ? error.message : '島を破棄できませんでした。');
+        if (committed) {
+            clearAbandonedNationState();
+            message.value = '島は破棄されました。最新状態を再取得できなかったため、しばらくしてから再度お試しください。';
+        } else {
+            await reconcileAmbiguousAbandonment(error);
+        }
     } finally {
         busy.value = false;
     }
@@ -1025,6 +1131,11 @@ async function updateProfile(): Promise<void> {
                     <button type="button" :disabled="busy" @click="openOwnIsland">キャンセル</button>
                 </div>
             </form>
+            <section class="danger-zone" aria-labelledby="danger-zone-title">
+                <h2 id="danger-zone-title">危険な操作</h2>
+                <p>島の破棄は元に戻せません。領土・人口・施設・資源・開発予定はすべて失われます。</p>
+                <button class="button danger" type="button" :disabled="busy" @click="openAbandonmentModal">この島を破棄する</button>
+            </section>
         </section>
 
         <section v-else-if="user && page === 'account'" class="panel account-panel">
@@ -1051,4 +1162,23 @@ async function updateProfile(): Promise<void> {
             <p>原作GIFは本リポジトリとDocker imageに含まれません。未配置時はCSS fallbackを表示します。</p>
         </section>
     </main>
+
+    <div v-if="abandonmentModalOpen && nation" class="modal-backdrop" @click.self="closeAbandonmentModal">
+        <section class="abandonment-modal" role="dialog" aria-modal="true" aria-labelledby="abandonment-title">
+            <h2 id="abandonment-title">島の破棄</h2>
+            <p>この操作を行うと、この島の領土・人口・施設・資源・開発予定はすべて失われます。</p>
+            <p>同じ島名で作り直す事もできません。</p>
+            <p>この操作は元に戻せません。</p>
+            <p>過去の記録とアカウントは残ります。</p>
+            <form @submit.prevent="abandonNation">
+                <label for="abandonment-confirmation">確認のため、島名「{{ nation.name }}」を入力してください。</label>
+                <input id="abandonment-confirmation" v-model="abandonmentConfirmationName" autocomplete="off" :disabled="busy">
+                <p v-if="abandonmentError" class="field-error" role="alert">{{ abandonmentError }}</p>
+                <div class="modal-actions">
+                    <button type="button" :disabled="busy" @click="closeAbandonmentModal">キャンセル</button>
+                    <button class="button danger" type="submit" :disabled="busy || !abandonmentConfirmed">島を破棄する</button>
+                </div>
+            </form>
+        </section>
+    </div>
 </template>

@@ -38,6 +38,17 @@ const publicDetail: PublicNationDetail = {
     map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
 };
 
+const ownerNationFixture: Nation = {
+    id: 3, world_id: 1, nation_number: 1, name: '自島', owner_name: '自島主', comment: '',
+    money: 100, money_display: '100億円', money_capacity: 9999, money_remaining_capacity: 9899,
+    money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
+    food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
+    farm_capacity_people: 10000, factory_capacity_people: 0, mine_capacity_people: 0,
+    food_resources: [], resources: [], state: 'active', current_turn: 1, registered_turn: 1,
+    survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only', total_population: 1000,
+    territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
+};
+
 function publicResponse(path: string): Response | null {
     if (path === '/api/v1/public/announcements/latest') return response([
         { id: 2, title: 'ver 1.0.2のお知らせ', body: 'queue fix', created_at: '2026-08-02T03:00:00+09:00', updated_at: '2026-08-02T03:00:00+09:00' },
@@ -110,7 +121,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.5.1');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.6.0');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
         expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
@@ -824,5 +835,185 @@ describe('application lobby and island entry', () => {
         await vi.advanceTimersByTimeAsync(60_000);
         await flushPromises();
         expect(summaryCallCount()).toBe(3);
+    });
+
+    it('requires the danger button, modal, and exact island name before abandonment and returns to registration', async () => {
+        let abandoned = false;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') return response(abandoned ? null : ownerNationFixture);
+            if (path === '/api/v1/nations/3/abandon' && init?.method === 'POST') {
+                abandoned = true;
+
+                return response({ nation_id: 3, state: 'abandoned' });
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const profileButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await profileButton.trigger('click');
+        expect(wrapper.find('.danger-zone').text()).toContain('危険な操作');
+        await wrapper.get('.danger-zone .danger').trigger('click');
+        expect(wrapper.get('.abandonment-modal').attributes('aria-modal')).toBe('true');
+
+        const confirmation = wrapper.get<HTMLInputElement>('#abandonment-confirmation');
+        const confirmButton = wrapper.get<HTMLButtonElement>('.abandonment-modal button[type="submit"]');
+        expect(confirmButton.element.disabled).toBe(true);
+        await confirmation.setValue('自島 ');
+        expect(confirmButton.element.disabled).toBe(true);
+        await confirmation.setValue('自島');
+        expect(confirmButton.element.disabled).toBe(false);
+
+        await wrapper.get('.modal-actions button[type="button"]').trigger('click');
+        expect(wrapper.find('.abandonment-modal').exists()).toBe(false);
+        expect(fetchMock.mock.calls.some(([path]) => String(path).endsWith('/abandon'))).toBe(false);
+
+        await wrapper.get('.danger-zone .danger').trigger('click');
+        await wrapper.get('#abandonment-confirmation').setValue('自島');
+        await wrapper.get('.abandonment-modal form').trigger('submit');
+        await flushPromises();
+
+        const request = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/nations/3/abandon');
+        expect(JSON.parse(String(request?.[1]?.body))).toEqual({ confirmation_name: '自島' });
+        expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(2);
+        expect(wrapper.find('.abandonment-modal').exists()).toBe(false);
+        expect(wrapper.find('.nation-form').exists()).toBe(true);
+    });
+
+    it('reconciles the authoritative Nation state when the abandonment response is lost', async () => {
+        let abandoned = false;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') return response(abandoned ? null : ownerNationFixture);
+            if (path === '/api/v1/nations/3/abandon' && init?.method === 'POST') {
+                abandoned = true;
+                throw new TypeError('Failed to fetch');
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const profileButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await profileButton.trigger('click');
+        await wrapper.get('.danger-zone .danger').trigger('click');
+        await wrapper.get('#abandonment-confirmation').setValue('自島');
+        await wrapper.get('.abandonment-modal form').trigger('submit');
+        await flushPromises();
+
+        expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(2);
+        expect(wrapper.find('.abandonment-modal').exists()).toBe(false);
+        expect(wrapper.find('.nation-form').exists()).toBe(true);
+        expect(wrapper.text()).toContain('島の破棄を確認しました。新しい島を登録できます。');
+    });
+
+    it('ignores an old turn refresh that completes after successful abandonment', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        let summaryCalls = 0;
+        let nationCalls = 0;
+        let resolveStaleNation!: (value: Response) => void;
+        const staleNationResponse = new Promise<Response>((resolve) => {
+            resolveStaleNation = resolve;
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) {
+                summaryCalls++;
+                return response({
+                    id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: summaryCalls === 1 ? 1 : 2,
+                    nation_count: summaryCalls < 3 ? 1 : 0, total_population: summaryCalls < 3 ? 1000 : 0, contact_url: null,
+                    turn_status: 'normal', last_successful_turn_at: summaryCalls === 1 ? '2026-08-09T10:00:00Z' : '2026-08-09T12:00:01Z',
+                    next_scheduled_turn_at: summaryCalls === 1 ? '2026-08-09T12:00:01Z' : '2026-08-09T14:00:00Z',
+                    turn_schedule_timezone: 'Asia/Tokyo',
+                });
+            }
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') {
+                nationCalls++;
+                if (nationCalls === 1) return response(ownerNationFixture);
+                if (nationCalls === 2) return staleNationResponse;
+
+                return response(null);
+            }
+            if (path === '/api/v1/nations/3/abandon' && init?.method === 'POST') {
+                return response({ nation_id: 3, state: 'abandoned' });
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        await flushPromises();
+        expect(nationCalls).toBe(2);
+
+        const profileButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await profileButton.trigger('click');
+        await wrapper.get('.danger-zone .danger').trigger('click');
+        await wrapper.get('#abandonment-confirmation').setValue('自島');
+        await wrapper.get('.abandonment-modal form').trigger('submit');
+        await flushPromises();
+
+        expect(nationCalls).toBe(3);
+        expect(wrapper.find('.nation-form').exists()).toBe(true);
+        resolveStaleNation(response(ownerNationFixture));
+        await flushPromises();
+        expect(wrapper.find('.nation-form').exists()).toBe(true);
+        expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === '自島へ')).toBe(false);
+        wrapper.unmount();
+    });
+
+    it('does not clear the active Nation when the abandonment API fails', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/nations/3/abandon' && init?.method === 'POST') {
+                return new Response(JSON.stringify({ code: 'world_updating', message: 'このWorldは現在更新中です。' }), {
+                    status: 409,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const profileButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await profileButton.trigger('click');
+        await wrapper.get('.danger-zone .danger').trigger('click');
+        await wrapper.get('#abandonment-confirmation').setValue('自島');
+        await wrapper.get('.abandonment-modal form').trigger('submit');
+        await flushPromises();
+
+        expect(wrapper.find('.abandonment-modal').exists()).toBe(true);
+        expect(wrapper.find('.nation-form').exists()).toBe(false);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
+        expect(wrapper.get('.abandonment-modal [role="alert"]').text()).toContain('このWorldは現在更新中です。');
     });
 });

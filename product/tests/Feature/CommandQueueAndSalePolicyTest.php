@@ -169,6 +169,52 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.cancelled')->count());
     }
 
+    public function test_every_queue_mutation_revalidates_locked_active_owner_after_the_world_lock(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('再検証国');
+        $target = MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $service = app(CommandQueueService::class);
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+        $mutate = function (callable $operation) use (&$queries): mixed {
+            $queries = [];
+            $result = $operation();
+            $this->assertQueueOwnershipLockOrder($queries);
+
+            return $result;
+        };
+
+        $added = $mutate(fn (): array => $service->add(
+            user: $owner,
+            nation: $nation,
+            mapSpace: $mapSpace,
+            commandKey: 'excavate',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        ));
+        $item = $added['item'];
+
+        $queue = $mutate(fn () => $service->reposition(
+            $owner,
+            $nation,
+            [['id' => $item->id, 'position' => 1]],
+            2,
+        ));
+        $queue = $mutate(fn () => $service->updateQuantity($owner, $nation, $item, 2, $queue->version));
+        $queue = $mutate(fn () => $service->reorder($owner, $nation, [$item->id], $queue->version));
+        $mutate(fn () => $service->cancel($owner, $nation, $item, $queue->version));
+
+        $this->assertSame('cancelled', $item->fresh()->status);
+    }
+
     public function test_decoy_uses_its_stable_key_for_the_owner_label_in_catalog_and_queue(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('ハリボテ表示国');
@@ -1009,5 +1055,28 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $nation = app(NationCreationService::class)->create($user, $world, $name, '試験島主');
 
         return [$user, $nation, MapSpace::query()->where('world_id', $world->id)->firstOrFail()];
+    }
+
+    /** @param list<string> $queries */
+    private function assertQueueOwnershipLockOrder(array $queries): void
+    {
+        $world = $this->lockedQueryIndex($queries, 'worlds');
+        $nation = $this->lockedQueryIndex($queries, 'nations');
+        $membership = $this->lockedQueryIndex($queries, 'nation_memberships');
+
+        $this->assertTrue($world < $nation, 'Nation must be locked after the World row.');
+        $this->assertTrue($nation < $membership, 'Owner membership must be revalidated after the locked Nation state.');
+    }
+
+    /** @param list<string> $queries */
+    private function lockedQueryIndex(array $queries, string $table): int
+    {
+        foreach ($queries as $index => $sql) {
+            if (str_contains($sql, 'from "'.$table.'"') && str_contains($sql, 'for update')) {
+                return $index;
+            }
+        }
+
+        $this->fail("Missing FOR UPDATE query for {$table}.");
     }
 }
