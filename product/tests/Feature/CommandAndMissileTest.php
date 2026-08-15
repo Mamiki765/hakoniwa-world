@@ -49,6 +49,8 @@ class CommandAndMissileTest extends TestCase
         $space = $this->surfaceMapSpace($world);
         $forest = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->firstOrFail();
+        $ownerNationId = $forest->owner_nation_id;
+        $this->assertSame(500, $forest->terrain_quantity);
         $service = app(CommandQueueService::class);
 
         $failed = $this->queue($service, $user, $nation, $space, 'build_farm', $forest, 1, 1);
@@ -74,7 +76,30 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, $third['idle_counter_resets']);
         $this->assertSame(0, $nation->fresh()->idle_counter);
         $this->assertSame('completed', $logging->fresh()->status);
-        $this->assertSame('wasteland', $forest->fresh()->terrain()->value('key'));
+        $loggedForest = $forest->fresh(['terrain']);
+        $this->assertSame('plain', $loggedForest->terrain->key);
+        $this->assertNotSame('wasteland', $loggedForest->terrain->key);
+        $this->assertSame($ownerNationId, $loggedForest->owner_nation_id);
+        $this->assertNull($loggedForest->terrain_quantity);
+        $this->assertSame(145, $nation->fresh()->money);
+
+        $publicLogging = DB::table('audit_events')->where('event_type', 'command.logging_public')->sole();
+        $this->assertSame('public', $publicLogging->visibility);
+        $publicLoggingMetadata = json_decode((string) $publicLogging->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($world->id, $publicLoggingMetadata['world_id']);
+        $this->assertSame($nation->id, $publicLoggingMetadata['nation_id']);
+        $this->assertSame($nation->name, $publicLoggingMetadata['nation_name']);
+        $this->assertSame(4, $publicLoggingMetadata['target_turn']);
+        $this->assertArrayNotHasKey('x', $publicLoggingMetadata);
+        $this->assertArrayNotHasKey('y', $publicLoggingMetadata);
+        $this->assertArrayNotHasKey('applied_money', $publicLoggingMetadata);
+        $privateLogging = DB::table('audit_events')->where('event_type', 'command.logging_private')->sole();
+        $this->assertSame('private', $privateLogging->visibility);
+        $privateLoggingMetadata = json_decode((string) $privateLogging->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(500, $privateLoggingMetadata['tree_units']);
+        $this->assertSame(25, $privateLoggingMetadata['requested_money']);
+        $this->assertSame(25, $privateLoggingMetadata['applied_money']);
+        $this->assertSame(0, $privateLoggingMetadata['overflow_money']);
 
         $event = DB::table('audit_events')->where('event_type', 'command.failed')
             ->where('subject_id', $failed->id)->firstOrFail();

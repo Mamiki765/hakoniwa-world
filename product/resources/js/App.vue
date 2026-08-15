@@ -23,7 +23,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.6.0';
+const applicationVersion = '1.6.1';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);

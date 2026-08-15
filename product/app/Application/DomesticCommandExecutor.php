@@ -779,7 +779,7 @@ final class DomesticCommandExecutor
             $nation->update(['money' => $income->after]);
         }
         $this->cells->setFacility($cell, null);
-        $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail());
+        $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'plain')->firstOrFail());
         $cell->population = 0;
         $cell->version++;
         $cell->save();
