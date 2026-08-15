@@ -28,6 +28,7 @@ Laravel API、OAuth callback、Vue 3 UI、世界・島生成、command queue、�
 composer install
 npm ci
 php -d memory_limit=512M vendor/bin/phpunit
+composer test:parallel -- 4
 vendor/bin/pint --test
 vendor/bin/phpstan analyse --memory-limit=1G
 npm run test

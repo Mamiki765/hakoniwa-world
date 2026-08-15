@@ -3,9 +3,24 @@ name: Quality
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      phpunit_shards:
+        description: PHPUnit shard count for CI timing experiments
+        required: true
+        default: "16"
+        type: choice
+        options:
+          - "1"
+          - "8"
+          - "12"
+          - "16"
 
 permissions:
   contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   documentation:
@@ -15,29 +30,42 @@ jobs:
       - name: Validate open-question documentation contract
         run: python3 docs/scripts/validate_open_questions.py
 
-  backend:
+  phpunit-plan:
+    name: PHPUnit shard plan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:18.4-bookworm
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      total: ${{ steps.matrix.outputs.total }}
+    steps:
+      - id: matrix
+        name: Build shard matrix
         env:
-          POSTGRES_DB: hakoniwa_test
-          POSTGRES_USER: hakoniwa
-          POSTGRES_PASSWORD: test-only-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hakoniwa -d hakoniwa_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      APP_ENV: testing
-      DB_CONNECTION: pgsql
-      DB_DATABASE: hakoniwa_test
-      DB_USERNAME: hakoniwa
-      DB_PASSWORD: test-only-password
+          REQUESTED_SHARDS: ${{ inputs.phpunit_shards || '16' }}
+        run: |
+          python3 - "$REQUESTED_SHARDS" <<'PY'
+          import json
+          import os
+          import sys
+
+          total = int(sys.argv[1])
+          if total not in {1, 8, 12, 16}:
+              raise SystemExit(f"Unsupported PHPUnit shard count: {total}")
+
+          matrix = {
+              "include": [
+                  {"index": index, "display": f"{index + 1:02d}"}
+                  for index in range(total)
+              ]
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+              output.write(f"total={total}\n")
+          PY
+
+  backend-static:
+    name: backend-static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: product
@@ -51,8 +79,16 @@ jobs:
           extensions: intl, pdo_pgsql
           coverage: none
           tools: composer:v2
-      - name: Map the Compose test hostname to the service container
-        run: echo "127.0.0.1 hakoniwa-postgres" | sudo tee -a /etc/hosts
+      - name: Locate Composer cache
+        id: composer-cache
+        run: echo "directory=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.directory }}
+          key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('product/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.5-composer-
       - name: Install PHP dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
       - name: Check formatting of changed PHP files
@@ -73,8 +109,102 @@ jobs:
           if ((${#changed_app_php[@]})); then
             vendor/bin/phpstan analyse "${changed_app_php[@]}" --memory-limit=1G
           fi
-      - name: Run isolated PostgreSQL tests
-        run: php -d memory_limit=512M vendor/bin/phpunit --colors=never
+      - name: Validate complete 16-shard assignment
+        run: php tests/scripts/test_shards.php verify 16
+      - name: Verify serial and sharded test identifiers
+        run: bash tests/scripts/verify_test_identifier_equivalence.sh 16
+
+  phpunit:
+    name: PHPUnit ${{ matrix.display }}/${{ needs.phpunit-plan.outputs.total }}
+    needs: phpunit-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.phpunit-plan.outputs.matrix) }}
+    services:
+      postgres:
+        image: postgres:18.4-bookworm
+        env:
+          POSTGRES_DB: hakoniwa_test
+          POSTGRES_USER: hakoniwa
+          POSTGRES_PASSWORD: test-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hakoniwa -d hakoniwa_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: pgsql
+      DB_DATABASE: hakoniwa_test
+      DB_USERNAME: hakoniwa
+      DB_PASSWORD: test-only-password
+      SHARD_INDEX: ${{ matrix.index }}
+      SHARD_TOTAL: ${{ needs.phpunit-plan.outputs.total }}
+    defaults:
+      run:
+        working-directory: product
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          extensions: intl, pdo_pgsql
+          coverage: none
+          tools: composer:v2
+      - name: Map the Compose test hostname to the service container
+        run: echo "127.0.0.1 hakoniwa-postgres" | sudo tee -a /etc/hosts
+      - name: Locate Composer cache
+        id: composer-cache
+        run: echo "directory=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.directory }}
+          key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('product/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.5-composer-
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Verify complete shard coverage
+        run: php tests/scripts/test_shards.php verify "$SHARD_TOTAL"
+      - name: Describe assigned tests
+        run: php tests/scripts/test_shards.php describe "$SHARD_TOTAL" "$SHARD_INDEX"
+      - name: Run assigned PostgreSQL tests
+        run: |
+          assigned_output="$(php tests/scripts/test_shards.php files "$SHARD_TOTAL" "$SHARD_INDEX")"
+          test_files=()
+          if [[ -n "$assigned_output" ]]; then
+            mapfile -t test_files <<<"$assigned_output"
+          fi
+          if ((${#test_files[@]} == 0)); then
+            echo "Shard is empty; no PHPUnit process is required."
+            exit 0
+          fi
+          php -d memory_limit=512M vendor/bin/phpunit --colors=never "${test_files[@]}"
+
+  backend:
+    name: backend
+    needs:
+      - backend-static
+      - phpunit
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require static checks and every PHPUnit shard
+        env:
+          BACKEND_STATIC_RESULT: ${{ needs.backend-static.result }}
+          PHPUNIT_RESULT: ${{ needs.phpunit.result }}
+        run: |
+          if [[ "$BACKEND_STATIC_RESULT" != "success" || "$PHPUNIT_RESULT" != "success" ]]; then
+            echo "backend-static=$BACKEND_STATIC_RESULT"
+            echo "phpunit=$PHPUNIT_RESULT"
+            exit 1
+          fi
+          echo "backend-static and all PHPUnit shards passed."
 
   frontend:
     runs-on: ubuntu-latest

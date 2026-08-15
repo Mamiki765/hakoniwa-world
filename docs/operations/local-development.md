@@ -41,6 +41,16 @@ docker compose exec hakoniwa-web ./vendor/bin/phpstan analyse --memory-limit=1G
 
 本番設定を持つcontainer内では`php artisan test`を直接実行しない。PHP process起動時から`APP_ENV=testing`と`DB_DATABASE=hakoniwa_test`を明示し、`tests/TestCase.php`のguardでも本番DBへの接続を拒否する。
 
+canonicalなserial full suiteは従来どおり`composer test`で実行できる。ローカルで並列化する場合は、Windows hostのrepository rootから次を実行する。
+
+```powershell
+.\product\tests\scripts\run_parallel_tests.cmd 4
+```
+
+既定・推奨値は4 shardsである。この開発機での同一suiteの実測はserial 15分41秒、2 shards 9分12秒、4 shards 5分46秒、8 shards 5分09秒だった。8 shardsは最速だが4 shardsとの差は約37秒で、container群の推定ピークメモリは約723 MiBから約1.13 GiBへ増えたため、通常は4、CPU・メモリに余裕があり最短時間を優先するときだけ8を使う。PowerShell wrapperはcached Docker buildと`hakoniwa-web`再作成を先に行い、現在checkoutのsource/testを持つimageで`tests/scripts/run_parallel_tests.sh`を呼ぶ。Windows hostへComposerやGNU `xargs -P`を追加する必要はない。source checkoutでComposerとBashを直接利用する環境では`composer test:parallel -- 4`も同じrunnerを起動する。parallel runnerはcanonical `phpunit.xml`からtest fileを自動検出し、CIと共通のdeterministic plannerで各fileを1回だけ割り当てる。各processには`hakoniwa_parallel_<run>_<shard>_test`という固定test-only prefix/suffixの独立DBを作成し、そのDB名だけを強制する一時PHPUnit configを使用する。全process終了時、失敗時、またはinterrupt時にはchild processを停止してtest DBと一時configを可能な限りcleanupする。cleanupに失敗した場合はproduction DBへfallbackせず、manifestを残して安全なretry commandを表示する。
+
+GitHub Actionsも同じplannerを使用し、独立runner・独立PostgreSQL service上のPHPUnit matrixへ自動検出したfileを分配する。workflow YAMLへtest file一覧は保持しない。各runはdiscoveryのunion、duplicate、missingを検証し、`backend-static`と全PHPUnit shardsを最終`backend` gateへ集約する。
+
 frontend test、lint、typecheck、production buildは`docker compose build`のNode stageで実行される。既存volumeにtest DBがない場合は、PostgreSQL管理権限を持つ運用者がtest専用DBを追加するか、開発volumeを明示的に再作成する。本番DBをtestに使用しない。
 
 OAuth portalの設定は [oauth-setup.md](oauth-setup.md)を参照する。secretなしでもroute、config validation、state、mock callback testを検証できる。
