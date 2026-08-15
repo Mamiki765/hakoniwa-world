@@ -29,6 +29,12 @@ membership削除後、同じUserは同じWorldへ別名の新しいNationを登�
 
 World内Nation名uniqueとmonotonic nation numberは維持する。abandoned Nationの名前は再利用できず、新Nation numberはabandonedを含む過去の最大値より大きくなる。旧Capital rowは削除済みなので、新規配置のminimum capital distance判定を塞がない。
 
+## Owner decision / B-15 minimal re-registration approval
+
+ver 1.6.0では、owner本人が手動破棄した後、同じUserが同じWorldへ通常のNation作成経路から新しいNationを登録できる最小再登録を正式に承認する。旧Nationはphysical deleteせず`abandoned`として歴史を保持し、membershipを終了する。新しいNationは新しいrequest keyとNation numberを使い、過去のcompleted creation requestも保持する。
+
+この承認はgeneration、lineage、転生bonus、ranking・award引き継ぎ、保護期間、特別な初期resource bonus、Nation間のasset transferを決定しない。将来、島をまたいで保持するゲーム上のデータはAccount/Userに紐づく「秘書」側の永続データとして扱い、Nation AからNation Bへ直接移送しない方針だけを将来境界として記録する。secretary/account gameplay table、item、proficiency、turnへの反映方法は今回設計・実装しない。
+
 ## Public event
 
 成功時はpublic `nation.abandoned` eventを1件記録し、重大ニュースを正確に`「○○島は破棄され、忘れ去られた。」`と表示する。同じrecordをoperator audit traceとしても使用し、actor、World、turn、旧Capital、owned/neutral cleanup countをmetadataへ残す。

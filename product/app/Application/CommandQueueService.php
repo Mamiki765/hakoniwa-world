@@ -63,9 +63,11 @@ final class CommandQueueService
         bool $quantityProvided = false,
     ): array {
         return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $quantity, $parameters, $position, $quantityProvided): array {
-            $membership = $this->membership($user, $nation);
+            $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
             $world = $this->lockWorldForQueue($nation);
+            [$lockedNation, $membership] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
+            $this->assertMapSpace($lockedNation, $mapSpace);
             $definition = CommandDefinition::query()
                 ->where('ruleset_version_id', $world->ruleset_version_id)
                 ->where('key', $commandKey)
@@ -76,7 +78,7 @@ final class CommandQueueService
             }
 
             [$targetX, $targetY] = $this->resolveTargetCoordinates(
-                $nation,
+                $lockedNation,
                 $mapSpace,
                 $definition,
                 $targetX,
@@ -84,7 +86,7 @@ final class CommandQueueService
             );
 
             $queue = NationCommandQueue::query()->firstOrCreate(
-                ['nation_id' => $nation->id],
+                ['nation_id' => $lockedNation->id],
                 ['map_space_id' => $mapSpace->id, 'version' => 1],
             );
             $queue = NationCommandQueue::query()->whereKey($queue->id)->lockForUpdate()->firstOrFail();
@@ -116,7 +118,7 @@ final class CommandQueueService
                 throw new DomainException('command parameter schemaが不正です。');
             }
             $parameters = $this->parameters->validate($schemas, $parameters);
-            $this->nationTargets->validateRegistration($nation, $definition, $parameters);
+            $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
@@ -203,7 +205,8 @@ final class CommandQueueService
         return DB::transaction(function () use ($user, $nation, $placements, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
             $world = $this->lockWorldForQueue($nation);
-            $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
+            [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
+            $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
             $currentIds = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
@@ -250,8 +253,9 @@ final class CommandQueueService
     ): NationCommandQueue {
         return DB::transaction(function () use ($user, $nation, $item, $quantity, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
-            $this->lockWorldForQueue($nation);
-            $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
+            $world = $this->lockWorldForQueue($nation);
+            [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
+            $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
             $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
@@ -278,8 +282,9 @@ final class CommandQueueService
     {
         return DB::transaction(function () use ($user, $nation, $orderedIds, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
-            $this->lockWorldForQueue($nation);
-            $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
+            $world = $this->lockWorldForQueue($nation);
+            [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
+            $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
             $current = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
@@ -314,8 +319,9 @@ final class CommandQueueService
     {
         return DB::transaction(function () use ($user, $nation, $item, $expectedVersion): NationCommandQueue {
             $this->membership($user, $nation);
-            $this->lockWorldForQueue($nation);
-            $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->lockForUpdate()->firstOrFail();
+            $world = $this->lockWorldForQueue($nation);
+            [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
+            $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
             $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
@@ -520,12 +526,39 @@ final class CommandQueueService
             ->where('user_id', $user->id)
             ->where('nation_id', $nation->id)
             ->where('world_id', $nation->world_id)
+            ->where('role', 'owner')
             ->first();
         if ($membership === null) {
             throw new AuthorizationException('自国のcommand queueだけを操作できます。');
         }
 
         return $membership;
+    }
+
+    /** @return array{0: Nation, 1: NationMembership} */
+    private function lockActiveOwnerAfterWorld(User $user, Nation $nation, World $world): array
+    {
+        $lockedNation = Nation::query()
+            ->whereKey($nation->id)
+            ->where('world_id', $world->id)
+            ->lockForUpdate()
+            ->first();
+        if ($lockedNation === null || $lockedNation->state !== 'active') {
+            throw new AuthorizationException('現役ではない島のcommand queueは操作できません。');
+        }
+
+        $membership = NationMembership::query()
+            ->where('user_id', $user->id)
+            ->where('nation_id', $lockedNation->id)
+            ->where('world_id', $world->id)
+            ->where('role', 'owner')
+            ->lockForUpdate()
+            ->first();
+        if ($membership === null) {
+            throw new AuthorizationException('自国のcommand queueだけを操作できます。');
+        }
+
+        return [$lockedNation, $membership];
     }
 
     private function assertMapSpace(Nation $nation, MapSpace $mapSpace): void

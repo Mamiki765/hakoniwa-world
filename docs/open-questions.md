@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | 対応するattack、占領抵抗、dormancy機能の実装前にだけ停止する。B-07のactive Nation間territory influenceとCapital core protection、B-10のPR22 missile visibilityは決定済み。怪獣単体PRの一律blockerではない。 |
 | lifecycle / automatic turn operations | T-02 | 30日休眠Jobは公開後roadmapまで実装しない。production cronと手動retry境界はD-02で決定済み。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| post-MVP deferred | AUTH-06〜AUTH-09、B-08、B-15、D-06、D-08、C-02、C-04、E-01、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
+| post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-01、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
 
@@ -395,6 +395,13 @@
 - Decision: 危険領域button、modal、現在の島名完全一致を二段階確認とする。backendもlocked active Nation名とowner membershipを再確認し、WorldMutationLockと単一transactionでsurface map、monster、現役asset、Capital、membershipを終了する。Nationと歴史recordは保持し、同じUserは別名の新Nationを登録できる。
 - Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`、`docs/decisions/ADR-0008-first-production-release.md`、`docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`
 
+### B-15 再入植
+
+- Status: Decided
+- Implemented: ver 1.6.0で、owner本人による手動破棄後の最小再登録を実装。
+- Decision: owner本人が手動破棄した後、同じUserは同じWorldへ通常のNation作成経路から別の新しいNationを登録できる。旧Nationはphysical deleteせず`abandoned`として歴史を保持し、旧membershipを終了する。新規登録は新しいrequest keyと新しいNation numberを使い、historical creation requestを保持する。将来、島をまたいで保持するゲーム上のデータはAccount/Userに紐づく「秘書」側の永続データとして扱い、Nation AからNation Bへ直接移送しない。この将来境界はsecretary/account gameplay schema、item、proficiency、turn反映、bonus、ranking・award引き継ぎ、保護期間を今回決定または実装するものではない。
+- Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`
+
 ### D-01 scheduler・queue基盤
 
 - Status: Decided
@@ -463,12 +470,6 @@
 - Status: Deferred
 - Activation gate: attack/occupation command roadmap
 - Boundary: protection期間、敵対行為、解除条件を決めるまで国内commandへ保護を追加しない。
-
-### B-15 再入植
-
-- Status: Deferred
-- Activation gate: post-MVP re-colonization roadmap
-- Boundary: ver 1.6.0はabandoned Nationと旧名を保持したまま、同じUserが別名・新番号・新request keyで新しいNationを作る最小再登録だけを実装する。generation、lineage、転生bonus、award/account資産引き継ぎ、保護期間を伴う再入植systemは引き続きDeferredとする。
 
 ### D-06 通知dead letter
 

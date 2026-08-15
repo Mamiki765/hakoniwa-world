@@ -244,6 +244,14 @@ final class NationAbandonmentTest extends TestCase
         $this->assertDatabaseHas('island_messages', ['id' => $islandMessageId, 'target_nation_id' => $archived->id]);
         $this->assertDatabaseHas('audit_events', ['id' => $createdEventId, 'nation_id' => $archived->id]);
         $this->actingAs($owner)->getJson('/api/v1/me/nation')->assertOk()->assertJsonPath('data', null);
+        $this->postJson("/api/v1/nations/{$archived->id}/map-spaces/{$surface->id}/command-queue", [
+            'command_key' => 'land_clear',
+            'target_x' => $capital->x,
+            'target_y' => $capital->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertForbidden();
+        $this->assertDatabaseMissing('nation_command_queues', ['nation_id' => $archived->id]);
 
         try {
             app(NationProfileService::class)->update($owner, $nation, ['owner_name' => '破棄後改変']);
