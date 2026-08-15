@@ -51,6 +51,9 @@
             "@php artisan config:clear --ansi @no_additional_args",
             "@php -d memory_limit=512M vendor/bin/phpunit"
         ],
+        "test:parallel": [
+            "bash tests/scripts/run_parallel_tests.sh"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
