@@ -374,7 +374,7 @@ final class RulesetAuthoringValidator
         ], "{$path}.dormant_impact");
         $explicitTargetState = in_array(
             $settings['key'] ?? null,
-            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5'],
+            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6'],
             true,
         )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
@@ -404,8 +404,26 @@ final class RulesetAuthoringValidator
             throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6'], true)) {
             $this->validateLaunchBaseExperience($settings, $military, $facilityKeys, $path);
+        }
+
+        if (($settings['key'] ?? null) === 'hakoniwa-2s-plus-v6') {
+            $defenseResistance = $this->map(
+                $military['defense_spp_resistance'] ?? null,
+                "{$path}.defense_spp_resistance",
+            );
+            if ($defenseResistance !== [
+                'facility_key' => 'defense',
+                'ineffective_missile_keys' => ['spp_missile'],
+            ]) {
+                throw new DomainException("{$path}.defense_spp_resistance differs from the v6 owner decision.");
+            }
+            $this->reference(
+                $defenseResistance['facility_key'],
+                $facilityKeys,
+                "{$path}.defense_spp_resistance.facility_key",
+            );
         }
     }
 
@@ -1002,6 +1020,15 @@ final class RulesetAuthoringValidator
                     $metadata['oil_search_effect_key'],
                     "{$path}.metadata.oil_search_effect_key",
                 );
+            }
+            if (($settings['key'] ?? null) === 'hakoniwa-2s-plus-v6'
+                && in_array($commandKey, ['build_defense_facility', 'build_monument'], true)) {
+                $expectedEffect = $commandKey === 'build_defense_facility'
+                    ? 'defense_self_destruct'
+                    : 'monument_flight';
+                if (($metadata['owner_overbuild_effect'] ?? null) !== $expectedEffect) {
+                    throw new DomainException("{$path}.metadata.owner_overbuild_effect differs from the v6 owner decision.");
+                }
             }
         }
     }

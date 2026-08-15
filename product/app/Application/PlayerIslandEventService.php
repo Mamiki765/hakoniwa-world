@@ -782,6 +782,8 @@ final class PlayerIslandEventService
             'typhoon' => "({$x},{$y})付近で台風の被害が出ています。",
             'meteor_shower' => "({$x},{$y})付近に流星群が降り注ぎました。",
             'huge_meteor' => "({$x},{$y})に巨大隕石が落下しました。",
+            'defense_self_destruct' => "({$x},{$y})で防衛施設が自爆しました。",
+            'monument_flight' => '何かとてつもないものが落ちてきました！',
             'eruption' => "({$x},{$y})で火山噴火、山ができました。",
             default => "({$x},{$y})付近で災害が発生しました。",
         };
@@ -1935,6 +1937,8 @@ final class PlayerIslandEventService
             'typhoon' => '台風',
             'meteor_shower' => '流星群',
             'huge_meteor' => '巨大隕石',
+            'defense_self_destruct' => '防衛施設の自爆',
+            'monument_flight' => 'とてつもない落下物',
             'eruption' => '噴火',
             'land_subsidence' => '地盤沈下',
             'fire' => '火災',

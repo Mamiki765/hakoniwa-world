@@ -6,6 +6,7 @@ use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
 use App\Application\MapChunkService;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\SeaAreaNameResolver;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -122,6 +123,9 @@ class ApiAndAssetTest extends TestCase
         );
         $this->assertSame(18, $presentedOwnedCell['owner_nation_id']);
         $this->assertSame(1, $presentedOwnedCell['owner_nation_number']);
+        $expectedSeaArea = app(SeaAreaNameResolver::class)->forCoordinate($ownedCell->x, $ownedCell->y);
+        $this->assertSame($expectedSeaArea, $presentedOwnedCell['sea_area_name']);
+        $this->assertSame($expectedSeaArea, collect($presentedOwnedCell['details'])->firstWhere('key', 'sea_area')['formatted']);
         $this->assertSame(18, $ownedCell->owner_nation_id);
 
         $customFood = ResourceDefinition::query()->create([

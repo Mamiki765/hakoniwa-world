@@ -30,7 +30,19 @@ final class NationCommandTargetService
     {
         $schemas = $definition->metadata['parameters'] ?? [];
 
-        return is_array($schemas) && array_key_exists('target_nation_id', $schemas);
+        return is_array($schemas)
+            && is_array($schemas['target_nation_id'] ?? null)
+            && ($schemas['target_nation_id']['required'] ?? false) === true;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function targetSchema(CommandDefinition $definition): ?array
+    {
+        $schemas = $definition->metadata['parameters'] ?? [];
+
+        return is_array($schemas) && is_array($schemas['target_nation_id'] ?? null)
+            ? $schemas['target_nation_id']
+            : null;
     }
 
     /**
@@ -66,11 +78,15 @@ final class NationCommandTargetService
     /** @param array<string, mixed> $parameters */
     public function validateRegistration(Nation $sender, CommandDefinition $definition, array $parameters): void
     {
-        if (! $this->requiresTarget($definition)) {
+        $schema = $this->targetSchema($definition);
+        if ($schema === null) {
             return;
         }
 
         $targetNationId = $parameters['target_nation_id'] ?? null;
+        if ($targetNationId === null && ($schema['required'] ?? false) !== true) {
+            return;
+        }
         if (! is_int($targetNationId) || ! $this->selectableQuery($sender)->whereKey($targetNationId)->exists()) {
             throw new PlayerFacingCommandException('対象島は同じWorldの選択可能なactive島から選んでください。');
         }

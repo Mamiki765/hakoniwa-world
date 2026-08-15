@@ -309,8 +309,11 @@ class PublicLobbyApiTest extends TestCase
         $this->assertSame($nation->id, $publicBase['owner_nation_id']);
         $this->assertSame($nation->nation_number, $publicBase['owner_nation_number']);
         $this->assertSame($nation->name, $publicBase['owner_name']);
-        $this->assertSame([], $publicBase['details']);
-        $this->assertSame([], $publicForest['details']);
+        $this->assertSame($publicForest['details'], $publicBase['details']);
+        $this->assertSame(
+            'ペリドット海域',
+            collect($publicBase['details'])->keyBy('key')['sea_area']['value'],
+        );
 
         foreach (['x', 'y', 'aria_label'] as $key) {
             unset($publicBase[$key], $publicForest[$key]);
@@ -390,7 +393,10 @@ class PublicLobbyApiTest extends TestCase
             $this->assertNull($disguisedBase['owner_nation_id']);
             $this->assertNull($disguisedBase['owner_nation_number']);
             $this->assertNull($disguisedBase['owner_name']);
-            $this->assertSame([], $disguisedBase['details']);
+            $this->assertSame(
+                'ペリドット海域',
+                collect($disguisedBase['details'])->keyBy('key')['sea_area']['value'],
+            );
             $this->assertStringContainsString('所有 中立', $disguisedBase['aria_label']);
             $this->assertStringNotContainsString($nation->name, $disguisedBase['aria_label']);
             $this->assertStringNotContainsString('N'.$nation->nation_number, $disguisedBase['aria_label']);

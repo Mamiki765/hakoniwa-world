@@ -69,7 +69,7 @@ class TileAssetTest extends TestCase
 
     public function test_settlement_and_missile_scar_tiles_use_the_confirmed_original_mappings(): void
     {
-        foreach (['land1.gif', 'land3.gif', 'land4.gif', 'land5.gif', 'land13.gif'] as $filename) {
+        foreach (['land1.gif', 'land3.gif', 'land4.gif', 'land5.gif', 'land10.gif', 'land13.gif'] as $filename) {
             $this->writeGif($filename);
         }
 
@@ -80,6 +80,8 @@ class TileAssetTest extends TestCase
         $this->assertStringContainsString('/land4.gif?v=', (string) $resolver->resolve('tile.town', '町')['url']);
         $this->assertStringContainsString('/land5.gif?v=', (string) $resolver->resolve('tile.city', '都市')['url']);
         $this->assertStringContainsString('/land13.gif?v=', (string) $resolver->resolve('tile.scorched', '焼け跡')['url']);
+        $this->assertStringContainsString('/land10.gif?v=', (string) $resolver->resolve('tile.defense', '防衛施設')['url']);
+        $this->assertStringContainsString('/land10.gif?v=', (string) $resolver->resolve('tile.decoy', 'ハリボテ')['url']);
     }
 
     public function test_awards_use_only_the_allowlisted_original_prize_zero_through_ten_assets(): void

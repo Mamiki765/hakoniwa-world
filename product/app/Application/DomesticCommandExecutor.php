@@ -5,11 +5,13 @@ namespace App\Application;
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CommandFailureReason;
 use App\Domain\Command\MissileTargetPolicy;
+use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Economy\CappedAddition;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -17,6 +19,7 @@ use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
+use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
 use App\Models\MonumentDefinition;
 use App\Models\Nation;
@@ -28,6 +31,7 @@ use App\Models\ResourceDefinition;
 use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 final class DomesticCommandExecutor
 {
@@ -48,6 +52,7 @@ final class DomesticCommandExecutor
         private readonly LegacyCommandQueueOrder $legacyOrder,
         private readonly TerritoryExpansionPolicy $territoryExpansion,
         private readonly CapitalCorePolicy $capitalCores,
+        private readonly ChunkCoordinateService $chunks,
     ) {}
 
     /**
@@ -249,6 +254,7 @@ final class DomesticCommandExecutor
             ->lockForUpdate()
             ->first(['id', 'monster_instance_id']);
         $observed = $this->observedState($cell, $occupancy?->monster_instance_id);
+        $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell);
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             return $this->missileValidationFailure($context, $nation, $definition, $cell, $observed);
         }
@@ -307,7 +313,8 @@ final class DomesticCommandExecutor
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
             $matchingQuantityFacility = $this->isMatchingQuantityFacility($definition, $cell);
             if (! $matchingQuantityFacility
-                && ! SettlementOverbuildPolicy::allows($definition->key, $cell->facility?->key)) {
+                && ! SettlementOverbuildPolicy::allows($definition->key, $cell->facility?->key)
+                && $ownerOverbuildEffect === null) {
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }
             if ($matchingQuantityFacility
@@ -323,6 +330,17 @@ final class DomesticCommandExecutor
         if ($definition->key === 'build_monument'
             && ! MonumentDefinition::query()->whereKey($item->quantity)->exists()) {
             return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
+        if ($ownerOverbuildEffect === 'monument_flight') {
+            $targetNationId = $item->parameters['target_nation_id'] ?? null;
+            if (! is_int($targetNationId)) {
+                return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+            }
+            $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->first();
+            if ($target === null || $target->id === $nation->id
+                || $target->world_id !== $context->world->id || $target->state !== 'active') {
+                return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
+            }
         }
         if ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
@@ -570,6 +588,18 @@ final class DomesticCommandExecutor
             return true;
         }
 
+        $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell);
+        if ($ownerOverbuildEffect === 'defense_self_destruct') {
+            $this->applyDefenseSelfDestruct($context, $nation, $item, $cell);
+
+            return true;
+        }
+        if ($ownerOverbuildEffect === 'monument_flight') {
+            $this->applyMonumentFlight($context, $nation, $item, $cell);
+
+            return true;
+        }
+
         $terrainKey = match ($definition->key) {
             'land_clear', 'land_level' => 'plain',
             'excavate' => match ($cell->terrain->key) {
@@ -676,6 +706,131 @@ final class DomesticCommandExecutor
         $this->recordConstructionProjection($context, $nation, $definition, $cell, $expanded, $beforeScale);
 
         return true;
+    }
+
+    private function applyDefenseSelfDestruct(
+        TurnContext $context,
+        Nation $nation,
+        NationCommandQueueItem $item,
+        MapCell $cell,
+    ): void {
+        $space = MapSpace::query()->whereKey($cell->map_space_id)->lockForUpdate()->firstOrFail();
+        $damagedCells = $this->disasters->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            new GridCoordinate($cell->x, $cell->y),
+            $this->hugeMeteorSettings($context),
+            'defense_self_destruct',
+            [
+                'trigger' => 'player_command',
+                'source_queue_item_id' => $item->id,
+                'firing_nation_id' => $nation->id,
+            ],
+        );
+        $this->events->record($context, 'disaster.triggered', $nation, [
+            'nation_id' => $nation->id,
+            'disaster_key' => 'defense_self_destruct',
+            'trigger' => 'player_command',
+            'source_queue_item_id' => $item->id,
+            'firing_nation_id' => $nation->id,
+            'damaged_nation_ids' => $this->damagedNationIds($context, $item),
+            'center_x' => $cell->x,
+            'center_y' => $cell->y,
+            'damaged_cells' => $damagedCells,
+        ], 'public');
+    }
+
+    private function applyMonumentFlight(
+        TurnContext $context,
+        Nation $nation,
+        NationCommandQueueItem $item,
+        MapCell $source,
+    ): void {
+        $targetNationId = $item->parameters['target_nation_id'] ?? null;
+        if (! is_int($targetNationId)) {
+            throw new DomainException('A monument flight requires a target Nation.');
+        }
+        $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->firstOrFail();
+        $capital = NationCapital::query()->where('nation_id', $target->id)->lockForUpdate()->firstOrFail();
+        $capitalCell = MapCell::query()->whereKey($capital->map_cell_id)->lockForUpdate()->firstOrFail();
+        $space = MapSpace::query()->whereKey($capitalCell->map_space_id)->lockForUpdate()->firstOrFail();
+        $chunk = $this->chunks->locate($capitalCell->x, $capitalCell->y);
+        $bounds = $space->currentBounds();
+        if ($bounds->cellCountWithinChunk($chunk['chunk_x'], $chunk['chunk_y']) !== 256) {
+            throw new DomainException('The target Capital chunk is not a complete 16x16 chunk.');
+        }
+        $targets = MapCell::query()->where('map_space_id', $space->id)
+            ->where('chunk_x', $chunk['chunk_x'])->where('chunk_y', $chunk['chunk_y'])
+            ->orderBy('y')->orderBy('x')->lockForUpdate()->get();
+        if ($targets->count() !== 256) {
+            throw new DomainException('The target Capital chunk does not contain exactly 256 cells.');
+        }
+        $targetCell = $targets[$context->random->stream(TurnRandomStreamFactory::monumentFlight($item->id))
+            ->integer(0, 255)];
+
+        $this->cells->setFacility($source, null);
+        $this->cells->transitionTerrain($source, TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail());
+        $source->population = 0;
+        $source->version++;
+        $source->save();
+        $context->state->markMapChunkChanged($source->map_chunk_id);
+
+        $damagedCells = $this->disasters->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            new GridCoordinate($targetCell->x, $targetCell->y),
+            $this->hugeMeteorSettings($context),
+            'monument_flight',
+            [
+                'trigger' => 'player_command',
+                'source_queue_item_id' => $item->id,
+                'firing_nation_id' => $nation->id,
+                'target_nation_id' => $target->id,
+            ],
+        );
+        $this->events->record($context, 'command.monument_launched', $nation, [
+            'nation_id' => $nation->id,
+            'source_queue_item_id' => $item->id,
+            'firing_nation_id' => $nation->id,
+            'target_nation_id' => $target->id,
+            'source_x' => $source->x,
+            'source_y' => $source->y,
+        ], 'nation');
+        $this->events->record($context, 'disaster.triggered', $target, [
+            'nation_id' => $target->id,
+            'disaster_key' => 'monument_flight',
+            'trigger' => 'player_command',
+            'source_queue_item_id' => $item->id,
+            'firing_nation_id' => $nation->id,
+            'target_nation_id' => $target->id,
+            'damaged_nation_ids' => $this->damagedNationIds($context, $item),
+            'center_x' => $targetCell->x,
+            'center_y' => $targetCell->y,
+            'damaged_cells' => $damagedCells,
+        ], 'public');
+    }
+
+    /** @return array<string, mixed> */
+    private function hugeMeteorSettings(TurnContext $context): array
+    {
+        $settings = $context->ruleset->settings['turn_processing']['disasters']['huge_meteor'] ?? null;
+        if (! is_array($settings)) {
+            throw new DomainException('The active ruleset is missing huge-meteor settings.');
+        }
+
+        return $settings;
+    }
+
+    /** @return list<int> */
+    private function damagedNationIds(TurnContext $context, NationCommandQueueItem $item): array
+    {
+        return DB::table('audit_events')->where('world_id', $context->world->id)
+            ->where('turn', $context->targetTurn)
+            ->whereIn('event_type', ['disaster.cell_damaged', 'capital.disaster_damaged'])
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $context->run->id])
+            ->whereRaw("metadata->>'source_queue_item_id' = ?", [(string) $item->id])
+            ->whereNotNull('nation_id')->distinct()->orderBy('nation_id')->pluck('nation_id')
+            ->map(static fn (mixed $id): int => (int) $id)->values()->all();
     }
 
     private function recordConstructionProjection(

@@ -82,6 +82,8 @@ final class TurnRandomStreamFactory
 
     private const MISSILE_IMPACT_PREFIX = 'development_commands:missile:item:';
 
+    private const MONUMENT_FLIGHT_PREFIX = 'development_commands:monument:item:';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 
@@ -175,5 +177,14 @@ final class TurnRandomStreamFactory
         }
 
         return self::MISSILE_IMPACT_PREFIX.$queueItemId.':deviation:v1';
+    }
+
+    public static function monumentFlight(int $queueItemId): string
+    {
+        if ($queueItemId < 1) {
+            throw new InvalidArgumentException('Monument-flight stream identity must use a positive queue item ID.');
+        }
+
+        return self::MONUMENT_FLIGHT_PREFIX.$queueItemId.':target:v1';
     }
 }

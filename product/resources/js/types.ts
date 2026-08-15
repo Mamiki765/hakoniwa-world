@@ -336,6 +336,9 @@ export interface MapChunk {
 export interface CommandDefinition {
     key: string;
     name: string;
+    command_suffix?: string | null;
+    command_suffix_tone?: 'danger' | null;
+    confirmation_message?: string | null;
     description: string;
     target_type: 'cell' | 'nation';
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
@@ -393,6 +396,8 @@ export interface CommandQueueItem {
     id: number;
     command_key: string;
     command_name: string;
+    command_suffix?: string | null;
+    command_suffix_tone?: 'danger' | null;
     queue_position: number;
     target_x: number;
     target_y: number;

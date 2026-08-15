@@ -603,13 +603,17 @@ final class DisasterTurnService
         return $damaged;
     }
 
-    /** @param array<string, mixed> $settings */
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  array<string, mixed>  $eventMetadata
+     */
     public function resolveHugeMeteorBlast(
         TurnContext $context,
         MapSpace $space,
         GridCoordinate $center,
         array $settings,
         string $disasterKey = 'huge_meteor',
+        array $eventMetadata = [],
     ): int {
         $damaged = 0;
         $coordinates = [...$center->ring(0), ...$center->ring(1), ...$center->ring(2)];
@@ -622,11 +626,11 @@ final class DisasterTurnService
             $monsterRemoved = false;
             if ($this->isCapital($cell)) {
                 if ($distance === 0) {
-                    $this->damageCapital($context, $cell, $disasterKey, 'deep_sea');
+                    $this->damageCapital($context, $cell, $disasterKey, 'deep_sea', $eventMetadata);
                 } elseif ($distance === 1) {
-                    $this->damageCapital($context, $cell, $disasterKey, 'excavation_or_shallow');
+                    $this->damageCapital($context, $cell, $disasterKey, 'excavation_or_shallow', $eventMetadata);
                 } elseif ($this->hugeMeteorRingTwoTarget($cell, $settings)) {
-                    $this->damageCapital($context, $cell, $disasterKey, 'facility_or_wasteland');
+                    $this->damageCapital($context, $cell, $disasterKey, 'facility_or_wasteland', $eventMetadata);
                 } else {
                     continue;
                 }
@@ -641,10 +645,10 @@ final class DisasterTurnService
 
                     continue;
                 }
-                $changed = $this->changeCell($context, $cell, $disasterKey, 'wasteland', false, 'disaster.cell_damaged');
+                $changed = $this->changeCell($context, $cell, $disasterKey, 'wasteland', false, 'disaster.cell_damaged', $eventMetadata);
             } elseif ($cell->terrain->key === 'sea' || $cell->terrain->key === 'shallow'
                 || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true)) {
-                $changed = $this->changeCell($context, $cell, $disasterKey, 'sea', true, 'disaster.cell_damaged');
+                $changed = $this->changeCell($context, $cell, $disasterKey, 'sea', true, 'disaster.cell_damaged', $eventMetadata);
             } else {
                 $changed = $this->changeCell(
                     $context,
@@ -653,6 +657,7 @@ final class DisasterTurnService
                     $distance === 0 ? 'sea' : 'shallow',
                     true,
                     'disaster.cell_damaged',
+                    $eventMetadata,
                 );
             }
             $damaged += ($changed || $monsterRemoved) ? 1 : 0;

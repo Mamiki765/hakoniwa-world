@@ -131,8 +131,11 @@ final class FacilityAndMapStateTest extends TestCase
         $this->assertSame('forest', $publicBase['terrain']);
         $this->assertNull($publicBase['facility']);
         $this->assertSame('tile.forest', $publicBase['asset']['key']);
-        $this->assertSame([], $publicBase['details']);
-        $this->assertSame([], $publicForest['details']);
+        $this->assertSame($publicForest['details'], $publicBase['details']);
+        $this->assertSame(
+            'ペリドット海域',
+            collect($publicBase['details'])->keyBy('key')['sea_area']['value'],
+        );
         $this->assertSame(array_keys($publicForest), array_keys($publicBase));
 
         foreach (['x', 'y', 'aria_label'] as $key) {

@@ -13,9 +13,12 @@ use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonumentDefinition;
 use App\Models\Nation;
+use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
+use App\Models\NationMembership;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
+use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
 use DomainException;
@@ -30,6 +33,331 @@ class CommandQueueAndSalePolicyTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_bulk_insert_is_deterministic_atomic_and_truncates_the_concatenated_tail(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('一括操作国');
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $wasteland = TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+        $state = app(MapCellStateService::class);
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with('terrain')->get() as $cell) {
+            $state->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->orderByDesc('y')->orderByDesc('x')->limit(3)->get();
+        $this->assertCount(3, $targets);
+        foreach ($targets as $cell) {
+            $state->transitionTerrain($cell, $wasteland);
+            $cell->save();
+        }
+
+        $queue = NationCommandQueue::query()->create([
+            'nation_id' => $nation->id,
+            'map_space_id' => $mapSpace->id,
+            'version' => 7,
+        ]);
+        $finance = CommandDefinition::query()->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+            ->where('key', 'finance')->firstOrFail();
+        $membershipId = NationMembership::query()->where('nation_id', $nation->id)->valueOrFail('id');
+        foreach (range(1, 29) as $position) {
+            NationCommandQueueItem::query()->create([
+                'nation_command_queue_id' => $queue->id,
+                'command_definition_id' => $finance->id,
+                'queue_position' => $position,
+                'target_x' => 0,
+                'target_y' => 0,
+                'quantity' => 1,
+                'parameters' => (object) [],
+                'status' => 'queued',
+                'queued_by_membership_id' => $membershipId,
+                'request_key' => (string) Str::uuid(),
+                'queued_at' => now(),
+                'failure_metadata' => [],
+            ]);
+        }
+        $prefixIds = NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+            ->whereBetween('queue_position', [1, 4])->orderBy('queue_position')->pluck('id')->all();
+        $oldFifthId = NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+            ->where('queue_position', 5)->valueOrFail('id');
+
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $response = $this->actingAs($user)->postJson($path.'/bulk', [
+            'action' => 'clear_all',
+            'position' => 5,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 7,
+        ])->assertOk()
+            ->assertJsonPath('data.inserted_count', 3)
+            ->assertJsonPath('data.truncated_count', 2)
+            ->assertJsonPath('data.queue.explicit_count', 30);
+
+        $inserted = collect($response->json('data.queue.items'))->where('command_key', 'land_clear')->values();
+        $expectedCoordinates = $targets->sortBy([['y', 'asc'], ['x', 'asc']])->values()
+            ->map(fn (MapCell $cell): array => [(int) $cell->x, (int) $cell->y])->all();
+        $this->assertSame([5, 6, 7], $inserted->pluck('queue_position')->all());
+        $this->assertSame($expectedCoordinates, $inserted->map(fn (array $item): array => [
+            $item['target_x'], $item['target_y'],
+        ])->all());
+        $this->assertSame($prefixIds, NationCommandQueueItem::query()
+            ->where('nation_command_queue_id', $queue->id)->where('status', 'queued')
+            ->whereBetween('queue_position', [1, 4])->orderBy('queue_position')->pluck('id')->all());
+        $this->assertSame(8, NationCommandQueueItem::query()->whereKey($oldFifthId)->value('queue_position'));
+        $this->assertSame(2, NationCommandQueueItem::query()->where('status', 'cancelled')->count());
+
+        $this->deleteJson($path.'/from', [
+            'position' => 7,
+            'expected_version' => 8,
+        ])->assertOk()
+            ->assertJsonPath('data.deleted_count', 24)
+            ->assertJsonPath('data.queue.explicit_count', 6);
+    }
+
+    public function test_bulk_generated_tail_is_truncated_at_thirty_and_duplicate_or_stale_requests_do_not_mutate_it(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('一括上限国');
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $wasteland = TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with('terrain')->get() as $cell) {
+            app(MapCellStateService::class)->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        $targets = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->whereNull('facility_definition_id')->orderBy('y')->orderBy('x')->limit(35)->get();
+        $this->assertCount(35, $targets);
+        foreach ($targets as $cell) {
+            app(MapCellStateService::class)->transitionTerrain($cell, $wasteland);
+            $cell->owner_nation_id = $nation->id;
+            $cell->save();
+        }
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $requestKey = (string) Str::uuid();
+        $response = $this->actingAs($user)->postJson($path.'/bulk', [
+            'action' => 'clear_all',
+            'position' => 1,
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+        ])->assertOk()
+            ->assertJsonPath('data.inserted_count', 30)
+            ->assertJsonPath('data.truncated_count', 5)
+            ->assertJsonPath('data.candidate_count', 35)
+            ->assertJsonPath('data.queue.explicit_count', 30);
+        $items = collect($response->json('data.queue.items'));
+        $this->assertSame(range(1, 30), $items->pluck('queue_position')->all());
+        $this->assertSame(
+            $targets->take(30)->map(fn (MapCell $cell): array => [(int) $cell->x, (int) $cell->y])->all(),
+            $items->map(fn (array $item): array => [$item['target_x'], $item['target_y']])->all(),
+        );
+        $before = NationCommandQueueItem::query()->orderBy('id')->get()->map->getAttributes()->all();
+
+        $this->postJson($path.'/bulk', [
+            'action' => 'clear_all',
+            'position' => 1,
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+        ])->assertOk()
+            ->assertJsonPath('data.duplicate', true)
+            ->assertJsonPath('data.queue.version', 2);
+        $this->postJson($path.'/bulk', [
+            'action' => 'clear_all',
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertConflict();
+        $this->assertSame(
+            $before,
+            NationCommandQueueItem::query()->orderBy('id')->get()->map->getAttributes()->all(),
+        );
+        $this->assertSame(30, NationCommandQueueItem::query()->where('status', 'queued')
+            ->distinct()->count('queue_position'));
+    }
+
+    public function test_bulk_reclaim_pairs_keep_deterministic_per_cell_clear_and_level_order(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('一括浅瀬国');
+        $shallow = TerrainDefinition::query()->where('key', 'shallow')->firstOrFail();
+        $candidateCoordinates = collect();
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)->orderBy('y')->orderBy('x')->get() as $owned) {
+            foreach ((new GridCoordinate($owned->x, $owned->y))->neighborsWithin(
+                $mapSpace->min_x,
+                $mapSpace->max_x,
+                $mapSpace->min_y,
+                $mapSpace->max_y,
+            ) as $coordinate) {
+                $candidate = MapCell::query()->where('map_space_id', $mapSpace->id)
+                    ->where('x', $coordinate->x)->where('y', $coordinate->y)
+                    ->whereNull('owner_nation_id')->whereNull('facility_definition_id')->first();
+                if ($candidate !== null) {
+                    $candidateCoordinates->put("{$candidate->x}:{$candidate->y}", $candidate);
+                }
+            }
+        }
+        $targets = $candidateCoordinates->values()->sortBy([['y', 'asc'], ['x', 'asc']])->take(2)->values();
+        $this->assertCount(2, $targets);
+        $sea = TerrainDefinition::query()->where('key', 'sea')->firstOrFail();
+        foreach ($candidateCoordinates as $cell) {
+            app(MapCellStateService::class)->transitionTerrain($cell, $sea);
+            $cell->save();
+        }
+        foreach ($targets as $cell) {
+            app(MapCellStateService::class)->transitionTerrain($cell, $shallow);
+            $cell->save();
+        }
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        foreach ([
+            ['action' => 'reclaim_clear_all', 'second' => 'land_clear'],
+            ['action' => 'reclaim_level_all', 'second' => 'land_level'],
+        ] as $index => $case) {
+            $expectedVersion = $index === 0 ? 1 : 3;
+            $response = $this->actingAs($user)->postJson($path.'/bulk', [
+                'action' => $case['action'],
+                'position' => 1,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => $expectedVersion,
+            ])->assertOk()->assertJsonPath('data.inserted_count', 4);
+            $items = collect($response->json('data.queue.items'));
+            $this->assertSame(
+                ['reclaim', $case['second'], 'reclaim', $case['second']],
+                $items->pluck('command_key')->all(),
+            );
+            $this->assertSame(
+                $targets->flatMap(fn (MapCell $cell): array => [
+                    [(int) $cell->x, (int) $cell->y],
+                    [(int) $cell->x, (int) $cell->y],
+                ])->all(),
+                $items->map(fn (array $item): array => [$item['target_x'], $item['target_y']])->all(),
+            );
+            if ($index === 0) {
+                $this->deleteJson($path.'/from', ['position' => 1, 'expected_version' => 2])
+                    ->assertOk()->assertJsonPath('data.deleted_count', 4);
+            }
+        }
+    }
+
+    public function test_v6_hidden_overbuild_preview_and_monument_target_contract_follow_projected_queue_state(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('隠し予約国');
+        $targetNation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $nation->world()->firstOrFail(),
+            '目標島',
+            '目標島主',
+        );
+        $nation->update(['money' => 40_000]);
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->orderBy('id')->limit(3)->get();
+        $this->assertCount(3, $cells);
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        foreach ($cells as $cell) {
+            app(MapCellStateService::class)->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        [$normalCell, $monumentCell, $defenseCell] = $cells->all();
+        app(MapCellStateService::class)->setFacility(
+            $monumentCell,
+            FacilityDefinition::query()->where('key', 'monument')->firstOrFail(),
+        );
+        $monumentCell->monument_definition_id = MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $monumentCell->save();
+        $monumentId = (int) MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+        $queuePath = "{$base}/command-queue";
+
+        $normalDefinition = collect($this->actingAs($owner)->getJson(
+            "{$base}/command-definitions?target_x={$normalCell->x}&target_y={$normalCell->y}&position=1",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_monument');
+        $this->assertFalse($normalDefinition['parameters']['target_nation_id']['required']);
+        $this->postJson($queuePath, [
+            'command_key' => 'build_monument',
+            'target_x' => $normalCell->x,
+            'target_y' => $normalCell->y,
+            'quantity' => $monumentId,
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated()->assertJsonMissing(['command_suffix' => "（{$targetNation->name}）"]);
+
+        $flightDefinition = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$monumentCell->x}&target_y={$monumentCell->y}&position=2",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_monument');
+        $this->assertTrue($flightDefinition['parameters']['target_nation_id']['required']);
+        $this->assertFalse($flightDefinition['parameters']['target_nation_id']['nullable']);
+        $this->postJson($queuePath, [
+            'command_key' => 'build_monument',
+            'target_x' => $monumentCell->x,
+            'target_y' => $monumentCell->y,
+            'quantity' => $monumentId,
+            'position' => 2,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertUnprocessable();
+        $this->postJson($queuePath, [
+            'command_key' => 'build_monument',
+            'target_x' => $monumentCell->x,
+            'target_y' => $monumentCell->y,
+            'quantity' => $monumentId,
+            'parameters' => ['target_nation_id' => $targetNation->id],
+            'position' => 2,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertCreated()->assertJsonPath('data.queue.items.1.command_suffix', "（{$targetNation->name}）");
+
+        $this->postJson($queuePath, [
+            'command_key' => 'build_defense_facility',
+            'target_x' => $defenseCell->x,
+            'target_y' => $defenseCell->y,
+            'position' => 3,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+        ])->assertCreated();
+        $projectedDefense = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$defenseCell->x}&target_y={$defenseCell->y}&position=4",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_defense_facility');
+        $this->assertSame('（自爆）', $projectedDefense['command_suffix']);
+        $this->assertSame('danger', $projectedDefense['command_suffix_tone']);
+        $this->assertStringContainsString('自爆', $projectedDefense['confirmation_message']);
+        $this->postJson($queuePath, [
+            'command_key' => 'build_defense_facility',
+            'target_x' => $defenseCell->x,
+            'target_y' => $defenseCell->y,
+            'position' => 4,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 4,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.3.command_suffix', '（自爆）')
+            ->assertJsonPath('data.queue.items.3.command_suffix_tone', 'danger');
+    }
+
+    public function test_v6_logging_metadata_naturally_projects_following_farm_as_executable(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('伐採投影国');
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $target,
+            TerrainDefinition::query()->where('key', 'forest')->firstOrFail(),
+        );
+        $target->save();
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+
+        $this->actingAs($owner)->postJson("{$base}/command-queue", [
+            'command_key' => 'logging',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated();
+        $farm = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}&position=2",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
+
+        $this->assertSame('executable_after_queue', $farm['execution_preview_status']);
+        $this->assertContains('予約済みcommand後は実行可能です。', $farm['execution_warnings']);
+    }
 
     public function test_corrupt_parameter_schema_fails_closed_without_publishing_internal_reason(): void
     {

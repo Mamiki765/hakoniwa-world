@@ -16,10 +16,7 @@ abstract class TestCase extends BaseTestCase
             throw new RuntimeException("Test ruleset {$key} is not configured.");
         }
 
-        config([
-            'hakoniwa.ruleset.key' => $ruleset['key'],
-            'hakoniwa.ruleset.version' => $ruleset['version'],
-        ]);
+        config(['hakoniwa.ruleset' => $ruleset]);
     }
 
     protected function setUp(): void

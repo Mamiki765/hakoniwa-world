@@ -10,4 +10,9 @@ mkdir -p \
 
 chown -R www-data:www-data storage bootstrap/cache
 
+if [ "${APP_ENV:-}" = "production" ] && [ "${1:-}" = "apache2-foreground" ]; then
+    php artisan config:clear
+    php artisan config:cache
+fi
+
 exec "$@"
