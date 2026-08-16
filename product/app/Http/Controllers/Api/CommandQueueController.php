@@ -9,10 +9,8 @@ use App\Application\NationCommandTargetService;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\PlayerFacingCommandException;
-use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
-use App\Domain\Map\GridCoordinate;
 use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Models\CommandDefinition;
@@ -63,8 +61,7 @@ final class CommandQueueController extends Controller
                 ->orderBy('sort_order')
                 ->get()
                 ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions): array {
-                    $projected = $cell === null ? null : $this->projectedCellState(
-                        $service,
+                    $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
                         $cell,
                         $queue,
                         $position,
@@ -73,7 +70,7 @@ final class CommandQueueController extends Controller
                     );
                     $ownerOverbuildEffect = $projected === null
                         ? null
-                        : $this->projectedOwnerOverbuildEffect($definition, $nation, $projected);
+                        : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                     $unavailableReason = null;
                     $projectedExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
@@ -82,8 +79,7 @@ final class CommandQueueController extends Controller
                         } catch (PlayerFacingCommandException $exception) {
                             $unavailableReason = $exception->getMessage();
                             $projectedExecutable = $definition->key === 'territory_expand'
-                                ? $this->matchesProjectedTerritoryTarget(
-                                    $service,
+                                ? $service->projectedTerritoryTargetMatches(
                                     $definition,
                                     $projected,
                                     $cell,
@@ -92,7 +88,7 @@ final class CommandQueueController extends Controller
                                     $nation,
                                     $mapSpace,
                                 )
-                                : $this->matchesProjectedTarget($definition, $projected, $nation);
+                                : $service->projectedTargetMatches($definition, $projected, $nation);
                         }
                     }
 
@@ -371,8 +367,7 @@ final class CommandQueueController extends Controller
                 $cell = MapCell::query()->where('map_space_id', $queue->map_space_id)
                     ->where('x', $item->target_x)->where('y', $item->target_y)
                     ->with(['terrain', 'facility'])->first();
-                $projected = $cell === null ? null : $this->projectedCellState(
-                    $service,
+                $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
                     $cell,
                     $queue,
                     (int) $item->queue_position,
@@ -381,7 +376,7 @@ final class CommandQueueController extends Controller
                 );
                 $effect = $projected === null
                     ? null
-                    : $this->projectedOwnerOverbuildEffect($item->definition, $nation, $projected);
+                    : $service->projectedOwnerOverbuildEffect($item->definition, $nation, $projected);
                 $targetNationId = $item->parameters['target_nation_id'] ?? null;
                 $targetName = is_int($targetNationId) ? Nation::query()->whereKey($targetNationId)->value('name') : null;
 
@@ -453,221 +448,6 @@ final class CommandQueueController extends Controller
         $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
 
         return CommandQueueLimit::fromRulesetSettings($settings);
-    }
-
-    /**
-     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
-     */
-    private function projectedCellState(
-        CommandQueueService $service,
-        MapCell $cell,
-        NationCommandQueue $queue,
-        int $beforePosition,
-        Nation $nation,
-        MapSpace $mapSpace,
-    ): array {
-        $state = [
-            'terrain_key' => $cell->terrain->key,
-            'facility_key' => $cell->facility?->key,
-            'owner_nation_id' => $cell->owner_nation_id,
-        ];
-
-        foreach ($queue->items as $item) {
-            if ($item->queue_position >= $beforePosition
-                || $item->target_x !== $cell->x
-                || $item->target_y !== $cell->y) {
-                continue;
-            }
-            $definition = $item->definition;
-            $matches = $definition->key === 'territory_expand'
-                ? $this->matchesProjectedTerritoryTarget(
-                    $service,
-                    $definition,
-                    $state,
-                    $cell,
-                    $queue,
-                    (int) $item->queue_position,
-                    $nation,
-                    $mapSpace,
-                )
-                : $this->matchesProjectedTarget($definition, $state, $nation);
-            if (! $matches) {
-                continue;
-            }
-            $state = $this->applyProjectedResult($definition, $state, $nation);
-        }
-
-        return $state;
-    }
-
-    /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
-     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
-     */
-    private function applyProjectedResult(CommandDefinition $definition, array $state, Nation $nation): array
-    {
-        $ownerOverbuildEffect = $this->projectedOwnerOverbuildEffect($definition, $nation, $state);
-        if ($ownerOverbuildEffect === 'defense_self_destruct') {
-            $state['terrain_key'] = 'sea';
-            $state['facility_key'] = null;
-
-            return $state;
-        }
-        if ($ownerOverbuildEffect === 'monument_flight') {
-            $state['terrain_key'] = 'wasteland';
-            $state['facility_key'] = null;
-
-            return $state;
-        }
-
-        if ($definition->key === 'reclaim') {
-            $state['terrain_key'] = $state['terrain_key'] === 'sea' ? 'shallow' : 'wasteland';
-            $state['owner_nation_id'] = $nation->id;
-        } elseif ($definition->key === 'excavate') {
-            $state['terrain_key'] = match ($state['terrain_key']) {
-                'sea' => 'sea',
-                'shallow' => 'sea',
-                'mountain' => 'wasteland',
-                default => 'shallow',
-            };
-            $state['facility_key'] = null;
-        } else {
-            if ($definition->result_terrain_key !== null) {
-                $state['terrain_key'] = $definition->result_terrain_key;
-            }
-            if ($definition->result_facility_key !== null) {
-                $state['facility_key'] = $definition->result_facility_key;
-            }
-        }
-
-        if (in_array($definition->key, ['land_clear', 'land_level', 'logging', 'plant_forest'], true)) {
-            $state['facility_key'] = null;
-        }
-        if ($definition->key === 'territory_expand') {
-            $state['owner_nation_id'] = $nation->id;
-        }
-
-        return $state;
-    }
-
-    /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
-     */
-    private function matchesProjectedTarget(CommandDefinition $definition, array $state, Nation $nation): bool
-    {
-        if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
-            return false;
-        }
-        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $state['facility_key'])) {
-            return false;
-        }
-        if ($definition->requires_empty_facility && $state['facility_key'] !== null
-            && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'])
-            && $this->projectedOwnerOverbuildEffect($definition, $nation, $state) === null) {
-            return false;
-        }
-        if ($definition->target_facility_keys !== []
-            && ! in_array($state['facility_key'], $definition->target_facility_keys, true)) {
-            return false;
-        }
-        if ($definition->key === 'territory_expand') {
-            return $state['owner_nation_id'] === null;
-        }
-        if ($definition->key === 'excavate'
-            && in_array($state['terrain_key'], ['sea', 'shallow'], true)
-            && $state['facility_key'] !== null) {
-            return false;
-        }
-        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'excavate'], true)) {
-            return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
-        }
-
-        return $state['owner_nation_id'] === $nation->id;
-    }
-
-    /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
-     */
-    private function projectedOwnerOverbuildEffect(
-        CommandDefinition $definition,
-        Nation $nation,
-        array $state,
-    ): ?string {
-        if ($state['owner_nation_id'] !== $nation->id) {
-            return null;
-        }
-        $effect = $definition->metadata['owner_overbuild_effect'] ?? null;
-        if (! is_string($effect)) {
-            return null;
-        }
-        $expectedFacility = match ($effect) {
-            'defense_self_destruct' => 'defense',
-            'monument_flight' => 'monument',
-            default => null,
-        };
-
-        return $expectedFacility !== null && $state['facility_key'] === $expectedFacility
-            ? $effect
-            : null;
-    }
-
-    /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
-     */
-    private function matchesProjectedTerritoryTarget(
-        CommandQueueService $service,
-        CommandDefinition $definition,
-        array $state,
-        MapCell $cell,
-        NationCommandQueue $queue,
-        int $beforePosition,
-        Nation $nation,
-        MapSpace $mapSpace,
-    ): bool {
-        $coordinates = (new GridCoordinate($cell->x, $cell->y))->neighborsWithin(
-            $mapSpace->min_x,
-            $mapSpace->max_x,
-            $mapSpace->min_y,
-            $mapSpace->max_y,
-        );
-        $neighbors = MapCell::query()
-            ->where('map_space_id', $mapSpace->id)
-            ->where(function ($query) use ($coordinates): void {
-                foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair
-                        ->where('x', $coordinate->x)
-                        ->where('y', $coordinate->y));
-                }
-            })
-            ->with(['terrain', 'facility'])
-            ->get();
-        $adjacentActorTerritory = $neighbors->contains(function (MapCell $neighbor) use ($service, $queue, $beforePosition, $nation, $mapSpace): bool {
-            $projected = $this->projectedCellState(
-                $service,
-                $neighbor,
-                $queue,
-                $beforePosition,
-                $nation,
-                $mapSpace,
-            );
-
-            return $projected['owner_nation_id'] === $nation->id;
-        });
-
-        try {
-            $service->validateTerritoryExpansionState(
-                $nation,
-                $mapSpace,
-                $definition,
-                $cell,
-                $state,
-                $adjacentActorTerritory,
-            );
-
-            return true;
-        } catch (DomainException) {
-            return false;
-        }
     }
 
     private function domainError(DomainException $exception): JsonResponse

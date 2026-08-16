@@ -105,29 +105,6 @@ final class CommandQueueService
             }
             $this->assertVersion($queue, $expectedVersion);
 
-            // A queue item is a future plan. Registration proves only that the
-            // coordinate and parameters are structurally valid; the locked
-            // target state and assets are revalidated immediately before execution.
-            $target = $this->targetCell($mapSpace, $targetX, $targetY);
-            if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
-                throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
-            }
-            $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
-            $this->quantitySemantics->validateForRegistration($definition, $quantity, $quantityProvided);
-            $schemas = $definition->metadata['parameters'] ?? [];
-            if (! is_array($schemas)) {
-                throw new DomainException('command parameter schemaが不正です。');
-            }
-            $parameters = $this->parameters->validate($schemas, $parameters);
-            $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
-            $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $lockedNation, $target);
-            if ($ownerOverbuildEffect === 'monument_flight') {
-                $targetNationId = $parameters['target_nation_id'] ?? null;
-                if (! is_int($targetNationId)) {
-                    throw new PlayerFacingCommandException('この位置への記念碑建設には対象島を選択してください。');
-                }
-                $this->nationTargets->validateMonumentFlightRegistration($lockedNation, $targetNationId);
-            }
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
@@ -153,6 +130,42 @@ final class CommandQueueService
             $position ??= $this->firstAutomaticPosition($activeItems->pluck('queue_position')->all(), $limit);
             if ($position < 1 || $position > $limit) {
                 throw new PlayerFacingCommandException("挿入位置は1から{$limit}の範囲で指定してください。");
+            }
+
+            // A queue item is a future plan. Registration proves only that the
+            // coordinate and parameters are structurally valid; the locked
+            // target state and assets are revalidated immediately before execution.
+            $target = $this->targetCell($mapSpace, $targetX, $targetY);
+            if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
+                throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
+            }
+            $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
+            $this->quantitySemantics->validateForRegistration($definition, $quantity, $quantityProvided);
+            $schemas = $definition->metadata['parameters'] ?? [];
+            if (! is_array($schemas)) {
+                throw new DomainException('command parameter schemaが不正です。');
+            }
+            $parameters = $this->parameters->validate($schemas, $parameters);
+            $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
+            $queue->setRelation('items', $activeItems);
+            $projectedTarget = $this->projectCellStateBeforePosition(
+                $target,
+                $queue,
+                $position,
+                $lockedNation,
+                $mapSpace,
+            );
+            $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effectForState(
+                $definition,
+                $lockedNation,
+                $projectedTarget,
+            );
+            if ($ownerOverbuildEffect === 'monument_flight') {
+                $targetNationId = $parameters['target_nation_id'] ?? null;
+                if (! is_int($targetNationId)) {
+                    throw new PlayerFacingCommandException('この位置への記念碑建設には対象島を選択してください。');
+                }
+                $this->nationTargets->validateMonumentFlightRegistration($lockedNation, $targetNationId);
             }
             $byPosition = $activeItems->keyBy(
                 static fn (NationCommandQueueItem $item): int => (int) $item->queue_position,
@@ -660,6 +673,202 @@ final class CommandQueueService
         $queue->setRelation('items', $this->legacyOrder->project($queue->items));
 
         return $queue;
+    }
+
+    /**
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
+     */
+    public function projectCellStateBeforePosition(
+        MapCell $cell,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+    ): array {
+        $state = [
+            'terrain_key' => $cell->terrain->key,
+            'facility_key' => $cell->facility?->key,
+            'owner_nation_id' => $cell->owner_nation_id,
+        ];
+
+        foreach ($queue->items as $item) {
+            if ($item->queue_position >= $beforePosition
+                || $item->target_x !== $cell->x
+                || $item->target_y !== $cell->y) {
+                continue;
+            }
+            $definition = $item->definition;
+            $matches = $definition->key === 'territory_expand'
+                ? $this->projectedTerritoryTargetMatches(
+                    $definition,
+                    $state,
+                    $cell,
+                    $queue,
+                    (int) $item->queue_position,
+                    $nation,
+                    $mapSpace,
+                )
+                : $this->projectedTargetMatches($definition, $state, $nation);
+            if (! $matches) {
+                continue;
+            }
+            $state = $this->applyProjectedResult($definition, $state, $nation);
+        }
+
+        return $state;
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    public function projectedTargetMatches(CommandDefinition $definition, array $state, Nation $nation): bool
+    {
+        if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
+            return false;
+        }
+        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $state['facility_key'])) {
+            return false;
+        }
+        if ($definition->requires_empty_facility && $state['facility_key'] !== null
+            && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'])
+            && $this->projectedOwnerOverbuildEffect($definition, $nation, $state) === null) {
+            return false;
+        }
+        if ($definition->target_facility_keys !== []
+            && ! in_array($state['facility_key'], $definition->target_facility_keys, true)) {
+            return false;
+        }
+        if ($definition->key === 'territory_expand') {
+            return $state['owner_nation_id'] === null;
+        }
+        if ($definition->key === 'excavate'
+            && in_array($state['terrain_key'], ['sea', 'shallow'], true)
+            && $state['facility_key'] !== null) {
+            return false;
+        }
+        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'excavate'], true)) {
+            return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
+        }
+
+        return $state['owner_nation_id'] === $nation->id;
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    public function projectedOwnerOverbuildEffect(
+        CommandDefinition $definition,
+        Nation $nation,
+        array $state,
+    ): ?string {
+        return OwnerFacilityOverbuildPolicy::effectForState($definition, $nation, $state);
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    public function projectedTerritoryTargetMatches(
+        CommandDefinition $definition,
+        array $state,
+        MapCell $cell,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+    ): bool {
+        $coordinates = (new GridCoordinate($cell->x, $cell->y))->neighborsWithin(
+            $mapSpace->min_x,
+            $mapSpace->max_x,
+            $mapSpace->min_y,
+            $mapSpace->max_y,
+        );
+        $neighbors = MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where(function ($query) use ($coordinates): void {
+                foreach ($coordinates as $coordinate) {
+                    $query->orWhere(fn ($pair) => $pair
+                        ->where('x', $coordinate->x)
+                        ->where('y', $coordinate->y));
+                }
+            })
+            ->with(['terrain', 'facility'])
+            ->get();
+        $adjacentActorTerritory = $neighbors->contains(function (MapCell $neighbor) use ($queue, $beforePosition, $nation, $mapSpace): bool {
+            $projected = $this->projectCellStateBeforePosition(
+                $neighbor,
+                $queue,
+                $beforePosition,
+                $nation,
+                $mapSpace,
+            );
+
+            return $projected['owner_nation_id'] === $nation->id;
+        });
+
+        try {
+            $this->validateTerritoryExpansionState(
+                $nation,
+                $mapSpace,
+                $definition,
+                $cell,
+                $state,
+                $adjacentActorTerritory,
+            );
+
+            return true;
+        } catch (DomainException) {
+            return false;
+        }
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
+     */
+    private function applyProjectedResult(CommandDefinition $definition, array $state, Nation $nation): array
+    {
+        $ownerOverbuildEffect = $this->projectedOwnerOverbuildEffect($definition, $nation, $state);
+        if ($ownerOverbuildEffect === 'defense_self_destruct') {
+            $state['terrain_key'] = 'sea';
+            $state['facility_key'] = null;
+
+            return $state;
+        }
+        if ($ownerOverbuildEffect === 'monument_flight') {
+            $state['terrain_key'] = 'wasteland';
+            $state['facility_key'] = null;
+
+            return $state;
+        }
+
+        if ($definition->key === 'reclaim') {
+            $state['terrain_key'] = $state['terrain_key'] === 'sea' ? 'shallow' : 'wasteland';
+            $state['owner_nation_id'] = $nation->id;
+        } elseif ($definition->key === 'excavate') {
+            $state['terrain_key'] = match ($state['terrain_key']) {
+                'sea' => 'sea',
+                'shallow' => 'sea',
+                'mountain' => 'wasteland',
+                default => 'shallow',
+            };
+            $state['facility_key'] = null;
+        } else {
+            if ($definition->result_terrain_key !== null) {
+                $state['terrain_key'] = $definition->result_terrain_key;
+            }
+            if ($definition->result_facility_key !== null) {
+                $state['facility_key'] = $definition->result_facility_key;
+            }
+        }
+
+        if (in_array($definition->key, ['land_clear', 'land_level', 'logging', 'plant_forest'], true)) {
+            $state['facility_key'] = null;
+        }
+        if ($definition->key === 'territory_expand') {
+            $state['owner_nation_id'] = $nation->id;
+        }
+
+        return $state;
     }
 
     public function validateTarget(Nation $nation, MapSpace $mapSpace, CommandDefinition $definition, MapCell $cell): void

@@ -481,6 +481,79 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.queue.items.3.command_suffix_tone', 'danger');
     }
 
+    public function test_monument_registration_semantics_follow_projected_state_at_insertion_position(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('記念碑予約判定国');
+        $nation->update(['money' => 40_000]);
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $cells);
+        [$clearedCell, $builtCell] = $cells->all();
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $state = app(MapCellStateService::class);
+        foreach ($cells as $cell) {
+            $state->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        $state->setFacility(
+            $clearedCell,
+            FacilityDefinition::query()->where('key', 'monument')->firstOrFail(),
+        );
+        $monumentId = (int) MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $clearedCell->monument_definition_id = $monumentId;
+        $clearedCell->save();
+
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+        $queuePath = "{$base}/command-queue";
+        $this->actingAs($owner)->postJson($queuePath, [
+            'command_key' => 'land_clear',
+            'target_x' => $clearedCell->x,
+            'target_y' => $clearedCell->y,
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated();
+        $afterClear = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$clearedCell->x}&target_y={$clearedCell->y}&position=2",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_monument');
+        $this->assertFalse($afterClear['parameters']['target_nation_id']['required']);
+        $this->postJson($queuePath, [
+            'command_key' => 'build_monument',
+            'target_x' => $clearedCell->x,
+            'target_y' => $clearedCell->y,
+            'quantity' => $monumentId,
+            'position' => 2,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertCreated();
+
+        $this->postJson($queuePath, [
+            'command_key' => 'build_monument',
+            'target_x' => $builtCell->x,
+            'target_y' => $builtCell->y,
+            'quantity' => $monumentId,
+            'position' => 3,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+        ])->assertCreated();
+        $afterBuild = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$builtCell->x}&target_y={$builtCell->y}&position=4",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_monument');
+        $this->assertTrue($afterBuild['parameters']['target_nation_id']['required']);
+        $this->postJson($queuePath, [
+            'command_key' => 'build_monument',
+            'target_x' => $builtCell->x,
+            'target_y' => $builtCell->y,
+            'quantity' => $monumentId,
+            'position' => 4,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 4,
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'command_rejected')
+            ->assertJsonPath('errors.command.0', 'この位置への記念碑建設には対象島を選択してください。');
+        $this->assertDatabaseCount('nation_command_queue_items', 3);
+    }
+
     public function test_monument_flight_rejects_partial_edge_capital_chunk_before_queueing(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('edge-chunk-flight-source');
