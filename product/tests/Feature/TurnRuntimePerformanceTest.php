@@ -2,12 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
 use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
 use App\Application\WorldExpansionService;
+use App\Domain\Map\GridCoordinate;
+use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnPhase;
@@ -31,6 +34,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -208,11 +212,115 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->assertLessThanOrEqual(4, $sales['query_types']['select'] ?? 0);
     }
 
+    #[DataProvider('missileShotProfiles')]
+    public function test_defense_lookup_queries_do_not_scale_with_missile_shots(int $shots): void
+    {
+        $world = $this->missileDefenseWorld($shots);
+
+        $measurement = $this->measureTurn($world);
+        $processCells = $measurement['phases']['process_cells'];
+
+        $this->report("32x32-defense-{$shots}-shots", $measurement);
+        $this->assertSame($shots, $processCells['metrics']['missile_shots_fired']);
+        $this->assertLessThanOrEqual(1, $processCells['defense_lookup_queries']);
+    }
+
+    /** @return iterable<string, array{int}> */
+    public static function missileShotProfiles(): iterable
+    {
+        yield 'one shot' => [1];
+        yield 'five shots' => [5];
+        yield 'twenty five shots' => [25];
+    }
+
     /** @return iterable<string, array{int}> */
     public static function nationCountProfiles(): iterable
     {
         yield 'one nation' => [1];
         yield 'four nations' => [4];
+    }
+
+    private function missileDefenseWorld(int $shots): World
+    {
+        $world = $this->lightweightWorld();
+        $firingUser = User::factory()->create();
+        $firing = app(NationCreationService::class)->create(
+            $firingUser,
+            $world,
+            "Defense Performance {$shots}",
+            'Defense Performance Owner',
+        );
+        $targetNation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            "Defense Target {$shots}",
+            'Defense Target Owner',
+        );
+        $firing->update(['money' => 1_000_000]);
+        $space = $this->surfaceMapSpace($world);
+        $target = MapCell::query()
+            ->where('owner_nation_id', $targetNation->id)
+            ->whereKeyNot($targetNation->capital()->valueOrFail('map_cell_id'))
+            ->whereNull('facility_definition_id')
+            ->with(['terrain', 'facility'])
+            ->firstOrFail();
+        $defenseCoordinate = collect((new GridCoordinate($target->x, $target->y))->ring(1))
+            ->first(static fn (GridCoordinate $coordinate): bool => $coordinate->x >= $space->min_x
+                && $coordinate->x <= $space->max_x
+                && $coordinate->y >= $space->min_y
+                && $coordinate->y <= $space->max_y);
+        $this->assertInstanceOf(GridCoordinate::class, $defenseCoordinate);
+        $defense = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->where('x', $defenseCoordinate->x)
+            ->where('y', $defenseCoordinate->y)
+            ->with(['terrain', 'facility'])
+            ->firstOrFail();
+        $states = app(MapCellStateService::class);
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $defenseDefinition = FacilityDefinition::query()->where('key', 'defense')->firstOrFail();
+        $missileBaseDefinition = FacilityDefinition::query()->where('key', 'missile_base')->firstOrFail();
+        foreach ([$target, $defense] as $cell) {
+            $states->setFacility($cell, null);
+            $states->transitionTerrain($cell, $plain);
+            $cell->owner_nation_id = $targetNation->id;
+            $cell->population = 0;
+            $cell->save();
+        }
+        $states->setFacility($defense, $defenseDefinition);
+        $defense->save();
+
+        $baseCount = (int) ceil($shots / 5);
+        $bases = MapCell::query()
+            ->where('owner_nation_id', $firing->id)
+            ->whereKeyNot($firing->capital()->valueOrFail('map_cell_id'))
+            ->whereNull('facility_definition_id')
+            ->with(['terrain', 'facility'])
+            ->orderBy('id')
+            ->limit($baseCount)
+            ->get();
+        $this->assertCount($baseCount, $bases);
+        foreach ($bases as $base) {
+            $states->setFacility($base, null);
+            $states->transitionTerrain($base, $plain);
+            $states->setFacility($base, $missileBaseDefinition, experience: 200);
+            $base->save();
+        }
+
+        app(CommandQueueService::class)->add(
+            user: $firingUser,
+            nation: $firing,
+            mapSpace: $space,
+            commandKey: 'spp_missile',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) ($firing->commandQueue()->value('version') ?? 1),
+            quantity: $shots,
+            quantityProvided: true,
+        );
+
+        return $world;
     }
 
     private function expandedWorld(int $expectedCells): World
@@ -244,6 +352,7 @@ final class TurnRuntimePerformanceTest extends TestCase
      *         queries: int,
      *         query_time_ms: float,
      *         query_types: array<string, int>,
+     *         defense_lookup_queries: int,
      *         repeated_queries: list<array{count: int, sql: string}>,
      *         hydrated_models: array<string, int>,
      *         peak_memory_bytes: int,
@@ -386,12 +495,19 @@ final class TurnRuntimeProbe
         $normalized = [];
         $types = [];
         $queryTime = 0.0;
+        $defenseLookupQueries = 0;
         foreach ($queries as $query) {
             $sql = preg_replace('/\s+/', ' ', strtolower(trim($query->sql))) ?? $query->sql;
             $normalized[$sql] = ($normalized[$sql] ?? 0) + 1;
             $type = strtolower(strtok(ltrim($query->sql), " \t\r\n") ?: 'unknown');
             $types[$type] = ($types[$type] ?? 0) + 1;
             $queryTime += $query->time;
+            if ($type === 'select'
+                && str_contains($sql, 'from "map_cells"')
+                && str_contains($sql, '"facility_definitions"')
+                && in_array('defense', $query->bindings, true)) {
+                $defenseLookupQueries++;
+            }
         }
         arsort($normalized);
         $repeated = [];
@@ -411,6 +527,7 @@ final class TurnRuntimeProbe
             'queries' => count($queries),
             'query_time_ms' => round($queryTime, 3),
             'query_types' => $types,
+            'defense_lookup_queries' => $defenseLookupQueries,
             'repeated_queries' => $repeated,
             'hydrated_models' => $hydrations,
             'peak_memory_bytes' => max(0, memory_get_peak_usage(true) - $this->phaseStartMemory),

@@ -50,6 +50,8 @@ historical ruleset Worldの地図、audit/player event、TurnRun、ruleset snaps
 
 latest rulesetの必須runtime metadataが欠落している場合もhistorical behaviorへfallbackせず、transactionを失敗させてgame stateをrollbackする。advisory lock、World row lock、TurnRun retry、queue consistency trigger、unique/FK/check constraint、published payload immutabilityはこの期間も維持する。
 
+連続するproduction gameplay ruleset migrationは、後段をまとめて適用したものとして扱わず、一段ずつ完了と整合性を確認する。ver 2.xのv6→v7→v8 chainでは、まずWorldとlive queue/monster/kill-stat参照がv6で整合していることを確認し、v7 migration後に同じ対象がすべてv7へ揃ったことを確認してからv8 migrationへ進む。v8のqueued missile guardが停止した場合はv7を正常なcheckpointとして保持し、review済みconfirmationをその一回のmigration processにだけ与えてretryする。`.env`やpersistent configへconfirmationを保存せず、未解決TurnRun guard、DB constraint/trigger、historical queue item、v1–v8 payload/checksumを各段で維持する。
+
 以下のRoadmap PR6/PR7 migration記録はfresh installと監査に必要な既適用schema履歴として保持するものであり、historical World継続運用の現行手順ではない。PR23では過去PR間だけを再現する互換テストを整理し、現行仕様の回帰テストをproduction rulesetへ向ける。
 
 Roadmap PR6は`roadmap-pr2-v1`を更新せず、`roadmap-pr6-v1`を新規公開した。当時のforward-only migrationは`shared-world`が旧rulesetを参照している場合だけ新rulesetへ移し、queue itemのcommand definition参照を同じcommand keyの新定義へ付け替えた。

@@ -40,6 +40,8 @@ This is not a runtime regression that can be restored under an existing immutabl
 
 The runtime evaluates surrounding defense after dormant protection and before direct SPP resistance, monsters, land destruction, ordinary impact, or Secretary. A real-defense target bypasses this surrounding check. Overlap is boolean for gameplay but the per-impact audit retains the number and stable IDs of covering real-defense cells. Player projection never exposes those IDs or defense coordinates.
 
+`facility_owner_scope = any` also means that a real defense keeps covering nearby eligible impacts when its owner Nation is dormant or archived; no owner-state filter is applied to the facility. This does not weaken dormant target protection. An impact whose own target cell is `dormant_frozen`, `dormant_contestable`, or `sunken_archived` remains a complete no-op before surrounding defense is considered. ADR-0012 is the owner-decision record for this distinction.
+
 The target owner receives at most these two interception summaries per turn:
 
 ```text

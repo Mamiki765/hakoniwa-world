@@ -16,6 +16,7 @@ use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\TerrainDefinition;
 use DomainException;
+use Illuminate\Support\Collection;
 
 final class MissileImpactResolver
 {
@@ -38,6 +39,9 @@ final class MissileImpactResolver
     /** @var array<int, true> */
     private array $changedCellIds = [];
 
+    /** @var array<string, MapCell>|null */
+    private ?array $surfaceCellsByCoordinate = null;
+
     public function __construct(
         private readonly MissileBaseRules $baseRules,
         private readonly LaunchBaseExperienceService $baseExperience,
@@ -48,10 +52,12 @@ final class MissileImpactResolver
         private readonly NationIdleCounterFinalizer $idleCounters,
     ) {}
 
-    public function begin(): void
+    /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
+    public function begin(?array $surfaceCellsByCoordinate = null): void
     {
         $this->launches = [];
         $this->changedCellIds = [];
+        $this->surfaceCellsByCoordinate = $surfaceCellsByCoordinate;
     }
 
     /**
@@ -227,9 +233,7 @@ final class MissileImpactResolver
             || $coordinate->y < $space->min_y || $coordinate->y > $space->max_y) {
             return [...$base, 'effect' => 'out_of_bounds_sea'];
         }
-        $cell = MapCell::query()->where('map_space_id', $space->id)
-            ->where('x', $coordinate->x)->where('y', $coordinate->y)
-            ->with(['terrain', 'facility', 'ownerNation'])->lockForUpdate()->firstOrFail();
+        $cell = $this->surfaceCellAt($space, $coordinate);
         $base['terrain_key'] = $cell->terrain->key;
         $targetNationId = $cell->owner_nation_id;
         if ($targetNationId !== null && $context->state->hasSecretarySnapshot($targetNationId)) {
@@ -298,20 +302,7 @@ final class MissileImpactResolver
         }
 
         $center = new GridCoordinate($cell->x, $cell->y);
-        $defenses = MapCell::query()
-            ->where('map_space_id', $space->id)
-            ->whereBetween('x', [$cell->x - 2, $cell->x + 2])
-            ->whereBetween('y', [$cell->y - 2, $cell->y + 2])
-            ->whereHas('facility', fn ($query) => $query->where('key', 'defense'))
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get(['id', 'x', 'y', 'owner_nation_id'])
-            ->filter(static function (MapCell $candidate) use ($center): bool {
-                $distance = $center->distanceTo(new GridCoordinate($candidate->x, $candidate->y));
-
-                return $distance >= 1 && $distance <= 2;
-            })
-            ->values();
+        $defenses = $this->coveringDefenses($space, $center);
         if ($defenses->isEmpty()) {
             return null;
         }
@@ -336,6 +327,54 @@ final class MissileImpactResolver
             'target_nation_name' => $cell->ownerNation?->name,
             'covering_defense_count' => $defenses->count(),
         ];
+    }
+
+    private function surfaceCellAt(MapSpace $space, GridCoordinate $coordinate): MapCell
+    {
+        if ($this->surfaceCellsByCoordinate !== null) {
+            $cell = $this->surfaceCellsByCoordinate[$coordinate->x.':'.$coordinate->y] ?? null;
+            if (! $cell instanceof MapCell || (int) $cell->map_space_id !== (int) $space->id) {
+                throw new DomainException('The locked surface-cell index is missing a missile impact coordinate.');
+            }
+
+            return $cell;
+        }
+
+        return MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $coordinate->x)->where('y', $coordinate->y)
+            ->with(['terrain', 'facility', 'ownerNation'])->lockForUpdate()->firstOrFail();
+    }
+
+    /** @return Collection<int, MapCell> */
+    private function coveringDefenses(MapSpace $space, GridCoordinate $center): Collection
+    {
+        if ($this->surfaceCellsByCoordinate !== null) {
+            return collect($center->radius(2))
+                ->filter(static fn (GridCoordinate $coordinate): bool => $center->distanceTo($coordinate) >= 1)
+                ->map(fn (GridCoordinate $coordinate): ?MapCell => $this->surfaceCellsByCoordinate[
+                    $coordinate->x.':'.$coordinate->y
+                ] ?? null)
+                ->filter(static fn (?MapCell $candidate): bool => $candidate instanceof MapCell
+                    && (int) $candidate->map_space_id === (int) $space->id
+                    && $candidate->facility?->key === 'defense')
+                ->sortBy('id')
+                ->values();
+        }
+
+        return MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereBetween('x', [$center->x - 2, $center->x + 2])
+            ->whereBetween('y', [$center->y - 2, $center->y + 2])
+            ->whereHas('facility', fn ($query) => $query->where('key', 'defense'))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id', 'x', 'y', 'owner_nation_id'])
+            ->filter(static function (MapCell $candidate) use ($center): bool {
+                $distance = $center->distanceTo(new GridCoordinate($candidate->x, $candidate->y));
+
+                return $distance >= 1 && $distance <= 2;
+            })
+            ->values();
     }
 
     /** @param array<string, mixed> $base
@@ -472,6 +511,7 @@ final class MissileImpactResolver
             $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'scorched')->firstOrFail());
         } else {
             $cell->owner_nation_id = null;
+            $cell->setRelation('ownerNation', null);
         }
         $cell->population = 0;
         $cell->version++;
@@ -600,6 +640,7 @@ final class MissileImpactResolver
         }
         if (in_array($beforeTerrain, ['sea', 'shallow'], true) && $beforeFacility !== null) {
             $cell->owner_nation_id = null;
+            $cell->setRelation('ownerNation', null);
         }
         $cell->population = 0;
         $cell->version++;

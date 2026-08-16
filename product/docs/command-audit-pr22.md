@@ -87,4 +87,4 @@ turn eventの正本列は`world_id`、`turn`、`nation_id`、`x`、`y`、`messag
 
 既存怪獣は`process_cells`の既存randomized cell order内で行動し、そのcellが発射基地なら怪獣処理後に基地処理へ進む。`global_disasters`で災害と地盤沈下を処理し、その末尾で自然怪獣を出現させる。怪獣だけのshuffleや再走査はなく、自然出現怪獣は次target turnまで行動しない。
 
-`monster_dispatch`は`development_commands`で`mecha_inora` instanceとoccupancyを作り、出現cellのfacility削除、人口0、荒地化を同じtarget turnに確定する。spawn source `monster_dispatch_command`をturn-local stateへ明示し、このsourceで当該target turnに作られた怪獣だけを直後のmovement batchから除外するため、移動、追加の踏み潰し、防衛施設への突入・自爆は次target turnまで起きない。元から存在する怪獣は従来どおり行動し、将来の別spawn sourceは個別契約なしに除外されない。
+`monster_dispatch`は`development_commands`で`mecha_inora` instanceとoccupancyを作り、出現cellのfacility削除、人口0、荒地化を同じtarget turnに確定する。spawn source `monster_dispatch_command`をturn-local stateへ明示し、このsourceで当該target turnに作られた怪獣だけを直後のmovement batchから除外するため、移動、追加の踏み潰し、防衛施設への突入・自爆は次target turnまで起きない。これはraw sourceから導出した挙動ではなく2S＋のowner balance decisionであり、正本説明は[monster-audit-pr21.md](monster-audit-pr21.md#怪獣派遣のspawn-turn-balance-decision)とする。元から存在する怪獣は従来どおり行動し、将来の別spawn sourceは個別契約なしに除外されない。
