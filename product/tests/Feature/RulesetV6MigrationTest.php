@@ -15,6 +15,7 @@ use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +51,24 @@ final class RulesetV6MigrationTest extends TestCase
             '移行島主',
         );
         [$v5, $v6, $item] = $this->moveWorldAndQueueToV5($world, $nation->id);
+        $historicalDefinition = CommandDefinition::query()->where('ruleset_version_id', $v5->id)
+            ->where('key', 'logging')->firstOrFail();
+        $historicalItem = NationCommandQueueItem::query()->create([
+            'nation_command_queue_id' => $item->nation_command_queue_id,
+            'command_definition_id' => $historicalDefinition->id,
+            'queue_position' => null,
+            'target_x' => 11,
+            'target_y' => 12,
+            'quantity' => 3,
+            'parameters' => ['historical' => 'v5'],
+            'status' => 'completed',
+            'queued_by_membership_id' => $item->queued_by_membership_id,
+            'request_key' => (string) Str::uuid(),
+            'queued_at' => now()->subMinutes(2),
+            'execution_started_at' => now()->subMinute(),
+            'execution_completed_at' => now(),
+            'failure_metadata' => ['preserve' => 'history'],
+        ]);
         $monsterDefinition = MonsterDefinition::query()->where('ruleset_version_id', $v5->id)
             ->where('key', 'inora')->firstOrFail();
         $monster = MonsterInstance::query()->create([
@@ -72,6 +91,7 @@ final class RulesetV6MigrationTest extends TestCase
         ]);
         $killStat->update(['kill_count' => 2, 'last_killed_turn' => 4, 'version' => 2]);
         $preservedItem = Arr::except($item->fresh()->getAttributes(), ['command_definition_id']);
+        $historicalItemSnapshot = $historicalItem->fresh()->getAttributes();
         $preservedMonster = Arr::except($monster->fresh()->getAttributes(), ['monster_definition_id']);
         $preservedKillStat = Arr::except($killStat->fresh()->getAttributes(), ['monster_definition_id']);
         $historicalRun = $this->turnRun($world, $v5, TurnRun::STATUS_COMPLETED, false);
@@ -87,6 +107,9 @@ final class RulesetV6MigrationTest extends TestCase
         $this->assertSame($v6->id, $item->fresh()->definition()->value('ruleset_version_id'));
         $this->assertSame('finance', $item->fresh()->definition()->value('key'));
         $this->assertSame($preservedItem, Arr::except($item->fresh()->getAttributes(), ['command_definition_id']));
+        $this->assertSame($historicalItemSnapshot, $historicalItem->fresh()->getAttributes());
+        $this->assertSame($v5->id, $historicalItem->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame('logging', $historicalItem->fresh()->definition()->value('key'));
         $this->assertSame($v6->id, $monster->fresh()->definition()->value('ruleset_version_id'));
         $this->assertSame('inora', $monster->fresh()->definition()->value('key'));
         $this->assertSame($preservedMonster, Arr::except($monster->fresh()->getAttributes(), ['monster_definition_id']));
@@ -101,6 +124,7 @@ final class RulesetV6MigrationTest extends TestCase
         $snapshot = [
             $world->fresh()->getAttributes(),
             $item->fresh()->getAttributes(),
+            $historicalItem->fresh()->getAttributes(),
             $monster->fresh()->getAttributes(),
             $killStat->fresh()->getAttributes(),
             $historicalRun->fresh()->getAttributes(),
@@ -109,10 +133,22 @@ final class RulesetV6MigrationTest extends TestCase
         $this->assertSame($snapshot, [
             $world->fresh()->getAttributes(),
             $item->fresh()->getAttributes(),
+            $historicalItem->fresh()->getAttributes(),
             $monster->fresh()->getAttributes(),
             $killStat->fresh()->getAttributes(),
             $historicalRun->fresh()->getAttributes(),
         ]);
+
+        try {
+            DB::transaction(static fn () => $historicalItem->update([
+                'queue_position' => 2,
+                'status' => 'queued',
+            ]));
+            $this->fail('A historical v5 item was reactivated against the v6 World.');
+        } catch (QueryException $exception) {
+            $this->assertSame('23514', $exception->getCode());
+        }
+        $this->assertSame($historicalItemSnapshot, $historicalItem->fresh()->getAttributes());
     }
 
     #[DataProvider('unresolvedTurnStatuses')]

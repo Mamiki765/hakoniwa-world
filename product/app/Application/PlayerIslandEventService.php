@@ -53,6 +53,7 @@ final class PlayerIslandEventService
         'command.decoy_built_private',
         'command.logging_private',
         'command.capital_relocated',
+        'command.monument_launched',
         'command.attraction_started',
         'command.money_aid_transferred',
         'command.money_aid_received',
@@ -124,6 +125,7 @@ final class PlayerIslandEventService
         'command.seabed_base_built_private',
         'command.decoy_built_private',
         'command.logging_private',
+        'command.monument_launched',
         'command.monster_dispatched',
         'missile.launch_detail',
     ];
@@ -1251,6 +1253,11 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
             ),
+            'command.monument_launched' => sprintf(
+                '座標(%s,%s)の記念碑を対象Nationへ発射しました。',
+                number_format($this->integer($metadata, 'source_x')),
+                number_format($this->integer($metadata, 'source_y')),
+            ),
             'command.attraction_started' => '誘致活動を開始しました。',
             'command.money_aid_transferred' => $this->moneyAidMessage($metadata, true),
             'command.money_aid_received' => $this->moneyAidMessage($metadata, false),
@@ -2099,7 +2106,7 @@ final class PlayerIslandEventService
             'land_subsidence.triggered', 'monster.spawned', 'monster.reward_distributed', 'award.granted',
             'settlement.appeared', 'settlement.stage_transitioned' => 'notable',
             'missile.launched', 'missile.impact', 'command.capital_relocated',
-            'command.capital_relocated_public' => 'notable',
+            'command.capital_relocated_public', 'command.monument_launched' => 'notable',
             default => 'info',
         };
     }

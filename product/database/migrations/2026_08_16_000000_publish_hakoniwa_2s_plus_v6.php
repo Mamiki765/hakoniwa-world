@@ -109,6 +109,7 @@ return new class extends Migration
         DB::statement('LOCK TABLE monster_definitions IN SHARE MODE');
         DB::statement('LOCK TABLE monster_instances IN SHARE ROW EXCLUSIVE MODE');
         DB::statement('LOCK TABLE nation_monster_kill_stats IN SHARE ROW EXCLUSIVE MODE');
+        $this->installLiveQueueRulesetConstraint();
         $this->assertDefinitionSetsMatch('command_definitions', $fromRulesetId, $toRulesetId);
         $this->assertDefinitionSetsMatch('monster_definitions', $fromRulesetId, $toRulesetId);
         $this->assertKillStatGuardEnabled();
@@ -141,6 +142,7 @@ UPDATE nation_command_queue_items item
  WHERE item.nation_command_queue_id = queue.id
    AND nation.world_id = ?
    AND item.command_definition_id = source.id
+   AND item.status = 'queued'
 SQL, [$fromRulesetId, $toRulesetId, $world->id]);
 
         DB::update(<<<'SQL'
@@ -239,6 +241,62 @@ SQL, [$toRulesetId, $world->id, $fromRulesetId]);
         return getenv(self::REVIEWED_QUEUE_REBIND_OVERRIDE_ENV) === self::REVIEWED_QUEUE_REBIND_OVERRIDE_VALUE;
     }
 
+    private function installLiveQueueRulesetConstraint(): void
+    {
+        DB::unprepared(<<<'SQL'
+CREATE OR REPLACE FUNCTION enforce_queue_item_world_ruleset_match()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    world_ruleset_id bigint;
+    definition_ruleset_id bigint;
+BEGIN
+    IF NEW.status <> 'queued' THEN
+        RETURN NEW;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM nation_command_queue_items
+         WHERE id = NEW.id
+    ) THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT worlds.ruleset_version_id, command_definitions.ruleset_version_id
+      INTO world_ruleset_id, definition_ruleset_id
+      FROM nation_command_queues
+      INNER JOIN nations ON nations.id = nation_command_queues.nation_id
+      INNER JOIN worlds ON worlds.id = nations.world_id
+      INNER JOIN command_definitions ON command_definitions.id = NEW.command_definition_id
+     WHERE nation_command_queues.id = NEW.nation_command_queue_id;
+
+    IF NOT FOUND OR world_ruleset_id IS DISTINCT FROM definition_ruleset_id THEN
+        RAISE EXCEPTION
+            'queued item % command definition ruleset % does not match World ruleset %',
+            NEW.id,
+            definition_ruleset_id,
+            world_ruleset_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS nation_command_queue_items_world_ruleset_match
+    ON nation_command_queue_items;
+
+CREATE CONSTRAINT TRIGGER nation_command_queue_items_world_ruleset_match
+AFTER INSERT OR UPDATE OF nation_command_queue_id, command_definition_id, status
+ON nation_command_queue_items
+DEFERRABLE INITIALLY IMMEDIATE
+FOR EACH ROW
+EXECUTE FUNCTION enforce_queue_item_world_ruleset_match();
+SQL);
+    }
+
     private function acquireWorldTurnMigrationLock(object $world): void
     {
         $lock = DB::selectOne(
@@ -321,9 +379,11 @@ SELECT
     (SELECT count(*)
        FROM nation_command_queue_items item
        JOIN nation_command_queues queue ON queue.id = item.nation_command_queue_id
-       JOIN nations nation ON nation.id = queue.nation_id
-       JOIN command_definitions definition ON definition.id = item.command_definition_id
-      WHERE nation.world_id = ? AND definition.ruleset_version_id <> ?) AS queue_mismatches,
+      JOIN nations nation ON nation.id = queue.nation_id
+      JOIN command_definitions definition ON definition.id = item.command_definition_id
+      WHERE nation.world_id = ?
+        AND item.status = 'queued'
+        AND definition.ruleset_version_id <> ?) AS queue_mismatches,
     (SELECT count(*)
        FROM monster_instances instance
        JOIN monster_definitions definition ON definition.id = instance.monster_definition_id
