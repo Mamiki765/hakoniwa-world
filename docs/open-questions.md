@@ -409,6 +409,13 @@
 - Decision: SecretaryはNationではなくUserへ1:1で所属し、最初のNation登録成功時にidempotentに作成する。abandon/re-registerを跨いで同じ状態を保持する。production migrationはactive/abandonedを問わずNation登録履歴のあるUserだけをbackfillし、履歴のないUserは将来の初回登録成功まで作成しない。命名前も効果とXPを有効にし、v1の詳細gameplay contractはADR-0011を正本とする。
 - Decision record: `docs/decisions/ADR-0010-product-generations-and-2x-identity.md`、`docs/decisions/ADR-0011-secretary-v1-contract.md`、`docs/roadmap/2.x.md`
 
+### SECRETARY-02 Secretary rename
+
+- Status: Decided
+- Implemented: ver 2.1.0で既存の命名済みSecretaryをプロフィール編集から何度でも改名できる。
+- Decision: ADR-0011のver 2.0.0一度だけ命名contractは歴史として維持する。ver 2.1.0ではUser所有・1 User = 1 Secretaryを変えず、plain text 1〜30文字、duplicate可、skill/XP不変、abandon/re-register後も保持する。rename APIはrowを作成せず、private auditへold/new nameとSecretary/User ID、時刻を残す。過去logと実行中attemptは保存済みname snapshotを維持し、次attemptから最新名をloadする。
+- Decision record: `docs/decisions/ADR-0012-ver-2.1.0-defense-and-secretary-rename.md`、`docs/roadmap/2.x.md`
+
 ### D-01 scheduler・queue基盤
 
 - Status: Decided

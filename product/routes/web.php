@@ -66,6 +66,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::get('/me', [ApiController::class, 'me']);
     Route::get('/me/secretary', [SecretaryController::class, 'show']);
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
+    Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/map-spaces', [ApiController::class, 'mapSpaces']);
     Route::get('/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}', [ApiController::class, 'chunk'])

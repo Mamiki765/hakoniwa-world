@@ -35,10 +35,9 @@ final class RulesetV7ContractTest extends TestCase
         $this->assertFalse($secretary['skills']['agricultural_policy']['experience_source']['quantity_multiplier']);
         $this->assertSame(1, $secretary['skills']['final_defense_line']['initial_level']);
         $this->assertTrue($secretary['skills']['final_defense_line']['experience_source']['independent_from_interception_eligibility']);
-        $this->assertSame('hakoniwa-2s-plus-v7', config('hakoniwa.ruleset.key'));
-        $this->assertSame(7, config('hakoniwa.ruleset.version'));
-
-        $validated = app(RulesetAuthoringValidator::class)->validate(config('hakoniwa.ruleset'));
+        $validated = app(RulesetAuthoringValidator::class)->validate(
+            config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v7'),
+        );
         $this->assertSame('hakoniwa-2s-plus-v7', $validated['key']);
         $this->assertSame(7, $validated['version']);
     }

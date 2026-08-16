@@ -24,7 +24,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '2.0.0';
+const applicationVersion = '2.1.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -59,6 +59,8 @@ const abandonmentConfirmationName = ref('');
 const abandonmentError = ref('');
 const registrationErrors = ref<Record<string, string>>({});
 const profileErrors = ref<Record<string, string>>({});
+const profileSecretaryName = ref('');
+const profileSecretaryErrors = ref<Record<string, string>>({});
 const secretaryName = ref('ペリドット');
 const secretaryErrors = ref<Record<string, string>>({});
 const busy = ref(true);
@@ -644,8 +646,32 @@ function openProfile(): void {
     profileOwnerName.value = nation.value.owner_name;
     profileComment.value = nation.value.comment;
     profileErrors.value = {};
+    profileSecretaryName.value = secretary.value?.name ?? '';
+    profileSecretaryErrors.value = {};
     message.value = '';
     page.value = 'profile';
+}
+
+async function renameProfileSecretary(): Promise<void> {
+    if (secretary.value === null || secretary.value.name === null) return;
+    busy.value = true;
+    message.value = '';
+    profileSecretaryErrors.value = {};
+    try {
+        secretary.value = await api<Secretary>('/api/v1/me/secretary/name', {
+            method: 'PATCH',
+            body: JSON.stringify({ name: profileSecretaryName.value }),
+        });
+        profileSecretaryName.value = secretary.value.name ?? '';
+        message.value = `秘書の名前を「${profileSecretaryName.value}」に変更しました。`;
+    } catch (error) {
+        profileSecretaryErrors.value = validationErrors(error);
+        message.value = Object.keys(profileSecretaryErrors.value).length === 0
+            ? (error instanceof Error ? error.message : '秘書名を変更できませんでした。')
+            : '';
+    } finally {
+        busy.value = false;
+    }
 }
 
 async function updateProfile(): Promise<void> {
@@ -1224,6 +1250,18 @@ async function abandonNation(): Promise<void> {
                 <div class="profile-actions">
                     <button class="button primary" type="submit" :disabled="busy">保存</button>
                     <button type="button" :disabled="busy" @click="openOwnIsland">キャンセル</button>
+                </div>
+            </form>
+            <form v-if="secretary?.name !== null" class="profile-form secretary-rename-form" @submit.prevent="renameProfileSecretary">
+                <h2>秘書プロフィール</h2>
+                <label>
+                    秘書名
+                    <input v-model="profileSecretaryName" minlength="1" maxlength="30" required autocomplete="off" aria-describedby="profile-secretary-help profile-secretary-error">
+                    <small id="profile-secretary-help" class="field-hint">1〜30文字。何度でも変更できます。過去のログの名前は変わりません。</small>
+                    <span v-if="profileSecretaryErrors.name" id="profile-secretary-error" class="field-error" role="alert">{{ profileSecretaryErrors.name }}</span>
+                </label>
+                <div class="profile-actions">
+                    <button class="button primary" type="submit" :disabled="busy">秘書名を保存</button>
                 </div>
             </form>
             <section class="danger-zone" aria-labelledby="danger-zone-title">

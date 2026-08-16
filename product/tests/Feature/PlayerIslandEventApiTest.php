@@ -628,10 +628,10 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertContains('被弾島(12,8)に発射島のPPミサイルが着弾し、首都人口へ被害を与えました。', $publicMessages);
         $this->assertContains('被弾島(13,9)に発射島のPPミサイルが着弾し、土地を焼け跡にしました。', $publicMessages);
         $this->assertTrue(collect($publicMessages)->contains(
-            static fn (string $message): bool => str_contains($message, '効果のない着弾8件はまとめて記録されました。'),
+            static fn (string $message): bool => str_contains($message, 'PPミサイルのうち8発は効果がありませんでした。'),
         ));
         $this->assertTrue(collect($publicMessages)->contains(
-            static fn (string $message): bool => str_contains($message, '効果のない着弾2件はまとめて記録されました。'),
+            static fn (string $message): bool => str_contains($message, 'PPミサイルのうち2発は効果がありませんでした。'),
         ));
         foreach ([
             '(50,51)', '(44,45)', '費用900', 'all_impacts', 'cost_money', 'target_x',
@@ -660,8 +660,55 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertSame(1, $ownerTypes->filter(
             static fn (string $type): bool => $type === 'missile.ineffective_aggregated',
         )->count());
-        $this->assertStringNotContainsString('効果のない着弾8件はまとめて記録されました。', $ownerMessages);
-        $this->assertStringContainsString('効果のない着弾2件はまとめて記録されました。', $ownerMessages);
+        $this->assertStringNotContainsString('PPミサイルのうち8発は効果がありませんでした。', $ownerMessages);
+        $this->assertStringContainsString('PPミサイルのうち2発は効果がありませんでした。', $ownerMessages);
+    }
+
+    public function test_target_owner_gets_three_separate_aggregated_missile_outcome_classes(): void
+    {
+        [$world, $owner, $target] = $this->nation('防御島');
+        [, , $firing] = $this->nation('発射島', $world);
+        $world->update(['current_turn' => 7]);
+        DB::table('audit_events')->delete();
+
+        foreach ([1, 2, 3] as $x) {
+            $this->audit('missile.defense_intercepted', $target, $target, 'nation', 7, [
+                'nation_id' => $target->id, 'missile_key' => 'missile', 'x' => $x, 'y' => 4,
+                'covering_defense_count' => 2, 'covering_defense_cell_ids' => [901, 902],
+            ]);
+        }
+        $this->audit('secretary.missile_intercepted', $target, $target, 'nation', 7, [
+            'nation_id' => $target->id, 'missile_key' => 'pp_missile', 'x' => 5, 'y' => 4,
+            'secretary_name' => 'ペリドット', 'secretary_label' => '秘書のペリドット',
+        ]);
+        $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 7, [
+            'nation_name' => $firing->name, 'command_key' => 'pp_missile',
+            'queue_item_id' => 91, 'ineffective_impacts' => 3,
+        ]);
+
+        $response = $this->actingAs($owner)
+            ->getJson("/api/v1/nations/{$target->id}/events")
+            ->assertOk();
+        $events = collect($response->json('data.groups.0.events'));
+        $this->assertSame(1, $events->where('type', 'missile.defense_intercepted')->count());
+        $this->assertSame(1, $events->where('type', 'secretary.missile_intercepted')->count());
+        $messages = $events->pluck('message')->all();
+        $this->assertContains('防衛施設が3発のミサイルを迎撃しました。', $messages);
+        $this->assertContains('秘書のペリドットが1発のミサイルを迎撃しました。', $messages);
+        $this->assertNotContains('PPミサイルのうち3発は効果がありませんでした。', $messages);
+        $body = (string) $response->getContent();
+        $this->assertStringNotContainsString('901', $body);
+        $this->assertStringNotContainsString('covering_defense', $body);
+
+        $public = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $publicTypes = collect($public->json('data.groups.0.events'))->pluck('type');
+        $this->assertFalse($publicTypes->contains('missile.defense_intercepted'));
+        $this->assertFalse($publicTypes->contains('secretary.missile_intercepted'));
+        $this->assertTrue($publicTypes->contains('missile.ineffective_aggregated'));
+        $this->assertContains(
+            'PPミサイルのうち3発は効果がありませんでした。',
+            $this->messages($public->json('data.groups')),
+        );
     }
 
     /** @return array{World, User, Nation} */

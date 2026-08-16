@@ -37,4 +37,18 @@ final class SecretaryController extends Controller
 
         return response()->json(['data' => $presenter->present($secretary)]);
     }
+
+    public function rename(
+        NameSecretaryRequest $request,
+        SecretaryNamingService $naming,
+        SecretaryPresenter $presenter,
+    ): JsonResponse {
+        try {
+            $secretary = $naming->rename($request->user(), $request->string('name')->value());
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['name' => $exception->getMessage()]);
+        }
+
+        return response()->json(['data' => $presenter->present($secretary)]);
+    }
 }

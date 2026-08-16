@@ -62,6 +62,7 @@ final class PlayerIslandEventService
         'command.monster_dispatched',
         'missile.launch_failed',
         'missile.launch_detail',
+        'missile.defense_intercepted',
         'secretary.missile_intercepted',
         'refugee_received',
         'turn.summary',
@@ -274,6 +275,7 @@ final class PlayerIslandEventService
         })->all();
         $events = $this->preferOwnerEventDetails($events);
         $events = $this->expandMissileLaunchDetails($events);
+        $events = $this->aggregateMissileDefenseEvents($events);
         $events = $this->aggregateRefugeeEvents($events, $nation->id);
 
         return [
@@ -754,8 +756,7 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'fired_shots')),
             ),
             'missile.ineffective_aggregated' => sprintf(
-                '%sが発射した%sのうち、効果のない着弾%s件はまとめて記録されました。',
-                $nation,
+                '%sのうち%s発は効果がありませんでした。',
                 $this->missileLabel($metadata['command_key'] ?? null),
                 number_format($this->integer($metadata, 'ineffective_impacts')),
             ),
@@ -1279,15 +1280,19 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'fired_shots')),
             ),
             'missile.ineffective_aggregated' => sprintf(
-                '%sの効果のない着弾%s件は発射単位で集約されました。',
+                '%sのうち%s発は効果がありませんでした。',
                 $this->missileLabel($metadata['command_key'] ?? null),
                 number_format($this->integer($metadata, 'ineffective_impacts')),
             ),
+            'missile.defense_intercepted' => sprintf(
+                '防衛施設が%s発のミサイルを迎撃しました。',
+                number_format(max(1, $this->integer($metadata, 'intercepted_impacts'))),
+            ),
             'missile.launch_detail' => $this->missileLaunchDetailMessage($metadata),
             'secretary.missile_intercepted' => sprintf(
-                '%sが%sを最終防衛ラインで迎撃しました。',
+                '%sが%s発のミサイルを迎撃しました。',
                 $this->secretaryLabel($metadata),
-                $this->missileLabel($metadata['missile_key'] ?? null),
+                number_format(max(1, $this->integer($metadata, 'intercepted_impacts'))),
             ),
             'missile.impact' => $this->missileImpactMessage($metadata),
             'refugee_generated' => sprintf(
@@ -1302,6 +1307,52 @@ final class PlayerIslandEventService
             'turn.summary' => "第{$targetTurn}ターンの資源変化",
             default => '島で出来事がありました。',
         };
+    }
+
+    /**
+     * Preserve one audit row per impact, but project at most one row of each
+     * defense kind per target turn for this owner Nation.
+     *
+     * @param  list<array<string, mixed>>  $events
+     * @return list<array<string, mixed>>
+     */
+    private function aggregateMissileDefenseEvents(array $events): array
+    {
+        $aggregated = [];
+        $indexes = [];
+        foreach ($events as $event) {
+            $type = $event['type'] ?? null;
+            if (! in_array($type, ['missile.defense_intercepted', 'secretary.missile_intercepted'], true)) {
+                $aggregated[] = $event;
+
+                continue;
+            }
+            $key = $event['target_turn'].':'.$type;
+            if (! array_key_exists($key, $indexes)) {
+                $metadata = is_array($event['_metadata'] ?? null) ? $event['_metadata'] : [];
+                $metadata['intercepted_impacts'] = 1;
+                $event['_metadata'] = $metadata;
+                $event['message'] = $this->message($type, $metadata, (int) $event['target_turn'], 0);
+                $indexes[$key] = count($aggregated);
+                $aggregated[] = $event;
+
+                continue;
+            }
+            $index = $indexes[$key];
+            $metadata = is_array($aggregated[$index]['_metadata'] ?? null)
+                ? $aggregated[$index]['_metadata']
+                : [];
+            $metadata['intercepted_impacts'] = ((int) ($metadata['intercepted_impacts'] ?? 1)) + 1;
+            $aggregated[$index]['_metadata'] = $metadata;
+            $aggregated[$index]['message'] = $this->message(
+                $type,
+                $metadata,
+                (int) $event['target_turn'],
+                0,
+            );
+        }
+
+        return $aggregated;
     }
 
     /** @param array<string, mixed> $metadata */

@@ -95,6 +95,7 @@ EXPECTED_STATUSES = {
     "RELEASE-01": "Decided",
     "RES-01": "Decided",
     "SECRETARY-01": "Decided",
+    "SECRETARY-02": "Decided",
     "T-01": "Decided",
     "T-02": "Open",
 }
