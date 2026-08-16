@@ -73,6 +73,8 @@ final class SecretaryPersistenceTest extends TestCase
                 ->assertOk()
                 ->assertJsonPath('data.name', 'ペリドット')
                 ->assertJsonPath('data.header_label', 'ペリドット')
+                ->assertJsonPath('data.skills.0.effect', '小麦生産＋0.0%')
+                ->assertJsonPath('data.skills.3.effect', '防衛されなかったミサイルを1ターンにつき1発まで迎撃')
                 ->assertJsonCount(4, 'data.skills');
         }
         $this->assertSame(2, Secretary::query()->where('name', 'ペリドット')->count());

@@ -18,7 +18,7 @@ The production migration backfills exactly the Users for whom the database conta
 
 ## Unnamed and named presentation
 
-An unnamed Secretary is fully active: effects and experience do not depend on `name`. The header label is `？？？`. Gameplay logs refer to `秘書`; after naming they may refer to `秘書の{name}`. Opening the unnamed Secretary page shows only the owner-provided naming story, a plain-text input initially containing `ペリドット`, and an OK action. No monster-history lookup is part of the trigger. Once named, the story is not shown again; the page lists name, skill level, current experience, experience required for the next level, remaining experience, and current effect.
+An unnamed Secretary is fully active: effects and experience do not depend on `name`. The header label is `？？？`. Gameplay logs refer to `秘書`; after naming they may refer to `秘書の{name}`. Opening the unnamed Secretary page shows only the owner-provided naming story, a plain-text input initially containing `ペリドット`, and an OK action. No monster-history lookup is part of the trigger. Once named, the story is not shown again; the page shows the title `秘書`, the name in the same display typeface used for island names, the passive-skill level, current XP and required XP, and the current effect. It does not render a separate remaining-XP or `NEXT` line.
 
 ## Calendar
 

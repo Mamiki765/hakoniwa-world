@@ -53,10 +53,10 @@ final class SecretaryPresenter
     private function effect(string $skillKey, int $level): string
     {
         return match ($skillKey) {
-            SecretarySkillCatalog::AGRICULTURAL_POLICY => sprintf('小麦生産 +%.1f%%', $level / 10),
-            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => sprintf('工場生産 +%.1f%%', $level / 10),
-            SecretarySkillCatalog::GOLD_VEIN_SURVEY => sprintf('採掘場生産 +%.1f%%', $level / 10),
-            SecretarySkillCatalog::FINAL_DEFENSE_LINE => "1ターンにつき{$level}発まで迎撃",
+            SecretarySkillCatalog::AGRICULTURAL_POLICY => sprintf('小麦生産＋%.1f%%', $level / 10),
+            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => sprintf('工場生産＋%.1f%%', $level / 10),
+            SecretarySkillCatalog::GOLD_VEIN_SURVEY => sprintf('採掘場生産＋%.1f%%', $level / 10),
+            SecretarySkillCatalog::FINAL_DEFENSE_LINE => "防衛されなかったミサイルを1ターンにつき{$level}発まで迎撃",
             default => throw new DomainException("Unknown Secretary skill {$skillKey}."),
         };
     }

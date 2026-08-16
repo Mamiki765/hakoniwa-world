@@ -1162,9 +1162,9 @@ async function abandonNation(): Promise<void> {
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
 
         <section v-else-if="user && nation && secretary && page === 'secretary'" class="panel secretary-panel">
-            <p class="eyebrow">SECRETARY</p>
+            <h1 class="secretary-page-title">秘書</h1>
             <template v-if="secretary.name === null">
-                <h1>？？？</h1>
+                <h2 class="secretary-name">？？？</h2>
                 <div class="secretary-story">
                     <p>
                         今日も開発の計画を指示するあなたの元に一つの知らせが入り込んだ。<br>
@@ -1189,16 +1189,16 @@ async function abandonNation(): Promise<void> {
                 </form>
             </template>
             <template v-else>
-                <h1>{{ secretary.name }}</h1>
+                <h2 class="secretary-name">{{ secretary.name }}</h2>
+                <h3 class="secretary-section-title">パッシブスキル</h3>
                 <dl class="secretary-skills">
-                    <div v-for="skill in secretary.skills" :key="skill.key">
-                        <dt>{{ skill.name }}</dt>
-                        <dd>
-                            <strong>Lv{{ skill.level }}</strong>
+                    <div v-for="skill in secretary.skills" :key="skill.key" class="secretary-skill">
+                        <dt class="secretary-skill-name">{{ skill.name }}</dt>
+                        <dd class="secretary-skill-progress">
+                            <span>Lv{{ skill.level }}</span>
                             <span>XP {{ skill.experience }} / {{ skill.required_experience }}</span>
-                            <span>次のlevelまで {{ skill.remaining_experience }} XP</span>
-                            <span>{{ skill.effect }}</span>
                         </dd>
+                        <dd class="secretary-skill-effect">{{ skill.effect }}</dd>
                     </div>
                 </dl>
             </template>
