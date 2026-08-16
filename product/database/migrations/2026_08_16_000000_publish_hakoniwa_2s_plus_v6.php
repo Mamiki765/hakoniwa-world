@@ -17,6 +17,10 @@ return new class extends Migration
 
     private const WORLD_KEY = 'shared-world';
 
+    private const REVIEWED_QUEUE_REBIND_OVERRIDE_ENV = 'HAKONIWA_V6_REBIND_REVIEWED_QUEUE_ITEMS';
+
+    private const REVIEWED_QUEUE_REBIND_OVERRIDE_VALUE = 'CONFIRM_REVIEWED_V5_QUEUE_ITEMS_TO_V6';
+
     /** @var list<string> */
     private const BEHAVIOR_CHANGING_COMMAND_KEYS = [
         'logging',
@@ -182,7 +186,7 @@ SQL, [$toRulesetId, $world->id, $fromRulesetId]);
 
     private function assertNoBehaviorChangingQueuedItems(int $worldId, int $fromRulesetId): void
     {
-        $item = DB::table('nation_command_queue_items as item')
+        $items = DB::table('nation_command_queue_items as item')
             ->join('nation_command_queues as queue', 'queue.id', '=', 'item.nation_command_queue_id')
             ->join('nations as nation', 'nation.id', '=', 'queue.nation_id')
             ->join('command_definitions as definition', 'definition.id', '=', 'item.command_definition_id')
@@ -190,13 +194,49 @@ SQL, [$toRulesetId, $world->id, $fromRulesetId]);
             ->where('definition.ruleset_version_id', $fromRulesetId)
             ->where('item.status', 'queued')
             ->whereIn('definition.key', self::BEHAVIOR_CHANGING_COMMAND_KEYS)
+            ->orderBy('nation.nation_number')
+            ->orderBy('queue.id')
+            ->orderBy('item.queue_position')
             ->orderBy('item.id')
-            ->first(['item.id', 'definition.key']);
-        if ($item !== null) {
-            throw new RuntimeException(
-                "Refusing v6 migration with queued v5 command {$item->id} ({$item->key}) whose behavior changes in v6.",
-            );
+            ->get([
+                'item.id as item_id',
+                'nation.id as nation_id',
+                'nation.nation_number',
+                'nation.name as nation_name',
+                'queue.id as queue_id',
+                'item.queue_position',
+                'definition.key as command_key',
+                'item.target_x',
+                'item.target_y',
+            ]);
+        if ($items->isEmpty() || $this->reviewedQueueRebindOverrideEnabled()) {
+            return;
         }
+
+        $details = $items->map(static fn (object $item): string => json_encode([
+            'item_id' => (int) $item->item_id,
+            'nation_id' => (int) $item->nation_id,
+            'nation_number' => (int) $item->nation_number,
+            'nation_name' => (string) $item->nation_name,
+            'queue_id' => (int) $item->queue_id,
+            'queue_position' => (int) $item->queue_position,
+            'command_key' => (string) $item->command_key,
+            'target_x' => $item->target_x === null ? null : (int) $item->target_x,
+            'target_y' => $item->target_y === null ? null : (int) $item->target_y,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))->implode(PHP_EOL);
+
+        throw new RuntimeException(
+            "Refusing v6 migration with queued v5 commands whose behavior changes in v6.\n"
+            ."Affected queued items:\n{$details}\n"
+            .'After manually reviewing the queue and target map cells, follow '
+            .'product/docs/operations/ver-1.7.0-v6-ruleset-migration.md and use the dedicated v6 one-shot '
+            .self::REVIEWED_QUEUE_REBIND_OVERRIDE_ENV.' override only for that migration invocation.',
+        );
+    }
+
+    private function reviewedQueueRebindOverrideEnabled(): bool
+    {
+        return getenv(self::REVIEWED_QUEUE_REBIND_OVERRIDE_ENV) === self::REVIEWED_QUEUE_REBIND_OVERRIDE_VALUE;
     }
 
     private function acquireWorldTurnMigrationLock(object $world): void

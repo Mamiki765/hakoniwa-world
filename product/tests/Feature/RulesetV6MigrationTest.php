@@ -29,6 +29,17 @@ final class RulesetV6MigrationTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
+    private const REVIEWED_QUEUE_REBIND_OVERRIDE_ENV = 'HAKONIWA_V6_REBIND_REVIEWED_QUEUE_ITEMS';
+
+    private const REVIEWED_QUEUE_REBIND_OVERRIDE_VALUE = 'CONFIRM_REVIEWED_V5_QUEUE_ITEMS_TO_V6';
+
+    protected function tearDown(): void
+    {
+        putenv(self::REVIEWED_QUEUE_REBIND_OVERRIDE_ENV);
+
+        parent::tearDown();
+    }
+
     public function test_v5_world_is_forward_migrated_idempotently_without_changing_queue_payload_or_turn_history(): void
     {
         $world = $this->lightweightWorld();
@@ -159,12 +170,93 @@ final class RulesetV6MigrationTest extends TestCase
         } catch (RuntimeException $exception) {
             $this->assertStringContainsString($commandKey, $exception->getMessage());
             $this->assertStringContainsString('whose behavior changes in v6', $exception->getMessage());
+            $this->assertStringContainsString('"nation_id":'.$nation->id, $exception->getMessage());
+            $this->assertStringContainsString('"nation_name":"v6 queue guard '.$commandKey.'"', $exception->getMessage());
+            $this->assertStringContainsString('"queue_position":1', $exception->getMessage());
+            $this->assertStringContainsString('"command_key":"'.$commandKey.'"', $exception->getMessage());
+            $this->assertStringContainsString('"target_x":7', $exception->getMessage());
+            $this->assertStringContainsString('"target_y":8', $exception->getMessage());
+            $this->assertStringContainsString(self::REVIEWED_QUEUE_REBIND_OVERRIDE_ENV, $exception->getMessage());
         }
 
         $this->assertSame($v5->id, $world->fresh()->ruleset_version_id);
         $this->assertNotSame($v6->id, $item->fresh()->definition()->value('ruleset_version_id'));
         $this->assertSame($commandKey, $item->fresh()->definition()->value('key'));
         $this->assertSame($before, [$world->fresh()->getAttributes(), $item->fresh()->getAttributes()]);
+    }
+
+    #[DataProvider('behaviorChangingV5CommandKeys')]
+    public function test_reviewed_one_shot_override_rebinds_affected_v5_queue_item(string $commandKey): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            "v6 reviewed override {$commandKey}",
+            'migration owner',
+        );
+        [$v5, $v6, $item] = $this->moveWorldAndQueueToV5($world, $nation->id, $commandKey);
+        $before = Arr::except($item->fresh()->getAttributes(), ['command_definition_id']);
+        putenv(self::REVIEWED_QUEUE_REBIND_OVERRIDE_ENV.'='.self::REVIEWED_QUEUE_REBIND_OVERRIDE_VALUE);
+
+        $this->migration()->up();
+
+        $this->assertSame($v6->id, $world->fresh()->ruleset_version_id);
+        $this->assertSame($v6->id, $item->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame($commandKey, $item->fresh()->definition()->value('key'));
+        $this->assertSame($before, Arr::except($item->fresh()->getAttributes(), ['command_definition_id']));
+        $this->assertNotSame($v5->id, $item->fresh()->definition()->value('ruleset_version_id'));
+    }
+
+    public function test_non_exact_queue_override_value_does_not_bypass_guard(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            'v6 invalid override',
+            'migration owner',
+        );
+        [$v5, $v6, $item] = $this->moveWorldAndQueueToV5($world, $nation->id, 'logging');
+        $before = [$world->fresh()->getAttributes(), $item->fresh()->getAttributes()];
+        putenv(self::REVIEWED_QUEUE_REBIND_OVERRIDE_ENV.'=true');
+
+        try {
+            $this->migration()->up();
+            $this->fail('Expected a non-exact v6 queue override value to fail closed.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Affected queued items:', $exception->getMessage());
+        }
+
+        $this->assertSame($v5->id, $world->fresh()->ruleset_version_id);
+        $this->assertNotSame($v6->id, $item->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame($before, [$world->fresh()->getAttributes(), $item->fresh()->getAttributes()]);
+    }
+
+    public function test_reviewed_queue_override_does_not_bypass_unresolved_turn_run_guard(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            'v6 override turn guard',
+            'migration owner',
+        );
+        [$v5, $v6, $item] = $this->moveWorldAndQueueToV5($world, $nation->id, 'logging');
+        $run = $this->turnRun($world, $v5, TurnRun::STATUS_PENDING, false);
+        $before = [$world->fresh()->getAttributes(), $item->fresh()->getAttributes(), $run->fresh()->getAttributes()];
+        putenv(self::REVIEWED_QUEUE_REBIND_OVERRIDE_ENV.'='.self::REVIEWED_QUEUE_REBIND_OVERRIDE_VALUE);
+
+        try {
+            $this->migration()->up();
+            $this->fail('Expected unresolved next TurnRun to block the reviewed queue override.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('status=pending', $exception->getMessage());
+        }
+
+        $this->assertSame($v5->id, $world->fresh()->ruleset_version_id);
+        $this->assertNotSame($v6->id, $item->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame($before, [$world->fresh()->getAttributes(), $item->fresh()->getAttributes(), $run->fresh()->getAttributes()]);
     }
 
     public static function behaviorChangingV5CommandKeys(): array
