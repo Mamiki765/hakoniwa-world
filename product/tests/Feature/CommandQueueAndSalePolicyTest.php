@@ -177,6 +177,58 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->distinct()->count('queue_position'));
     }
 
+    public function test_bulk_insert_rejects_new_unconfirmed_dangerous_overbuild_effects_before_mutation(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('一括危険上書き拒否国');
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $wasteland = TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+        $state = app(MapCellStateService::class);
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with('terrain')->get() as $cell) {
+            $state->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->orderBy('id')->firstOrFail();
+        $queuePath = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        foreach ([1, 2] as $position) {
+            $this->actingAs($owner)->postJson($queuePath, [
+                'command_key' => 'build_defense_facility',
+                'target_x' => $target->x,
+                'target_y' => $target->y,
+                'position' => $position,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => $position,
+            ])->assertCreated();
+        }
+
+        $state->transitionTerrain($target, $wasteland);
+        $target->save();
+        $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->firstOrFail();
+        $beforeItems = NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+            ->orderBy('id')->get()->map->getAttributes()->all();
+        $requestKey = (string) Str::uuid();
+
+        $this->postJson($queuePath.'/bulk', [
+            'action' => 'clear_all',
+            'position' => 1,
+            'request_key' => $requestKey,
+            'expected_version' => 3,
+        ])->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.command.0',
+                'この操作により既存commandが未確認の危険な上書き効果へ変わるため実行できません。対象commandを削除し、希望位置へ追加し直してください。',
+            );
+
+        $this->assertSame(
+            $beforeItems,
+            NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+                ->orderBy('id')->get()->map->getAttributes()->all(),
+        );
+        $this->assertSame(3, (int) $queue->fresh()->version);
+        $this->assertDatabaseMissing('nation_command_queue_bulk_requests', ['request_key' => $requestKey]);
+    }
+
     public function test_zero_candidate_bulk_request_remains_a_no_op_after_the_map_changes(): void
     {
         [$user, $nation, $mapSpace] = $this->nation('一括ゼロ件国');

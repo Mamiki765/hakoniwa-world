@@ -569,7 +569,7 @@ final class CommandQueueService
 
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)->where('status', 'queued')
-                ->orderBy('queue_position')->orderBy('id')->lockForUpdate()->get();
+                ->orderBy('queue_position')->orderBy('id')->with('definition')->lockForUpdate()->get();
             $prefix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position < $position)->all();
             $suffix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position >= $position)->all();
             $generated = array_map(static fn (array $candidate): array => ['generated' => $candidate], $candidates);
@@ -596,6 +596,13 @@ final class CommandQueueService
                 ),
             ];
             $kept = array_slice($merged, 0, $limit);
+            $this->assertNoNewDangerousOverbuildEffects(
+                $queue,
+                $activeItems,
+                $this->proposedBulkItems($kept),
+                $lockedNation,
+                $mapSpace,
+            );
             if ($activeItems->isNotEmpty()) {
                 NationCommandQueueItem::query()->whereIn('id', $activeItems->modelKeys())->update(['queue_position' => null]);
             }
@@ -959,6 +966,32 @@ final class CommandQueueService
         }
 
         return $state;
+    }
+
+    /**
+     * @param  list<array{existing: NationCommandQueueItem}|array{generated: array{definition: CommandDefinition, x: int, y: int}}>  $entries
+     * @return Collection<int, NationCommandQueueItem>
+     */
+    private function proposedBulkItems(array $entries): Collection
+    {
+        $items = new Collection;
+        foreach ($entries as $index => $entry) {
+            if (isset($entry['existing'])) {
+                $item = clone $entry['existing'];
+            } else {
+                $candidate = $entry['generated'];
+                $item = new NationCommandQueueItem([
+                    'target_x' => $candidate['x'],
+                    'target_y' => $candidate['y'],
+                    'status' => 'queued',
+                ]);
+                $item->setRelation('definition', $candidate['definition']);
+            }
+            $item->queue_position = $index + 1;
+            $items->push($item);
+        }
+
+        return $items;
     }
 
     /**
