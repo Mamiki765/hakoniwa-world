@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Facility\MissileBaseRules;
+use App\Domain\Map\SeaAreaNameResolver;
 use App\Domain\Monster\MonsterHardening;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -24,6 +25,7 @@ final class MapCellPresenter
         private readonly FacilityCapacityService $capacities,
         private readonly MissileBaseRules $missiles,
         private readonly MonsterHardening $hardening,
+        private readonly SeaAreaNameResolver $seaAreas,
     ) {}
 
     /** @return array<string, mixed> */
@@ -52,7 +54,8 @@ final class MapCellPresenter
             ? $cell->monumentDefinition->name
             : $displayDefinition->name;
         $layers = $this->assets->resolveLayers($displayAssetKey, $displayName);
-        $details = $this->details($cell, $isOwner, $isDisguised);
+        $seaAreaName = $this->seaAreas->forCoordinate($cell->x, $cell->y);
+        $details = $this->details($cell, $isOwner, $isDisguised, $seaAreaName);
         $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership);
 
         return [
@@ -63,6 +66,7 @@ final class MapCellPresenter
             'facility' => $facility?->key,
             'facility_name' => $facility?->key === 'monument' ? $displayName : $facility?->name,
             'display_name' => $displayName,
+            'sea_area_name' => $seaAreaName,
             'owner_nation_id' => $neutralizeOwnership ? null : $cell->owner_nation_id,
             'owner_nation_number' => $ownerNation?->nation_number,
             'owner_name' => $ownerNation?->name,
@@ -119,13 +123,13 @@ final class MapCellPresenter
     }
 
     /** @return array<int, array{key: string, label: string, value: int|string, unit: string|null, formatted: string, visibility: string}> */
-    private function details(MapCell $cell, bool $isOwner, bool $isDisguised): array
+    private function details(MapCell $cell, bool $isOwner, bool $isDisguised, string $seaAreaName): array
     {
         if ($isDisguised) {
-            return [];
+            return [$this->detail('sea_area', '海域', $seaAreaName, null, $seaAreaName, 'public')];
         }
 
-        $details = [];
+        $details = [$this->detail('sea_area', '海域', $seaAreaName, null, $seaAreaName, 'public')];
         if ($cell->population > 0) {
             $details[] = $this->detail('population', '人口', $cell->population, '人', number_format($cell->population).'人', 'public');
         }

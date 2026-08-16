@@ -23,7 +23,7 @@ class RulesetImmutabilityTest extends TestCase
         $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
         $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();
         $target = RulesetVersion::query()->where('key', 'roadmap-pr7-v1')->firstOrFail();
-        $current = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v5')->firstOrFail();
+        $current = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v6')->firstOrFail();
         $sourceSnapshot = $source->settings;
         $sourceCommands = $this->commandSnapshot($source->id);
         $sourceProduction = $this->productionSnapshot($source->id);
@@ -92,7 +92,7 @@ class RulesetImmutabilityTest extends TestCase
         }
         $this->assertSame($source->id, $world->fresh()->ruleset_version_id);
 
-        $current = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v5')->firstOrFail();
+        $current = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v6')->firstOrFail();
         $world->update(['ruleset_version_id' => $current->id]);
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
         $wheat->update(['name' => 'drifted-name']);

@@ -23,7 +23,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '1.6.1';
+const applicationVersion = '1.7.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -43,7 +43,9 @@ const announcementErrors = ref<Record<string, string>>({});
 const nation = ref<Nation | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
-const page = ref<'home' | 'announcements' | 'island' | 'preview' | 'resources' | 'profile' | 'account' | 'credits'>('home');
+const page = ref<'home' | 'announcements' | 'island' | 'preview' | 'resources' | 'profile' | 'account' | 'credits'>(
+    window.location.pathname === '/credits' ? 'credits' : 'home',
+);
 const nationName = ref('');
 const nationOwnerName = ref('');
 const nationComment = ref('');
@@ -721,19 +723,16 @@ async function abandonNation(): Promise<void> {
             箱庭諸島<span>２S＋</span><small class="app-version">ver {{ applicationVersion }}</small>
         </a>
         <nav aria-label="主要ナビゲーション">
-            <button type="button" @click="page = 'home'">公開ロビー</button>
+            <button type="button" @click="page = 'home'">TOP</button>
             <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
-            <button v-if="nation" type="button" @click="page = 'resources'">資源方針</button>
+            <button v-if="nation" type="button" @click="page = 'resources'">資源売却</button>
             <button v-if="nation" type="button" @click="openProfile">プロフィール編集</button>
-            <button type="button" @click="page = 'credits'">クレジット</button>
             <a href="/manual">マニュアル</a>
-            <a href="/community-guidelines">利用ルール</a>
         </nav>
         <div class="session-actions">
             <template v-if="user">
                 <span>{{ user.display_name }}</span>
-                <button v-if="nation" type="button" @click="openOwnIsland">{{ nation.name }}</button>
-                <button v-else type="button" @click="page = 'home'">島を作る</button>
+                <button v-if="!nation" type="button" @click="page = 'home'">島を作る</button>
                 <button type="button" @click="page = 'account'">アカウント</button>
             </template>
             <template v-else>

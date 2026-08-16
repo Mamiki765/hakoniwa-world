@@ -7,6 +7,7 @@ use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\MissileTargetPolicy;
+use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
@@ -34,6 +35,9 @@ use Illuminate\Support\Facades\DB;
 
 final class CommandQueueService
 {
+    /** @var list<string> */
+    private const DANGEROUS_OWNER_OVERBUILD_EFFECTS = ['defense_self_destruct', 'monument_flight'];
+
     public function __construct(
         private readonly CommandParametersValidator $parameters,
         private readonly CurrentRulesetGuard $rulesetGuard,
@@ -104,6 +108,35 @@ final class CommandQueueService
             }
             $this->assertVersion($queue, $expectedVersion);
 
+            $activeItems = NationCommandQueueItem::query()
+                ->where('nation_command_queue_id', $queue->id)
+                ->where('status', 'queued')
+                ->orderBy('queue_position')
+                ->orderBy('id')
+                ->with('definition')
+                ->lockForUpdate()
+                ->get();
+            $limit = $this->queueLimit($world);
+            if ($activeItems->count() >= $limit) {
+                throw new PlayerFacingCommandException("command queueの上限{$limit}件に達しています。");
+            }
+            if ($activeItems->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position === null || $item->queue_position < 1 || $item->queue_position > $limit
+            )) {
+                $this->compact($queue);
+                $activeItems = NationCommandQueueItem::query()
+                    ->where('nation_command_queue_id', $queue->id)
+                    ->where('status', 'queued')
+                    ->orderBy('queue_position')
+                    ->orderBy('id')
+                    ->with('definition')
+                    ->lockForUpdate()
+                    ->get();
+            }
+            $position ??= $this->firstAutomaticPosition($activeItems->pluck('queue_position')->all(), $limit);
+            if ($position < 1 || $position > $limit) {
+                throw new PlayerFacingCommandException("挿入位置は1から{$limit}の範囲で指定してください。");
+            }
+
             // A queue item is a future plan. Registration proves only that the
             // coordinate and parameters are structurally valid; the locked
             // target state and assets are revalidated immediately before execution.
@@ -119,31 +152,25 @@ final class CommandQueueService
             }
             $parameters = $this->parameters->validate($schemas, $parameters);
             $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
-            $activeItems = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('status', 'queued')
-                ->orderBy('queue_position')
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get();
-            $limit = $this->queueLimit($world);
-            if ($activeItems->count() >= $limit) {
-                throw new PlayerFacingCommandException("command queueの上限{$limit}件に達しています。");
-            }
-            if ($activeItems->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position === null || $item->queue_position < 1 || $item->queue_position > $limit
-            )) {
-                $this->compact($queue);
-                $activeItems = NationCommandQueueItem::query()
-                    ->where('nation_command_queue_id', $queue->id)
-                    ->where('status', 'queued')
-                    ->orderBy('queue_position')
-                    ->orderBy('id')
-                    ->lockForUpdate()
-                    ->get();
-            }
-            $position ??= $this->firstAutomaticPosition($activeItems->pluck('queue_position')->all(), $limit);
-            if ($position < 1 || $position > $limit) {
-                throw new PlayerFacingCommandException("挿入位置は1から{$limit}の範囲で指定してください。");
+            $queue->setRelation('items', $activeItems);
+            $projectedTarget = $this->projectCellStateBeforePosition(
+                $target,
+                $queue,
+                $position,
+                $lockedNation,
+                $mapSpace,
+            );
+            $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effectForState(
+                $definition,
+                $lockedNation,
+                $projectedTarget,
+            );
+            if ($ownerOverbuildEffect === 'monument_flight') {
+                $targetNationId = $parameters['target_nation_id'] ?? null;
+                if (! is_int($targetNationId)) {
+                    throw new PlayerFacingCommandException('この位置への記念碑建設には対象島を選択してください。');
+                }
+                $this->nationTargets->validateMonumentFlightRegistration($lockedNation, $targetNationId);
             }
             $byPosition = $activeItems->keyBy(
                 static fn (NationCommandQueueItem $item): int => (int) $item->queue_position,
@@ -157,6 +184,32 @@ final class CommandQueueService
 
                 $shifted->push($byPosition->get($shiftPosition));
             }
+            $shiftedIds = array_fill_keys($shifted->modelKeys(), true);
+            $proposedItems = $activeItems->map(static function (NationCommandQueueItem $item) use ($shiftedIds): NationCommandQueueItem {
+                $proposed = clone $item;
+                if (isset($shiftedIds[$item->id])) {
+                    $proposed->queue_position = (int) $item->queue_position + 1;
+                }
+
+                return $proposed;
+            });
+            $proposedItem = new NationCommandQueueItem([
+                'queue_position' => $position,
+                'target_x' => $targetX,
+                'target_y' => $targetY,
+                'quantity' => $quantity,
+                'parameters' => $parameters,
+                'status' => 'queued',
+            ]);
+            $proposedItem->setRelation('definition', $definition);
+            $proposedItems->push($proposedItem);
+            $this->assertNoNewDangerousOverbuildEffects(
+                $queue,
+                $activeItems,
+                $proposedItems,
+                $lockedNation,
+                $mapSpace,
+            );
             if ($shifted->isNotEmpty()) {
                 NationCommandQueueItem::query()->whereIn('id', $shifted->modelKeys())
                     ->update(['queue_position' => null]);
@@ -208,11 +261,15 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $currentIds = NationCommandQueueItem::query()
+            $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
+                ->orderBy('queue_position')
+                ->orderBy('id')
+                ->with('definition')
                 ->lockForUpdate()
-                ->pluck('id')
+                ->get();
+            $currentIds = $activeItems->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->sort()
                 ->values()
@@ -227,6 +284,20 @@ final class CommandQueueService
             if (collect($positions)->contains(static fn (mixed $position): bool => $position < 1 || $position > $limit)) {
                 throw new PlayerFacingCommandException("開発計画の位置は1から{$limit}の範囲で指定してください。");
             }
+            $placementsById = collect($placements)->keyBy('id');
+            $proposedItems = $activeItems->map(static function (NationCommandQueueItem $item) use ($placementsById): NationCommandQueueItem {
+                $proposed = clone $item;
+                $proposed->queue_position = (int) $placementsById->get($item->id)['position'];
+
+                return $proposed;
+            });
+            $this->assertNoNewDangerousOverbuildEffects(
+                $queue,
+                $activeItems,
+                $proposedItems,
+                $lockedNation,
+                MapSpace::query()->findOrFail($queue->map_space_id),
+            );
 
             if ($currentIds !== []) {
                 NationCommandQueueItem::query()->whereIn('id', $currentIds)
@@ -286,12 +357,15 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $current = NationCommandQueueItem::query()
+            $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
                 ->orderBy('queue_position')
+                ->orderBy('id')
+                ->with('definition')
                 ->lockForUpdate()
-                ->pluck('id')
+                ->get();
+            $current = $activeItems->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->all();
             $expected = $current;
@@ -301,6 +375,20 @@ final class CommandQueueService
             if ($expected !== $received) {
                 throw new PlayerFacingCommandException('reorder対象が現在のqueueと一致しません。');
             }
+            $positionsById = collect($orderedIds)->flip();
+            $proposedItems = $activeItems->map(static function (NationCommandQueueItem $item) use ($positionsById): NationCommandQueueItem {
+                $proposed = clone $item;
+                $proposed->queue_position = (int) $positionsById->get($item->id) + 1;
+
+                return $proposed;
+            });
+            $this->assertNoNewDangerousOverbuildEffects(
+                $queue,
+                $activeItems,
+                $proposedItems,
+                $lockedNation,
+                MapSpace::query()->findOrFail($queue->map_space_id),
+            );
 
             NationCommandQueueItem::query()->whereIn('id', $orderedIds)
                 ->update(['queue_position' => null]);
@@ -327,6 +415,30 @@ final class CommandQueueService
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
                 throw new PlayerFacingCommandException('取消できないcommandです。');
             }
+            $activeItems = NationCommandQueueItem::query()
+                ->where('nation_command_queue_id', $queue->id)
+                ->where('status', 'queued')
+                ->orderBy('queue_position')
+                ->orderBy('id')
+                ->with('definition')
+                ->lockForUpdate()
+                ->get();
+            $nextPosition = 1;
+            $proposedItems = $activeItems
+                ->reject(static fn (NationCommandQueueItem $activeItem): bool => $activeItem->id === $item->id)
+                ->map(static function (NationCommandQueueItem $activeItem) use (&$nextPosition): NationCommandQueueItem {
+                    $proposed = clone $activeItem;
+                    $proposed->queue_position = $nextPosition++;
+
+                    return $proposed;
+                })->values();
+            $this->assertNoNewDangerousOverbuildEffects(
+                $queue,
+                $activeItems,
+                $proposedItems,
+                $lockedNation,
+                MapSpace::query()->findOrFail($queue->map_space_id),
+            );
             $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
             $this->compact($queue);
             $queue->increment('version');
@@ -335,6 +447,294 @@ final class CommandQueueService
 
             return $queue;
         }, 3);
+    }
+
+    /**
+     * @return array{queue: NationCommandQueue, inserted_count: int, truncated_count: int, candidate_count: int, duplicate: bool}
+     */
+    public function bulkInsert(
+        User $user,
+        Nation $nation,
+        MapSpace $mapSpace,
+        string $action,
+        int $position,
+        string $requestKey,
+        int $expectedVersion,
+    ): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $action, $position, $requestKey, $expectedVersion): array {
+            $this->membership($user, $nation);
+            $this->assertMapSpace($nation, $mapSpace);
+            $world = $this->lockWorldForQueue($nation);
+            [$lockedNation, $membership] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
+            $this->assertMapSpace($lockedNation, $mapSpace);
+            $limit = $this->queueLimit($world);
+            if ($position < 1 || $position > $limit) {
+                throw new PlayerFacingCommandException("挿入位置は1から{$limit}の範囲で指定してください。");
+            }
+            if (! in_array($action, [
+                'clear_all', 'level_all', 'reclaim_clear_all', 'reclaim_level_all',
+            ], true)) {
+                throw new PlayerFacingCommandException('利用できない一括操作です。');
+            }
+
+            $queue = NationCommandQueue::query()->firstOrCreate(
+                ['nation_id' => $lockedNation->id],
+                ['map_space_id' => $mapSpace->id, 'version' => 1],
+            );
+            $queue = NationCommandQueue::query()->whereKey($queue->id)->lockForUpdate()->firstOrFail();
+            if ($queue->map_space_id !== $mapSpace->id) {
+                throw new DomainException('queueとmap spaceが一致しません。');
+            }
+
+            $firstDerivedRequestKey = $this->derivedBulkRequestKey($requestKey, 0);
+            $completedRequest = DB::table('nation_command_queue_bulk_requests')
+                ->where('nation_command_queue_id', $queue->id)
+                ->where('request_key', $requestKey)
+                ->first(['candidate_count', 'inserted_count', 'truncated_count']);
+            if ($completedRequest !== null) {
+                return [
+                    'queue' => $queue,
+                    'inserted_count' => (int) $completedRequest->inserted_count,
+                    'truncated_count' => (int) $completedRequest->truncated_count,
+                    'candidate_count' => (int) $completedRequest->candidate_count,
+                    'duplicate' => true,
+                ];
+            }
+            if (NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+                ->where('request_key', $firstDerivedRequestKey)->exists()) {
+                return [
+                    'queue' => $queue,
+                    'inserted_count' => 0,
+                    'truncated_count' => 0,
+                    'candidate_count' => 0,
+                    'duplicate' => true,
+                ];
+            }
+            $this->assertVersion($queue, $expectedVersion);
+
+            $commandKeys = match ($action) {
+                'clear_all' => ['land_clear'],
+                'level_all' => ['land_level'],
+                'reclaim_clear_all' => ['reclaim', 'land_clear'],
+                'reclaim_level_all' => ['reclaim', 'land_level'],
+            };
+            $definitions = CommandDefinition::query()
+                ->where('ruleset_version_id', $world->ruleset_version_id)
+                ->whereIn('key', array_values(array_unique($commandKeys)))
+                ->where('enabled', true)->get()->keyBy('key');
+            foreach (array_unique($commandKeys) as $commandKey) {
+                if (! $definitions->has($commandKey)) {
+                    throw new DomainException("Bulk command definition {$commandKey} is missing.");
+                }
+            }
+
+            $terrainKeys = str_starts_with($action, 'reclaim_')
+                ? ['shallow']
+                : ['wasteland', 'scorched'];
+            $cells = MapCell::query()->where('map_space_id', $mapSpace->id)
+                ->whereIn('terrain_definition_id', function ($query) use ($terrainKeys): void {
+                    $query->select('id')->from('terrain_definitions')->whereIn('key', $terrainKeys);
+                })
+                ->when(! str_starts_with($action, 'reclaim_'), fn ($query) => $query->where('owner_nation_id', $lockedNation->id))
+                ->orderBy('y')->orderBy('x')->lockForUpdate()->with(['terrain', 'facility'])->get();
+
+            $candidates = [];
+            foreach ($cells as $cell) {
+                if (str_starts_with($action, 'reclaim_')) {
+                    try {
+                        $this->validateTarget($lockedNation, $mapSpace, $definitions['reclaim'], $cell);
+                    } catch (PlayerFacingCommandException) {
+                        continue;
+                    }
+                }
+                foreach ($commandKeys as $commandKey) {
+                    $candidates[] = [
+                        'definition' => $definitions[$commandKey],
+                        'x' => (int) $cell->x,
+                        'y' => (int) $cell->y,
+                    ];
+                }
+            }
+            if ($candidates === []) {
+                $this->recordBulkRequest($queue, $requestKey, $action, $position, 0, 0, 0);
+
+                return [
+                    'queue' => $queue,
+                    'inserted_count' => 0,
+                    'truncated_count' => 0,
+                    'candidate_count' => 0,
+                    'duplicate' => false,
+                ];
+            }
+
+            $activeItems = NationCommandQueueItem::query()
+                ->where('nation_command_queue_id', $queue->id)->where('status', 'queued')
+                ->orderBy('queue_position')->orderBy('id')->with('definition')->lockForUpdate()->get();
+            $prefix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position < $position)->all();
+            $suffix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position >= $position)->all();
+            $generated = array_map(static fn (array $candidate): array => ['generated' => $candidate], $candidates);
+            $generatedCapacity = max(0, $limit - count($prefix));
+            $generatedToKeep = min(count($generated), $generatedCapacity);
+            if (str_starts_with($action, 'reclaim_')) {
+                $generatedToKeep -= $generatedToKeep % count($commandKeys);
+            }
+            $keptGenerated = array_slice($generated, 0, $generatedToKeep);
+            $keptSuffixCount = max(0, $limit - count($prefix) - count($keptGenerated));
+            $merged = [
+                ...array_map(static fn (NationCommandQueueItem $item): array => ['existing' => $item], $prefix),
+                ...$keptGenerated,
+                ...array_map(
+                    static fn (NationCommandQueueItem $item): array => ['existing' => $item],
+                    array_slice($suffix, 0, $keptSuffixCount),
+                ),
+            ];
+            $dropped = [
+                ...array_slice($generated, $generatedToKeep),
+                ...array_map(
+                    static fn (NationCommandQueueItem $item): array => ['existing' => $item],
+                    array_slice($suffix, $keptSuffixCount),
+                ),
+            ];
+            $kept = array_slice($merged, 0, $limit);
+            $this->assertNoNewDangerousOverbuildEffects(
+                $queue,
+                $activeItems,
+                $this->proposedBulkItems($kept),
+                $lockedNation,
+                $mapSpace,
+            );
+            if ($activeItems->isNotEmpty()) {
+                NationCommandQueueItem::query()->whereIn('id', $activeItems->modelKeys())->update(['queue_position' => null]);
+            }
+
+            $insertedCount = 0;
+            foreach ($kept as $index => $entry) {
+                $queuePosition = $index + 1;
+                if (isset($entry['existing'])) {
+                    NationCommandQueueItem::query()->whereKey($entry['existing']->id)
+                        ->update(['queue_position' => $queuePosition]);
+
+                    continue;
+                }
+                $candidate = $entry['generated'];
+                NationCommandQueueItem::query()->create([
+                    'nation_command_queue_id' => $queue->id,
+                    'command_definition_id' => $candidate['definition']->id,
+                    'queue_position' => $queuePosition,
+                    'target_x' => $candidate['x'],
+                    'target_y' => $candidate['y'],
+                    'quantity' => DevelopmentPlanQuantity::DEFAULT,
+                    'parameters' => (object) [],
+                    'status' => 'queued',
+                    'queued_by_membership_id' => $membership->id,
+                    'request_key' => $this->derivedBulkRequestKey($requestKey, $insertedCount),
+                    'queued_at' => now(),
+                    'failure_metadata' => [],
+                ]);
+                $insertedCount++;
+            }
+            foreach ($dropped as $entry) {
+                if (isset($entry['existing'])) {
+                    $entry['existing']->update([
+                        'status' => 'cancelled',
+                        'queue_position' => null,
+                        'cancelled_at' => now(),
+                    ]);
+                    $this->audit($user, 'command.cancelled', $entry['existing'], ['reason' => 'bulk_tail_truncated']);
+                }
+            }
+            $queue->increment('version');
+            $queue->refresh();
+            $this->audit($user, 'command.bulk_inserted', $queue, [
+                'action' => $action,
+                'position' => $position,
+                'candidate_count' => count($candidates),
+                'inserted_count' => $insertedCount,
+                'truncated_count' => count($dropped),
+            ]);
+            $this->recordBulkRequest(
+                $queue,
+                $requestKey,
+                $action,
+                $position,
+                count($candidates),
+                $insertedCount,
+                count($dropped),
+            );
+
+            return [
+                'queue' => $queue,
+                'inserted_count' => $insertedCount,
+                'truncated_count' => count($dropped),
+                'candidate_count' => count($candidates),
+                'duplicate' => false,
+            ];
+        }, 3);
+    }
+
+    /** @return array{queue: NationCommandQueue, deleted_count: int} */
+    public function cancelFromPosition(
+        User $user,
+        Nation $nation,
+        MapSpace $mapSpace,
+        int $position,
+        int $expectedVersion,
+    ): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $position, $expectedVersion): array {
+            $this->membership($user, $nation);
+            $this->assertMapSpace($nation, $mapSpace);
+            $world = $this->lockWorldForQueue($nation);
+            [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
+            $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
+            $this->assertVersion($queue, $expectedVersion);
+            $items = NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+                ->where('status', 'queued')->where('queue_position', '>=', $position)
+                ->orderBy('queue_position')->lockForUpdate()->get();
+            foreach ($items as $item) {
+                $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
+                $this->audit($user, 'command.cancelled', $item, ['reason' => 'cancel_from_position']);
+            }
+            if ($items->isNotEmpty()) {
+                $this->compact($queue);
+                $queue->increment('version');
+                $queue->refresh();
+            }
+
+            return ['queue' => $queue, 'deleted_count' => $items->count()];
+        }, 3);
+    }
+
+    private function derivedBulkRequestKey(string $requestKey, int $index): string
+    {
+        $hex = substr(hash('sha256', $requestKey.':'.$index), 0, 32);
+        $hex[12] = '5';
+        $hex[16] = dechex((hexdec($hex[16]) & 0x3) | 0x8);
+
+        return implode('-', [
+            substr($hex, 0, 8), substr($hex, 8, 4), substr($hex, 12, 4),
+            substr($hex, 16, 4), substr($hex, 20, 12),
+        ]);
+    }
+
+    private function recordBulkRequest(
+        NationCommandQueue $queue,
+        string $requestKey,
+        string $action,
+        int $position,
+        int $candidateCount,
+        int $insertedCount,
+        int $truncatedCount,
+    ): void {
+        DB::table('nation_command_queue_bulk_requests')->insert([
+            'nation_command_queue_id' => $queue->id,
+            'request_key' => $requestKey,
+            'action' => $action,
+            'position' => $position,
+            'candidate_count' => $candidateCount,
+            'inserted_count' => $insertedCount,
+            'truncated_count' => $truncatedCount,
+            'created_at' => now(),
+        ]);
     }
 
     public function queueFor(
@@ -372,10 +772,308 @@ final class CommandQueueService
         return $queue;
     }
 
+    /**
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
+     */
+    public function projectCellStateBeforePosition(
+        MapCell $cell,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+    ): array {
+        $state = [
+            'terrain_key' => $cell->terrain->key,
+            'facility_key' => $cell->facility?->key,
+            'owner_nation_id' => $cell->owner_nation_id,
+        ];
+
+        foreach ($queue->items as $item) {
+            if ($item->queue_position >= $beforePosition
+                || $item->target_x !== $cell->x
+                || $item->target_y !== $cell->y) {
+                continue;
+            }
+            $definition = $item->definition;
+            $matches = $definition->key === 'territory_expand'
+                ? $this->projectedTerritoryTargetMatches(
+                    $definition,
+                    $state,
+                    $cell,
+                    $queue,
+                    (int) $item->queue_position,
+                    $nation,
+                    $mapSpace,
+                )
+                : $this->projectedTargetMatches($definition, $state, $nation);
+            if (! $matches) {
+                continue;
+            }
+            $state = $this->applyProjectedResult($definition, $state, $nation);
+        }
+
+        return $state;
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    public function projectedTargetMatches(CommandDefinition $definition, array $state, Nation $nation): bool
+    {
+        if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
+            return false;
+        }
+        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $state['facility_key'])) {
+            return false;
+        }
+        if ($definition->requires_empty_facility && $state['facility_key'] !== null
+            && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'])
+            && $this->projectedOwnerOverbuildEffect($definition, $nation, $state) === null) {
+            return false;
+        }
+        if ($definition->target_facility_keys !== []
+            && ! in_array($state['facility_key'], $definition->target_facility_keys, true)) {
+            return false;
+        }
+        if ($definition->key === 'territory_expand') {
+            return $state['owner_nation_id'] === null;
+        }
+        if ($definition->key === 'excavate'
+            && in_array($state['terrain_key'], ['sea', 'shallow'], true)
+            && $state['facility_key'] !== null) {
+            return false;
+        }
+        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'excavate'], true)) {
+            return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
+        }
+
+        return $state['owner_nation_id'] === $nation->id;
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    public function projectedOwnerOverbuildEffect(
+        CommandDefinition $definition,
+        Nation $nation,
+        array $state,
+    ): ?string {
+        return OwnerFacilityOverbuildPolicy::effectForState($definition, $nation, $state);
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     */
+    public function projectedTerritoryTargetMatches(
+        CommandDefinition $definition,
+        array $state,
+        MapCell $cell,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+    ): bool {
+        $coordinates = (new GridCoordinate($cell->x, $cell->y))->neighborsWithin(
+            $mapSpace->min_x,
+            $mapSpace->max_x,
+            $mapSpace->min_y,
+            $mapSpace->max_y,
+        );
+        $neighbors = MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where(function ($query) use ($coordinates): void {
+                foreach ($coordinates as $coordinate) {
+                    $query->orWhere(fn ($pair) => $pair
+                        ->where('x', $coordinate->x)
+                        ->where('y', $coordinate->y));
+                }
+            })
+            ->with(['terrain', 'facility'])
+            ->get();
+        $adjacentActorTerritory = $neighbors->contains(function (MapCell $neighbor) use ($queue, $beforePosition, $nation, $mapSpace): bool {
+            $projected = $this->projectCellStateBeforePosition(
+                $neighbor,
+                $queue,
+                $beforePosition,
+                $nation,
+                $mapSpace,
+            );
+
+            return $projected['owner_nation_id'] === $nation->id;
+        });
+
+        try {
+            $this->validateTerritoryExpansionState(
+                $nation,
+                $mapSpace,
+                $definition,
+                $cell,
+                $state,
+                $adjacentActorTerritory,
+            );
+
+            return true;
+        } catch (DomainException) {
+            return false;
+        }
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
+     */
+    private function applyProjectedResult(CommandDefinition $definition, array $state, Nation $nation): array
+    {
+        $ownerOverbuildEffect = $this->projectedOwnerOverbuildEffect($definition, $nation, $state);
+        if ($ownerOverbuildEffect === 'defense_self_destruct') {
+            $state['terrain_key'] = 'sea';
+            $state['facility_key'] = null;
+
+            return $state;
+        }
+        if ($ownerOverbuildEffect === 'monument_flight') {
+            $state['terrain_key'] = 'wasteland';
+            $state['facility_key'] = null;
+
+            return $state;
+        }
+
+        if ($definition->key === 'reclaim') {
+            $state['terrain_key'] = $state['terrain_key'] === 'sea' ? 'shallow' : 'wasteland';
+            $state['owner_nation_id'] = $nation->id;
+        } elseif ($definition->key === 'excavate') {
+            $state['terrain_key'] = match ($state['terrain_key']) {
+                'sea' => 'sea',
+                'shallow' => 'sea',
+                'mountain' => 'wasteland',
+                default => 'shallow',
+            };
+            $state['facility_key'] = null;
+        } else {
+            if ($definition->result_terrain_key !== null) {
+                $state['terrain_key'] = $definition->result_terrain_key;
+            }
+            if ($definition->result_facility_key !== null) {
+                $state['facility_key'] = $definition->result_facility_key;
+            }
+        }
+
+        if (in_array($definition->key, ['land_clear', 'land_level', 'logging', 'plant_forest'], true)) {
+            $state['facility_key'] = null;
+        }
+        if ($definition->key === 'territory_expand') {
+            $state['owner_nation_id'] = $nation->id;
+        }
+
+        return $state;
+    }
+
+    /**
+     * @param  list<array{existing: NationCommandQueueItem}|array{generated: array{definition: CommandDefinition, x: int, y: int}}>  $entries
+     * @return Collection<int, NationCommandQueueItem>
+     */
+    private function proposedBulkItems(array $entries): Collection
+    {
+        $items = new Collection;
+        foreach ($entries as $index => $entry) {
+            if (isset($entry['existing'])) {
+                $item = clone $entry['existing'];
+            } else {
+                $candidate = $entry['generated'];
+                $item = new NationCommandQueueItem([
+                    'target_x' => $candidate['x'],
+                    'target_y' => $candidate['y'],
+                    'status' => 'queued',
+                ]);
+                $item->setRelation('definition', $candidate['definition']);
+            }
+            $item->queue_position = $index + 1;
+            $items->push($item);
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  Collection<int, NationCommandQueueItem>  $currentItems
+     * @param  Collection<int, NationCommandQueueItem>  $proposedItems
+     */
+    private function assertNoNewDangerousOverbuildEffects(
+        NationCommandQueue $queue,
+        Collection $currentItems,
+        Collection $proposedItems,
+        Nation $nation,
+        MapSpace $mapSpace,
+    ): void {
+        try {
+            $before = $this->projectedOwnerOverbuildEffectsByItem(
+                $queue,
+                $currentItems,
+                $nation,
+                $mapSpace,
+            );
+            $after = $this->projectedOwnerOverbuildEffectsByItem(
+                $queue,
+                $proposedItems,
+                $nation,
+                $mapSpace,
+            );
+            foreach ($after as $itemId => $effect) {
+                if (in_array($effect, self::DANGEROUS_OWNER_OVERBUILD_EFFECTS, true)
+                    && ($before[$itemId] ?? null) !== $effect) {
+                    throw new PlayerFacingCommandException(
+                        'この操作により既存commandが未確認の危険な上書き効果へ変わるため実行できません。対象commandを削除し、希望位置へ追加し直してください。',
+                    );
+                }
+            }
+        } finally {
+            $queue->setRelation('items', $currentItems);
+        }
+    }
+
+    /**
+     * @param  Collection<int, NationCommandQueueItem>  $items
+     * @return array<int, string|null>
+     */
+    private function projectedOwnerOverbuildEffectsByItem(
+        NationCommandQueue $queue,
+        Collection $items,
+        Nation $nation,
+        MapSpace $mapSpace,
+    ): array {
+        $queue->setRelation(
+            'items',
+            $items->sortBy(static fn (NationCommandQueueItem $item): int => (int) $item->queue_position)->values(),
+        );
+        $effects = [];
+        foreach ($queue->items as $item) {
+            if (! $item->exists) {
+                continue;
+            }
+            $item->loadMissing('definition');
+            $declaredEffect = $item->definition->metadata['owner_overbuild_effect'] ?? null;
+            if (! in_array($declaredEffect, self::DANGEROUS_OWNER_OVERBUILD_EFFECTS, true)) {
+                continue;
+            }
+            $cell = $this->targetCell($mapSpace, $item->target_x, $item->target_y);
+            $state = $this->projectCellStateBeforePosition(
+                $cell,
+                $queue,
+                (int) $item->queue_position,
+                $nation,
+                $mapSpace,
+            );
+            $effects[$item->id] = $this->projectedOwnerOverbuildEffect($item->definition, $nation, $state);
+        }
+
+        return $effects;
+    }
+
     public function validateTarget(Nation $nation, MapSpace $mapSpace, CommandDefinition $definition, MapCell $cell): void
     {
         $terrainKey = $cell->terrain->key;
         $facilityKey = $cell->facility?->key;
+        $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell);
         if ($definition->key === 'territory_expand') {
             $this->validateTerritoryExpansionState(
                 $nation,
@@ -399,7 +1097,8 @@ final class CommandQueueService
             throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
         }
         if ($definition->requires_empty_facility && $facilityKey !== null
-            && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey)) {
+            && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey)
+            && $ownerOverbuildEffect === null) {
             throw new PlayerFacingCommandException('施設のあるcellにはこのcommandをqueueへ追加できません。');
         }
         if ($definition->target_facility_keys !== [] && ! in_array($facilityKey, $definition->target_facility_keys, true)) {

@@ -121,7 +121,11 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.6.1');
+        expect(wrapper.find('.app-version').text()).toBe('ver 1.7.0');
+        expect(wrapper.find('.site-header nav').text()).toContain('TOP');
+        expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');
+        expect(wrapper.find('.site-header nav').text()).not.toContain('クレジット');
+        expect(wrapper.find('.site-header nav').text()).not.toContain('利用ルール');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
         expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
@@ -425,7 +429,7 @@ describe('application lobby and island entry', () => {
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mount(App);
         await flushPromises();
-        await wrapper.find('.session-actions button').trigger('click');
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
         const initialChunkCalls = privateChunkCalls;
 
@@ -741,7 +745,19 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        await wrapper.find('.session-actions button').trigger('click');
+        const headerNavigation = wrapper.find('.site-header nav').text();
+        expect(headerNavigation).toContain('TOP');
+        expect(headerNavigation).toContain('自島へ');
+        expect(headerNavigation).toContain('資源売却');
+        expect(headerNavigation).toContain('プロフィール編集');
+        expect(headerNavigation).toContain('マニュアル');
+        expect(headerNavigation).not.toContain('クレジット');
+        expect(headerNavigation).not.toContain('利用ルール');
+        expect(wrapper.find('.session-actions').text()).toContain('Owner');
+        expect(wrapper.find('.session-actions').text()).toContain('アカウント');
+        expect(wrapper.find('.session-actions').text()).not.toContain('自島');
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
         expect(wrapper.find('.nation-hud').text()).toContain('62,728億円');
         expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
@@ -797,7 +813,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
 
-        const lobbyButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === '公開ロビー')!;
+        const lobbyButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === 'TOP')!;
         await lobbyButton.trigger('click');
         const ownRankingButton = wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('自島'))!;
         await ownRankingButton.trigger('click');

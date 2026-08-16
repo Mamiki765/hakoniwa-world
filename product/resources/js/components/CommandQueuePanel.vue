@@ -56,6 +56,7 @@ const editingItem = ref<CommandQueueItem | null>(null);
 const pendingQuantity = ref<number | null>(1);
 const editingQuantity = ref<number | null>(1);
 const commandParameters = ref<Record<string, number | null>>({});
+const confirmation = ref<{ message: string; confirmLabel: string; action: () => void } | null>(null);
 let refreshGeneration = 0;
 let activeRefreshController: AbortController | null = null;
 let refreshRequestedAfterMutation = false;
@@ -118,6 +119,21 @@ async function refresh(): Promise<void> {
 
 function chooseCommand(definition: CommandDefinition): void {
     if (!definition.available || (definition.target_type === 'cell' && props.selected === null)) return;
+    if (definition.confirmation_message) {
+        confirmation.value = {
+            message: definition.confirmation_message,
+            confirmLabel: '自爆を登録',
+            action: () => {
+                confirmation.value = null;
+                prepareCommand(definition);
+            },
+        };
+        return;
+    }
+    prepareCommand(definition);
+}
+
+function prepareCommand(definition: CommandDefinition): void {
     pendingQuantity.value = definition.quantity_default;
     commandParameters.value = Object.fromEntries(Object.entries(definition.parameters).map(([key, schema]) => [
         key,
@@ -129,6 +145,75 @@ function chooseCommand(definition: CommandDefinition): void {
     }
     pendingDefinition.value = null;
     void addCommand(definition, definition.quantity_default ?? quantityContract.value.default, {});
+}
+
+async function bulkInsert(action: 'clear_all' | 'level_all' | 'reclaim_clear_all' | 'reclaim_level_all'): Promise<void> {
+    if (busy.value) return;
+    const context = queueContext();
+    beginMutation();
+    try {
+        const result = await api<{
+            queue: CommandQueue;
+            inserted_count: number;
+            truncated_count: number;
+            candidate_count: number;
+        }>(`${basePath()}/command-queue/bulk`, {
+            method: 'POST',
+            body: JSON.stringify({
+                action,
+                position: selectedPosition.value,
+                request_key: crypto.randomUUID(),
+                expected_version: queue.value.version,
+            }),
+        });
+        if (!isCurrentQueueContext(context)) {
+            refreshRequestedAfterMutation = true;
+            return;
+        }
+        applyServerQueue(result.queue);
+        commandStatus.value = result.truncated_count > 0
+            ? { kind: 'success', text: `${result.inserted_count}件を登録し、31件目以降の${result.truncated_count}件を末尾から切り捨てました` }
+            : { kind: 'success', text: `${result.inserted_count}件を登録しました` };
+    } catch (error) {
+        if (!isCurrentQueueContext(context) || isAbortError(error)) refreshRequestedAfterMutation = true;
+        else handleMutationError(error);
+    } finally {
+        await finishMutation();
+    }
+}
+
+function confirmCancelFrom(): void {
+    confirmation.value = {
+        message: `開発計画の${selectedPosition.value}番以降をすべて削除します。この操作は元に戻せません。`,
+        confirmLabel: 'ここから下を削除',
+        action: () => {
+            confirmation.value = null;
+            void cancelFromSelected();
+        },
+    };
+}
+
+async function cancelFromSelected(): Promise<void> {
+    if (busy.value) return;
+    const context = queueContext();
+    beginMutation();
+    try {
+        const result = await api<{ queue: CommandQueue; deleted_count: number }>(`${basePath()}/command-queue/from`, {
+            method: 'DELETE',
+            body: JSON.stringify({ position: selectedPosition.value, expected_version: queue.value.version }),
+        });
+        if (!isCurrentQueueContext(context)) {
+            refreshRequestedAfterMutation = true;
+            return;
+        }
+        applyServerQueue(result.queue);
+        commandStatus.value = { kind: 'success', text: `${result.deleted_count}件を削除しました` };
+    } catch (error) {
+        if (!isCurrentQueueContext(context) || isAbortError(error)) refreshRequestedAfterMutation = true;
+        else handleMutationError(error);
+    } finally {
+        await finishMutation();
+    }
 }
 
 const parametersAreValid = computed(() => {
@@ -453,7 +538,7 @@ onBeforeUnmount(() => {
                                 class="nation-target-select"
                                 :required="schema.required && !schema.nullable"
                             >
-                                <option :value="null" disabled>対象島を選択してください</option>
+                                <option :value="null">対象島なし</option>
                                 <option v-for="option in schema.options" :key="option.value" :value="option.value">
                                     {{ option.label }} ({{ option.nation_number }})
                                 </option>
@@ -482,7 +567,12 @@ onBeforeUnmount(() => {
                             :title="definition.unavailable_reason ?? definition.description"
                             @click="chooseCommand(definition)"
                         >
-                            <strong>{{ definition.name }}</strong>
+                            <strong>
+                                {{ definition.name }}<span
+                                    v-if="definition.command_suffix"
+                                    :class="{ 'danger-suffix': definition.command_suffix_tone === 'danger' }"
+                                >{{ definition.command_suffix }}</span>
+                            </strong>
                             <span>{{ formatExactMoney(definition.cost_money) }}</span>
                             <span v-if="definition.initial_facility_capacity">初期 {{ definition.initial_facility_capacity.formatted }}</span>
                             <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
@@ -502,6 +592,13 @@ onBeforeUnmount(() => {
                         <h3>開発計画</h3>
                     </div>
                     <span>{{ queue.explicit_count }}件登録</span>
+                </div>
+                <div class="bulk-actions" aria-label="開発計画の一括操作">
+                    <button type="button" :disabled="busy" @click="bulkInsert('clear_all')">全て整地</button>
+                    <button type="button" :disabled="busy" @click="bulkInsert('level_all')">全て地ならし</button>
+                    <button type="button" :disabled="busy" @click="bulkInsert('reclaim_clear_all')">浅瀬全て埋め立て＋整地</button>
+                    <button type="button" :disabled="busy" @click="bulkInsert('reclaim_level_all')">浅瀬全て埋め立て＋地ならし</button>
+                    <button type="button" class="danger-action" :disabled="busy" @click="confirmCancelFrom">ここから下を削除</button>
                 </div>
                 <ol class="plan-list">
                     <li
@@ -524,6 +621,10 @@ onBeforeUnmount(() => {
                         <span class="plan-command">
                             <strong>
                                 {{ slot.command_name }}
+                                <span
+                                    v-if="slot.kind === 'explicit' && slot.command_suffix"
+                                    :class="{ 'danger-suffix': slot.command_suffix_tone === 'danger' }"
+                                >{{ slot.command_suffix }}</span>
                                 <template v-if="slot.kind === 'explicit' && slot.quantity_semantics === 'ordinary'"> ×{{ slot.quantity }}</template>
                                 <template v-else-if="slot.kind === 'explicit' && slot.quantity_semantics === 'selector'">（{{ slot.quantity_label }}）</template>
                             </strong>
@@ -555,5 +656,15 @@ onBeforeUnmount(() => {
                 </form>
             </div>
         </aside>
+        <div v-if="confirmation" class="command-modal-backdrop" role="presentation" @click.self="confirmation = null">
+            <section class="command-modal" role="alertdialog" aria-modal="true" aria-labelledby="command-confirmation-title">
+                <h3 id="command-confirmation-title">確認</h3>
+                <p>{{ confirmation.message }}</p>
+                <div class="popover-actions">
+                    <button type="button" @click="confirmation = null">キャンセル</button>
+                    <button type="button" class="danger-action" @click="confirmation.action">{{ confirmation.confirmLabel }}</button>
+                </div>
+            </section>
+        </div>
     </div>
 </template>

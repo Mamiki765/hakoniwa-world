@@ -842,6 +842,116 @@ describe('command plan workspace', () => {
         expect(wrapper.find('.plan-panel').classes()).not.toContain('mobile-peer-expanded');
     });
 
+    it('starts bulk insertion and delete-from-here at the selected position with explicit feedback', async () => {
+        let serverQueue = commandQueue(7, [], 30);
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path.endsWith('/command-queue/bulk') && init?.method === 'POST') {
+                serverQueue = commandQueue(8, [item(101, 5), item(102, 6)], 30);
+                return jsonResponse({
+                    queue: serverQueue,
+                    inserted_count: 2,
+                    truncated_count: 3,
+                    candidate_count: 5,
+                });
+            }
+            if (path.endsWith('/command-queue/from') && init?.method === 'DELETE') {
+                serverQueue = commandQueue(9, [], 30);
+                return jsonResponse({ queue: serverQueue, deleted_count: 2 });
+            }
+
+            return jsonResponse(path.includes('command-definitions') ? catalog([definition()]) : serverQueue);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        await wrapper.findAll('.plan-row')[4]!.trigger('click');
+        await flushPromises();
+        await wrapper.findAll('.bulk-actions button').find((button) => button.text() === '全て整地')!.trigger('click');
+        await flushPromises();
+
+        const bulk = fetchMock.mock.calls.find(([path, init]) => String(path).endsWith('/command-queue/bulk') && init?.method === 'POST');
+        expect(JSON.parse(String(bulk?.[1]?.body))).toMatchObject({
+            action: 'clear_all',
+            position: 5,
+            expected_version: 7,
+        });
+        expect(wrapper.get('.command-status').text()).toContain('31件目以降の3件を末尾から切り捨てました');
+
+        await wrapper.findAll('.bulk-actions button').find((button) => button.text() === 'ここから下を削除')!.trigger('click');
+        expect(wrapper.find('.command-modal').text()).toContain('5番以降をすべて削除');
+        expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/command-queue/from') && init?.method === 'DELETE')).toBe(false);
+        await wrapper.find('.command-modal .danger-action').trigger('click');
+        await flushPromises();
+
+        const deletion = fetchMock.mock.calls.find(([path, init]) => String(path).endsWith('/command-queue/from') && init?.method === 'DELETE');
+        expect(JSON.parse(String(deletion?.[1]?.body))).toEqual({ position: 5, expected_version: 8 });
+        expect(wrapper.get('.command-status').text()).toBe('2件を削除しました');
+    });
+
+    it('warns for the hidden defense variant and keeps the monument target optional', async () => {
+        const defense = definition({
+            key: 'build_defense_facility',
+            name: '防衛施設建設',
+            command_suffix: '（自爆）',
+            command_suffix_tone: 'danger',
+            confirmation_message: 'この位置に防衛施設を建設すると自爆します。',
+        });
+        const monument = definition({
+            key: 'build_monument',
+            name: '記念碑建設',
+            quantity_semantics: 'selector',
+            quantity_default: null,
+            quantity_options: [{ value: 1, key: 'peace', label: '平和記念碑' }],
+            parameters: {
+                target_nation_id: {
+                    label: '対象島',
+                    type: 'integer',
+                    input_semantics: 'nation_selector',
+                    options: [{ value: 42, label: '目標島', nation_number: 7 }],
+                    minimum: 1,
+                    maximum: 2_147_483_647,
+                    required: false,
+                    nullable: true,
+                },
+            },
+        });
+        const queued = item(1, 1, {
+            command_key: 'build_defense_facility',
+            command_name: '防衛施設建設',
+            command_suffix: '（自爆）',
+            command_suffix_tone: 'danger',
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                return jsonResponse({ queue: commandQueue(2, [queued], 30), message: '登録しました。' }, 201);
+            }
+
+            return jsonResponse(String(input).includes('command-definitions')
+                ? catalog([defense, monument])
+                : commandQueue(1, [queued], 30));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        const dangerLabels = wrapper.findAll('.danger-suffix');
+        expect(dangerLabels).toHaveLength(2);
+        expect(dangerLabels.every((label) => label.text() === '（自爆）')).toBe(true);
+        await wrapper.findAll('.command-grid button')[0]!.trigger('click');
+        expect(wrapper.find('.command-modal').text()).toContain('自爆');
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+        await wrapper.find('.command-modal .danger-action').trigger('click');
+        await flushPromises();
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true);
+
+        await wrapper.findAll('.command-grid button')[1]!.trigger('click');
+        expect(wrapper.find('.parameter-popover').exists()).toBe(true);
+        expect(wrapper.find('.nation-target-select').text()).toContain('対象島なし');
+        expect(wrapper.find('.nation-target-select').attributes('required')).toBeUndefined();
+    });
+
     it('ignores a successful stale refresh', async () => {
         let resolveOld!: (response: Response) => void;
         const old = new Promise<Response>((resolve) => { resolveOld = resolve; });

@@ -9,10 +9,8 @@ use App\Application\NationCommandTargetService;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\PlayerFacingCommandException;
-use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
-use App\Domain\Map\GridCoordinate;
 use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Models\CommandDefinition;
@@ -63,6 +61,16 @@ final class CommandQueueController extends Controller
                 ->orderBy('sort_order')
                 ->get()
                 ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions): array {
+                    $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
+                        $cell,
+                        $queue,
+                        $position,
+                        $nation,
+                        $mapSpace,
+                    );
+                    $ownerOverbuildEffect = $projected === null
+                        ? null
+                        : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                     $unavailableReason = null;
                     $projectedExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
@@ -70,17 +78,8 @@ final class CommandQueueController extends Controller
                             $service->validateTarget($nation, $mapSpace, $definition, $cell);
                         } catch (PlayerFacingCommandException $exception) {
                             $unavailableReason = $exception->getMessage();
-                            $projected = $this->projectedCellState(
-                                $service,
-                                $cell,
-                                $queue,
-                                $position,
-                                $nation,
-                                $mapSpace,
-                            );
                             $projectedExecutable = $definition->key === 'territory_expand'
-                                ? $this->matchesProjectedTerritoryTarget(
-                                    $service,
+                                ? $service->projectedTerritoryTargetMatches(
                                     $definition,
                                     $projected,
                                     $cell,
@@ -89,7 +88,7 @@ final class CommandQueueController extends Controller
                                     $nation,
                                     $mapSpace,
                                 )
-                                : $this->matchesProjectedTarget($definition, $projected, $nation);
+                                : $service->projectedTargetMatches($definition, $projected, $nation);
                         }
                     }
 
@@ -99,10 +98,19 @@ final class CommandQueueController extends Controller
                     $initialCapacity = $resultFacility?->initial_scale === null
                         ? null
                         : $capacities->describe($resultFacility, $capacities->initialScale($resultFacility));
-                    $requiresNationTarget = $this->nationTargets->requiresTarget($definition);
-                    $parameters = $this->nationTargets->presentParameters($definition, $nationTargetOptions);
+                    $requiresNationTarget = $this->nationTargets->requiresTarget($definition)
+                        || $ownerOverbuildEffect === 'monument_flight';
+                    $presentedTargetOptions = $ownerOverbuildEffect === 'monument_flight'
+                        ? $this->nationTargets->monumentFlightOptions($nation)
+                        : $nationTargetOptions;
+                    $parameters = $this->nationTargets->presentParameters($definition, $presentedTargetOptions);
+                    if ($ownerOverbuildEffect === 'monument_flight'
+                        && is_array($parameters['target_nation_id'] ?? null)) {
+                        $parameters['target_nation_id']['required'] = true;
+                        $parameters['target_nation_id']['nullable'] = false;
+                    }
                     $applicable = ($definition->target_type === 'nation' || $cell !== null)
-                        && (! $requiresNationTarget || $nationTargetOptions !== []);
+                        && (! $requiresNationTarget || $presentedTargetOptions !== []);
                     $shortfall = max(0, $definition->cost_money - $nation->money);
                     $warnings = [];
                     if ($projectedExecutable) {
@@ -117,6 +125,13 @@ final class CommandQueueController extends Controller
                     return [
                         'key' => $definition->key,
                         'name' => $this->ownerCommandName($definition),
+                        'command_suffix' => $ownerOverbuildEffect === 'defense_self_destruct'
+                            ? '（自爆）'
+                            : null,
+                        'command_suffix_tone' => $ownerOverbuildEffect === 'defense_self_destruct' ? 'danger' : null,
+                        'confirmation_message' => $ownerOverbuildEffect === 'defense_self_destruct'
+                            ? '防衛施設を自爆させます。周囲にも巨大隕石相当の被害が発生します。実行予定へ追加しますか？'
+                            : null,
                         'description' => $definition->description,
                         'target_type' => $definition->target_type,
                         'parameters' => $parameters === [] ? (object) [] : $parameters,
@@ -163,7 +178,10 @@ final class CommandQueueController extends Controller
     public function index(Request $request, Nation $nation, MapSpace $mapSpace, CommandQueueService $service): JsonResponse
     {
         try {
-            return response()->json(['data' => $this->serializeQueue($service->queueFor($request->user(), $nation, $mapSpace))]);
+            return response()->json(['data' => $this->serializeQueue(
+                $service->queueFor($request->user(), $nation, $mapSpace),
+                $service,
+            )]);
         } catch (DomainException $exception) {
             return $this->domainError($exception);
         }
@@ -204,7 +222,7 @@ final class CommandQueueController extends Controller
             );
 
             return response()->json(['data' => [
-                'queue' => $this->serializeQueue($this->loadQueue($result['queue'])),
+                'queue' => $this->serializeQueue($this->loadQueue($result['queue']), $service),
                 'item_id' => $result['item']->id,
                 'message' => '開発計画に登録されました。実行時に資金・資源・地形・施設・所有権・怪獣占有を再確認します。',
             ]], 201);
@@ -231,7 +249,66 @@ final class CommandQueueController extends Controller
                 ? $service->reposition($request->user(), $nation, $validated['placements'], $validated['expected_version'])
                 : $service->reorder($request->user(), $nation, $validated['ordered_ids'], $validated['expected_version']);
 
-            return response()->json(['data' => $this->serializeQueue($this->loadQueue($queue))]);
+            return response()->json(['data' => $this->serializeQueue($this->loadQueue($queue), $service)]);
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+    }
+
+    public function bulk(Request $request, Nation $nation, MapSpace $mapSpace, CommandQueueService $service): JsonResponse
+    {
+        $limit = $this->queueLimit($nation);
+        $validated = $request->validate([
+            'action' => ['required', 'string', 'in:clear_all,level_all,reclaim_clear_all,reclaim_level_all'],
+            'position' => ['required', 'integer', 'min:1', "max:{$limit}"],
+            'request_key' => ['required', 'uuid'],
+            'expected_version' => ['required', 'integer', 'min:1'],
+        ]);
+
+        try {
+            $result = $service->bulkInsert(
+                $request->user(),
+                $nation,
+                $mapSpace,
+                $validated['action'],
+                $validated['position'],
+                $validated['request_key'],
+                $validated['expected_version'],
+            );
+
+            return response()->json(['data' => [
+                'queue' => $this->serializeQueue($this->loadQueue($result['queue']), $service),
+                'inserted_count' => $result['inserted_count'],
+                'truncated_count' => $result['truncated_count'],
+                'candidate_count' => $result['candidate_count'],
+                'duplicate' => $result['duplicate'],
+            ]]);
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+    }
+
+    public function cancelFrom(Request $request, Nation $nation, MapSpace $mapSpace, CommandQueueService $service): JsonResponse
+    {
+        $limit = $this->queueLimit($nation);
+        $validated = $request->validate([
+            'position' => ['required', 'integer', 'min:1', "max:{$limit}"],
+            'expected_version' => ['required', 'integer', 'min:1'],
+        ]);
+
+        try {
+            $result = $service->cancelFromPosition(
+                $request->user(),
+                $nation,
+                $mapSpace,
+                $validated['position'],
+                $validated['expected_version'],
+            );
+
+            return response()->json(['data' => [
+                'queue' => $this->serializeQueue($this->loadQueue($result['queue']), $service),
+                'deleted_count' => $result['deleted_count'],
+            ]]);
         } catch (DomainException $exception) {
             return $this->domainError($exception);
         }
@@ -245,7 +322,7 @@ final class CommandQueueController extends Controller
             $service->queueFor($request->user(), $nation, $mapSpace, mutationPreflight: true);
             $queue = $service->cancel($request->user(), $nation, $item, $validated['expected_version']);
 
-            return response()->json(['data' => $this->serializeQueue($this->loadQueue($queue))]);
+            return response()->json(['data' => $this->serializeQueue($this->loadQueue($queue), $service)]);
         } catch (DomainException $exception) {
             return $this->domainError($exception);
         }
@@ -274,32 +351,56 @@ final class CommandQueueController extends Controller
                 $validated['expected_version'],
             );
 
-            return response()->json(['data' => $this->serializeQueue($this->loadQueue($queue))]);
+            return response()->json(['data' => $this->serializeQueue($this->loadQueue($queue), $service)]);
         } catch (DomainException $exception) {
             return $this->domainError($exception);
         }
     }
 
     /** @return array<string, mixed> */
-    private function serializeQueue(NationCommandQueue $queue): array
+    private function serializeQueue(NationCommandQueue $queue, CommandQueueService $service): array
     {
+        $nation = $queue->nation()->firstOrFail();
+        $mapSpace = MapSpace::query()->findOrFail($queue->map_space_id);
         $items = $this->legacyOrder->project($queue->items)
-            ->map(fn (NationCommandQueueItem $item): array => [
-                'id' => $item->id,
-                'command_key' => $item->definition->key,
-                'command_name' => $this->ownerCommandName($item->definition),
-                'queue_position' => $item->queue_position,
-                'target_x' => $item->target_x,
-                'target_y' => $item->target_y,
-                'quantity' => $item->quantity,
-                'quantity_semantics' => $this->quantitySemantics->for($item->definition),
-                'quantity_label' => $this->quantitySemantics->label($item->definition, $item->quantity),
-                'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
-                'status' => $item->status,
-                'queued_at' => $item->queued_at?->toIso8601String(),
-            ])->values();
+            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace): array {
+                $cell = MapCell::query()->where('map_space_id', $queue->map_space_id)
+                    ->where('x', $item->target_x)->where('y', $item->target_y)
+                    ->with(['terrain', 'facility'])->first();
+                $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
+                    $cell,
+                    $queue,
+                    (int) $item->queue_position,
+                    $nation,
+                    $mapSpace,
+                );
+                $effect = $projected === null
+                    ? null
+                    : $service->projectedOwnerOverbuildEffect($item->definition, $nation, $projected);
+                $targetNationId = $item->parameters['target_nation_id'] ?? null;
+                $targetName = is_int($targetNationId) ? Nation::query()->whereKey($targetNationId)->value('name') : null;
+
+                return [
+                    'id' => $item->id,
+                    'command_key' => $item->definition->key,
+                    'command_name' => $this->ownerCommandName($item->definition),
+                    'command_suffix' => $effect === 'defense_self_destruct'
+                        ? '（自爆）'
+                        : ($effect === 'monument_flight' && is_string($targetName) ? "（{$targetName}）" : null),
+                    'command_suffix_tone' => $effect === 'defense_self_destruct' ? 'danger' : null,
+                    'queue_position' => $item->queue_position,
+                    'target_x' => $item->target_x,
+                    'target_y' => $item->target_y,
+                    'quantity' => $item->quantity,
+                    'quantity_semantics' => $this->quantitySemantics->for($item->definition),
+                    'quantity_label' => $this->quantitySemantics->label($item->definition, $item->quantity),
+                    'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
+                    'status' => $item->status,
+                    'queued_at' => $item->queued_at?->toIso8601String(),
+                ];
+            })->values();
         $byPosition = $items->keyBy('queue_position');
-        $limit = $this->queueLimit($queue->nation()->firstOrFail());
+        $limit = $this->queueLimit($nation);
         $plan = collect(range(1, $limit))->map(static function (int $position) use ($byPosition): array {
             $item = $byPosition->get($position);
             if ($item === null) {
@@ -347,180 +448,6 @@ final class CommandQueueController extends Controller
         $settings = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
 
         return CommandQueueLimit::fromRulesetSettings($settings);
-    }
-
-    /**
-     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
-     */
-    private function projectedCellState(
-        CommandQueueService $service,
-        MapCell $cell,
-        NationCommandQueue $queue,
-        int $beforePosition,
-        Nation $nation,
-        MapSpace $mapSpace,
-    ): array {
-        $state = [
-            'terrain_key' => $cell->terrain->key,
-            'facility_key' => $cell->facility?->key,
-            'owner_nation_id' => $cell->owner_nation_id,
-        ];
-
-        foreach ($queue->items as $item) {
-            if ($item->queue_position >= $beforePosition
-                || $item->target_x !== $cell->x
-                || $item->target_y !== $cell->y) {
-                continue;
-            }
-            $definition = $item->definition;
-            $matches = $definition->key === 'territory_expand'
-                ? $this->matchesProjectedTerritoryTarget(
-                    $service,
-                    $definition,
-                    $state,
-                    $cell,
-                    $queue,
-                    (int) $item->queue_position,
-                    $nation,
-                    $mapSpace,
-                )
-                : $this->matchesProjectedTarget($definition, $state, $nation);
-            if (! $matches) {
-                continue;
-            }
-            $state = $this->applyProjectedResult($definition, $state, $nation);
-        }
-
-        return $state;
-    }
-
-    /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
-     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
-     */
-    private function applyProjectedResult(CommandDefinition $definition, array $state, Nation $nation): array
-    {
-        if ($definition->key === 'reclaim') {
-            $state['terrain_key'] = $state['terrain_key'] === 'sea' ? 'shallow' : 'wasteland';
-            $state['owner_nation_id'] = $nation->id;
-        } elseif ($definition->key === 'excavate') {
-            $state['terrain_key'] = match ($state['terrain_key']) {
-                'sea' => 'sea',
-                'shallow' => 'sea',
-                'mountain' => 'wasteland',
-                default => 'shallow',
-            };
-            $state['facility_key'] = null;
-        } else {
-            if ($definition->result_terrain_key !== null) {
-                $state['terrain_key'] = $definition->result_terrain_key;
-            }
-            if ($definition->result_facility_key !== null) {
-                $state['facility_key'] = $definition->result_facility_key;
-            }
-        }
-
-        if (in_array($definition->key, ['land_clear', 'land_level', 'logging', 'plant_forest'], true)) {
-            $state['facility_key'] = null;
-        }
-        if ($definition->key === 'territory_expand') {
-            $state['owner_nation_id'] = $nation->id;
-        }
-
-        return $state;
-    }
-
-    /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
-     */
-    private function matchesProjectedTarget(CommandDefinition $definition, array $state, Nation $nation): bool
-    {
-        if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
-            return false;
-        }
-        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $state['facility_key'])) {
-            return false;
-        }
-        if ($definition->requires_empty_facility && $state['facility_key'] !== null
-            && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'])) {
-            return false;
-        }
-        if ($definition->target_facility_keys !== []
-            && ! in_array($state['facility_key'], $definition->target_facility_keys, true)) {
-            return false;
-        }
-        if ($definition->key === 'territory_expand') {
-            return $state['owner_nation_id'] === null;
-        }
-        if ($definition->key === 'excavate'
-            && in_array($state['terrain_key'], ['sea', 'shallow'], true)
-            && $state['facility_key'] !== null) {
-            return false;
-        }
-        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'excavate'], true)) {
-            return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
-        }
-
-        return $state['owner_nation_id'] === $nation->id;
-    }
-
-    /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
-     */
-    private function matchesProjectedTerritoryTarget(
-        CommandQueueService $service,
-        CommandDefinition $definition,
-        array $state,
-        MapCell $cell,
-        NationCommandQueue $queue,
-        int $beforePosition,
-        Nation $nation,
-        MapSpace $mapSpace,
-    ): bool {
-        $coordinates = (new GridCoordinate($cell->x, $cell->y))->neighborsWithin(
-            $mapSpace->min_x,
-            $mapSpace->max_x,
-            $mapSpace->min_y,
-            $mapSpace->max_y,
-        );
-        $neighbors = MapCell::query()
-            ->where('map_space_id', $mapSpace->id)
-            ->where(function ($query) use ($coordinates): void {
-                foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair
-                        ->where('x', $coordinate->x)
-                        ->where('y', $coordinate->y));
-                }
-            })
-            ->with(['terrain', 'facility'])
-            ->get();
-        $adjacentActorTerritory = $neighbors->contains(function (MapCell $neighbor) use ($service, $queue, $beforePosition, $nation, $mapSpace): bool {
-            $projected = $this->projectedCellState(
-                $service,
-                $neighbor,
-                $queue,
-                $beforePosition,
-                $nation,
-                $mapSpace,
-            );
-
-            return $projected['owner_nation_id'] === $nation->id;
-        });
-
-        try {
-            $service->validateTerritoryExpansionState(
-                $nation,
-                $mapSpace,
-                $definition,
-                $cell,
-                $state,
-                $adjacentActorTerritory,
-            );
-
-            return true;
-        } catch (DomainException) {
-            return false;
-        }
     }
 
     private function domainError(DomainException $exception): JsonResponse

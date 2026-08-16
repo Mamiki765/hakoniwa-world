@@ -26,9 +26,9 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertFalse(Schema::hasColumn('nations', 'moderation_suspended_at'));
 
         $v1 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v1')->firstOrFail();
-        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v5')->firstOrFail();
+        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v6')->firstOrFail();
         $previous = RulesetVersion::query()->where('key', 'roadmap-pr22-v1')->firstOrFail();
-        $this->assertSame('hakoniwa-2s-plus-v5', config('hakoniwa.ruleset.key'));
+        $this->assertSame('hakoniwa-2s-plus-v6', config('hakoniwa.ruleset.key'));
         $this->assertEquals(config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1'), $v1->settings);
         $this->assertEquals(
             config('hakoniwa.published_rulesets.roadmap-pr22-v1'),
@@ -160,12 +160,24 @@ final class FirstProductionReleaseTest extends TestCase
         $this->withoutVite();
         config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
 
-        $this->get('/manual')->assertOk()->assertSee('箱庭諸島２S＋マニュアル');
+        $this->get('/manual')->assertOk()
+            ->assertSee('箱庭諸島２S＋マニュアル')
+            ->assertSee('href="/credits"', false)
+            ->assertSee('href="/community-guidelines"', false);
         $this->get('/manual/beginner')->assertOk()
-            ->assertSee('食料と資源')
-            ->assertSee('工業品・鉱物');
-        $this->get('/manual/intermediate')->assertOk()->assertSee('ミサイル');
-        $this->get('/manual/advanced')->assertOk()->assertSee('地盤沈下');
+            ->assertSee('人口と食料')
+            ->assertSee('資源売却')
+            ->assertSee('指定数を残して売却')
+            ->assertSee('小麦は「すべて売却」を選べません')
+            ->assertSee('工業品：1,000ユニット')
+            ->assertSee('鉱物：1,000トン');
+        $this->get('/manual/intermediate')->assertOk()
+            ->assertSee('ミサイル')
+            ->assertSee('領土拡張')
+            ->assertSee('浅瀬全て埋め立て＋整地');
+        $this->get('/manual/advanced')->assertOk()
+            ->assertSee('地盤沈下')
+            ->assertSee('島の破棄');
         $this->get('/community-guidelines')->assertOk()
             ->assertSee('利用ルール')
             ->assertSee('通報・異議申立て窓口を開く');
@@ -174,6 +186,7 @@ final class FirstProductionReleaseTest extends TestCase
             $manual = file_get_contents($path);
             $this->assertIsString($manual);
             $this->assertDoesNotMatchRegularExpression('/\b(?:source|legacy|ruleset)\b/i', $manual);
+            $this->assertDoesNotMatchRegularExpression('/自爆|飛翔|とてつもない|Karma/i', $manual);
         }
     }
 }

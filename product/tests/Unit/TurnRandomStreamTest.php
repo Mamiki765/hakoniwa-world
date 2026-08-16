@@ -48,6 +48,20 @@ class TurnRandomStreamTest extends TestCase
         );
     }
 
+    public function test_monument_flight_center_draw_is_retry_stable_isolated_and_bounded_to_exactly_256_candidates(): void
+    {
+        $label = TurnRandomStreamFactory::monumentFlight(42);
+        $first = new TurnRandomStreamFactory(self::MASTER_SEED);
+        $first->stream(TurnRandomStreamFactory::DEVELOPMENT_NATION_ORDER)->integer(0, 999);
+        $firstDraw = $first->stream($label)->integer(0, 255);
+        $retryDraw = (new TurnRandomStreamFactory(self::MASTER_SEED))->stream($label)->integer(0, 255);
+
+        $this->assertSame($firstDraw, $retryDraw);
+        $this->assertGreaterThanOrEqual(0, $firstDraw);
+        $this->assertLessThan(256, $firstDraw);
+        $this->assertNotSame($label, TurnRandomStreamFactory::monumentFlight(43));
+    }
+
     public function test_fixed_seed_and_label_vector_is_stable(): void
     {
         $factory = new TurnRandomStreamFactory(self::MASTER_SEED);

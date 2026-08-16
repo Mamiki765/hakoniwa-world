@@ -40,6 +40,228 @@ class DomesticCommandExecutionTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
+    public function test_v6_owner_facility_overbuilds_reuse_huge_meteor_damage_and_keep_source_metadata_private(): void
+    {
+        $world = $this->lightweightWorld();
+        [$firingUser, $firing] = $this->createNation($world, '発射国');
+        [, $target] = $this->createNation($world, '目標国');
+        $firing->update(['money' => 30_000]);
+        $space = $this->surfaceMapSpace($world);
+        $states = app(MapCellStateService::class);
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+
+        $defenseCell = MapCell::query()->where('map_space_id', $space->id)->where('x', 1)->where('y', 1)
+            ->with(['terrain', 'facility'])->firstOrFail();
+        $monumentCell = MapCell::query()->where('map_space_id', $space->id)->where('x', 10)->where('y', 10)
+            ->with(['terrain', 'facility'])->firstOrFail();
+        foreach ([$defenseCell, $monumentCell] as $cell) {
+            $states->transitionTerrain($cell, $plain);
+            $cell->owner_nation_id = $firing->id;
+            $cell->population = 0;
+        }
+        $states->setFacility($defenseCell, FacilityDefinition::query()->where('key', 'defense')->firstOrFail());
+        $defenseCell->save();
+        $states->setFacility($monumentCell, FacilityDefinition::query()->where('key', 'monument')->firstOrFail());
+        $monumentCell->monument_definition_id = MonumentDefinition::query()->where('key', 'prosperity')->valueOrFail('id');
+        $monumentCell->save();
+
+        $targetCapitalCell = MapCell::query()->where('map_space_id', $space->id)->where('x', 20)->where('y', 20)
+            ->with(['terrain', 'facility'])->firstOrFail();
+        $states->transitionTerrain($targetCapitalCell, $plain);
+        $states->setFacility($targetCapitalCell, FacilityDefinition::query()->where('key', 'capital')->firstOrFail());
+        $targetCapitalCell->owner_nation_id = $target->id;
+        $targetCapitalCell->population = 10_000;
+        $targetCapitalCell->save();
+        $target->capital()->update([
+            'map_cell_id' => $targetCapitalCell->id,
+            'x' => $targetCapitalCell->x,
+            'y' => $targetCapitalCell->y,
+        ]);
+
+        $defenseItem = $this->queue($firingUser, $firing, $space, 'build_defense_facility', $defenseCell);
+        $first = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            [$firing->id, $target->id],
+            hash('sha256', 'v6 defense self destruct'),
+            targetTurn: 2,
+        ));
+        $this->assertSame(1, $first['successes']);
+        $this->assertSame('completed', $defenseItem->fresh()->status);
+        $this->assertNull($defenseCell->fresh()->facility_definition_id);
+        $defenseEvent = DB::table('audit_events')->where('event_type', 'disaster.triggered')
+            ->whereRaw("metadata->>'source_queue_item_id' = ?", [(string) $defenseItem->id])->firstOrFail();
+        $defenseMetadata = json_decode($defenseEvent->metadata, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('player_command', $defenseMetadata['trigger']);
+
+        $monumentItem = $this->queue(
+            $firingUser,
+            $firing,
+            $space,
+            'build_monument',
+            $monumentCell,
+            (int) MonumentDefinition::query()->where('key', 'prosperity')->valueOrFail('id'),
+            parameters: ['target_nation_id' => $target->id],
+        );
+        $moneyBeforeFlight = (int) $firing->fresh()->money;
+        $monumentSeed = hash('sha256', 'v6 monument flight');
+        $second = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            [$firing->id, $target->id],
+            $monumentSeed,
+            targetTurn: 3,
+        ));
+        $this->assertSame(1, $second['successes']);
+        $this->assertSame($moneyBeforeFlight - 9_999, $firing->fresh()->money);
+        $this->assertSame('wasteland', $monumentCell->fresh()->terrain()->value('key'));
+        $this->assertNull($monumentCell->fresh()->facility_definition_id);
+        $impact = DB::table('audit_events')->where('event_type', 'disaster.triggered')
+            ->whereRaw("metadata->>'source_queue_item_id' = ?", [(string) $monumentItem->id])->firstOrFail();
+        $impactMetadata = json_decode($impact->metadata, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($firing->id, $impactMetadata['firing_nation_id']);
+        $this->assertSame($target->id, $impactMetadata['target_nation_id']);
+        $this->assertArrayHasKey('damaged_nation_ids', $impactMetadata);
+        $expectedIndex = (new TurnRandomStreamFactory($monumentSeed))
+            ->stream(TurnRandomStreamFactory::monumentFlight($monumentItem->id))->integer(0, 255);
+        $this->assertSame(16 + ($expectedIndex % 16), $impactMetadata['center_x']);
+        $this->assertSame(16 + intdiv($expectedIndex, 16), $impactMetadata['center_y']);
+        $this->assertArrayNotHasKey('source_x', $impactMetadata);
+        $this->assertArrayNotHasKey('source_y', $impactMetadata);
+
+        $world->update(['current_turn' => 3]);
+        $messages = collect(app(PlayerIslandEventService::class)->publicNationPage($target, 1)['groups'])
+            ->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
+        $this->assertContains('何かとてつもないものが落ちてきました！', $messages);
+        $this->assertNotContains("{$monumentCell->x},{$monumentCell->y}", $messages);
+    }
+
+    public function test_v5_defense_overbuild_remains_a_failed_plan_without_self_destruct(): void
+    {
+        $this->useRulesetAsCurrent('hakoniwa-2s-plus-v5');
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'v5防衛国');
+        $space = $this->surfaceMapSpace($world);
+        $cell = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'defense')->firstOrFail(),
+        );
+        $cell->save();
+        $item = $this->queue($user, $nation, $space, 'build_defense_facility', $cell);
+
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'v5 defense overbuild'),
+        ));
+
+        $this->assertSame(1, $result['failures']);
+        $this->assertSame('facility_exists', $item->fresh()->failure_code);
+        $this->assertSame('defense', $cell->fresh()->facility()->value('key'));
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'disaster.triggered')
+            ->whereRaw("metadata->>'source_queue_item_id' = ?", [(string) $item->id])->count());
+    }
+
+    public function test_monument_flight_revalidates_target_nation_before_charging_or_destroying_source(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '飛翔再確認国');
+        [, $target] = $this->createNation($world, '飛翔休眠国');
+        $nation->update(['money' => 12_000]);
+        $space = $this->surfaceMapSpace($world);
+        $source = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $source,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $source,
+            FacilityDefinition::query()->where('key', 'monument')->firstOrFail(),
+        );
+        $source->monument_definition_id = MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $source->save();
+        $item = $this->queue(
+            $user,
+            $nation,
+            $space,
+            'build_monument',
+            $source,
+            (int) $source->monument_definition_id,
+            parameters: ['target_nation_id' => $target->id],
+        );
+        $moneyBefore = (int) $nation->money;
+        $target->update(['state' => 'dormant_frozen']);
+
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'monument target invalidated'),
+        ));
+
+        $this->assertSame(1, $result['failures']);
+        $this->assertSame('invalid_target_nation', $item->fresh()->failure_code);
+        $this->assertSame($moneyBefore, $nation->fresh()->money);
+        $this->assertSame('monument', $source->fresh()->facility()->value('key'));
+        $this->assertSame('plain', $source->fresh()->terrain()->value('key'));
+    }
+
+    public function test_monument_flight_revalidates_partial_edge_capital_chunk_before_charging(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'edge-flight-source');
+        [, $target] = $this->createNation($world, 'edge-flight-target');
+        $nation->update(['money' => 12_000]);
+        $space = $this->surfaceMapSpace($world);
+        $completeCapitalCell = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->where('chunk_x', 1)
+            ->where('chunk_y', 1)
+            ->whereNotIn('id', DB::table('nation_capitals')->select('map_cell_id'))
+            ->orderBy('id')
+            ->firstOrFail();
+        $target->capital()->update([
+            'map_cell_id' => $completeCapitalCell->id,
+            'x' => $completeCapitalCell->x,
+            'y' => $completeCapitalCell->y,
+        ]);
+        $source = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->where('x', '<=', 30)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->firstOrFail();
+        $state = app(MapCellStateService::class);
+        $state->transitionTerrain($source, TerrainDefinition::query()->where('key', 'plain')->firstOrFail());
+        $state->setFacility($source, FacilityDefinition::query()->where('key', 'monument')->firstOrFail());
+        $source->monument_definition_id = MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $source->save();
+        $item = $this->queue(
+            $user,
+            $nation,
+            $space,
+            'build_monument',
+            $source,
+            (int) $source->monument_definition_id,
+            parameters: ['target_nation_id' => $target->id],
+        );
+        $moneyBefore = (int) $nation->fresh()->money;
+        $space->update(['max_x' => 30]);
+
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'monument edge capital invalidated'),
+        ));
+
+        $this->assertSame(1, $result['failures']);
+        $this->assertSame('invalid_target_nation', $item->fresh()->failure_code);
+        $this->assertSame($moneyBefore, $nation->fresh()->money);
+        $this->assertSame('monument', $source->fresh()->facility()->value('key'));
+        $this->assertSame('plain', $source->fresh()->terrain()->value('key'));
+    }
+
     public function test_domestic_commands_revalidate_mutate_queue_and_honor_turn_consumption(): void
     {
         $world = $this->lightweightWorld();
@@ -1155,6 +1377,7 @@ class DomesticCommandExecutionTest extends TestCase
         MapCell $target,
         int $quantity = 1,
         ?int $position = null,
+        array $parameters = [],
     ): NationCommandQueueItem {
         $queue = NationCommandQueue::query()->firstOrCreate(
             ['nation_id' => $nation->id],
@@ -1173,7 +1396,7 @@ class DomesticCommandExecutionTest extends TestCase
             'target_x' => $target->x,
             'target_y' => $target->y,
             'quantity' => $quantity,
-            'parameters' => [],
+            'parameters' => $parameters,
             'status' => 'queued',
             'queued_by_membership_id' => $membership->id,
             'request_key' => (string) Str::uuid(),

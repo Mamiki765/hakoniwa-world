@@ -322,6 +322,16 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .command-grid .shortfall { grid-column: 1 / -1; color: var(--coral-dark); }
 
 .plan-heading { align-items: center; padding: 0 3px 10px; }
+.bulk-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 0 3px 10px; }
+.bulk-actions button { min-height: 34px; padding: 5px 7px; border: 1px solid var(--line); background: white; color: var(--ink); font-size: .7rem; font-weight: 700; cursor: pointer; }
+.bulk-actions button:disabled { cursor: not-allowed; opacity: .53; }
+.bulk-actions .danger-action { grid-column: 1 / -1; }
+.danger-suffix { color: #a42019 !important; font-weight: 900; }
+.danger-action { border-color: #a42019 !important; background: #fff1ef !important; color: #8e1812 !important; font-weight: 900; }
+.command-modal-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(8, 21, 29, .58); }
+.command-modal { width: min(460px, 100%); padding: 20px; border: 2px solid #a42019; background: var(--paper); box-shadow: 0 18px 60px rgba(0, 0, 0, .3); }
+.command-modal h3 { margin: 0 0 10px; }
+.command-modal p { line-height: 1.65; }
 .plan-list { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 3px; margin: 0; padding: 0 3px 10px; list-style: none; overscroll-behavior: contain; }
 .plan-row {
     position: relative;

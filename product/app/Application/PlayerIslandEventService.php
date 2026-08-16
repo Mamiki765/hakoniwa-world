@@ -53,6 +53,7 @@ final class PlayerIslandEventService
         'command.decoy_built_private',
         'command.logging_private',
         'command.capital_relocated',
+        'command.monument_launched',
         'command.attraction_started',
         'command.money_aid_transferred',
         'command.money_aid_received',
@@ -124,6 +125,7 @@ final class PlayerIslandEventService
         'command.seabed_base_built_private',
         'command.decoy_built_private',
         'command.logging_private',
+        'command.monument_launched',
         'command.monster_dispatched',
         'missile.launch_detail',
     ];
@@ -782,6 +784,8 @@ final class PlayerIslandEventService
             'typhoon' => "({$x},{$y})付近で台風の被害が出ています。",
             'meteor_shower' => "({$x},{$y})付近に流星群が降り注ぎました。",
             'huge_meteor' => "({$x},{$y})に巨大隕石が落下しました。",
+            'defense_self_destruct' => "({$x},{$y})で防衛施設が自爆しました。",
+            'monument_flight' => '何かとてつもないものが落ちてきました！',
             'eruption' => "({$x},{$y})で火山噴火、山ができました。",
             default => "({$x},{$y})付近で災害が発生しました。",
         };
@@ -1248,6 +1252,11 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'from_y')),
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
+            ),
+            'command.monument_launched' => sprintf(
+                '座標(%s,%s)の記念碑を対象Nationへ発射しました。',
+                number_format($this->integer($metadata, 'source_x')),
+                number_format($this->integer($metadata, 'source_y')),
             ),
             'command.attraction_started' => '誘致活動を開始しました。',
             'command.money_aid_transferred' => $this->moneyAidMessage($metadata, true),
@@ -1935,6 +1944,8 @@ final class PlayerIslandEventService
             'typhoon' => '台風',
             'meteor_shower' => '流星群',
             'huge_meteor' => '巨大隕石',
+            'defense_self_destruct' => '防衛施設の自爆',
+            'monument_flight' => 'とてつもない落下物',
             'eruption' => '噴火',
             'land_subsidence' => '地盤沈下',
             'fire' => '火災',
@@ -2095,7 +2106,7 @@ final class PlayerIslandEventService
             'land_subsidence.triggered', 'monster.spawned', 'monster.reward_distributed', 'award.granted',
             'settlement.appeared', 'settlement.stage_transitioned' => 'notable',
             'missile.launched', 'missile.impact', 'command.capital_relocated',
-            'command.capital_relocated_public' => 'notable',
+            'command.capital_relocated_public', 'command.monument_launched' => 'notable',
             default => 'info',
         };
     }

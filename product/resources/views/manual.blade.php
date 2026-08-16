@@ -11,6 +11,8 @@
     <header class="manual-header">
         <a href="/">箱庭諸島２S＋</a>
         <span>ゲームマニュアル</span>
+        <a href="/credits">クレジット</a>
+        <a href="/community-guidelines">利用ルール</a>
     </header>
     <div class="manual-layout">
         <nav aria-label="マニュアル目次">

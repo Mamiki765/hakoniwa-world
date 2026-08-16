@@ -267,6 +267,12 @@ final class MissileImpactResolver
             && in_array($missileKey, $resistance['ineffective_missile_keys'] ?? [], true)) {
             return [...$base, 'effect' => 'seabed_base_resisted'];
         }
+        $defenseResistance = $context->ruleset->settings['military']['defense_spp_resistance'] ?? null;
+        if (is_array($defenseResistance)
+            && $cell->facility?->key === ($defenseResistance['facility_key'] ?? null)
+            && in_array($missileKey, $defenseResistance['ineffective_missile_keys'] ?? [], true)) {
+            return [...$base, 'effect' => 'defense_resisted'];
+        }
 
         $occupancy = MonsterOccupancy::query()->where('map_cell_id', $cell->id)
             ->with('monster.definition')->lockForUpdate()->first();

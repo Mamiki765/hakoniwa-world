@@ -464,6 +464,13 @@ class PlayerIslandEventApiTest extends TestCase
         $this->audit('command.logging_private', $nation, $nation, 'private', 2, [
             'nation_name' => $nation->name, 'x' => 4, 'y' => 8, 'applied_money' => 777,
         ]);
+        $this->audit('command.monument_launched', $nation, $nation, 'nation', 2, [
+            'source_queue_item_id' => 987_654_321,
+            'firing_nation_id' => $nation->id,
+            'target_nation_id' => 123_456_789,
+            'source_x' => 6,
+            'source_y' => 9,
+        ]);
         $this->audit('resource.automatic_sale', $nation, $nation, 'nation', 2, [
             'resource_key' => 'minerals', 'sold' => 300, 'revenue' => 600,
         ]);
@@ -484,13 +491,14 @@ class PlayerIslandEventApiTest extends TestCase
                 static fn (string $message): bool => str_contains($message, $hidden),
             ));
         }
-        foreach (['turn.summary', 'resource.automatic_sale', 'metadata'] as $hidden) {
+        foreach (['turn.summary', 'resource.automatic_sale', 'command.monument_launched', '987654321', '123456789', 'metadata'] as $hidden) {
             $this->assertStringNotContainsString($hidden, $publicBody);
         }
 
         $owner = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
         $ownerMessages = $this->messages($owner->json('data.groups'));
         $this->assertContains('資産島(4,8)で伐採し、777億円を得ました。', $ownerMessages);
+        $this->assertContains('座標(6,9)の記念碑を対象Nationへ発射しました。', $ownerMessages);
         $this->assertContains('鉱物を300売却し、600億円を得ました。', $ownerMessages);
         $this->assertContains('第2ターンの資源変化', $ownerMessages);
         $this->assertTrue(collect($owner->json('data.groups.0.events'))->contains(
@@ -500,6 +508,13 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertFalse(collect($owner->json('data.groups.0.events'))->contains(
             static fn (array $event): bool => $event['type'] === 'command.logging_public',
         ));
+        $this->assertTrue(collect($owner->json('data.groups.0.events'))->contains(
+            static fn (array $event): bool => $event['type'] === 'command.monument_launched'
+                && $event['confidential'] === true,
+        ));
+        foreach (['987654321', '123456789', 'source_queue_item_id', 'target_nation_id', 'firing_nation_id'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, (string) $owner->getContent());
+        }
     }
 
     public function test_owner_log_hides_routine_turn_noise_but_keeps_summary_and_meaningful_results(): void

@@ -42,6 +42,97 @@ class CommandAndMissileTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
+    public function test_v6_spp_direct_hit_preserves_only_real_defense_and_other_missiles_keep_existing_damage(): void
+    {
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants();
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $target = MapCell::query()->where('owner_nation_id', $targetNation->id)
+            ->whereKeyNot($targetNation->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $target,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $target,
+            FacilityDefinition::query()->where('key', 'defense')->firstOrFail(),
+        );
+        $target->population = 0;
+        $target->save();
+        $snapshot = $target->fresh()->only([
+            'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population', 'version',
+        ]);
+
+        $defenseItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $target,
+        );
+        $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'v6 spp defense'), [$firing->id, $targetNation->id]),
+            $base,
+        );
+        $this->assertSame($snapshot, $target->fresh()->only(array_keys($snapshot)));
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $defenseItem->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('defense_resisted', $detail['impacts'][0]['effect']);
+
+        app(MapCellStateService::class)->setFacility(
+            $target,
+            FacilityDefinition::query()->where('key', 'decoy')->firstOrFail(),
+        );
+        $target->version++;
+        $target->save();
+        $decoyItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $target,
+        );
+        $this->resolveMissile(
+            $this->context($world, 3, hash('sha256', 'v6 spp decoy'), [$firing->id, $targetNation->id]),
+            $base->fresh(['terrain', 'facility']),
+        );
+        $this->assertNull($target->fresh()->facility_definition_id);
+        $decoyDetail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $decoyItem->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertNotSame('defense_resisted', $decoyDetail['impacts'][0]['effect']);
+
+        foreach ([
+            ['key' => 'missile', 'radius' => 2],
+            ['key' => 'pp_missile', 'radius' => 1],
+            ['key' => 'land_destruction_missile', 'radius' => 2],
+        ] as $index => $case) {
+            $target = $target->fresh(['terrain', 'facility', 'ownerNation']);
+            app(MapCellStateService::class)->transitionTerrain(
+                $target,
+                TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+            );
+            app(MapCellStateService::class)->setFacility(
+                $target,
+                FacilityDefinition::query()->where('key', 'defense')->firstOrFail(),
+            );
+            $target->owner_nation_id = $targetNation->id;
+            $target->population = 0;
+            $target->version++;
+            $target->save();
+            $item = $this->queue(
+                app(CommandQueueService::class),
+                $firingUser,
+                $firing,
+                $space,
+                $case['key'],
+                $target->fresh(['terrain', 'facility', 'ownerNation']),
+            );
+            $seed = $this->seedForImpactIndex($item, $target, $case['radius'], $target);
+            $this->resolveMissile(
+                $this->context($world, 4 + $index, $seed, [$firing->id, $targetNation->id]),
+                $base->fresh(['terrain', 'facility']),
+            );
+            $this->assertNull(
+                $target->fresh()->facility_definition_id,
+                "{$case['key']} must retain its pre-v6 defense damage contract.",
+            );
+        }
+    }
+
     public function test_failed_command_continues_to_finance_and_idle_counter_changes_once_per_target_turn(): void
     {
         $world = $this->lightweightWorld();
@@ -247,7 +338,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v5', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v6', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -1239,7 +1330,11 @@ class CommandAndMissileTest extends TestCase
         );
         $public = app(MapCellPresenter::class)->present($base, null, 2);
         $this->assertNull($public['facility']);
-        $this->assertSame([], $public['details']);
+        $this->assertCount(1, $public['details']);
+        $this->assertSame(
+            'ペリドット海域',
+            collect($public['details'])->firstWhere('key', 'sea_area')['value'] ?? null,
+        );
     }
 
     public function test_land_missile_base_also_gains_h2_plus_settlement_experience(): void
