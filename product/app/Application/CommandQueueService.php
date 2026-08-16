@@ -384,8 +384,12 @@ final class CommandQueueService
             }
 
             $firstDerivedRequestKey = $this->derivedBulkRequestKey($requestKey, 0);
-            if (NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
-                ->where('request_key', $firstDerivedRequestKey)->exists()) {
+            if (DB::table('nation_command_queue_bulk_requests')
+                ->where('nation_command_queue_id', $queue->id)
+                ->where('request_key', $requestKey)
+                ->exists()
+                || NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+                    ->where('request_key', $firstDerivedRequestKey)->exists()) {
                 return [
                     'queue' => $queue,
                     'inserted_count' => 0,
@@ -440,6 +444,8 @@ final class CommandQueueService
                 }
             }
             if ($candidates === []) {
+                $this->recordBulkRequest($queue, $requestKey, $action, $position, 0, 0, 0);
+
                 return [
                     'queue' => $queue,
                     'inserted_count' => 0,
@@ -511,6 +517,15 @@ final class CommandQueueService
                 'inserted_count' => $insertedCount,
                 'truncated_count' => count($dropped),
             ]);
+            $this->recordBulkRequest(
+                $queue,
+                $requestKey,
+                $action,
+                $position,
+                count($candidates),
+                $insertedCount,
+                count($dropped),
+            );
 
             return [
                 'queue' => $queue,
@@ -563,6 +578,27 @@ final class CommandQueueService
         return implode('-', [
             substr($hex, 0, 8), substr($hex, 8, 4), substr($hex, 12, 4),
             substr($hex, 16, 4), substr($hex, 20, 12),
+        ]);
+    }
+
+    private function recordBulkRequest(
+        NationCommandQueue $queue,
+        string $requestKey,
+        string $action,
+        int $position,
+        int $candidateCount,
+        int $insertedCount,
+        int $truncatedCount,
+    ): void {
+        DB::table('nation_command_queue_bulk_requests')->insert([
+            'nation_command_queue_id' => $queue->id,
+            'request_key' => $requestKey,
+            'action' => $action,
+            'position' => $position,
+            'candidate_count' => $candidateCount,
+            'inserted_count' => $insertedCount,
+            'truncated_count' => $truncatedCount,
+            'created_at' => now(),
         ]);
     }
 

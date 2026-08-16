@@ -33,7 +33,7 @@ final class NationCommandTargetService
         $targets = $this->selectableQuery($sender)
             ->orderBy('nation_number')
             ->orderBy('id')
-            ->get(['id', 'name', 'nation_number'])
+            ->get(['id', 'world_id', 'name', 'nation_number'])
             ->filter(fn (Nation $target): bool => $this->hasCompleteCapitalChunk($target));
 
         return $this->presentOptions($targets);

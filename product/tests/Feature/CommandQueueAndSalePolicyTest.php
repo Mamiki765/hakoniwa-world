@@ -174,6 +174,61 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->distinct()->count('queue_position'));
     }
 
+    public function test_zero_candidate_bulk_request_remains_a_no_op_after_the_map_changes(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('一括ゼロ件国');
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $wasteland = TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+        $state = app(MapCellStateService::class);
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with('terrain')->get() as $cell) {
+            $state->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue/bulk";
+        $requestKey = (string) Str::uuid();
+
+        $this->actingAs($user)->postJson($path, [
+            'action' => 'clear_all',
+            'position' => 1,
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+        ])->assertOk()
+            ->assertJsonPath('data.candidate_count', 0)
+            ->assertJsonPath('data.inserted_count', 0)
+            ->assertJsonPath('data.duplicate', false)
+            ->assertJsonPath('data.queue.version', 1);
+        $this->assertDatabaseHas('nation_command_queue_bulk_requests', [
+            'request_key' => $requestKey,
+            'candidate_count' => 0,
+            'inserted_count' => 0,
+        ]);
+
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->orderBy('id')->firstOrFail();
+        $state->transitionTerrain($target, $wasteland);
+        $target->save();
+
+        $this->postJson($path, [
+            'action' => 'clear_all',
+            'position' => 1,
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+        ])->assertOk()
+            ->assertJsonPath('data.duplicate', true)
+            ->assertJsonPath('data.queue.version', 1);
+        $this->assertSame(0, NationCommandQueueItem::query()->count());
+
+        $this->postJson($path, [
+            'action' => 'clear_all',
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertOk()
+            ->assertJsonPath('data.inserted_count', 1)
+            ->assertJsonPath('data.queue.version', 2);
+    }
+
     public function test_bulk_reclaim_pairs_keep_deterministic_per_cell_clear_and_level_order(): void
     {
         [$user, $nation, $mapSpace] = $this->nation('一括浅瀬国');
@@ -297,6 +352,10 @@ class CommandQueueAndSalePolicyTest extends TestCase
         )->assertOk()->json('data.commands'))->firstWhere('key', 'build_monument');
         $this->assertTrue($flightDefinition['parameters']['target_nation_id']['required']);
         $this->assertFalse($flightDefinition['parameters']['target_nation_id']['nullable']);
+        $this->assertContains(
+            $targetNation->id,
+            collect($flightDefinition['parameters']['target_nation_id']['options'])->pluck('value')->all(),
+        );
         $this->postJson($queuePath, [
             'command_key' => 'build_monument',
             'target_x' => $monumentCell->x,
