@@ -554,6 +554,101 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertDatabaseCount('nation_command_queue_items', 3);
     }
 
+    public function test_queue_mutations_reject_new_unconfirmed_dangerous_overbuild_effects(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('危険上書き変更拒否国');
+        $nation->update(['money' => 40_000]);
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $cells);
+        [$defenseCell, $monumentCell] = $cells->all();
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $state = app(MapCellStateService::class);
+        foreach ($cells as $cell) {
+            $state->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        $state->setFacility(
+            $monumentCell,
+            FacilityDefinition::query()->where('key', 'monument')->firstOrFail(),
+        );
+        $monumentId = (int) MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $monumentCell->monument_definition_id = $monumentId;
+        $monumentCell->save();
+
+        $queuePath = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $guardMessage = 'この操作により既存commandが未確認の危険な上書き効果へ変わるため実行できません。対象commandを削除し、希望位置へ追加し直してください。';
+        $firstDefenseId = $this->actingAs($owner)->postJson($queuePath, [
+            'command_key' => 'build_defense_facility',
+            'target_x' => $defenseCell->x,
+            'target_y' => $defenseCell->y,
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated()->json('data.item_id');
+
+        $this->postJson($queuePath, [
+            'command_key' => 'build_defense_facility',
+            'target_x' => $defenseCell->x,
+            'target_y' => $defenseCell->y,
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.command.0', $guardMessage);
+        $this->assertSame([1], NationCommandQueueItem::query()->orderBy('queue_position')->pluck('queue_position')->all());
+
+        $secondDefenseId = $this->postJson($queuePath, [
+            'command_key' => 'build_defense_facility',
+            'target_x' => $defenseCell->x,
+            'target_y' => $defenseCell->y,
+            'position' => 2,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertCreated()->json('data.item_id');
+        $this->putJson($queuePath.'/reorder', [
+            'placements' => [
+                ['id' => $firstDefenseId, 'position' => 2],
+                ['id' => $secondDefenseId, 'position' => 1],
+            ],
+            'expected_version' => 3,
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.command.0', $guardMessage);
+        $this->putJson($queuePath.'/reorder', [
+            'ordered_ids' => [$secondDefenseId, $firstDefenseId],
+            'expected_version' => 3,
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.command.0', $guardMessage);
+
+        $landClearId = $this->postJson($queuePath, [
+            'command_key' => 'land_clear',
+            'target_x' => $monumentCell->x,
+            'target_y' => $monumentCell->y,
+            'position' => 3,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+        ])->assertCreated()->json('data.item_id');
+        $this->postJson($queuePath, [
+            'command_key' => 'build_monument',
+            'target_x' => $monumentCell->x,
+            'target_y' => $monumentCell->y,
+            'quantity' => $monumentId,
+            'position' => 4,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 4,
+        ])->assertCreated();
+        $this->deleteJson($queuePath."/{$landClearId}", [
+            'expected_version' => 5,
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.command.0', $guardMessage);
+
+        $this->assertSame(
+            [1, 2, 3, 4],
+            NationCommandQueueItem::query()->where('status', 'queued')->orderBy('queue_position')->pluck('queue_position')->all(),
+        );
+        $this->assertSame(5, (int) DB::table('nation_command_queues')->value('version'));
+    }
+
     public function test_monument_flight_rejects_partial_edge_capital_chunk_before_queueing(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('edge-chunk-flight-source');
