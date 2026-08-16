@@ -159,6 +159,9 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 1,
         ])->assertOk()
             ->assertJsonPath('data.duplicate', true)
+            ->assertJsonPath('data.candidate_count', 35)
+            ->assertJsonPath('data.inserted_count', 30)
+            ->assertJsonPath('data.truncated_count', 5)
             ->assertJsonPath('data.queue.version', 2);
         $this->postJson($path.'/bulk', [
             'action' => 'clear_all',
@@ -290,6 +293,82 @@ class CommandQueueAndSalePolicyTest extends TestCase
                     ->assertOk()->assertJsonPath('data.deleted_count', 4);
             }
         }
+    }
+
+    public function test_bulk_reclaim_pair_is_not_split_when_only_one_queue_slot_remains(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('一括埋立上限国');
+        $candidateCoordinates = collect();
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)->orderBy('y')->orderBy('x')->get() as $owned) {
+            foreach ((new GridCoordinate($owned->x, $owned->y))->neighborsWithin(
+                $mapSpace->min_x,
+                $mapSpace->max_x,
+                $mapSpace->min_y,
+                $mapSpace->max_y,
+            ) as $coordinate) {
+                $candidate = MapCell::query()->where('map_space_id', $mapSpace->id)
+                    ->where('x', $coordinate->x)->where('y', $coordinate->y)
+                    ->whereNull('owner_nation_id')->whereNull('facility_definition_id')->first();
+                if ($candidate !== null) {
+                    $candidateCoordinates->put("{$candidate->x}:{$candidate->y}", $candidate);
+                }
+            }
+        }
+        $target = $candidateCoordinates->values()->sortBy([['y', 'asc'], ['x', 'asc']])->first();
+        $this->assertInstanceOf(MapCell::class, $target);
+        $sea = TerrainDefinition::query()->where('key', 'sea')->firstOrFail();
+        foreach ($candidateCoordinates as $cell) {
+            app(MapCellStateService::class)->transitionTerrain($cell, $sea);
+            $cell->save();
+        }
+        app(MapCellStateService::class)->transitionTerrain(
+            $target,
+            TerrainDefinition::query()->where('key', 'shallow')->firstOrFail(),
+        );
+        $target->save();
+
+        $queue = NationCommandQueue::query()->create([
+            'nation_id' => $nation->id,
+            'map_space_id' => $mapSpace->id,
+            'version' => 1,
+        ]);
+        $finance = CommandDefinition::query()
+            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+            ->where('key', 'finance')->firstOrFail();
+        $membershipId = NationMembership::query()->where('nation_id', $nation->id)->valueOrFail('id');
+        foreach (range(1, 29) as $position) {
+            NationCommandQueueItem::query()->create([
+                'nation_command_queue_id' => $queue->id,
+                'command_definition_id' => $finance->id,
+                'queue_position' => $position,
+                'target_x' => 0,
+                'target_y' => 0,
+                'quantity' => 1,
+                'parameters' => (object) [],
+                'status' => 'queued',
+                'queued_by_membership_id' => $membershipId,
+                'request_key' => (string) Str::uuid(),
+                'queued_at' => now(),
+                'failure_metadata' => [],
+            ]);
+        }
+
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue/bulk";
+        $this->actingAs($user)->postJson($path, [
+            'action' => 'reclaim_clear_all',
+            'position' => 30,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertOk()
+            ->assertJsonPath('data.candidate_count', 2)
+            ->assertJsonPath('data.inserted_count', 0)
+            ->assertJsonPath('data.truncated_count', 2)
+            ->assertJsonPath('data.queue.explicit_count', 29);
+        $this->assertSame(0, NationCommandQueueItem::query()
+            ->whereIn('command_definition_id', CommandDefinition::query()
+                ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+                ->whereIn('key', ['reclaim', 'land_clear'])->select('id'))
+            ->count());
     }
 
     public function test_v6_hidden_overbuild_preview_and_monument_target_contract_follow_projected_queue_state(): void

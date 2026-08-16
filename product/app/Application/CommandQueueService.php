@@ -384,12 +384,21 @@ final class CommandQueueService
             }
 
             $firstDerivedRequestKey = $this->derivedBulkRequestKey($requestKey, 0);
-            if (DB::table('nation_command_queue_bulk_requests')
+            $completedRequest = DB::table('nation_command_queue_bulk_requests')
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('request_key', $requestKey)
-                ->exists()
-                || NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
-                    ->where('request_key', $firstDerivedRequestKey)->exists()) {
+                ->first(['candidate_count', 'inserted_count', 'truncated_count']);
+            if ($completedRequest !== null) {
+                return [
+                    'queue' => $queue,
+                    'inserted_count' => (int) $completedRequest->inserted_count,
+                    'truncated_count' => (int) $completedRequest->truncated_count,
+                    'candidate_count' => (int) $completedRequest->candidate_count,
+                    'duplicate' => true,
+                ];
+            }
+            if (NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+                ->where('request_key', $firstDerivedRequestKey)->exists()) {
                 return [
                     'queue' => $queue,
                     'inserted_count' => 0,
@@ -461,13 +470,29 @@ final class CommandQueueService
             $prefix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position < $position)->all();
             $suffix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position >= $position)->all();
             $generated = array_map(static fn (array $candidate): array => ['generated' => $candidate], $candidates);
+            $generatedCapacity = max(0, $limit - count($prefix));
+            $generatedToKeep = min(count($generated), $generatedCapacity);
+            if (str_starts_with($action, 'reclaim_')) {
+                $generatedToKeep -= $generatedToKeep % count($commandKeys);
+            }
+            $keptGenerated = array_slice($generated, 0, $generatedToKeep);
+            $keptSuffixCount = max(0, $limit - count($prefix) - count($keptGenerated));
             $merged = [
                 ...array_map(static fn (NationCommandQueueItem $item): array => ['existing' => $item], $prefix),
-                ...$generated,
-                ...array_map(static fn (NationCommandQueueItem $item): array => ['existing' => $item], $suffix),
+                ...$keptGenerated,
+                ...array_map(
+                    static fn (NationCommandQueueItem $item): array => ['existing' => $item],
+                    array_slice($suffix, 0, $keptSuffixCount),
+                ),
+            ];
+            $dropped = [
+                ...array_slice($generated, $generatedToKeep),
+                ...array_map(
+                    static fn (NationCommandQueueItem $item): array => ['existing' => $item],
+                    array_slice($suffix, $keptSuffixCount),
+                ),
             ];
             $kept = array_slice($merged, 0, $limit);
-            $dropped = array_slice($merged, $limit);
             if ($activeItems->isNotEmpty()) {
                 NationCommandQueueItem::query()->whereIn('id', $activeItems->modelKeys())->update(['queue_position' => null]);
             }
