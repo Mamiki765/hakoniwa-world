@@ -8,11 +8,14 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\RulesetVersion;
+use App\Models\TurnRun;
 use App\Models\User;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -83,8 +86,52 @@ final class RulesetV7MigrationTest extends TestCase
         }
     }
 
+    public function test_v7_migration_rechecks_the_turn_guard_after_secretary_migration_succeeds(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        app(NationCreationService::class)->create($user, $world, 'v7再検証島', 'v7再検証島主');
+        $v6 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v6')->firstOrFail();
+        $world->update(['ruleset_version_id' => $v6->id]);
+        Schema::drop('secretary_skills');
+        Schema::drop('secretaries');
+        $this->secretaryMigration()->up();
+        $this->assertDatabaseHas('secretaries', ['user_id' => $user->id]);
+        $run = TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $world->current_turn + 1,
+            'ruleset_version_id' => $v6->id,
+            'random_seed' => str_repeat('7', 64),
+            'source' => 'cron',
+            'is_dry_run' => false,
+            'status' => TurnRun::STATUS_PENDING,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => ['preserve' => true],
+        ]);
+        $runBefore = $run->fresh()->getAttributes();
+
+        try {
+            $this->migration()->up();
+            $this->fail('Expected 030000 to recheck the unresolved next TurnRun guard.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Refusing v7 migration', $exception->getMessage());
+            $this->assertStringContainsString('status=pending', $exception->getMessage());
+        }
+
+        $this->assertSame($v6->id, $world->fresh()->ruleset_version_id);
+        $this->assertSame($runBefore, $run->fresh()->getAttributes());
+        $this->assertDatabaseHas('secretaries', ['user_id' => $user->id]);
+    }
+
     private function migration(): Migration
     {
         return require database_path('migrations/2026_08_16_030000_publish_hakoniwa_2s_plus_v7.php');
+    }
+
+    private function secretaryMigration(): Migration
+    {
+        return require database_path('migrations/2026_08_16_020000_create_secretary_system.php');
     }
 }

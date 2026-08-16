@@ -1,5 +1,6 @@
 <?php
 
+use App\Application\SecretaryV1MigrationSafetyGuard;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -17,16 +18,21 @@ return new class extends Migration
 
     public function up(): void
     {
-        $hasSecretaries = Schema::hasTable('secretaries');
-        $hasSkills = Schema::hasTable('secretary_skills');
-        if ($hasSecretaries !== $hasSkills) {
-            throw new RuntimeException('Secretary schema is only partially present; refusing an implicit repair.');
-        }
-        if (! $hasSecretaries) {
-            $this->createTables();
-        }
+        DB::transaction(function (): void {
+            app(SecretaryV1MigrationSafetyGuard::class)
+                ->lockAndAssertNoUnresolvedNextTurnRun('Secretary schema/backfill migration');
 
-        $this->backfillNationHistoryUsers();
+            $hasSecretaries = Schema::hasTable('secretaries');
+            $hasSkills = Schema::hasTable('secretary_skills');
+            if ($hasSecretaries !== $hasSkills) {
+                throw new RuntimeException('Secretary schema is only partially present; refusing an implicit repair.');
+            }
+            if (! $hasSecretaries) {
+                $this->createTables();
+            }
+
+            $this->backfillNationHistoryUsers();
+        });
     }
 
     private function createTables(): void

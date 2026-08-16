@@ -1,7 +1,7 @@
 <?php
 
 use App\Application\RulesetPublisher;
-use App\Models\TurnRun;
+use App\Application\SecretaryV1MigrationSafetyGuard;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
@@ -14,8 +14,6 @@ return new class extends Migration
     private const SOURCE_KEY = 'hakoniwa-2s-plus-v6';
 
     private const TARGET_KEY = 'hakoniwa-2s-plus-v7';
-
-    private const WORLD_KEY = 'shared-world';
 
     public function up(): void
     {
@@ -111,15 +109,10 @@ return new class extends Migration
 
     private function moveLiveReferences(int $fromRulesetId, int $toRulesetId): void
     {
-        $identity = DB::table('worlds')->where('key', self::WORLD_KEY)->first(['id', 'key']);
-        if ($identity === null) {
-            return;
-        }
-        $this->acquireWorldTurnMigrationLock($identity);
-        $world = DB::table('worlds')->where('id', $identity->id)->lockForUpdate()
-            ->first(['id', 'key', 'current_turn', 'ruleset_version_id']);
+        $world = app(SecretaryV1MigrationSafetyGuard::class)
+            ->lockAndAssertNoUnresolvedNextTurnRun('v7 migration');
         if ($world === null) {
-            throw new RuntimeException('shared-world disappeared while acquiring the migration lock.');
+            return;
         }
         if (! in_array((int) $world->ruleset_version_id, [$fromRulesetId, $toRulesetId], true)) {
             throw new RuntimeException('shared-world is attached to an unexpected ruleset; refusing an implicit v7 migration.');
@@ -141,7 +134,6 @@ return new class extends Migration
             return;
         }
 
-        $this->assertNoUnresolvedNextTurnRun($world);
         $this->assertLiveReferencesUseRuleset((int) $world->id, $fromRulesetId, 'before migration');
         $this->assertNoKillStatCollisions((int) $world->id, $fromRulesetId, $toRulesetId);
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' DEFERRED');
@@ -202,35 +194,6 @@ SQL, [$toRulesetId, $world->id, $fromRulesetId]);
         $this->assertTriggerEnabled('nation_monster_kill_stats', self::KILL_STAT_GUARD);
         $this->assertLiveReferencesUseRuleset((int) $world->id, $toRulesetId, 'after migration');
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' IMMEDIATE');
-    }
-
-    private function acquireWorldTurnMigrationLock(object $world): void
-    {
-        $lock = DB::selectOne(
-            'SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0)) AS acquired',
-            ["hakoniwa.turn.world.{$world->id}"],
-        );
-        if (! in_array($lock?->acquired, [true, 1, '1', 't'], true)) {
-            throw new RuntimeException(
-                "Refusing to migrate shared-world {$world->id} ({$world->key}) while a turn operation holds its advisory lock.",
-            );
-        }
-    }
-
-    private function assertNoUnresolvedNextTurnRun(object $world): void
-    {
-        DB::statement('LOCK TABLE turn_runs IN SHARE ROW EXCLUSIVE MODE');
-        $run = DB::table('turn_runs')->where('world_id', $world->id)
-            ->where('target_turn', (int) $world->current_turn + 1)
-            ->where('is_dry_run', false)
-            ->whereIn('status', TurnRun::UNRESOLVED_PRODUCTION_STATUSES)
-            ->orderBy('id')->first(['id', 'target_turn', 'status']);
-        if ($run !== null) {
-            throw new RuntimeException(
-                "Refusing v7 migration with unresolved non-dry TurnRun {$run->id}, "
-                ."target_turn={$run->target_turn}, status={$run->status}.",
-            );
-        }
     }
 
     private function assertDefinitionSetsMatch(string $table, int $fromRulesetId, int $toRulesetId): void
