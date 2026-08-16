@@ -62,6 +62,7 @@ final class PlayerIslandEventService
         'command.monster_dispatched',
         'missile.launch_failed',
         'missile.launch_detail',
+        'secretary.missile_intercepted',
         'refugee_received',
         'turn.summary',
     ];
@@ -1283,6 +1284,11 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'ineffective_impacts')),
             ),
             'missile.launch_detail' => $this->missileLaunchDetailMessage($metadata),
+            'secretary.missile_intercepted' => sprintf(
+                '%sが%sを最終防衛ラインで迎撃しました。',
+                $this->secretaryLabel($metadata),
+                $this->missileLabel($metadata['missile_key'] ?? null),
+            ),
             'missile.impact' => $this->missileImpactMessage($metadata),
             'refugee_generated' => sprintf(
                 'ミサイル被害により難民%s人が発生しました。',
@@ -1915,6 +1921,14 @@ final class PlayerIslandEventService
             'spp_missile' => 'SPPミサイル',
             default => 'ミサイル',
         };
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function secretaryLabel(array $metadata): string
+    {
+        $label = $metadata['secretary_label'] ?? null;
+
+        return is_string($label) && $label !== '' ? $label : '秘書';
     }
 
     private function missileEffectLabel(mixed $effect): string

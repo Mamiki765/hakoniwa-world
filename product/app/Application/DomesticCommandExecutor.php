@@ -14,6 +14,7 @@ use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\CommandDefinition;
@@ -139,6 +140,7 @@ final class DomesticCommandExecutor
                     $executionCost,
                 );
                 $after = $this->cellSnapshot($cell->fresh(['terrain', 'facility']));
+                $this->awardSecretaryDevelopmentExperience($context, $nation->id, $definition->key);
 
                 $consumedTurn = (bool) ($definition->metadata['consumes_turn'] ?? true);
                 $remainingQuantity = $item->quantity;
@@ -210,6 +212,25 @@ final class DomesticCommandExecutor
         }
 
         return $metrics;
+    }
+
+    private function awardSecretaryDevelopmentExperience(
+        TurnContext $context,
+        int $nationId,
+        string $commandKey,
+    ): void {
+        if (! $context->state->hasSecretarySnapshot($nationId)) {
+            return;
+        }
+        $skillKey = match ($commandKey) {
+            'build_farm' => SecretarySkillCatalog::AGRICULTURAL_POLICY,
+            'build_factory' => SecretarySkillCatalog::SPECIALTY_DEVELOPMENT,
+            'build_mine' => SecretarySkillCatalog::GOLD_VEIN_SURVEY,
+            default => null,
+        };
+        if ($skillKey !== null) {
+            $context->state->awardSecretaryExperience($nationId, $skillKey);
+        }
     }
 
     /**

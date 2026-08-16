@@ -402,6 +402,13 @@
 - Decision: owner本人が手動破棄した後、同じUserは同じWorldへ通常のNation作成経路から別の新しいNationを登録できる。旧Nationはphysical deleteせず`abandoned`として歴史を保持し、旧membershipを終了する。新規登録は新しいrequest keyと新しいNation numberを使い、historical creation requestを保持する。将来、島をまたいで保持するゲーム上のデータはAccount/Userに紐づく「秘書」側の永続データとして扱い、Nation AからNation Bへ直接移送しない。この将来境界はsecretary/account gameplay schema、item、proficiency、turn反映、bonus、ranking・award引き継ぎ、保護期間を今回決定または実装するものではない。
 - Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`
 
+### SECRETARY-01 User永続Secretary v1
+
+- Status: Decided
+- Implemented: ver 2.0.0でUser永続Secretary、命名、4 passive skill、turn attempt batch load、transactional XP、ruleset v7、forward migrationを実装する。
+- Decision: SecretaryはNationではなくUserへ1:1で所属し、最初のNation登録成功時にidempotentに作成する。abandon/re-registerを跨いで同じ状態を保持する。production migrationはactive/abandonedを問わずNation登録履歴のあるUserだけをbackfillし、履歴のないUserは将来の初回登録成功まで作成しない。命名前も効果とXPを有効にし、v1の詳細gameplay contractはADR-0011を正本とする。
+- Decision record: `docs/decisions/ADR-0010-product-generations-and-2x-identity.md`、`docs/decisions/ADR-0011-secretary-v1-contract.md`、`docs/roadmap/2.x.md`
+
 ### D-01 scheduler・queue基盤
 
 - Status: Decided

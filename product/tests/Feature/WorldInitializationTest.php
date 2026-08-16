@@ -100,7 +100,7 @@ class WorldInitializationTest extends TestCase
         $worldRuleset = $world->rulesetVersion()->firstOrFail();
 
         $this->assertSame($published->id, $worldRuleset->id);
-        $this->assertSame('hakoniwa-2s-plus-v6', $worldRuleset->key);
+        $this->assertSame('hakoniwa-2s-plus-v7', $worldRuleset->key);
         $this->assertSame($settingsFingerprint, hash('sha256', (string) $worldRuleset->getRawOriginal('settings')));
         $this->assertSame(59, $worldRuleset->settings['initial_x_max']);
         $this->assertSame(59, $worldRuleset->settings['initial_y_max']);

@@ -9,6 +9,8 @@ use App\Domain\Economy\SalePolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
+use App\Domain\Secretary\SecretaryProductionBonus;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnOrderService;
 use App\Domain\Turn\TurnPhaseResult;
@@ -57,6 +59,8 @@ final class CompleteTurnEngine
         private readonly MissileImpactResolver $missiles,
         private readonly AwardTurnFinalizer $awards,
         private readonly TerritoryInfluenceService $territoryInfluence,
+        private readonly SecretaryTurnService $secretaries,
+        private readonly SecretaryProductionBonus $secretaryProduction,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -92,7 +96,13 @@ final class CompleteTurnEngine
             $context->state->setNationStartSummary($nationId, $record['summary']);
         }
 
-        return ['nations' => count($nationIds), 'ruleset_validated' => true];
+        $secretarySnapshots = $this->secretaries->loadAttemptSnapshots($context, $nationIds);
+
+        return [
+            'nations' => count($nationIds),
+            'ruleset_validated' => true,
+            'secretary_snapshots' => $secretarySnapshots,
+        ];
     }
 
     /** @return array<string, int> */
@@ -164,6 +174,12 @@ final class CompleteTurnEngine
             $population = $aggregate['population'];
             $agriculturalWorkers = min($population, $aggregate['farm_capacity']);
             $wheatProduction = $agriculturalWorkers * $workforceRules['farm_output_per_worker'];
+            $wheatProduction = $this->secretaryProduction(
+                $context,
+                $nation->id,
+                SecretarySkillCatalog::AGRICULTURAL_POLICY,
+                $wheatProduction,
+            );
             $foodCredit = $this->boundedAssets->creditFood($nation, $wheat, $wheatProduction, $context->ruleset);
             $this->events->record($context, 'resource.food_produced', $nation, [
                 'resource_key' => 'wheat', 'population' => $population,
@@ -185,6 +201,18 @@ final class CompleteTurnEngine
             );
             $industrial = $allocation['factory'] * $workforceRules['factory_output_per_worker'];
             $minerals = $allocation['mine'] * $workforceRules['mine_output_per_worker'];
+            $industrial = $this->secretaryProduction(
+                $context,
+                $nation->id,
+                SecretarySkillCatalog::SPECIALTY_DEVELOPMENT,
+                $industrial,
+            );
+            $minerals = $this->secretaryProduction(
+                $context,
+                $nation->id,
+                SecretarySkillCatalog::GOLD_VEIN_SURVEY,
+                $minerals,
+            );
             $this->creditInventory(
                 $nation,
                 $this->resourceDefinition($resources, 'industrial_goods'),
@@ -622,6 +650,7 @@ final class CompleteTurnEngine
     /** @return array<string, int|bool> */
     private function finalizeTurn(TurnContext $context): array
     {
+        $secretaryMetrics = $this->secretaries->flushExperience($context);
         $awardMetrics = $this->awards->finalize($context);
         foreach ($this->summaryRecords($context->state->stableNationIds()) as $nationId => $record) {
             $nation = $record['nation'];
@@ -646,7 +675,32 @@ final class CompleteTurnEngine
             'phase_count' => count(TurnPipeline::CANONICAL_PHASE_KEYS),
         ]);
 
-        return ['completed' => true, 'target_turn' => $context->targetTurn, ...$awardMetrics];
+        return [
+            'completed' => true,
+            'target_turn' => $context->targetTurn,
+            'secretary_experience_awarded' => $secretaryMetrics['experience_awarded'],
+            'secretary_skills_changed' => $secretaryMetrics['skills_changed'],
+            'secretary_levels_gained' => $secretaryMetrics['levels_gained'],
+            ...$awardMetrics,
+        ];
+    }
+
+    private function secretaryProduction(
+        TurnContext $context,
+        int $nationId,
+        string $skillKey,
+        int $baseProduction,
+    ): int {
+        if (! $context->state->hasSecretarySnapshot($nationId)) {
+            return $baseProduction;
+        }
+
+        return $this->secretaryProduction->apply(
+            $context->ruleset->settings,
+            $skillKey,
+            $context->state->secretarySkillLevel($nationId, $skillKey),
+            $baseProduction,
+        );
     }
 
     /**

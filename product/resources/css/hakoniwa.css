@@ -102,6 +102,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .world-stats div:last-child { border-right: 0; }
 .world-stats dt { color: #b9d2d2; font-size: .74rem; font-weight: 800; }
 .world-stats dd { margin: 4px 0 0; font-size: clamp(1.35rem, 3vw, 2.3rem); font-weight: 900; }
+.hakoniwa-calendar { display: block; margin-top: 2px; color: #b9d2d2; font-size: .7rem; font-weight: 750; }
 .turn-status-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); background: var(--line); }
 .turn-status-card > div { display: grid; gap: 4px; padding: 12px 18px; background: var(--paper); }
 .turn-status-card span, .turn-status-card time { color: var(--muted); font-size: .74rem; }
@@ -181,6 +182,18 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .field-error { color: #a52a2a; font-size: .76rem; font-weight: 800; }
 .profile-form { display: grid; gap: 18px; max-width: 680px; }
 .profile-form label { display: grid; gap: 7px; font-weight: 800; }
+.secretary-panel { max-width: 900px; }
+.secretary-story { max-width: 760px; line-height: 1.9; }
+.secretary-naming-form { display: grid; gap: 10px; max-width: 520px; margin-top: 28px; }
+.secretary-naming-form label { font-weight: 850; }
+.secretary-naming-form input { min-height: 46px; padding: 9px 11px; border: 1px solid #91a09b; background: white; color: var(--ink); font: inherit; }
+.secretary-naming-form .button { justify-self: start; min-width: 92px; }
+.secretary-skills { display: grid; gap: 12px; max-width: 760px; margin-top: 24px; }
+.secretary-skills > div { display: grid; grid-template-columns: minmax(150px, .7fr) 1fr; gap: 14px; padding: 16px; border: 1px solid var(--line); background: white; }
+.secretary-skills dt { font-weight: 900; }
+.secretary-skills dd { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 14px; margin: 0; }
+.secretary-skills dd strong { color: var(--coral-dark); }
+.secretary-skills dd span { font-size: .8rem; }
 .profile-actions { display: flex; gap: 10px; }
 .danger-zone { max-width: 680px; margin-top: 30px; padding: 20px; border: 2px solid #b94a3f; background: #fff5f3; }
 .danger-zone h2 { margin-top: 0; color: #8f2118; }
@@ -584,6 +597,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .message-board-meta { align-items: flex-start; flex-direction: column; gap: 2px; }
     .message-board-form-footer .button { min-height: 44px; }
     .policy-list form { grid-template-columns: 1fr; align-items: stretch; }
+    .secretary-skills > div, .secretary-skills dd { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
