@@ -618,6 +618,8 @@ class PlayerIslandEventApiTest extends TestCase
                 ['x' => 13, 'y' => 9, 'effect' => 'killed', 'meaningful' => true, 'terrain_scorched' => true],
                 ['x' => 14, 'y' => 10, 'effect' => 'damaged', 'meaningful' => true, 'terrain_scorched' => false],
                 ['x' => 15, 'y' => 11, 'effect' => 'killed', 'meaningful' => true, 'terrain_scorched' => false],
+                ['x' => 16, 'y' => 12, 'effect' => 'defense_intercepted', 'meaningful' => false],
+                ['x' => 17, 'y' => 13, 'effect' => 'secretary_intercepted', 'meaningful' => false],
             ],
         ]);
 
@@ -654,11 +656,16 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertStringContainsString('(13,9): 怪獣を撃破しました（怪獣がいた荒地は焦土化しました）', $ownerMessages);
         $this->assertStringContainsString('(14,10): 怪獣へ命中しました', $ownerMessages);
         $this->assertStringContainsString('(15,11): 怪獣を撃破しました', $ownerMessages);
+        $this->assertStringContainsString('(16,12): 防衛施設に迎撃されました', $ownerMessages);
+        $this->assertStringContainsString('(17,13): 最終防衛ラインに迎撃されました', $ownerMessages);
         $this->assertSame(1, substr_count($ownerMessages, '怪獣がいた荒地は焦土化しました'));
         $ownerTypes = collect($ownerResponse->json('data.groups.0.events'))->pluck('type');
         $this->assertFalse($ownerTypes->contains('missile.launched'));
         $this->assertSame(1, $ownerTypes->filter(
             static fn (string $type): bool => $type === 'missile.ineffective_aggregated',
+        )->count());
+        $this->assertSame(1, $ownerTypes->filter(
+            static fn (string $type): bool => $type === 'missile.ineffective_impact',
         )->count());
         $this->assertStringNotContainsString('PPミサイルのうち8発は効果がありませんでした。', $ownerMessages);
         $this->assertStringContainsString('PPミサイルのうち2発は効果がありませんでした。', $ownerMessages);

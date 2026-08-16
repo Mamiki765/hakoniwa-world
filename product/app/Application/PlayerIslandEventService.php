@@ -1609,13 +1609,17 @@ final class PlayerIslandEventService
             $impacts = is_array($metadata['impacts'] ?? null) ? $metadata['impacts'] : [];
             $grouped = [];
             foreach ($impacts as $impact) {
-                if (! is_array($impact) || ($impact['meaningful'] ?? false) === true
+                if (! is_array($impact)) {
+                    continue;
+                }
+                $effect = is_string($impact['effect'] ?? null) ? $impact['effect'] : 'ineffective_sea';
+                if (($impact['meaningful'] ?? false) === true
+                    || in_array($effect, ['defense_intercepted', 'secretary_intercepted'], true)
                     || ! is_numeric($impact['x'] ?? null) || ! is_numeric($impact['y'] ?? null)) {
                     continue;
                 }
                 $x = (int) $impact['x'];
                 $y = (int) $impact['y'];
-                $effect = is_string($impact['effect'] ?? null) ? $impact['effect'] : 'ineffective_sea';
                 $key = "{$x}:{$y}:{$effect}";
                 if (! isset($grouped[$key])) {
                     $grouped[$key] = ['x' => $x, 'y' => $y, 'effect' => $effect, 'hits' => 0, ...$impact];
@@ -1995,6 +1999,8 @@ final class PlayerIslandEventService
             'terrain_destroyed' => '陸地を破壊しました',
             'out_of_bounds_sea' => '狙点外の海へ落下し効果はありませんでした',
             'dormant_owner_protected' => '休眠Nation領へ落下し効果はありませんでした',
+            'defense_intercepted' => '防衛施設に迎撃されました',
+            'secretary_intercepted' => '最終防衛ラインに迎撃されました',
             'ineffective_barren_land' => '被害のない土地へ落下しました',
             'ineffective_sea' => '海へ落下し効果はありませんでした',
             default => '着弾結果が記録されました',
