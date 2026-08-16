@@ -281,7 +281,7 @@ final class CompleteTurnEngine
             ->firstOrFail();
         $cells = MapCell::query()
             ->whereIn('id', $context->state->surfaceCellIds())
-            ->with(['terrain', 'facility'])
+            ->with(['terrain', 'facility', 'ownerNation'])
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
@@ -290,7 +290,7 @@ final class CompleteTurnEngine
             $cell->x.':'.$cell->y => $cell,
         ])->all();
         $monsterBatch = $this->monsters->load($context);
-        $this->missiles->begin();
+        $this->missiles->begin($cellsByCoordinate);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
 
         foreach ($context->state->surfaceCellIds() as $cellId) {

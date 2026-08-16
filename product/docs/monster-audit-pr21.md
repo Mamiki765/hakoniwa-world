@@ -68,6 +68,10 @@ sourceの一回cell passを採用する。randomized surface cell orderでoccupa
 
 海、浅瀬、海底施設、山、採掘場、Capital、記念碑、World外、別怪獣cellは通行不可。通常の陸地・facility・集落へ入るとfacilityと人口を除去してowner維持の荒地にする。元cellは既に荒地であり、旧terrainを復元しない。
 
+### 怪獣派遣のspawn-turn balance decision
+
+raw Hakoniwa 2＋sourceの一般的なcell-pass観察とは別に、2S＋ではowner balance decisionとして、`monster_dispatch`で出現したメカいのらを出現target turnのmovement batchから除外する。したがって出現時の対象集落破壊だけを同turnに確定し、そのturnには移動、追加の踏み潰し、防衛施設接触・self-destructを行わない。次target turnから通常の`mecha_inora`として行動できる。この境界は`MonsterSpawnSource::MonsterDispatchCommand -> canActOnSpawnTurn() = false`を正本runtime mappingとし、自然出現を含むraw source-derived挙動として扱わない。command側の処理順は[command-audit-pr22.md](command-audit-pr22.md)を参照する。
+
 ## terrain event相互作用
 
 | event | occupancy | HP/reward/stat | event順序 |

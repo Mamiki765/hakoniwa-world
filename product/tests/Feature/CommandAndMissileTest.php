@@ -181,6 +181,97 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('defense_intercepted', $selfDetail['impacts'][0]['effect']);
     }
 
+    public function test_dormant_owned_defense_covers_active_target_while_dormant_target_protection_stays_first(): void
+    {
+        [$world, $firingUser, $firing, $activeTarget] = $this->combatants();
+        [, $dormantDefenseOwner] = $this->nation($world, '休眠防衛施設国');
+        $dormantDefenseOwner->update(['state' => 'dormant_frozen']);
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $target = MapCell::query()->where('owner_nation_id', $activeTarget->id)
+            ->whereKeyNot($activeTarget->capital()->valueOrFail('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $defense = $this->placeFacilityAtDistance($space, $target, $dormantDefenseOwner, 1, 'defense');
+        $coveredItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $target,
+        );
+        $coveredContext = $this->context(
+            $world, 2, hash('sha256', 'dormant-owned defense covers active target'),
+            [$firing->id, $activeTarget->id, $dormantDefenseOwner->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots(
+            $coveredContext,
+            [$firing->id, $activeTarget->id, $dormantDefenseOwner->id],
+        );
+
+        $this->resolveMissile($coveredContext, $base);
+
+        $coveredDetail = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $coveredItem->id])
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('defense_intercepted', $coveredDetail['impacts'][0]['effect']);
+        $this->assertNotNull($defense->fresh()->facility_definition_id);
+        $this->assertSame(0, $coveredContext->state->finalDefenseInterceptionsUsed($activeTarget->id));
+
+        $protectedItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile',
+            $defense->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $protectedContext = $this->context(
+            $world, 3, hash('sha256', 'dormant target protection before defense'),
+            [$firing->id, $activeTarget->id, $dormantDefenseOwner->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots(
+            $protectedContext,
+            [$firing->id, $activeTarget->id, $dormantDefenseOwner->id],
+        );
+
+        $this->resolveMissile($protectedContext, $base->fresh(['terrain', 'facility']));
+
+        $protectedDetail = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $protectedItem->id])
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('dormant_owner_protected', $protectedDetail['impacts'][0]['effect']);
+        $this->assertNotNull($defense->fresh()->facility_definition_id);
+    }
+
+    public function test_later_shot_observes_defense_destroyed_earlier_in_the_same_base_processing(): void
+    {
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants();
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $base->update(['facility_experience' => 20]);
+        $laterTarget = MapCell::query()->where('owner_nation_id', $targetNation->id)
+            ->whereKeyNot($targetNation->capital()->valueOrFail('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $defense = $this->placeFacilityAtDistance($space, $laterTarget, $targetNation, 1, 'defense');
+        $item = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $laterTarget, quantity: 2,
+        );
+        $context = $this->context(
+            $world,
+            2,
+            $this->seedForImpactSequence($item, $laterTarget, 2, [$defense, $laterTarget]),
+            [$firing->id, $targetNation->id],
+        );
+
+        $metrics = $this->resolveMissile($context, $base->fresh(['terrain', 'facility']));
+
+        $detail = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(2, $metrics['shots_fired']);
+        $this->assertSame('land_scorched', $detail['impacts'][0]['effect']);
+        $this->assertNull($defense->fresh()->facility_definition_id);
+        $this->assertSame('land_scorched', $detail['impacts'][1]['effect']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
+    }
+
     public function test_v6_spp_direct_hit_preserves_only_real_defense_and_other_missiles_keep_existing_damage(): void
     {
         [$world, $firingUser, $firing, $targetNation] = $this->combatants();
@@ -2646,7 +2737,7 @@ class CommandAndMissileTest extends TestCase
     {
         app(DomesticCommandExecutor::class)->execute($context);
         $resolver = app(MissileImpactResolver::class);
-        $resolver->begin();
+        $resolver->begin($this->missileCellIndex($context->world));
         $metrics = $resolver->processBase($context, $this->surfaceMapSpace($context->world), $base);
         $resolver->finalize($context);
 
@@ -2663,7 +2754,7 @@ class CommandAndMissileTest extends TestCase
     private function processRegisteredMissiles(TurnContext $context, array $bases): array
     {
         $resolver = app(MissileImpactResolver::class);
-        $resolver->begin();
+        $resolver->begin($this->missileCellIndex($context->world));
         $shotsFired = 0;
         foreach ($bases as $base) {
             $metrics = $resolver->processBase($context, $this->surfaceMapSpace($context->world), $base);
@@ -2674,6 +2765,18 @@ class CommandAndMissileTest extends TestCase
             'shots_fired' => $shotsFired,
             'finalize' => $resolver->finalize($context),
         ];
+    }
+
+    /** @return array<string, MapCell> */
+    private function missileCellIndex(World $world): array
+    {
+        return MapCell::query()
+            ->where('map_space_id', $this->surfaceMapSpace($world)->id)
+            ->with(['terrain', 'facility', 'ownerNation'])
+            ->orderBy('id')
+            ->get()
+            ->mapWithKeys(static fn (MapCell $cell): array => [$cell->x.':'.$cell->y => $cell])
+            ->all();
     }
 
     private function queue(
@@ -2752,6 +2855,41 @@ class CommandAndMissileTest extends TestCase
         $this->assertIsInt($index);
 
         return $this->seedForDrawIndex($item, count($candidates), $index);
+    }
+
+    /** @param list<MapCell> $desired */
+    private function seedForImpactSequence(
+        NationCommandQueueItem $item,
+        MapCell $aim,
+        int $radius,
+        array $desired,
+    ): string {
+        $candidates = (new GridCoordinate($aim->x, $aim->y))->radius($radius);
+        $coordinates = array_map(
+            static fn (GridCoordinate $candidate): string => $candidate->x.':'.$candidate->y,
+            $candidates,
+        );
+        $indices = array_map(function (MapCell $cell) use ($coordinates): int {
+            $index = array_search($cell->x.':'.$cell->y, $coordinates, true);
+            $this->assertIsInt($index);
+
+            return $index;
+        }, $desired);
+        $label = TurnRandomStreamFactory::missileImpact($item->id);
+
+        for ($candidate = 0; $candidate < 10_000; $candidate++) {
+            $seed = hash('sha256', "{$label}:{$candidate}");
+            $stream = (new TurnRandomStreamFactory($seed))->stream($label);
+            $draws = array_map(
+                static fn (): int => $stream->integer(0, count($candidates) - 1),
+                $indices,
+            );
+            if ($draws === $indices) {
+                return $seed;
+            }
+        }
+
+        $this->fail("Unable to find deterministic missile sequence for {$label}.");
     }
 
     private function seedForDrawIndex(NationCommandQueueItem $item, int $count, int $index): string
