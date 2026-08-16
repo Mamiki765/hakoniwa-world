@@ -55,10 +55,10 @@ const unnamedSecretaryFixture: Secretary = {
     named_at: null,
     header_label: '？？？',
     skills: [
-        { key: 'agricultural_policy', name: '農業政策', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '小麦生産 +0.0%' },
-        { key: 'specialty_development', name: '特産品開発', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '工場生産 +0.0%' },
-        { key: 'gold_vein_survey', name: '金鉱脈調査', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '採掘場生産 +0.0%' },
-        { key: 'final_defense_line', name: '最終防衛ライン', level: 1, experience: 0, required_experience: 100, remaining_experience: 100, effect: '1ターンにつき1発まで迎撃' },
+        { key: 'agricultural_policy', name: '農業政策', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '小麦生産＋0.0%' },
+        { key: 'specialty_development', name: '特産品開発', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '工場生産＋0.0%' },
+        { key: 'gold_vein_survey', name: '金鉱脈調査', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '採掘場生産＋0.0%' },
+        { key: 'final_defense_line', name: '最終防衛ライン', level: 1, experience: 0, required_experience: 100, remaining_experience: 100, effect: '防衛されなかったミサイルを1ターンにつき1発まで迎撃' },
     ],
 };
 
@@ -904,6 +904,8 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         expect(wrapper.get('.secretary-story').text()).toContain('怪獣に踏み荒らされた地から妙な施設が見つかった');
+        expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
+        expect(wrapper.get('.secretary-name').text()).toBe('？？？');
         expect(wrapper.get<HTMLInputElement>('#secretary-name').element.value).toBe('ペリドット');
         await wrapper.get('.secretary-naming-form').trigger('submit');
         await flushPromises();
@@ -913,9 +915,20 @@ describe('application lobby and island entry', () => {
         ));
         expect(JSON.parse(String(namingRequest?.[1]?.body))).toEqual({ name: 'ペリドット' });
         expect(wrapper.find('.secretary-story').exists()).toBe(false);
-        expect(wrapper.get('.secretary-panel h1').text()).toBe('ペリドット');
-        expect(wrapper.findAll('.secretary-skills > div')).toHaveLength(4);
-        expect(wrapper.get('.secretary-skills').text()).toContain('最終防衛ライン');
+        expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
+        expect(wrapper.get('.secretary-name').text()).toBe('ペリドット');
+        expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
+        const skillRows = wrapper.findAll('.secretary-skill');
+        expect(skillRows).toHaveLength(4);
+        const agriculturalSkill = skillRows[0]!;
+        const defenseSkill = skillRows[3]!;
+        expect(agriculturalSkill.get('.secretary-skill-name').text()).toBe('農業政策');
+        expect(agriculturalSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv0', 'XP 0 / 1']);
+        expect(agriculturalSkill.get('.secretary-skill-effect').text()).toBe('小麦生産＋0.0%');
+        expect(defenseSkill.get('.secretary-skill-name').text()).toBe('最終防衛ライン');
+        expect(defenseSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv1', 'XP 0 / 100']);
+        expect(defenseSkill.get('.secretary-skill-effect').text()).toBe('防衛されなかったミサイルを1ターンにつき1発まで迎撃');
+        expect(wrapper.get('.secretary-skills').text()).not.toContain('次のlevelまで');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'ペリドット')).toBe(true);
     });
 

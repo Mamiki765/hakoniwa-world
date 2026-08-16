@@ -183,17 +183,19 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .profile-form { display: grid; gap: 18px; max-width: 680px; }
 .profile-form label { display: grid; gap: 7px; font-weight: 800; }
 .secretary-panel { max-width: 900px; }
+.secretary-panel .secretary-page-title { margin: 0 0 14px; font-family: inherit; font-size: 1.5rem; line-height: 1.25; }
+.secretary-name { margin: 0 0 24px; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 1; }
+.secretary-section-title { margin: 0; font-size: 1rem; }
 .secretary-story { max-width: 760px; line-height: 1.9; }
 .secretary-naming-form { display: grid; gap: 10px; max-width: 520px; margin-top: 28px; }
 .secretary-naming-form label { font-weight: 850; }
 .secretary-naming-form input { min-height: 46px; padding: 9px 11px; border: 1px solid #91a09b; background: white; color: var(--ink); font: inherit; }
 .secretary-naming-form .button { justify-self: start; min-width: 92px; }
-.secretary-skills { display: grid; gap: 12px; max-width: 760px; margin-top: 24px; }
-.secretary-skills > div { display: grid; grid-template-columns: minmax(150px, .7fr) 1fr; gap: 14px; padding: 16px; border: 1px solid var(--line); background: white; }
-.secretary-skills dt { font-weight: 900; }
-.secretary-skills dd { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 14px; margin: 0; }
-.secretary-skills dd strong { color: var(--coral-dark); }
-.secretary-skills dd span { font-size: .8rem; }
+.secretary-skills { display: grid; gap: 8px; max-width: 760px; margin-top: 10px; }
+.secretary-skill { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name progress" "effect effect"; gap: 4px 12px; padding: 11px 14px; border: 1px solid var(--line); background: white; }
+.secretary-skill-name { grid-area: name; min-width: 0; font-weight: 900; }
+.secretary-skill-progress { grid-area: progress; display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; margin: 0; color: var(--coral-dark); font-size: .86rem; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.secretary-skill-effect { grid-area: effect; margin: 0; font-size: .8rem; line-height: 1.45; }
 .profile-actions { display: flex; gap: 10px; }
 .danger-zone { max-width: 680px; margin-top: 30px; padding: 20px; border: 2px solid #b94a3f; background: #fff5f3; }
 .danger-zone h2 { margin-top: 0; color: #8f2118; }
@@ -597,7 +599,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .message-board-meta { align-items: flex-start; flex-direction: column; gap: 2px; }
     .message-board-form-footer .button { min-height: 44px; }
     .policy-list form { grid-template-columns: 1fr; align-items: stretch; }
-    .secretary-skills > div, .secretary-skills dd { grid-template-columns: 1fr; }
+    .secretary-panel .secretary-page-title { font-size: 1.25rem; }
+    .secretary-name { font-size: 2.4rem; }
+    .secretary-skill { gap: 4px 8px; padding: 10px 11px; }
+    .secretary-skill-progress { gap: 7px; font-size: .78rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
