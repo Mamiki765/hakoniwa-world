@@ -95,8 +95,11 @@ final class SecretaryPersistenceTest extends TestCase
         $user = User::factory()->create();
         $service = app(NationCreationService::class);
         $first = $service->create($user, $world, '初代秘書島', '初代島主');
+        $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => '改名前'])
+            ->assertOk();
+        $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => '継承名'])
+            ->assertOk();
         $secretary = $user->secretary()->firstOrFail();
-        $secretary->update(['name' => '継承名', 'named_at' => now()]);
         SecretarySkill::query()
             ->where('secretary_id', $secretary->id)
             ->where('skill_key', SecretarySkillCatalog::AGRICULTURAL_POLICY)
@@ -114,6 +117,63 @@ final class SecretaryPersistenceTest extends TestCase
             'level' => 4,
             'experience' => 7,
         ]);
+    }
+
+    public function test_named_secretary_can_be_renamed_repeatedly_without_creation_or_skill_changes(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        app(NationCreationService::class)->create($user, $world, '改名島', '改名島主');
+        app(NationCreationService::class)->create($other, $world->fresh(), '同名島', '同名島主');
+
+        $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => '未命名から改名'])
+            ->assertUnprocessable();
+        $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => 'ペリドット'])
+            ->assertOk();
+        $this->actingAs($other)->postJson('/api/v1/me/secretary/name', ['name' => 'エメラルド'])
+            ->assertOk();
+
+        $secretary = $user->secretary()->firstOrFail();
+        $namedAt = $secretary->named_at;
+        $skills = SecretarySkill::query()->where('secretary_id', $secretary->id)
+            ->orderBy('skill_key')->get(['skill_key', 'level', 'experience'])->toArray();
+        foreach (['エメラルド', 'サファイア'] as $name) {
+            $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => $name])
+                ->assertOk()
+                ->assertJsonPath('data.name', $name);
+        }
+
+        $secretary->refresh();
+        $this->assertSame('サファイア', $secretary->name);
+        $this->assertTrue($namedAt?->equalTo($secretary->named_at));
+        $this->assertSame(2, Secretary::query()->count());
+        $this->assertSame($skills, SecretarySkill::query()->where('secretary_id', $secretary->id)
+            ->orderBy('skill_key')->get(['skill_key', 'level', 'experience'])->toArray());
+        $renames = DB::table('audit_events')->where('event_type', 'secretary.renamed')
+            ->where('subject_id', $secretary->id)->orderBy('id')->get();
+        $this->assertCount(2, $renames);
+        $metadata = json_decode((string) $renames->last()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertEquals([
+            'secretary_id' => $secretary->id,
+            'user_id' => $user->id,
+            'old_name' => 'エメラルド',
+            'new_name' => 'サファイア',
+        ], array_intersect_key($metadata, array_flip(['secretary_id', 'user_id', 'old_name', 'new_name'])));
+        $this->assertArrayHasKey('occurred_at', $metadata);
+        $this->assertSame('private', $renames->last()->visibility);
+
+        $this->actingAs(User::factory()->create())
+            ->patchJson('/api/v1/me/secretary/name', ['name' => '勝手に作成'])
+            ->assertUnprocessable();
+        $this->assertSame(2, Secretary::query()->count());
+        $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => "改行\n名"])
+            ->assertUnprocessable();
+        $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => '<b>秘書</b>'])
+            ->assertUnprocessable();
+        $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => str_repeat('あ', 31)])
+            ->assertUnprocessable();
+        $this->assertSame('サファイア', $user->secretary()->value('name'));
     }
 
     public function test_backfill_is_idempotent_and_its_exact_user_id_set_excludes_users_without_history(): void

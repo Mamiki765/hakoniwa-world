@@ -125,7 +125,7 @@
 | 通常/PP/陸破cost | 20/50/100億/発 | 同じ | 同じ | A | `MATCH-H2` | H2 `hako-main.txt:516-524`; PR22 `:159-162`。 |
 | missile deviation | 通常・ST・陸破は半径2、PPは半径1 | 通常・弾道・陸破2、PP1 | 通常2、PP1、陸破2、SPP0 | A | `MATCH-H2` | 共通3種について一致。SPPは別行。H2 `hako-turn.txt:921-926`; PR22。 |
 | missile射程 | 島指定で距離制限なし | 通常/PP/陸破は12、弾道は無制限 | 全弾種距離制限なし | D | `KEEP-EXPLICIT` | MISSILE-01で明示的に2＋ rangeを採用しなかった。 |
-| 防衛施設迎撃 | 半径2。防衛施設自身への直撃は迎撃しない | 同系 | 半径2 interception contract | A | `MATCH-H2` | H2 `hako-turn.txt:990-1039`; current military tests/rules。 |
+| 防衛施設迎撃 | 半径2。防衛施設自身への直撃は迎撃しない | 同系。実体防衛だけ、中心除外 | v8で半径2 interception contract | A | `MATCH-H2` | H2 `hako-turn.txt:990-1039`; 2＋ `map.c:479-489`; ver 2.1.0再監査でv1-v7/runtime欠落を確認しv8化。 |
 | 難民 | 通常/PPで破壊人口の半分。ST/陸破なし | 通常/PP等で半分 | 通常/PP/SPPで半分、陸破なし | D | `KEEP-EXPLICIT` | SPPへの適用を含むowner military contract。H2 `hako-turn.txt:1262-1309`; PR22。 |
 | 海底基地の通常弾耐性 | 海に偽装され通常弾無効、陸破等で破壊 | 同系 | 通常/PP/SPPでもwater facilityを破壊 | E | `CANDIDATE-H2-REALIGN` | H2 `hako-turn.txt:1041-1118`; 2＋ `map.c:498-627`; current resolver。owner decision待ち。 |
 | missile発射者privacy | 通常/PP/陸破は公開。STだけ匿名public＋攻撃者private | 全弾のaim/impactを通常公開 | 全弾で発射Nation、弾種、発射数、意味ある着弾をpublic | D | `KEEP-EXPLICIT` | B-10。原版ST anonymityへ自動回帰しない。 |

@@ -120,7 +120,7 @@ final class MissileImpactResolver
                 $metrics['money_spent'] += $cost;
                 if ($impact['meaningful']) {
                     $metrics['meaningful_impacts']++;
-                } else {
+                } elseif (! in_array($impact['effect'], ['defense_intercepted', 'secretary_intercepted'], true)) {
                     $launch['ineffective']++;
                     $metrics['ineffective_impacts']++;
                 }
@@ -242,6 +242,10 @@ final class MissileImpactResolver
         if (in_array($ownerState, ['dormant_frozen', 'dormant_contestable', 'sunken_archived'], true)) {
             return [...$base, 'effect' => 'dormant_owner_protected', 'owner_state' => $ownerState];
         }
+        $defense = $this->defenseInterception($context, $space, $cell, $base, $intent->definitionKey);
+        if ($defense !== null) {
+            return $defense;
+        }
         if ($intent->definitionKey === 'land_destruction_missile') {
             return $this->landDestructionImpact($context, $firingNation, $cell, $base);
         }
@@ -255,6 +259,83 @@ final class MissileImpactResolver
             $intent->definitionKey,
             $intent->queueItemId,
         );
+    }
+
+    /**
+     * Resolve the source-audited Hakoniwa 2 / 2+ defense ring before monster,
+     * terrain, direct-SPP resistance, or Secretary effects. The impact cell
+     * itself is deliberately excluded.
+     *
+     * @param  array<string, mixed>  $base
+     * @return array<string, mixed>|null
+     */
+    private function defenseInterception(
+        TurnContext $context,
+        MapSpace $space,
+        MapCell $cell,
+        array $base,
+        string $missileKey,
+    ): ?array {
+        $contract = $context->ruleset->settings['military']['defense_interception'] ?? null;
+        if ($contract === null) {
+            return null;
+        }
+        if (! is_array($contract)
+            || ($contract['facility_key'] ?? null) !== 'defense'
+            || ($contract['radius'] ?? null) !== 2
+            || ($contract['exclude_center'] ?? null) !== true
+            || ($contract['defense_target_cells'] ?? null) !== 'exclude'
+            || ($contract['facility_owner_scope'] ?? null) !== 'any'
+            || ($contract['monster_occupied_cells'] ?? null) !== 'include'
+            || ($contract['self_fired_missiles'] ?? null) !== 'include'
+            || ($contract['overlap_resolution'] ?? null) !== 'single_interception'
+            || ($contract['resolve_before'] ?? null) !== 'secretary'
+            || ! in_array($missileKey, $contract['missile_keys'] ?? [], true)) {
+            throw new DomainException('The active ruleset has an invalid defense interception contract.');
+        }
+        if ($cell->facility?->key === 'defense') {
+            return null;
+        }
+
+        $center = new GridCoordinate($cell->x, $cell->y);
+        $defenses = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereBetween('x', [$cell->x - 2, $cell->x + 2])
+            ->whereBetween('y', [$cell->y - 2, $cell->y + 2])
+            ->whereHas('facility', fn ($query) => $query->where('key', 'defense'))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id', 'x', 'y', 'owner_nation_id'])
+            ->filter(static function (MapCell $candidate) use ($center): bool {
+                $distance = $center->distanceTo(new GridCoordinate($candidate->x, $candidate->y));
+
+                return $distance >= 1 && $distance <= 2;
+            })
+            ->values();
+        if ($defenses->isEmpty()) {
+            return null;
+        }
+
+        $nationId = $cell->owner_nation_id;
+        if ($nationId !== null) {
+            $this->events->record($context, 'missile.defense_intercepted', $cell, [
+                'nation_id' => $nationId,
+                'nation_name' => $cell->ownerNation?->name,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'missile_key' => $missileKey,
+                'covering_defense_count' => $defenses->count(),
+                'covering_defense_cell_ids' => $defenses->pluck('id')->map(static fn ($id): int => (int) $id)->all(),
+            ], 'nation');
+        }
+
+        return [
+            ...$base,
+            'effect' => 'defense_intercepted',
+            'target_nation_id' => $nationId,
+            'target_nation_name' => $cell->ownerNation?->name,
+            'covering_defense_count' => $defenses->count(),
+        ];
     }
 
     /** @param array<string, mixed> $base

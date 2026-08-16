@@ -135,7 +135,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 2.0.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 2.1.0');
         expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');
@@ -889,6 +889,12 @@ describe('application lobby and island entry', () => {
 
                 return response(secretary);
             }
+            if (path === '/api/v1/me/secretary/name' && init?.method === 'PATCH') {
+                const body = JSON.parse(String(init.body)) as { name: string };
+                secretary = { ...secretary, name: body.name, header_label: body.name };
+
+                return response(secretary);
+            }
             if (path === '/api/v1/me/secretary') return response(secretary);
 
             return response(null, 404);
@@ -930,6 +936,19 @@ describe('application lobby and island entry', () => {
         expect(defenseSkill.get('.secretary-skill-effect').text()).toBe('防衛されなかったミサイルを1ターンにつき1発まで迎撃');
         expect(wrapper.get('.secretary-skills').text()).not.toContain('次のlevelまで');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'ペリドット')).toBe(true);
+
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!.trigger('click');
+        expect(wrapper.get<HTMLInputElement>('.secretary-rename-form input').element.value).toBe('ペリドット');
+        await wrapper.get('.secretary-rename-form input').setValue('エメラルド');
+        await wrapper.get('.secretary-rename-form').trigger('submit');
+        await flushPromises();
+        const renameRequest = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/secretary/name' && init?.method === 'PATCH'
+        ));
+        expect(JSON.parse(String(renameRequest?.[1]?.body))).toEqual({ name: 'エメラルド' });
+        expect(wrapper.text()).toContain('秘書の名前を「エメラルド」に変更しました。');
+        expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
     });
 
     it('requires the danger button, modal, and exact island name before abandonment and returns to registration', async () => {

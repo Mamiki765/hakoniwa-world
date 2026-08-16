@@ -9,6 +9,7 @@ use App\Application\MissileImpactResolver;
 use App\Application\MonsterRemovalService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
+use App\Application\SecretaryNamingService;
 use App\Application\SecretaryTurnService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Facility\MissileBaseRules;
@@ -43,6 +44,142 @@ class CommandAndMissileTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    #[DataProvider('v8DefenseMissileProvider')]
+    public function test_v8_radius_two_defense_intercepts_every_source_missile_kind(
+        string $missileKey,
+        int $deviationRadius,
+    ): void {
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants();
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $target = MapCell::query()->where('owner_nation_id', $targetNation->id)
+            ->whereKeyNot($targetNation->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $defense = $this->placeFacilityAtDistance($space, $target, $targetNation, 2, 'defense');
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            $missileKey,
+            $target,
+        );
+        $context = $this->context(
+            $world,
+            2,
+            $this->seedForImpactIndex($item, $target, $deviationRadius, $target),
+            [$firing->id, $targetNation->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $targetNation->id]);
+
+        $metrics = $this->resolveMissile($context, $base);
+
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame('defense_intercepted', $detail['impacts'][0]['effect']);
+        $this->assertSame(1, $detail['impacts'][0]['covering_defense_count']);
+        $this->assertSame(0, $metrics['ineffective_impacts']);
+        $this->assertSame(0, $context->state->finalDefenseInterceptionsUsed($targetNation->id));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
+        $this->assertNotNull($defense->fresh()->facility_definition_id);
+        $this->assertSame([
+            $targetNation->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
+        ], $context->state->pendingSecretaryExperience());
+    }
+
+    /** @return array<string, array{string, int}> */
+    public static function v8DefenseMissileProvider(): array
+    {
+        return [
+            'normal missile' => ['missile', 2],
+            'PP missile' => ['pp_missile', 1],
+            'land destruction missile' => ['land_destruction_missile', 2],
+            'SPP missile' => ['spp_missile', 0],
+        ];
+    }
+
+    public function test_v8_defense_radius_center_outside_decoy_overlap_self_and_monster_contract(): void
+    {
+        // radius 1 and overlapping facilities: one impact, one audit event,
+        // no Secretary budget, with both facilities preserved.
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants();
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $target = MapCell::query()->where('owner_nation_id', $targetNation->id)
+            ->whereKeyNot($targetNation->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $firstDefense = $this->placeFacilityAtDistance($space, $target, $targetNation, 1, 'defense');
+        $secondDefense = $this->placeFacilityAtDistance($space, $target, $targetNation, 2, 'defense');
+        $monster = $this->monster($world, $target);
+        $monster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $target);
+        $context = $this->context($world, 2, hash('sha256', 'v8 overlap monster'), [$firing->id, $targetNation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $targetNation->id]);
+        $this->resolveMissile($context, $base);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('defense_intercepted', $detail['impacts'][0]['effect']);
+        $this->assertSame(2, $detail['impacts'][0]['covering_defense_count']);
+        $this->assertSame(2, $monster->fresh()->current_hp);
+        $this->assertNotNull($firstDefense->fresh()->facility_definition_id);
+        $this->assertNotNull($secondDefense->fresh()->facility_definition_id);
+
+        // A center defense is not its own surrounding interceptor. The v6-v8
+        // SPP direct-resistance owner decision then resolves before Secretary.
+        $center = $target->fresh(['terrain', 'facility', 'ownerNation']);
+        app(MapCellStateService::class)->setFacility($center, FacilityDefinition::query()->where('key', 'defense')->firstOrFail());
+        $center->save();
+        $centerItem = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $center);
+        $centerContext = $this->context($world, 3, hash('sha256', 'v8 center'), [$firing->id, $targetNation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($centerContext, [$firing->id, $targetNation->id]);
+        $this->resolveMissile($centerContext, $base->fresh(['terrain', 'facility']));
+        $centerDetail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $centerItem->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('defense_resisted', $centerDetail['impacts'][0]['effect']);
+        $this->assertSame(0, $centerContext->state->finalDefenseInterceptionsUsed($targetNation->id));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
+
+        // radius 3 and a radius-1 decoy do not defend; only then may Secretary run.
+        MonsterOccupancy::query()->where('map_cell_id', $target->id)->delete();
+        app(MapCellStateService::class)->setFacility($center, null);
+        $center->save();
+        app(MapCellStateService::class)->setFacility($firstDefense, null);
+        $firstDefense->save();
+        app(MapCellStateService::class)->setFacility($secondDefense, null);
+        $secondDefense->save();
+        $outsideTarget = $center->fresh(['terrain', 'facility', 'ownerNation']);
+        $this->placeFacilityAtDistance($space, $outsideTarget, $targetNation, 3, 'defense');
+        $this->placeFacilityAtDistance($space, $outsideTarget, $targetNation, 1, 'decoy');
+        $outsideItem = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $outsideTarget);
+        $outsideContext = $this->context($world, 4, hash('sha256', 'v8 outside decoy'), [$firing->id, $targetNation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($outsideContext, [$firing->id, $targetNation->id]);
+        $this->resolveMissile($outsideContext, $base->fresh(['terrain', 'facility']));
+        $outsideDetail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $outsideItem->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('secretary_intercepted', $outsideDetail['impacts'][0]['effect']);
+        $this->assertSame(1, $outsideContext->state->finalDefenseInterceptionsUsed($targetNation->id));
+
+        // A Nation's own missile is covered by the same source contract.
+        $selfTarget = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereKeyNot($base->id)->whereNull('facility_definition_id')
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $this->placeFacilityAtDistance($space, $selfTarget, $firing, 1, 'defense');
+        $selfItem = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $selfTarget);
+        $selfContext = $this->context($world, 5, hash('sha256', 'v8 self fired'), [$firing->id, $targetNation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($selfContext, [$firing->id, $targetNation->id]);
+        $this->resolveMissile($selfContext, $base->fresh(['terrain', 'facility']));
+        $selfDetail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $selfItem->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('defense_intercepted', $selfDetail['impacts'][0]['effect']);
+    }
 
     public function test_v6_spp_direct_hit_preserves_only_real_defense_and_other_missiles_keep_existing_damage(): void
     {
@@ -160,7 +297,7 @@ class CommandAndMissileTest extends TestCase
         );
         app(SecretaryTurnService::class)->loadAttemptSnapshots($first, [$firing->id, $target->id]);
 
-        $this->resolveMissile($first, $base);
+        $firstMetrics = $this->resolveMissile($first, $base);
 
         $firstDetail = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'missile.launch_detail')
@@ -171,6 +308,7 @@ class CommandAndMissileTest extends TestCase
             array_column($firstDetail['impacts'], 'effect'),
         );
         $this->assertSame(1, $first->state->finalDefenseInterceptionsUsed($target->id));
+        $this->assertSame(0, $firstMetrics['ineffective_impacts']);
         $this->assertSame([
             $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 2],
         ], $first->state->pendingSecretaryExperience());
@@ -184,11 +322,9 @@ class CommandAndMissileTest extends TestCase
 
         $targetUserId = (int) DB::table('nation_memberships')->where('nation_id', $target->id)
             ->where('role', 'owner')->value('user_id');
-        DB::table('secretaries')->where('user_id', $targetUserId)->update([
-            'name' => 'ペリドット',
-            'named_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $targetUser = User::query()->findOrFail($targetUserId);
+        app(SecretaryNamingService::class)->name($targetUser, 'ペリドット');
+        app(SecretaryNamingService::class)->rename($targetUser, 'エメラルド');
         $secondItem = $this->queue(
             app(CommandQueueService::class),
             $firingUser,
@@ -205,7 +341,7 @@ class CommandAndMissileTest extends TestCase
         );
         app(SecretaryTurnService::class)->loadAttemptSnapshots($second, [$firing->id, $target->id]);
 
-        $this->resolveMissile($second, $base->fresh(['terrain', 'facility']));
+        $secondMetrics = $this->resolveMissile($second, $base->fresh(['terrain', 'facility']));
 
         $secondDetail = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'missile.launch_detail')
@@ -213,21 +349,22 @@ class CommandAndMissileTest extends TestCase
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('secretary_intercepted', $secondDetail['impacts'][0]['effect']);
         $this->assertSame(1, $second->state->finalDefenseInterceptionsUsed($target->id));
+        $this->assertSame(0, $secondMetrics['ineffective_impacts']);
         $this->assertSame([
             $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
         ], $second->state->pendingSecretaryExperience());
         $labels = DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')
             ->orderBy('id')->selectRaw("metadata->>'secretary_label' AS secretary_label")
             ->pluck('secretary_label')->all();
-        $this->assertSame(['秘書', '秘書のペリドット'], $labels);
+        $this->assertSame(['秘書', '秘書のエメラルド'], $labels);
         $messages = collect(app(PlayerIslandEventService::class)->ownerPage($target->fresh(), 1, 3)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->where('type', 'secretary.missile_intercepted')->pluck('message');
         $this->assertTrue($messages->contains(
-            static fn (string $message): bool => str_contains($message, '秘書がSPPミサイルを最終防衛ラインで迎撃'),
+            static fn (string $message): bool => str_contains($message, '秘書が1発のミサイルを迎撃'),
         ));
         $this->assertTrue($messages->contains(
-            static fn (string $message): bool => str_contains($message, '秘書のペリドットがSPPミサイルを最終防衛ラインで迎撃'),
+            static fn (string $message): bool => str_contains($message, '秘書のエメラルドが1発のミサイルを迎撃'),
         ));
     }
 
@@ -562,7 +699,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v7', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v8', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -2370,11 +2507,11 @@ class CommandAndMissileTest extends TestCase
     }
 
     /** @return array{World, User, Nation, Nation} */
-    private function combatants(): array
+    private function combatants(string $suffix = ''): array
     {
         $world = $this->lightweightWorld();
-        [$user, $firing] = $this->nation($world, '発射国');
-        [, $target] = $this->nation($world, '標的国');
+        [$user, $firing] = $this->nation($world, '発射国'.$suffix);
+        [, $target] = $this->nation($world, '標的国'.$suffix);
         $firing->update(['money' => 1_000]);
 
         return [$world, $user, $firing, $target];
@@ -2400,6 +2537,38 @@ class CommandAndMissileTest extends TestCase
         $cell->save();
 
         return $cell->fresh(['terrain', 'facility']);
+    }
+
+    private function placeFacilityAtDistance(
+        MapSpace $space,
+        MapCell $center,
+        Nation $owner,
+        int $distance,
+        string $facilityKey,
+    ): MapCell {
+        $coordinate = collect((new GridCoordinate($center->x, $center->y))->ring($distance))
+            ->first(static fn (GridCoordinate $candidate): bool => $candidate->x >= $space->min_x
+                && $candidate->x <= $space->max_x
+                && $candidate->y >= $space->min_y
+                && $candidate->y <= $space->max_y);
+        $this->assertInstanceOf(GridCoordinate::class, $coordinate);
+        $cell = MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $coordinate->x)->where('y', $coordinate->y)
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail(),
+        );
+        $cell->owner_nation_id = $owner->id;
+        $cell->population = 0;
+        $cell->version++;
+        $cell->save();
+
+        return $cell->fresh(['terrain', 'facility', 'ownerNation']);
     }
 
     private function ownedWaterFacility(Nation $nation, string $facilityKey, ?int $experience = null): MapCell

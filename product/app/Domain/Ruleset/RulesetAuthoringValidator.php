@@ -461,7 +461,7 @@ final class RulesetAuthoringValidator
         ], "{$path}.dormant_impact");
         $explicitTargetState = in_array(
             $settings['key'] ?? null,
-            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7'],
+            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8'],
             true,
         )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
@@ -491,11 +491,11 @@ final class RulesetAuthoringValidator
             throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8'], true)) {
             $this->validateLaunchBaseExperience($settings, $military, $facilityKeys, $path);
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8'], true)) {
             $defenseResistance = $this->map(
                 $military['defense_spp_resistance'] ?? null,
                 "{$path}.defense_spp_resistance",
@@ -511,6 +511,28 @@ final class RulesetAuthoringValidator
                 $facilityKeys,
                 "{$path}.defense_spp_resistance.facility_key",
             );
+        }
+
+        if (($settings['key'] ?? null) === 'hakoniwa-2s-plus-v8') {
+            $interception = $this->map(
+                $military['defense_interception'] ?? null,
+                "{$path}.defense_interception",
+            );
+            if ($interception !== [
+                'facility_key' => 'defense',
+                'radius' => 2,
+                'exclude_center' => true,
+                'defense_target_cells' => 'exclude',
+                'missile_keys' => ['missile', 'pp_missile', 'land_destruction_missile', 'spp_missile'],
+                'facility_owner_scope' => 'any',
+                'monster_occupied_cells' => 'include',
+                'self_fired_missiles' => 'include',
+                'overlap_resolution' => 'single_interception',
+                'resolve_before' => 'secretary',
+            ]) {
+                throw new DomainException("{$path}.defense_interception differs from the v8 source-audited contract.");
+            }
+            $this->reference('defense', $facilityKeys, "{$path}.defense_interception.facility_key");
         }
     }
 
@@ -1108,7 +1130,7 @@ final class RulesetAuthoringValidator
                     "{$path}.metadata.oil_search_effect_key",
                 );
             }
-            if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7'], true)
+            if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8'], true)
                 && in_array($commandKey, ['build_defense_facility', 'build_monument'], true)) {
                 $expectedEffect = $commandKey === 'build_defense_facility'
                     ? 'defense_self_destruct'
