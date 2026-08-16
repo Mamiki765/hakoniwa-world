@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import HexMap from './components/HexMap.vue';
-import type { MapChunk, Nation, PublicNationDetail } from './types';
+import type { MapChunk, Nation, PublicNationDetail, Secretary } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
     status,
@@ -49,6 +49,19 @@ const ownerNationFixture: Nation = {
     territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
 };
 
+const unnamedSecretaryFixture: Secretary = {
+    id: 11,
+    name: null,
+    named_at: null,
+    header_label: '？？？',
+    skills: [
+        { key: 'agricultural_policy', name: '農業政策', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '小麦生産 +0.0%' },
+        { key: 'specialty_development', name: '特産品開発', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '工場生産 +0.0%' },
+        { key: 'gold_vein_survey', name: '金鉱脈調査', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '採掘場生産 +0.0%' },
+        { key: 'final_defense_line', name: '最終防衛ライン', level: 1, experience: 0, required_experience: 100, remaining_experience: 100, effect: '1ターンにつき1発まで迎撃' },
+    ],
+};
+
 function publicResponse(path: string): Response | null {
     if (path === '/api/v1/public/announcements/latest') return response([
         { id: 2, title: 'ver 1.0.2のお知らせ', body: 'queue fix', created_at: '2026-08-02T03:00:00+09:00', updated_at: '2026-08-02T03:00:00+09:00' },
@@ -57,6 +70,7 @@ function publicResponse(path: string): Response | null {
     if (path === '/api/v1/public/worlds') return response([{ id: 1, key: 'shared-world', name: '箱庭諸島２S＋', turn: 1 }]);
     if (path.endsWith('/summary')) return response({
         id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 1, nation_count: 1, total_population: 1000, contact_url: null,
+        hakoniwa_calendar: { year: 1, month: 1, label: '箱庭歴 1年1月' },
         turn_status: 'normal', last_successful_turn_at: '2026-08-09T13:00:00Z',
         next_scheduled_turn_at: '2099-08-09T15:00:00Z', turn_schedule_timezone: 'Asia/Tokyo',
     });
@@ -121,7 +135,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 1.7.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 2.0.0');
+        expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');
         expect(wrapper.find('.site-header nav').text()).not.toContain('クレジット');
@@ -851,6 +866,57 @@ describe('application lobby and island entry', () => {
         await vi.advanceTimersByTimeAsync(60_000);
         await flushPromises();
         expect(summaryCallCount()).toBe(3);
+    });
+
+    it('shows the unnamed Secretary story with the default name and switches permanently to the skill view after naming', async () => {
+        let secretary = unnamedSecretaryFixture;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') {
+                return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            }
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary/name' && init?.method === 'POST') {
+                const body = JSON.parse(String(init.body)) as { name: string };
+                secretary = {
+                    ...secretary,
+                    name: body.name,
+                    named_at: '2026-08-16T15:00:00+09:00',
+                    header_label: body.name,
+                };
+
+                return response(secretary);
+            }
+            if (path === '/api/v1/me/secretary') return response(secretary);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const secretaryButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === '？？？')!;
+        expect(secretaryButton.exists()).toBe(true);
+        await secretaryButton.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.secretary-story').text()).toContain('怪獣に踏み荒らされた地から妙な施設が見つかった');
+        expect(wrapper.get<HTMLInputElement>('#secretary-name').element.value).toBe('ペリドット');
+        await wrapper.get('.secretary-naming-form').trigger('submit');
+        await flushPromises();
+
+        const namingRequest = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/secretary/name' && init?.method === 'POST'
+        ));
+        expect(JSON.parse(String(namingRequest?.[1]?.body))).toEqual({ name: 'ペリドット' });
+        expect(wrapper.find('.secretary-story').exists()).toBe(false);
+        expect(wrapper.get('.secretary-panel h1').text()).toBe('ペリドット');
+        expect(wrapper.findAll('.secretary-skills > div')).toHaveLength(4);
+        expect(wrapper.get('.secretary-skills').text()).toContain('最終防衛ライン');
+        expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'ペリドット')).toBe(true);
     });
 
     it('requires the danger button, modal, and exact island name before abandonment and returns to registration', async () => {

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $nation_id
  * @property string $role
  * @property-read Nation $nation
+ * @property-read User $user
  */
 class NationMembership extends Model
 {
@@ -21,5 +22,11 @@ class NationMembership extends Model
     public function nation(): BelongsTo
     {
         return $this->belongsTo(Nation::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }

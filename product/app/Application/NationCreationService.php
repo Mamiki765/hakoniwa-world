@@ -26,6 +26,7 @@ final class NationCreationService
         private readonly RegistrationWorldExpansionPlanner $expansionPlanner,
         private readonly CurrentRulesetGuard $rulesetGuard,
         private readonly WorldMutationLock $worldMutationLock,
+        private readonly SecretaryService $secretaries,
     ) {}
 
     public function create(
@@ -63,6 +64,8 @@ final class NationCreationService
                     if ($existingRequest->status !== 'completed' || $existingRequest->nation_id === null) {
                         throw new DomainException('同一登録要求が未完了状態です。追加処理せず調査が必要です。');
                     }
+
+                    $this->secretaries->ensureForUser($user);
 
                     return Nation::query()->whereKey($existingRequest->nation_id)
                         ->where('world_id', $world->id)
@@ -136,6 +139,7 @@ final class NationCreationService
                     'user_id' => $user->id, 'world_id' => $world->id,
                     'nation_id' => $nation->id, 'role' => 'owner',
                 ]);
+                $this->secretaries->ensureForUser($user);
 
                 DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
                     'nation_id' => $nation->id, 'status' => 'completed', 'updated_at' => now(),

@@ -8,6 +8,7 @@ use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\DeterministicRandomStream;
 use DomainException;
 use JsonException;
@@ -292,6 +293,7 @@ final class RulesetAuthoringValidator
         );
         $monsterCount = $this->validateMonsterSystem($settings, $resourceKeys, $facilityKeys);
         $this->validateMilitary($settings, $facilityKeys);
+        $this->validateSecretary($settings, $resourceKeys, $commandKeys);
 
         return [
             'key' => $key,
@@ -302,6 +304,91 @@ final class RulesetAuthoringValidator
             'production' => count($productionKeys),
             'monsters' => $monsterCount,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<string>  $resourceKeys
+     * @param  list<string>  $commandKeys
+     */
+    private function validateSecretary(array $settings, array $resourceKeys, array $commandKeys): void
+    {
+        if (! array_key_exists('secretary', $settings)) {
+            return;
+        }
+        $definitions = (new SecretarySkillCatalog)->definitions($settings);
+        $productionSkills = [
+            SecretarySkillCatalog::AGRICULTURAL_POLICY => ['wheat', 'build_farm'],
+            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => ['industrial_goods', 'build_factory'],
+            SecretarySkillCatalog::GOLD_VEIN_SURVEY => ['minerals', 'build_mine'],
+        ];
+        foreach ($definitions as $key => $definition) {
+            $path = "ruleset.secretary.skills.{$key}";
+            $this->requireKeys(
+                $definition,
+                ['key', 'name', 'initial_level', 'level_requirement', 'effect', 'experience_source'],
+                $path,
+            );
+            $this->persistedString($definition['name'], "{$path}.name");
+            $initialLevel = $this->integer($definition['initial_level'], "{$path}.initial_level", 0);
+            $requirement = $this->map($definition['level_requirement'], "{$path}.level_requirement");
+            $this->requireKeys($requirement, ['basis', 'multiplier'], "{$path}.level_requirement");
+            $basis = $requirement['basis'] ?? null;
+            if (! in_array($basis, ['next_level_squared', 'current_level_squared'], true)) {
+                throw new DomainException("{$path}.level_requirement.basis is invalid.");
+            }
+            $multiplier = $this->integer(
+                $requirement['multiplier'],
+                "{$path}.level_requirement.multiplier",
+                1,
+            );
+            $effect = $this->map($definition['effect'], "{$path}.effect");
+            $source = $this->map($definition['experience_source'], "{$path}.experience_source");
+
+            if (isset($productionSkills[$key])) {
+                [$resourceKey, $commandKey] = $productionSkills[$key];
+                if ($initialLevel !== 0 || $basis !== 'next_level_squared' || $multiplier !== 1
+                    || $effect !== [
+                        'type' => 'production_multiplier',
+                        'resource_key' => $resourceKey,
+                        'per_mille_per_level' => 1,
+                    ]
+                    || $source !== [
+                        'type' => 'successful_command_execution',
+                        'command_key' => $commandKey,
+                        'points_per_execution' => 1,
+                        'quantity_multiplier' => false,
+                    ]
+                    || ! in_array($resourceKey, $resourceKeys, true)
+                    || ! in_array($commandKey, $commandKeys, true)) {
+                    throw new DomainException("{$path} does not match the Secretary v1 production-skill contract.");
+                }
+
+                continue;
+            }
+
+            if ($key !== SecretarySkillCatalog::FINAL_DEFENSE_LINE
+                || $initialLevel !== 1
+                || $basis !== 'current_level_squared'
+                || $multiplier !== 100
+                || $effect !== [
+                    'type' => 'final_defense_line',
+                    'interceptions_per_level_per_turn' => 1,
+                    'normal_defense_resolves_first' => true,
+                    'exclude_monster_occupied_cells' => true,
+                ]
+                || $source !== [
+                    'type' => 'owned_cell_missile_arrival',
+                    'points_per_missile' => 1,
+                    'include_normal_defense_interception' => true,
+                    'include_secretary_interception' => true,
+                    'include_actual_impact' => true,
+                    'include_self_fired_collateral' => true,
+                    'independent_from_interception_eligibility' => true,
+                ]) {
+                throw new DomainException("{$path} does not match the Secretary v1 final-defense contract.");
+            }
+        }
     }
 
     /**
@@ -374,7 +461,7 @@ final class RulesetAuthoringValidator
         ], "{$path}.dormant_impact");
         $explicitTargetState = in_array(
             $settings['key'] ?? null,
-            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6'],
+            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7'],
             true,
         )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
@@ -404,11 +491,11 @@ final class RulesetAuthoringValidator
             throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7'], true)) {
             $this->validateLaunchBaseExperience($settings, $military, $facilityKeys, $path);
         }
 
-        if (($settings['key'] ?? null) === 'hakoniwa-2s-plus-v6') {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7'], true)) {
             $defenseResistance = $this->map(
                 $military['defense_spp_resistance'] ?? null,
                 "{$path}.defense_spp_resistance",
@@ -1021,7 +1108,7 @@ final class RulesetAuthoringValidator
                     "{$path}.metadata.oil_search_effect_key",
                 );
             }
-            if (($settings['key'] ?? null) === 'hakoniwa-2s-plus-v6'
+            if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7'], true)
                 && in_array($commandKey, ['build_defense_facility', 'build_monument'], true)) {
                 $expectedEffect = $commandKey === 'build_defense_facility'
                     ? 'defense_self_destruct'

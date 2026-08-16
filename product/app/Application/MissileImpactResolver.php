@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\LaunchIntent;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -230,6 +231,13 @@ final class MissileImpactResolver
             ->where('x', $coordinate->x)->where('y', $coordinate->y)
             ->with(['terrain', 'facility', 'ownerNation'])->lockForUpdate()->firstOrFail();
         $base['terrain_key'] = $cell->terrain->key;
+        $targetNationId = $cell->owner_nation_id;
+        if ($targetNationId !== null && $context->state->hasSecretarySnapshot($targetNationId)) {
+            $context->state->awardSecretaryExperience(
+                $targetNationId,
+                SecretarySkillCatalog::FINAL_DEFENSE_LINE,
+            );
+        }
         $ownerState = $cell->ownerNation?->state;
         if (in_array($ownerState, ['dormant_frozen', 'dormant_contestable', 'sunken_archived'], true)) {
             return [...$base, 'effect' => 'dormant_owner_protected', 'owner_state' => $ownerState];
@@ -310,6 +318,10 @@ final class MissileImpactResolver
                 'before_hp' => $result->beforeHp, 'after_hp' => $result->afterHp,
                 ...$scorchMetadata,
             ];
+        }
+        $interception = $this->secretaryInterception($context, $cell, $base, $missileKey);
+        if ($interception !== null) {
+            return $interception;
         }
         $beforeTerrain = $cell->terrain->key;
         $beforeFacility = $cell->facility?->key;
@@ -458,6 +470,19 @@ final class MissileImpactResolver
         MapCell $cell,
         array $base,
     ): array {
+        $occupancy = MonsterOccupancy::query()->where('map_cell_id', $cell->id)
+            ->lockForUpdate()->first();
+        if ($occupancy === null) {
+            $interception = $this->secretaryInterception(
+                $context,
+                $cell,
+                $base,
+                'land_destruction_missile',
+            );
+            if ($interception !== null) {
+                return $interception;
+            }
+        }
         $beforeTerrain = $cell->terrain->key;
         $beforeFacility = $cell->facility?->key;
         $beforePopulation = $cell->population;
@@ -515,6 +540,54 @@ final class MissileImpactResolver
             'from_terrain_key' => $beforeTerrain, 'to_terrain_key' => $cell->terrain->key,
             'removed_facility_key' => $beforeFacility, 'before_population' => $beforePopulation,
             'monster_removed' => $monsterRemoved, 'refugees' => 0,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $base
+     * @return array<string, mixed>|null
+     */
+    private function secretaryInterception(
+        TurnContext $context,
+        MapCell $cell,
+        array $base,
+        string $missileKey,
+    ): ?array {
+        $nationId = $cell->owner_nation_id;
+        if ($nationId === null || ! $context->state->hasSecretarySnapshot($nationId)) {
+            return null;
+        }
+        $effect = $context->ruleset->settings['secretary']['skills'][SecretarySkillCatalog::FINAL_DEFENSE_LINE]['effect'] ?? null;
+        if (! is_array($effect)
+            || ($effect['type'] ?? null) !== 'final_defense_line'
+            || ($effect['interceptions_per_level_per_turn'] ?? null) !== 1
+            || ($effect['normal_defense_resolves_first'] ?? null) !== true
+            || ($effect['exclude_monster_occupied_cells'] ?? null) !== true) {
+            throw new DomainException('The active ruleset has an invalid Secretary final-defense effect.');
+        }
+        if (! $context->state->consumeFinalDefenseInterception($nationId)) {
+            return null;
+        }
+
+        $snapshot = $context->state->secretarySnapshot($nationId);
+        $secretaryLabel = $snapshot['name'] === null ? '秘書' : '秘書の'.$snapshot['name'];
+        $this->events->record($context, 'secretary.missile_intercepted', $cell, [
+            'nation_id' => $nationId,
+            'nation_name' => $cell->ownerNation?->name,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'missile_key' => $missileKey,
+            'secretary_name' => $snapshot['name'],
+            'secretary_label' => $secretaryLabel,
+            'interception_number' => $context->state->finalDefenseInterceptionsUsed($nationId),
+        ], 'nation');
+
+        return [
+            ...$base,
+            'effect' => 'secretary_intercepted',
+            'target_nation_id' => $nationId,
+            'target_nation_name' => $cell->ownerNation?->name,
+            'secretary_name' => $snapshot['name'],
         ];
     }
 

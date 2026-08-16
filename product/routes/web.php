@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\NationProfileController;
 use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
+use App\Http\Controllers\Api\SecretaryController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\CommunityGuidelinesController;
@@ -63,6 +64,8 @@ Route::get('/api/v1/nations/{nation}/message-board', [MessageBoardController::cl
 
 Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(function (): void {
     Route::get('/me', [ApiController::class, 'me']);
+    Route::get('/me/secretary', [SecretaryController::class, 'show']);
+    Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/map-spaces', [ApiController::class, 'mapSpaces']);
     Route::get('/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}', [ApiController::class, 'chunk'])

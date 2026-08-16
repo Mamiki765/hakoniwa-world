@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\World\HakoniwaCalendar;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -17,6 +18,7 @@ final class PublicWorldService
         private readonly NationBasicStatusProjection $basicStatus,
         private readonly TurnScheduleStatus $turnSchedule,
         private readonly PublicRankingAchievementProjection $achievements,
+        private readonly HakoniwaCalendar $calendar,
     ) {}
 
     /** @return array<string, mixed> */
@@ -29,6 +31,7 @@ final class PublicWorldService
             'key' => $world->key,
             'name' => $world->name,
             'current_turn' => $world->current_turn,
+            'hakoniwa_calendar' => $this->calendar->forTurn((int) $world->current_turn),
             'nation_count' => $world->nations()->where('state', 'active')->count(),
             'contact_url' => $this->contactUrl(),
             'turn_status' => $turnSchedule['status'],

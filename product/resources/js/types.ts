@@ -11,6 +11,24 @@ export interface CurrentUser {
     providers: UserIdentity[];
 }
 
+export interface SecretarySkill {
+    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'final_defense_line';
+    name: string;
+    level: number;
+    experience: number;
+    required_experience: number;
+    remaining_experience: number;
+    effect: string;
+}
+
+export interface Secretary {
+    id: number;
+    name: string | null;
+    named_at: string | null;
+    header_label: string;
+    skills: SecretarySkill[];
+}
+
 export interface Announcement {
     id: number;
     title: string;
@@ -69,6 +87,7 @@ export interface PublicWorldSummary {
     key: string;
     name: string;
     current_turn: number;
+    hakoniwa_calendar: { year: number; month: number; label: string };
     nation_count: number;
     total_population: number;
     contact_url: string | null;

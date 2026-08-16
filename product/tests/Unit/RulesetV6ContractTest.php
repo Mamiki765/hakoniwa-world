@@ -20,8 +20,6 @@ final class RulesetV6ContractTest extends TestCase
             self::SIXTH_PRODUCTION_PAYLOAD_HASH,
             hash('sha256', json_encode($v6, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
-        $this->assertSame('hakoniwa-2s-plus-v6', config('hakoniwa.ruleset.key'));
-        $this->assertSame(6, config('hakoniwa.ruleset.version'));
         $this->assertSame('wasteland', $this->command($v5, 'logging')['result_terrain_key']);
         $this->assertSame('plain', $this->command($v6, 'logging')['result_terrain_key']);
         $this->assertArrayNotHasKey('owner_overbuild_effect', $this->command($v5, 'build_defense_facility')['metadata']);

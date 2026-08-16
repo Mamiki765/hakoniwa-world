@@ -3,6 +3,7 @@
 namespace App\Domain\Turn;
 
 use App\Domain\Monster\MonsterSpawnSource;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use InvalidArgumentException;
 
 final class TurnState
@@ -53,6 +54,23 @@ final class TurnState
      * }>
      */
     private array $nationActivity = [];
+
+    /**
+     * @var array<int, array{
+     *     secretary_id: int,
+     *     name: string|null,
+     *     skills: array<string, array{level: int, experience: int}>
+     * }>
+     */
+    private array $secretarySnapshots = [];
+
+    /** @var array<int, array<string, int>> */
+    private array $pendingSecretaryExperience = [];
+
+    /** @var array<int, int> */
+    private array $finalDefenseInterceptionsUsed = [];
+
+    private bool $secretaryExperienceFlushed = false;
 
     /** @param array<array-key, mixed> $nationIds */
     public function setStableNationIds(array $nationIds): void
@@ -364,6 +382,130 @@ final class TurnState
         }
         $activity['idle_counter_finalized'] = true;
         $this->nationActivity[$nationId] = $activity;
+    }
+
+    /** @param array<string, mixed> $skills */
+    public function setSecretarySnapshot(
+        mixed $nationId,
+        mixed $secretaryId,
+        mixed $name,
+        array $skills,
+    ): void {
+        $nationId = $this->validatedNationId($nationId);
+        if (! is_int($secretaryId) || $secretaryId < 1) {
+            throw new InvalidArgumentException('Secretary snapshot ID must be a positive integer.');
+        }
+        if ($name !== null && (! is_string($name) || $name === '')) {
+            throw new InvalidArgumentException('Secretary snapshot name must be null or a non-empty string.');
+        }
+        if (array_keys($skills) !== SecretarySkillCatalog::KEYS) {
+            throw new InvalidArgumentException('Secretary snapshot must contain the exact Secretary v1 skill catalog.');
+        }
+        $validatedSkills = [];
+        foreach ($skills as $skillKey => $skill) {
+            if (! is_array($skill)
+                || ! is_int($skill['level'] ?? null) || $skill['level'] < 0
+                || ! is_int($skill['experience'] ?? null) || $skill['experience'] < 0) {
+                throw new InvalidArgumentException('Secretary snapshot skill values must be non-negative integers.');
+            }
+            $validatedSkills[$skillKey] = [
+                'level' => $skill['level'],
+                'experience' => $skill['experience'],
+            ];
+        }
+        if (isset($this->secretarySnapshots[$nationId])) {
+            throw new InvalidArgumentException("Nation {$nationId} already has a Secretary snapshot for this attempt.");
+        }
+        $this->secretarySnapshots[$nationId] = [
+            'secretary_id' => $secretaryId,
+            'name' => $name,
+            'skills' => $validatedSkills,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     secretary_id: int,
+     *     name: string|null,
+     *     skills: array<string, array{level: int, experience: int}>
+     * }
+     */
+    public function secretarySnapshot(mixed $nationId): array
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! isset($this->secretarySnapshots[$nationId])) {
+            throw new InvalidArgumentException("Nation {$nationId} has no Secretary snapshot for this attempt.");
+        }
+
+        return $this->secretarySnapshots[$nationId];
+    }
+
+    public function hasSecretarySnapshot(mixed $nationId): bool
+    {
+        $nationId = $this->validatedNationId($nationId);
+
+        return isset($this->secretarySnapshots[$nationId]);
+    }
+
+    public function secretarySkillLevel(mixed $nationId, string $skillKey): int
+    {
+        if (! in_array($skillKey, SecretarySkillCatalog::KEYS, true)) {
+            throw new InvalidArgumentException("Unknown Secretary skill {$skillKey}.");
+        }
+
+        return $this->secretarySnapshot($nationId)['skills'][$skillKey]['level'];
+    }
+
+    public function awardSecretaryExperience(mixed $nationId, string $skillKey, int $amount = 1): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $this->secretarySnapshot($nationId);
+        if (! in_array($skillKey, SecretarySkillCatalog::KEYS, true) || $amount < 1) {
+            throw new InvalidArgumentException('Secretary experience award must use a known skill and positive amount.');
+        }
+        if ($this->secretaryExperienceFlushed) {
+            throw new InvalidArgumentException('Secretary experience cannot be awarded after the attempt flush.');
+        }
+        $current = $this->pendingSecretaryExperience[$nationId][$skillKey] ?? 0;
+        if ($current > PHP_INT_MAX - $amount) {
+            throw new InvalidArgumentException('Secretary experience award exceeds the supported integer range.');
+        }
+        $this->pendingSecretaryExperience[$nationId][$skillKey] = $current + $amount;
+    }
+
+    /** @return array<int, array<string, int>> */
+    public function pendingSecretaryExperience(): array
+    {
+        return $this->pendingSecretaryExperience;
+    }
+
+    public function consumeFinalDefenseInterception(mixed $nationId): bool
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $level = $this->secretarySkillLevel($nationId, SecretarySkillCatalog::FINAL_DEFENSE_LINE);
+        $used = $this->finalDefenseInterceptionsUsed[$nationId] ?? 0;
+        if ($used >= $level) {
+            return false;
+        }
+        $this->finalDefenseInterceptionsUsed[$nationId] = $used + 1;
+
+        return true;
+    }
+
+    public function finalDefenseInterceptionsUsed(mixed $nationId): int
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $this->secretarySnapshot($nationId);
+
+        return $this->finalDefenseInterceptionsUsed[$nationId] ?? 0;
+    }
+
+    public function markSecretaryExperienceFlushed(): void
+    {
+        if ($this->secretaryExperienceFlushed) {
+            throw new InvalidArgumentException('Secretary experience was already flushed for this attempt.');
+        }
+        $this->secretaryExperienceFlushed = true;
     }
 
     /** @param array<array-key, mixed> $values

@@ -9,10 +9,12 @@ use App\Application\MissileImpactResolver;
 use App\Application\MonsterRemovalService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
+use App\Application\SecretaryTurnService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -131,6 +133,228 @@ class CommandAndMissileTest extends TestCase
                 "{$case['key']} must retain its pre-v6 defense damage contract.",
             );
         }
+    }
+
+    public function test_secretary_final_defense_budget_is_attempt_scoped_and_arrival_xp_is_independent(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $base->update(['facility_experience' => 60]);
+        $firing->update(['money' => 9_999]);
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $firstItem = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'spp_missile',
+            $capital,
+            2,
+        );
+        $first = $this->context(
+            $world,
+            2,
+            hash('sha256', 'Secretary two-shot budget'),
+            [$firing->id, $target->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($first, [$firing->id, $target->id]);
+
+        $this->resolveMissile($first, $base);
+
+        $firstDetail = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $firstItem->id])
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(
+            ['secretary_intercepted', 'capital_damaged'],
+            array_column($firstDetail['impacts'], 'effect'),
+        );
+        $this->assertSame(1, $first->state->finalDefenseInterceptionsUsed($target->id));
+        $this->assertSame([
+            $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 2],
+        ], $first->state->pendingSecretaryExperience());
+        $firstInterception = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'secretary.missile_intercepted')->value('metadata'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame('秘書', $firstInterception['secretary_label']);
+
+        $targetUserId = (int) DB::table('nation_memberships')->where('nation_id', $target->id)
+            ->where('role', 'owner')->value('user_id');
+        DB::table('secretaries')->where('user_id', $targetUserId)->update([
+            'name' => 'ペリドット',
+            'named_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $secondItem = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'spp_missile',
+            $capital->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $second = $this->context(
+            $world,
+            3,
+            hash('sha256', 'Secretary next-turn budget'),
+            [$firing->id, $target->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($second, [$firing->id, $target->id]);
+
+        $this->resolveMissile($second, $base->fresh(['terrain', 'facility']));
+
+        $secondDetail = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $secondItem->id])
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('secretary_intercepted', $secondDetail['impacts'][0]['effect']);
+        $this->assertSame(1, $second->state->finalDefenseInterceptionsUsed($target->id));
+        $this->assertSame([
+            $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
+        ], $second->state->pendingSecretaryExperience());
+        $labels = DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')
+            ->orderBy('id')->selectRaw("metadata->>'secretary_label' AS secretary_label")
+            ->pluck('secretary_label')->all();
+        $this->assertSame(['秘書', '秘書のペリドット'], $labels);
+        $messages = collect(app(PlayerIslandEventService::class)->ownerPage($target->fresh(), 1, 3)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->where('type', 'secretary.missile_intercepted')->pluck('message');
+        $this->assertTrue($messages->contains(
+            static fn (string $message): bool => str_contains($message, '秘書がSPPミサイルを最終防衛ラインで迎撃'),
+        ));
+        $this->assertTrue($messages->contains(
+            static fn (string $message): bool => str_contains($message, '秘書のペリドットがSPPミサイルを最終防衛ラインで迎撃'),
+        ));
+    }
+
+    public function test_ordinary_defense_resolves_before_secretary_but_still_awards_arrival_xp(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'defense')->firstOrFail(),
+        );
+        $cell->population = 0;
+        $cell->save();
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'spp_missile',
+            $cell->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'ordinary defense before Secretary'),
+            [$firing->id, $target->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $target->id]);
+
+        $this->resolveMissile($context, $base);
+
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame('defense_resisted', $detail['impacts'][0]['effect']);
+        $this->assertSame(0, $context->state->finalDefenseInterceptionsUsed($target->id));
+        $this->assertSame([
+            $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
+        ], $context->state->pendingSecretaryExperience());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
+    }
+
+    public function test_self_fired_collateral_and_monster_cells_both_award_xp_but_only_eligible_cell_is_intercepted(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $firing->update(['money' => 9_999]);
+        $ownCell = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereKeyNot($base->id)->whereNull('facility_definition_id')
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $ownItem = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'spp_missile',
+            $ownCell,
+        );
+        $selfContext = $this->context(
+            $world,
+            2,
+            hash('sha256', 'Secretary self collateral'),
+            [$firing->id, $target->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($selfContext, [$firing->id, $target->id]);
+
+        $this->resolveMissile($selfContext, $base);
+
+        $ownDetail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $ownItem->id])->value('metadata'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame('secretary_intercepted', $ownDetail['impacts'][0]['effect']);
+        $this->assertSame([
+            $firing->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
+        ], $selfContext->state->pendingSecretaryExperience());
+
+        $monsterCell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $monster = $this->monster($world, $monsterCell);
+        $monster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
+        $monsterItem = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'spp_missile',
+            $monsterCell,
+        );
+        $monsterContext = $this->context(
+            $world,
+            3,
+            hash('sha256', 'Secretary monster exclusion'),
+            [$firing->id, $target->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($monsterContext, [$firing->id, $target->id]);
+
+        $this->resolveMissile($monsterContext, $base->fresh(['terrain', 'facility']));
+
+        $monsterDetail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $monsterItem->id])->value('metadata'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame('damaged', $monsterDetail['impacts'][0]['effect']);
+        $this->assertSame(1, $monster->fresh()->current_hp);
+        $this->assertSame(0, $monsterContext->state->finalDefenseInterceptionsUsed($target->id));
+        $this->assertSame([
+            $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
+        ], $monsterContext->state->pendingSecretaryExperience());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
     }
 
     public function test_failed_command_continues_to_finance_and_idle_counter_changes_once_per_target_turn(): void
@@ -338,7 +562,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v6', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v7', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);

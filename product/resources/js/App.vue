@@ -20,10 +20,11 @@ import type {
     PublicNationDetail,
     PublicRankingEntry,
     PublicWorldSummary,
+    Secretary,
     World,
 } from './types';
 
-const applicationVersion = '1.7.0';
+const applicationVersion = '2.0.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -41,9 +42,10 @@ const announcementTitle = ref('');
 const announcementBody = ref('');
 const announcementErrors = ref<Record<string, string>>({});
 const nation = ref<Nation | null>(null);
+const secretary = ref<Secretary | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
-const page = ref<'home' | 'announcements' | 'island' | 'preview' | 'resources' | 'profile' | 'account' | 'credits'>(
+const page = ref<'home' | 'announcements' | 'island' | 'preview' | 'resources' | 'secretary' | 'profile' | 'account' | 'credits'>(
     window.location.pathname === '/credits' ? 'credits' : 'home',
 );
 const nationName = ref('');
@@ -57,6 +59,8 @@ const abandonmentConfirmationName = ref('');
 const abandonmentError = ref('');
 const registrationErrors = ref<Record<string, string>>({});
 const profileErrors = ref<Record<string, string>>({});
+const secretaryName = ref('ペリドット');
+const secretaryErrors = ref<Record<string, string>>({});
 const busy = ref(true);
 const message = ref('');
 const clockNow = ref(Date.now());
@@ -140,6 +144,7 @@ onMounted(async () => {
     try {
         user.value = await api<CurrentUser>('/api/v1/me');
         nation.value = await api<Nation | null>('/api/v1/me/nation');
+        if (nation.value !== null) await loadSecretary();
     } catch (error) {
         if (!(error instanceof ApiError && error.status === 401)) {
             message.value = 'ログイン状態を取得できませんでした。公開ロビーは引き続き閲覧できます。';
@@ -554,6 +559,48 @@ async function refreshMyNation(): Promise<void> {
     }
 }
 
+async function loadSecretary(): Promise<void> {
+    if (user.value === null) return;
+    secretary.value = await api<Secretary | null>('/api/v1/me/secretary');
+}
+
+async function openSecretary(): Promise<void> {
+    if (user.value === null || nation.value === null) return;
+    busy.value = true;
+    message.value = '';
+    secretaryErrors.value = {};
+    try {
+        await loadSecretary();
+        if (secretary.value === null) throw new Error('Secretaryの状態を取得できませんでした。');
+        secretaryName.value = 'ペリドット';
+        page.value = 'secretary';
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'Secretaryを読み込めませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function nameSecretary(): Promise<void> {
+    if (secretary.value === null || secretary.value.name !== null) return;
+    busy.value = true;
+    message.value = '';
+    secretaryErrors.value = {};
+    try {
+        secretary.value = await api<Secretary>('/api/v1/me/secretary/name', {
+            method: 'POST',
+            body: JSON.stringify({ name: secretaryName.value }),
+        });
+    } catch (error) {
+        secretaryErrors.value = validationErrors(error);
+        message.value = Object.keys(secretaryErrors.value).length === 0
+            ? (error instanceof Error ? error.message : 'Secretaryを命名できませんでした。')
+            : '';
+    } finally {
+        busy.value = false;
+    }
+}
+
 async function createNation(): Promise<void> {
     const world = worlds.value[0];
     if (world === undefined) return;
@@ -573,6 +620,7 @@ async function createNation(): Promise<void> {
         });
         nationStateGeneration++;
         nation.value = createdNation;
+        await loadSecretary();
         nationRegistrationRequestKey.value = crypto.randomUUID();
         await loadPublicLobby();
         await openOwnIsland();
@@ -725,6 +773,7 @@ async function abandonNation(): Promise<void> {
         <nav aria-label="主要ナビゲーション">
             <button type="button" @click="page = 'home'">TOP</button>
             <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
+            <button v-if="nation" type="button" @click="openSecretary">{{ secretary?.header_label ?? '？？？' }}</button>
             <button v-if="nation" type="button" @click="page = 'resources'">資源売却</button>
             <button v-if="nation" type="button" @click="openProfile">プロフィール編集</button>
             <a href="/manual">マニュアル</a>
@@ -761,7 +810,11 @@ async function abandonNation(): Promise<void> {
             </div>
 
             <dl class="world-stats">
-                <div><dt>ターン更新（2時間ごと）</dt><dd>{{ worldSummary?.current_turn ?? 1 }}</dd></div>
+                <div>
+                    <dt>ターン更新（2時間ごと）</dt>
+                    <dd>{{ worldSummary?.current_turn ?? 1 }}</dd>
+                    <small class="hakoniwa-calendar">{{ worldSummary?.hakoniwa_calendar?.label ?? '箱庭歴 1年1月' }}</small>
+                </div>
                 <div><dt>島数</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
                 <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
             </dl>
@@ -1107,6 +1160,49 @@ async function abandonNation(): Promise<void> {
         </section>
 
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
+
+        <section v-else-if="user && nation && secretary && page === 'secretary'" class="panel secretary-panel">
+            <p class="eyebrow">SECRETARY</p>
+            <template v-if="secretary.name === null">
+                <h1>？？？</h1>
+                <div class="secretary-story">
+                    <p>
+                        今日も開発の計画を指示するあなたの元に一つの知らせが入り込んだ。<br>
+                        どうやら、怪獣に踏み荒らされた地から妙な施設が見つかったという。<br>
+                        恐らくは海賊のものだろう、非合法な組織が拉致した人々を収容していた施設。<br>
+                        その最奥で、あなたは鎖に繋がれたその人物と出会う。
+                    </p>
+                    <p>
+                        その人物は、耳が長く尖っていた。<br>
+                        その人物の瞳は、不思議な淡い光を宿していた。<br>
+                        恐らくは最高級の『商品』として保管されていたのだろう。<br>
+                        その手の趣向の持ち主に合わせた整形の線も考えたが、そのような跡は見受けられなかった。<br>
+                        あなたは名前を、尋ねた。
+                    </p>
+                    <p>「私の名前は——」</p>
+                </div>
+                <form class="secretary-naming-form" @submit.prevent="nameSecretary">
+                    <label for="secretary-name">秘書の名前を決めてください。</label>
+                    <input id="secretary-name" v-model="secretaryName" minlength="1" maxlength="30" required autocomplete="off" :disabled="busy">
+                    <span v-if="secretaryErrors.name" class="field-error" role="alert">{{ secretaryErrors.name }}</span>
+                    <button class="button primary" type="submit" :disabled="busy">OK</button>
+                </form>
+            </template>
+            <template v-else>
+                <h1>{{ secretary.name }}</h1>
+                <dl class="secretary-skills">
+                    <div v-for="skill in secretary.skills" :key="skill.key">
+                        <dt>{{ skill.name }}</dt>
+                        <dd>
+                            <strong>Lv{{ skill.level }}</strong>
+                            <span>XP {{ skill.experience }} / {{ skill.required_experience }}</span>
+                            <span>次のlevelまで {{ skill.remaining_experience }} XP</span>
+                            <span>{{ skill.effect }}</span>
+                        </dd>
+                    </div>
+                </dl>
+            </template>
+        </section>
 
         <section v-else-if="user && nation && page === 'profile'" class="panel profile-panel">
             <p class="eyebrow">ISLAND PROFILE</p>
