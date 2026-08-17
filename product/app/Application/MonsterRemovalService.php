@@ -13,13 +13,22 @@ final class MonsterRemovalService
 {
     private ?MonsterTurnBatch $batch = null;
 
+    private ?int $batchTurnRunId = null;
+
+    private ?int $batchWorldId = null;
+
+    private bool $batchComplete = false;
+
     private int $removedCount = 0;
 
     public function __construct(private readonly TurnEventRecorder $events) {}
 
-    public function useBatch(MonsterTurnBatch $batch): void
+    public function useBatch(MonsterTurnBatch $batch, TurnContext $context, bool $complete = true): void
     {
         $this->batch = $batch;
+        $this->batchTurnRunId = $context->run->id;
+        $this->batchWorldId = $context->world->id;
+        $this->batchComplete = $complete;
         $this->removedCount = 0;
     }
 
@@ -33,15 +42,16 @@ final class MonsterRemovalService
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
-        $this->useBatch(new MonsterTurnBatch($occupancies));
+        $this->useBatch(new MonsterTurnBatch($occupancies), $context);
 
         return $occupancies->count();
     }
 
-    public function hasAtCell(int $cellId): bool
+    public function hasAtCell(TurnContext $context, int $cellId): bool
     {
-        if ($this->batch !== null) {
-            return $this->batch->occupancyAt($cellId) !== null;
+        $batch = $this->batchFor($context);
+        if ($batch !== null) {
+            return $batch->occupancyAt($cellId) !== null;
         }
 
         return MonsterOccupancy::query()->where('map_cell_id', $cellId)->exists();
@@ -55,13 +65,15 @@ final class MonsterRemovalService
         string $eventType = 'monster.removed_by_terrain_event',
         array $metadata = [],
     ): bool {
-        $occupancy = $this->batch !== null
-            ? $this->batch->occupancyAt($cell->id)
-            : MonsterOccupancy::query()
+        $batch = $this->batchFor($context);
+        $occupancy = $batch?->occupancyAt($cell->id);
+        if ($occupancy === null && ($batch === null || ! $this->batchComplete)) {
+            $occupancy = MonsterOccupancy::query()
                 ->where('map_cell_id', $cell->id)
                 ->with('monster.definition')
                 ->lockForUpdate()
                 ->first();
+        }
         if ($occupancy === null || $occupancy->monster->state !== 'alive') {
             return false;
         }
@@ -78,13 +90,15 @@ final class MonsterRemovalService
         string $eventType,
         array $metadata = [],
     ): bool {
-        $occupancy = $this->batch !== null
-            ? $this->batch->occupancyAt($cell->id)
-            : MonsterOccupancy::query()
+        $batch = $this->batchFor($context);
+        $occupancy = $batch?->occupancyAt($cell->id);
+        if ($occupancy === null && ($batch === null || ! $this->batchComplete)) {
+            $occupancy = MonsterOccupancy::query()
                 ->where('monster_instance_id', $monster->id)
                 ->with('monster.definition')
                 ->lockForUpdate()
                 ->first();
+        }
         if ($occupancy === null || $occupancy->monster->state !== 'alive') {
             return false;
         }
@@ -163,5 +177,15 @@ final class MonsterRemovalService
         $monster->version++;
         $monster->save();
         $this->removedCount++;
+    }
+
+    private function batchFor(TurnContext $context): ?MonsterTurnBatch
+    {
+        if ($this->batchTurnRunId !== $context->run->id
+            || $this->batchWorldId !== $context->world->id) {
+            return null;
+        }
+
+        return $this->batch;
     }
 }

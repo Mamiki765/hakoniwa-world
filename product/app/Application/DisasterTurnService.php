@@ -436,7 +436,7 @@ final class DisasterTurnService
         MapCell $cell,
         ?DisasterMutableCellIndex $cellIndex = null,
     ): bool {
-        if ($this->monsterRemoval->hasAtCell($cell->id)) {
+        if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
             return false;
         }
         $rules = $this->rules($context);
@@ -503,7 +503,7 @@ final class DisasterTurnService
             if ($cell === null || ! $this->isMutable($cell, $cellIndex)) {
                 continue;
             }
-            if ($this->monsterRemoval->hasAtCell($cell->id)) {
+            if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
                 continue;
             }
             $facilityKey = $cell->facility?->key;
@@ -551,7 +551,7 @@ final class DisasterTurnService
             if ($cell === null || ! $this->isMutable($cell, $cellIndex) || ! $this->isTsunamiTarget($cell, $settings)) {
                 continue;
             }
-            if ($this->monsterRemoval->hasAtCell($cell->id)) {
+            if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
                 continue;
             }
             $water = $this->adjacentWaterCount($cell, $space, $settings['water_facility_keys'], $cellIndex);
@@ -592,7 +592,7 @@ final class DisasterTurnService
                 || ! in_array($cell->facility?->key, $settings['facility_keys'], true)) {
                 continue;
             }
-            if ($this->monsterRemoval->hasAtCell($cell->id)) {
+            if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
                 continue;
             }
             $protection = $this->adjacentProtectionCount($cell, $settings['protection_facility_keys'], $cellIndex);
