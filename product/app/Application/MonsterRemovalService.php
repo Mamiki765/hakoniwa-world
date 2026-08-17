@@ -17,6 +17,8 @@ final class MonsterRemovalService
 
     private ?int $batchWorldId = null;
 
+    private ?int $batchAttemptCount = null;
+
     private bool $batchComplete = false;
 
     private int $removedCount = 0;
@@ -28,6 +30,7 @@ final class MonsterRemovalService
         $this->batch = $batch;
         $this->batchTurnRunId = $context->run->id;
         $this->batchWorldId = $context->world->id;
+        $this->batchAttemptCount = $context->run->attempt_count;
         $this->batchComplete = $complete;
         $this->removedCount = 0;
     }
@@ -182,7 +185,8 @@ final class MonsterRemovalService
     private function batchFor(TurnContext $context): ?MonsterTurnBatch
     {
         if ($this->batchTurnRunId !== $context->run->id
-            || $this->batchWorldId !== $context->world->id) {
+            || $this->batchWorldId !== $context->world->id
+            || $this->batchAttemptCount !== $context->run->attempt_count) {
             return null;
         }
 
