@@ -56,6 +56,33 @@ class PlayerIslandEventApiTest extends TestCase
         }
     }
 
+    public function test_historical_public_turn_completion_seed_is_excluded_from_every_player_projection(): void
+    {
+        [$world, $owner, $nation] = $this->nation('完了監査島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+        $eventId = $this->audit('turn.completed', $world, null, 'public', 2, [
+            'random_seed' => 'historical-master-seed',
+            'ruleset_key' => 'historical-ruleset',
+        ]);
+
+        $responses = [
+            $this->getJson("/api/v1/public/worlds/{$world->id}/major-news")->assertOk(),
+            $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk(),
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+            $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
+        ];
+
+        foreach ($responses as $response) {
+            $eventIds = collect($response->json('data.groups'))->flatMap(
+                static fn (array $group): array => $group['events'],
+            )->pluck('id');
+            $this->assertNotContains($eventId, $eventIds);
+            $this->assertStringNotContainsString('historical-master-seed', (string) $response->getContent());
+            $this->assertStringNotContainsString('turn.completed', (string) $response->getContent());
+        }
+    }
+
     public function test_monster_spawn_failure_is_audit_only_across_every_player_projection(): void
     {
         [$world, $owner, $nation] = $this->nation('監査島');

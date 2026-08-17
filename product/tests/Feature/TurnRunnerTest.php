@@ -70,7 +70,11 @@ class TurnRunnerTest extends TestCase
         $this->assertNull($run->failure_code);
         $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame(self::PHASES, collect($run->phase_results)->pluck('phase')->all());
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
+        $completedEvent = DB::table('audit_events')->where('event_type', 'turn.completed')->sole();
+        $completedMetadata = json_decode((string) $completedEvent->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('admin', $completedEvent->visibility);
+        $this->assertArrayNotHasKey('random_seed', $completedMetadata);
+        $this->assertSame($run->random_seed, $run->fresh()->random_seed);
         $this->assertNotNull($run->started_at);
         $this->assertNotNull($run->completed_at);
     }

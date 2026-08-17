@@ -111,9 +111,9 @@ final class TurnEventRecorder
     {
         return match ($eventType) {
             'command.queue_removed', 'command.quantity_decremented', 'monster.kill_stat_incremented',
-            'monster.spawn_failed_no_settlement' => 'admin',
+            'monster.spawn_failed_no_settlement', 'turn.completed' => 'admin',
             'monster.reward_distributed' => 'private',
-            'turn.completed', 'disaster.triggered', 'land_subsidence.triggered',
+            'disaster.triggered', 'land_subsidence.triggered',
             'monster.spawned', 'monster.moved',
             'monster.trampled', 'monster.stayed', 'monster.damage_blocked', 'monster.damaged',
             'monster.killed', 'monster.defense_self_destructed',

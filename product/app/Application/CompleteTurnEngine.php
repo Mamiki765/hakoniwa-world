@@ -289,6 +289,10 @@ final class CompleteTurnEngine
         $cellsByCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
             $cell->x.':'.$cell->y => $cell,
         ])->all();
+        $disasterCells = DisasterMutableCellIndex::fromCells(
+            $cells,
+            terrainDefinitions: ['wasteland' => $this->terrainDefinition($context, 'wasteland')],
+        );
         $monsterBatch = $this->monsters->load($context);
         $this->missiles->begin($cellsByCoordinate);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
@@ -329,7 +333,7 @@ final class CompleteTurnEngine
             }
             $facilityKey = $cell->facility?->key;
             if ($this->isSettlement($cell)) {
-                if ($this->disasters->processFire($context, $cell)) {
+                if ($this->disasters->processFire($context, $cell, $disasterCells)) {
                     $metrics['fires']++;
 
                     continue;
@@ -347,7 +351,7 @@ final class CompleteTurnEngine
                 continue;
             }
             if ($facilityKey === 'factory') {
-                if ($this->disasters->processFire($context, $cell)) {
+                if ($this->disasters->processFire($context, $cell, $disasterCells)) {
                     $metrics['fires']++;
 
                     continue;
@@ -364,7 +368,7 @@ final class CompleteTurnEngine
 
                     continue;
                 }
-                if ($this->disasters->processFire($context, $cell)) {
+                if ($this->disasters->processFire($context, $cell, $disasterCells)) {
                     $metrics['fires']++;
                 }
 
@@ -671,9 +675,9 @@ final class CompleteTurnEngine
             ], 'nation');
         }
         $this->events->record($context, 'turn.completed', $context->world, [
-            'random_seed' => $context->randomSeed, 'ruleset_key' => $context->ruleset->key,
+            'ruleset_key' => $context->ruleset->key,
             'phase_count' => count(TurnPipeline::CANONICAL_PHASE_KEYS),
-        ]);
+        ], 'admin');
 
         return [
             'completed' => true,

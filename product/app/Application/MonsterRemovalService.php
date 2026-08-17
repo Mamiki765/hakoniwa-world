@@ -55,8 +55,9 @@ final class MonsterRemovalService
         string $eventType = 'monster.removed_by_terrain_event',
         array $metadata = [],
     ): bool {
-        $occupancy = $this->batch?->occupancyAt($cell->id)
-            ?? MonsterOccupancy::query()
+        $occupancy = $this->batch !== null
+            ? $this->batch->occupancyAt($cell->id)
+            : MonsterOccupancy::query()
                 ->where('map_cell_id', $cell->id)
                 ->with('monster.definition')
                 ->lockForUpdate()
@@ -77,8 +78,9 @@ final class MonsterRemovalService
         string $eventType,
         array $metadata = [],
     ): bool {
-        $occupancy = $this->batch?->occupancyAt($cell->id)
-            ?? MonsterOccupancy::query()
+        $occupancy = $this->batch !== null
+            ? $this->batch->occupancyAt($cell->id)
+            : MonsterOccupancy::query()
                 ->where('monster_instance_id', $monster->id)
                 ->with('monster.definition')
                 ->lockForUpdate()
