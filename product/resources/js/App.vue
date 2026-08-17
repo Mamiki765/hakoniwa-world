@@ -928,9 +928,21 @@ async function abandonNation(): Promise<void> {
         </nav>
         <div class="session-actions">
             <template v-if="user">
-                <span>{{ user.display_name }}</span>
-                <button v-if="!nation" type="button" @click="page = 'home'">島を作る</button>
-                <button type="button" @click="page = 'account'">アカウント</button>
+                <div class="session-user-actions">
+                    <div class="session-account-actions">
+                        <span>{{ user.display_name }}</span>
+                        <button v-if="!nation" type="button" @click="page = 'home'">島を作る</button>
+                        <button type="button" @click="page = 'account'">アカウント</button>
+                    </div>
+                    <button
+                        v-if="!user.can_manage_inquiries"
+                        class="inquiry-shortcut"
+                        type="button"
+                        @click="openInquiry"
+                    >
+                        お問い合わせ
+                    </button>
+                </div>
             </template>
             <template v-else>
                 <a href="/auth/discord/redirect">Discordログイン</a>
@@ -994,22 +1006,20 @@ async function abandonNation(): Promise<void> {
                 <p v-else class="empty-state">お知らせはまだありません。</p>
             </section>
 
-            <section v-if="user" class="inquiry-window" aria-labelledby="inquiry-heading">
+            <section v-if="user?.can_manage_inquiries" class="inquiry-window" aria-labelledby="inquiry-heading">
                 <div class="section-heading">
                     <div><p class="eyebrow">CONTACT</p><h2 id="inquiry-heading">お問い合わせ</h2></div>
                     <button type="button" @click="openInquiry">お問い合わせを送る</button>
                 </div>
-                <template v-if="user.can_manage_inquiries">
-                    <ol v-if="latestInquiries.length" class="inquiry-list compact">
-                        <li v-for="inquiry in latestInquiries" :key="inquiry.management_id">
-                            <button type="button" @click="openAdminInquiry(inquiry.management_id)">
-                                {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
-                            </button>
-                        </li>
-                    </ol>
-                    <p v-else class="empty-state">お問い合わせはまだありません。</p>
-                    <button type="button" @click="openAdminInquiries(1)">すべて見る</button>
-                </template>
+                <ol v-if="latestInquiries.length" class="inquiry-list compact">
+                    <li v-for="inquiry in latestInquiries" :key="inquiry.management_id">
+                        <button type="button" @click="openAdminInquiry(inquiry.management_id)">
+                            {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
+                        </button>
+                    </li>
+                </ol>
+                <p v-else class="empty-state">お問い合わせはまだありません。</p>
+                <button type="button" @click="openAdminInquiries(1)">すべて見る</button>
             </section>
 
             <div class="lobby-grid">

@@ -54,7 +54,10 @@ a { color: var(--navy); }
 }
 .site-header nav button:hover, .session-actions button:hover, .session-actions a:hover { color: var(--coral); }
 .session-actions { justify-content: flex-end; font-size: .82rem; }
-.session-actions > span { color: var(--muted); }
+.session-user-actions { display: grid; justify-items: end; }
+.session-account-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap; }
+.session-account-actions > span { color: var(--muted); }
+.session-actions .inquiry-shortcut { padding-block: 3px; color: var(--navy); font-size: .75rem; text-decoration: underline; text-underline-offset: 3px; }
 
 main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px); }
 .map-main { width: 100%; padding: 14px clamp(10px, 1.5vw, 24px) 24px; }
@@ -567,7 +570,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .site-header nav { order: 3; grid-column: 1 / -1; width: 100%; overflow: auto; flex-wrap: nowrap; }
     .site-header nav button { min-height: 36px; padding: 5px 8px; font-size: .75rem; }
     .session-actions { font-size: .7rem; }
-    .session-actions > span, .session-actions button:last-child { display: none; }
+    .session-account-actions > span, .session-account-actions > button:last-child { display: none; }
+    .session-actions .inquiry-shortcut { min-height: 36px; padding: 5px 8px; font-size: .7rem; }
     main, .map-main { padding: 12px; }
     .lobby-heading { align-items: stretch; flex-direction: column; }
     .lobby-heading h1 { font-size: 2.6rem; }

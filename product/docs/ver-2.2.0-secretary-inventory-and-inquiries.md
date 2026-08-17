@@ -30,7 +30,7 @@ Only authenticated Users can submit and the POST route uses the existing Laravel
 
 The server accepts exactly one optional file and validates both size and server-observed MIME. Allowed MIME types are PNG, JPEG, WebP, and GIF; SVG and files that merely have an image extension are rejected. The original filename is not persisted or used in a path. A 32-byte CSPRNG value is hex encoded as the 256-bit token and combined only with a server-selected extension.
 
-The default write path is `/srv/bot-assets/hakoniwa-inquiries`. `product/docker/nginx/hakoniwa-inquiries.conf` is the checked-in assets-nginx location with `autoindex off`. The admin detail response constructs the URL from `HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`; ordinary responses never contain it.
+The default write path is `/srv/bot-assets/hakoniwa-inquiries`. The default Compose stack mounts a persistent named volume there and its Apache vhost serves `/hakoniwa-inquiries/` as a static, non-indexed route. `product/docker/nginx/hakoniwa-inquiries.conf` remains the checked-in location for production environments that use the external assets-nginx stack, with `autoindex off`. The admin detail response constructs the URL from `HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`; ordinary responses never contain it.
 
 This is not private or authenticated file storage. Anyone who obtains the sufficiently long random URL can view the image. The UI therefore warns not to attach images containing personal information. Directory listing is disabled, but the URL itself is a bearer-like public locator.
 
@@ -42,7 +42,7 @@ Laravel validation alone was insufficient: the base PHP image defaults were belo
 
 The repository does not contain the production Nginx Proxy Manager configuration or the active assets-nginx server block. Before deployment, the operator must verify the external proxy permits at least a 12MiB request body and install/compare the checked-in assets location with `autoindex off`. Do not infer those external settings from application validation.
 
-The Web container needs a persistent writable bind mount that maps the existing bot-assets host storage to `/srv/bot-assets` (or set `HAKONIWA_INQUIRY_ATTACHMENT_PATH` to the mounted directory). Verify the runtime Web UID can create a probe file in `hakoniwa-inquiries`, remove that probe, and that assets nginx can read but not list the directory. The base Compose file passes configuration but cannot describe the separately operated production assets-nginx mount.
+The base Compose stack provides `hakoniwa_inquiry_attachments` for local/default persistence and a non-indexed Apache static route. Production may continue to map the existing bot-assets host storage to `/srv/bot-assets` (or set `HAKONIWA_INQUIRY_ATTACHMENT_PATH` to another mounted directory) and use the external assets origin through `HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`. Verify the runtime Web UID can create and remove a probe file, and that the selected asset server can read but not list the directory. The base Compose configuration does not infer or replace the separately operated production mount or assets-nginx service.
 
 ## Backup boundary
 

@@ -991,7 +991,34 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
     });
 
-    it('submits an in-game inquiry as multipart and shows admin-only latest inquiries on TOP', async () => {
+    it('shows only a compact header inquiry shortcut to non-admin users', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Player', can_manage_announcements: false, can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(null);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        expect(wrapper.find('.inquiry-window').exists()).toBe(false);
+        expect(wrapper.get('.session-account-actions').text()).toContain('アカウント');
+        const shortcut = wrapper.get('.inquiry-shortcut');
+        expect(shortcut.text()).toBe('お問い合わせ');
+        expect(shortcut.element.previousElementSibling).toBe(wrapper.get('.session-account-actions').element);
+        expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/admin/inquiries/latest')).toBe(false);
+
+        await shortcut.trigger('click');
+        expect(wrapper.find('.inquiry-form').exists()).toBe(true);
+    });
+
+    it('submits an in-game inquiry as multipart and shows latest inquiries only to admins on TOP', async () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             const lobby = publicResponse(path);
@@ -1016,6 +1043,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         expect(wrapper.get('.inquiry-window').text()).toContain('INQ-000123 [バグ報告] 表示がおかしい');
+        expect(wrapper.find('.inquiry-shortcut').exists()).toBe(false);
         const sendButton = wrapper.findAll('.inquiry-window button').find((button) => button.text() === 'お問い合わせを送る')!;
         await sendButton.trigger('click');
         await wrapper.get<HTMLSelectElement>('.inquiry-form select').setValue('idea');

@@ -19,13 +19,13 @@ docker compose restart hakoniwa-web
 docker compose down
 ```
 
-`docker compose down`はcontainerとnetworkを削除するが、named volumeとDBデータを残す。再度`up -d`すれば同じDBを使用する。
+`docker compose down`はcontainerとnetworkを削除するが、named volume、DBデータ、問い合わせ添付を残す。再度`up -d`すれば同じデータを使用する。
 
 ```console
 docker compose down -v
 ```
 
-`down -v`は`hakoniwa_postgres_data`も削除し、ゲームデータを復元不能にする。初期開発DBの意図的な再作成または復元演習以外では実行しない。先にbackupを取得する。
+`down -v`は`hakoniwa_postgres_data`と`hakoniwa_inquiry_attachments`を削除し、ゲームデータと問い合わせ添付を復元不能にする。初期開発DBの意図的な再作成または復元演習以外では実行しない。DB backupは問い合わせ添付を含まないため、添付消失を許容できない環境では別のbackupが必要である。
 
 ## 外部tile assetの任意mount
 
@@ -42,9 +42,9 @@ services:
 
 ## 問い合わせ添付のwritable mount
 
-ver 2.2.0の問い合わせ画像は既存bot-assets基盤の`/srv/bot-assets/hakoniwa-inquiries`へ書き込む。tile assetとは異なり、Web containerからwritableかつcontainer再作成後も永続するproduction bind mountが必須である。assets nginx側は`product/docker/nginx/hakoniwa-inquiries.conf`のlocationを使い、`autoindex off`を維持する。
+ver 2.2.0の問い合わせ画像は既定で`/srv/bot-assets/hakoniwa-inquiries`へ書き込む。base Composeはwritableな`hakoniwa_inquiry_attachments` named volumeを同pathへmountし、container再作成後もfileを残す。Web containerのApacheは`/hakoniwa-inquiries/`をこのdirectoryへ直接対応させ、directory listing、`.htaccess`、CGI/include実行を無効にしたstatic routeとして配信する。
 
-`HAKONIWA_INQUIRY_ATTACHMENT_PATH`と`HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`をproductionの実mountとassets originへ合わせる。base Composeは環境変数だけを転送し、repository外のproduction assets nginx/mountを推測しない。security/backup/upload-limit/operator手順は`product/docs/ver-2.2.0-secretary-inventory-and-inquiries.md`を正本とする。
+この既定値はlocal/default stack用であり、productionの外部assets基盤を置き換えない。productionでは`HAKONIWA_INQUIRY_ATTACHMENT_PATH`と`HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`を実mountとassets originへ合わせ、writableなbind mountをCompose overrideで指定する。assets nginxを使う場合は`product/docker/nginx/hakoniwa-inquiries.conf`のlocationと`autoindex off`を維持する。security/backup/upload-limit/operator手順は`product/docs/ver-2.2.0-secretary-inventory-and-inquiries.md`を正本とする。
 
 首都画像を表示する環境は同じdirectoryへ`capital.gif`を配置する。旧名`capital.png`はmanifestで参照しない。GIFがない場合は首都のCSS fallbackを使い、API・map・healthcheckを失敗させない。
 
