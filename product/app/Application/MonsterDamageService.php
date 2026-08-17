@@ -106,6 +106,7 @@ final class MonsterDamageService
                 $locked->current_hp = $afterHp;
                 $locked->version++;
                 $locked->save();
+                $this->removal->synchronizeAliveInstance($context, $locked);
                 $context->state->markMapChunkChanged($hostCell->map_chunk_id);
                 $this->events->record($context, 'monster.damaged', $locked, [
                     'monster_key' => $locked->definition->key,

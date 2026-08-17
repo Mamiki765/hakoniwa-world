@@ -2636,6 +2636,7 @@ class CommandAndMissileTest extends TestCase
 
         $this->assertSame('alive', $monster->fresh()->state);
         $this->assertSame(1, $monster->fresh()->current_hp);
+        $this->assertSame(3, $monster->fresh()->version);
         $this->assertNotSame($target->id, MonsterOccupancy::query()
             ->where('monster_instance_id', $monster->id)->valueOrFail('map_cell_id'));
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.moved')

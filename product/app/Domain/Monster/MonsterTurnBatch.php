@@ -2,6 +2,7 @@
 
 namespace App\Domain\Monster;
 
+use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use InvalidArgumentException;
 
@@ -9,6 +10,9 @@ final class MonsterTurnBatch
 {
     /** @var array<int, MonsterOccupancy> */
     private array $occupancyByCellId = [];
+
+    /** @var array<int, MonsterOccupancy> */
+    private array $occupancyByMonsterId = [];
 
     /** @var array<int, int> */
     private array $movesTakenByMonster = [];
@@ -30,7 +34,11 @@ final class MonsterTurnBatch
             if (isset($this->occupancyByCellId[$occupancy->map_cell_id])) {
                 throw new InvalidArgumentException('Monster batch contains duplicate occupied cells.');
             }
+            if (isset($this->occupancyByMonsterId[$occupancy->monster_instance_id])) {
+                throw new InvalidArgumentException('Monster batch contains duplicate monster occupancies.');
+            }
             $this->occupancyByCellId[$occupancy->map_cell_id] = $occupancy;
+            $this->occupancyByMonsterId[$occupancy->monster_instance_id] = $occupancy;
             $this->movesTakenByMonster[$occupancy->monster_instance_id] = 0;
             $this->metrics['monsters_loaded']++;
         }
@@ -65,6 +73,21 @@ final class MonsterTurnBatch
         if (($this->occupancyByCellId[$occupancy->map_cell_id] ?? null)?->id === $occupancy->id) {
             unset($this->occupancyByCellId[$occupancy->map_cell_id]);
         }
+        if (($this->occupancyByMonsterId[$occupancy->monster_instance_id] ?? null)?->id === $occupancy->id) {
+            unset($this->occupancyByMonsterId[$occupancy->monster_instance_id]);
+        }
+    }
+
+    public function synchronizeMonsterSnapshot(MonsterInstance $monster): void
+    {
+        $occupancy = $this->occupancyByMonsterId[$monster->id] ?? null;
+        if ($occupancy === null) {
+            return;
+        }
+        if ($monster->state !== 'alive' || ! $monster->relationLoaded('definition')) {
+            throw new InvalidArgumentException('Monster batch synchronization requires an alive definition-loaded instance.');
+        }
+        $occupancy->setRelation('monster', $monster);
     }
 
     public function movesTaken(int $monsterId): int
