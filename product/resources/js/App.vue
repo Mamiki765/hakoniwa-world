@@ -24,7 +24,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '2.1.2';
+const applicationVersion = '2.1.3';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);

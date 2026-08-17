@@ -495,7 +495,7 @@ class DomesticCommandExecutionTest extends TestCase
         }
     }
 
-    public function test_turn_execution_repairs_a_split_queue_without_stopping_the_world(): void
+    public function test_turn_execution_discards_a_legacy_staged_item_and_continues_with_the_normal_queue(): void
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->createNation($world, 'ターン復旧国');
@@ -517,17 +517,22 @@ class DomesticCommandExecutionTest extends TestCase
         $result = app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
 
         $this->assertSame(1, $result['successes']);
-        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame(2, $result['removed']);
+        $this->assertSame('cancelled', $first->fresh()->status);
+        $this->assertSame('legacy_staged_position_discarded', $first->fresh()->failure_metadata['reason']);
+        $this->assertSame(1001, $first->fresh()->failure_metadata['original_queue_position']);
         $this->assertSame('cancelled', $second->fresh()->status);
-        $this->assertSame('queued', $third->fresh()->status);
+        $this->assertSame('completed', $third->fresh()->status);
         $remaining = NationCommandQueueItem::query()->where('nation_command_queue_id', $nation->commandQueue->id)
             ->where('status', 'queued')->with('definition')->orderBy('queue_position')->get();
-        $this->assertSame([$third->id], $remaining->pluck('id')->all());
-        $this->assertSame(['build_farm'], $remaining->pluck('definition.key')->all());
-        $this->assertSame([1], $remaining->pluck('queue_position')->all());
+        $this->assertCount(0, $remaining);
+        $event = DB::table('audit_events')->where('event_type', 'command.queue_removed')
+            ->where('subject_id', $first->id)->firstOrFail();
+        $this->assertSame('admin', $event->visibility);
+        $this->assertSame('legacy_staged_position_discarded', json_decode($event->metadata, true)['reason']);
     }
 
-    public function test_queue_reads_and_turn_execution_share_the_legacy_recovered_head(): void
+    public function test_queue_read_does_not_guess_a_legacy_head_and_execution_never_runs_it(): void
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->createNation($world, '表示実行一致国');
@@ -545,17 +550,12 @@ class DomesticCommandExecutionTest extends TestCase
         $base = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}";
         $this->actingAs($user)->getJson("{$base}/command-queue")
             ->assertOk()
-            ->assertJsonPath('data.items.0.id', $first->id)
-            ->assertJsonPath('data.items.0.command_key', 'reclaim')
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.id', $third->id)
+            ->assertJsonPath('data.items.0.command_key', 'build_farm')
             ->assertJsonPath('data.items.0.queue_position', 1)
-            ->assertJsonPath('data.items.1.id', $third->id)
-            ->assertJsonPath('data.items.1.queue_position', 2)
-            ->assertJsonPath('data.plan.0.id', $first->id)
+            ->assertJsonPath('data.plan.0.id', $third->id)
             ->assertJsonPath('data.plan.0.kind', 'explicit');
-        $landClear = collect($this->getJson(
-            "{$base}/command-definitions?target_x={$reclaimTarget->x}&target_y={$reclaimTarget->y}&position=2",
-        )->assertOk()->json('data.commands'))->firstWhere('key', 'land_clear');
-        $this->assertSame('executable_after_queue', $landClear['execution_preview_status']);
         $this->assertSame(1001, $first->fresh()->queue_position);
         $this->assertSame(2, $third->fresh()->queue_position);
 
@@ -564,11 +564,9 @@ class DomesticCommandExecutionTest extends TestCase
         );
 
         $this->assertSame(1, $result['successes']);
-        $this->assertSame('completed', $first->fresh()->status);
-        $remaining = $third->fresh('definition');
-        $this->assertSame('queued', $remaining->status);
-        $this->assertSame('build_farm', $remaining->definition->key);
-        $this->assertSame(1, $remaining->queue_position);
+        $this->assertSame('cancelled', $first->fresh()->status);
+        $this->assertSame('legacy_staged_position_discarded', $first->fresh()->failure_metadata['reason']);
+        $this->assertSame('completed', $third->fresh()->status);
     }
 
     public function test_terrain_commands_cannot_remove_the_nation_capital(): void

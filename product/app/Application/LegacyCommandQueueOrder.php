@@ -9,38 +9,36 @@ final class LegacyCommandQueueOrder
 {
     private const POSITION_OFFSET = 1000;
 
+    public const DISCARD_REASON = 'legacy_staged_position_discarded';
+
     /**
      * @param  Collection<int, NationCommandQueueItem>  $items
      * @return Collection<int, NationCommandQueueItem>
      */
-    public function recover(Collection $items): Collection
+    public function discard(Collection $items): Collection
     {
         $legacyStaged = $items->filter(
             static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
                 && $item->queue_position > self::POSITION_OFFSET,
         );
-        if ($legacyStaged->isEmpty()) {
-            return $items;
+
+        foreach ($legacyStaged as $item) {
+            $originalPosition = (int) $item->queue_position;
+            $metadata = $item->failure_metadata ?? [];
+            $item->update([
+                'status' => 'cancelled',
+                'queue_position' => null,
+                'cancelled_at' => now(),
+                'failure_metadata' => [
+                    ...$metadata,
+                    'reason' => self::DISCARD_REASON,
+                    'original_queue_position' => $originalPosition,
+                ],
+            ]);
+            $item->setAttribute('legacy_original_queue_position', $originalPosition);
         }
 
-        // The legacy compactor parked the unchanged prefix at its original
-        // position + 1000. Visible rows are the shifted suffix or plans added
-        // later, so recover the staged prefix before ordinary compaction.
-        $legacyStaged = $legacyStaged->sort(
-            static fn (NationCommandQueueItem $left, NationCommandQueueItem $right): int => [
-                (int) $left->queue_position - self::POSITION_OFFSET,
-                $left->id,
-            ] <=> [
-                (int) $right->queue_position - self::POSITION_OFFSET,
-                $right->id,
-            ],
-        );
-        $visible = $items->reject(
-            static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
-                && $item->queue_position > self::POSITION_OFFSET,
-        );
-
-        return $legacyStaged->values()->concat($visible->values())->values();
+        return $legacyStaged->values();
     }
 
     /**
@@ -49,12 +47,15 @@ final class LegacyCommandQueueOrder
      */
     public function project(Collection $items): Collection
     {
-        $ordered = $this->recover($items);
-        if ($ordered === $items) {
+        $visible = $items->reject(
+            static fn (NationCommandQueueItem $item): bool => $item->queue_position !== null
+                && $item->queue_position > self::POSITION_OFFSET,
+        )->values();
+        if ($visible->count() === $items->count()) {
             return $items;
         }
 
-        return $ordered->values()->map(static function (NationCommandQueueItem $item, int $index): NationCommandQueueItem {
+        return $visible->map(static function (NationCommandQueueItem $item, int $index): NationCommandQueueItem {
             $projected = clone $item;
             $projected->setAttribute('queue_position', $index + 1);
             $projected->syncOriginal();

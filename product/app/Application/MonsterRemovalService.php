@@ -114,6 +114,11 @@ final class MonsterRemovalService
         return $this->removedCount;
     }
 
+    public function synchronizeAliveInstance(TurnContext $context, MonsterInstance $monster): void
+    {
+        $this->batchFor($context)?->synchronizeMonsterSnapshot($monster);
+    }
+
     public function removeForWorldMutation(MonsterOccupancy $occupancy, string $reason): bool
     {
         $monster = MonsterInstance::query()

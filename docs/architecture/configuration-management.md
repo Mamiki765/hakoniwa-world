@@ -52,6 +52,8 @@ latest rulesetの必須runtime metadataが欠落している場合もhistorical 
 
 連続するproduction gameplay ruleset migrationは、後段をまとめて適用したものとして扱わず、一段ずつ完了と整合性を確認する。ver 2.xのv6→v7→v8 chainでは、まずWorldとlive queue/monster/kill-stat参照がv6で整合していることを確認し、v7 migration後に同じ対象がすべてv7へ揃ったことを確認してからv8 migrationへ進む。v8のqueued missile guardが停止した場合はv7を正常なcheckpointとして保持し、review済みconfirmationをその一回のmigration processにだけ与えてretryする。`.env`やpersistent configへconfirmationを保存せず、未解決TurnRun guard、DB constraint/trigger、historical queue item、v1–v8 payload/checksumを各段で維持する。
 
+v8→v9ではnormal monster orderingの新contractを、移行時点ですでにqueuedの通常、PP、SPP、陸地破壊missileにも適用する。これら4 keyは他のlive queued itemと同じexact stable-key mappingでv9へrebindし、missile専用のmigration STOP、operator review、one-shot confirmation環境変数を要求しない。このowner decisionはv9 orderingだけに限定し、未解決next non-dry TurnRun guard、World lockとtransaction、live reference整合性、historical queue item preservation、published v1–v8 immutability、rollbackとidempotencyを緩和しない。
+
 以下のRoadmap PR6/PR7 migration記録はfresh installと監査に必要な既適用schema履歴として保持するものであり、historical World継続運用の現行手順ではない。PR23では過去PR間だけを再現する互換テストを整理し、現行仕様の回帰テストをproduction rulesetへ向ける。
 
 Roadmap PR6は`roadmap-pr2-v1`を更新せず、`roadmap-pr6-v1`を新規公開した。当時のforward-only migrationは`shared-world`が旧rulesetを参照している場合だけ新rulesetへ移し、queue itemのcommand definition参照を同じcommand keyの新定義へ付け替えた。

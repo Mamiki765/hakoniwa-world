@@ -296,6 +296,8 @@ final class CompleteTurnEngine
         $monsterBatch = $this->monsters->load($context);
         $this->missiles->begin($cellsByCoordinate);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
+        $separateNormalMonsterPass = ($context->ruleset->settings['turn_resolution']['normal_monster_stage'] ?? null)
+            === 'after_ordinary_surface_cell_events';
 
         foreach ($context->state->surfaceCellIds() as $cellId) {
             $cell = $cellsById->get($cellId);
@@ -303,7 +305,8 @@ final class CompleteTurnEngine
                 throw new DomainException("Surface cell order references missing cell {$cellId}.");
             }
             $metrics['processed']++;
-            if ($this->monsters->processCell($context, $space, $cell, $cellsByCoordinate, $monsterBatch)) {
+            if (! $separateNormalMonsterPass
+                && $this->monsters->processCell($context, $space, $cell, $cellsByCoordinate, $monsterBatch)) {
                 continue;
             }
             if (in_array($cell->facility?->key, $launchBaseKeys, true)) {
@@ -394,6 +397,19 @@ final class CompleteTurnEngine
         $launches = $this->missiles->finalize($context);
         $metrics['missile_launches'] = $launches['launches'];
         $metrics['missile_idle_counter_resets'] = $launches['idle_counter_resets'];
+
+        if ($separateNormalMonsterPass) {
+            // Reuse the ordinary pass order without another shuffle or random
+            // draw. Cell-based processing preserves later-destination repeat
+            // movement while the shared batch observes missile/terrain removals.
+            foreach ($context->state->surfaceCellIds() as $cellId) {
+                $cell = $cellsById->get($cellId);
+                if (! $cell instanceof MapCell) {
+                    throw new DomainException("Surface cell order references missing cell {$cellId}.");
+                }
+                $this->monsters->processCell($context, $space, $cell, $cellsByCoordinate, $monsterBatch);
+            }
+        }
 
         return [...$metrics, ...$monsterBatch->metrics()];
     }

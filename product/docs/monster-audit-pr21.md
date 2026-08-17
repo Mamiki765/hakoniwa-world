@@ -64,7 +64,7 @@ probability = numerator / 10000
 
 ## movementとcell processing
 
-sourceの一回cell passを採用する。randomized surface cell orderでoccupancyを見つけたときに怪獣actorを先に処理する。各actionで最大3方向を独立drawし、最初の有効候補へ移動する。移動先が同じpassで未処理なら再行動でき、処理済みcellなら再行動しない。成功移動数はturn-local batchだけに保持し、instance/APIへ`moves_taken`を保存・公開しない。
+この段落のsame-pass orderingはPR21およびpublished v1-v8のhistorical contractである。v9以降は[ADR-0013](../../docs/decisions/ADR-0013-ver-2.1.3-resolution-and-legacy-queue.md)により、ordinary shuffled surface-cell events完了後に同じcell orderを再利用するnormal monster passへ分離した。各actionの最大3方向draw、移動先が後続cellなら再行動できるcell-based semantics、movement limit、turn-local batchは変更しない。
 
 海、浅瀬、海底施設、山、採掘場、Capital、記念碑、World外、別怪獣cellは通行不可。通常の陸地・facility・集落へ入るとfacilityと人口を除去してowner維持の荒地にする。元cellは既に荒地であり、旧terrainを復元しない。
 
@@ -77,7 +77,7 @@ raw Hakoniwa 2＋sourceの一般的なcell-pass観察とは別に、2S＋ではo
 | event | occupancy | HP/reward/stat | event順序 |
 |---|---|---|---|
 | earthquake / tsunami / typhoon | 維持し、怪獣cellへの通常damageをskip | 変更なし | 怪獣を観測してcell effectをskip |
-| fire / riot | 維持し、怪獣actor処理後のcell effectをskip | 変更なし | monster actorがcell turnを占有 |
+| fire / riot | 維持 | 変更なし | v1-v8はmonster actorがcell turnを占有。v9以降はordinary event完了後にnormal monsterが行動 |
 | meteor shower / huge meteor / eruption | explicit removal | HP damage・報酬・kill statなし | occupancyを除去してからterrain変更 |
 | land subsidence | explicit removal | 同上 | occupancyを除去してから沈下 |
 | terrain-destruction missile / administrative overwrite | explicit removal境界 | 同上 | terrain変更serviceが必ず除去を先行 |

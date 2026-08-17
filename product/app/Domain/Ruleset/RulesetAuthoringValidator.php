@@ -107,6 +107,14 @@ final class RulesetAuthoringValidator
                 .self::POSTGRESQL_INTEGER_MAX.'.',
             );
         }
+        if ($key === 'hakoniwa-2s-plus-v9') {
+            $turnResolution = $this->map($settings['turn_resolution'] ?? null, 'ruleset.turn_resolution');
+            if ($turnResolution !== [
+                'normal_monster_stage' => 'after_ordinary_surface_cell_events',
+            ]) {
+                throw new DomainException('ruleset.turn_resolution differs from the v9 normal monster stage contract.');
+            }
+        }
         $chunkSize = $this->integer($settings['chunk_size'], 'ruleset.chunk_size', 1);
         if ($chunkSize !== self::ARCHITECTURE_CHUNK_SIZE) {
             throw new DomainException('ruleset.chunk_size must be exactly 16.');
@@ -461,7 +469,7 @@ final class RulesetAuthoringValidator
         ], "{$path}.dormant_impact");
         $explicitTargetState = in_array(
             $settings['key'] ?? null,
-            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8'],
+            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'],
             true,
         )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
@@ -491,11 +499,11 @@ final class RulesetAuthoringValidator
             throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'], true)) {
             $this->validateLaunchBaseExperience($settings, $military, $facilityKeys, $path);
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'], true)) {
             $defenseResistance = $this->map(
                 $military['defense_spp_resistance'] ?? null,
                 "{$path}.defense_spp_resistance",
@@ -513,7 +521,7 @@ final class RulesetAuthoringValidator
             );
         }
 
-        if (($settings['key'] ?? null) === 'hakoniwa-2s-plus-v8') {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'], true)) {
             $interception = $this->map(
                 $military['defense_interception'] ?? null,
                 "{$path}.defense_interception",
@@ -1130,7 +1138,7 @@ final class RulesetAuthoringValidator
                     "{$path}.metadata.oil_search_effect_key",
                 );
             }
-            if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8'], true)
+            if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'], true)
                 && in_array($commandKey, ['build_defense_facility', 'build_monument'], true)) {
                 $expectedEffect = $commandKey === 'build_defense_facility'
                     ? 'defense_self_destruct'
