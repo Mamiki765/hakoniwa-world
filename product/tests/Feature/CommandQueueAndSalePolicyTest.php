@@ -1442,7 +1442,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertDatabaseMissing('nation_command_queues', ['nation_id' => $nation->id]);
     }
 
-    public function test_quantity_patch_does_not_reorder_or_repair_legacy_queue_positions(): void
+    public function test_quantity_patch_discards_legacy_staged_position_without_reordering_survivors(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('数量位置国');
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
@@ -1469,16 +1469,24 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 3,
         ])->assertOk()
             ->assertJsonPath('data.version', 4)
-            ->assertJsonPath('data.items.0.id', $items[1]->id)
+            ->assertJsonPath('data.items.0.id', $items[0]->id)
             ->assertJsonPath('data.items.0.queue_position', 1)
-            ->assertJsonPath('data.items.1.id', $items[0]->id)
-            ->assertJsonPath('data.items.1.queue_position', 2);
+            ->assertJsonCount(1, 'data.items');
 
-        $this->assertSame([1, 2], collect($response->json('data.items'))->pluck('queue_position')->all());
+        $this->assertSame([1], collect($response->json('data.items'))->pluck('queue_position')->all());
 
         $this->assertSame(
-            [1, 1001],
+            [1],
             NationCommandQueueItem::query()->where('status', 'queued')->orderBy('id')->pluck('queue_position')->all(),
+        );
+        $this->assertDatabaseHas('nation_command_queue_items', [
+            'id' => $items[1]->id,
+            'status' => 'cancelled',
+            'queue_position' => null,
+        ]);
+        $this->assertSame(
+            'legacy_staged_position_discarded',
+            $items[1]->fresh()->failure_metadata['reason'],
         );
     }
 

@@ -24,6 +24,9 @@ final class RulesetV8ContractTest extends TestCase
             self::EIGHTH_PRODUCTION_PAYLOAD_HASH,
             hash('sha256', json_encode($v8, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
+        $validated = app(RulesetAuthoringValidator::class)->validate($v8);
+        $this->assertSame('hakoniwa-2s-plus-v8', $validated['key']);
+        $this->assertSame(8, $validated['version']);
         $interception = $v8['military']['defense_interception'];
         unset($v8['military']['defense_interception']);
         $v8['key'] = 'hakoniwa-2s-plus-v7';
@@ -41,11 +44,5 @@ final class RulesetV8ContractTest extends TestCase
             'overlap_resolution' => 'single_interception',
             'resolve_before' => 'secretary',
         ], $interception);
-        $this->assertSame('hakoniwa-2s-plus-v8', config('hakoniwa.ruleset.key'));
-        $this->assertSame(8, config('hakoniwa.ruleset.version'));
-
-        $validated = app(RulesetAuthoringValidator::class)->validate(config('hakoniwa.ruleset'));
-        $this->assertSame('hakoniwa-2s-plus-v8', $validated['key']);
-        $this->assertSame(8, $validated['version']);
     }
 }
