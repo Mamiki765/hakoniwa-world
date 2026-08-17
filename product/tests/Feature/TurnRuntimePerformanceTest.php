@@ -16,17 +16,21 @@ use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnPhase;
 use App\Domain\Turn\TurnPhaseResult;
 use App\Domain\Turn\TurnPipeline;
+use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnSeedGenerator;
+use App\Domain\Turn\TurnState;
 use App\Domain\World\MapBounds;
 use App\Domain\World\WorldGenerationProfile;
 use App\Domain\World\WorldMutationLock;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
+use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
+use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Database\Eloquent\Model;
@@ -112,6 +116,104 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->report('64x64-settlement-heavy', $measurement);
         $this->assertSame(4_096, $measurement['phases']['process_cells']['metrics']['processed']);
         $this->assertLessThanOrEqual(20, $measurement['phases']['process_cells']['queries']);
+    }
+
+    #[DataProvider('normalProcessCellProfiles')]
+    public function test_normal_world_process_cell_profile_reports_query_scaling(
+        string $profile,
+        int $expectedCells,
+    ): void {
+        $world = $this->processCellProfileWorld($expectedCells, 'normal');
+
+        $measurement = $this->measureTurn($world);
+
+        $this->report($profile, $measurement);
+        $this->assertSame($expectedCells, $measurement['phases']['process_cells']['metrics']['processed']);
+        $this->assertGreaterThan(0, $measurement['phases']['process_cells']['queries']);
+    }
+
+    #[DataProvider('matureProcessCellProfiles')]
+    public function test_mature_world_process_cell_profile_reports_query_scaling(
+        string $profile,
+        int $expectedCells,
+    ): void {
+        $world = $this->processCellProfileWorld($expectedCells, 'mature');
+
+        $measurement = $this->measureTurn($world);
+
+        $this->report($profile, $measurement);
+        $this->assertSame($expectedCells, $measurement['phases']['process_cells']['metrics']['processed']);
+        $this->assertSame(0, $measurement['phases']['process_cells']['coordinate_cell_lookup_queries']);
+        $this->assertLessThanOrEqual(40, $measurement['phases']['process_cells']['query_types']['select'] ?? 0);
+    }
+
+    #[DataProvider('specialProcessCellProfiles')]
+    public function test_special_process_cell_profile_reports_query_shape(string $profile, string $fixture): void
+    {
+        $world = $this->processCellProfileWorld(1_024, $fixture);
+
+        $measurement = $this->measureTurn($world);
+
+        $this->report($profile, $measurement);
+        $this->assertSame(1_024, $measurement['phases']['process_cells']['metrics']['processed']);
+        $this->assertGreaterThan(0, $measurement['phases']['process_cells']['queries']);
+        $this->assertSame(0, $measurement['phases']['process_cells']['coordinate_cell_lookup_queries']);
+    }
+
+    #[DataProvider('forcedDisasterProfiles')]
+    public function test_forced_global_disaster_profile_reports_query_shape(string $disasterKey): void
+    {
+        [$world, $ruleset] = $this->forcedDisasterWorld($disasterKey);
+        $seed = $this->forcedDisasterSeed($disasterKey);
+
+        $measurement = $this->measureGlobalDisasters($world, $ruleset, $seed);
+        $globalDisasters = $measurement['phases']['global_disasters'];
+
+        $this->report("forced-{$disasterKey}", $measurement);
+        $this->assertGreaterThanOrEqual(1, $globalDisasters['metrics']['executed_disasters']);
+        $this->assertGreaterThan(0, $globalDisasters['metrics']['damaged_cells']);
+        $this->assertGreaterThan(0, $globalDisasters['queries']);
+        $this->assertSame(0, $globalDisasters['coordinate_cell_lookup_queries']);
+        $this->assertSame(0, $globalDisasters['active_nation_lookup_queries']);
+        $this->assertLessThanOrEqual(1, $globalDisasters['terrain_definition_lookup_queries']);
+        $this->assertSame(0, $globalDisasters['monster_occupancy_lookup_queries']);
+        $this->assertLessThanOrEqual(20, $globalDisasters['query_types']['select'] ?? 0);
+    }
+
+    /** @return iterable<string, array{string, int}> */
+    public static function normalProcessCellProfiles(): iterable
+    {
+        yield '32x32 normal' => ['32x32-normal', 1_024];
+        yield '64x64 normal' => ['64x64-normal', 4_096];
+        yield '96x96 normal' => ['96x96-normal', 9_216];
+    }
+
+    /** @return iterable<string, array{string, int}> */
+    public static function matureProcessCellProfiles(): iterable
+    {
+        yield '32x32 mature' => ['32x32-mature', 1_024];
+        yield '64x64 mature' => ['64x64-mature', 4_096];
+        yield '96x96 mature' => ['96x96-mature', 9_216];
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function specialProcessCellProfiles(): iterable
+    {
+        yield 'fire targets' => ['32x32-fire-target-heavy', 'fire'];
+        yield 'fire protection sources' => ['32x32-fire-protection-heavy', 'protection'];
+        yield 'famine riot candidates' => ['32x32-famine-riot-heavy', 'famine'];
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function forcedDisasterProfiles(): iterable
+    {
+        yield 'earthquake' => ['earthquake'];
+        yield 'tsunami' => ['tsunami'];
+        yield 'typhoon' => ['typhoon'];
+        yield 'meteor shower' => ['meteor_shower'];
+        yield 'huge meteor' => ['huge_meteor'];
+        yield 'eruption' => ['eruption'];
+        yield 'land subsidence' => ['land_subsidence'];
     }
 
     #[DataProvider('nationCountProfiles')]
@@ -344,6 +446,319 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->fail("Unsupported expanded World cell count {$expectedCells}.");
     }
 
+    private function processCellProfileWorld(int $expectedCells, string $fixture): World
+    {
+        $world = $expectedCells === 1_024 ? $this->lightweightWorld() : $this->expandedWorld($expectedCells);
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            "Process Profile {$fixture} {$expectedCells}",
+            'Process Profile Owner',
+        );
+        $nation->update(['money' => 1_000_000]);
+        $wheatId = (int) ResourceDefinition::query()->where('key', 'wheat')->valueOrFail('id');
+        NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $wheatId)
+            ->update(['amount' => $fixture === 'famine' ? 0 : 1_000_000]);
+        if ($fixture === 'normal') {
+            return $world;
+        }
+
+        $space = $this->surfaceMapSpace($world);
+        $capitalCellId = (int) $nation->capital()->valueOrFail('map_cell_id');
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $forest = TerrainDefinition::query()->where('key', 'forest')->firstOrFail();
+        $factory = FacilityDefinition::query()->where('key', 'factory')->firstOrFail();
+        $city = FacilityDefinition::query()->where('key', 'city')->firstOrFail();
+        $defense = FacilityDefinition::query()->where('key', 'defense')->firstOrFail();
+        $cellIds = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereKeyNot($capitalCellId)
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+        MapCell::query()->whereIn('id', $cellIds)->update([
+            'terrain_definition_id' => $plain->id,
+            'facility_definition_id' => null,
+            'monument_definition_id' => null,
+            'owner_nation_id' => $nation->id,
+            'population' => 0,
+            'terrain_quantity' => null,
+            'facility_scale' => null,
+            'facility_experience' => null,
+            'facility_operational_state' => null,
+        ]);
+
+        if ($fixture === 'mature') {
+            $factoryIds = [];
+            $cityIds = [];
+            foreach ($cellIds as $index => $cellId) {
+                if ($index % 4 === 0) {
+                    $factoryIds[] = $cellId;
+                } elseif ($index % 4 === 1) {
+                    $cityIds[] = $cellId;
+                }
+            }
+            $this->setProfileFacility($factoryIds, $factory->id, 1, 0);
+            $this->setProfileFacility($cityIds, $city->id, null, 1_000);
+        } elseif ($fixture === 'fire') {
+            $this->setProfileFacility($cellIds, $factory->id, 1, 0);
+        } elseif ($fixture === 'protection') {
+            $factoryIds = [];
+            $forestIds = [];
+            foreach ($cellIds as $index => $cellId) {
+                if ($index % 2 === 0) {
+                    $factoryIds[] = $cellId;
+                } else {
+                    $forestIds[] = $cellId;
+                }
+            }
+            $this->setProfileFacility($factoryIds, $factory->id, 1, 0);
+            MapCell::query()->whereIn('id', $forestIds)->update([
+                'terrain_definition_id' => $forest->id,
+                'terrain_quantity' => $forest->initial_quantity,
+            ]);
+        } elseif ($fixture === 'famine') {
+            $this->setProfileFacility($cellIds, $defense->id, null, 0);
+        }
+
+        return $world;
+    }
+
+    /** @param list<int> $cellIds */
+    private function setProfileFacility(array $cellIds, int $facilityId, ?int $scale, int $population): void
+    {
+        MapCell::query()->whereIn('id', $cellIds)->update([
+            'facility_definition_id' => $facilityId,
+            'facility_scale' => $scale,
+            'facility_experience' => null,
+            'facility_operational_state' => 'operational',
+            'population' => $population,
+        ]);
+    }
+
+    /** @return array{World, RulesetVersion} */
+    private function forcedDisasterWorld(string $disasterKey): array
+    {
+        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Production);
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            "Forced {$disasterKey}",
+            'Forced Disaster Owner',
+        );
+        $space = $this->surfaceMapSpace($world);
+        $capitalCellId = (int) $nation->capital()->valueOrFail('map_cell_id');
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $sea = TerrainDefinition::query()->where('key', 'sea')->firstOrFail();
+        $forest = TerrainDefinition::query()->where('key', 'forest')->firstOrFail();
+        $factory = FacilityDefinition::query()->where('key', 'factory')->firstOrFail();
+        $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $cells = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereKeyNot($capitalCellId)
+            ->orderBy('id')
+            ->get(['id', 'x', 'y']);
+        $cellIds = $cells->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+        MapCell::query()->whereIn('id', $cellIds)->update([
+            'terrain_definition_id' => $plain->id,
+            'facility_definition_id' => null,
+            'monument_definition_id' => null,
+            'owner_nation_id' => $nation->id,
+            'population' => 0,
+            'terrain_quantity' => null,
+            'facility_scale' => null,
+            'facility_experience' => null,
+            'facility_operational_state' => null,
+        ]);
+
+        if ($disasterKey === 'earthquake') {
+            $this->setProfileFacility($cellIds, $factory->id, 1, 0);
+        } elseif ($disasterKey === 'tsunami') {
+            $targetIds = [];
+            $waterIds = [];
+            foreach ($cells as $cell) {
+                if ((($cell->x + $cell->y) & 1) === 0) {
+                    $targetIds[] = (int) $cell->id;
+                } else {
+                    $waterIds[] = (int) $cell->id;
+                }
+            }
+            $this->setProfileFacility($targetIds, $farm->id, 1, 0);
+            MapCell::query()->whereIn('id', $waterIds)->update([
+                'terrain_definition_id' => $sea->id,
+                'terrain_quantity' => null,
+            ]);
+        } elseif ($disasterKey === 'typhoon') {
+            $targetIds = [];
+            $protectionIds = [];
+            foreach ($cells as $cell) {
+                if ((($cell->x + $cell->y) & 1) === 0) {
+                    $targetIds[] = (int) $cell->id;
+                } else {
+                    $protectionIds[] = (int) $cell->id;
+                }
+            }
+            $this->setProfileFacility($targetIds, $farm->id, 1, 0);
+            MapCell::query()->whereIn('id', $protectionIds)->update([
+                'terrain_definition_id' => $forest->id,
+                'terrain_quantity' => $forest->initial_quantity,
+            ]);
+        }
+
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        foreach (['earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption'] as $key) {
+            $settings['turn_processing']['disasters'][$key]['probability'] = [
+                'numerator' => $key === $disasterKey ? 1 : 0,
+                'denominator' => 1,
+            ];
+            $settings['turn_processing']['disasters'][$key]['center_padding'] = 0;
+        }
+        $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 0, 'denominator' => 1];
+        $settings['turn_processing']['disasters']['earthquake']['damage_probability'] = [
+            'numerator' => 1,
+            'denominator' => 1,
+        ];
+        $settings['turn_processing']['disasters']['tsunami']['internal_denominator'] = 1;
+        $settings['turn_processing']['disasters']['tsunami']['adjacent_water_offset'] = 0;
+        $settings['turn_processing']['disasters']['typhoon']['internal_denominator'] = 1;
+        $settings['turn_processing']['disasters']['typhoon']['base_damage_threshold'] = 7;
+        $settings['turn_processing']['disasters']['meteor_shower']['continuation_probability'] = [
+            'numerator' => 15,
+            'denominator' => 16,
+        ];
+        $settings['turn_processing']['disasters']['land_subsidence']['enabled'] = $disasterKey === 'land_subsidence';
+        $settings['turn_processing']['disasters']['land_subsidence']['base_safe_land_cells'] = 0;
+        $settings['turn_processing']['disasters']['land_subsidence']['probability'] = [
+            'numerator' => 1,
+            'denominator' => 1,
+        ];
+        $settings['monster_system']['natural_spawn']['probability_per_land_cell'] = [
+            'numerator' => 0,
+            'denominator' => 10_000,
+        ];
+        $ruleset->settings = $settings;
+        $ruleset->save();
+
+        return [$world, $ruleset->fresh()];
+    }
+
+    private function forcedDisasterSeed(string $disasterKey): string
+    {
+        if ($disasterKey === 'land_subsidence') {
+            return hash('sha256', 'turn-runtime-forced-land-subsidence');
+        }
+        $centerLabel = match ($disasterKey) {
+            'earthquake' => TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER,
+            'tsunami' => TurnRandomStreamFactory::GLOBAL_TSUNAMI_CENTER,
+            'typhoon' => TurnRandomStreamFactory::GLOBAL_TYPHOON_CENTER,
+            'meteor_shower' => TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER,
+            'huge_meteor' => TurnRandomStreamFactory::GLOBAL_HUGE_METEOR_CENTER,
+            'eruption' => TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER,
+        };
+        $padding = in_array($disasterKey, ['earthquake', 'tsunami', 'typhoon', 'meteor_shower'], true)
+            ? 10
+            : ($disasterKey === 'huge_meteor' ? 2 : 1);
+
+        for ($candidate = 0; $candidate < 100_000; $candidate++) {
+            $seed = hash('sha256', "turn-runtime-forced-{$disasterKey}-{$candidate}");
+            $random = new TurnRandomStreamFactory($seed);
+            $fractionalGate = $random->stream(TurnRandomStreamFactory::worldDisasterAreaFraction($disasterKey))
+                ->integer(0, 224);
+            if ($fractionalGate < 31) {
+                continue;
+            }
+            $center = $random->stream($centerLabel);
+            $x = $center->integer(0, 59);
+            $y = $center->integer(0, 59);
+            if ($x < $padding || $x > 59 - $padding || $y < $padding || $y > 59 - $padding) {
+                continue;
+            }
+            if ($disasterKey === 'meteor_shower') {
+                $effect = $random->stream(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_EFFECT);
+                $iterations = 0;
+                do {
+                    $effect->integer(0, 330);
+                    $continueDraw = $effect->integer(0, 15);
+                    $iterations++;
+                } while ($continueDraw < 15 && $iterations < 64);
+                if ($iterations < 24 || $iterations >= 64) {
+                    continue;
+                }
+            }
+
+            return $seed;
+        }
+
+        $this->fail("Unable to find deterministic performance seed for {$disasterKey}.");
+    }
+
+    /**
+     * @return array{
+     *     total_wall_ms: float,
+     *     total_queries: int,
+     *     phases: array<string, array<string, mixed>>
+     * }
+     */
+    private function measureGlobalDisasters(World $world, RulesetVersion $ruleset, string $seed): array
+    {
+        $run = TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $world->current_turn + 1,
+            'ruleset_version_id' => $ruleset->id,
+            'random_seed' => $seed,
+            'source' => 'manual',
+            'is_dry_run' => true,
+            'status' => TurnRun::STATUS_DRY_RUN,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => [],
+        ]);
+        $state = new TurnState;
+        $nationIds = Nation::query()->where('world_id', $world->id)->where('state', 'active')
+            ->orderBy('id')->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+        $state->setStableNationIds($nationIds);
+        $state->setDevelopmentNationIds($nationIds);
+        $state->setSurfaceCellIds(MapCell::query()
+            ->where('map_space_id', $this->surfaceMapSpace($world)->id)
+            ->orderBy('id')->pluck('id')->map(static fn ($id): int => (int) $id)->all());
+        $context = new TurnContext(
+            $world,
+            $run,
+            $ruleset,
+            $world->current_turn + 1,
+            $seed,
+            new TurnRandomStreamFactory($seed),
+            $state,
+        );
+        $probe = new TurnRuntimeProbe;
+        DB::listen(static function (QueryExecuted $query) use ($probe): void {
+            $probe->recordQuery($query);
+        });
+        Event::listen('eloquent.retrieved: *', static function (string $event, array $payload) use ($probe): void {
+            $model = $payload[0] ?? null;
+            if ($model instanceof Model) {
+                $probe->recordHydration($model);
+            }
+        });
+
+        $probe->start();
+        $probe->beginPhase('global_disasters');
+        $started = hrtime(true);
+        $result = app(CompleteTurnEngine::class)->execute('global_disasters', $context);
+        $probe->endPhase($result);
+
+        return [
+            'total_wall_ms' => round((hrtime(true) - $started) / 1_000_000, 3),
+            'total_queries' => $probe->totalQueryCount(),
+            'phases' => $probe->phases(),
+        ];
+    }
+
     /**
      * @return array{
      *     total_wall_ms: float,
@@ -353,6 +768,10 @@ final class TurnRuntimePerformanceTest extends TestCase
      *         query_time_ms: float,
      *         query_types: array<string, int>,
      *         defense_lookup_queries: int,
+     *         coordinate_cell_lookup_queries: int,
+     *         active_nation_lookup_queries: int,
+     *         terrain_definition_lookup_queries: int,
+     *         monster_occupancy_lookup_queries: int,
      *         repeated_queries: list<array{count: int, sql: string}>,
      *         hydrated_models: array<string, int>,
      *         peak_memory_bytes: int,
@@ -361,7 +780,7 @@ final class TurnRuntimePerformanceTest extends TestCase
      *     }>
      * }
      */
-    private function measureTurn(World $world): array
+    private function measureTurn(World $world, ?string $seed = null): array
     {
         $probe = new TurnRuntimeProbe;
         DB::listen(static function (QueryExecuted $query) use ($probe): void {
@@ -385,7 +804,7 @@ final class TurnRuntimePerformanceTest extends TestCase
         $runner = new TurnRunner(
             $pipeline,
             new WorldMutationLock,
-            new TurnRuntimeFixedSeedGenerator,
+            new TurnRuntimeFixedSeedGenerator($seed),
             app(CurrentRulesetGuard::class),
             app(MonsterKillCycleService::class),
         );
@@ -406,8 +825,13 @@ final class TurnRuntimePerformanceTest extends TestCase
     /** @param array<string, mixed> $measurement */
     private function report(string $profile, array $measurement): void
     {
-        if (getenv('REPORT_TURN_RUNTIME_PERFORMANCE') !== '1') {
+        $reportMode = getenv('REPORT_TURN_RUNTIME_PERFORMANCE');
+        if (! in_array($reportMode, ['1', 'phase'], true)) {
             return;
+        }
+        if ($reportMode === 'phase') {
+            $phase = str_starts_with($profile, 'forced-') ? 'global_disasters' : 'process_cells';
+            $measurement['phases'] = [$phase => $measurement['phases'][$phase]];
         }
 
         fwrite(STDERR, json_encode([
@@ -496,6 +920,10 @@ final class TurnRuntimeProbe
         $types = [];
         $queryTime = 0.0;
         $defenseLookupQueries = 0;
+        $coordinateCellLookupQueries = 0;
+        $activeNationLookupQueries = 0;
+        $terrainDefinitionLookupQueries = 0;
+        $monsterOccupancyLookupQueries = 0;
         foreach ($queries as $query) {
             $sql = preg_replace('/\s+/', ' ', strtolower(trim($query->sql))) ?? $query->sql;
             $normalized[$sql] = ($normalized[$sql] ?? 0) + 1;
@@ -507,6 +935,29 @@ final class TurnRuntimeProbe
                 && str_contains($sql, '"facility_definitions"')
                 && in_array('defense', $query->bindings, true)) {
                 $defenseLookupQueries++;
+            }
+            if ($type === 'select'
+                && str_contains($sql, 'from "map_cells"')
+                && str_contains($sql, '"map_space_id" = ?')
+                && str_contains($sql, '"x" = ?')
+                && str_contains($sql, '"y" = ?')) {
+                $coordinateCellLookupQueries++;
+            }
+            if ($type === 'select'
+                && str_contains($sql, 'from "nations"')
+                && str_contains($sql, '"state" = ?')
+                && str_contains($sql, 'exists')) {
+                $activeNationLookupQueries++;
+            }
+            if ($type === 'select'
+                && str_contains($sql, 'from "terrain_definitions"')
+                && str_contains($sql, '"key" = ?')) {
+                $terrainDefinitionLookupQueries++;
+            }
+            if ($type === 'select'
+                && str_contains($sql, 'from "monster_occupancies"')
+                && str_contains($sql, '"map_cell_id" = ?')) {
+                $monsterOccupancyLookupQueries++;
             }
         }
         arsort($normalized);
@@ -528,6 +979,10 @@ final class TurnRuntimeProbe
             'query_time_ms' => round($queryTime, 3),
             'query_types' => $types,
             'defense_lookup_queries' => $defenseLookupQueries,
+            'coordinate_cell_lookup_queries' => $coordinateCellLookupQueries,
+            'active_nation_lookup_queries' => $activeNationLookupQueries,
+            'terrain_definition_lookup_queries' => $terrainDefinitionLookupQueries,
+            'monster_occupancy_lookup_queries' => $monsterOccupancyLookupQueries,
             'repeated_queries' => $repeated,
             'hydrated_models' => $hydrations,
             'peak_memory_bytes' => max(0, memory_get_peak_usage(true) - $this->phaseStartMemory),
@@ -569,8 +1024,10 @@ final class TurnRuntimeProbe
 
 final readonly class TurnRuntimeFixedSeedGenerator implements TurnSeedGenerator
 {
+    public function __construct(private ?string $seed = null) {}
+
     public function generate(World $world, int $targetTurn, RulesetVersion $ruleset): string
     {
-        return str_repeat('0', 64);
+        return $this->seed ?? str_repeat('0', 64);
     }
 }

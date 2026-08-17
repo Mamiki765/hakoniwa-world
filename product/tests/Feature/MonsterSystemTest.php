@@ -515,6 +515,74 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('sea', $cell->fresh()->terrain()->value('key'));
     }
 
+    public function test_next_turn_command_blast_does_not_reuse_a_stale_monster_removal_batch(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('跨ターン除去国');
+        $cell = $this->safeInteriorCell($space, $world);
+        $this->setCell($cell, 'wasteland', null, $nation->id, 0);
+        [$previousContext] = $this->context($world, $ruleset, 2, 'previous-turn-removal-batch', [$nation->id]);
+        $removal = app(MonsterRemovalService::class);
+        $this->assertSame(0, $removal->beginWorld($previousContext));
+
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 1);
+        [$nextContext] = $this->context($world, $ruleset, 3, 'next-turn-command-blast', [$nation->id]);
+        $settings = $ruleset->settings['turn_processing']['disasters']['huge_meteor'];
+        $settings['radius'] = 0;
+
+        $this->assertGreaterThanOrEqual(1, app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $nextContext,
+            $space,
+            new GridCoordinate($cell->x, $cell->y),
+            $settings,
+            'defense_self_destruct',
+        ));
+
+        $this->assertSame('removed', $monster->fresh()->state);
+        $this->assertSame('defense_self_destruct', $monster->fresh()->removal_reason);
+        $this->assertFalse($monster->fresh()->occupancy()->exists());
+    }
+
+    public function test_same_run_retry_attempt_does_not_reuse_a_rolled_back_monster_removal_batch(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('再試行除去国');
+        $cell = $this->safeInteriorCell($space, $world);
+        $this->setCell($cell, 'wasteland', null, $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $cell, 'inora', 1);
+        [$context, $run] = $this->context($world, $ruleset, 2, 'same-run-retry-blast', [$nation->id]);
+        $removal = app(MonsterRemovalService::class);
+        $settings = $ruleset->settings['turn_processing']['disasters']['huge_meteor'];
+        $settings['radius'] = 0;
+
+        DB::beginTransaction();
+        $this->assertSame(1, $removal->beginWorld($context));
+        $this->assertGreaterThanOrEqual(1, app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            new GridCoordinate($cell->x, $cell->y),
+            $settings,
+            'defense_self_destruct',
+        ));
+        DB::rollBack();
+
+        $this->assertSame('alive', $monster->fresh()->state);
+        $this->assertTrue($monster->fresh()->occupancy()->exists());
+        $run->refresh();
+        $run->attempt_count++;
+        $run->save();
+
+        $this->assertGreaterThanOrEqual(1, app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            new GridCoordinate($cell->x, $cell->y),
+            $settings,
+            'defense_self_destruct',
+        ));
+
+        $this->assertSame('removed', $monster->fresh()->state);
+        $this->assertSame('defense_self_destruct', $monster->fresh()->removal_reason);
+        $this->assertFalse($monster->fresh()->occupancy()->exists());
+    }
+
     public function test_final_blow_splits_capacity_bounded_rewards_caps_base_experience_and_is_idempotent(): void
     {
         [$world, $host, $ruleset] = $this->worldAndNation('所在国');

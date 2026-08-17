@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\CompleteTurnEngine;
+use App\Application\DisasterMutableCellIndex;
 use App\Application\DisasterTurnService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
@@ -32,6 +33,7 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -348,15 +350,27 @@ class DisasterAndOilTurnTest extends TestCase
         $forest = $this->cellAt($space, $center->x + 1, $center->y);
         $this->setCell($factory, 'plain', 'factory', $nation->id, 0);
         $this->setCell($forest, 'forest', null, $nation->id, 0);
+        $factory = $factory->fresh(['terrain', 'facility']);
+        $forest = $forest->fresh(['terrain', 'facility']);
+        $cellIndex = DisasterMutableCellIndex::fromCells(
+            [$factory, $forest],
+            terrainDefinitions: ['wasteland' => TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail()],
+        );
         [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'fire-protection'), [$nation->id]);
 
-        $this->assertFalse(app(DisasterTurnService::class)->processFire($context, $factory->fresh(['terrain', 'facility'])));
+        $this->assertFalse(app(DisasterTurnService::class)->processFire($context, $factory, $cellIndex));
         $this->assertSame('factory', $factory->fresh()->facility()->value('key'));
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'fire.prevented')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
 
-        $this->setCell($forest, 'sea', null, null, 0);
-        $this->assertTrue(app(DisasterTurnService::class)->processFire($context, $factory->fresh(['terrain', 'facility'])));
+        $states = app(MapCellStateService::class);
+        $states->setFacility($forest, null);
+        $states->transitionTerrain($forest, TerrainDefinition::query()->where('key', 'sea')->firstOrFail());
+        $forest->owner_nation_id = null;
+        $forest->population = 0;
+        $forest->save();
+        $this->assertSame('sea', $cellIndex->cellAt($forest->x, $forest->y)?->terrain->key);
+        $this->assertTrue(app(DisasterTurnService::class)->processFire($context, $factory, $cellIndex));
         $this->assertSame('wasteland', $factory->fresh()->terrain()->value('key'));
         $this->assertNull($factory->fresh()->facility_definition_id);
 
@@ -373,6 +387,118 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertTrue(app(DisasterTurnService::class)->processFire($context, $capital->fresh(['terrain', 'facility'])));
         $this->assertSame(9_000, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+    }
+
+    public function test_earthquake_removal_is_visible_to_later_typhoon_protection_checks(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('連続災害国');
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $protectionCoordinate = $center->neighbor(GridCoordinate::EAST);
+        foreach ($center->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y) as $neighbor) {
+            $this->setCell($this->cellAt($space, $neighbor->x, $neighbor->y), 'plain', null, $nation->id, 0);
+        }
+        $this->setCell($target, 'plain', 'farm', $nation->id, 0);
+        $protection = $this->cellAt($space, $protectionCoordinate->x, $protectionCoordinate->y);
+        $this->setCell($protection, 'plain', 'monument', $nation->id, 0);
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            foreach (self::GLOBAL_KEYS as $key) {
+                $settings['turn_processing']['disasters'][$key]['probability'] = [
+                    'numerator' => in_array($key, ['earthquake', 'typhoon'], true) ? 1 : 0,
+                    'denominator' => 1,
+                ];
+                $settings['turn_processing']['disasters'][$key]['center_padding'] = 0;
+            }
+            $settings['turn_processing']['disasters']['earthquake']['radius'] = 64;
+            $settings['turn_processing']['disasters']['earthquake']['facility_keys'] = ['monument'];
+            $settings['turn_processing']['disasters']['earthquake']['damage_probability'] = [
+                'numerator' => 1,
+                'denominator' => 1,
+            ];
+            $settings['turn_processing']['disasters']['typhoon']['radius'] = 64;
+            $settings['turn_processing']['disasters']['typhoon']['facility_keys'] = ['farm'];
+            $settings['turn_processing']['disasters']['typhoon']['protection_facility_keys'] = ['monument'];
+            $settings['turn_processing']['disasters']['typhoon']['internal_denominator'] = 1;
+            $settings['turn_processing']['disasters']['typhoon']['base_damage_threshold'] = 1;
+            $settings['turn_processing']['disasters']['land_subsidence']['enabled'] = false;
+        });
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForAreaGates(['earthquake', 'typhoon'], 64),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $this->assertSame(2, $result['executed_disasters']);
+        $this->assertNull($protection->fresh()->facility_definition_id);
+        $this->assertSame('wasteland', $protection->fresh()->terrain()->value('key'));
+        $this->assertNull($target->fresh()->facility_definition_id);
+        $this->assertSame('plain', $target->fresh()->terrain()->value('key'));
+        $triggered = DB::table('audit_events')->where('event_type', 'disaster.triggered')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->orderBy('id')->pluck('metadata')->map(
+                static fn (string $metadata): string => json_decode($metadata, true, 512, JSON_THROW_ON_ERROR)['disaster_key'],
+            )->all();
+        $this->assertSame(['earthquake', 'typhoon'], $triggered);
+    }
+
+    public function test_tsunami_still_counts_out_of_bounds_neighbors_as_water(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('津波端国');
+        $ruleset = $this->forceGlobal($ruleset, 'tsunami');
+        $target = $this->cellAt($space, 0, 0);
+        $origin = new GridCoordinate(0, 0);
+        foreach ($origin->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y) as $neighbor) {
+            $this->setCell($this->cellAt($space, $neighbor->x, $neighbor->y), 'plain', null, $nation->id, 0);
+        }
+        $this->setCell($target, 'plain', 'farm', $nation->id, 0);
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_TSUNAMI_CENTER, 0, 0, $space),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $this->assertSame(1, $result['damaged_cells']);
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        $this->assertSame(3, $this->event($run, 'disaster.cell_damaged')['adjacent_water_count']);
+    }
+
+    #[DataProvider('dormantDisasterStates')]
+    public function test_normal_global_disaster_keeps_dormant_and_archived_owner_cells_protected(string $state): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation("休眠災害{$state}");
+        $ruleset = $this->forceGlobal($ruleset, 'earthquake');
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $this->setCell($target, 'plain', 'factory', $nation->id, 0);
+        $nation->update(['state' => $state]);
+        [$context] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $center->x, $center->y, $space),
+            [],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $this->assertSame(1, $result['executed_disasters']);
+        $this->assertSame(0, $result['damaged_cells']);
+        $this->assertSame('factory', $target->fresh()->facility()->value('key'));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function dormantDisasterStates(): array
+    {
+        return [
+            'frozen' => ['dormant_frozen'],
+            'contestable' => ['dormant_contestable'],
+            'archived' => ['sunken_archived'],
+        ];
     }
 
     public function test_oil_income_precedes_depletion_obeys_capacity_rolls_back_and_is_retry_idempotent(): void
@@ -650,6 +776,26 @@ class DisasterAndOilTurnTest extends TestCase
         }
 
         $this->fail("Unable to find area-gate seed for {$disasterKey}.");
+    }
+
+    /** @param list<string> $disasterKeys */
+    private function seedForAreaGates(array $disasterKeys, int $threshold): string
+    {
+        for ($candidate = 0; $candidate < 100_000; $candidate++) {
+            $seed = hash('sha256', 'area-gates:'.implode(':', $disasterKeys).":{$candidate}");
+            $factory = new TurnRandomStreamFactory($seed);
+            foreach ($disasterKeys as $disasterKey) {
+                $draw = $factory->stream(TurnRandomStreamFactory::worldDisasterAreaFraction($disasterKey))
+                    ->integer(0, 224);
+                if ($draw >= $threshold) {
+                    continue 2;
+                }
+            }
+
+            return $seed;
+        }
+
+        $this->fail('Unable to find a deterministic seed for all disaster area gates.');
     }
 
     private function queueItem(

@@ -44,7 +44,7 @@ final class MonsterTurnService
             ->lockForUpdate()
             ->get();
         $batch = new MonsterTurnBatch($occupancies);
-        $this->removal->useBatch($batch);
+        $this->removal->useBatch($batch, $context, $deferredMonsterIds === []);
 
         return $batch;
     }

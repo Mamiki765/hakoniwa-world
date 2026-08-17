@@ -48,6 +48,7 @@ final class DisasterTurnService
             'monsters_removed_by_terrain' => 0,
         ];
         $space = $this->surfaceSpace($context);
+        $cellIndex = null;
 
         $definitions = [
             'earthquake' => [TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_TRIGGER, TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER],
@@ -99,6 +100,12 @@ final class DisasterTurnService
                     'world_fractional_gate_numerator' => $fractionalNumerator,
                 ]);
                 $metrics['executed_disasters']++;
+                $cellIndex ??= $this->newMutableCellIndex($context);
+                $radius = (int) $settings['radius'];
+                if (in_array($key, ['tsunami', 'typhoon'], true)) {
+                    $radius++;
+                }
+                $this->loadRadiusCells($space, $center, $radius, $cellIndex);
                 $metrics['damaged_cells'] += match ($key) {
                     'earthquake' => $this->earthquake(
                         $context,
@@ -107,17 +114,29 @@ final class DisasterTurnService
                         $settings,
                         TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_EFFECT,
                         'global',
+                        $cellIndex,
                     ),
-                    'tsunami' => $this->tsunami($context, $space, $center, $settings),
-                    'typhoon' => $this->typhoon($context, $space, $center, $settings),
-                    'meteor_shower' => $this->meteorShower($context, $space, $center, $settings),
-                    'huge_meteor' => $this->resolveHugeMeteorBlast($context, $space, $center, $settings),
-                    'eruption' => $this->eruption($context, $space, $center, $settings),
+                    'tsunami' => $this->tsunami($context, $space, $center, $settings, $cellIndex),
+                    'typhoon' => $this->typhoon($context, $space, $center, $settings, $cellIndex),
+                    'meteor_shower' => $this->meteorShower($context, $space, $center, $settings, $cellIndex),
+                    'huge_meteor' => $this->resolveHugeMeteorBlast(
+                        $context,
+                        $space,
+                        $center,
+                        $settings,
+                        cellIndex: $cellIndex,
+                    ),
+                    'eruption' => $this->eruption($context, $space, $center, $settings, $cellIndex),
                 };
             }
         }
 
-        $subsidence = $this->landSubsidence($context, $space, $rules['land_subsidence'] ?? null);
+        $subsidence = $this->landSubsidence(
+            $context,
+            $space,
+            $rules['land_subsidence'] ?? null,
+            $cellIndex,
+        );
         $metrics['executed_disasters'] += $subsidence['triggered_nations'];
         $metrics['damaged_cells'] += $subsidence['changed_to_sea']
             + $subsidence['changed_to_shallow']
@@ -147,8 +166,12 @@ final class DisasterTurnService
      *     affected_chunks: int
      * }
      */
-    private function landSubsidence(TurnContext $context, MapSpace $space, mixed $authoredSettings): array
-    {
+    private function landSubsidence(
+        TurnContext $context,
+        MapSpace $space,
+        mixed $authoredSettings,
+        ?DisasterMutableCellIndex $cellIndex = null,
+    ): array {
         $settings = $this->landSubsidenceSettings($authoredSettings);
         $empty = [
             'triggered_nations' => 0,
@@ -202,8 +225,9 @@ final class DisasterTurnService
             return $empty;
         }
 
-        $cells = MapCell::query()->where('map_space_id', $space->id)
-            ->orderBy('id')->lockForUpdate()->with(['terrain', 'facility'])->get();
+        $cellIndex ??= $this->newMutableCellIndex($context);
+        $this->loadAllCells($space, $cellIndex);
+        $cells = $cellIndex->cells();
         /** @var array<int, MapCell> $cellsById */
         $cellsById = [];
         /** @var array<string, array{id: int, x: int, y: int, map_chunk_id: int, terrain_key: string, facility_key: string|null, owner_nation_id: int|null, population: int}> $snapshot */
@@ -285,6 +309,7 @@ final class DisasterTurnService
                 true,
                 'disaster.cell_damaged',
                 ['source' => 'land_subsidence', 'affected_nation_ids' => $affectedNationIds],
+                $cellIndex,
             )) {
                 $changedToSea++;
             }
@@ -310,6 +335,7 @@ final class DisasterTurnService
                     true,
                     'disaster.cell_damaged',
                     ['source' => 'land_subsidence'],
+                    $cellIndex,
                 )) {
                     $changedToShallow++;
                 }
@@ -405,9 +431,12 @@ final class DisasterTurnService
         return true;
     }
 
-    public function processFire(TurnContext $context, MapCell $cell): bool
-    {
-        if ($this->monsterRemoval->hasAtCell($cell->id)) {
+    public function processFire(
+        TurnContext $context,
+        MapCell $cell,
+        ?DisasterMutableCellIndex $cellIndex = null,
+    ): bool {
+        if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
             return false;
         }
         $rules = $this->rules($context);
@@ -422,6 +451,7 @@ final class DisasterTurnService
         $protection = $this->adjacentProtectionCount(
             $cell,
             $settings['protection_facility_keys'],
+            $cellIndex,
         );
         if ($protection > 0) {
             $this->events->record($context, 'fire.prevented', $cell, [
@@ -452,7 +482,7 @@ final class DisasterTurnService
             'draw' => $trigger['draw'],
             'numerator' => $settings['probability']['numerator'],
             'denominator' => $settings['probability']['denominator'],
-        ]);
+        ], $cellIndex);
 
         return true;
     }
@@ -465,14 +495,15 @@ final class DisasterTurnService
         array $settings,
         string $effectLabel,
         string $source,
+        ?DisasterMutableCellIndex $cellIndex = null,
     ): int {
         $damaged = 0;
         foreach ($center->radius($settings['radius']) as $coordinate) {
-            $cell = $this->cellAt($space, $coordinate);
-            if ($cell === null || ! $this->isMutable($cell)) {
+            $cell = $this->cellAt($space, $coordinate, $cellIndex);
+            if ($cell === null || ! $this->isMutable($cell, $cellIndex)) {
                 continue;
             }
-            if ($this->monsterRemoval->hasAtCell($cell->id)) {
+            if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
                 continue;
             }
             $facilityKey = $cell->facility?->key;
@@ -498,7 +529,7 @@ final class DisasterTurnService
                     'center_x' => $center->x,
                     'center_y' => $center->y,
                     'draw' => $draw['draw'],
-                ]);
+                ], $cellIndex);
             }
             $damaged++;
         }
@@ -507,18 +538,23 @@ final class DisasterTurnService
     }
 
     /** @param array<string, mixed> $settings */
-    private function tsunami(TurnContext $context, MapSpace $space, GridCoordinate $center, array $settings): int
-    {
+    private function tsunami(
+        TurnContext $context,
+        MapSpace $space,
+        GridCoordinate $center,
+        array $settings,
+        DisasterMutableCellIndex $cellIndex,
+    ): int {
         $damaged = 0;
         foreach ($center->radius($settings['radius']) as $coordinate) {
-            $cell = $this->cellAt($space, $coordinate);
-            if ($cell === null || ! $this->isMutable($cell) || ! $this->isTsunamiTarget($cell, $settings)) {
+            $cell = $this->cellAt($space, $coordinate, $cellIndex);
+            if ($cell === null || ! $this->isMutable($cell, $cellIndex) || ! $this->isTsunamiTarget($cell, $settings)) {
                 continue;
             }
-            if ($this->monsterRemoval->hasAtCell($cell->id)) {
+            if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
                 continue;
             }
-            $water = $this->adjacentWaterCount($cell, $space, $settings['water_facility_keys']);
+            $water = $this->adjacentWaterCount($cell, $space, $settings['water_facility_keys'], $cellIndex);
             $draw = $context->random->stream(TurnRandomStreamFactory::GLOBAL_TSUNAMI_EFFECT)
                 ->integer(0, $settings['internal_denominator'] - 1);
             if ($draw >= max(0, $water - $settings['adjacent_water_offset'])) {
@@ -533,7 +569,7 @@ final class DisasterTurnService
                 $this->changeCell($context, $cell, 'tsunami', 'wasteland', false, 'disaster.cell_damaged', [
                     'center_x' => $center->x, 'center_y' => $center->y,
                     'adjacent_water_count' => $water, 'draw' => $draw,
-                ]);
+                ], $cellIndex);
             }
             $damaged++;
         }
@@ -542,19 +578,24 @@ final class DisasterTurnService
     }
 
     /** @param array<string, mixed> $settings */
-    private function typhoon(TurnContext $context, MapSpace $space, GridCoordinate $center, array $settings): int
-    {
+    private function typhoon(
+        TurnContext $context,
+        MapSpace $space,
+        GridCoordinate $center,
+        array $settings,
+        DisasterMutableCellIndex $cellIndex,
+    ): int {
         $damaged = 0;
         foreach ($center->radius($settings['radius']) as $coordinate) {
-            $cell = $this->cellAt($space, $coordinate);
-            if ($cell === null || ! $this->isMutable($cell)
+            $cell = $this->cellAt($space, $coordinate, $cellIndex);
+            if ($cell === null || ! $this->isMutable($cell, $cellIndex)
                 || ! in_array($cell->facility?->key, $settings['facility_keys'], true)) {
                 continue;
             }
-            if ($this->monsterRemoval->hasAtCell($cell->id)) {
+            if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
                 continue;
             }
-            $protection = $this->adjacentProtectionCount($cell, $settings['protection_facility_keys']);
+            $protection = $this->adjacentProtectionCount($cell, $settings['protection_facility_keys'], $cellIndex);
             $draw = $context->random->stream(TurnRandomStreamFactory::GLOBAL_TYPHOON_EFFECT)
                 ->integer(0, $settings['internal_denominator'] - 1);
             if ($draw >= max(0, $settings['base_damage_threshold'] - $protection)) {
@@ -563,7 +604,7 @@ final class DisasterTurnService
             $this->changeCell($context, $cell, 'typhoon', 'plain', false, 'disaster.cell_damaged', [
                 'center_x' => $center->x, 'center_y' => $center->y,
                 'protection_count' => $protection, 'draw' => $draw,
-            ]);
+            ], $cellIndex);
             $damaged++;
         }
 
@@ -571,27 +612,48 @@ final class DisasterTurnService
     }
 
     /** @param array<string, mixed> $settings */
-    private function meteorShower(TurnContext $context, MapSpace $space, GridCoordinate $center, array $settings): int
-    {
+    private function meteorShower(
+        TurnContext $context,
+        MapSpace $space,
+        GridCoordinate $center,
+        array $settings,
+        DisasterMutableCellIndex $cellIndex,
+    ): int {
         $damaged = 0;
         $coordinates = $center->radius($settings['radius']);
         $stream = $context->random->stream(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_EFFECT);
         do {
             $coordinate = $coordinates[$stream->integer(0, count($coordinates) - 1)];
-            $cell = $this->cellAt($space, $coordinate);
-            if ($cell !== null && $this->isMutable($cell)) {
+            $cell = $this->cellAt($space, $coordinate, $cellIndex);
+            if ($cell !== null && $this->isMutable($cell, $cellIndex)) {
                 if ($this->isCapital($cell)) {
                     $this->damageCapital($context, $cell, 'meteor_shower', 'deep_sea', [
                         'center_x' => $center->x, 'center_y' => $center->y,
                     ]);
                     $damaged++;
                 } elseif ($cell->terrain->key === 'shallow') {
-                    if ($this->changeCell($context, $cell, 'meteor_shower', 'sea', false, 'disaster.cell_damaged')) {
+                    if ($this->changeCell(
+                        $context,
+                        $cell,
+                        'meteor_shower',
+                        'sea',
+                        false,
+                        'disaster.cell_damaged',
+                        cellIndex: $cellIndex,
+                    )) {
                         $damaged++;
                     }
                 } elseif ($cell->terrain->key !== 'sea'
                     || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true)) {
-                    if ($this->changeCell($context, $cell, 'meteor_shower', 'sea', true, 'disaster.cell_damaged')) {
+                    if ($this->changeCell(
+                        $context,
+                        $cell,
+                        'meteor_shower',
+                        'sea',
+                        true,
+                        'disaster.cell_damaged',
+                        cellIndex: $cellIndex,
+                    )) {
                         $damaged++;
                     }
                 }
@@ -614,12 +676,13 @@ final class DisasterTurnService
         array $settings,
         string $disasterKey = 'huge_meteor',
         array $eventMetadata = [],
+        ?DisasterMutableCellIndex $cellIndex = null,
     ): int {
         $damaged = 0;
         $coordinates = [...$center->ring(0), ...$center->ring(1), ...$center->ring(2)];
         foreach ($coordinates as $coordinate) {
-            $cell = $this->cellAt($space, $coordinate);
-            if ($cell === null || ! $this->isMutable($cell)) {
+            $cell = $this->cellAt($space, $coordinate, $cellIndex);
+            if ($cell === null || ! $this->isMutable($cell, $cellIndex)) {
                 continue;
             }
             $distance = $center->distanceTo($coordinate);
@@ -645,10 +708,28 @@ final class DisasterTurnService
 
                     continue;
                 }
-                $changed = $this->changeCell($context, $cell, $disasterKey, 'wasteland', false, 'disaster.cell_damaged', $eventMetadata);
+                $changed = $this->changeCell(
+                    $context,
+                    $cell,
+                    $disasterKey,
+                    'wasteland',
+                    false,
+                    'disaster.cell_damaged',
+                    $eventMetadata,
+                    $cellIndex,
+                );
             } elseif ($cell->terrain->key === 'sea' || $cell->terrain->key === 'shallow'
                 || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true)) {
-                $changed = $this->changeCell($context, $cell, $disasterKey, 'sea', true, 'disaster.cell_damaged', $eventMetadata);
+                $changed = $this->changeCell(
+                    $context,
+                    $cell,
+                    $disasterKey,
+                    'sea',
+                    true,
+                    'disaster.cell_damaged',
+                    $eventMetadata,
+                    $cellIndex,
+                );
             } else {
                 $changed = $this->changeCell(
                     $context,
@@ -658,6 +739,7 @@ final class DisasterTurnService
                     true,
                     'disaster.cell_damaged',
                     $eventMetadata,
+                    $cellIndex,
                 );
             }
             $damaged += ($changed || $monsterRemoved) ? 1 : 0;
@@ -667,22 +749,35 @@ final class DisasterTurnService
     }
 
     /** @param array<string, mixed> $settings */
-    private function eruption(TurnContext $context, MapSpace $space, GridCoordinate $center, array $settings): int
-    {
+    private function eruption(
+        TurnContext $context,
+        MapSpace $space,
+        GridCoordinate $center,
+        array $settings,
+        DisasterMutableCellIndex $cellIndex,
+    ): int {
         $damaged = 0;
-        $centerCell = $this->cellAt($space, $center);
-        if ($centerCell !== null && $this->isMutable($centerCell)) {
+        $centerCell = $this->cellAt($space, $center, $cellIndex);
+        if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)) {
             if ($this->isCapital($centerCell)) {
                 $this->damageCapital($context, $centerCell, 'eruption', 'eruption_center');
                 $damaged++;
-            } elseif ($this->changeCell($context, $centerCell, 'eruption', 'mountain', false, 'disaster.cell_damaged')) {
+            } elseif ($this->changeCell(
+                $context,
+                $centerCell,
+                'eruption',
+                'mountain',
+                false,
+                'disaster.cell_damaged',
+                cellIndex: $cellIndex,
+            )) {
                 $damaged++;
             }
         }
 
         foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
-            $cell = $this->cellAt($space, $center->neighbor($direction));
-            if ($cell === null || ! $this->isMutable($cell) || $cell->terrain->key === 'mountain') {
+            $cell = $this->cellAt($space, $center->neighbor($direction), $cellIndex);
+            if ($cell === null || ! $this->isMutable($cell, $cellIndex) || $cell->terrain->key === 'mountain') {
                 continue;
             }
             if ($this->isCapital($cell)) {
@@ -697,7 +792,7 @@ final class DisasterTurnService
             $target = $cell->terrain->key === 'sea' ? 'shallow' : 'wasteland';
             if ($this->changeCell($context, $cell, 'eruption', $target, false, 'disaster.cell_damaged', [
                 'direction' => $direction,
-            ])) {
+            ], $cellIndex)) {
                 $damaged++;
             }
         }
@@ -730,8 +825,12 @@ final class DisasterTurnService
     }
 
     /** @param list<string> $seabedFacilityKeys */
-    private function adjacentWaterCount(MapCell $cell, MapSpace $space, array $seabedFacilityKeys): int
-    {
+    private function adjacentWaterCount(
+        MapCell $cell,
+        MapSpace $space,
+        array $seabedFacilityKeys,
+        DisasterMutableCellIndex $cellIndex,
+    ): int {
         $count = 0;
         $origin = new GridCoordinate($cell->x, $cell->y);
         foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
@@ -742,7 +841,7 @@ final class DisasterTurnService
 
                 continue;
             }
-            $neighbor = $this->cellAt($space, $coordinate);
+            $neighbor = $this->cellAt($space, $coordinate, $cellIndex);
             if ($neighbor !== null && (in_array($neighbor->terrain->key, ['sea', 'shallow'], true)
                 || in_array($neighbor->facility?->key, $seabedFacilityKeys, true))) {
                 $count++;
@@ -753,15 +852,20 @@ final class DisasterTurnService
     }
 
     /** @param list<string> $facilityKeys */
-    private function adjacentProtectionCount(MapCell $cell, array $facilityKeys): int
-    {
+    private function adjacentProtectionCount(
+        MapCell $cell,
+        array $facilityKeys,
+        ?DisasterMutableCellIndex $cellIndex = null,
+    ): int {
         $count = 0;
         $origin = new GridCoordinate($cell->x, $cell->y);
         foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
             $coordinate = $origin->neighbor($direction);
-            $neighbor = MapCell::query()->where('map_space_id', $cell->map_space_id)
-                ->where('x', $coordinate->x)->where('y', $coordinate->y)
-                ->with(['terrain', 'facility'])->first();
+            $neighbor = $cellIndex !== null
+                ? $cellIndex->cellAt($coordinate->x, $coordinate->y)
+                : MapCell::query()->where('map_space_id', $cell->map_space_id)
+                    ->where('x', $coordinate->x)->where('y', $coordinate->y)
+                    ->with(['terrain', 'facility'])->first();
             if ($neighbor !== null && ($neighbor->terrain->key === 'forest'
                 || in_array($neighbor->facility?->key, $facilityKeys, true))) {
                 $count++;
@@ -847,6 +951,7 @@ final class DisasterTurnService
         bool $neutralizeOwner,
         string $eventType,
         array $extra = [],
+        ?DisasterMutableCellIndex $cellIndex = null,
     ): bool {
         $beforeTerrain = $cell->terrain->key;
         $beforeFacility = $cell->facility?->key;
@@ -860,7 +965,8 @@ final class DisasterTurnService
         }
 
         $this->cells->setFacility($cell, null);
-        $terrain = TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail();
+        $terrain = $cellIndex?->terrainDefinition($terrainKey)
+            ?? TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail();
         $this->cells->transitionTerrain($cell, $terrain);
         $cell->owner_nation_id = $targetOwner;
         $cell->population = 0;
@@ -909,10 +1015,56 @@ final class DisasterTurnService
         return $cell->facility?->key === 'capital';
     }
 
-    private function isMutable(MapCell $cell): bool
+    private function isMutable(MapCell $cell, ?DisasterMutableCellIndex $cellIndex = null): bool
     {
+        if ($cellIndex !== null) {
+            return $cellIndex->isMutable($cell);
+        }
+
         return $cell->owner_nation_id === null
             || Nation::query()->whereKey($cell->owner_nation_id)->where('state', 'active')->exists();
+    }
+
+    private function newMutableCellIndex(TurnContext $context): DisasterMutableCellIndex
+    {
+        $activeNationIds = Nation::query()
+            ->where('world_id', $context->world->id)
+            ->where('state', 'active')
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+        $terrainDefinitions = TerrainDefinition::query()->orderBy('id')->get()->keyBy('key');
+
+        return DisasterMutableCellIndex::fromCells([], $activeNationIds, $terrainDefinitions);
+    }
+
+    private function loadRadiusCells(
+        MapSpace $space,
+        GridCoordinate $center,
+        int $radius,
+        DisasterMutableCellIndex $cellIndex,
+    ): void {
+        $cells = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereBetween('x', [$center->x - $radius, $center->x + $radius])
+            ->whereBetween('y', [$center->y - $radius, $center->y + $radius])
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->with(['terrain', 'facility'])
+            ->get();
+        $cellIndex->addCells($cells);
+    }
+
+    private function loadAllCells(MapSpace $space, DisasterMutableCellIndex $cellIndex): void
+    {
+        $cells = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->with(['terrain', 'facility'])
+            ->get();
+        $cellIndex->addCells($cells);
     }
 
     private function surfaceSpace(TurnContext $context): MapSpace
@@ -921,8 +1073,15 @@ final class DisasterTurnService
             ->where('key', 'surface')->firstOrFail();
     }
 
-    private function cellAt(MapSpace $space, GridCoordinate $coordinate): ?MapCell
-    {
+    private function cellAt(
+        MapSpace $space,
+        GridCoordinate $coordinate,
+        ?DisasterMutableCellIndex $cellIndex = null,
+    ): ?MapCell {
+        if ($cellIndex !== null) {
+            return $cellIndex->cellAt($coordinate->x, $coordinate->y);
+        }
+
         return MapCell::query()->where('map_space_id', $space->id)
             ->where('x', $coordinate->x)->where('y', $coordinate->y)
             ->lockForUpdate()->with(['terrain', 'facility'])->first();
