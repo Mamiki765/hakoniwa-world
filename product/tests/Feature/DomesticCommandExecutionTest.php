@@ -517,6 +517,7 @@ class DomesticCommandExecutionTest extends TestCase
         $result = app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
 
         $this->assertSame(1, $result['successes']);
+        $this->assertSame(2, $result['removed']);
         $this->assertSame('cancelled', $first->fresh()->status);
         $this->assertSame('legacy_staged_position_discarded', $first->fresh()->failure_metadata['reason']);
         $this->assertSame(1001, $first->fresh()->failure_metadata['original_queue_position']);

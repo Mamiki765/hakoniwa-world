@@ -93,6 +93,7 @@ final class DomesticCommandExecutor
             $legacyDiscarded = $queue === null ? 0 : $this->discardLegacyStagedQueue($context, $queue);
             $consumedTurn = false;
             $queueMutated = $legacyDiscarded > 0;
+            $metrics['removed'] += $legacyDiscarded;
 
             while (! $consumedTurn) {
                 $item = $queue === null ? null : NationCommandQueueItem::query()
