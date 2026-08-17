@@ -516,7 +516,7 @@ final class CommandQueueService
                 ];
             }
             $this->assertVersion($queue, $expectedVersion);
-            $this->repairLegacyStagedItems($user, $queue);
+            $legacyDiscarded = $this->repairLegacyStagedItems($user, $queue);
 
             $commandKeys = match ($action) {
                 'clear_all' => ['land_clear'],
@@ -562,6 +562,10 @@ final class CommandQueueService
                 }
             }
             if ($candidates === []) {
+                if ($legacyDiscarded > 0) {
+                    $queue->increment('version');
+                    $queue->refresh();
+                }
                 $this->recordBulkRequest($queue, $requestKey, $action, $position, 0, 0, 0);
 
                 return [

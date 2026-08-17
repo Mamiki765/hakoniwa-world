@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Domain\Map\MapCellStateService;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
+use App\Models\TerrainDefinition;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -185,6 +187,41 @@ class HotfixCommandQueueCorruptionTest extends TestCase
             ->where('subject_id', $ids[1])
             ->whereRaw("metadata->>'reason' = ?", ['legacy_staged_position_discarded'])
             ->count());
+    }
+
+    public function test_zero_candidate_bulk_repair_still_advances_the_optimistic_queue_version(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('一括ゼロ件復旧国');
+        [$path, $ids, $target] = $this->queuedPlans($owner, $nation, $mapSpace, 1);
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $states = app(MapCellStateService::class);
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with('terrain')->get() as $cell) {
+            $states->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        NationCommandQueueItem::query()->whereKey($ids[0])->update(['queue_position' => 1001]);
+
+        $this->postJson($path.'/bulk', [
+            'action' => 'clear_all',
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertOk()
+            ->assertJsonPath('data.candidate_count', 0)
+            ->assertJsonPath('data.inserted_count', 0)
+            ->assertJsonPath('data.queue.version', 3);
+
+        $discarded = NationCommandQueueItem::query()->findOrFail($ids[0]);
+        $this->assertSame('cancelled', $discarded->status);
+        $this->assertSame('legacy_staged_position_discarded', $discarded->failure_metadata['reason']);
+        $this->postJson($path, [
+            'command_key' => 'land_level',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertConflict();
     }
 
     /** @return array{User, Nation, MapSpace} */
