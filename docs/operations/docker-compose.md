@@ -40,6 +40,12 @@ services:
 
 `HAKONIWA_TILE_ASSET_PATH`と`HAKONIWA_TILE_ASSET_BASE_URL`をroot `.env`で環境に合わせる。`compose.yml`は両方を`hakoniwa-web`へ明示転送する。mountがなくてもCSS fallbackで起動する。同名画像の置換は`mtime-size`付きURLへ反映され、image rebuildを必要としない。
 
+## 問い合わせ添付のwritable mount
+
+ver 2.2.0の問い合わせ画像は既存bot-assets基盤の`/srv/bot-assets/hakoniwa-inquiries`へ書き込む。tile assetとは異なり、Web containerからwritableかつcontainer再作成後も永続するproduction bind mountが必須である。assets nginx側は`product/docker/nginx/hakoniwa-inquiries.conf`のlocationを使い、`autoindex off`を維持する。
+
+`HAKONIWA_INQUIRY_ATTACHMENT_PATH`と`HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`をproductionの実mountとassets originへ合わせる。base Composeは環境変数だけを転送し、repository外のproduction assets nginx/mountを推測しない。security/backup/upload-limit/operator手順は`product/docs/ver-2.2.0-secretary-inventory-and-inquiries.md`を正本とする。
+
 首都画像を表示する環境は同じdirectoryへ`capital.gif`を配置する。旧名`capital.png`はmanifestで参照しない。GIFがない場合は首都のCSS fallbackを使い、API・map・healthcheckを失敗させない。
 
 既存deploy向けの`HAKONIWA_ORIGINAL_ASSET_PATH`と`HAKONIWA_ORIGINAL_ASSET_BASE_URL`も当面転送する。新変数が未設定の場合だけ旧変数をfallbackとして使用し、新変数を優先する。新規設定では`HAKONIWA_TILE_ASSET_*`を使用する。

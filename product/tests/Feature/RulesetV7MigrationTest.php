@@ -93,6 +93,7 @@ final class RulesetV7MigrationTest extends TestCase
         app(NationCreationService::class)->create($user, $world, 'v7再検証島', 'v7再検証島主');
         $v6 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v6')->firstOrFail();
         $world->update(['ruleset_version_id' => $v6->id]);
+        Schema::drop('secretary_item_instances');
         Schema::drop('secretary_skills');
         Schema::drop('secretaries');
         $this->secretaryMigration()->up();

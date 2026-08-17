@@ -16,7 +16,8 @@ final class SecretaryController extends Controller
 {
     public function show(Request $request, SecretaryPresenter $presenter): JsonResponse
     {
-        $secretary = Secretary::query()->where('user_id', $request->user()->id)->with('skills')->first();
+        $secretary = Secretary::query()->where('user_id', $request->user()->id)
+            ->with(['skills', 'itemInstances'])->first();
         if (! $secretary instanceof Secretary) {
             return response()->json(['data' => null]);
         }

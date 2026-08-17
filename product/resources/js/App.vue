@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { ApiError, api, apiEnvelope } from './api/client';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
@@ -13,6 +13,9 @@ import { useMapState } from './state/mapState';
 import type {
     Announcement,
     CurrentUser,
+    InquiryDetail,
+    InquirySubmission,
+    InquirySummary,
     MajorNewsFeed,
     MapSpace,
     Nation,
@@ -24,7 +27,7 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '2.1.3';
+const applicationVersion = '2.2.0';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -43,11 +46,46 @@ const announcementBody = ref('');
 const announcementErrors = ref<Record<string, string>>({});
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
+const secretarySection = ref<'skills' | 'equipment' | 'warehouse'>('skills');
+const latestInquiries = ref<InquirySummary[]>([]);
+const inquiryItems = ref<InquirySummary[]>([]);
+const inquiryDetail = ref<InquiryDetail | null>(null);
+const inquiryPageNumber = ref(1);
+const inquiryLastPage = ref(1);
+const inquiryCategory = ref<InquirySummary['category']>('bug');
+const inquirySubject = ref('');
+const inquiryBody = ref('');
+const inquiryAttachment = ref<HTMLInputElement | null>(null);
+const inquirySubmissionKey = ref(crypto.randomUUID());
+const inquiryErrors = ref<Record<string, string>>({});
+const inquiryConfirmation = ref<InquirySubmission | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
-const page = ref<'home' | 'announcements' | 'island' | 'preview' | 'resources' | 'secretary' | 'profile' | 'account' | 'credits'>(
+const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'secretary' | 'profile' | 'account' | 'credits'>(
     window.location.pathname === '/credits' ? 'credits' : 'home',
 );
+
+const secretaryTabOrder = ['skills', 'equipment', 'warehouse'] as const;
+const secretaryTabIds = {
+    skills: 'secretary-tab-skills',
+    equipment: 'secretary-tab-equipment',
+    warehouse: 'secretary-tab-warehouse',
+} as const;
+
+async function handleSecretaryTabKeydown(event: KeyboardEvent): Promise<void> {
+    const currentIndex = secretaryTabOrder.indexOf(secretarySection.value);
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % secretaryTabOrder.length;
+    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + secretaryTabOrder.length) % secretaryTabOrder.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = secretaryTabOrder.length - 1;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    secretarySection.value = secretaryTabOrder[nextIndex]!;
+    await nextTick();
+    document.getElementById(secretaryTabIds[secretarySection.value])?.focus();
+}
 const nationName = ref('');
 const nationOwnerName = ref('');
 const nationComment = ref('');
@@ -147,6 +185,7 @@ onMounted(async () => {
         user.value = await api<CurrentUser>('/api/v1/me');
         nation.value = await api<Nation | null>('/api/v1/me/nation');
         if (nation.value !== null) await loadSecretary();
+        if (user.value.can_manage_inquiries) await loadLatestInquiries();
     } catch (error) {
         if (!(error instanceof ApiError && error.status === 401)) {
             message.value = 'ログイン状態を取得できませんでした。公開ロビーは引き続き閲覧できます。';
@@ -493,6 +532,88 @@ async function deleteAnnouncement(announcement: Announcement): Promise<void> {
     }
 }
 
+async function loadLatestInquiries(): Promise<void> {
+    try {
+        latestInquiries.value = await api<InquirySummary[]>('/api/v1/admin/inquiries/latest');
+    } catch {
+        message.value = '管理者向けの最新お問い合わせを取得できませんでした。';
+    }
+}
+
+function openInquiry(): void {
+    inquiryCategory.value = 'bug';
+    inquirySubject.value = '';
+    inquiryBody.value = '';
+    inquirySubmissionKey.value = crypto.randomUUID();
+    inquiryErrors.value = {};
+    inquiryConfirmation.value = null;
+    if (inquiryAttachment.value !== null) inquiryAttachment.value.value = '';
+    page.value = 'inquiry';
+}
+
+async function submitInquiry(): Promise<void> {
+    busy.value = true;
+    message.value = '';
+    inquiryErrors.value = {};
+    const form = new FormData();
+    form.append('submission_key', inquirySubmissionKey.value);
+    form.append('category', inquiryCategory.value);
+    form.append('subject', inquirySubject.value);
+    form.append('body', inquiryBody.value);
+    const attachment = inquiryAttachment.value?.files?.[0];
+    if (attachment !== undefined) form.append('attachment', attachment);
+
+    try {
+        inquiryConfirmation.value = await api<InquirySubmission>('/api/v1/inquiries', {
+            method: 'POST',
+            body: form,
+        });
+        inquirySubmissionKey.value = crypto.randomUUID();
+    } catch (error) {
+        inquiryErrors.value = validationErrors(error);
+        if (Object.keys(inquiryErrors.value).length === 0) {
+            message.value = error instanceof Error ? error.message : 'お問い合わせを送信できませんでした。';
+        }
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function openAdminInquiries(pageNumber = 1): Promise<void> {
+    if (!user.value?.can_manage_inquiries) return;
+    busy.value = true;
+    message.value = '';
+    try {
+        const envelope = await apiEnvelope<InquirySummary[]>(`/api/v1/admin/inquiries?page=${pageNumber}`);
+        inquiryItems.value = envelope.data;
+        const currentPage = Number(envelope.meta?.current_page ?? pageNumber);
+        const lastPage = Number(envelope.meta?.last_page ?? currentPage);
+        inquiryPageNumber.value = Number.isInteger(currentPage) && currentPage > 0 ? currentPage : pageNumber;
+        inquiryLastPage.value = Number.isInteger(lastPage) && lastPage > 0 ? lastPage : inquiryPageNumber.value;
+        inquiryDetail.value = null;
+        page.value = 'admin-inquiries';
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'お問い合わせ一覧を取得できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function openAdminInquiry(managementId: string): Promise<void> {
+    if (!user.value?.can_manage_inquiries) return;
+    busy.value = true;
+    message.value = '';
+    try {
+        const id = Number(managementId.replace('INQ-', ''));
+        inquiryDetail.value = await api<InquiryDetail>(`/api/v1/admin/inquiries/${id}`);
+        page.value = 'admin-inquiries';
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'お問い合わせ詳細を取得できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
 async function loadPublicEvents(pageNumber: number): Promise<void> {
     const world = worlds.value[0];
     const anchor = publicEvents.value?.anchor_turn;
@@ -575,6 +696,7 @@ async function openSecretary(): Promise<void> {
         await loadSecretary();
         if (secretary.value === null) throw new Error('Secretaryの状態を取得できませんでした。');
         secretaryName.value = 'ペリドット';
+        secretarySection.value = 'skills';
         page.value = 'secretary';
     } catch (error) {
         message.value = error instanceof Error ? error.message : 'Secretaryを読み込めませんでした。';
@@ -872,6 +994,24 @@ async function abandonNation(): Promise<void> {
                 <p v-else class="empty-state">お知らせはまだありません。</p>
             </section>
 
+            <section v-if="user" class="inquiry-window" aria-labelledby="inquiry-heading">
+                <div class="section-heading">
+                    <div><p class="eyebrow">CONTACT</p><h2 id="inquiry-heading">お問い合わせ</h2></div>
+                    <button type="button" @click="openInquiry">お問い合わせを送る</button>
+                </div>
+                <template v-if="user.can_manage_inquiries">
+                    <ol v-if="latestInquiries.length" class="inquiry-list compact">
+                        <li v-for="inquiry in latestInquiries" :key="inquiry.management_id">
+                            <button type="button" @click="openAdminInquiry(inquiry.management_id)">
+                                {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
+                            </button>
+                        </li>
+                    </ol>
+                    <p v-else class="empty-state">お問い合わせはまだありません。</p>
+                    <button type="button" @click="openAdminInquiries(1)">すべて見る</button>
+                </template>
+            </section>
+
             <div class="lobby-grid">
                 <section class="ranking-card">
                     <div class="section-heading">
@@ -984,6 +1124,84 @@ async function abandonNation(): Promise<void> {
                 </label>
                 <button class="button primary" type="submit" :disabled="busy">島を作る</button>
             </form>
+        </section>
+
+        <section v-else-if="user && page === 'inquiry'" class="panel inquiry-page">
+            <p class="eyebrow">CONTACT</p>
+            <h1>お問い合わせ</h1>
+            <div v-if="inquiryConfirmation" class="inquiry-confirmation" role="status">
+                <h2>送信しました</h2>
+                <p>管理番号 <strong>{{ inquiryConfirmation.management_id }}</strong></p>
+                <button type="button" @click="page = 'home'">TOPへ戻る</button>
+            </div>
+            <form v-else class="inquiry-form" enctype="multipart/form-data" @submit.prevent="submitInquiry">
+                <label>種類
+                    <select v-model="inquiryCategory" required>
+                        <option value="bug">バグ報告</option>
+                        <option value="request">要望</option>
+                        <option value="idea">アイデア</option>
+                        <option value="secretary_fan_art">秘書のファンアート</option>
+                        <option value="other">その他</option>
+                    </select>
+                    <span v-if="inquiryErrors.category" class="field-error" role="alert">{{ inquiryErrors.category }}</span>
+                </label>
+                <label>件名
+                    <input v-model="inquirySubject" maxlength="160" required>
+                    <span v-if="inquiryErrors.subject" class="field-error" role="alert">{{ inquiryErrors.subject }}</span>
+                </label>
+                <label>本文（プレーンテキスト）
+                    <textarea v-model="inquiryBody" maxlength="20000" rows="10" required></textarea>
+                    <span v-if="inquiryErrors.body" class="field-error" role="alert">{{ inquiryErrors.body }}</span>
+                </label>
+                <label>添付画像（任意・1枚・最大10MB）
+                    <input ref="inquiryAttachment" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+                    <small class="field-hint">PNG、JPEG、WebP、GIF。添付画像に個人情報などを含む画像は添付しないでください。</small>
+                    <span v-if="inquiryErrors.attachment" class="field-error" role="alert">{{ inquiryErrors.attachment }}</span>
+                </label>
+                <div class="inquiry-actions">
+                    <button class="button primary" type="submit" :disabled="busy">送信</button>
+                    <button type="button" :disabled="busy" @click="page = 'home'">キャンセル</button>
+                </div>
+            </form>
+        </section>
+
+        <section v-else-if="user?.can_manage_inquiries && page === 'admin-inquiries'" class="panel inquiry-admin-page">
+            <div class="section-heading">
+                <div><p class="eyebrow">INQUIRIES</p><h1>お問い合わせ管理</h1></div>
+                <button type="button" @click="page = 'home'">TOPへ戻る</button>
+            </div>
+            <article v-if="inquiryDetail" class="inquiry-detail">
+                <p><strong>{{ inquiryDetail.management_id }}</strong> [{{ inquiryDetail.category_label }}]</p>
+                <h2>{{ inquiryDetail.subject }}</h2>
+                <dl>
+                    <div><dt>User</dt><dd>#{{ inquiryDetail.user.id }} {{ inquiryDetail.user.display_name }}</dd></div>
+                    <div><dt>Nation</dt><dd>{{ inquiryDetail.nation ? `N${inquiryDetail.nation.nation_number} ${inquiryDetail.nation.name}` : 'なし' }}</dd></div>
+                    <div><dt>投稿ターン</dt><dd>{{ inquiryDetail.world.submitted_turn }}</dd></div>
+                    <div><dt>アプリ版</dt><dd>{{ inquiryDetail.application_version }}</dd></div>
+                    <div><dt>投稿日時</dt><dd>{{ formatAnnouncementDate(inquiryDetail.created_at) }}</dd></div>
+                </dl>
+                <p class="inquiry-body">{{ inquiryDetail.body }}</p>
+                <a v-if="inquiryDetail.attachment_url" :href="inquiryDetail.attachment_url" target="_blank" rel="noopener">
+                    <img class="inquiry-attachment" :src="inquiryDetail.attachment_url" alt="お問い合わせ添付画像">
+                </a>
+                <button type="button" @click="inquiryDetail = null">一覧へ戻る</button>
+            </article>
+            <template v-else>
+                <ol v-if="inquiryItems.length" class="inquiry-list full">
+                    <li v-for="inquiry in inquiryItems" :key="inquiry.management_id">
+                        <button type="button" @click="openAdminInquiry(inquiry.management_id)">
+                            {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
+                        </button>
+                        <time :datetime="inquiry.created_at">{{ formatAnnouncementDate(inquiry.created_at) }}</time>
+                    </li>
+                </ol>
+                <p v-else class="empty-state">お問い合わせはまだありません。</p>
+                <nav class="inquiry-pager" aria-label="お問い合わせのページ">
+                    <button type="button" :disabled="inquiryPageNumber <= 1" @click="openAdminInquiries(inquiryPageNumber - 1)">前へ</button>
+                    <span>{{ inquiryPageNumber }}ページ</span>
+                    <button type="button" :disabled="inquiryPageNumber >= inquiryLastPage" @click="openAdminInquiries(inquiryPageNumber + 1)">次へ</button>
+                </nav>
+            </template>
         </section>
 
         <section v-else-if="page === 'announcements'" class="announcement-page panel">
@@ -1216,17 +1434,46 @@ async function abandonNation(): Promise<void> {
             </template>
             <template v-else>
                 <h2 class="secretary-name">{{ secretary.name }}</h2>
-                <h3 class="secretary-section-title">パッシブスキル</h3>
-                <dl class="secretary-skills">
-                    <div v-for="skill in secretary.skills" :key="skill.key" class="secretary-skill">
-                        <dt class="secretary-skill-name">{{ skill.name }}</dt>
-                        <dd class="secretary-skill-progress">
-                            <span>Lv{{ skill.level }}</span>
-                            <span>XP {{ skill.experience }} / {{ skill.required_experience }}</span>
-                        </dd>
-                        <dd class="secretary-skill-effect">{{ skill.effect }}</dd>
-                    </div>
-                </dl>
+                <nav class="secretary-tabs" role="tablist" aria-label="秘書メニュー">
+                    <button id="secretary-tab-skills" type="button" role="tab" aria-controls="secretary-panel-skills" :aria-selected="secretarySection === 'skills'" :tabindex="secretarySection === 'skills' ? 0 : -1" @click="secretarySection = 'skills'" @keydown="handleSecretaryTabKeydown">熟練度</button>
+                    <button id="secretary-tab-equipment" type="button" role="tab" aria-controls="secretary-panel-equipment" :aria-selected="secretarySection === 'equipment'" :tabindex="secretarySection === 'equipment' ? 0 : -1" @click="secretarySection = 'equipment'" @keydown="handleSecretaryTabKeydown">装備</button>
+                    <button id="secretary-tab-warehouse" type="button" role="tab" aria-controls="secretary-panel-warehouse" :aria-selected="secretarySection === 'warehouse'" :tabindex="secretarySection === 'warehouse' ? 0 : -1" @click="secretarySection = 'warehouse'" @keydown="handleSecretaryTabKeydown">倉庫</button>
+                </nav>
+                <section v-if="secretarySection === 'skills'" id="secretary-panel-skills" role="tabpanel" aria-labelledby="secretary-tab-skills">
+                    <h3 class="secretary-section-title">パッシブスキル</h3>
+                    <dl class="secretary-skills">
+                        <div v-for="skill in secretary.skills" :key="skill.key" class="secretary-skill">
+                            <dt class="secretary-skill-name">{{ skill.name }}</dt>
+                            <dd class="secretary-skill-progress">
+                                <span>Lv{{ skill.level }}</span>
+                                <span>XP {{ skill.experience }} / {{ skill.required_experience }}</span>
+                            </dd>
+                            <dd class="secretary-skill-effect">{{ skill.effect }}</dd>
+                        </div>
+                    </dl>
+                </section>
+                <section v-else-if="secretarySection === 'equipment'" id="secretary-panel-equipment" role="tabpanel" aria-labelledby="secretary-tab-equipment">
+                    <h3 class="secretary-section-title">装備</h3>
+                    <ol class="secretary-equipment">
+                        <li v-for="slot in secretary.equipment.slots" :key="slot.slot">
+                            <span class="equipment-slot-number">{{ slot.slot }}</span>
+                            <strong v-if="slot.item">{{ slot.item.name }} <small>Lv{{ slot.item.level }}</small></strong>
+                            <span v-else class="empty-state">空き</span>
+                        </li>
+                    </ol>
+                    <p class="field-hint">ver 2.2.0では、装備アイテムはターン処理へ影響しません。</p>
+                </section>
+                <section v-else id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
+                    <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
+                    <ul class="secretary-warehouse">
+                        <li v-for="item in secretary.inventory.items" :key="item.id">
+                            <div><strong>{{ item.name }}</strong> <span>Lv{{ item.level }}</span></div>
+                            <p>{{ item.category_label }}<template v-if="item.is_equipped">・slot {{ item.equipped_slot }} に装備中</template></p>
+                            <p class="item-flavor">{{ item.flavor_text }}</p>
+                        </li>
+                    </ul>
+                    <p v-if="secretary.inventory.items.length === 0" class="empty-state">倉庫は空です。</p>
+                </section>
             </template>
         </section>
 

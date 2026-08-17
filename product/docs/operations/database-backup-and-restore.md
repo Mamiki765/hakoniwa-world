@@ -20,6 +20,8 @@ VMのInstance Principalには`OBJECT_CREATE`、`OBJECT_INSPECT`、`OBJECT_READ`�
 
 continuous WAL archive、point-in-time recovery、RPO 15分以内は別の公開後改善とする。backup retentionを理由にapplication data、event、audit recordを削除しない。
 
+ver 2.2.0の問い合わせ添付はPostgreSQL外の`/srv/bot-assets/hakoniwa-inquiries`にある。このwrapperはそのdirectoryを取得せず、DB rowだけが復旧してattachmentが復旧しない境界を維持する。添付の別backupを導入・検証するまでは、このdatabase backupを問い合わせ画像のbackupと説明しない。詳細は`product/docs/ver-2.2.0-secretary-inventory-and-inquiries.md`を参照する。
+
 ## Production wrapper
 
 正本は`product/docker/backup/run-production-backup.sh`である。wrapperは次を順に行う。

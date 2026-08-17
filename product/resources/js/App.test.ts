@@ -60,7 +60,28 @@ const unnamedSecretaryFixture: Secretary = {
         { key: 'gold_vein_survey', name: '金鉱脈調査', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '採掘場生産＋0.0%' },
         { key: 'final_defense_line', name: '最終防衛ライン', level: 1, experience: 0, required_experience: 100, remaining_experience: 100, effect: '防衛されなかったミサイルを1ターンにつき1発まで迎撃' },
     ],
+    inventory: {
+        capacity: 50,
+        used: 1,
+        items: [{
+            id: 21, key: 'old_bow', name: '古びた弓', level: 1, category: 'bow', category_label: '弓',
+            equipped_slot: 1, is_equipped: true,
+            flavor_text: '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
+            obtained_at: '2026-08-17T00:00:00Z',
+        }],
+    },
+    equipment: {
+        slot_count: 5,
+        slots: [
+            { slot: 1, item: null },
+            { slot: 2, item: null },
+            { slot: 3, item: null },
+            { slot: 4, item: null },
+            { slot: 5, item: null },
+        ],
+    },
 };
+unnamedSecretaryFixture.equipment.slots[0]!.item = unnamedSecretaryFixture.inventory.items[0]!;
 
 function publicResponse(path: string): Response | null {
     if (path === '/api/v1/public/announcements/latest') return response([
@@ -135,7 +156,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 2.1.3');
+        expect(wrapper.find('.app-version').text()).toBe('ver 2.2.0');
         expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');
@@ -937,6 +958,25 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.secretary-skills').text()).not.toContain('次のlevelまで');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'ペリドット')).toBe(true);
 
+        const secretaryGetCount = () => fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/secretary').length;
+        const beforeTabSwitch = secretaryGetCount();
+        const tabs = wrapper.findAll('[role="tab"]');
+        expect(tabs.map((tab) => tab.text())).toEqual(['熟練度', '装備', '倉庫']);
+        expect(tabs[0]!.attributes('aria-selected')).toBe('true');
+        await tabs[0]!.trigger('keydown', { key: 'ArrowRight' });
+        expect(wrapper.findAll('[role="tab"]')[1]!.attributes('aria-selected')).toBe('true');
+        await wrapper.findAll('[role="tab"]')[1]!.trigger('keydown', { key: 'ArrowLeft' });
+        expect(wrapper.findAll('[role="tab"]')[0]!.attributes('aria-selected')).toBe('true');
+        await tabs[1]!.trigger('click');
+        expect(wrapper.findAll('.secretary-equipment li')).toHaveLength(5);
+        expect(wrapper.findAll('.secretary-equipment li')[0]!.text()).toContain('古びた弓');
+        expect(wrapper.findAll('.secretary-equipment li').slice(1).every((slot) => slot.text().includes('空き'))).toBe(true);
+        await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
+        expect(wrapper.get('.secretary-section-title').text()).toBe('倉庫 1 / 50');
+        expect(wrapper.get('.secretary-warehouse').text()).toContain('施設の最奥');
+        expect(wrapper.get('.item-flavor').classes()).toContain('item-flavor');
+        expect(secretaryGetCount()).toBe(beforeTabSwitch);
+
         await wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'プロフィール編集')!.trigger('click');
         expect(wrapper.get<HTMLInputElement>('.secretary-rename-form input').element.value).toBe('ペリドット');
@@ -949,6 +989,50 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(renameRequest?.[1]?.body))).toEqual({ name: 'エメラルド' });
         expect(wrapper.text()).toContain('秘書の名前を「エメラルド」に変更しました。');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
+    });
+
+    it('submits an in-game inquiry as multipart and shows admin-only latest inquiries on TOP', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Admin', can_manage_announcements: true, can_manage_inquiries: true, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(null);
+            if (path === '/api/v1/admin/inquiries/latest') return response([{
+                management_id: 'INQ-000123', category: 'bug', category_label: 'バグ報告', subject: '表示がおかしい',
+                created_at: '2026-08-17T12:00:00Z', user: { id: 3, display_name: 'Reporter' }, nation: null,
+            }]);
+            if (path === '/api/v1/inquiries' && init?.method === 'POST') return response({
+                management_id: 'INQ-000124', category: 'idea', category_label: 'アイデア', subject: '新しい案',
+                created_at: '2026-08-17T12:01:00Z',
+            }, 201);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        expect(wrapper.get('.inquiry-window').text()).toContain('INQ-000123 [バグ報告] 表示がおかしい');
+        const sendButton = wrapper.findAll('.inquiry-window button').find((button) => button.text() === 'お問い合わせを送る')!;
+        await sendButton.trigger('click');
+        await wrapper.get<HTMLSelectElement>('.inquiry-form select').setValue('idea');
+        await wrapper.get<HTMLInputElement>('.inquiry-form input:not([type="file"])').setValue('新しい案');
+        await wrapper.get<HTMLTextAreaElement>('.inquiry-form textarea').setValue('本文です。');
+        await wrapper.get('.inquiry-form').trigger('submit');
+        await flushPromises();
+
+        expect(wrapper.get('.inquiry-confirmation').text()).toContain('INQ-000124');
+        const request = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/inquiries');
+        expect(request?.[1]?.body).toBeInstanceOf(FormData);
+        const body = request?.[1]?.body as FormData;
+        expect(body.get('category')).toBe('idea');
+        expect(body.get('subject')).toBe('新しい案');
+        expect(body.get('body')).toBe('本文です。');
+        expect(request?.[1]?.headers).toBeInstanceOf(Headers);
+        expect((request?.[1]?.headers as Headers).has('Content-Type')).toBe(false);
     });
 
     it('requires the danger button, modal, and exact island name before abandonment and returns to registration', async () => {

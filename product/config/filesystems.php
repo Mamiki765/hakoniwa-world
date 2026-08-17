@@ -47,6 +47,14 @@ return [
             'report' => false,
         ],
 
+        'inquiry_attachments' => [
+            'driver' => 'local',
+            'root' => env('HAKONIWA_INQUIRY_ATTACHMENT_PATH', '/srv/bot-assets/hakoniwa-inquiries'),
+            'visibility' => 'public',
+            'throw' => true,
+            'report' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
