@@ -15,10 +15,6 @@ return new class extends Migration
 
     private const KILL_STAT_GUARD = 'nation_monster_kill_stat_guard';
 
-    private const REVIEWED_MISSILE_REBIND_ENV = 'HAKONIWA_V9_REBIND_REVIEWED_MISSILE_ITEMS';
-
-    private const REVIEWED_MISSILE_REBIND_VALUE = 'CONFIRM_REVIEWED_V8_MISSILES_TO_V9';
-
     public function up(): void
     {
         $sourceSettings = config('hakoniwa.published_rulesets.'.self::SOURCE_KEY);
@@ -77,23 +73,6 @@ return new class extends Migration
         if ((int) $world->ruleset_version_id === $toRulesetId) {
             return;
         }
-        $queuedMissiles = DB::table('nation_command_queue_items as item')
-            ->join('nation_command_queues as queue', 'queue.id', '=', 'item.nation_command_queue_id')
-            ->join('nations as nation', 'nation.id', '=', 'queue.nation_id')
-            ->join('command_definitions as definition', 'definition.id', '=', 'item.command_definition_id')
-            ->where('nation.world_id', $world->id)
-            ->where('item.status', 'queued')
-            ->where('definition.ruleset_version_id', $fromRulesetId)
-            ->whereIn('definition.key', ['missile', 'pp_missile', 'land_destruction_missile', 'spp_missile'])
-            ->count();
-        if ($queuedMissiles > 0
-            && getenv(self::REVIEWED_MISSILE_REBIND_ENV) !== self::REVIEWED_MISSILE_REBIND_VALUE) {
-            throw new RuntimeException(
-                "v9 changes missile/monster resolution while {$queuedMissiles} missile queue item(s) remain. "
-                .'Review them explicitly and set '.self::REVIEWED_MISSILE_REBIND_ENV.' for this migration only.',
-            );
-        }
-
         DB::statement('SET CONSTRAINTS '.self::CONSISTENCY_CONSTRAINT.' DEFERRED');
         DB::table('worlds')->where('id', $world->id)->update([
             'ruleset_version_id' => $toRulesetId,

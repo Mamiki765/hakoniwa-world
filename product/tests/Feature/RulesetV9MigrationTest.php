@@ -20,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -29,18 +30,7 @@ final class RulesetV9MigrationTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    private const REVIEW_ENV = 'HAKONIWA_V9_REBIND_REVIEWED_MISSILE_ITEMS';
-
-    private const REVIEW_VALUE = 'CONFIRM_REVIEWED_V8_MISSILES_TO_V9';
-
-    protected function tearDown(): void
-    {
-        putenv(self::REVIEW_ENV);
-
-        parent::tearDown();
-    }
-
-    public function test_failed_guard_and_reviewed_retry_preserve_history_and_rebind_only_live_references(): void
+    public function test_migration_preserves_history_and_rebinds_only_live_references_idempotently(): void
     {
         [$world, $queued, $v8, $v9, $nation] = $this->v8WorldWithQueuedCommand('pp_missile');
         $historical = $this->historicalQueueItems($queued, $v8);
@@ -73,17 +63,6 @@ final class RulesetV9MigrationTest extends TestCase
         ])->all();
         $publishedBefore = $this->publishedV1ThroughV8Snapshots();
 
-        try {
-            $this->migration()->up();
-            $this->fail('Expected queued missile review confirmation to be required.');
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('changes missile/monster resolution', $exception->getMessage());
-            $this->assertStringContainsString(self::REVIEW_ENV, $exception->getMessage());
-        }
-        $this->assertSame($v8->id, $world->fresh()->ruleset_version_id);
-        $this->assertSame($publishedBefore, $this->publishedV1ThroughV8Snapshots());
-
-        putenv(self::REVIEW_ENV.'='.self::REVIEW_VALUE);
         $this->migration()->up();
 
         $this->assertSame($v9->id, $world->fresh()->ruleset_version_id);
@@ -106,7 +85,32 @@ final class RulesetV9MigrationTest extends TestCase
         ]);
     }
 
-    public function test_unresolved_next_turn_run_blocks_even_with_review_confirmation(): void
+    #[DataProvider('queuedMissileKeys')]
+    public function test_existing_queued_missiles_rebind_directly_to_v9_new_ordering(string $commandKey): void
+    {
+        [$world, $queued, $v8, $v9] = $this->v8WorldWithQueuedCommand($commandKey);
+        $queuedPayload = Arr::except($queued->fresh()->getAttributes(), ['command_definition_id']);
+
+        $this->assertSame($v8->id, $queued->fresh()->definition()->value('ruleset_version_id'));
+
+        $this->migration()->up();
+
+        $this->assertSame($v9->id, $world->fresh()->ruleset_version_id);
+        $this->assertSame($v9->id, $queued->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame($commandKey, $queued->fresh()->definition()->value('key'));
+        $this->assertSame($queuedPayload, Arr::except($queued->fresh()->getAttributes(), ['command_definition_id']));
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function queuedMissileKeys(): iterable
+    {
+        yield 'ordinary missile' => ['missile'];
+        yield 'PP missile' => ['pp_missile'];
+        yield 'SPP missile' => ['spp_missile'];
+        yield 'land destruction missile' => ['land_destruction_missile'];
+    }
+
+    public function test_unresolved_next_turn_run_blocks_with_queued_missile_and_preserves_state(): void
     {
         [$world, $queued, $v8] = $this->v8WorldWithQueuedCommand('missile');
         $run = TurnRun::query()->create([
@@ -123,7 +127,6 @@ final class RulesetV9MigrationTest extends TestCase
             'failure_context' => ['preserve' => true],
         ]);
         $before = [$world->fresh()->getAttributes(), $queued->fresh()->getAttributes(), $run->fresh()->getAttributes()];
-        putenv(self::REVIEW_ENV.'='.self::REVIEW_VALUE);
 
         try {
             $this->migration()->up();

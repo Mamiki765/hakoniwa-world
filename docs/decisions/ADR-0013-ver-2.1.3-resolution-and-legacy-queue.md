@@ -44,6 +44,8 @@ future early-monster、Secretary bow、equipment/item、empty service、priority
 
 この変更はpublished v8が固定したsame-pass semanticsを変えるためruntime correctionとしてv8へsilent backportしない。v9はv8に`turn_resolution.normal_monster_stage = after_ordinary_surface_cell_events`だけを加える。v1-v8 runtimeはsettingを持たないためhistorical interleaveを維持する。
 
+v8からv9へ移行する時点でqueuedの通常、PP、SPP、陸地破壊missileも、stable command keyでv9 definitionへrebindし、この新orderingで実行する。これらを旧v8 semanticsのまま保護するためのmigration STOP、operator review、one-shot confirmation環境変数は設けない。これはv9 orderingに対するowner decisionであり、意味が変わるqueued commandを一般に無確認で移行してよいというmigration safety policyではない。未解決next non-dry TurnRun guard、World lockとtransaction、exact stable-key mapping、live queue/monster/kill-stat rebind、historical queue item preservation、v1-v8 immutable payload、rollbackとidempotencyは維持する。
+
 ## Decision B: legacy command queue residue
 
 historical compactorは一時配置に`queue_position + 1000`を使った。旧`LegacyCommandQueueOrder`はcommitted `>1000` rowをstaged prefixと推測して先頭へ復元していたが、repeated compaction等の履歴がなければ元順は一意に決まらない。
