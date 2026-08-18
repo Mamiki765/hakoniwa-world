@@ -1042,6 +1042,55 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->where('subject_id', $itemId)->count());
     }
 
+    public function test_nation_target_retry_uses_persisted_coordinates_after_capital_relocation_and_completion(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('暗黙対象冪等国');
+        $originalCapital = $nation->capital()->firstOrFail();
+        $newCapitalCell = MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($originalCapital->map_cell_id)
+            ->orderBy('id')
+            ->firstOrFail();
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $requestKey = (string) Str::uuid();
+        $payload = [
+            'command_key' => 'finance',
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+            'parameters' => [],
+        ];
+
+        $created = $this->actingAs($user)->postJson($path, $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.duplicate', false);
+        $item = NationCommandQueueItem::query()->findOrFail($created->json('data.item_id'));
+        $originalFingerprint = $item->request_fingerprint;
+        $this->assertSame((int) $originalCapital->x, $item->target_x);
+        $this->assertSame((int) $originalCapital->y, $item->target_y);
+        $item->update([
+            'status' => 'completed',
+            'queue_position' => null,
+            'execution_completed_at' => now(),
+        ]);
+        $nation->capital()->update([
+            'map_cell_id' => $newCapitalCell->id,
+            'x' => $newCapitalCell->x,
+            'y' => $newCapitalCell->y,
+        ]);
+
+        $this->postJson($path, [...$payload, 'expected_version' => 999])
+            ->assertOk()
+            ->assertJsonPath('data.duplicate', true)
+            ->assertJsonPath('data.item_id', $item->id)
+            ->assertJsonPath('data.message', '同じ開発計画は登録済みです。');
+
+        $this->assertSame(2, (int) NationCommandQueue::query()->where('nation_id', $nation->id)->value('version'));
+        $this->assertSame(1, NationCommandQueueItem::query()->count());
+        $this->assertSame($originalFingerprint, $item->fresh()->request_fingerprint);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.queued')
+            ->where('subject_id', $item->id)->count());
+    }
+
     public function test_historical_null_fingerprints_never_guess_duplicate_equivalence(): void
     {
         [$user, $nation, $mapSpace] = $this->nation('履歴冪等拒否国');

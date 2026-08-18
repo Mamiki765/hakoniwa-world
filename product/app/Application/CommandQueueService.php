@@ -82,14 +82,6 @@ final class CommandQueueService
                 throw new PlayerFacingCommandException('利用できないcommandです。');
             }
 
-            [$targetX, $targetY] = $this->resolveTargetCoordinates(
-                $lockedNation,
-                $mapSpace,
-                $definition,
-                $targetX,
-                $targetY,
-            );
-
             $queue = NationCommandQueue::query()->firstOrCreate(
                 ['nation_id' => $lockedNation->id],
                 ['map_space_id' => $mapSpace->id, 'version' => 1],
@@ -108,6 +100,23 @@ final class CommandQueueService
             $parameters = $this->parameters->validate($schemas, $parameters);
             $ruleset = RulesetVersion::query()->whereKey($world->ruleset_version_id)
                 ->firstOrFail(['id', 'key', 'version']);
+            $duplicate = NationCommandQueueItem::query()
+                ->where('nation_command_queue_id', $queue->id)
+                ->where('request_key', $requestKey)
+                ->lockForUpdate()
+                ->first();
+            if ($duplicate !== null && $definition->target_type === 'nation') {
+                $targetX = $duplicate->target_x;
+                $targetY = $duplicate->target_y;
+            } else {
+                [$targetX, $targetY] = $this->resolveTargetCoordinates(
+                    $lockedNation,
+                    $mapSpace,
+                    $definition,
+                    $targetX,
+                    $targetY,
+                );
+            }
             $requestFingerprint = $this->requestFingerprint(
                 $ruleset,
                 $definition,
@@ -117,11 +126,6 @@ final class CommandQueueService
                 $parameters,
                 $position,
             );
-            $duplicate = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('request_key', $requestKey)
-                ->lockForUpdate()
-                ->first();
             if ($duplicate !== null) {
                 if ($duplicate->request_fingerprint === null
                     || ! hash_equals($duplicate->request_fingerprint, $requestFingerprint)) {
