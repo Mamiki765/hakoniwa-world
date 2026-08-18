@@ -1,6 +1,7 @@
 <?php
 
 use App\Application\SecretaryItemGrantService;
+use App\Application\SecretaryV1MigrationSafetyGuard;
 use App\Models\Secretary;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -12,6 +13,9 @@ return new class extends Migration
     public function up(): void
     {
         DB::transaction(function (): void {
+            app(SecretaryV1MigrationSafetyGuard::class)
+                ->lockAndAssertNoUnresolvedNextTurnRun('ver 2.2.0 Secretary item/inquiry migration');
+
             $hasItems = Schema::hasTable('secretary_item_instances');
             $hasInquiries = Schema::hasTable('inquiries');
             if ($hasItems !== $hasInquiries) {

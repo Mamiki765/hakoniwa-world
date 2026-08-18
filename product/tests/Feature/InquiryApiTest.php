@@ -230,13 +230,11 @@ SQL);
         $this->actingAs($user)->postJson('/api/v1/inquiries', $payload)->assertOk();
         $this->assertDatabaseCount('inquiries', 1);
 
-        foreach (range(1, 3) as $number) {
-            $this->actingAs($user)->postJson('/api/v1/inquiries', [
-                ...$payload,
-                'submission_key' => (string) Str::uuid(),
-                'subject' => "要望 {$number}",
-            ])->assertCreated();
-        }
+        $this->actingAs($user)->postJson('/api/v1/inquiries', [
+            ...$payload,
+            'submission_key' => (string) Str::uuid(),
+            'subject' => '要望 1',
+        ])->assertCreated();
         $this->actingAs($user)->postJson('/api/v1/inquiries', [
             ...$payload,
             'submission_key' => (string) Str::uuid(),

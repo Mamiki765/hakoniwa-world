@@ -8,11 +8,16 @@ use App\Application\SecretaryService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
+use App\Models\TurnRun;
 use App\Models\User;
 use DomainException;
+use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -51,6 +56,43 @@ final class SecretaryInventoryTest extends TestCase
 
         $this->assertSame(1, $secretary->itemInstances()->where('item_key', SecretaryItemCatalog::OLD_BOW)->count());
         $this->assertSame(1, $secretary->itemInstances()->where('grant_key', SecretaryItemGrantService::STARTER_OLD_BOW_GRANT)->count());
+    }
+
+    #[DataProvider('unresolvedTurnStatuses')]
+    public function test_inventory_migration_rejects_unresolved_next_turn_before_schema_or_backfill(
+        string $status,
+    ): void {
+        $world = $this->lightweightWorld();
+        $secretary = Secretary::query()->create(['user_id' => User::factory()->create()->id]);
+        $run = TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $world->current_turn + 1,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'random_seed' => str_repeat('2', 64),
+            'source' => 'cron',
+            'is_dry_run' => false,
+            'status' => $status,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => ['preserve' => true],
+        ]);
+        $runBefore = $run->fresh()->getAttributes();
+        Schema::drop('inquiries');
+        Schema::drop('secretary_item_instances');
+
+        try {
+            $this->inventoryMigration()->up();
+            $this->fail("Expected {$status} next TurnRun to block the ver 2.2.0 migration.");
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Refusing ver 2.2.0 Secretary item/inquiry migration', $exception->getMessage());
+            $this->assertStringContainsString("status={$status}", $exception->getMessage());
+        }
+
+        $this->assertFalse(Schema::hasTable('secretary_item_instances'));
+        $this->assertFalse(Schema::hasTable('inquiries'));
+        $this->assertDatabaseHas('secretaries', ['id' => $secretary->id]);
+        $this->assertSame($runBefore, $run->fresh()->getAttributes());
     }
 
     public function test_secretary_api_renders_five_slots_and_a_fifty_item_warehouse_without_get_repair(): void
@@ -172,5 +214,21 @@ final class SecretaryInventoryTest extends TestCase
         $this->assertSame('古びた弓', $definition['name']);
         $this->assertStringContainsString('施設の最奥', $definition['flavor_text']);
         $this->assertArrayNotHasKey('effect', $definition);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function unresolvedTurnStatuses(): array
+    {
+        return [
+            'pending' => [TurnRun::STATUS_PENDING],
+            'running' => [TurnRun::STATUS_RUNNING],
+            'failed' => [TurnRun::STATUS_FAILED],
+            'blocked' => [TurnRun::STATUS_BLOCKED],
+        ];
+    }
+
+    private function inventoryMigration(): Migration
+    {
+        return require database_path('migrations/2026_08_17_010000_create_secretary_items_and_inquiries.php');
     }
 }

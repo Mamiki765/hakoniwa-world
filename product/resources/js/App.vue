@@ -1194,7 +1194,7 @@ async function abandonNation(): Promise<void> {
                 <a v-if="inquiryDetail.attachment_url" :href="inquiryDetail.attachment_url" target="_blank" rel="noopener">
                     <img class="inquiry-attachment" :src="inquiryDetail.attachment_url" alt="お問い合わせ添付画像">
                 </a>
-                <button type="button" @click="inquiryDetail = null">一覧へ戻る</button>
+                <button type="button" :disabled="busy" @click="openAdminInquiries(inquiryPageNumber)">一覧へ戻る</button>
             </article>
             <template v-else>
                 <ol v-if="inquiryItems.length" class="inquiry-list full">

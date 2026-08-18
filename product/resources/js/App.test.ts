@@ -1063,6 +1063,50 @@ describe('application lobby and island entry', () => {
         expect((request?.[1]?.headers as Headers).has('Content-Type')).toBe(false);
     });
 
+    it('loads the inquiry index when an admin returns from a TOP-linked detail', async () => {
+        const summary = {
+            management_id: 'INQ-000123', category: 'bug', category_label: 'バグ報告', subject: '表示がおかしい',
+            created_at: '2026-08-17T12:00:00Z', user: { id: 3, display_name: 'Reporter' }, nation: null,
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Admin', can_manage_announcements: true, can_manage_inquiries: true, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(null);
+            if (path === '/api/v1/admin/inquiries/latest') return response([summary]);
+            if (path === '/api/v1/admin/inquiries/123') return response({
+                ...summary,
+                body: '詳細本文', world: { id: 1, submitted_turn: 9 }, application_version: '2.2.0', attachment_url: null,
+            });
+            if (path === '/api/v1/admin/inquiries?page=1') return envelopeResponse([
+                { ...summary, management_id: 'INQ-000122', subject: '一覧の件名' },
+            ], { current_page: 1, last_page: 1, total: 1 });
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const latestButton = wrapper.findAll('.inquiry-window button')
+            .find((button) => button.text().includes('INQ-000123'))!;
+        await latestButton.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.inquiry-detail').text()).toContain('詳細本文');
+
+        const backButton = wrapper.findAll('.inquiry-detail button')
+            .find((button) => button.text() === '一覧へ戻る')!;
+        await backButton.trigger('click');
+        await flushPromises();
+
+        expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/admin/inquiries?page=1')).toBe(true);
+        expect(wrapper.find('.inquiry-detail').exists()).toBe(false);
+        expect(wrapper.get('.inquiry-list.full').text()).toContain('INQ-000122 [バグ報告] 一覧の件名');
+    });
+
     it('requires the danger button, modal, and exact island name before abandonment and returns to registration', async () => {
         let abandoned = false;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

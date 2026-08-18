@@ -24,7 +24,7 @@ An equipped item has no gameplay effect in ver 2.2.0. The implementation does no
 
 `inquiries` stores an idempotent per-User submission UUID, server-derived User, active Nation when one exists, World, submitted World turn, player-facing application version, category, subject, plain-text body, nullable attachment token/path, and timestamps. The management identifier is the stable formatted database primary key (`INQ-000123`); it is not used in the attachment URL.
 
-Only authenticated Users can submit and the POST route uses the existing Laravel throttle at five requests per minute. Client-provided User, Nation, turn, or version fields are ignored. Admin reads reuse the existing configured Discord admin authorization. Non-admin APIs expose neither other Users' inquiry subjects/counts/bodies nor attachment URLs. Reply, thread, comment, mail, Discord notification, and workflow state are not implemented.
+Only authenticated Users can submit and the POST route uses the existing Laravel throttle at three requests per minute per authenticated User. This caps accepted 10MB attachment traffic from one account at 30MB per minute without adding a separate image-only limiter in 2.2.0. Client-provided User, Nation, turn, or version fields are ignored. Admin reads reuse the existing configured Discord admin authorization. Non-admin APIs expose neither other Users' inquiry subjects/counts/bodies nor attachment URLs. Reply, thread, comment, mail, Discord notification, and workflow state are not implemented.
 
 ## Attachment storage and security boundary
 
