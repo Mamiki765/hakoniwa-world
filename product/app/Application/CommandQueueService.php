@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
+use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
@@ -50,7 +51,7 @@ final class CommandQueueService
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return array{queue: NationCommandQueue, item: NationCommandQueueItem}
+     * @return array{queue: NationCommandQueue, item: NationCommandQueueItem, duplicate: bool}
      */
     public function add(
         User $user,
@@ -81,14 +82,6 @@ final class CommandQueueService
                 throw new PlayerFacingCommandException('利用できないcommandです。');
             }
 
-            [$targetX, $targetY] = $this->resolveTargetCoordinates(
-                $lockedNation,
-                $mapSpace,
-                $definition,
-                $targetX,
-                $targetY,
-            );
-
             $queue = NationCommandQueue::query()->firstOrCreate(
                 ['nation_id' => $lockedNation->id],
                 ['map_space_id' => $mapSpace->id, 'version' => 1],
@@ -98,13 +91,48 @@ final class CommandQueueService
                 throw new DomainException('queueとmap spaceが一致しません。');
             }
 
+            $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
+            $this->quantitySemantics->validateForRegistration($definition, $quantity, $quantityProvided);
+            $schemas = $definition->metadata['parameters'] ?? [];
+            if (! is_array($schemas)) {
+                throw new DomainException('command parameter schemaが不正です。');
+            }
+            $parameters = $this->parameters->validate($schemas, $parameters);
+            $ruleset = RulesetVersion::query()->whereKey($world->ruleset_version_id)
+                ->firstOrFail(['id', 'key', 'version']);
             $duplicate = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('request_key', $requestKey)
                 ->lockForUpdate()
                 ->first();
+            if ($duplicate !== null && $definition->target_type === 'nation') {
+                $targetX = $duplicate->target_x;
+                $targetY = $duplicate->target_y;
+            } else {
+                [$targetX, $targetY] = $this->resolveTargetCoordinates(
+                    $lockedNation,
+                    $mapSpace,
+                    $definition,
+                    $targetX,
+                    $targetY,
+                );
+            }
+            $requestFingerprint = $this->requestFingerprint(
+                $ruleset,
+                $definition,
+                $targetX,
+                $targetY,
+                $quantity,
+                $parameters,
+                $position,
+            );
             if ($duplicate !== null) {
-                return ['queue' => $queue, 'item' => $duplicate->load('definition')];
+                if ($duplicate->request_fingerprint === null
+                    || ! hash_equals($duplicate->request_fingerprint, $requestFingerprint)) {
+                    throw new CommandRequestConflictException;
+                }
+
+                return ['queue' => $queue, 'item' => $duplicate->load('definition'), 'duplicate' => true];
             }
             $this->assertVersion($queue, $expectedVersion);
             $this->repairLegacyStagedItems($user, $queue);
@@ -145,13 +173,6 @@ final class CommandQueueService
             if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
                 throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
             }
-            $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
-            $this->quantitySemantics->validateForRegistration($definition, $quantity, $quantityProvided);
-            $schemas = $definition->metadata['parameters'] ?? [];
-            if (! is_array($schemas)) {
-                throw new DomainException('command parameter schemaが不正です。');
-            }
-            $parameters = $this->parameters->validate($schemas, $parameters);
             $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
             $queue->setRelation('items', $activeItems);
             $projectedTarget = $this->projectCellStateBeforePosition(
@@ -235,6 +256,7 @@ final class CommandQueueService
                 'status' => 'queued',
                 'queued_by_membership_id' => $membership->id,
                 'request_key' => $requestKey,
+                'request_fingerprint' => $requestFingerprint,
                 'queued_at' => now(),
                 'failure_metadata' => [],
             ]);
@@ -247,8 +269,48 @@ final class CommandQueueService
                 'quantity' => $quantity,
             ]);
 
-            return ['queue' => $queue, 'item' => $item->load('definition')];
+            return ['queue' => $queue, 'item' => $item->load('definition'), 'duplicate' => false];
         }, 3);
+    }
+
+    /** @param array<string, mixed> $parameters */
+    private function requestFingerprint(
+        RulesetVersion $ruleset,
+        CommandDefinition $definition,
+        int $targetX,
+        int $targetY,
+        int $quantity,
+        array $parameters,
+        ?int $requestedPosition,
+    ): string {
+        $payload = [
+            'command_key' => $definition->key,
+            'parameters' => $this->canonicalizeFingerprintValue($parameters),
+            'quantity' => $quantity,
+            'requested_position' => $requestedPosition,
+            'ruleset' => ['key' => $ruleset->key, 'version' => $ruleset->version],
+            'target_x' => $targetX,
+            'target_y' => $targetY,
+        ];
+
+        return hash('sha256', json_encode(
+            $payload,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        ));
+    }
+
+    private function canonicalizeFingerprintValue(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        if (array_is_list($value)) {
+            return array_map(fn (mixed $item): mixed => $this->canonicalizeFingerprintValue($item), $value);
+        }
+
+        ksort($value, SORT_STRING);
+
+        return array_map(fn (mixed $item): mixed => $this->canonicalizeFingerprintValue($item), $value);
     }
 
     /**

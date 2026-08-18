@@ -13,9 +13,13 @@ final class AnnouncementAdminAuthorizer
             return false;
         }
 
-        return $user->authIdentities()
-            ->where('provider', 'discord')
-            ->where('provider_user_id', $configuredId)
-            ->exists();
+        $identities = $user->relationLoaded('authIdentities')
+            ? $user->authIdentities
+            : $user->authIdentities()->get();
+
+        return $identities->contains(
+            static fn ($identity): bool => $identity->provider === 'discord'
+                && hash_equals($configuredId, $identity->provider_user_id),
+        );
     }
 }

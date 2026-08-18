@@ -162,6 +162,11 @@ final class CompleteTurnEngine
         ];
         $workforceRules = $context->ruleset->settings['turn_processing']['workforce'];
         $foodRules = $context->ruleset->settings['turn_processing']['food'];
+        $productionOverflowStage = $foodRules['production_overflow_resolution_stage'] ?? null;
+        if ($productionOverflowStage !== null
+            && $productionOverflowStage !== 'after_population_nutrition_consumption') {
+            throw new DomainException('The food production overflow resolution stage is invalid.');
+        }
         $resources = $this->resourceDefinitions($context);
         $wheat = $this->resourceDefinition($resources, 'wheat');
 
@@ -180,14 +185,26 @@ final class CompleteTurnEngine
                 SecretarySkillCatalog::AGRICULTURAL_POLICY,
                 $wheatProduction,
             );
-            $foodCredit = $this->boundedAssets->creditFood($nation, $wheat, $wheatProduction, $context->ruleset);
-            $this->events->record($context, 'resource.food_produced', $nation, [
+            $foodCredit = $productionOverflowStage === 'after_population_nutrition_consumption'
+                ? $this->boundedAssets->creditFoodProductionForTurn(
+                    $nation,
+                    $wheat,
+                    $wheatProduction,
+                    $context->ruleset,
+                )
+                : $this->boundedAssets->creditFood($nation, $wheat, $wheatProduction, $context->ruleset);
+            $productionMetadata = [
                 'resource_key' => 'wheat', 'population' => $population,
                 'farm_capacity_people' => $aggregate['farm_capacity'], 'workers' => $agriculturalWorkers,
                 'requested_tons' => $wheatProduction, 'applied_tons' => $foodCredit->applied,
-                'overflow_tons' => $foodCredit->overflow,
-            ]);
-            if ($foodCredit->overflow > 0) {
+                'overflow_tons' => $productionOverflowStage === null ? $foodCredit->overflow : 0,
+            ];
+            if ($productionOverflowStage !== null) {
+                $productionMetadata['pre_nutrition_over_capacity_tons'] = $foodCredit->overflow;
+                $productionMetadata['overflow_resolution_stage'] = $productionOverflowStage;
+            }
+            $this->events->record($context, 'resource.food_produced', $nation, $productionMetadata);
+            if ($productionOverflowStage === null && $foodCredit->overflow > 0) {
                 $overflow = $this->foodOverflow->resolve($context, $nation, $wheat, $foodCredit);
                 $metrics['food_overflow_sold'] += $overflow['sold_tons'];
                 $metrics['food_overflow_revenue'] += $overflow['revenue'];
@@ -234,6 +251,19 @@ final class CompleteTurnEngine
                 $resources,
             );
             $this->events->record($context, 'resource.food_consumed', $nation, $consumption);
+            if ($productionOverflowStage === 'after_population_nutrition_consumption') {
+                if ($foodCredit->requested > 0) {
+                    $overflow = $this->foodOverflow->resolveAfterNutrition(
+                        $context,
+                        $nation,
+                        $wheat,
+                        $foodCredit,
+                    );
+                    $metrics['food_overflow_sold'] += $overflow['sold_tons'];
+                    $metrics['food_overflow_revenue'] += $overflow['revenue'];
+                    $metrics['food_overflow_discarded'] += $overflow['discarded_tons'];
+                }
+            }
             if ($consumption['shortage'] > 0) {
                 $context->state->markFamine($nation->id);
                 $metrics['famine_nations']++;

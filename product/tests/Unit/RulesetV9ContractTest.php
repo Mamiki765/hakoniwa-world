@@ -32,10 +32,9 @@ final class RulesetV9ContractTest extends TestCase
         $this->assertSame([
             'normal_monster_stage' => 'after_ordinary_surface_cell_events',
         ], $turnResolution);
-        $this->assertSame('hakoniwa-2s-plus-v9', config('hakoniwa.ruleset.key'));
-        $this->assertSame(9, config('hakoniwa.ruleset.version'));
-
-        $validated = app(RulesetAuthoringValidator::class)->validate(config('hakoniwa.ruleset'));
+        $validated = app(RulesetAuthoringValidator::class)->validate(
+            config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v9'),
+        );
         $this->assertSame('hakoniwa-2s-plus-v9', $validated['key']);
         $this->assertSame(9, $validated['version']);
     }

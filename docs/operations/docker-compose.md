@@ -44,7 +44,7 @@ services:
 
 ver 2.2.0の問い合わせ画像は既定で`/srv/bot-assets/hakoniwa-inquiries`へ書き込む。base Composeはwritableな`hakoniwa_inquiry_attachments` named volumeを同pathへmountし、container再作成後もfileを残す。Web containerのApacheは`/hakoniwa-inquiries/`をこのdirectoryへ直接対応させ、directory listing、`.htaccess`、CGI/include実行を無効にしたstatic routeとして配信する。
 
-この既定値はlocal/default stack用であり、productionの外部assets基盤を置き換えない。productionでは`HAKONIWA_INQUIRY_ATTACHMENT_PATH`と`HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`を実mountとassets originへ合わせ、writableなbind mountをCompose overrideで指定する。assets nginxを使う場合は`product/docker/nginx/hakoniwa-inquiries.conf`のlocationと`autoindex off`を維持する。security/backup/upload-limit/operator手順は`product/docs/ver-2.2.0-secretary-inventory-and-inquiries.md`を正本とする。
+この既定値はlocal/default stack用であり、productionの外部assets基盤を置き換えない。productionはoperator管理のhost bind mountを採用し、`HAKONIWA_INQUIRY_ATTACHMENT_PATH`と`HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`を実mountとassets originへ合わせ、Git外のCompose overrideで指定する。assets nginxを使う場合は`product/docker/nginx/hakoniwa-inquiries.conf`のlocation、`autoindex off`、`private, no-store, max-age=0`を維持する。Apacheの既定routeも同じcache禁止と`nosniff`を返す。security/backup/upload-limit/operator手順は`product/docs/ver-2.2.1-correctness-hardening.md`を正本とする。このhost bind mountは永続化先であってbackup保証ではない。
 
 首都画像を表示する環境は同じdirectoryへ`capital.gif`を配置する。旧名`capital.png`はmanifestで参照しない。GIFがない場合は首都のCSS fallbackを使い、API・map・healthcheckを失敗させない。
 

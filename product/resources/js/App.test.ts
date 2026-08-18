@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import HexMap from './components/HexMap.vue';
 import type { MapChunk, Nation, PublicNationDetail, Secretary } from './types';
@@ -123,7 +123,15 @@ function publicResponse(path: string): Response | null {
     return null;
 }
 
+beforeEach(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'hakoniwa-application-version';
+    meta.content = '2.2.1';
+    document.head.append(meta);
+});
+
 afterEach(() => {
+    document.querySelector('meta[name="hakoniwa-application-version"]')?.remove();
     vi.unstubAllGlobals();
     vi.useRealTimers();
 });
@@ -156,7 +164,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 2.2.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 2.2.1');
         expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');

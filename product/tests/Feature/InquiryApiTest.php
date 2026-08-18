@@ -9,6 +9,7 @@ use App\Models\Inquiry;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -66,7 +67,7 @@ final class InquiryApiTest extends TestCase
             'nation_id' => $nation->id,
             'world_id' => $world->id,
             'submitted_turn' => 42,
-            'application_version' => '2.2.0',
+            'application_version' => '2.2.1',
             'category' => 'bug',
             'attachment_token' => null,
             'attachment_path' => null,
@@ -128,6 +129,42 @@ final class InquiryApiTest extends TestCase
 
         $this->assertDatabaseCount('inquiries', 0);
         Storage::disk('inquiry_attachments')->assertDirectoryEmpty('/');
+    }
+
+    public function test_oversized_or_invalid_dimensions_do_not_write_or_consume_the_submission_key(): void
+    {
+        $this->withoutMiddleware(ThrottleRequests::class);
+        Storage::fake('inquiry_attachments');
+        $this->lightweightWorld();
+        $user = User::factory()->create();
+        $submissionKey = (string) Str::uuid();
+        $base = [
+            'submission_key' => $submissionKey,
+            'category' => 'bug',
+            'subject' => 'dimension check',
+            'body' => 'dimension check body',
+        ];
+
+        foreach ([[12_001, 1], [1, 12_001], [10_000, 5_000]] as [$width, $height]) {
+            $this->actingAs($user)->post('/api/v1/inquiries', [
+                ...$base,
+                'attachment' => UploadedFile::fake()->createWithContent(
+                    'oversized.png',
+                    $this->pngWithDimensions($width, $height),
+                ),
+            ], ['Accept' => 'application/json'])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('attachment');
+        }
+
+        $this->assertDatabaseCount('inquiries', 0);
+        Storage::disk('inquiry_attachments')->assertDirectoryEmpty('/');
+
+        $this->actingAs($user)->post('/api/v1/inquiries', [
+            ...$base,
+            'attachment' => UploadedFile::fake()->createWithContent('valid.png', $this->png()),
+        ], ['Accept' => 'application/json'])->assertCreated();
+        $this->assertDatabaseCount('inquiries', 1);
     }
 
     public function test_admin_latest_five_index_and_detail_are_fail_closed_for_everyone_else(): void
@@ -258,5 +295,14 @@ SQL);
     private function png(): string
     {
         return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true) ?: '';
+    }
+
+    private function pngWithDimensions(int $width, int $height): string
+    {
+        $png = $this->png();
+        $png = substr_replace($png, pack('N', $width), 16, 4);
+        $png = substr_replace($png, pack('N', $height), 20, 4);
+
+        return substr_replace($png, hash('crc32b', substr($png, 12, 17), true), 29, 4);
     }
 }

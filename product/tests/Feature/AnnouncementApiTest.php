@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\Announcement;
 use App\Models\AuthIdentity;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class AnnouncementApiTest extends TestCase
@@ -123,9 +125,17 @@ final class AnnouncementApiTest extends TestCase
             'body' => '<script>alert(1)</script>',
         ])->assertUnprocessable()->assertJsonValidationErrors(['title', 'body']);
 
+        $identityQueries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$identityQueries): void {
+            if (str_contains(strtolower($query->sql), 'from "auth_identities"')) {
+                $identityQueries[] = $query->sql;
+            }
+        });
         $response = $this->actingAs($admin)->getJson('/api/v1/me')
             ->assertOk()
-            ->assertJsonPath('data.can_manage_announcements', true);
+            ->assertJsonPath('data.can_manage_announcements', true)
+            ->assertJsonPath('data.can_manage_inquiries', true);
+        $this->assertCount(1, $identityQueries);
         $this->assertStringNotContainsString('stable-admin-id', $response->getContent());
         $this->assertStringNotContainsString('provider_user_id', $response->getContent());
 

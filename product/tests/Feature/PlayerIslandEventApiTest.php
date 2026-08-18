@@ -745,6 +745,39 @@ class PlayerIslandEventApiTest extends TestCase
         );
     }
 
+    public function test_disaster_owner_message_prefers_the_pre_impact_removed_facility(): void
+    {
+        [$world, $owner, $nation] = $this->nation('災害表示島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+        $this->audit('disaster.cell_damaged', $nation, $nation, 'nation', 2, [
+            'disaster_key' => 'typhoon',
+            'from_terrain_key' => 'plain',
+            'to_terrain_key' => 'plain',
+            'removed_facility_key' => 'farm',
+            'x' => 4,
+            'y' => 5,
+        ]);
+        $this->audit('disaster.cell_damaged', $nation, $nation, 'nation', 2, [
+            'disaster_key' => 'earthquake',
+            'from_terrain_key' => 'forest',
+            'to_terrain_key' => 'wasteland',
+            'removed_facility_key' => null,
+            'x' => 6,
+            'y' => 7,
+        ]);
+
+        $response = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
+        $messages = $this->messages($response->json('data.groups'));
+        $this->assertTrue(collect($messages)->contains(
+            static fn (string $message): bool => str_contains($message, '台風により農場が失われ、平地になりました。'),
+        ));
+        $this->assertTrue(collect($messages)->contains(
+            static fn (string $message): bool => str_contains($message, '地震により森が荒地へ変化しました。'),
+        ));
+        $this->assertStringNotContainsString('平地が平地へ変化', (string) $response->getContent());
+    }
+
     /** @return array{World, User, Nation} */
     private function nation(string $name, ?World $world = null): array
     {

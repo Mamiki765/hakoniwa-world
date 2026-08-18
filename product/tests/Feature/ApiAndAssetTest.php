@@ -38,6 +38,52 @@ class ApiAndAssetTest extends TestCase
         $this->assertStringNotContainsString('secret-external-id', $response->getContent());
     }
 
+    public function test_nation_creation_classifies_player_conflicts_and_hides_internal_failures(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        $base = [
+            'request_key' => (string) Str::uuid(),
+            'world_id' => $world->id,
+            'name' => '分類試験島',
+            'owner_name' => '分類島主',
+            'comment' => '',
+        ];
+
+        foreach ([
+            'name' => [...$base, 'name' => "改行\n島"],
+            'owner_name' => [...$base, 'owner_name' => "改行\n島主"],
+            'comment' => [...$base, 'comment' => "改行\nコメント"],
+        ] as $field => $payload) {
+            $this->actingAs($owner)->postJson('/api/v1/nations', $payload)
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+
+        $this->actingAs($owner)->postJson('/api/v1/nations', $base)->assertCreated();
+        $other = User::factory()->create();
+        $this->actingAs($other)->postJson('/api/v1/nations', [
+            ...$base,
+            'request_key' => (string) Str::uuid(),
+        ])->assertUnprocessable()->assertJsonValidationErrors('name');
+        $this->actingAs($other)->postJson('/api/v1/nations', [
+            ...$base,
+            'name' => '別要求島',
+        ])->assertConflict()->assertJsonPath('code', 'nation_creation_request_conflict');
+        $this->actingAs($owner)->postJson('/api/v1/nations', [
+            ...$base,
+            'request_key' => (string) Str::uuid(),
+            'name' => '二重所属島',
+        ])->assertConflict()->assertJsonPath('code', 'nation_creation_conflict');
+
+        Nation::query()->where('world_id', $world->id)->update(['nation_number' => 2_147_483_647]);
+        $internal = $this->actingAs(User::factory()->create())->postJson('/api/v1/nations', [
+            ...$base,
+            'request_key' => (string) Str::uuid(),
+            'name' => '内部失敗島',
+        ])->assertServerError()->assertJsonPath('code', 'nation_creation_failed');
+        $this->assertStringNotContainsString('integer range', (string) $internal->getContent());
+    }
+
     public function test_xy_chunk_coordinates_and_nation_endpoints(): void
     {
         $world = $this->lightweightWorld();

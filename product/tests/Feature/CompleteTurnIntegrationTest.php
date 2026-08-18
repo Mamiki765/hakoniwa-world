@@ -323,10 +323,10 @@ class CompleteTurnIntegrationTest extends TestCase
             ->whereRaw("metadata->>'overflow' = ?", ['500'])->count());
         $foodOverflow = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'resource.food_overflow_resolved')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(1_100, $foodOverflow['requested_overflow_tons']);
-        $this->assertSame(1_000, $foodOverflow['sold_tons']);
-        $this->assertSame(1, $foodOverflow['revenue']);
-        $this->assertSame(100, $foodOverflow['discarded_tons']);
+        $this->assertSame(880, $foodOverflow['requested_overflow_tons']);
+        $this->assertSame(0, $foodOverflow['sold_tons']);
+        $this->assertSame(0, $foodOverflow['revenue']);
+        $this->assertSame(880, $foodOverflow['discarded_tons']);
         $this->assertGreaterThan($snapshot['audit_count'], DB::table('audit_events')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.completed')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'turn.summary')->count());

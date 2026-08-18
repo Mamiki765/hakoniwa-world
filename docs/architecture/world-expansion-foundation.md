@@ -1,6 +1,7 @@
 # World expansion foundation
 
-Status: ver 1.5.0 foundation and explicit World expansion service. Nation abandonment is not implemented.
+Status: ver 1.5.0 foundation and explicit World expansion service. Manual Nation abandonment
+was added in ver 1.6.0; automatic dormancy/abandonment remains unimplemented and Deferred.
 
 Implementation evidence and exclusions are recorded in
 `docs/reference-analysis/h2-realignment-and-world-expansion-audit.md`.
@@ -47,13 +48,15 @@ rolling deploy with older turn workers. The mandatory ordering is:
 4. lock narrower rows in stable parent-to-child order; and
 5. commit or roll back, then release the advisory lock in `finally`.
 
-Turn, Nation registration, reset, monster award-cycle seeding, and `WorldExpansionService` share
-this boundary now. Future Nation abandonment must use the same ordering. Nation registration owns
+Turn, Nation registration, reset, monster award-cycle seeding, manual Nation abandonment, and
+`WorldExpansionService` share this boundary now. The manual lifecycle contract is documented in
+[`product/docs/ver-1.6.0-nation-lifecycle.md`](../../product/docs/ver-1.6.0-nation-lifecycle.md).
+Future automatic dormancy/abandonment must use the same ordering but is not implemented. Nation registration owns
 the lock while it searches for a Capital placement candidate; only when that search returns zero
 candidates does it derive the next canonical signed bounds and call `WorldExpansionService` inside
 the same registration transaction. It then searches once more. No candidate after that one
 expansion is an invariant failure and rolls back both expansion and registration. Nation
-abandonment remains outside this release.
+Automatic abandonment remains outside this release.
 
 ## Registration expansion rotation
 

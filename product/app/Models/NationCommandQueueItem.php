@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $status
  * @property int $queued_by_membership_id
  * @property string $request_key
+ * @property string|null $request_fingerprint
  * @property CarbonImmutable|null $queued_at
  * @property-read CommandDefinition $definition
  */
@@ -25,7 +26,7 @@ class NationCommandQueueItem extends Model
 {
     protected $fillable = [
         'nation_command_queue_id', 'command_definition_id', 'queue_position', 'target_x', 'target_y', 'quantity',
-        'parameters', 'status', 'queued_by_membership_id', 'request_key', 'queued_at', 'cancelled_at',
+        'parameters', 'status', 'queued_by_membership_id', 'request_key', 'request_fingerprint', 'queued_at', 'cancelled_at',
         'execution_started_at', 'execution_completed_at', 'execution_failed_at', 'failure_code', 'failure_metadata',
     ];
 
