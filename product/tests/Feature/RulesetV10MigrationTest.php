@@ -32,6 +32,31 @@ final class RulesetV10MigrationTest extends TestCase
     public function test_v10_migration_rebinds_only_live_references_and_is_idempotent(): void
     {
         [$world, $queued, $historical, $monster, $killStat, $v9, $v10] = $this->v9Fixture();
+        $historicalMonsters = collect([
+            MonsterInstance::query()->create([
+                'world_id' => $world->id,
+                'monster_definition_id' => $monster->monster_definition_id,
+                'current_hp' => 0,
+                'spawned_max_hp' => 1,
+                'state' => 'killed',
+                'spawned_target_turn' => 1,
+                'version' => 2,
+                'removal_reason' => 'migration-history-test-killed',
+                'removed_at' => now(),
+            ]),
+            MonsterInstance::query()->create([
+                'world_id' => $world->id,
+                'monster_definition_id' => $monster->monster_definition_id,
+                'current_hp' => 1,
+                'spawned_max_hp' => 1,
+                'state' => 'removed',
+                'spawned_target_turn' => 1,
+                'version' => 2,
+                'removal_reason' => 'migration-history-test-removed',
+                'removed_at' => now(),
+            ]),
+        ]);
+        $historicalMonsterPayloads = $historicalMonsters->map->fresh()->map->getAttributes()->all();
         $queuedPayload = Arr::except($queued->fresh()->getAttributes(), ['command_definition_id']);
         $monsterPayload = Arr::except($monster->fresh()->getAttributes(), ['monster_definition_id']);
         $killPayload = Arr::except($killStat->fresh()->getAttributes(), ['monster_definition_id']);
@@ -49,13 +74,21 @@ final class RulesetV10MigrationTest extends TestCase
         $this->assertSame($killPayload, Arr::except($killStat->fresh()->getAttributes(), ['monster_definition_id']));
         $this->assertSame($v9->id, $historical->fresh()->definition()->value('ruleset_version_id'));
         $this->assertSame($historyPayload, $historical->fresh()->getAttributes());
+        foreach ($historicalMonsters as $index => $historicalMonster) {
+            $this->assertSame($v9->id, $historicalMonster->fresh()->definition()->value('ruleset_version_id'));
+            $this->assertSame($historicalMonsterPayloads[$index], $historicalMonster->fresh()->getAttributes());
+        }
         $this->assertSame($publishedBefore, $this->publishedV1ThroughV9Checksums());
         $this->assertIntegrityGuardsEnabled();
 
-        $successful = [$world->fresh()->getAttributes(), $queued->fresh()->getAttributes(), $monster->fresh()->getAttributes()];
+        $successful = [
+            $world->fresh()->getAttributes(), $queued->fresh()->getAttributes(), $monster->fresh()->getAttributes(),
+            ...$historicalMonsters->map->fresh()->map->getAttributes()->all(),
+        ];
         $this->migration()->up();
         $this->assertSame($successful, [
             $world->fresh()->getAttributes(), $queued->fresh()->getAttributes(), $monster->fresh()->getAttributes(),
+            ...$historicalMonsters->map->fresh()->map->getAttributes()->all(),
         ]);
     }
 

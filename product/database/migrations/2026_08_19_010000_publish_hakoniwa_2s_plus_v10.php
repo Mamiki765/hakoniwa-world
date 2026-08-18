@@ -95,6 +95,7 @@ UPDATE monster_instances instance
     ON target.ruleset_version_id = ? AND target.key = source.key
  WHERE instance.world_id = ?
    AND instance.monster_definition_id = source.id
+   AND instance.state = 'alive'
    AND source.ruleset_version_id = ?
 SQL, [$toRulesetId, $world->id, $fromRulesetId]);
 
