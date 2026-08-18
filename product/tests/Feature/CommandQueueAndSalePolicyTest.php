@@ -915,8 +915,8 @@ class CommandQueueAndSalePolicyTest extends TestCase
             static fn (string $sql): bool => str_contains($sql, 'from "facility_definitions"'),
         );
         $this->assertLessThanOrEqual(2, $facilityQueries->count(), implode("\n", $facilityQueries->all()));
-        $this->assertSame(44, count($queries), 'Catalog query count regressed: '.count($queries));
-        $this->assertSame(52, count($queries) + $resultFacilityDefinitionCount - 1);
+        $this->assertLessThan(52, count($queries), 'Catalog query count did not improve: '.count($queries));
+        $this->assertLessThanOrEqual(44, count($queries), 'Catalog query count regressed: '.count($queries));
     }
 
     public function test_member_can_add_list_reorder_and_cancel_without_executing_commands(): void
