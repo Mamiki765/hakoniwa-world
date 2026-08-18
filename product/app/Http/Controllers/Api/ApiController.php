@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\MapChunkService;
 use App\Application\NationCreationService;
+use App\Domain\Nation\NationCreationConflictException;
+use App\Domain\Nation\NationNameConflictException;
+use App\Domain\Nation\NationPlacementUnavailableException;
 use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateNationRequest;
@@ -16,11 +19,11 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\World;
-use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class ApiController extends Controller
 {
@@ -72,8 +75,27 @@ class ApiController extends Controller
                 'code' => ResetRequiredException::ERROR_CODE,
                 'message' => $exception->getMessage(),
             ], 409);
-        } catch (DomainException $exception) {
+        } catch (NationNameConflictException $exception) {
             throw ValidationException::withMessages(['name' => $exception->getMessage()]);
+        } catch (NationCreationConflictException $exception) {
+            return response()->json([
+                'code' => $exception->errorCode,
+                'message' => $exception->getMessage(),
+            ], 409);
+        } catch (NationPlacementUnavailableException $exception) {
+            report($exception);
+
+            return response()->json([
+                'code' => NationPlacementUnavailableException::ERROR_CODE,
+                'message' => '現在、安全に初期島を配置できません。時間を置いてもう一度お試しください。',
+            ], 409);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'code' => 'nation_creation_failed',
+                'message' => '登録処理を完了できませんでした。時間を置いてもう一度お試しください。',
+            ], 500);
         }
 
         return (new NationResource($nation))->response()->setStatusCode(201);

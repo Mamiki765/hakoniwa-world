@@ -67,4 +67,54 @@ final class CapacityBoundedAssetService
             return $result;
         }, 1);
     }
+
+    /**
+     * Credits one turn's farm production before nutrition is consumed.
+     *
+     * This is intentionally separate from creditFood(): aid and monster rewards
+     * must retain their existing hard-cap behavior.
+     */
+    public function creditFoodProductionForTurn(
+        Nation $nation,
+        ResourceDefinition $resource,
+        int $requestedTons,
+        RulesetVersion $ruleset,
+    ): CapacityAdditionResult {
+        if ($resource->category !== 'food') {
+            throw new DomainException('Turn food production can only credit a resource in category=food.');
+        }
+        if ($requestedTons < 0) {
+            throw new DomainException('Turn food production requires a non-negative amount.');
+        }
+
+        return DB::transaction(function () use ($nation, $resource, $requestedTons, $ruleset): CapacityAdditionResult {
+            $lockedNation = Nation::query()->whereKey($nation->id)->lockForUpdate()->firstOrFail();
+            $foodBalances = NationResource::query()
+                ->where('nation_id', $lockedNation->id)
+                ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+                ->lockForUpdate()
+                ->get();
+            $before = (int) $foodBalances->sum('amount');
+            $capacity = $this->capacities->resolve($lockedNation, $ruleset)->foodTons;
+
+            if ($requestedTons > 0) {
+                $balance = $foodBalances->firstWhere('resource_definition_id', $resource->id);
+                $balance ??= NationResource::query()->create([
+                    'nation_id' => $lockedNation->id,
+                    'resource_definition_id' => $resource->id,
+                    'amount' => 0,
+                ]);
+                $balance->increment('amount', $requestedTons);
+            }
+
+            return new CapacityAdditionResult(
+                before: $before,
+                requested: $requestedTons,
+                applied: $requestedTons,
+                overflow: max(0, $before + $requestedTons - max($capacity, $before)),
+                after: $before + $requestedTons,
+                capacity: $capacity,
+            );
+        }, 1);
+    }
 }

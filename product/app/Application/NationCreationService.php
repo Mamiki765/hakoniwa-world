@@ -2,6 +2,9 @@
 
 namespace App\Application;
 
+use App\Domain\Nation\NationCreationConflictException;
+use App\Domain\Nation\NationNameConflictException;
+use App\Domain\Nation\NationPlacementUnavailableException;
 use App\Domain\Nation\NationProfileText;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Turn\TurnAlreadyRunningException;
@@ -12,7 +15,6 @@ use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\User;
 use App\Models\World;
-use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -43,7 +45,11 @@ final class NationCreationService
         try {
             $this->worldMutationLock->acquire($world);
         } catch (TurnAlreadyRunningException $exception) {
-            throw new DomainException('このWorldは現在更新中です。後でもう一度登録してください。', previous: $exception);
+            throw new NationCreationConflictException(
+                'nation_creation_conflict',
+                'このWorldは現在更新中です。後でもう一度登録してください。',
+                $exception,
+            );
         }
 
         try {
@@ -59,10 +65,16 @@ final class NationCreationService
                 if ($existingRequest !== null) {
                     if ((int) $existingRequest->user_id !== $user->id
                         || (int) $existingRequest->world_id !== $world->id) {
-                        throw new DomainException('この登録request keyは別の登録要求で使用済みです。');
+                        throw new NationCreationConflictException(
+                            'nation_creation_request_conflict',
+                            'この登録request keyは別の登録要求で使用済みです。',
+                        );
                     }
                     if ($existingRequest->status !== 'completed' || $existingRequest->nation_id === null) {
-                        throw new DomainException('同一登録要求が未完了状態です。追加処理せず調査が必要です。');
+                        throw new NationCreationConflictException(
+                            'nation_creation_request_conflict',
+                            '同一登録要求は処理中または調査中です。時間を置いて確認してください。',
+                        );
                     }
 
                     $this->secretaries->ensureForUser($user);
@@ -74,17 +86,20 @@ final class NationCreationService
                 }
 
                 if (NationMembership::query()->where('user_id', $user->id)->where('world_id', $world->id)->exists()) {
-                    throw new DomainException('このWorldにはすでにNationがあります。');
+                    throw new NationCreationConflictException(
+                        'nation_creation_conflict',
+                        'このWorldにはすでにNationがあります。',
+                    );
                 }
                 if (Nation::query()->where('world_id', $world->id)->where('name', $name)->exists()) {
-                    throw new DomainException('この島名はすでに使用されています。');
+                    throw new NationNameConflictException('この島名はすでに使用されています。');
                 }
 
                 $largestNationNumber = (int) Nation::query()
                     ->where('world_id', $world->id)
                     ->max('nation_number');
                 if ($largestNationNumber >= 2_147_483_647) {
-                    throw new DomainException('このWorldではこれ以上Nation番号を採番できません。');
+                    throw new \RuntimeException('Nation number allocation exhausted the signed integer range.');
                 }
                 $nationNumber = $largestNationNumber + 1;
 
@@ -115,7 +130,7 @@ final class NationCreationService
                     );
                     $candidates = $this->placement->candidates($mapSpace->fresh(), 1);
                     if ($candidates === []) {
-                        throw new DomainException(
+                        throw new NationPlacementUnavailableException(
                             'Worldを1chunk拡張しても初期島候補が生成されませんでした。登録処理を中止します。',
                         );
                     }

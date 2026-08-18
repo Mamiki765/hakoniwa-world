@@ -107,13 +107,18 @@ final class RulesetAuthoringValidator
                 .self::POSTGRESQL_INTEGER_MAX.'.',
             );
         }
-        if ($key === 'hakoniwa-2s-plus-v9') {
+        if (in_array($key, ['hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)) {
             $turnResolution = $this->map($settings['turn_resolution'] ?? null, 'ruleset.turn_resolution');
             if ($turnResolution !== [
                 'normal_monster_stage' => 'after_ordinary_surface_cell_events',
             ]) {
                 throw new DomainException('ruleset.turn_resolution differs from the v9 normal monster stage contract.');
             }
+        }
+        if ($key === 'hakoniwa-2s-plus-v10'
+            && ($settings['turn_processing']['food']['production_overflow_resolution_stage'] ?? null)
+                !== 'after_population_nutrition_consumption') {
+            throw new DomainException('ruleset food overflow resolution differs from the v10 contract.');
         }
         $chunkSize = $this->integer($settings['chunk_size'], 'ruleset.chunk_size', 1);
         if ($chunkSize !== self::ARCHITECTURE_CHUNK_SIZE) {
@@ -469,7 +474,7 @@ final class RulesetAuthoringValidator
         ], "{$path}.dormant_impact");
         $explicitTargetState = in_array(
             $settings['key'] ?? null,
-            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'],
+            ['hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3', 'hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'],
             true,
         )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
@@ -499,11 +504,11 @@ final class RulesetAuthoringValidator
             throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v4', 'hakoniwa-2s-plus-v5', 'hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)) {
             $this->validateLaunchBaseExperience($settings, $military, $facilityKeys, $path);
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)) {
             $defenseResistance = $this->map(
                 $military['defense_spp_resistance'] ?? null,
                 "{$path}.defense_spp_resistance",
@@ -521,7 +526,7 @@ final class RulesetAuthoringValidator
             );
         }
 
-        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'], true)) {
+        if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)) {
             $interception = $this->map(
                 $military['defense_interception'] ?? null,
                 "{$path}.defense_interception",
@@ -1138,7 +1143,7 @@ final class RulesetAuthoringValidator
                     "{$path}.metadata.oil_search_effect_key",
                 );
             }
-            if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9'], true)
+            if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)
                 && in_array($commandKey, ['build_defense_facility', 'build_monument'], true)) {
                 $expectedEffect = $commandKey === 'build_defense_facility'
                     ? 'defense_self_destruct'

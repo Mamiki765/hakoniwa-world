@@ -26,7 +26,7 @@ jobs:
   documentation:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate open-question documentation contract
         run: python3 docs/scripts/validate_open_questions.py
 
@@ -62,17 +62,15 @@ jobs:
               output.write(f"total={total}\n")
           PY
 
-  backend-static:
-    name: backend-static
+  composer-dependencies:
+    name: Composer dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:
         working-directory: product
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v6
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.5"
@@ -83,14 +81,65 @@ jobs:
         id: composer-cache
         run: echo "directory=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
       - name: Cache Composer downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.composer-cache.outputs.directory }}
           key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('product/composer.lock') }}
           restore-keys: |
             ${{ runner.os }}-php-8.5-composer-
-      - name: Install PHP dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Validate and install locked PHP dependencies once
+        run: |
+          composer validate --strict --no-check-publish
+          composer install --no-interaction --no-progress --prefer-dist
+      - name: Package dependency tree with integrity metadata
+        run: |
+          sha256sum composer.lock > composer.lock.sha256
+          tar --zstd -cf vendor.tar.zst vendor
+          sha256sum vendor.tar.zst > vendor.tar.zst.sha256
+      - name: Upload validated dependency tree
+        uses: actions/upload-artifact@v7
+        with:
+          name: composer-vendor-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            product/vendor.tar.zst
+            product/vendor.tar.zst.sha256
+            product/composer.lock.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  backend-static:
+    name: backend-static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: composer-dependencies
+    defaults:
+      run:
+        working-directory: product
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          extensions: intl, pdo_pgsql
+          coverage: none
+      - name: Download validated dependency tree
+        uses: actions/download-artifact@v8
+        with:
+          name: composer-vendor-${{ github.run_id }}-${{ github.run_attempt }}
+          path: product
+      - name: Verify and extract dependency tree
+        run: |
+          sha256sum --check composer.lock.sha256
+          sha256sum --check vendor.tar.zst.sha256
+          while IFS= read -r entry; do
+            case "$entry" in
+              vendor|vendor/*) ;;
+              *) echo "Unsafe dependency artifact entry: $entry"; exit 1 ;;
+            esac
+          done < <(tar --zstd -tf vendor.tar.zst)
+          tar --zstd -xf vendor.tar.zst
       - name: Check formatting of changed PHP files
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -100,15 +149,8 @@ jobs:
           if ((${#changed_php[@]})); then
             vendor/bin/pint --test "${changed_php[@]}"
           fi
-      - name: Run static analysis on changed app PHP
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          base_sha="${BASE_SHA:-HEAD^}"
-          mapfile -t changed_app_php < <(git diff --name-only --diff-filter=ACMR "$base_sha...HEAD" -- 'app/**/*.php' | sed 's#^product/##')
-          if ((${#changed_app_php[@]})); then
-            vendor/bin/phpstan analyse "${changed_app_php[@]}" --memory-limit=1G
-          fi
+      - name: Run static analysis on the complete application
+        run: vendor/bin/phpstan analyse app --memory-limit=1G
       - name: Validate complete 16-shard assignment
         run: php tests/scripts/test_shards.php verify 16
       - name: Verify serial and sharded test identifiers
@@ -116,11 +158,13 @@ jobs:
 
   phpunit:
     name: PHPUnit ${{ matrix.display }}/${{ needs.phpunit-plan.outputs.total }}
-    needs: phpunit-plan
+    needs:
+      - phpunit-plan
+      - composer-dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix: ${{ fromJSON(needs.phpunit-plan.outputs.matrix) }}
     services:
       postgres:
@@ -148,27 +192,30 @@ jobs:
       run:
         working-directory: product
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.5"
           extensions: intl, pdo_pgsql
           coverage: none
-          tools: composer:v2
       - name: Map the Compose test hostname to the service container
         run: echo "127.0.0.1 hakoniwa-postgres" | sudo tee -a /etc/hosts
-      - name: Locate Composer cache
-        id: composer-cache
-        run: echo "directory=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
-      - name: Cache Composer downloads
-        uses: actions/cache@v4
+      - name: Download validated dependency tree
+        uses: actions/download-artifact@v8
         with:
-          path: ${{ steps.composer-cache.outputs.directory }}
-          key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('product/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-php-8.5-composer-
-      - name: Install PHP dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist
+          name: composer-vendor-${{ github.run_id }}-${{ github.run_attempt }}
+          path: product
+      - name: Verify and extract dependency tree
+        run: |
+          sha256sum --check composer.lock.sha256
+          sha256sum --check vendor.tar.zst.sha256
+          while IFS= read -r entry; do
+            case "$entry" in
+              vendor|vendor/*) ;;
+              *) echo "Unsafe dependency artifact entry: $entry"; exit 1 ;;
+            esac
+          done < <(tar --zstd -tf vendor.tar.zst)
+          tar --zstd -xf vendor.tar.zst
       - name: Verify complete shard coverage
         run: php tests/scripts/test_shards.php verify "$SHARD_TOTAL"
       - name: Describe assigned tests
@@ -215,8 +262,8 @@ jobs:
       run:
         working-directory: product
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm

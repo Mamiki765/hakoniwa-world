@@ -442,6 +442,16 @@ class DisasterAndOilTurnTest extends TestCase
                 static fn (string $metadata): string => json_decode($metadata, true, 512, JSON_THROW_ON_ERROR)['disaster_key'],
             )->all();
         $this->assertSame(['earthquake', 'typhoon'], $triggered);
+        $typhoonDamage = DB::table('audit_events')
+            ->where('event_type', 'disaster.cell_damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereRaw("metadata->>'disaster_key' = 'typhoon'")
+            ->value('metadata');
+        $this->assertIsString($typhoonDamage);
+        $typhoonMetadata = json_decode($typhoonDamage, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('farm', $typhoonMetadata['removed_facility_key']);
+        $this->assertSame('plain', $typhoonMetadata['from_terrain_key']);
+        $this->assertSame('plain', $typhoonMetadata['to_terrain_key']);
     }
 
     public function test_tsunami_still_counts_out_of_bounds_neighbors_as_water(): void

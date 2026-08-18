@@ -1090,12 +1090,7 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'changed_to_sea_count')),
                 number_format($this->integer($metadata, 'changed_to_shallow_count')),
             ),
-            'disaster.cell_damaged' => sprintf(
-                '%sにより%sが%sへ変化しました。',
-                $this->disasterLabel($metadata['disaster_key'] ?? null),
-                $this->terrainLabel($metadata['from_terrain_key'] ?? null),
-                $this->terrainLabel($metadata['to_terrain_key'] ?? null),
-            ),
+            'disaster.cell_damaged' => $this->disasterCellDamageMessage($metadata),
             'capital.disaster_damaged' => sprintf(
                 '%sにより首都人口が%s%%減少し、%s人になりました。',
                 $this->disasterLabel($metadata['disaster_key'] ?? null),
@@ -2022,6 +2017,27 @@ final class PlayerIslandEventService
             'fire' => '火災',
             default => '災害',
         };
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function disasterCellDamageMessage(array $metadata): string
+    {
+        $removedFacilityKey = $metadata['removed_facility_key'] ?? null;
+        if (is_string($removedFacilityKey) && $removedFacilityKey !== '') {
+            return sprintf(
+                '%sにより%sが失われ、%sになりました。',
+                $this->disasterLabel($metadata['disaster_key'] ?? null),
+                $this->facilityLabel($removedFacilityKey),
+                $this->terrainLabel($metadata['to_terrain_key'] ?? null),
+            );
+        }
+
+        return sprintf(
+            '%sにより%sが%sへ変化しました。',
+            $this->disasterLabel($metadata['disaster_key'] ?? null),
+            $this->terrainLabel($metadata['from_terrain_key'] ?? null),
+            $this->terrainLabel($metadata['to_terrain_key'] ?? null),
+        );
     }
 
     /** @param array<string, mixed> $metadata */

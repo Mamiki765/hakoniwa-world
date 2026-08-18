@@ -7,6 +7,7 @@ use App\Application\CommandQueueService;
 use App\Application\LegacyCommandQueueOrder;
 use App\Application\NationCommandTargetService;
 use App\Domain\Command\CommandQueueLimit;
+use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Concurrency\OptimisticLockException;
@@ -59,15 +60,20 @@ final class CommandQueueController extends Controller
                 ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
                 ->where('enabled', true)
                 ->orderBy('sort_order')
+                ->get();
+            $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
+                $cell,
+                $queue,
+                $position,
+                $nation,
+                $mapSpace,
+            );
+            $resultFacilities = FacilityDefinition::query()
+                ->whereIn('key', $definitions->pluck('result_facility_key')->filter()->unique()->values())
                 ->get()
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions): array {
-                    $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
-                        $cell,
-                        $queue,
-                        $position,
-                        $nation,
-                        $mapSpace,
-                    );
+                ->keyBy('key');
+            $definitions = $definitions
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $projected, $resultFacilities): array {
                     $ownerOverbuildEffect = $projected === null
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
@@ -94,7 +100,7 @@ final class CommandQueueController extends Controller
 
                     $resultFacility = $definition->result_facility_key === null
                         ? null
-                        : FacilityDefinition::query()->where('key', $definition->result_facility_key)->first();
+                        : $resultFacilities->get($definition->result_facility_key);
                     $initialCapacity = $resultFacility?->initial_scale === null
                         ? null
                         : $capacities->describe($resultFacility, $capacities->initialScale($resultFacility));
@@ -224,8 +230,11 @@ final class CommandQueueController extends Controller
             return response()->json(['data' => [
                 'queue' => $this->serializeQueue($this->loadQueue($result['queue']), $service),
                 'item_id' => $result['item']->id,
-                'message' => '開発計画に登録されました。実行時に資金・資源・地形・施設・所有権・怪獣占有を再確認します。',
-            ]], 201);
+                'duplicate' => $result['duplicate'],
+                'message' => $result['duplicate']
+                    ? '同じ開発計画は登録済みです。'
+                    : '開発計画に登録されました。実行時に資金・資源・地形・施設・所有権・怪獣占有を再確認します。',
+            ]], $result['duplicate'] ? 200 : 201);
         } catch (DomainException $exception) {
             return $this->domainError($exception);
         }
@@ -453,7 +462,9 @@ final class CommandQueueController extends Controller
     private function domainError(DomainException $exception): JsonResponse
     {
         $playerFacing = $exception instanceof PlayerFacingCommandException;
-        $payload = ['message' => $playerFacing ? $exception->getMessage() : '入力内容を確認してください。'];
+        $payload = ['message' => $playerFacing || $exception instanceof CommandRequestConflictException
+            ? $exception->getMessage()
+            : '入力内容を確認してください。'];
         if ($playerFacing) {
             $payload['code'] = 'command_rejected';
             $payload['errors'] = ['command' => [$exception->getMessage()]];
@@ -461,10 +472,15 @@ final class CommandQueueController extends Controller
         if ($exception instanceof ResetRequiredException) {
             $payload['code'] = ResetRequiredException::ERROR_CODE;
         }
+        if ($exception instanceof CommandRequestConflictException) {
+            $payload['code'] = CommandRequestConflictException::ERROR_CODE;
+        }
 
         return response()->json(
             $payload,
-            $exception instanceof OptimisticLockException || $exception instanceof ResetRequiredException ? 409 : 422,
+            $exception instanceof OptimisticLockException
+                || $exception instanceof ResetRequiredException
+                || $exception instanceof CommandRequestConflictException ? 409 : 422,
         );
     }
 }

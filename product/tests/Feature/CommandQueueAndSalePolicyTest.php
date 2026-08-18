@@ -860,6 +860,65 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ));
     }
 
+    public function test_definition_catalog_projects_thirty_item_queue_once_and_batches_facility_definitions(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('定義照会計測国');
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $queue = NationCommandQueue::query()->create([
+            'nation_id' => $nation->id,
+            'map_space_id' => $mapSpace->id,
+            'version' => 1,
+        ]);
+        $membershipId = NationMembership::query()->where('nation_id', $nation->id)->valueOrFail('id');
+        $definitions = CommandDefinition::query()
+            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+            ->whereIn('key', ['build_defense_facility', 'finance'])
+            ->get()->keyBy('key');
+        foreach (range(1, 30) as $position) {
+            $definition = $position === 1 ? $definitions['build_defense_facility'] : $definitions['finance'];
+            NationCommandQueueItem::query()->create([
+                'nation_command_queue_id' => $queue->id,
+                'command_definition_id' => $definition->id,
+                'queue_position' => $position,
+                'target_x' => $position === 1 ? $target->x : 0,
+                'target_y' => $position === 1 ? $target->y : 0,
+                'quantity' => 1,
+                'parameters' => (object) [],
+                'status' => 'queued',
+                'queued_by_membership_id' => $membershipId,
+                'request_key' => (string) Str::uuid(),
+                'queued_at' => now(),
+                'failure_metadata' => [],
+            ]);
+        }
+        $resultFacilityDefinitionCount = CommandDefinition::query()
+            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+            ->whereNotNull('result_facility_key')->count();
+        $this->assertSame(9, $resultFacilityDefinitionCount);
+
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+        $response = $this->actingAs($user)->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-definitions"
+            ."?target_x={$target->x}&target_y={$target->y}&position=30",
+        )->assertOk();
+
+        $catalog = collect($response->json('data.commands'));
+        $this->assertNotNull($catalog->firstWhere('key', 'territory_expand'));
+        $this->assertSame('（自爆）', $catalog->firstWhere('key', 'build_defense_facility')['command_suffix']);
+        $facilityQueries = collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'from "facility_definitions"'),
+        );
+        $this->assertLessThanOrEqual(2, $facilityQueries->count(), implode("\n", $facilityQueries->all()));
+        $this->assertSame(44, count($queries), 'Catalog query count regressed: '.count($queries));
+        $this->assertSame(52, count($queries) + $resultFacilityDefinitionCount - 1);
+    }
+
     public function test_member_can_add_list_reorder_and_cancel_without_executing_commands(): void
     {
         [$user, $nation, $mapSpace] = $this->nation('予約国');
@@ -892,8 +951,12 @@ class CommandQueueAndSalePolicyTest extends TestCase
         // Retrying with the same idempotency key returns the original item even with the old version.
         $this->postJson($queuePath, [
             'command_key' => 'build_farm', 'target_x' => $target->x, 'target_y' => $target->y,
-            'request_key' => $requestKey, 'expected_version' => 1, 'parameters' => [],
-        ])->assertCreated()->assertJsonCount(1, 'data.queue.items');
+            'request_key' => $requestKey, 'expected_version' => 999, 'parameters' => [],
+        ])->assertOk()
+            ->assertJsonPath('data.duplicate', true)
+            ->assertJsonPath('data.item_id', $first['item_id'])
+            ->assertJsonPath('data.message', '同じ開発計画は登録済みです。')
+            ->assertJsonCount(1, 'data.queue.items');
 
         $second = $this->postJson($queuePath, [
             'command_key' => 'land_clear', 'target_x' => $target->x, 'target_y' => $target->y,
@@ -918,6 +981,111 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.queued')->where('subject_id', $firstId)->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.reordered')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.cancelled')->count());
+    }
+
+    public function test_single_add_request_key_conflicts_fail_closed_for_every_canonical_field(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('単体冪等競合国');
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $targets);
+        $firstTarget = $targets[0];
+        $secondTarget = $targets[1];
+        $targetUser = User::factory()->create();
+        $targetNation = app(NationCreationService::class)->create(
+            $targetUser,
+            $nation->world()->firstOrFail(),
+            '単体冪等対象国',
+            '対象島主',
+        );
+        $peaceId = (int) MonumentDefinition::query()->where('key', 'peace')->valueOrFail('id');
+        $prosperityId = (int) MonumentDefinition::query()->where('key', 'prosperity')->valueOrFail('id');
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $requestKey = (string) Str::uuid();
+        $canonical = [
+            'command_key' => 'build_monument',
+            'target_x' => $firstTarget->x,
+            'target_y' => $firstTarget->y,
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+            'quantity' => $peaceId,
+            'parameters' => [],
+            'position' => 1,
+        ];
+        $created = $this->actingAs($user)->postJson($path, $canonical)
+            ->assertCreated()->assertJsonPath('data.duplicate', false);
+        $itemId = $created->json('data.item_id');
+        $before = NationCommandQueueItem::query()->orderBy('id')->get()->map->getAttributes()->all();
+
+        $conflicts = [
+            'command' => [...$canonical, 'command_key' => 'build_farm', 'parameters' => []],
+            'target' => [...$canonical, 'target_x' => $secondTarget->x, 'target_y' => $secondTarget->y],
+            'quantity' => [...$canonical, 'quantity' => $prosperityId],
+            'parameters' => [...$canonical, 'parameters' => ['target_nation_id' => $targetNation->id]],
+            'position' => [...$canonical, 'position' => 2],
+        ];
+        foreach ($conflicts as $label => $payload) {
+            $this->postJson($path, $payload)
+                ->assertConflict()
+                ->assertJsonPath('code', 'command_request_conflict')
+                ->assertJsonPath('message', '同じrequest keyが異なる開発計画で使用されています。');
+            $this->assertSame(
+                $before,
+                NationCommandQueueItem::query()->orderBy('id')->get()->map->getAttributes()->all(),
+                $label,
+            );
+        }
+        $this->assertSame(2, (int) NationCommandQueue::query()->where('nation_id', $nation->id)->value('version'));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.queued')
+            ->where('subject_id', $itemId)->count());
+    }
+
+    public function test_historical_null_fingerprints_never_guess_duplicate_equivalence(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('履歴冪等拒否国');
+        $capital = $nation->capital()->firstOrFail();
+        $queue = NationCommandQueue::query()->create([
+            'nation_id' => $nation->id,
+            'map_space_id' => $mapSpace->id,
+            'version' => 1,
+        ]);
+        $definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+            ->where('key', 'finance')->firstOrFail();
+        $membershipId = NationMembership::query()->where('nation_id', $nation->id)->valueOrFail('id');
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        foreach (['queued', 'completed', 'cancelled'] as $index => $status) {
+            $requestKey = (string) Str::uuid();
+            NationCommandQueueItem::query()->create([
+                'nation_command_queue_id' => $queue->id,
+                'command_definition_id' => $definition->id,
+                'queue_position' => $status === 'queued' ? 1 : null,
+                'target_x' => $capital->x,
+                'target_y' => $capital->y,
+                'quantity' => 1,
+                'parameters' => (object) [],
+                'status' => $status,
+                'queued_by_membership_id' => $membershipId,
+                'request_key' => $requestKey,
+                'request_fingerprint' => null,
+                'queued_at' => now(),
+                'cancelled_at' => $status === 'cancelled' ? now() : null,
+                'failure_metadata' => [],
+            ]);
+            $this->actingAs($user)->postJson($path, [
+                'command_key' => 'finance',
+                'request_key' => $requestKey,
+                'expected_version' => 1,
+                'parameters' => [],
+            ])->assertConflict()->assertJsonPath('code', 'command_request_conflict');
+        }
+
+        $this->assertSame(3, NationCommandQueueItem::query()->count());
+        $this->assertSame(1, (int) $queue->fresh()->version);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.queued')->count());
     }
 
     public function test_every_queue_mutation_revalidates_locked_active_owner_after_the_world_lock(): void

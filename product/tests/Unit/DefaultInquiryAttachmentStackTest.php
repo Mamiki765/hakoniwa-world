@@ -56,5 +56,7 @@ final class DefaultInquiryAttachmentStackTest extends TestCase
         $this->assertStringContainsString('Options -Indexes -ExecCGI -Includes', $directives);
         $this->assertStringContainsString('SetHandler none', $directives);
         $this->assertStringContainsString('Require all granted', $directives);
+        $this->assertStringContainsString('Header always set Cache-Control "private, no-store, max-age=0"', $directives);
+        $this->assertStringContainsString('Header always set X-Content-Type-Options "nosniff"', $directives);
     }
 }

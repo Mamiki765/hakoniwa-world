@@ -16,6 +16,10 @@ final class AuthIdentityService
         }
 
         return DB::transaction(function () use ($provider, $external, $linkTo): User {
+            DB::selectOne(
+                'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
+                [self::lockKey($provider, $external->providerUserId)],
+            );
             $identity = AuthIdentity::query()
                 ->where('provider', $provider)
                 ->where('provider_user_id', $external->providerUserId)
@@ -55,6 +59,13 @@ final class AuthIdentityService
 
             return $user;
         }, 3);
+    }
+
+    public static function lockKey(string $provider, string $providerUserId): string
+    {
+        return 'hakoniwa.auth.identity.v1:'
+            .strlen($provider).':'.$provider
+            .strlen($providerUserId).':'.$providerUserId;
     }
 
     private function audit(User $user, string $eventType, AuthIdentity $identity, string $provider): void

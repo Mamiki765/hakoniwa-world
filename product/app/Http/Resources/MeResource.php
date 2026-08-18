@@ -14,11 +14,13 @@ class MeResource extends JsonResource
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
+        $canManage = app(AnnouncementAdminAuthorizer::class)->allows($this->resource);
+
         return [
             'id' => $this->id,
             'display_name' => $this->display_name,
-            'can_manage_announcements' => app(AnnouncementAdminAuthorizer::class)->allows($this->resource),
-            'can_manage_inquiries' => app(AnnouncementAdminAuthorizer::class)->allows($this->resource),
+            'can_manage_announcements' => $canManage,
+            'can_manage_inquiries' => $canManage,
             'providers' => $this->authIdentities->map(fn (AuthIdentity $identity): array => [
                 'provider' => $identity->provider,
                 'display_name' => $identity->display_name,

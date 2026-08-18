@@ -27,7 +27,9 @@ import type {
     World,
 } from './types';
 
-const applicationVersion = '2.2.0';
+const applicationVersion = document.querySelector<HTMLMetaElement>(
+    'meta[name="hakoniwa-application-version"]',
+)?.content ?? '';
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -1471,7 +1473,7 @@ async function abandonNation(): Promise<void> {
                             <span v-else class="empty-state">空き</span>
                         </li>
                     </ol>
-                    <p class="field-hint">ver 2.2.0では、装備アイテムはターン処理へ影響しません。</p>
+                    <p class="field-hint">現在、装備アイテムはターン処理へ影響しません。</p>
                 </section>
                 <section v-else id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
                     <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
