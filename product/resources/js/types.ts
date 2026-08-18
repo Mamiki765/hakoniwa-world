@@ -8,6 +8,7 @@ export interface CurrentUser {
     id: number;
     display_name: string;
     can_manage_announcements: boolean;
+    can_manage_inquiries: boolean;
     providers: UserIdentity[];
 }
 
@@ -27,6 +28,53 @@ export interface Secretary {
     named_at: string | null;
     header_label: string;
     skills: SecretarySkill[];
+    inventory: {
+        capacity: 50;
+        used: number;
+        items: SecretaryItem[];
+    };
+    equipment: {
+        slot_count: 5;
+        slots: Array<{ slot: number; item: SecretaryItem | null }>;
+    };
+}
+
+export interface SecretaryItem {
+    id: number;
+    key: string;
+    name: string;
+    level: number;
+    category: string;
+    category_label: string;
+    equipped_slot: number | null;
+    is_equipped: boolean;
+    flavor_text: string;
+    obtained_at: string;
+}
+
+export interface InquirySummary {
+    management_id: string;
+    category: 'bug' | 'request' | 'idea' | 'secretary_fan_art' | 'other';
+    category_label: string;
+    subject: string;
+    created_at: string;
+    user: { id: number; display_name: string };
+    nation: { id: number; nation_number: number; name: string } | null;
+}
+
+export interface InquiryDetail extends InquirySummary {
+    body: string;
+    world: { id: number; submitted_turn: number };
+    application_version: string;
+    attachment_url: string | null;
+}
+
+export interface InquirySubmission {
+    management_id: string;
+    category: InquirySummary['category'];
+    category_label: string;
+    subject: string;
+    created_at: string;
 }
 
 export interface Announcement {

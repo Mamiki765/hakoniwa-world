@@ -25,6 +25,7 @@ $publishedRulesets = RulesetAuthoringCollection::fromFiles([
 ])->all();
 
 return [
+    'application_version' => '2.2.0',
     'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v9'],
     'published_rulesets' => $publishedRulesets,
     'world' => [
@@ -50,6 +51,9 @@ return [
     ],
     'admin' => [
         'discord_user_id' => env('HAKONIWA_ADMIN_DISCORD_USER_ID'),
+    ],
+    'inquiries' => [
+        'attachment_base_url' => env('HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL', '/hakoniwa-inquiries'),
     ],
     'turn_schedule' => [
         'timezone' => 'Asia/Tokyo',

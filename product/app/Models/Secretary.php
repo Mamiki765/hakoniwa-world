@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $named_at
  * @property-read User $user
  * @property-read Collection<int, SecretarySkill> $skills
+ * @property-read Collection<int, SecretaryItemInstance> $itemInstances
  */
 final class Secretary extends Model
 {
@@ -35,5 +36,11 @@ final class Secretary extends Model
     public function skills(): HasMany
     {
         return $this->hasMany(SecretarySkill::class);
+    }
+
+    /** @return HasMany<SecretaryItemInstance, $this> */
+    public function itemInstances(): HasMany
+    {
+        return $this->hasMany(SecretaryItemInstance::class);
     }
 }

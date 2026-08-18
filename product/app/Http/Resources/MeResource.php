@@ -18,6 +18,7 @@ class MeResource extends JsonResource
             'id' => $this->id,
             'display_name' => $this->display_name,
             'can_manage_announcements' => app(AnnouncementAdminAuthorizer::class)->allows($this->resource),
+            'can_manage_inquiries' => app(AnnouncementAdminAuthorizer::class)->allows($this->resource),
             'providers' => $this->authIdentities->map(fn (AuthIdentity $identity): array => [
                 'provider' => $identity->provider,
                 'display_name' => $identity->display_name,

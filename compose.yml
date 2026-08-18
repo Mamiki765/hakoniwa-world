@@ -52,6 +52,8 @@ services:
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://127.0.0.1:8080/auth/google/callback}
       HAKONIWA_MODERATION_CONTACT_URL: ${HAKONIWA_MODERATION_CONTACT_URL:-}
       HAKONIWA_ADMIN_DISCORD_USER_ID: ${HAKONIWA_ADMIN_DISCORD_USER_ID:-}
+      HAKONIWA_INQUIRY_ATTACHMENT_PATH: ${HAKONIWA_INQUIRY_ATTACHMENT_PATH:-/srv/bot-assets/hakoniwa-inquiries}
+      HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL: ${HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL:-/hakoniwa-inquiries}
       HAKONIWA_TURN_SCHEDULE_GRACE_MINUTES: ${HAKONIWA_TURN_SCHEDULE_GRACE_MINUTES:-15}
       HAKONIWA_TILE_ASSET_BASE_URL: ${HAKONIWA_TILE_ASSET_BASE_URL:-${HAKONIWA_ORIGINAL_ASSET_BASE_URL:-/assets/hakoniwa-tiles}}
       HAKONIWA_TILE_ASSET_PATH: ${HAKONIWA_TILE_ASSET_PATH:-${HAKONIWA_ORIGINAL_ASSET_PATH:-/srv/hakoniwa-assets/tiles}}
@@ -60,6 +62,8 @@ services:
       TZ: ${TZ:-Asia/Tokyo}
     ports:
       - "127.0.0.1:${HAKONIWA_WEB_PORT:-8080}:80"
+    volumes:
+      - hakoniwa_inquiry_attachments:/srv/bot-assets/hakoniwa-inquiries
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1/up"]
       interval: 10s
@@ -72,6 +76,8 @@ services:
 volumes:
   hakoniwa_postgres_data:
     name: hakoniwa_postgres_data
+  hakoniwa_inquiry_attachments:
+    name: hakoniwa_inquiry_attachments
 
 networks:
   hakoniwa:

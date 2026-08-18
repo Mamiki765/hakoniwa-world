@@ -7,10 +7,14 @@ use App\Models\Secretary;
 use App\Models\SecretarySkill;
 use App\Models\User;
 use DomainException;
+use Illuminate\Support\Facades\Schema;
 
 final class SecretaryService
 {
-    public function __construct(private readonly SecretarySkillCatalog $catalog) {}
+    public function __construct(
+        private readonly SecretarySkillCatalog $catalog,
+        private readonly SecretaryItemGrantService $items,
+    ) {}
 
     public function ensureForUser(User $user): Secretary
     {
@@ -42,6 +46,13 @@ final class SecretaryService
             throw new DomainException('Secretary skill initialization did not produce the exact Secretary v1 catalog.');
         }
 
-        return $secretary->load('skills');
+        if (Schema::hasTable('secretary_item_instances')) {
+            $item = $this->items->grantStarterOldBow($secretary);
+            if ($item === null) {
+                throw new DomainException('Secretary starter item could not be granted because inventory is full.');
+            }
+        }
+
+        return $secretary->load(['skills', 'itemInstances']);
     }
 }

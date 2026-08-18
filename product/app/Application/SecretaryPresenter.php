@@ -13,6 +13,7 @@ final class SecretaryPresenter
     public function __construct(
         private readonly SecretarySkillCatalog $catalog,
         private readonly SecretarySkillProgression $progression,
+        private readonly SecretaryItemPresenter $items,
     ) {}
 
     /** @return array<string, mixed> */
@@ -47,6 +48,7 @@ final class SecretaryPresenter
             'named_at' => $secretary->named_at?->toIso8601String(),
             'header_label' => $secretary->name ?? '？？？',
             'skills' => $skills,
+            ...$this->items->present($secretary),
         ];
     }
 

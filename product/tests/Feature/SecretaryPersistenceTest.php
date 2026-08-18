@@ -104,9 +104,16 @@ final class SecretaryPersistenceTest extends TestCase
             ->where('secretary_id', $secretary->id)
             ->where('skill_key', SecretarySkillCatalog::AGRICULTURAL_POLICY)
             ->update(['level' => 4, 'experience' => 7]);
+        $item = $secretary->itemInstances()->sole();
 
         app(NationAbandonmentService::class)->abandon($user, $first, $first->name);
         $this->assertDatabaseHas('secretaries', ['id' => $secretary->id, 'user_id' => $user->id, 'name' => '継承名']);
+        $this->assertDatabaseHas('secretary_item_instances', [
+            'id' => $item->id,
+            'secretary_id' => $secretary->id,
+            'item_key' => 'old_bow',
+            'equipped_slot' => 1,
+        ]);
         $second = $service->create($user, $world->fresh(), '二代目秘書島', '二代目島主');
 
         $this->assertNotSame($first->id, $second->id);
@@ -117,6 +124,7 @@ final class SecretaryPersistenceTest extends TestCase
             'level' => 4,
             'experience' => 7,
         ]);
+        $this->assertSame($item->id, $user->secretary()->firstOrFail()->itemInstances()->sole()->id);
     }
 
     public function test_named_secretary_can_be_renamed_repeatedly_without_creation_or_skill_changes(): void
@@ -187,6 +195,7 @@ final class SecretaryPersistenceTest extends TestCase
         $abandoned = $service->create($abandonedUser, $world->fresh(), '破棄履歴島', '破棄島主');
         app(NationAbandonmentService::class)->abandon($abandonedUser, $abandoned, $abandoned->name);
 
+        Schema::drop('secretary_item_instances');
         Schema::drop('secretary_skills');
         Schema::drop('secretaries');
         $migration = $this->secretaryMigration();
@@ -207,6 +216,7 @@ final class SecretaryPersistenceTest extends TestCase
         $historyUser = User::factory()->create();
         $noHistoryUser = User::factory()->create();
         app(NationCreationService::class)->create($historyUser, $world, '集合検証島', '集合検証島主');
+        Schema::drop('secretary_item_instances');
         Schema::drop('secretary_skills');
         Schema::drop('secretaries');
         $migration = $this->secretaryMigration();
@@ -233,6 +243,7 @@ final class SecretaryPersistenceTest extends TestCase
         app(NationCreationService::class)->create($user, $world, "020000拒否{$status}島", '拒否島主');
         $run = $this->turnRun($world, $status);
         $runBefore = $run->fresh()->getAttributes();
+        Schema::drop('secretary_item_instances');
         Schema::drop('secretary_skills');
         Schema::drop('secretaries');
 
@@ -255,6 +266,7 @@ final class SecretaryPersistenceTest extends TestCase
         app(NationCreationService::class)->create($user, $world, '020000解決済島', '解決済島主');
         $run = $this->turnRun($world, TurnRun::STATUS_COMPLETED);
         $runBefore = $run->fresh()->getAttributes();
+        Schema::drop('secretary_item_instances');
         Schema::drop('secretary_skills');
         Schema::drop('secretaries');
 
@@ -271,6 +283,7 @@ final class SecretaryPersistenceTest extends TestCase
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         app(NationCreationService::class)->create($user, $world, '020000 lock島', 'lock島主');
+        Schema::drop('secretary_item_instances');
         Schema::drop('secretary_skills');
         Schema::drop('secretaries');
         $primaryConnection = DB::getDefaultConnection();
@@ -308,6 +321,7 @@ final class SecretaryPersistenceTest extends TestCase
     public function test_secretary_migration_allows_a_fresh_install_without_shared_world(): void
     {
         $this->assertFalse(DB::table('worlds')->where('key', 'shared-world')->exists());
+        Schema::drop('secretary_item_instances');
         Schema::drop('secretary_skills');
         Schema::drop('secretaries');
 

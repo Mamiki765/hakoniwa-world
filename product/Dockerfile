@@ -30,6 +30,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
+COPY docker/php-upload.ini /usr/local/etc/php/conf.d/hakoniwa-upload.ini
 COPY docker/entrypoint.sh /usr/local/bin/hakoniwa-entrypoint
 COPY --from=vendor /app /var/www/html
 COPY --from=frontend /app/public/build /var/www/html/public/build
@@ -40,7 +41,9 @@ RUN chmod +x /usr/local/bin/hakoniwa-entrypoint \
         /var/www/html/storage/framework/views \
         /var/www/html/storage/logs \
         /var/www/html/bootstrap/cache \
-    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+        /srv/bot-assets/hakoniwa-inquiries \
+    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
+        /srv/bot-assets/hakoniwa-inquiries
 
 WORKDIR /var/www/html
 ENTRYPOINT ["hakoniwa-entrypoint"]

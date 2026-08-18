@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\Api\AdminInquiryController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
+use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\MessageBoardController;
 use App\Http\Controllers\Api\NationAbandonmentController;
 use App\Http\Controllers\Api\NationProfileController;
@@ -54,6 +56,10 @@ Route::prefix('api/v1/public')
 Route::prefix('api/v1/admin')
     ->middleware([PrivateApiResponse::class, RequireAnnouncementAdmin::class])
     ->group(function (): void {
+        Route::get('/inquiries/latest', [AdminInquiryController::class, 'latest']);
+        Route::get('/inquiries', [AdminInquiryController::class, 'index']);
+        Route::get('/inquiries/{inquiryId}', [AdminInquiryController::class, 'show'])
+            ->whereNumber('inquiryId');
         Route::post('/announcements', [AnnouncementController::class, 'store']);
         Route::patch('/announcements/{announcement}', [AnnouncementController::class, 'update']);
         Route::delete('/announcements/{announcement}', [AnnouncementController::class, 'destroy']);
@@ -67,6 +73,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::get('/me/secretary', [SecretaryController::class, 'show']);
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
+    Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1');
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/map-spaces', [ApiController::class, 'mapSpaces']);
     Route::get('/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}', [ApiController::class, 'chunk'])
