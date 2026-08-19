@@ -55,7 +55,7 @@ written into published payloads.
 | monster damage | damage, hardening, kill, split reward, kill stat, cycle, and nullable firing-base XP are centralized | `product/app/Application/MonsterDamageService.php:29-276` |
 | removal/batch | terrain removal is rewardless and updates the active `MonsterTurnBatch`; alive damage refreshes the batch snapshot | `product/app/Application/MonsterRemovalService.php:28-190`; `product/app/Domain/Monster/MonsterTurnBatch.php:81-91` |
 | huge meteor | public radius-0..2 resolver removes monsters through the rewardless terrain path and updates a shared mutable cell index | `product/app/Application/DisasterTurnService.php:672-748,946-1004` |
-| initial island | Nation creation holds `WorldMutationLock` and one DB transaction; generator locks and validates the full reservation footprint but does not inspect monster occupancy | `product/app/Application/NationCreationService.php:45-188`; `product/app/Application/LegacyInspiredInitialIslandGenerator.php:19-47` |
+| initial island | Nation creation holds `WorldMutationLock` and one DB transaction, but has no unresolved-next-TurnRun guard; generator locks and validates the full reservation footprint but does not inspect monster occupancy | `product/app/Application/NationCreationService.php:45-188`; `product/app/Application/LegacyInspiredInitialIslandGenerator.php:19-47` |
 
 ## C. Delta from the Owner contract
 
@@ -256,11 +256,13 @@ baseline. Until then, the compatibility gates above are mandatory.
 
 Resolve the authenticated Secretary under a new PostgreSQL advisory `UserMembershipMutationLock` keyed
 by User ID. `NationCreationService` must acquire the same lock before its target `WorldMutationLock` and
-hold it through membership insertion/Secretary initialization/commit; equipment holds it before
-enumerating Worlds through its own commit. Any future path that can add or reactivate an owner
-membership must join this lock. The global order is user-membership lock, then World locks by ID, then
-DB rows. TurnRunner takes only its World lock and never waits for the user lock, so this adds no reverse
-edge.
+hold both through commit. While holding the target World lock and before any membership, Secretary,
+starter Item, or island write, registration must lock/reload the World and reject a next non-dry
+pending/running/failed/blocked TurnRun at `current_turn + 1`. The World lock serializes that check against
+TurnRunner creation/retry. Any future path that can add or reactivate an owner membership must join this
+lock and guard. Equipment holds the user lock before enumerating Worlds through its own commit. The
+global order is user-membership lock, then World locks by ID, then DB rows. TurnRunner takes only its
+World lock and never waits for the user lock, so this adds no reverse edge.
 
 With the membership set frozen, enumerate every owner membership whose Nation is active. The
 `(user_id, world_id)` uniqueness permits one active owned Nation in each of multiple Worlds, while the
@@ -469,6 +471,7 @@ random draw.
 |---|---|---|
 | equipment options | one Secretary/Item fetch, at most 50 warehouse rows; validate in memory | query-count tests for empty/full warehouse and every slot |
 | equipment mutation | one User membership-set advisory lock, then stable locks over W active owned Worlds/memberships/Nations plus one Secretary and at most 50 Items; query/lock work grows linearly with W | registration race, zero/one/multiple Worlds, concurrent no-op/conflict/replacement, guard failure in any World |
+| Nation registration | one User membership-set advisory lock, target World lock/row, and one indexed next-TurnRun guard before existing registration work | each unresolved status, no-run/success path, no partial membership/Secretary/Item/island write |
 | Item effect presentation | one explicitly authorized World/ruleset lookup plus the existing bounded Secretary/Item fetch; unscoped DTO remains neutral | same User with v10/v11 Worlds, omitted/unauthorized World, zero-Nation configured-current context, empty/full warehouse |
 | turn Item snapshot | eager-load owners/Secretaries/skills/items in bounded batch queries, not per Nation | 1 and many active Nations |
 | Old Bow target search | one joined occupied-monster query, grouped in memory; at most one trigger and one target draw per eligible Nation | query count, candidate count, 50+ monsters |
@@ -517,6 +520,8 @@ In addition to the task's existing C1-C5 lists, the audit requires:
 - `equipment_version` backfill/future creation, no-op, stale 409, atomic replacement, user-lock ordering,
   concurrent registration into a previously unaffected World in both acquisition orders, zero/one/multiple
   active-World paths, partial-lock release, and each unresolved TurnRun status in any owned World;
+- Nation registration rejects pending/running/failed/blocked next non-dry TurnRuns while holding the
+  target World lock and creates no membership, Nation, Secretary/starter Item, island cells, or events;
 - User-global Secretary/name/mutation DTOs contain no implicit ruleset effect; explicit owned v10/v11
   World contexts for the same User return distinct effect projections, omitted/unauthorized context is
   safe, and the zero-active-Nation configured-current projection is labelled;

@@ -158,7 +158,7 @@ Equipment mutation must:
 
 1. resolve the authenticated User’s Secretary;
 2. acquire a PostgreSQL advisory `UserMembershipMutationLock` keyed by User ID before enumerating Worlds;
-3. require `NationCreationService` to acquire the same user lock before its target `WorldMutationLock` and hold it through membership insertion, Secretary initialization, and commit; future owner-membership add/reactivate paths must join it;
+3. require `NationCreationService` to acquire the same user lock before its target `WorldMutationLock`, then reject a next non-dry pending/running/failed/blocked TurnRun for that World before membership, Secretary, or island mutation, and hold both locks through commit; future owner-membership add/reactivate paths must join the same lock and guard;
 4. enumerate every owner membership whose Nation is active; a User may own one active Nation in each of multiple Worlds while equipment remains User-global;
 5. sort all affected Worlds by ID and acquire every shared `WorldMutationLock` before the DB transaction;
 6. if any World lock fails, release already-held World locks and then the user lock in reverse order and return the stable conflict without mutation;
@@ -260,6 +260,8 @@ Minimum:
 - partial multi-World lock acquisition releases earlier locks and writes nothing;
 - Nation registration in a previously unaffected World and equipment mutation serialize in both
   acquisition orders under user-lock -> World-lock ordering, without deadlock or an unguarded snapshot;
+- Nation registration under the target World lock rejects each pending/running/failed/blocked next
+  non-dry TurnRun before membership, Secretary/starter Item, or island writes and leaves no partial state;
 - no effect reaches turn processing in C1;
 - options filtering and API mutation policy agree;
 - keyboard/modal/mobile behavior.
@@ -654,6 +656,11 @@ Inside the same reviewed World mutation transaction, any Aoi Inora occupying cel
 - no kill statistic;
 - occupancy/index cleanup before terrain generation.
 
+Before building that plan or creating any Nation/Secretary/Item state, registration must also apply the
+shared next non-dry pending/running/failed/blocked TurnRun guard while holding the target World lock.
+This preserves every same-ruleset/same-seed retry input; C4 must not weaken the C1 guard when adding Aoi
+displacement.
+
 Reservation radius is not the removal set. Lock and validate reservation cells in stable ID order, then
 derive one immutable island plan from the seed and locked pre-state. That plan must contain the exact
 dirty cell writes for land/growth/facility/capital and selected shallow conversion and must be the same
@@ -914,7 +921,7 @@ removed so this file is the single temporary Owner-contract source.
 | turn state snapshots four skills only; v9+ has a missile-finalize/normal-monster seam (`SecretaryTurnService.php:21-66`; `CompleteTurnEngine.php:327-441`) | deterministic Item effects | snapshot v11 Item/effect identity at prepare; Old Bow after missiles/before monsters; Ring in centralized explicit/automatic finance | v10 retry effect-free, stream isolation, safe target, reward/XP, capacity | decided | C2 |
 | validator/spawn/public detail/ranking encode exact eight/kind 0..7 (`RulesetAuthoringValidator.php:619-697`; `MonsterSpawnService.php:45-52`; `PublicWorldService.php:82-113`; `PublicRankingAchievementProjection.php:101-142`) | additive v11 display | nullable DB order, null historical fallback `kind*100`, v11 explicit unique order, no public limit, max killed order representative | 10+ species, totals/order/representative, duplicate/null validation, v1-v10 immutable | decided | C3 |
 | huge meteor/removal/batch paths are reusable (`DisasterTurnService.php:672-748,946-1004`; `MonsterRemovalService.php`) | Aoi/Zero behavior | Aoi World substage after subsidence/before natural spawn; water-neutralizing movement; Zero removal before one fixed-center blast | candidate radius/query bounds, displacement, hostless payout, self/collateral rewardless, no chain | delegated details fixed by C0 | C4 |
-| initial island holds World lock/transaction and validates radius-5 reservation, but actual writes are the smaller seed-dependent dirty set and occupancy is ignored (`NationCreationService.php:45-188`; `LegacyInspiredInitialIslandGenerator.php:19-181`) | Aoi cannot block an actual island write and unrelated reserved Aoi must survive | build one immutable seed-derived write plan from locked cells; lock exact changed-cell occupancies; remove only Aoi there; apply the same plan once | changed-cell displacement, outer reserved survival, one RNG consumption, ordinary occupancy fail closed, rollback | decided | C4 |
+| initial island holds World lock/transaction and validates radius-5 reservation, but registration has no unresolved-next-TurnRun guard and actual writes are the smaller seed-dependent dirty set whose occupancy is ignored (`NationCreationService.php:45-188`; `LegacyInspiredInitialIslandGenerator.php:19-181`) | preserve retry inputs while ensuring Aoi cannot block an actual island write and unrelated reserved Aoi survives | under the user then World lock, reject next non-dry pending/running/failed/blocked before any registration write; then build one immutable seed-derived plan, lock exact changed-cell occupancies, remove only Aoi there, and apply it once | four unresolved statuses/no partial registration, changed-cell displacement, outer reserved survival, one RNG consumption, ordinary occupancy fail closed, rollback | decided | C1/C4 |
 | v10 migration uses common stable-key equality and live-only rebind (`2026_08_19_010000_publish_hakoniwa_2s_plus_v10.php:50-131`) | additive, all-or-nothing v11 | exact same command keys; target monsters = common eight + exact two; rebind queued/alive/live stats only; preserve history | source/guard/constraint/trigger/forced-failure/second-run tests | decided | C5 |
 | historical migration calls mutable `SecretaryItemGrantService::grantStarterOldBow()` (`2026_08_17_010000_create_secretary_items_and_inquiries.php:29-34`) | prevent fresh-install semantic drift | keep grant path independent of C1/v11; version-aware publisher/validator and schema-aware nullable display field; run fresh chain every checkpoint | `migrate:fresh`, migration rerun, exact old-bow row, old ruleset checksums | engineering constraint, no STOP | C1-C5 |
 
