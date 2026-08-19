@@ -157,23 +157,25 @@ Add an optimistic equipment version, preferably `secretaries.equipment_version`,
 Equipment mutation must:
 
 1. resolve the authenticated User’s Secretary;
-2. enumerate every owner membership whose Nation is active; a User may own one active Nation in each of multiple Worlds while equipment remains User-global;
-3. sort all affected Worlds by ID and acquire every shared `WorldMutationLock` before the DB transaction;
-4. if any World lock fails, release already-held locks in reverse order and return the stable conflict without mutation;
-5. inside the transaction, lock affected World rows and owner membership/Nation rows in the same stable order, re-evaluate the affected set, and restart without writing if it changed;
-6. for every affected World reject mutation while the next non-dry TurnRun is pending/running/failed/blocked, so any failed same-TurnRun retry observes unchanged equipment;
-7. lock the Secretary row;
-8. lock relevant Item rows in stable ID order;
-9. verify `expected_version`;
-10. build the complete proposed equipment state in memory;
-11. validate slot range, Item ownership, category limits, same-item limits, and all final-state invariants before writes;
-12. atomically clear/replace the target slot without exposing an intermediate invalid final state;
-13. increment the equipment version exactly once for a meaningful mutation;
-14. return a no-op result without version increment when the chosen state already matches;
-15. record a private/admin audit event without leaking hidden Item state publicly;
-16. release every acquired World lock in reverse order in `finally`.
+2. acquire a PostgreSQL advisory `UserMembershipMutationLock` keyed by User ID before enumerating Worlds;
+3. require `NationCreationService` to acquire the same user lock before its target `WorldMutationLock` and hold it through membership insertion, Secretary initialization, and commit; future owner-membership add/reactivate paths must join it;
+4. enumerate every owner membership whose Nation is active; a User may own one active Nation in each of multiple Worlds while equipment remains User-global;
+5. sort all affected Worlds by ID and acquire every shared `WorldMutationLock` before the DB transaction;
+6. if any World lock fails, release already-held World locks and then the user lock in reverse order and return the stable conflict without mutation;
+7. inside the transaction, lock affected World rows and owner membership/Nation rows in the same stable order and verify the frozen set;
+8. for every affected World reject mutation while the next non-dry TurnRun is pending/running/failed/blocked, so any failed same-TurnRun retry observes unchanged equipment;
+9. lock the Secretary row;
+10. lock relevant Item rows in stable ID order;
+11. verify `expected_version`;
+12. build the complete proposed equipment state in memory;
+13. validate slot range, Item ownership, category limits, same-item limits, and all final-state invariants before writes;
+14. atomically clear/replace the target slot without exposing an intermediate invalid final state;
+15. increment the equipment version exactly once for a meaningful mutation;
+16. return a no-op result without version increment when the chosen state already matches;
+17. record a private/admin audit event without leaking hidden Item state publicly;
+18. release every acquired World lock and then the user lock in reverse order in `finally`.
 
-If no active owned Nation exists, equipment may still be changed because Items belong to the User/Secretary, but no World TurnRun is affected; use the Secretary/Item transaction path without a World lock.
+If no active owned Nation exists, equipment may still be changed because Items belong to the User/Secretary, but retain the user lock across the Secretary/Item transaction so registration cannot add a newly affected World concurrently.
 
 Do not hold a DB or World lock while the player is looking at the modal. Lock only when the final mutation request is submitted.
 
@@ -246,7 +248,8 @@ Minimum:
 - zero, one, and multiple active owned Worlds use the intended lock paths;
 - a pending/running/failed/blocked next TurnRun in any affected World blocks equipment mutation;
 - partial multi-World lock acquisition releases earlier locks and writes nothing;
-- an active membership/World-set change during acquisition restarts without mutation;
+- Nation registration in a previously unaffected World and equipment mutation serialize in both
+  acquisition orders under user-lock -> World-lock ordering, without deadlock or an unguarded snapshot;
 - no effect reaches turn processing in C1;
 - options filtering and API mutation policy agree;
 - keyboard/modal/mobile behavior.
@@ -677,7 +680,7 @@ The selected value remains in the queue item’s immutable `quantity` field and 
 
 Queued v10 `monster_dispatch` rows are eligible for v11 rebind only after a fail-closed preflight proves `quantity = 1` and the historical target-only parameter shape. Such a row becomes selector value `1`, keeps the ordinary 3,000億円 execution cost, and never infers Zero. Completed, failed, and cancelled definitions and payload history remain attached to v10.
 
-C5 adds nullable immutable request-ruleset provenance. Before rebind it backfills v10 for every non-null fingerprint, across queued and terminal statuses, that can be structurally proved to originate from v10; any ambiguous non-null row aborts publication and null historical fingerprints remain conflict-only. Duplicate lookup occurs before current-v11 selector validation. Only a matching stored request key with proved v10 provenance, stable `monster_dispatch`, and stored quantity 1 may normalize an omitted selector to 1 for fingerprint comparison. The original selector-less v10 payload can therefore return `duplicate = true`; selector 2 conflicts, while a missing selector for a new or unproved request still fails normally.
+C5 adds nullable immutable request-ruleset provenance. The fingerprint column was introduced immediately before v10 publication: pre-v10 upgraded rows are null, and later service-created non-null rows must use the locked World's v10 definition. Before rebind, C5 attributes from source World, definition ruleset, release chronology, request key, and the existing hash-format constraint—not by recomputing the hash with the mutable queue position—and backfills v10 across queued and terminal statuses. Any non-null row attached to another ruleset aborts publication; null historical fingerprints remain conflict-only. Duplicate lookup occurs before current-v11 selector validation. Only a matching stored request key with proved v10 provenance, stable `monster_dispatch`, and stored quantity 1 may normalize an omitted selector to 1 for fingerprint comparison. The original selector-less v10 payload can therefore return `duplicate = true`; selector 2 conflicts, while a missing selector for a new or unproved request still fails normally.
 
 Both selector choices retain target-Nation validation, retry/idempotency, spawn candidate rules, secrecy, and no movement on the spawn turn.
 
@@ -754,6 +757,8 @@ Minimum Zero tests:
 - same-selector retry converges and same request key with a different selector returns the stable conflict;
 - valid queued v10 dispatch maps only to selector `1`; anomalous live rows fail migration closed;
 - non-null v10 fingerprints receive immutable provenance for queued/completed/failed/cancelled rows;
+- a repositioned queued v10 dispatch migrates without recomputation, retains its hash byte-for-byte, and
+  an exact retry uses the original requested position rather than the mutable current position;
 - the original selector-less v10 payload returns `duplicate = true` in every status, selector `2`
   conflicts, and selector omission without a proved v10 request key is rejected;
 - completed/failed/cancelled v10 definitions, payloads, statuses, and fingerprints remain unchanged;
@@ -884,9 +889,9 @@ removed so this file is the single temporary Owner-contract source.
 | Verified fact | Required change | Proposed implementation | Test/evidence | Owner decision | Checkpoint |
 |---|---|---|---|---|---|
 | `CommandQuantitySemantics` already has selector UI/validation/label/edit exclusion but supports monument DB IDs only (`product/app/Application/CommandQuantitySemantics.php:18-110`) | safe ruleset-authored dispatch choices | delegate authored value/label/key/cost to narrow `MonsterDispatchOptionResolver`; keep `quantity` storage/fingerprint | values independent of DB/display/order; invalid/missing/client key/cost; retry/conflict | decided | C4 |
-| queue fingerprint includes canonical parameters, quantity, ruleset, target and original requested position, which is not separately retained after reorder (`CommandQueueService.php:277-314`); duplicate lookup currently occurs after selector validation | normalize v10 retries without forging hash input or rejecting the original selector-less payload | preflight every status; queued quantity 1 -> regular option; preserve hash; backfill nullable v10 request provenance for every safely attributable non-null fingerprint; lock duplicate before v11 selector validation and normalize omitted selector to 1 only for a proved old request key | queued/completed/failed/cancelled selector-less retry, selector-2 conflict, null/ambiguous provenance, reorder/rollback/idempotent second run | decided | C5 |
+| queue fingerprint includes canonical parameters, quantity, ruleset, target and original requested position, which is not separately retained after reorder (`CommandQueueService.php:277-314`); duplicate lookup currently occurs after selector validation | normalize v10 retries without forging or reconstructing hash input and without rejecting the original selector-less payload | attribute provenance from v10 release chronology/source definition and DB format, never current position; preserve hash byte-for-byte; lock duplicate before v11 selector validation and normalize omitted selector to 1 only for a proved old request key | repositioned hash preservation/original-position retry, queued/completed/failed/cancelled selector-less retry, selector-2 conflict, null/ambiguous provenance, rollback/idempotent second run | decided | C5 |
 | catalog/queue/executor assume static definition cost (`CommandQueueController.php:36-178,370-440`; `DomesticCommandExecutor.php:403-547`) | 3,000/9,999 selected cost | retain truthful default definition cost 3,000; one typed effective-cost result for preview, queue, validation, deduction and events | shortfall, insufficient execution funds, queue label/cost, no fictional static cost | decided | C4 |
-| five Item slots/storage exist but no mutation/version, and `(user_id, world_id)` permits one active owned Nation in each of multiple Worlds (`SecretaryItemPresenter.php:13-55`; `SecretaryController.php:15-55`; `2026_07_26_000000_create_hakoniwa_schema.php:109-115`) | atomic globally consistent equip/unequip | `equipment_version=1`; acquire/guard every active owned World in stable order, revalidate the set, then lock Secretary/Items; zero-World path omits World locks | zero/one/multiple Worlds, guard in any World, partial lock release, membership-set race, no-op/version conflict/mobile/keyboard | decided | C1 |
+| five Item slots/storage exist but no mutation/version, and `(user_id, world_id)` permits one active owned Nation in each of multiple Worlds (`SecretaryItemPresenter.php:13-55`; `SecretaryController.php:15-55`; `2026_07_26_000000_create_hakoniwa_schema.php:109-115`) | atomic globally consistent equip/unequip without a phantom membership insert | shared User membership-set advisory lock is first for registration/equipment, then every active owned World in stable order, then Secretary/Items; zero-World path retains the user lock | registration race in both orders, zero/one/multiple Worlds, guard in any World, partial lock release, no-op/version conflict/mobile/keyboard | decided | C1 |
 | turn state snapshots four skills only; v9+ has a missile-finalize/normal-monster seam (`SecretaryTurnService.php:21-66`; `CompleteTurnEngine.php:327-441`) | deterministic Item effects | snapshot v11 Item/effect identity at prepare; Old Bow after missiles/before monsters; Ring in centralized explicit/automatic finance | v10 retry effect-free, stream isolation, safe target, reward/XP, capacity | decided | C2 |
 | validator/spawn/public detail/ranking encode exact eight/kind 0..7 (`RulesetAuthoringValidator.php:619-697`; `MonsterSpawnService.php:45-52`; `PublicWorldService.php:82-113`; `PublicRankingAchievementProjection.php:101-142`) | additive v11 display | nullable DB order, null historical fallback `kind*100`, v11 explicit unique order, no public limit, max killed order representative | 10+ species, totals/order/representative, duplicate/null validation, v1-v10 immutable | decided | C3 |
 | huge meteor/removal/batch paths are reusable (`DisasterTurnService.php:672-748,946-1004`; `MonsterRemovalService.php`) | Aoi/Zero behavior | Aoi World substage after subsidence/before natural spawn; water-neutralizing movement; Zero removal before one fixed-center blast | candidate radius/query bounds, displacement, hostless payout, self/collateral rewardless, no chain | delegated details fixed by C0 | C4 |
@@ -897,6 +902,8 @@ removed so this file is the single temporary Owner-contract source.
 ## Frequency, random, and query boundaries
 
 Aoi keeps `min(10000, active_owned_land_cells) / 10000`, one World trigger per target turn.
+For `L > 0`, expected trigger interval is `10000 / min(10000, L)` turns; it is one turn at
+`L >= 10000`, while `L = 0` never triggers.
 Dimension-only maximum trigger probabilities are 36.00% at 60x60, 40.96% at 64x64,
 51.20% at 80x64, and 92.16% at 96x96; actual frequency uses live active-owned land and is
 zero on a triggered turn with no valid remote-water candidate. Candidate scan is bounded to one

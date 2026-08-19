@@ -127,21 +127,25 @@ and definition ruleset. Before publication/rebind it must prove every live queue
 - `quantity = 1`;
 - exactly the historical integer `target_nation_id` parameter;
 - a valid target snapshot and request key;
-- when a fingerprint exists, an exact match to the canonical v10 row representation.
+- when a fingerprint exists, the existing 64-lowercase-hex DB constraint holds and the definition is
+  owned by v10; do not attempt to validate its contents by recomputation.
 
-Any anomaly aborts the whole transaction for operator review. No inference from position, cost,
-display order, or monster rows is permitted. Accepted rows are normalized to selector 1, rebound to
-the v11 definition, and retain 3,000 cost semantics. The existing fingerprint must not be recomputed:
-it contains the original requested insertion position (`CommandQueueService.php:277-299`), while queue
-reordering changes the only persisted position, so the original input cannot always be reconstructed.
+Any structural anomaly aborts the whole transaction for operator review. No inference from position,
+cost, display order, or monster rows is permitted. Accepted rows are normalized to selector 1, rebound
+to the v11 definition, and retain 3,000 cost semantics. The existing fingerprint must not be recomputed
+or compared with current queue position: it contains the original requested insertion position
+(`CommandQueueService.php:277-299`), while reordering changes the only persisted position, so the
+original input cannot always be reconstructed.
 
 Add a narrow nullable `request_ruleset_version_id` provenance field. The fingerprint column was added
-immediately before the v10 publication migration (`2026_08_19_000000_add_command_request_fingerprint.php`),
-so C5 can fail closed over every source-World row and backfill v10 for each non-null fingerprint that is
-structurally attributable to a v10 request. This includes queued, completed, failed, and cancelled rows;
-any non-null fingerprint that cannot be attributed exactly aborts publication. New registrations store
-their active ruleset. A null historical fingerprint receives no guessed provenance and remains
-conflict-only under the current contract.
+immediately before the v10 publication migration (`2026_08_19_000000_add_command_request_fingerprint.php`):
+pre-v10 upgraded rows received null, while service-created non-null rows after publication were required
+to use the locked World's v10 definition. C5 therefore attributes provenance from exact source World,
+definition ruleset, release chronology, request key, and the DB hash-format constraint, never from the
+unrecoverable hash input. It backfills v10 for every safely attributable non-null fingerprint across
+queued, completed, failed, and cancelled rows; a non-null row attached to any other definition ruleset
+aborts publication. New registrations store their active ruleset. A null historical fingerprint receives
+no guessed provenance and remains conflict-only under the current contract.
 
 Duplicate handling must lock the existing request-key row before current-v11 selector validation. Only
 when that row proves v10 provenance, stable command key `monster_dispatch`, and stored quantity 1 may an
@@ -250,20 +254,30 @@ baseline. Until then, the compatibility gates above are mandatory.
 
 ### C1 equipment mutation
 
-Resolve the authenticated Secretary and enumerate every owner membership whose Nation is active. The
+Resolve the authenticated Secretary under a new PostgreSQL advisory `UserMembershipMutationLock` keyed
+by User ID. `NationCreationService` must acquire the same lock before its target `WorldMutationLock` and
+hold it through membership insertion/Secretary initialization/commit; equipment holds it before
+enumerating Worlds through its own commit. Any future path that can add or reactivate an owner
+membership must join this lock. The global order is user-membership lock, then World locks by ID, then
+DB rows. TurnRunner takes only its World lock and never waits for the user lock, so this adds no reverse
+edge.
+
+With the membership set frozen, enumerate every owner membership whose Nation is active. The
 `(user_id, world_id)` uniqueness permits one active owned Nation in each of multiple Worlds, while the
 Secretary and Items are User-global. Sort all affected Worlds by ID and acquire every
-`WorldMutationLock` before the transaction. If any acquisition fails, release the already-held locks in
-reverse order and return the stable conflict without writing. Inside the transaction, lock the same World
-rows and owner membership/Nation rows in stable order, re-evaluate the affected set, and restart without
-writing if it changed. For every affected World reject a next non-dry
-pending/running/failed/blocked TurnRun. Then lock Secretary and relevant Items in ID order.
+`WorldMutationLock` before the transaction. If any acquisition fails, release the already-held locks and
+then the user lock in reverse order and return the stable conflict without writing. Inside the
+transaction, lock the same World rows and owner membership/Nation rows in stable order and verify the
+frozen set. For every affected World reject a next non-dry pending/running/failed/blocked TurnRun. Then
+lock Secretary and relevant Items in ID order.
 
-If the affected set is empty, lock only Secretary/Items because no runnable World snapshot can change.
+If the affected set is empty, retain the user-membership lock and lock only Secretary/Items; registration
+cannot create a newly affected World until the equipment transaction commits.
 In both paths compare `expected_version`, construct the complete proposed five-slot state in memory,
 validate ownership, slot, category and same-item limits, then write atomically. A no-op does not
 increment; one meaningful mutation increments once. Return stable 409 on version conflict and a private
-audit event. Release every acquired World lock in reverse order in `finally`.
+audit event. Release every acquired World lock and then the user-membership lock in reverse order in
+`finally`.
 
 Add server-side slot options plus equip/unequip routes. The modal performs no locking and filters only
 for convenience; submission repeats all final validation. Vue must support mouse, touch, keyboard focus,
@@ -343,7 +357,9 @@ coordinate attempts, not probability/1000 (`docs/reference-analysis/hakoniwa-2pl
 so the selected formula is an explicit 2S+ balance contract, not a claimed source copy.
 
 World dimensions alone do not determine `L`; presenting one exact live frequency without production
-data would be false. For any World with `L > 0`, the expected trigger interval is `10000 / L` turns.
+data would be false. For any World with `L > 0`, the expected trigger interval is
+`10000 / min(10000, L)` turns; it bottoms out at one turn when `L >= 10000`. At `L = 0` the trigger is
+impossible and the interval is unbounded.
 The geometry-only maxima below assume every cell were active-owned land; because that leaves no remote
 sea candidate, they are arithmetic upper bounds, not realized successful-spawn rates.
 
@@ -443,7 +459,7 @@ random draw.
 | Risk | Bound/design | Required measurement |
 |---|---|---|
 | equipment options | one Secretary/Item fetch, at most 50 warehouse rows; validate in memory | query-count tests for empty/full warehouse and every slot |
-| equipment mutation | stable locks over W active owned Worlds/memberships/Nations plus one Secretary and at most 50 Items; query/lock work grows linearly with W | zero/one/multiple Worlds, concurrent no-op/conflict/replacement, guard failure in any World |
+| equipment mutation | one User membership-set advisory lock, then stable locks over W active owned Worlds/memberships/Nations plus one Secretary and at most 50 Items; query/lock work grows linearly with W | registration race, zero/one/multiple Worlds, concurrent no-op/conflict/replacement, guard failure in any World |
 | turn Item snapshot | eager-load owners/Secretaries/skills/items in bounded batch queries, not per Nation | 1 and many active Nations |
 | Old Bow target search | one joined occupied-monster query, grouped in memory; at most one trigger and one target draw per eligible Nation | query count, candidate count, 50+ monsters |
 | public monster detail/ranking | remove limit without introducing per-definition lookups; retain one detail query and one World stat batch | 10+ species and many Nations |
@@ -482,12 +498,15 @@ In addition to the task's existing C1-C5 lists, the audit requires:
 - v10 rows grouped by every status; quantity/parameter/fingerprint/provenance anomalies fail before
   publication; accepted queued row maps to ordinary 3,000; terminal definition/payload/fingerprint stays
   unchanged while proved non-null fingerprints receive v10 provenance;
+- a v10 dispatch is registered at one requested position, repositioned, then migrates without hash
+  recomputation; the stored hash is byte-identical, an exact retry with the original request position
+  converges, and substituting the current position conflicts;
 - the original v10 selector-less request payload retries as `duplicate = true` for queued, completed,
   failed, and cancelled rows; explicit selector 2 conflicts, and a missing selector without a proved v10
   request key still fails before mutation;
-- `equipment_version` backfill/future creation, no-op, stale 409, atomic replacement, zero/one/multiple
-  active-World lock paths, affected-set change, partial-lock release, and each unresolved TurnRun status
-  in any owned World;
+- `equipment_version` backfill/future creation, no-op, stale 409, atomic replacement, user-lock ordering,
+  concurrent registration into a previously unaffected World in both acquisition orders, zero/one/multiple
+  active-World paths, partial-lock release, and each unresolved TurnRun status in any owned World;
 - v10 effect-free retry, once-only Item snapshot, Bow 10% edges/stream isolation/hardening/Zero safety,
   damage and reward single-application;
 - one to five Rings, sixth rejection, Lv10 bound, explicit/automatic finance equality and capacity
@@ -496,7 +515,8 @@ In addition to the task's existing C1-C5 lists, the audit requires:
   historical fallback, publisher snapshot and v1-v10 row immutability;
 - Aoi probability formula/table, four map sizes, radius-3 edge/out-of-bounds geometry, no candidate,
   shallow normalization, water facility destruction, source defer, hostless payout, exact island-plan
-  displacement, reserved-but-unchanged survival, ordinary-monster fail-closed behavior;
+  displacement, reserved-but-unchanged survival, ordinary-monster fail-closed behavior; probability and
+  interval boundaries at `L = 0`, `9,999`, `10,000`, and greater than `10,000`;
 - Zero fixed HP4, both dispatch costs, spawn defer, HP4/3/2 movement, HP1 pre-movement explosion,
   neutral fallback, exact-once event, no chain, collateral rewardlessness, normal-kill XP/stat boundary;
 - forced exception at each migration phase, trigger/constraint restoration, second-run idempotency,
