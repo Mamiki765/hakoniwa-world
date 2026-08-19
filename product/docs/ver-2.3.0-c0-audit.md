@@ -300,9 +300,18 @@ monster keys: Zero HP2 is excluded, HP1 is legal because it dies, and HP3 is leg
 
 Ring levels are summed from the immutable snapshot and applied once in the centralized finance path for
 both explicit and automatic finance. Record base, bonus requested/applied/overflow, final amount and
-capacity without duplicating player logs. DTO effect text is derived from the current World ruleset (or
-configured current ruleset when the User has no active Nation) plus Item level; flavor remains the
-application catalog's presentation text.
+capacity without duplicating player logs.
+
+Item identity, inventory, equipment, name, and flavor remain User-global/ruleset-neutral. Effect text is
+a separate presentation projection. `GET /api/v1/me/secretary` must never infer one ruleset from the
+first/latest active membership. When opened from a Nation, the client supplies its explicit `world_id`;
+the controller proves an active owner membership and the presenter returns an effect context containing
+that World ID, exact ruleset version ID/version, and Item-level-derived sentences. Thus the same User's
+v10 World projects no Item gameplay effect while their v11 World projects the v11 effect. If there is no
+active membership, an omitted World may use the configured current ruleset only with an explicit
+`configured_current` context marker. If any active membership exists, omission remains ruleset-neutral
+and returns no effect text. Name/rename/equipment mutation responses also remain neutral and the UI
+reloads the explicit World projection after mutation. Flavor stays in the application catalog.
 
 ## J. Fixed-eight and display-order design
 
@@ -460,6 +469,7 @@ random draw.
 |---|---|---|
 | equipment options | one Secretary/Item fetch, at most 50 warehouse rows; validate in memory | query-count tests for empty/full warehouse and every slot |
 | equipment mutation | one User membership-set advisory lock, then stable locks over W active owned Worlds/memberships/Nations plus one Secretary and at most 50 Items; query/lock work grows linearly with W | registration race, zero/one/multiple Worlds, concurrent no-op/conflict/replacement, guard failure in any World |
+| Item effect presentation | one explicitly authorized World/ruleset lookup plus the existing bounded Secretary/Item fetch; unscoped DTO remains neutral | same User with v10/v11 Worlds, omitted/unauthorized World, zero-Nation configured-current context, empty/full warehouse |
 | turn Item snapshot | eager-load owners/Secretaries/skills/items in bounded batch queries, not per Nation | 1 and many active Nations |
 | Old Bow target search | one joined occupied-monster query, grouped in memory; at most one trigger and one target draw per eligible Nation | query count, candidate count, 50+ monsters |
 | public monster detail/ranking | remove limit without introducing per-definition lookups; retain one detail query and one World stat batch | 10+ species and many Nations |
@@ -507,6 +517,9 @@ In addition to the task's existing C1-C5 lists, the audit requires:
 - `equipment_version` backfill/future creation, no-op, stale 409, atomic replacement, user-lock ordering,
   concurrent registration into a previously unaffected World in both acquisition orders, zero/one/multiple
   active-World paths, partial-lock release, and each unresolved TurnRun status in any owned World;
+- User-global Secretary/name/mutation DTOs contain no implicit ruleset effect; explicit owned v10/v11
+  World contexts for the same User return distinct effect projections, omitted/unauthorized context is
+  safe, and the zero-active-Nation configured-current projection is labelled;
 - v10 effect-free retry, once-only Item snapshot, Bow 10% edges/stream isolation/hardening/Zero safety,
   damage and reward single-application;
 - one to five Rings, sixth rejection, Lv10 bound, explicit/automatic finance equality and capacity

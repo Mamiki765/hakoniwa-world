@@ -214,6 +214,16 @@ The candidate list is deliberately narrow and compact because the warehouse can 
 
 Flavor text remains in the warehouse page, not the selection list.
 
+Item effect text is ruleset-scoped even though Item identity, inventory, and equipment are User-global.
+`GET /api/v1/me/secretary` without a World context remains ruleset-neutral and must not choose an
+arbitrary owned World. When the UI is opened for an active Nation it sends that Nation's explicit
+`world_id`; the server verifies an active owner membership, resolves effects from that World's exact
+ruleset, and returns an effect presentation context containing `world_id`, ruleset version ID/version,
+and each Item's derived `effect_text`. If the User has no active Nation, omission may use the configured
+current ruleset only when the response marks the context as `configured_current`. Name/rename and
+equipment mutation responses remain ruleset-neutral; the UI reloads the World-scoped projection after
+mutation. An omitted World while one or more active memberships exist never implies first/latest/current.
+
 Modal requirements:
 
 - native scrollable inner list (`overflow-y: auto`, touch/wheel/keyboard compatible);
@@ -291,6 +301,11 @@ Must contain authoritative values for:
 Do not copy effect probability, damage, or finance bonus into Item instance rows. Instances remain identity/state: `item_key`, `level`, `equipped_slot`, grant/obtained metadata.
 
 Because v1–v10 do not contain Item effect definitions, C0/C2 must design an explicit compatibility boundary for reading existing `old_bow` state before v11 publication. Do not silently reinterpret v10 TurnRuns with v11 effects.
+
+Presentation follows the same version boundary without becoming turn state: an explicit owned v10
+World returns no gameplay effect for the existing Item, while an explicit owned v11 World derives the
+v11 sentence and parameters. The User-global catalog continues to own only stable presentation such as
+name and flavor; it does not supply a versionless gameplay sentence.
 
 Avoid a generic expression language or arbitrary effect registry. Implement the two required explicit effect types cleanly:
 
@@ -446,7 +461,10 @@ Minimum:
 - explicit and automatic finance receive the same Ring bonus;
 - money capacity and overflow;
 - rollback/retry determinism;
-- DTO and warehouse/modal effect text matches v11 parameters.
+- explicit v11-World DTO and warehouse/modal effect text matches v11 parameters;
+- the same User owning active Nations in v10 and v11 Worlds receives distinct World-scoped projections,
+  an omitted World never selects either implicitly, unauthorized World context is rejected, and the
+  zero-active-Nation configured-current projection is explicitly labelled.
 
 ---
 
@@ -892,6 +910,7 @@ removed so this file is the single temporary Owner-contract source.
 | queue fingerprint includes canonical parameters, quantity, ruleset, target and original requested position, which is not separately retained after reorder (`CommandQueueService.php:277-314`); duplicate lookup currently occurs after selector validation | normalize v10 retries without forging or reconstructing hash input and without rejecting the original selector-less payload | attribute provenance from v10 release chronology/source definition and DB format, never current position; preserve hash byte-for-byte; lock duplicate before v11 selector validation and normalize omitted selector to 1 only for a proved old request key | repositioned hash preservation/original-position retry, queued/completed/failed/cancelled selector-less retry, selector-2 conflict, null/ambiguous provenance, rollback/idempotent second run | decided | C5 |
 | catalog/queue/executor assume static definition cost (`CommandQueueController.php:36-178,370-440`; `DomesticCommandExecutor.php:403-547`) | 3,000/9,999 selected cost | retain truthful default definition cost 3,000; one typed effective-cost result for preview, queue, validation, deduction and events | shortfall, insufficient execution funds, queue label/cost, no fictional static cost | decided | C4 |
 | five Item slots/storage exist but no mutation/version, and `(user_id, world_id)` permits one active owned Nation in each of multiple Worlds (`SecretaryItemPresenter.php:13-55`; `SecretaryController.php:15-55`; `2026_07_26_000000_create_hakoniwa_schema.php:109-115`) | atomic globally consistent equip/unequip without a phantom membership insert | shared User membership-set advisory lock is first for registration/equipment, then every active owned World in stable order, then Secretary/Items; zero-World path retains the user lock | registration race in both orders, zero/one/multiple Worlds, guard in any World, partial lock release, no-op/version conflict/mobile/keyboard | decided | C1 |
+| `/api/v1/me/secretary` has no World identifier while Item effects are ruleset-owned and a User may own Nations in multiple Worlds (`SecretaryController.php:15-25`; `SecretaryItemPresenter.php:13-55`) | prevent cross-ruleset effect misrepresentation | keep the User-global DTO neutral; derive effect text only for an explicit authorized World, with a labelled configured-current projection only when no active Nation exists | same User v10/v11 projections, omitted/unauthorized World, neutral mutation/name response, zero-Nation marker | decided | C2 |
 | turn state snapshots four skills only; v9+ has a missile-finalize/normal-monster seam (`SecretaryTurnService.php:21-66`; `CompleteTurnEngine.php:327-441`) | deterministic Item effects | snapshot v11 Item/effect identity at prepare; Old Bow after missiles/before monsters; Ring in centralized explicit/automatic finance | v10 retry effect-free, stream isolation, safe target, reward/XP, capacity | decided | C2 |
 | validator/spawn/public detail/ranking encode exact eight/kind 0..7 (`RulesetAuthoringValidator.php:619-697`; `MonsterSpawnService.php:45-52`; `PublicWorldService.php:82-113`; `PublicRankingAchievementProjection.php:101-142`) | additive v11 display | nullable DB order, null historical fallback `kind*100`, v11 explicit unique order, no public limit, max killed order representative | 10+ species, totals/order/representative, duplicate/null validation, v1-v10 immutable | decided | C3 |
 | huge meteor/removal/batch paths are reusable (`DisasterTurnService.php:672-748,946-1004`; `MonsterRemovalService.php`) | Aoi/Zero behavior | Aoi World substage after subsidence/before natural spawn; water-neutralizing movement; Zero removal before one fixed-center blast | candidate radius/query bounds, displacement, hostless payout, self/collateral rewardless, no chain | delegated details fixed by C0 | C4 |
