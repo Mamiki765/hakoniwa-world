@@ -642,7 +642,7 @@ Stable contract:
 - movement limit: 1 while HP > 1
 - natural spawn: disabled
 - dispatch: enabled
-- dispatch cost: 5,000億円
+- dispatch cost: 9,999億円
 - wreckage value: 0
 - missile-base experience on normal attributed kill: 35
 - normal attributed kill statistic: yes
@@ -650,11 +650,22 @@ Stable contract:
 
 ### Dispatch command
 
-Prefer a separate stable command key such as `monster_dispatch_zero`, with player name `メカいのら零式派遣`, rather than accepting an arbitrary client monster key.
+Keep exactly one stable player-facing command, `monster_dispatch` (`怪獣派遣`). Do not add `monster_dispatch_zero`.
 
-Generalize the trusted server-side dispatch path so the command definition’s audited metadata selects the allowed monster definition. Existing `monster_dispatch` remains 3,000億 and continues to dispatch ordinary `mecha_inora` unchanged.
+The command uses the existing selector presentation semantics, not an ordinary quantity input. The v11 ruleset owns exactly these stable authored options:
 
-Both commands retain target-Nation validation, retry/idempotency, spawn candidate rules, secrecy, and no movement on the spawn turn.
+| selector value | monster key | player label | execution cost |
+|---:|---|---|---:|
+| `1` | `mecha_inora` | `メカいのら` | 3,000億円 |
+| `2` | `mecha_inora_zero` | `メカいのら零式` | 9,999億円 |
+
+The initial UI selection is value `1`. The client sends the selector value but never supplies an arbitrary monster key or cost. The server resolves the selected monster and effective cost from the active v11 ruleset and revalidates that mapping at both registration and execution. Queue and preview DTOs show the selected monster and effective cost without describing the selector as quantity.
+
+The selected value remains in the queue item’s immutable `quantity` field and therefore participates in the existing request fingerprint. An exact retry with the same value converges; reusing a request key with another value returns the existing stable conflict. Selector values are authored constants and never derive from a database ID, monster display order, or array position.
+
+Queued v10 `monster_dispatch` rows are eligible for v11 rebind only after a fail-closed preflight proves `quantity = 1` and the historical target-only parameter shape. Such a row becomes selector value `1`, keeps the ordinary 3,000億円 execution cost, and never infers Zero. Completed, failed, and cancelled history remains attached to v10.
+
+Both selector choices retain target-Nation validation, retry/idempotency, spawn candidate rules, secrecy, and no movement on the spawn turn.
 
 ### Nuclear self-destruction
 
@@ -720,8 +731,14 @@ Minimum Aoi tests:
 
 Minimum Zero tests:
 
-- separate 5,000億 dispatch command;
-- existing 3,000億 dispatch unchanged;
+- one `monster_dispatch` command exposes exactly selector values `1` and `2`;
+- default/explicit selector `1` costs 3,000億 and dispatches ordinary Mecha Inora;
+- selector `2` costs 9,999億 and dispatches Zero;
+- missing/invalid selector, arbitrary monster key, and client-supplied cost are rejected without mutation;
+- selected cost is revalidated at execution and shown with the selected monster in queue/preview DTOs;
+- same-selector retry converges and same request key with a different selector returns the stable conflict;
+- valid queued v10 dispatch maps only to selector `1`; anomalous live rows fail migration closed;
+- completed/failed/cancelled v10 history remains unchanged;
 - fixed HP4 and no natural spawn;
 - no spawn-turn movement;
 - HP4/3/2 normal movement;
@@ -753,7 +770,7 @@ v11 inherits v10 and adds only the final ver 2.3.0 gameplay contract:
 - monster display order;
 - fixed-eight removal contract;
 - Aoi Inora definition, World spawn, water movement, hostless reward, island displacement;
-- Mecha Inora Zero definition, dispatch command, nuclear self-destruct;
+- Mecha Inora Zero definition, the ruleset-owned two-option selector on the existing `monster_dispatch` command, option-specific 3,000/9,999億 costs, and nuclear self-destruct;
 - any minimal random stream version labels required for deterministic replay.
 
 v1–v10 config files, rows, checksums, and applied migrations remain unchanged.
@@ -822,4 +839,68 @@ Before declaring PR readiness:
 
 # C0 audit results
 
-> C0 must append findings below this marker. Do not rewrite the Owner-approved sections above. Include exact source paths, tests, query/random implications, unresolved decisions, and a recommended branch plan for C1–C5.
+Completed 2026-08-19. The full A-R evidence and design record is
+[`product/docs/ver-2.3.0-c0-audit.md`](../../product/docs/ver-2.3.0-c0-audit.md).
+
+## Owner amendment incorporated
+
+- Keep only `monster_dispatch`; never add `monster_dispatch_zero`.
+- Reuse/generalize the existing non-ordinary quantity selector.
+- Persist authored selector value `1 = mecha_inora / 3,000億` and
+  `2 = mecha_inora_zero / 9,999億` in queue `quantity`.
+- Value 1 is the UI default, but v11 registration sends the selector explicitly.
+- Server/v11 ruleset owns monster key and cost; arbitrary keys/costs are rejected.
+- Registration, queue presentation, fingerprint, and execution all resolve the same option.
+- A valid queued v10 dispatch proves quantity 1 and maps only to ordinary Mecha Inora at
+  3,000億. Anomalous rows fail migration closed; completed/failed/cancelled history is untouched.
+
+The superseded standalone amendment used a 1,000/5,000 explicit-parameter proposal and has been
+removed so this file is the single temporary Owner-contract source.
+
+## Checkpoint audit table
+
+| Verified fact | Required change | Proposed implementation | Test/evidence | Owner decision | Checkpoint |
+|---|---|---|---|---|---|
+| `CommandQuantitySemantics` already has selector UI/validation/label/edit exclusion but supports monument DB IDs only (`product/app/Application/CommandQuantitySemantics.php:18-110`) | safe ruleset-authored dispatch choices | delegate authored value/label/key/cost to narrow `MonsterDispatchOptionResolver`; keep `quantity` storage/fingerprint | values independent of DB/display/order; invalid/missing/client key/cost; retry/conflict | decided | C4 |
+| queue fingerprint includes canonical parameters, quantity, ruleset, target and original requested position, which is not separately retained after reorder (`CommandQueueService.php:277-314`) | normalize queued v10 without forging hash input | preflight live rows; quantity 1 -> regular option; preserve hash and add nullable request-ruleset provenance so duplicate comparison uses immutable v10; never infer old position | every status/reorder/anomaly/rollback/idempotent second run | decided | C5 |
+| catalog/queue/executor assume static definition cost (`CommandQueueController.php:36-178,370-440`; `DomesticCommandExecutor.php:403-547`) | 3,000/9,999 selected cost | retain truthful default definition cost 3,000; one typed effective-cost result for preview, queue, validation, deduction and events | shortfall, insufficient execution funds, queue label/cost, no fictional static cost | decided | C4 |
+| five Item slots/storage exist but no mutation/version (`SecretaryItemPresenter.php:13-55`; `SecretaryController.php:15-55`) | atomic equip/unequip | `equipment_version=1`; active Nation uses World lock + unresolved-run guard; no-Nation uses Secretary/Item transaction; stable locks and full-state validation | no-op/version conflict/concurrency/all TurnRun statuses/mobile/keyboard | decided | C1 |
+| turn state snapshots four skills only; v9+ has a missile-finalize/normal-monster seam (`SecretaryTurnService.php:21-66`; `CompleteTurnEngine.php:327-441`) | deterministic Item effects | snapshot v11 Item/effect identity at prepare; Old Bow after missiles/before monsters; Ring in centralized explicit/automatic finance | v10 retry effect-free, stream isolation, safe target, reward/XP, capacity | decided | C2 |
+| validator/spawn/public detail/ranking encode exact eight/kind 0..7 (`RulesetAuthoringValidator.php:619-697`; `MonsterSpawnService.php:45-52`; `PublicWorldService.php:82-113`; `PublicRankingAchievementProjection.php:101-142`) | additive v11 display | nullable DB order, null historical fallback `kind*100`, v11 explicit unique order, no public limit, max killed order representative | 10+ species, totals/order/representative, duplicate/null validation, v1-v10 immutable | decided | C3 |
+| huge meteor/removal/batch paths are reusable (`DisasterTurnService.php:672-748,946-1004`; `MonsterRemovalService.php`) | Aoi/Zero behavior | Aoi World substage after subsidence/before natural spawn; water-neutralizing movement; Zero removal before one fixed-center blast | candidate radius/query bounds, displacement, hostless payout, self/collateral rewardless, no chain | delegated details fixed by C0 | C4 |
+| initial island holds World lock/transaction and validates the reservation, but ignores occupancy (`NationCreationService.php:45-188`; `LegacyInspiredInitialIslandGenerator.php:19-47`) | Aoi cannot block registration | before validation, lock reservation occupancies and remove only Aoi through rewardless World-mutation removal | registration proceeds; ordinary monsters untouched; rollback | decided | C4 |
+| v10 migration uses common stable-key equality and live-only rebind (`2026_08_19_010000_publish_hakoniwa_2s_plus_v10.php:50-131`) | additive, all-or-nothing v11 | exact same command keys; target monsters = common eight + exact two; rebind queued/alive/live stats only; preserve history | source/guard/constraint/trigger/forced-failure/second-run tests | decided | C5 |
+| historical migration calls mutable `SecretaryItemGrantService::grantStarterOldBow()` (`2026_08_17_010000_create_secretary_items_and_inquiries.php:29-34`) | prevent fresh-install semantic drift | keep grant path independent of C1/v11; version-aware publisher/validator and schema-aware nullable display field; run fresh chain every checkpoint | `migrate:fresh`, migration rerun, exact old-bow row, old ruleset checksums | engineering constraint, no STOP | C1-C5 |
+
+## Frequency, random, and query boundaries
+
+Aoi keeps `min(10000, active_owned_land_cells) / 10000`, one World trigger per target turn.
+Dimension-only maximum trigger probabilities are 36.00% at 60x60, 40.96% at 64x64,
+51.20% at 80x64, and 92.16% at 96x96; actual frequency uses live active-owned land and is
+zero on a triggered turn with no valid remote-water candidate. Candidate scan is bounded to one
+surface snapshot plus in-memory radius-3 marking, at most 340,992 coordinate marks at 96x96.
+
+New streams are dedicated to Old Bow trigger/target and Aoi trigger/candidate/HP. Existing stream
+labels/draw populations are unchanged. Stable candidate ordering, TurnRun ruleset/seed/equipment
+snapshot, transaction rollback, and batch synchronization preserve same-attempt retry.
+
+## Historical migration dependency result
+
+Historical migrations call mutable Application services through `RulesetPublisher` (19 files),
+`SecretaryV1MigrationSafetyGuard` (6 files), and `SecretaryItemGrantService` (1 file). No migration
+directly calls a Domain catalog, but GrantService indirectly uses `SecretaryItemCatalog` and Publisher
+uses the current `RulesetAuthoringValidator`. Current isolated test-DB `migrate:fresh` succeeds.
+
+C1-C5 must preserve the old-bow grant wrapper and old ruleset validation before later columns/v11
+exist. In particular, C3 publisher handling must not unconditionally insert `display_order` while an
+early historical migration is running before the C3 column migration. Record a frozen schema/data
+fresh-install baseline with literal starter Item data and published snapshot checksums as a separate
+high-priority post-2.3.0 cleanup; do not edit applied migrations in this release.
+
+## Branch handoff and STOP
+
+No unresolved Owner decision and no C0 STOP condition remain. C1 starts only after this C0 PR is
+final-head reviewed with unresolved P0-P2 = 0, explicitly merged to `release/ver-2.3.0`, and a clean
+C1 branch is created from the re-verified release HEAD. The subsequent order is C1 equipment, C2 Item
+effects, C3 monster foundation, C4 Aoi/Zero/dispatch, and C5 final v11 publication/migration. Each
+checkpoint targets the release branch and receives its own focused validation/review.
