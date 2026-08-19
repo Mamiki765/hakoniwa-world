@@ -250,14 +250,20 @@ baseline. Until then, the compatibility gates above are mandatory.
 
 ### C1 equipment mutation
 
-Resolve the authenticated Secretary. If the User owns an active Nation, acquire
-`WorldMutationLock` before the transaction, then lock World, owner membership/Nation, Secretary, and
-relevant Items in stable ID order. Reject a next non-dry pending/running/failed/blocked TurnRun. If no
-active Nation exists, lock Secretary/Items in a transaction without a World lock because no runnable
-World snapshot can change. In both paths compare `expected_version`, construct the complete proposed
-five-slot state in memory, validate ownership, slot, category and same-item limits, then write atomically.
-A no-op does not increment; one meaningful mutation increments once. Return stable 409 on version
-conflict and a private audit event.
+Resolve the authenticated Secretary and enumerate every owner membership whose Nation is active. The
+`(user_id, world_id)` uniqueness permits one active owned Nation in each of multiple Worlds, while the
+Secretary and Items are User-global. Sort all affected Worlds by ID and acquire every
+`WorldMutationLock` before the transaction. If any acquisition fails, release the already-held locks in
+reverse order and return the stable conflict without writing. Inside the transaction, lock the same World
+rows and owner membership/Nation rows in stable order, re-evaluate the affected set, and restart without
+writing if it changed. For every affected World reject a next non-dry
+pending/running/failed/blocked TurnRun. Then lock Secretary and relevant Items in ID order.
+
+If the affected set is empty, lock only Secretary/Items because no runnable World snapshot can change.
+In both paths compare `expected_version`, construct the complete proposed five-slot state in memory,
+validate ownership, slot, category and same-item limits, then write atomically. A no-op does not
+increment; one meaningful mutation increments once. Return stable 409 on version conflict and a private
+audit event. Release every acquired World lock in reverse order in `finally`.
 
 Add server-side slot options plus equip/unequip routes. The modal performs no locking and filters only
 for convenience; submission repeats all final validation. Vue must support mouse, touch, keyboard focus,
@@ -368,11 +374,17 @@ Water movement uses a narrow `water_neutralizing` contract: sea/shallow only, de
 null, population zero, removable water facility cleared. Empty neutral movement uses the normal movement
 event only; owner/facility destruction adds clear public and affected-owner metadata.
 
-Initial-island displacement runs inside the already-held World lock/transaction. Before the generator's
-reservation-footprint validation, lock occupancies for those cells in ID order and remove only Aoi through
-`MonsterRemovalService::removeForWorldMutation(..., island_creation_displacement)`. Then the existing
-terrain locks/generation proceed. Ordinary land monsters are not removed. Expansion itself still follows
-the existing search, exactly one expansion, one retry, fail-closed contract.
+Initial-island displacement runs inside the already-held World lock/transaction. Reservation radius 5 is
+only a sea/capacity guard; the current generator writes the smaller land/growth/placement set plus only
+the shallows selected by the seed. After locking and validating reservation cells in ID order, generate
+one immutable `InitialIslandPlan` from the seed and locked pre-state. The plan contains the exact final
+cell writes and consumes the generator RNG once. Lock occupancies only for those actually changed cell
+IDs, in ID order, and remove only Aoi through
+`MonsterRemovalService::removeForWorldMutation(..., island_creation_displacement)` before applying that
+same plan. An Aoi in a reserved but unchanged outer cell remains alive and occupied. Ordinary monsters
+are never displaced by this exception and may still make the operation fail closed under existing
+integrity rules. Expansion itself still follows the existing search, exactly one expansion, one retry,
+fail-closed contract.
 
 Aoi value remains 1,200 and base XP 18. Extend `MonsterDamageService` with a narrow definition-owned
 hostless reward policy: an attributed Aoi kill on ownerless water gives 100% money to the killer, no host
@@ -431,7 +443,7 @@ random draw.
 | Risk | Bound/design | Required measurement |
 |---|---|---|
 | equipment options | one Secretary/Item fetch, at most 50 warehouse rows; validate in memory | query-count tests for empty/full warehouse and every slot |
-| equipment mutation | stable row locks only on Secretary and affected/full 50 Item set | concurrent no-op, conflict, replacement, TurnRun guard |
+| equipment mutation | stable locks over W active owned Worlds/memberships/Nations plus one Secretary and at most 50 Items; query/lock work grows linearly with W | zero/one/multiple Worlds, concurrent no-op/conflict/replacement, guard failure in any World |
 | turn Item snapshot | eager-load owners/Secretaries/skills/items in bounded batch queries, not per Nation | 1 and many active Nations |
 | Old Bow target search | one joined occupied-monster query, grouped in memory; at most one trigger and one target draw per eligible Nation | query count, candidate count, 50+ monsters |
 | public monster detail/ranking | remove limit without introducing per-definition lookups; retain one detail query and one World stat batch | 10+ species and many Nations |
@@ -473,8 +485,9 @@ In addition to the task's existing C1-C5 lists, the audit requires:
 - the original v10 selector-less request payload retries as `duplicate = true` for queued, completed,
   failed, and cancelled rows; explicit selector 2 conflicts, and a missing selector without a proved v10
   request key still fails before mutation;
-- `equipment_version` backfill/future creation, no-op, stale 409, atomic replacement, active/no-Nation
-  lock paths and each unresolved TurnRun status;
+- `equipment_version` backfill/future creation, no-op, stale 409, atomic replacement, zero/one/multiple
+  active-World lock paths, affected-set change, partial-lock release, and each unresolved TurnRun status
+  in any owned World;
 - v10 effect-free retry, once-only Item snapshot, Bow 10% edges/stream isolation/hardening/Zero safety,
   damage and reward single-application;
 - one to five Rings, sixth rejection, Lv10 bound, explicit/automatic finance equality and capacity
@@ -482,7 +495,8 @@ In addition to the task's existing C1-C5 lists, the audit requires:
 - 10+ monster definitions, complete public total/order/representative, duplicate/missing display order,
   historical fallback, publisher snapshot and v1-v10 row immutability;
 - Aoi probability formula/table, four map sizes, radius-3 edge/out-of-bounds geometry, no candidate,
-  shallow normalization, water facility destruction, source defer, hostless payout, island displacement;
+  shallow normalization, water facility destruction, source defer, hostless payout, exact island-plan
+  displacement, reserved-but-unchanged survival, ordinary-monster fail-closed behavior;
 - Zero fixed HP4, both dispatch costs, spawn defer, HP4/3/2 movement, HP1 pre-movement explosion,
   neutral fallback, exact-once event, no chain, collateral rewardlessness, normal-kill XP/stat boundary;
 - forced exception at each migration phase, trigger/constraint restoration, second-run idempotency,
