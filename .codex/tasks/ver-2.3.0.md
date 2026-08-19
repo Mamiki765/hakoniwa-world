@@ -661,9 +661,11 @@ The command uses the existing selector presentation semantics, not an ordinary q
 
 The initial UI selection is value `1`. The client sends the selector value but never supplies an arbitrary monster key or cost. The server resolves the selected monster and effective cost from the active v11 ruleset and revalidates that mapping at both registration and execution. Queue and preview DTOs show the selected monster and effective cost without describing the selector as quantity.
 
-The selected value remains in the queue item’s immutable `quantity` field and therefore participates in the existing request fingerprint. An exact retry with the same value converges; reusing a request key with another value returns the existing stable conflict. Selector values are authored constants and never derive from a database ID, monster display order, or array position.
+The selected value remains in the queue item’s immutable `quantity` field and therefore participates in the existing request fingerprint. An exact retry with the same value converges; reusing a request key with another value returns the existing stable conflict. Selector values are authored constants and never derive from a database ID, monster display order, or array position. New v11 requests must explicitly send the selector.
 
-Queued v10 `monster_dispatch` rows are eligible for v11 rebind only after a fail-closed preflight proves `quantity = 1` and the historical target-only parameter shape. Such a row becomes selector value `1`, keeps the ordinary 3,000億円 execution cost, and never infers Zero. Completed, failed, and cancelled history remains attached to v10.
+Queued v10 `monster_dispatch` rows are eligible for v11 rebind only after a fail-closed preflight proves `quantity = 1` and the historical target-only parameter shape. Such a row becomes selector value `1`, keeps the ordinary 3,000億円 execution cost, and never infers Zero. Completed, failed, and cancelled definitions and payload history remain attached to v10.
+
+C5 adds nullable immutable request-ruleset provenance. Before rebind it backfills v10 for every non-null fingerprint, across queued and terminal statuses, that can be structurally proved to originate from v10; any ambiguous non-null row aborts publication and null historical fingerprints remain conflict-only. Duplicate lookup occurs before current-v11 selector validation. Only a matching stored request key with proved v10 provenance, stable `monster_dispatch`, and stored quantity 1 may normalize an omitted selector to 1 for fingerprint comparison. The original selector-less v10 payload can therefore return `duplicate = true`; selector 2 conflicts, while a missing selector for a new or unproved request still fails normally.
 
 Both selector choices retain target-Nation validation, retry/idempotency, spawn candidate rules, secrecy, and no movement on the spawn turn.
 
@@ -738,7 +740,10 @@ Minimum Zero tests:
 - selected cost is revalidated at execution and shown with the selected monster in queue/preview DTOs;
 - same-selector retry converges and same request key with a different selector returns the stable conflict;
 - valid queued v10 dispatch maps only to selector `1`; anomalous live rows fail migration closed;
-- completed/failed/cancelled v10 history remains unchanged;
+- non-null v10 fingerprints receive immutable provenance for queued/completed/failed/cancelled rows;
+- the original selector-less v10 payload returns `duplicate = true` in every status, selector `2`
+  conflicts, and selector omission without a proved v10 request key is rejected;
+- completed/failed/cancelled v10 definitions, payloads, statuses, and fingerprints remain unchanged;
 - fixed HP4 and no natural spawn;
 - no spawn-turn movement;
 - HP4/3/2 normal movement;
@@ -788,11 +793,13 @@ Minimum boundaries:
 - publish v11;
 - stable command/resource/facility/terrain/monster key checks;
 - World rebind;
+- immutable request-ruleset provenance backfill for every safely attributable non-null v10 fingerprint,
+  including completed/failed/cancelled rows; ambiguous rows fail closed and null hashes stay null;
 - queued command definition rebind only;
 - alive monster instance rebind only;
 - current/live kill-stat total rebind only where current contract requires it;
 - killed/removed MonsterInstance history remains on historical definitions;
-- completed/failed/cancelled queue history remains historical;
+- completed/failed/cancelled queue definitions and payload history remain historical;
 - Secretary Item instances, equipped slots, grant identity, and equipment version preserved;
 - constraints/triggers restored and verified;
 - exact second-run idempotency;
@@ -852,7 +859,9 @@ Completed 2026-08-19. The full A-R evidence and design record is
 - Server/v11 ruleset owns monster key and cost; arbitrary keys/costs are rejected.
 - Registration, queue presentation, fingerprint, and execution all resolve the same option.
 - A valid queued v10 dispatch proves quantity 1 and maps only to ordinary Mecha Inora at
-  3,000億. Anomalous rows fail migration closed; completed/failed/cancelled history is untouched.
+  3,000億. Proved non-null v10 fingerprints receive immutable provenance in every status so the original
+  selector-less retry converges; ambiguous rows fail closed, and terminal definition/payload history is
+  otherwise untouched.
 
 The superseded standalone amendment used a 1,000/5,000 explicit-parameter proposal and has been
 removed so this file is the single temporary Owner-contract source.
@@ -862,7 +871,7 @@ removed so this file is the single temporary Owner-contract source.
 | Verified fact | Required change | Proposed implementation | Test/evidence | Owner decision | Checkpoint |
 |---|---|---|---|---|---|
 | `CommandQuantitySemantics` already has selector UI/validation/label/edit exclusion but supports monument DB IDs only (`product/app/Application/CommandQuantitySemantics.php:18-110`) | safe ruleset-authored dispatch choices | delegate authored value/label/key/cost to narrow `MonsterDispatchOptionResolver`; keep `quantity` storage/fingerprint | values independent of DB/display/order; invalid/missing/client key/cost; retry/conflict | decided | C4 |
-| queue fingerprint includes canonical parameters, quantity, ruleset, target and original requested position, which is not separately retained after reorder (`CommandQueueService.php:277-314`) | normalize queued v10 without forging hash input | preflight live rows; quantity 1 -> regular option; preserve hash and add nullable request-ruleset provenance so duplicate comparison uses immutable v10; never infer old position | every status/reorder/anomaly/rollback/idempotent second run | decided | C5 |
+| queue fingerprint includes canonical parameters, quantity, ruleset, target and original requested position, which is not separately retained after reorder (`CommandQueueService.php:277-314`); duplicate lookup currently occurs after selector validation | normalize v10 retries without forging hash input or rejecting the original selector-less payload | preflight every status; queued quantity 1 -> regular option; preserve hash; backfill nullable v10 request provenance for every safely attributable non-null fingerprint; lock duplicate before v11 selector validation and normalize omitted selector to 1 only for a proved old request key | queued/completed/failed/cancelled selector-less retry, selector-2 conflict, null/ambiguous provenance, reorder/rollback/idempotent second run | decided | C5 |
 | catalog/queue/executor assume static definition cost (`CommandQueueController.php:36-178,370-440`; `DomesticCommandExecutor.php:403-547`) | 3,000/9,999 selected cost | retain truthful default definition cost 3,000; one typed effective-cost result for preview, queue, validation, deduction and events | shortfall, insufficient execution funds, queue label/cost, no fictional static cost | decided | C4 |
 | five Item slots/storage exist but no mutation/version (`SecretaryItemPresenter.php:13-55`; `SecretaryController.php:15-55`) | atomic equip/unequip | `equipment_version=1`; active Nation uses World lock + unresolved-run guard; no-Nation uses Secretary/Item transaction; stable locks and full-state validation | no-op/version conflict/concurrency/all TurnRun statuses/mobile/keyboard | decided | C1 |
 | turn state snapshots four skills only; v9+ has a missile-finalize/normal-monster seam (`SecretaryTurnService.php:21-66`; `CompleteTurnEngine.php:327-441`) | deterministic Item effects | snapshot v11 Item/effect identity at prepare; Old Bow after missiles/before monsters; Ring in centralized explicit/automatic finance | v10 retry effect-free, stream isolation, safe target, reward/XP, capacity | decided | C2 |

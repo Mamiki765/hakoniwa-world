@@ -135,13 +135,23 @@ the v11 definition, and retain 3,000 cost semantics. The existing fingerprint mu
 it contains the original requested insertion position (`CommandQueueService.php:277-299`), while queue
 reordering changes the only persisted position, so the original input cannot always be reconstructed.
 
-Add a narrow nullable `request_ruleset_version_id` provenance field. Before rebind, C5 sets it to v10
-only for structurally proved live queued rows; new registrations store their active ruleset. Duplicate
-handling computes the candidate fingerprint with the persisted immutable request ruleset rather than the
-queue item's rebound execution definition. Thus an exact old request (normalized selector 1) can still
-match the unchanged v10 hash, selector 2 conflicts, and no unknown requested position is guessed. A null
-old fingerprint remains conflict-only under the current contract. Completed, failed, and cancelled rows,
-definitions, parameters, provenance, and fingerprints remain untouched.
+Add a narrow nullable `request_ruleset_version_id` provenance field. The fingerprint column was added
+immediately before the v10 publication migration (`2026_08_19_000000_add_command_request_fingerprint.php`),
+so C5 can fail closed over every source-World row and backfill v10 for each non-null fingerprint that is
+structurally attributable to a v10 request. This includes queued, completed, failed, and cancelled rows;
+any non-null fingerprint that cannot be attributed exactly aborts publication. New registrations store
+their active ruleset. A null historical fingerprint receives no guessed provenance and remains
+conflict-only under the current contract.
+
+Duplicate handling must lock the existing request-key row before current-v11 selector validation. Only
+when that row proves v10 provenance, stable command key `monster_dispatch`, and stored quantity 1 may an
+omitted selector be normalized to 1 for duplicate fingerprint comparison. The candidate hash uses the
+persisted immutable request ruleset rather than the rebound execution definition. Therefore the original
+v10 selector-less payload and explicit value 1 can converge to `duplicate = true`; value 2 conflicts.
+A missing selector for a new request or an unproved historical row still fails normal v11 validation,
+and no other payload field or unknown requested position is inferred. Completed, failed, and cancelled
+definitions, parameters, quantities, statuses, and fingerprints remain historical; only the new immutable
+provenance field is populated where proof succeeds.
 
 ## G. Dynamic cost design
 
@@ -172,7 +182,7 @@ the head item under existing queue semantics; the preview is advisory, not autho
 | C1 | add `secretaries.equipment_version` default 1 with positive check | forward-only; backfill existing Secretaries to 1; no Item/slot rewrite |
 | C2 | add v11-shaped test ruleset fixture and Item snapshot/effect services | no production schema; Ring instances only via explicit test grant in this release |
 | C3 | nullable `monster_definitions.display_order` plus non-negative check and partial unique `(ruleset_version_id, display_order)` when non-null | never backfill v1-v10 rows; publisher/model/state includes the nullable field |
-| C4/C5 | selector and dynamic cost | selector uses existing quantity; add nullable `nation_command_queue_items.request_ruleset_version_id` only for exact fingerprint provenance across live ruleset rebind; no monster key/cost column |
+| C4/C5 | selector and dynamic cost | selector uses existing quantity; add nullable `nation_command_queue_items.request_ruleset_version_id` for exact fingerprint provenance across live rebind and terminal duplicate retry; no monster key/cost column |
 | C3/C4 | movement/reward/special-action contracts | no monster-instance column required; use immutable ruleset JSON |
 | C5 | publish one v11 and migrate live references | one World lock/transaction, next-run guard, exact v10 source, fail-closed preflight, publication, rebind and postconditions |
 
@@ -184,7 +194,8 @@ equal, but the target monster set must equal the eight source keys plus exactly 
 
 For live data C5 rebinds only queued commands, alive monsters for common stable keys, and existing
 positive kill-stat rows for common stable keys. It creates no zero-count stat rows for new species.
-Killed/removed instances and completed/failed/cancelled command history stay on v10. The migration
+Killed/removed instances and completed/failed/cancelled command definitions and payload history stay on
+v10; the only terminal-row addition is proved immutable request-ruleset provenance. The migration
 restores/verifies deferred constraints and triggers, supports an exact idempotent second run, and proves
 forced failure leaves no partial v11 row or reference change.
 
@@ -456,8 +467,12 @@ In addition to the task's existing C1-C5 lists, the audit requires:
   options;
 - missing/invalid selector, arbitrary key/cost, same-key different-selector fingerprint conflict, queue
   label/cost, registration preview and execution revalidation;
-- v10 queued rows grouped by every status; quantity/parameter/fingerprint anomalies fail before
-  publication; accepted row maps to ordinary 3,000; history is byte-for-byte unchanged;
+- v10 rows grouped by every status; quantity/parameter/fingerprint/provenance anomalies fail before
+  publication; accepted queued row maps to ordinary 3,000; terminal definition/payload/fingerprint stays
+  unchanged while proved non-null fingerprints receive v10 provenance;
+- the original v10 selector-less request payload retries as `duplicate = true` for queued, completed,
+  failed, and cancelled rows; explicit selector 2 conflicts, and a missing selector without a proved v10
+  request key still fails before mutation;
 - `equipment_version` backfill/future creation, no-op, stale 409, atomic replacement, active/no-Nation
   lock paths and each unresolved TurnRun status;
 - v10 effect-free retry, once-only Item snapshot, Bow 10% edges/stream isolation/hardening/Zero safety,
