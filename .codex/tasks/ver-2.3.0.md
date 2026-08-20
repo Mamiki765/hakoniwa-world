@@ -157,20 +157,25 @@ Add an optimistic equipment version, preferably `secretaries.equipment_version`,
 Equipment mutation must:
 
 1. resolve the authenticated User’s Secretary;
-2. if the User owns an active Nation, acquire the shared `WorldMutationLock` before the DB transaction;
-3. reject mutation while the next non-dry TurnRun is pending/running/failed/blocked, so a failed same-TurnRun retry cannot observe changed equipment;
-4. lock the Secretary row;
-5. lock relevant Item rows in stable ID order;
-6. verify `expected_version`;
-7. build the complete proposed equipment state in memory;
-8. validate slot range, Item ownership, category limits, same-item limits, and all final-state invariants before writes;
-9. atomically clear/replace the target slot without exposing an intermediate invalid final state;
-10. increment the equipment version exactly once for a meaningful mutation;
-11. return a no-op result without version increment when the chosen state already matches;
-12. record a private/admin audit event without leaking hidden Item state publicly;
-13. release World lock in `finally`.
+2. acquire a PostgreSQL advisory `UserMembershipMutationLock` keyed by User ID before enumerating Worlds;
+3. require both current membership-set writers, `NationCreationService` and `NationAbandonmentService`, to acquire the same user lock before the target `WorldMutationLock`, reject a next non-dry pending/running/failed/blocked TurnRun for that World before any state mutation, and hold both locks through commit; future membership add/reactivate/remove/deactivate paths must join the same lock and guard;
+4. enumerate every owner membership whose Nation is active; a User may own one active Nation in each of multiple Worlds while equipment remains User-global;
+5. sort all affected Worlds by ID and acquire every shared `WorldMutationLock` before the DB transaction;
+6. if any World lock fails, release already-held World locks and then the user lock in reverse order and return the stable conflict without mutation;
+7. inside the transaction, lock affected World rows and owner membership/Nation rows in the same stable order and verify the frozen set;
+8. for every affected World reject mutation while the next non-dry TurnRun is pending/running/failed/blocked, so any failed same-TurnRun retry observes unchanged equipment;
+9. lock the Secretary row;
+10. lock relevant Item rows in stable ID order;
+11. verify `expected_version`;
+12. build the complete proposed equipment state in memory;
+13. validate slot range, Item ownership, category limits, same-item limits, and all final-state invariants before writes;
+14. atomically clear/replace the target slot without exposing an intermediate invalid final state;
+15. increment the equipment version exactly once for a meaningful mutation;
+16. return a no-op result without version increment when the chosen state already matches;
+17. record a private/admin audit event without leaking hidden Item state publicly;
+18. release every acquired World lock and then the user lock in reverse order in `finally`.
 
-If no active Nation exists, equipment may still be changed because Items belong to the User/Secretary, but no World TurnRun is affected. C0 must verify the cleanest locking path for this case.
+If no active owned Nation exists, equipment may still be changed because Items belong to the User/Secretary, but retain the user lock across the Secretary/Item transaction so registration cannot add a newly affected World concurrently.
 
 Do not hold a DB or World lock while the player is looking at the modal. Lock only when the final mutation request is submitted.
 
@@ -209,6 +214,16 @@ The candidate list is deliberately narrow and compact because the warehouse can 
 
 Flavor text remains in the warehouse page, not the selection list.
 
+Item effect text is ruleset-scoped even though Item identity, inventory, and equipment are User-global.
+`GET /api/v1/me/secretary` without a World context remains ruleset-neutral and must not choose an
+arbitrary owned World. When the UI is opened for an active Nation it sends that Nation's explicit
+`world_id`; the server verifies an active owner membership, resolves effects from that World's exact
+ruleset, and returns an effect presentation context containing `world_id`, ruleset version ID/version,
+and each Item's derived `effect_text`. If the User has no active Nation, omission may use the configured
+current ruleset only when the response marks the context as `configured_current`. Name/rename and
+equipment mutation responses remain ruleset-neutral; the UI reloads the World-scoped projection after
+mutation. An omitted World while one or more active memberships exist never implies first/latest/current.
+
 Modal requirements:
 
 - native scrollable inner list (`overflow-y: auto`, touch/wheel/keyboard compatible);
@@ -240,7 +255,16 @@ Minimum:
 - no-op does not increment version;
 - concurrent equipment requests serialize;
 - TurnRunner/equipment mutation serialization;
-- failed TurnRun blocks gameplay-affecting equipment mutation;
+- zero, one, and multiple active owned Worlds use the intended lock paths;
+- a pending/running/failed/blocked next TurnRun in any affected World blocks equipment mutation;
+- partial multi-World lock acquisition releases earlier locks and writes nothing;
+- Nation registration in a previously unaffected World and equipment mutation serialize in both
+  acquisition orders under user-lock -> World-lock ordering, without deadlock or an unguarded snapshot;
+- Nation registration under the target World lock rejects each pending/running/failed/blocked next
+  non-dry TurnRun before membership, Secretary/starter Item, or island writes and leaves no partial state;
+- Nation abandonment and equipment mutation serialize in both acquisition orders; abandonment rejects
+  each unresolved next-run status before membership/queue/monster/cell/Nation/event mutation and leaves
+  the active Nation and all related state unchanged;
 - no effect reaches turn processing in C1;
 - options filtering and API mutation policy agree;
 - keyboard/modal/mobile behavior.
@@ -282,6 +306,11 @@ Must contain authoritative values for:
 Do not copy effect probability, damage, or finance bonus into Item instance rows. Instances remain identity/state: `item_key`, `level`, `equipped_slot`, grant/obtained metadata.
 
 Because v1–v10 do not contain Item effect definitions, C0/C2 must design an explicit compatibility boundary for reading existing `old_bow` state before v11 publication. Do not silently reinterpret v10 TurnRuns with v11 effects.
+
+Presentation follows the same version boundary without becoming turn state: an explicit owned v10
+World returns no gameplay effect for the existing Item, while an explicit owned v11 World derives the
+v11 sentence and parameters. The User-global catalog continues to own only stable presentation such as
+name and flavor; it does not supply a versionless gameplay sentence.
 
 Avoid a generic expression language or arbitrary effect registry. Implement the two required explicit effect types cleanly:
 
@@ -437,7 +466,10 @@ Minimum:
 - explicit and automatic finance receive the same Ring bonus;
 - money capacity and overflow;
 - rollback/retry determinism;
-- DTO and warehouse/modal effect text matches v11 parameters.
+- explicit v11-World DTO and warehouse/modal effect text matches v11 parameters;
+- the same User owning active Nations in v10 and v11 Worlds receives distinct World-scoped projections,
+  an omitted World never selects either implicitly, unauthorized World context is rejected, and the
+  zero-active-Nation configured-current projection is explicitly labelled.
 
 ---
 
@@ -627,7 +659,18 @@ Inside the same reviewed World mutation transaction, any Aoi Inora occupying cel
 - no kill statistic;
 - occupancy/index cleanup before terrain generation.
 
-Do not remove ordinary land monsters beyond the exact Owner decision. C0 must audit the reservation/generation footprint and lock ordering before C4 implementation.
+Before building that plan or creating any Nation/Secretary/Item state, registration must also apply the
+shared next non-dry pending/running/failed/blocked TurnRun guard while holding the target World lock.
+This preserves every same-ruleset/same-seed retry input; C4 must not weaken the C1 guard when adding Aoi
+displacement.
+
+Reservation radius is not the removal set. Lock and validate reservation cells in stable ID order, then
+derive one immutable island plan from the seed and locked pre-state. That plan must contain the exact
+dirty cell writes for land/growth/facility/capital and selected shallow conversion and must be the same
+plan later applied, so RNG is consumed once. Lock occupancies only for those planned changed cell IDs in
+ID order, remove Aoi there, and leave Aoi in reserved-but-unchanged cells untouched. Do not remove
+ordinary monsters; an ordinary occupancy may continue to make registration fail closed under existing
+integrity rules.
 
 ## Mecha Inora Zero / メカいのら零式
 
@@ -642,7 +685,7 @@ Stable contract:
 - movement limit: 1 while HP > 1
 - natural spawn: disabled
 - dispatch: enabled
-- dispatch cost: 5,000億円
+- dispatch cost: 9,999億円
 - wreckage value: 0
 - missile-base experience on normal attributed kill: 35
 - normal attributed kill statistic: yes
@@ -650,11 +693,24 @@ Stable contract:
 
 ### Dispatch command
 
-Prefer a separate stable command key such as `monster_dispatch_zero`, with player name `メカいのら零式派遣`, rather than accepting an arbitrary client monster key.
+Keep exactly one stable player-facing command, `monster_dispatch` (`怪獣派遣`). Do not add `monster_dispatch_zero`.
 
-Generalize the trusted server-side dispatch path so the command definition’s audited metadata selects the allowed monster definition. Existing `monster_dispatch` remains 3,000億 and continues to dispatch ordinary `mecha_inora` unchanged.
+The command uses the existing selector presentation semantics, not an ordinary quantity input. The v11 ruleset owns exactly these stable authored options:
 
-Both commands retain target-Nation validation, retry/idempotency, spawn candidate rules, secrecy, and no movement on the spawn turn.
+| selector value | monster key | player label | execution cost |
+|---:|---|---|---:|
+| `1` | `mecha_inora` | `メカいのら` | 3,000億円 |
+| `2` | `mecha_inora_zero` | `メカいのら零式` | 9,999億円 |
+
+The initial UI selection is value `1`. The client sends the selector value but never supplies an arbitrary monster key or cost. The server resolves the selected monster and effective cost from the active v11 ruleset and revalidates that mapping at both registration and execution. Queue and preview DTOs show the selected monster and effective cost without describing the selector as quantity.
+
+The selected value remains in the queue item’s immutable `quantity` field and therefore participates in the existing request fingerprint. An exact retry with the same value converges; reusing a request key with another value returns the existing stable conflict. Selector values are authored constants and never derive from a database ID, monster display order, or array position. New v11 requests must explicitly send the selector.
+
+Queued v10 `monster_dispatch` rows are eligible for v11 rebind only after a fail-closed preflight proves `quantity = 1` and the historical target-only parameter shape. Such a row becomes selector value `1`, keeps the ordinary 3,000億円 execution cost, and never infers Zero. Completed, failed, and cancelled definitions and payload history remain attached to v10.
+
+C5 adds nullable immutable request-ruleset provenance. The fingerprint column was introduced immediately before v10 publication: pre-v10 upgraded rows are null, and later service-created non-null rows must use the locked World's v10 definition. Before rebind, C5 attributes from source World, definition ruleset, release chronology, request key, and the existing hash-format constraint—not by recomputing the hash with the mutable queue position—and backfills v10 across queued and terminal statuses. Any non-null row attached to another ruleset aborts publication; null historical fingerprints remain conflict-only. Duplicate lookup occurs before current-v11 selector validation. Only a matching stored request key with proved v10 provenance, stable `monster_dispatch`, and stored quantity 1 may normalize an omitted selector to 1 for fingerprint comparison. The original selector-less v10 payload can therefore return `duplicate = true`; selector 2 conflicts, while a missing selector for a new or unproved request still fails normally.
+
+Both selector choices retain target-Nation validation, retry/idempotency, spawn candidate rules, secrecy, and no movement on the spawn turn.
 
 ### Nuclear self-destruction
 
@@ -716,12 +772,24 @@ Minimum Aoi tests:
 - neutralization to sea/owner null;
 - ordinary land-monster behavior unchanged;
 - 100% hostless killer payout, capacity, base XP18, kill stat;
-- island creation removes Aoi without reward/stat and proceeds.
+- island creation removes Aoi only from exact planned writes without reward/stat and proceeds;
+- Aoi on a reserved but unchanged cell survives, and ordinary occupied writes fail closed without removal.
 
 Minimum Zero tests:
 
-- separate 5,000億 dispatch command;
-- existing 3,000億 dispatch unchanged;
+- one `monster_dispatch` command exposes exactly selector values `1` and `2`;
+- default/explicit selector `1` costs 3,000億 and dispatches ordinary Mecha Inora;
+- selector `2` costs 9,999億 and dispatches Zero;
+- missing/invalid selector, arbitrary monster key, and client-supplied cost are rejected without mutation;
+- selected cost is revalidated at execution and shown with the selected monster in queue/preview DTOs;
+- same-selector retry converges and same request key with a different selector returns the stable conflict;
+- valid queued v10 dispatch maps only to selector `1`; anomalous live rows fail migration closed;
+- non-null v10 fingerprints receive immutable provenance for queued/completed/failed/cancelled rows;
+- a repositioned queued v10 dispatch migrates without recomputation, retains its hash byte-for-byte, and
+  an exact retry uses the original requested position rather than the mutable current position;
+- the original selector-less v10 payload returns `duplicate = true` in every status, selector `2`
+  conflicts, and selector omission without a proved v10 request key is rejected;
+- completed/failed/cancelled v10 definitions, payloads, statuses, and fingerprints remain unchanged;
 - fixed HP4 and no natural spawn;
 - no spawn-turn movement;
 - HP4/3/2 normal movement;
@@ -753,7 +821,7 @@ v11 inherits v10 and adds only the final ver 2.3.0 gameplay contract:
 - monster display order;
 - fixed-eight removal contract;
 - Aoi Inora definition, World spawn, water movement, hostless reward, island displacement;
-- Mecha Inora Zero definition, dispatch command, nuclear self-destruct;
+- Mecha Inora Zero definition, the ruleset-owned two-option selector on the existing `monster_dispatch` command, option-specific 3,000/9,999億 costs, and nuclear self-destruct;
 - any minimal random stream version labels required for deterministic replay.
 
 v1–v10 config files, rows, checksums, and applied migrations remain unchanged.
@@ -771,11 +839,13 @@ Minimum boundaries:
 - publish v11;
 - stable command/resource/facility/terrain/monster key checks;
 - World rebind;
+- immutable request-ruleset provenance backfill for every safely attributable non-null v10 fingerprint,
+  including completed/failed/cancelled rows; ambiguous rows fail closed and null hashes stay null;
 - queued command definition rebind only;
 - alive monster instance rebind only;
 - current/live kill-stat total rebind only where current contract requires it;
 - killed/removed MonsterInstance history remains on historical definitions;
-- completed/failed/cancelled queue history remains historical;
+- completed/failed/cancelled queue definitions and payload history remain historical;
 - Secretary Item instances, equipped slots, grant identity, and equipment version preserved;
 - constraints/triggers restored and verified;
 - exact second-run idempotency;
@@ -822,4 +892,74 @@ Before declaring PR readiness:
 
 # C0 audit results
 
-> C0 must append findings below this marker. Do not rewrite the Owner-approved sections above. Include exact source paths, tests, query/random implications, unresolved decisions, and a recommended branch plan for C1–C5.
+Completed 2026-08-19. The full A-R evidence and design record is
+[`product/docs/ver-2.3.0-c0-audit.md`](../../product/docs/ver-2.3.0-c0-audit.md).
+
+## Owner amendment incorporated
+
+- Keep only `monster_dispatch`; never add `monster_dispatch_zero`.
+- Reuse/generalize the existing non-ordinary quantity selector.
+- Persist authored selector value `1 = mecha_inora / 3,000億` and
+  `2 = mecha_inora_zero / 9,999億` in queue `quantity`.
+- Value 1 is the UI default, but v11 registration sends the selector explicitly.
+- Server/v11 ruleset owns monster key and cost; arbitrary keys/costs are rejected.
+- Registration, queue presentation, fingerprint, and execution all resolve the same option.
+- A valid queued v10 dispatch proves quantity 1 and maps only to ordinary Mecha Inora at
+  3,000億. Proved non-null v10 fingerprints receive immutable provenance in every status so the original
+  selector-less retry converges; ambiguous rows fail closed, and terminal definition/payload history is
+  otherwise untouched.
+
+The superseded standalone amendment used a 1,000/5,000 explicit-parameter proposal and has been
+removed so this file is the single temporary Owner-contract source.
+
+## Checkpoint audit table
+
+| Verified fact | Required change | Proposed implementation | Test/evidence | Owner decision | Checkpoint |
+|---|---|---|---|---|---|
+| `CommandQuantitySemantics` already has selector UI/validation/label/edit exclusion but supports monument DB IDs only (`product/app/Application/CommandQuantitySemantics.php:18-110`) | safe ruleset-authored dispatch choices | delegate authored value/label/key/cost to narrow `MonsterDispatchOptionResolver`; keep `quantity` storage/fingerprint | values independent of DB/display/order; invalid/missing/client key/cost; retry/conflict | decided | C4 |
+| queue fingerprint includes canonical parameters, quantity, ruleset, target and original requested position, which is not separately retained after reorder (`CommandQueueService.php:277-314`); duplicate lookup currently occurs after selector validation | normalize v10 retries without forging or reconstructing hash input and without rejecting the original selector-less payload | attribute provenance from v10 release chronology/source definition and DB format, never current position; preserve hash byte-for-byte; lock duplicate before v11 selector validation and normalize omitted selector to 1 only for a proved old request key | repositioned hash preservation/original-position retry, queued/completed/failed/cancelled selector-less retry, selector-2 conflict, null/ambiguous provenance, rollback/idempotent second run | decided | C5 |
+| catalog/queue/executor assume static definition cost (`CommandQueueController.php:36-178,370-440`; `DomesticCommandExecutor.php:403-547`) | 3,000/9,999 selected cost | retain truthful default definition cost 3,000; one typed effective-cost result for preview, queue, validation, deduction and events | shortfall, insufficient execution funds, queue label/cost, no fictional static cost | decided | C4 |
+| five Item slots/storage exist but no mutation/version, and `(user_id, world_id)` permits one active owned Nation in each of multiple Worlds (`SecretaryItemPresenter.php:13-55`; `SecretaryController.php:15-55`; `2026_07_26_000000_create_hakoniwa_schema.php:109-115`) | atomic globally consistent equip/unequip without a phantom membership insert | shared User membership-set advisory lock is first for registration/equipment, then every active owned World in stable order, then Secretary/Items; zero-World path retains the user lock | registration race in both orders, zero/one/multiple Worlds, guard in any World, partial lock release, no-op/version conflict/mobile/keyboard | decided | C1 |
+| current membership-set writers are registration create and abandonment delete; abandonment holds only the World lock, deletes the membership/queue, removes monsters, and rewrites cells/Nation without an unresolved-run guard (`NationCreationService.php:88-156`; `NationAbandonmentService.php:45-224`) | freeze the complete membership set and retry inputs across equipment, create, and delete | require registration and abandonment to take User then World lock and apply the same next non-dry four-status guard before mutation | equipment/create/delete races in both orders, four statuses, active state and all dependent rows unchanged on rejection | decided | C1 |
+| `/api/v1/me/secretary` has no World identifier while Item effects are ruleset-owned and a User may own Nations in multiple Worlds (`SecretaryController.php:15-25`; `SecretaryItemPresenter.php:13-55`) | prevent cross-ruleset effect misrepresentation | keep the User-global DTO neutral; derive effect text only for an explicit authorized World, with a labelled configured-current projection only when no active Nation exists | same User v10/v11 projections, omitted/unauthorized World, neutral mutation/name response, zero-Nation marker | decided | C2 |
+| turn state snapshots four skills only; v9+ has a missile-finalize/normal-monster seam (`SecretaryTurnService.php:21-66`; `CompleteTurnEngine.php:327-441`) | deterministic Item effects | snapshot v11 Item/effect identity at prepare; Old Bow after missiles/before monsters; Ring in centralized explicit/automatic finance | v10 retry effect-free, stream isolation, safe target, reward/XP, capacity | decided | C2 |
+| validator/spawn/public detail/ranking encode exact eight/kind 0..7 (`RulesetAuthoringValidator.php:619-697`; `MonsterSpawnService.php:45-52`; `PublicWorldService.php:82-113`; `PublicRankingAchievementProjection.php:101-142`) | additive v11 display | nullable DB order, null historical fallback `kind*100`, v11 explicit unique order, no public limit, max killed order representative | 10+ species, totals/order/representative, duplicate/null validation, v1-v10 immutable | decided | C3 |
+| huge meteor/removal/batch paths are reusable (`DisasterTurnService.php:672-748,946-1004`; `MonsterRemovalService.php`) | Aoi/Zero behavior | Aoi World substage after subsidence/before natural spawn; water-neutralizing movement; Zero removal before one fixed-center blast | candidate radius/query bounds, displacement, hostless payout, self/collateral rewardless, no chain | delegated details fixed by C0 | C4 |
+| initial island holds World lock/transaction and validates radius-5 reservation, but registration has no unresolved-next-TurnRun guard and actual writes are the smaller seed-dependent dirty set whose occupancy is ignored (`NationCreationService.php:45-188`; `LegacyInspiredInitialIslandGenerator.php:19-181`) | preserve retry inputs while ensuring Aoi cannot block an actual island write and unrelated reserved Aoi survives | under the user then World lock, reject next non-dry pending/running/failed/blocked before any registration write; then build one immutable seed-derived plan, lock exact changed-cell occupancies, remove only Aoi there, and apply it once | four unresolved statuses/no partial registration, changed-cell displacement, outer reserved survival, one RNG consumption, ordinary occupancy fail closed, rollback | decided | C1/C4 |
+| v10 migration uses common stable-key equality and live-only rebind (`2026_08_19_010000_publish_hakoniwa_2s_plus_v10.php:50-131`) | additive, all-or-nothing v11 | exact same command keys; target monsters = common eight + exact two; rebind queued/alive/live stats only; preserve history | source/guard/constraint/trigger/forced-failure/second-run tests | decided | C5 |
+| historical migration calls mutable `SecretaryItemGrantService::grantStarterOldBow()` (`2026_08_17_010000_create_secretary_items_and_inquiries.php:29-34`) | prevent fresh-install semantic drift | keep grant path independent of C1/v11; version-aware publisher/validator and schema-aware nullable display field; run fresh chain every checkpoint | `migrate:fresh`, migration rerun, exact old-bow row, old ruleset checksums | engineering constraint, no STOP | C1-C5 |
+
+## Frequency, random, and query boundaries
+
+Aoi keeps `min(10000, active_owned_land_cells) / 10000`, one World trigger per target turn.
+For `L > 0`, expected trigger interval is `10000 / min(10000, L)` turns; it is one turn at
+`L >= 10000`, while `L = 0` never triggers.
+Dimension-only maximum trigger probabilities are 36.00% at 60x60, 40.96% at 64x64,
+51.20% at 80x64, and 92.16% at 96x96; actual frequency uses live active-owned land and is
+zero on a triggered turn with no valid remote-water candidate. Candidate scan is bounded to one
+surface snapshot plus in-memory radius-3 marking, at most 340,992 coordinate marks at 96x96.
+
+New streams are dedicated to Old Bow trigger/target and Aoi trigger/candidate/HP. Existing stream
+labels/draw populations are unchanged. Stable candidate ordering, TurnRun ruleset/seed/equipment
+snapshot, transaction rollback, and batch synchronization preserve same-attempt retry.
+
+## Historical migration dependency result
+
+Historical migrations call mutable Application services through `RulesetPublisher` (19 files),
+`SecretaryV1MigrationSafetyGuard` (6 files), and `SecretaryItemGrantService` (1 file). No migration
+directly calls a Domain catalog, but GrantService indirectly uses `SecretaryItemCatalog` and Publisher
+uses the current `RulesetAuthoringValidator`. Current isolated test-DB `migrate:fresh` succeeds.
+
+C1-C5 must preserve the old-bow grant wrapper and old ruleset validation before later columns/v11
+exist. In particular, C3 publisher handling must not unconditionally insert `display_order` while an
+early historical migration is running before the C3 column migration. Record a frozen schema/data
+fresh-install baseline with literal starter Item data and published snapshot checksums as a separate
+high-priority post-2.3.0 cleanup; do not edit applied migrations in this release.
+
+## Branch handoff and STOP
+
+No unresolved Owner decision and no C0 STOP condition remain. C1 starts only after this C0 PR is
+final-head reviewed with unresolved P0-P2 = 0, explicitly merged to `release/ver-2.3.0`, and a clean
+C1 branch is created from the re-verified release HEAD. The subsequent order is C1 equipment, C2 Item
+effects, C3 monster foundation, C4 Aoi/Zero/dispatch, and C5 final v11 publication/migration. Each
+checkpoint targets the release branch and receives its own focused validation/review.
