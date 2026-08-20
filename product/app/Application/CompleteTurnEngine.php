@@ -9,6 +9,7 @@ use App\Domain\Economy\SalePolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryProductionBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
@@ -334,7 +335,7 @@ final class CompleteTurnEngine
         $this->missiles->begin($cellsByCoordinate);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
         $separateNormalMonsterPass = ($context->ruleset->settings['turn_resolution']['normal_monster_stage'] ?? null)
-            === 'after_ordinary_surface_cell_events';
+            === SecretaryItemGameplayContract::REQUIRED_NORMAL_MONSTER_STAGE;
 
         foreach ($context->state->surfaceCellIds() as $cellId) {
             $cell = $cellsById->get($cellId);

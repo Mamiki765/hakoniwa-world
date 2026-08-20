@@ -24,7 +24,7 @@ The only C2 gameplay authoring source is the test-only `V11SecretaryItemRulesetF
 - Old Bow: `pre_normal_monster_attack`, timing `after_missile_finalization_before_normal_monsters`, 1,000 basis points, damage 1, `secretary_old_bow`, owned territory, target MapSpaces `[surface]`, safety `avoid_ineffective_or_immediate_hazard`, random stream version 1.
 - Ring: `finance_income_bonus`, one money unit per level, stacking `sum_equipped_levels`.
 
-The authoring validator invokes this contract whenever Secretary Item definitions are present. Missing, open-ended, floating-point, catalog-divergent, or unknown definitions fail closed.
+The authoring validator invokes this contract whenever Secretary Item definitions are present. Missing, open-ended, floating-point, catalog-divergent, or unknown definitions fail closed. An Item ruleset must also declare `turn_resolution.normal_monster_stage = after_ordinary_surface_cell_events`; a missing or different stage is rejected before publication rather than failing every turn at runtime.
 
 ## Attempt snapshot and determinism
 

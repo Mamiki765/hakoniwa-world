@@ -107,5 +107,15 @@ final class SecretaryItemGameplayContractTest extends TestCase
 
             return $settings;
         }];
+        yield 'missing required normal monster stage' => [static function (array $settings): array {
+            unset($settings['turn_resolution']);
+
+            return $settings;
+        }];
+        yield 'incompatible normal monster stage' => [static function (array $settings): array {
+            $settings['turn_resolution']['normal_monster_stage'] = 'during_ordinary_surface_cell_events';
+
+            return $settings;
+        }];
     }
 }

@@ -12,6 +12,8 @@ final class SecretaryItemGameplayContract
 
     public const OLD_BOW_TIMING = 'after_missile_finalization_before_normal_monsters';
 
+    public const REQUIRED_NORMAL_MONSTER_STAGE = 'after_ordinary_surface_cell_events';
+
     public const OLD_BOW_DAMAGE_TYPE = 'secretary_old_bow';
 
     public const OLD_BOW_TARGET_SCOPE = 'owned_territory';
@@ -36,6 +38,16 @@ final class SecretaryItemGameplayContract
     {
         if (! $this->exists($settings)) {
             return;
+        }
+
+        $turnResolution = $settings['turn_resolution'] ?? null;
+        if (! is_array($turnResolution)
+            || ($turnResolution['normal_monster_stage'] ?? null) !== self::REQUIRED_NORMAL_MONSTER_STAGE) {
+            throw new DomainException(
+                'ruleset.turn_resolution.normal_monster_stage must be '
+                .self::REQUIRED_NORMAL_MONSTER_STAGE
+                .' when Secretary Item definitions exist.',
+            );
         }
 
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');

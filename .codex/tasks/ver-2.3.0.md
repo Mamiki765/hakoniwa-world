@@ -523,6 +523,9 @@ Minimum:
   skill guidance without documenting the four skill effects and experience sources. The dedicated page
   now carries that guidance, uses the same navigation immediately after `上級編`, and states abandonment
   behavior without implying that equipment can be changed through the normal UI while no island is active.
+- The next exact-head review found one P2 authoring gap: Item definitions could validate without the
+  separated normal-monster stage that Old Bow requires at runtime. The Item gameplay contract now rejects
+  a missing or incompatible stage before publication, and authoring/runtime share the same stage constant.
 - Verified C0 divergence: post-missile eligibility is safest as one bounded current-state occupancy
   load followed by in-memory Nation grouping, while the authoritative damage/removal services keep the
   already-loaded monster batch synchronized. This is the audited combination boundary rather than
