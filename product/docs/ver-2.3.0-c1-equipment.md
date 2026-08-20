@@ -30,21 +30,21 @@ Nation registration and abandonment use the same User-then-World order and the s
 
 ## API and policy
 
-- `GET /api/v1/me/secretary/equipment/{slot}/options` returns the slot, `equipment_version`, current Item, legal candidates, and category-limit presentation metadata.
+- `GET /api/v1/me/secretary/equipment/{slot}/options` returns the slot, `equipment_version`, current Item, legal candidates, category-limit presentation metadata, and a nullable effect presentation context. The active-Nation UI supplies `world_id`; the server verifies an active owner membership and returns that exact World and ruleset identity. Omission remains ruleset-neutral.
 - `PUT /api/v1/me/secretary/equipment/{slot}` accepts nullable `item_id` and required `expected_version`, then returns the neutral authoritative Secretary payload.
 - A stale version returns HTTP 409 with `secretary_equipment_version_conflict`.
 - Player-safe invalid ownership, slot, or policy requests return HTTP 422 with `secretary_equipment_invalid`.
 
 The server filters and revalidates candidates from one bounded inventory load. It calculates limits against the proposed final state, so a target-slot replacement may be legal while a second bow in another slot is not. An Item already equipped elsewhere is omitted and a forged move is rejected. C1 runtime policy contains only the existing Old Bow (`bow`, category max 1, same-item max 1); generic multi-instance limit behavior is covered by test-only catalog fixtures because Ring definitions and effects belong to C2.
 
-The options endpoint executes exactly two SQL queries for an empty inventory, Old Bow only, 50 Items, and all five slots occupied. Candidate evaluation adds no per-Item query.
+The options service executes exactly two SQL queries without a World context and three with an explicit owned World context for an empty inventory, Old Bow only, 50 Items, and all five slots occupied. Candidate evaluation adds no per-Item query.
 
 ## UI boundary
 
-Each of the five compact slots is an interactive button. The modal uses an inner native `overflow-y: auto` radio list with `外す` first, current Item next and selected, then legal server-provided candidates. It shows name, level, and category only; Warehouse flavor is not copied and C2 effect text is not fabricated.
+Each of the five compact slots is an interactive button. The modal uses an inner native `overflow-y: auto` radio list with `外す` first, current Item next and selected, then legal server-provided candidates. The UI sends the active Nation's explicit `world_id`; each row has name, level, and a nullable `effect_text` line. Since v1-v10 define no Item gameplay effects, C1 returns no effect sentence for those rulesets and does not substitute the category or fabricate C2 numbers. Warehouse flavor is not copied.
 
 The footer stays outside the scrolling list and contains only the bottom-right `変更する` action. Selection never mutates immediately. The close button, backdrop, and Escape cancel without mutation. Focus moves into the dialog, Tab is trapped sensibly, native radios support keyboard selection, and focus returns to the invoking slot. Loading disables duplicate submission. A stale 409 reloads both the neutral Secretary state and slot options and disables submission until the player makes a fresh selection. Backend errors remain visible inside the dialog.
 
 ## C2 entry boundary
 
-C2 may begin after this checkpoint is integrated into `release/ver-2.3.0` with green Quality and no unresolved P0-P2. C2 owns Ring presentation/catalog data, explicit authorized World-scoped effect presentation, v11 test fixtures, gameplay effect definitions, snapshots, Old Bow damage, and Ring finance behavior. C2 must retain this lock/version/API contract and prove v1-v10 TurnRuns remain effect-free. Publishing the final immutable v11 payload remains C5 work.
+C2 may begin after this checkpoint is integrated into `release/ver-2.3.0` with green Quality and no unresolved P0-P2. C2 owns Ring presentation/catalog data, v11 test fixtures, ruleset-derived effect sentences, gameplay effect definitions, snapshots, Old Bow damage, and Ring finance behavior. It extends C1's already-authorized World/ruleset presentation context rather than changing the neutral mutation payload. C2 must retain this lock/version/API contract and prove v1-v10 TurnRuns remain effect-free. Publishing the final immutable v11 payload remains C5 work.

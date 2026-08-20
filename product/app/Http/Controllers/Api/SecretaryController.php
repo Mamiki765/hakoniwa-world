@@ -64,7 +64,11 @@ final class SecretaryController extends Controller
         SecretaryEquipmentService $equipment,
     ): JsonResponse {
         try {
-            $options = $equipment->options($request->user(), $this->equipmentSlot($slot));
+            $options = $equipment->options(
+                $request->user(),
+                $this->equipmentSlot($slot),
+                $this->equipmentWorldId($request),
+            );
         } catch (SecretaryNotFoundException $exception) {
             return response()->json([
                 'code' => SecretaryNotFoundException::ERROR_CODE,
@@ -120,5 +124,19 @@ final class SecretaryController extends Controller
         }
 
         return (int) $slot;
+    }
+
+    private function equipmentWorldId(Request $request): ?int
+    {
+        $worldId = $request->query('world_id');
+        if ($worldId === null) {
+            return null;
+        }
+        if (! is_string($worldId)
+            || filter_var($worldId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
+            throw new SecretaryEquipmentValidationException('装備効果を表示するWorldを確認してください。');
+        }
+
+        return (int) $worldId;
     }
 }

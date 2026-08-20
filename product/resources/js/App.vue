@@ -704,7 +704,10 @@ async function loadEquipmentOptions(slot: number, preserveFreshChoice = false): 
     equipmentError.value = '';
     if (!preserveFreshChoice) equipmentRequireFreshChoice.value = false;
     try {
-        const options = await api<SecretaryEquipmentOptions>(`/api/v1/me/secretary/equipment/${slot}/options`);
+        const worldQuery = nation.value === null ? '' : `?world_id=${nation.value.world_id}`;
+        const options = await api<SecretaryEquipmentOptions>(
+            `/api/v1/me/secretary/equipment/${slot}/options${worldQuery}`,
+        );
         if (requestGeneration !== equipmentRequestGeneration || equipmentModalSlot.value !== slot) return;
         equipmentOptions.value = options;
     } catch (error) {

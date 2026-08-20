@@ -1020,19 +1020,25 @@ describe('application lobby and island entry', () => {
             }
             if (path === '/api/v1/me/nation') return response(ownerNationFixture);
             if (path === '/api/v1/me/secretary') return response(serverSecretary);
-            if (path === '/api/v1/me/secretary/equipment/1/options') {
+            if (path === '/api/v1/me/secretary/equipment/1/options?world_id=1') {
                 optionsCalls++;
                 const current = serverSecretary.equipment.slots[0]!.item;
                 return response({
                     slot: 1,
                     equipment_version: serverSecretary.equipment_version,
+                    effect_context: {
+                        source: 'owned_world', world_id: 1, ruleset_version_id: 10,
+                        ruleset_key: 'hakoniwa-2s-plus-v10', ruleset_version: 10,
+                    },
                     current_item: current === null ? null : {
                         id: current.id, key: current.key, name: current.name, level: current.level,
-                        category: current.category, category_label: current.category_label, equipped_slot: current.equipped_slot,
+                        category: current.category, category_label: current.category_label,
+                        equipped_slot: current.equipped_slot, effect_text: null,
                     },
                     items: current === null ? [] : [{
                         id: current.id, key: current.key, name: current.name, level: current.level,
-                        category: current.category, category_label: current.category_label, equipped_slot: current.equipped_slot,
+                        category: current.category, category_label: current.category_label,
+                        equipped_slot: current.equipped_slot, effect_text: null,
                     }],
                     category_limits: serverSecretary.equipment.category_limits,
                 });
@@ -1072,7 +1078,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         expect(wrapper.get('.equipment-modal').attributes('aria-modal')).toBe('true');
-        expect(wrapper.findAll('.equipment-option-row').map((row) => row.text())).toEqual(['外す', '古びた弓Lv1・弓']);
+        expect(wrapper.findAll('.equipment-option-row').map((row) => row.text())).toEqual(['外す', '古びた弓Lv1']);
         expect(wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[1]!.element.checked).toBe(true);
         const submit = wrapper.get('.equipment-modal-footer button');
         await submit.trigger('click');

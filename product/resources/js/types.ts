@@ -55,6 +55,15 @@ export interface SecretaryEquipmentOptionItem {
     category: string;
     category_label: string;
     equipped_slot: number | null;
+    effect_text: string | null;
+}
+
+export interface SecretaryEquipmentEffectContext {
+    source: 'owned_world' | 'configured_current';
+    world_id: number | null;
+    ruleset_version_id: number;
+    ruleset_key: string;
+    ruleset_version: number;
 }
 
 export interface SecretaryEquipmentOptions {
@@ -63,6 +72,7 @@ export interface SecretaryEquipmentOptions {
     current_item: SecretaryEquipmentOptionItem | null;
     items: SecretaryEquipmentOptionItem[];
     category_limits: SecretaryEquipmentCategoryLimit[];
+    effect_context: SecretaryEquipmentEffectContext | null;
 }
 
 export interface SecretaryItem {

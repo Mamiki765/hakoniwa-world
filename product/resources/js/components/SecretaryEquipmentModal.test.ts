@@ -6,18 +6,23 @@ import type { SecretaryEquipmentOptions } from '../types';
 const options: SecretaryEquipmentOptions = {
     slot: 2,
     equipment_version: 4,
+    effect_context: {
+        source: 'owned_world', world_id: 1, ruleset_version_id: 10,
+        ruleset_key: 'hakoniwa-2s-plus-v10', ruleset_version: 10,
+    },
     current_item: {
         id: 21, key: 'old_bow', name: '古びた弓', level: 1,
-        category: 'bow', category_label: '弓', equipped_slot: 2,
+        category: 'bow', category_label: '弓', equipped_slot: 2, effect_text: null,
     },
     items: [
         {
             id: 21, key: 'old_bow', name: '古びた弓', level: 1,
-            category: 'bow', category_label: '弓', equipped_slot: 2,
+            category: 'bow', category_label: '弓', equipped_slot: 2, effect_text: null,
         },
         {
             id: 31, key: 'test_ring', name: '指輪', level: 3,
             category: 'ring', category_label: '指輪', equipped_slot: null,
+            effect_text: '装備効果の説明',
         },
     ],
     category_limits: [
@@ -51,7 +56,7 @@ describe('SecretaryEquipmentModal', () => {
         expect(document.activeElement).toBe(wrapper.get('.equipment-modal-close').element);
         expect(wrapper.get('.equipment-options-scroll').attributes('data-native-scroll')).toBe('true');
         const rows = wrapper.findAll('.equipment-option-row');
-        expect(rows.map((row) => row.text())).toEqual(['外す', '古びた弓Lv1・弓', '指輪Lv3・指輪']);
+        expect(rows.map((row) => row.text())).toEqual(['外す', '古びた弓Lv1', '指輪Lv3装備効果の説明']);
         expect(wrapper.text()).not.toContain('貴金属');
         expect(wrapper.findAll<HTMLInputElement>('input[type="radio"]')[1]!.element.checked).toBe(true);
 

@@ -116,7 +116,8 @@ function handleKeydown(event: KeyboardEvent): void {
                         >
                         <span>
                             <strong>{{ item.name }}</strong>
-                            <small>Lv{{ item.level }}・{{ item.category_label }}</small>
+                            <small>Lv{{ item.level }}</small>
+                            <small v-if="item.effect_text">{{ item.effect_text }}</small>
                         </span>
                     </label>
                 </div>

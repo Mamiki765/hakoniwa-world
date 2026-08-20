@@ -35,12 +35,14 @@ class SecretaryEquipmentService
      *   equipment_version: int,
      *   current_item: array<string, mixed>|null,
      *   items: list<array<string, mixed>>,
-     *   category_limits: list<array{category: string, label: string, maximum_equipped: int}>
+     *   category_limits: list<array{category: string, label: string, maximum_equipped: int}>,
+     *   effect_context: array{source: string, world_id: int, ruleset_version_id: int, ruleset_key: string, ruleset_version: int}|null
      * }
      */
-    public function options(User $user, int $slot): array
+    public function options(User $user, int $slot, ?int $worldId = null): array
     {
         $this->assertSlot($slot);
+        $effectContext = $this->effectContext($user, $worldId);
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
             ->with('itemInstances')
@@ -84,6 +86,7 @@ class SecretaryEquipmentService
             'current_item' => $current instanceof SecretaryItemInstance ? $this->optionItem($current) : null,
             'items' => $candidateItems,
             'category_limits' => $this->catalog->categoryLimits(),
+            'effect_context' => $effectContext,
         ];
     }
 
@@ -361,6 +364,44 @@ class SecretaryEquipmentService
         }
     }
 
+    /**
+     * @return array{source: string, world_id: int, ruleset_version_id: int, ruleset_key: string, ruleset_version: int}|null
+     */
+    private function effectContext(User $user, ?int $worldId): ?array
+    {
+        if ($worldId === null) {
+            return null;
+        }
+
+        $context = DB::table('nation_memberships as membership')
+            ->join('nations as nation', 'nation.id', '=', 'membership.nation_id')
+            ->join('worlds as world', 'world.id', '=', 'membership.world_id')
+            ->join('ruleset_versions as ruleset', 'ruleset.id', '=', 'world.ruleset_version_id')
+            ->where('membership.user_id', $user->id)
+            ->where('membership.world_id', $worldId)
+            ->where('membership.role', 'owner')
+            ->where('nation.state', 'active')
+            ->whereColumn('nation.world_id', 'membership.world_id')
+            ->select([
+                'world.id as world_id',
+                'ruleset.id as ruleset_version_id',
+                'ruleset.key as ruleset_key',
+                'ruleset.version as ruleset_version',
+            ])
+            ->first();
+        if ($context === null) {
+            throw new SecretaryEquipmentValidationException('指定したWorldの装備効果を表示できません。');
+        }
+
+        return [
+            'source' => 'owned_world',
+            'world_id' => (int) $context->world_id,
+            'ruleset_version_id' => (int) $context->ruleset_version_id,
+            'ruleset_key' => (string) $context->ruleset_key,
+            'ruleset_version' => (int) $context->ruleset_version,
+        ];
+    }
+
     /** @return array<string, mixed> */
     private function optionItem(SecretaryItemInstance $item): array
     {
@@ -374,6 +415,7 @@ class SecretaryEquipmentService
             'category' => $definition['category'],
             'category_label' => $definition['category_label'],
             'equipped_slot' => $item->equipped_slot,
+            'effect_text' => null,
         ];
     }
 

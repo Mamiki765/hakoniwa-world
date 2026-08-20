@@ -1006,7 +1006,8 @@ post-abandonment zero-World enumeration and newly registered World detection.
 ## API, policy, audit, and query result
 
 - `GET /api/v1/me/secretary/equipment/{slot}/options`: slot, version, current Item, legal candidates,
-  category-limit metadata.
+  category-limit metadata, and nullable effect context. The active-Nation UI sends explicit `world_id`;
+  the server verifies active owner membership and returns exact World/ruleset identity.
 - `PUT /api/v1/me/secretary/equipment/{slot}`: nullable `item_id`, required `expected_version`, neutral
   authoritative Secretary response.
 - Stable conflicts: 409 `secretary_equipment_version_conflict` plus membership/World/TurnRun conflicts;
@@ -1016,8 +1017,8 @@ post-abandonment zero-World enumeration and newly registered World detection.
   category, same-item, instance, ownership, level, and slot validation.
 - Meaningful mutation writes private `secretary.equipment_changed` metadata with User/Secretary/slot,
   prior/new Item key/ID, and prior/new version. No-op creates no audit event and no public news.
-- Exact options query count is 2 for empty inventory, Old Bow only, 50 Items, and all five slots
-  occupied; Item count adds no SQL queries.
+- Exact options query count is 2 for a neutral request and 3 for an explicit owned World for empty
+  inventory, Old Bow only, 50 Items, and all five slots occupied; Item count adds no SQL queries.
 
 ## UI and interaction result
 
@@ -1026,12 +1027,13 @@ scroll list, `外す` first, current selection default, legal server candidates,
 top-right close button, backdrop/Escape cancellation, focus entry/return and Tab containment, native
 radio keyboard behavior, mobile layout, loading/duplicate-submit prevention, inline backend error, and
 409 authoritative Secretary/options refresh that requires a fresh choice. Modal rows omit Warehouse
-flavor and do not fabricate effect text. Compact category badges render from server metadata. C1 keeps
-turn processing and v1-v10 rulesets effect-free.
+flavor and category-as-effect substitution. They reserve a nullable effect line; v1-v10 return no Item
+effect sentence while the verified context identifies the exact owned World/ruleset. Compact category
+badges remain on the equipment page. C1 keeps turn processing and v1-v10 rulesets effect-free.
 
 ## Validation and C0 divergence
 
-- Focused backend: schema/history 3 tests/7 assertions; equipment 12/96; registration/abandonment guard
+- Focused backend: schema/history 3 tests/7 assertions; equipment 12/106; registration/abandonment guard
   13/27; isolated PostgreSQL concurrency 5/68.
 - Focused frontend: modal 4 tests; App API/stale/error/success integration 1 test; ESLint and
   `vue-tsc --noEmit` pass.
@@ -1040,16 +1042,18 @@ turn processing and v1-v10 rulesets effect-free.
   86 Secretary/Nation/TurnRunner/complete-turn tests plus the corrected 12-test equipment rerun, and
   5 existing PostgreSQL registration/abandonment lock tests pass. Ruleset source diff and `_references`
   diff are both zero.
-- PR #65's initial Quality run `32334209852` passed. Two Codex review rounds found three P2 boundary
+- PR #65's initial Quality run `32334209852` passed. Three Codex review rounds found four P2 boundary
   regressions: completed registration replay ran after the unresolved-TurnRun guard, negative slot
   routes bypassed the stable equipment error, and oversized numeric slot strings overflowed typed
-  controller dispatch. C1 now proves all four unresolved statuses replay the completed Nation without
-  writes, while GET/PUT negative and oversized slots return 422 `secretary_equipment_invalid` after
-  explicit safe string validation. Final-head CI/review/thread evidence belongs in the PR handoff so a
-  documentation-only evidence edit cannot invalidate the reviewed HEAD.
-- C0 hypothesis divergence: no runtime Ring definition or effect DTO was needed in C1. The C0 audit
-  assigns World-scoped effect presentation and Ring/effect definitions to C2, so C1 keeps neutral DTOs
-  and a modal structure ready for the later effect line without inventing v10 effect text.
+  controller dispatch; the active-Nation modal also omitted the Owner-required explicit World effect
+  context. C1 now proves all four unresolved statuses replay the completed Nation without writes,
+  GET/PUT negative and oversized slots return 422 `secretary_equipment_invalid`, and options verify the
+  explicit owned World while v1-v10 return nullable effect text. Final-head CI/review/thread evidence
+  belongs in the PR handoff so a documentation-only evidence edit cannot invalidate the reviewed HEAD.
+- C0 hypothesis divergence: no runtime Ring definition or gameplay effect DTO was needed in C1. The
+  earlier Owner C1 UI requirement outranks the C0 audit's C2 staging suggestion, so C1 includes the
+  authorized World/ruleset presentation context and nullable effect line. C2 still owns Ring catalog
+  data, v11-derived sentences, snapshots, and gameplay effects; C1 invents no v10 effect text.
 
 Durable architecture and the exact C2 entry boundary are recorded in
 [`product/docs/ver-2.3.0-c1-equipment.md`](../../product/docs/ver-2.3.0-c1-equipment.md). C2 begins only

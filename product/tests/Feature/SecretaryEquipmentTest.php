@@ -41,10 +41,30 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.slot', 1)
             ->assertJsonPath('data.equipment_version', 1)
+            ->assertJsonPath('data.effect_context', null)
             ->assertJsonPath('data.current_item.id', $bow->id)
             ->assertJsonPath('data.items.0.id', $bow->id)
+            ->assertJsonPath('data.items.0.effect_text', null)
             ->assertJsonPath('data.category_limits.0.category', 'bow')
             ->assertJsonMissingPath('data.items.0.flavor_text');
+
+        $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
+            ->assertOk()
+            ->assertJsonPath('data.effect_context.source', 'owned_world')
+            ->assertJsonPath('data.effect_context.world_id', $world->id)
+            ->assertJsonPath('data.effect_context.ruleset_version_id', $world->ruleset_version_id)
+            ->assertJsonPath('data.effect_context.ruleset_version', 10)
+            ->assertJsonPath('data.items.0.effect_text', null);
+
+        $unownedWorld = World::query()->create([
+            'key' => 'equipment-unowned-world',
+            'name' => '未所属World',
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'current_turn' => 1,
+        ]);
+        $this->actingAs($user)
+            ->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$unownedWorld->id}")
+            ->assertUnprocessable()->assertJsonPath('code', 'secretary_equipment_invalid');
 
         $this->actingAs($user)->putJson('/api/v1/me/secretary/equipment/1', [
             'item_id' => null,
@@ -299,10 +319,9 @@ SQL);
         $this->assertSame(1, $secretary->fresh()->equipment_version);
     }
 
-    public function test_options_query_count_is_two_for_empty_one_fifty_and_five_equipped_items(): void
+    public function test_options_queries_are_bounded_for_neutral_and_owned_world_contexts(): void
     {
-        $secretary = $this->secretaryFixture();
-        $user = $secretary->user()->firstOrFail();
+        [$user, $secretary, $world] = $this->affectedWorldFixture();
         $service = $this->service(catalog: $this->bulkCatalog());
         $counts = [];
 
@@ -314,7 +333,12 @@ SQL);
             DB::flushQueryLog();
             DB::enableQueryLog();
             $service->options($user, 1);
-            $counts["items_{$count}"] = count(DB::getQueryLog());
+            $counts["neutral_items_{$count}"] = count(DB::getQueryLog());
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $service->options($user, 1, $world->id);
+            $counts["owned_items_{$count}"] = count(DB::getQueryLog());
             DB::disableQueryLog();
         }
 
@@ -325,14 +349,23 @@ SQL);
         DB::flushQueryLog();
         DB::enableQueryLog();
         $service->options($user, 3);
-        $counts['five_equipped'] = count(DB::getQueryLog());
+        $counts['neutral_five_equipped'] = count(DB::getQueryLog());
+        DB::disableQueryLog();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $service->options($user, 3, $world->id);
+        $counts['owned_five_equipped'] = count(DB::getQueryLog());
         DB::disableQueryLog();
 
         $this->assertSame([
-            'items_0' => 2,
-            'items_1' => 2,
-            'items_50' => 2,
-            'five_equipped' => 2,
+            'neutral_items_0' => 2,
+            'owned_items_0' => 3,
+            'neutral_items_1' => 2,
+            'owned_items_1' => 3,
+            'neutral_items_50' => 2,
+            'owned_items_50' => 3,
+            'neutral_five_equipped' => 2,
+            'owned_five_equipped' => 3,
         ], $counts);
     }
 
