@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property int $user_id
+ * @property int $equipment_version
  * @property string|null $name
  * @property Carbon|null $named_at
  * @property-read User $user
@@ -23,7 +24,10 @@ final class Secretary extends Model
 
     protected function casts(): array
     {
-        return ['named_at' => 'immutable_datetime'];
+        return [
+            'equipment_version' => 'integer',
+            'named_at' => 'immutable_datetime',
+        ];
     }
 
     /** @return BelongsTo<User, $this> */
