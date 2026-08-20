@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Monster\MonsterDamageResult;
 use App\Domain\Monster\MonsterHardening;
+use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Turn\TurnContext;
 use App\Models\MapCell;
 use App\Models\MonsterInstance;
@@ -24,6 +25,7 @@ final class MonsterDamageService
         private readonly TurnEventRecorder $events,
         private readonly MonsterKillCycleService $monsterCycles,
         private readonly LaunchBaseExperienceService $baseExperience,
+        private readonly MonsterRewardPolicyResolver $rewardPolicies,
     ) {}
 
     public function applyDamage(
@@ -136,8 +138,14 @@ final class MonsterDamageService
                 ? null
                 : Nation::query()->whereKey($hostCell->owner_nation_id)->lockForUpdate()->first();
             $value = $locked->definition->wreckage_value_money;
-            $killerShare = intdiv($value, 2);
-            $hostShare = $value - $killerShare;
+            $rewardShares = $this->rewardPolicies->shares(
+                $context->ruleset->settings,
+                $locked->definition->key,
+                $value,
+                $hostNation !== null,
+            );
+            $killerShare = $rewardShares['killer_share'];
+            $hostShare = $rewardShares['host_share'];
             $killerMoney = null;
             $hostMeat = null;
             if ($killerNation !== null) {
@@ -198,7 +206,7 @@ final class MonsterDamageService
                 'wreckage_value_money' => $value,
                 'killer_money' => $killerMoney,
                 'host_meat_food' => $hostMeat,
-                'unclaimed_host_value_money' => $hostNation === null && $killerNation !== null ? $hostShare : 0,
+                'unclaimed_host_value_money' => $killerNation === null ? 0 : $rewardShares['unclaimed_share'],
                 'firing_base_experience_applied' => $baseExperienceApplied,
                 'firing_base_id' => $firingBase?->id,
                 'kill_stat_id' => $killStat?->id,
@@ -207,6 +215,11 @@ final class MonsterDamageService
                 'previous_monster_cycle_kill_count' => $monsterCycle['previous'] ?? null,
                 'new_monster_cycle_kill_count' => $monsterCycle['current'] ?? null,
             ];
+            if ($rewardShares['explicitly_authored']) {
+                $eventMetadata['monster_reward_policy'] = $rewardShares['policy'];
+                $eventMetadata['killer_requested_share_money'] = $killerNation === null ? 0 : $killerShare;
+                $eventMetadata['host_requested_share_money'] = $killerNation === null ? 0 : $hostShare;
+            }
             $this->events->record($context, 'monster.killed', $locked, $eventMetadata);
             if ($killerNation !== null) {
                 $this->events->record($context, 'monster.reward_distributed', $locked, $eventMetadata);

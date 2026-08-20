@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
 class MonsterApiAssetTest extends TestCase
@@ -239,6 +240,150 @@ class MonsterApiAssetTest extends TestCase
         ));
         $this->assertCount(1, $statQueries);
         $this->assertContains($nation->id, $statQueries[0]['bindings']);
+    }
+
+    public function test_public_detail_and_rankings_project_all_species_by_effective_order_with_bounded_queries(): void
+    {
+        [$world, $nation, $ruleset] = $this->worldAndNation('十種討伐国');
+        $secondNation = $this->createNation($world, '第二十種討伐国');
+        $fixture = collect(V11SecretaryItemRulesetFixture::settings()['monster_definitions'])->keyBy('key');
+        foreach (V11SecretaryItemRulesetFixture::newMonsterDefinitions() as $payload) {
+            MonsterDefinition::query()->create(['ruleset_version_id' => $ruleset->id, ...$payload]);
+        }
+        $definitions = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->get();
+        foreach ($definitions as $index => $definition) {
+            DB::table('nation_monster_kill_stats')->insert([
+                'world_id' => $world->id,
+                'nation_id' => $nation->id,
+                'monster_definition_id' => $definition->id,
+                'kill_count' => 1,
+                'first_killed_turn' => 2,
+                'last_killed_turn' => 2,
+                'version' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            DB::table('nation_monster_kill_stats')->insert([
+                'world_id' => $world->id,
+                'nation_id' => $secondNation->id,
+                'monster_definition_id' => $definition->id,
+                'kill_count' => 1,
+                'first_killed_turn' => 2,
+                'last_killed_turn' => 2,
+                'version' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            foreach ($index === 0 ? [] : range(1, $index) as $increment) {
+                DB::table('nation_monster_kill_stats')
+                    ->where('world_id', $world->id)
+                    ->where('nation_id', $nation->id)
+                    ->where('monster_definition_id', $definition->id)
+                    ->update([
+                        'kill_count' => $increment + 1,
+                        'last_killed_turn' => 3,
+                        'version' => $increment + 1,
+                        'updated_at' => now(),
+                    ]);
+            }
+        }
+
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+        $detail = $this->getJson("/api/v1/public/nations/{$nation->id}")->assertOk()->json('data');
+        $expectedKeys = $fixture->sortBy('display_order')->keys()->values()->all();
+        $this->assertSame($expectedKeys, array_column($detail['monster_kill_stats'], 'key'));
+        $this->assertCount(10, $detail['monster_kill_stats']);
+        $this->assertSame(array_sum(range(1, 10)), $detail['monster_final_blow_count']);
+        $this->assertSame(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'nation_monster_kill_stats'),
+        )->count());
+        $this->assertSame(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'from "monster_definitions"'),
+        )->count());
+
+        $queries = [];
+        $rankingRows = $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")
+            ->assertOk()->json('data');
+        $ranking = collect($rankingRows)->firstWhere('id', $nation->id)['achievements']['monster_kills'];
+        $this->assertSame($expectedKeys, array_column($ranking['species'], 'key'));
+        $this->assertSame(array_sum(range(1, 10)), $ranking['total_count']);
+        $this->assertSame('hakoniwa_original.monster.king_inora', $ranking['asset']['key']);
+        $secondRanking = collect($rankingRows)->firstWhere('id', $secondNation->id)['achievements']['monster_kills'];
+        $this->assertSame($expectedKeys, array_column($secondRanking['species'], 'key'));
+        $this->assertSame(10, $secondRanking['total_count']);
+        $this->assertSame(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'nation_monster_kill_stats'),
+        )->count());
+        $this->assertSame(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'from "monster_definitions"'),
+        )->count());
+    }
+
+    public function test_public_detail_and_rankings_keep_the_same_query_bound_for_twenty_species(): void
+    {
+        [$world, $nation, $ruleset] = $this->worldAndNation('二十種討伐国');
+        foreach (V11SecretaryItemRulesetFixture::newMonsterDefinitions() as $payload) {
+            MonsterDefinition::query()->create(['ruleset_version_id' => $ruleset->id, ...$payload]);
+        }
+        $template = V11SecretaryItemRulesetFixture::newMonsterDefinitions()[0];
+        foreach (range(1, 10) as $index) {
+            $payload = $template;
+            $payload['key'] = "synthetic_monster_{$index}";
+            $payload['name'] = "試験怪獣{$index}";
+            $payload['asset_key'] = "hakoniwa_custom.monster.synthetic_monster_{$index}";
+            $payload['display_order'] = 700 + ($index * 100);
+            MonsterDefinition::query()->create(['ruleset_version_id' => $ruleset->id, ...$payload]);
+        }
+        $definitions = MonsterDefinition::query()
+            ->where('ruleset_version_id', $ruleset->id)
+            ->get();
+        $this->assertCount(20, $definitions);
+        foreach ($definitions as $definition) {
+            DB::table('nation_monster_kill_stats')->insert([
+                'world_id' => $world->id,
+                'nation_id' => $nation->id,
+                'monster_definition_id' => $definition->id,
+                'kill_count' => 1,
+                'first_killed_turn' => 2,
+                'last_killed_turn' => 2,
+                'version' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+        $detail = $this->getJson("/api/v1/public/nations/{$nation->id}")->assertOk()->json('data');
+        $this->assertCount(20, $detail['monster_kill_stats']);
+        $this->assertSame(20, $detail['monster_final_blow_count']);
+        $this->assertSame(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'nation_monster_kill_stats'),
+        )->count());
+        $this->assertSame(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'from "monster_definitions"'),
+        )->count());
+
+        $queries = [];
+        $ranking = $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")
+            ->assertOk()->json('data.0.achievements.monster_kills');
+        $this->assertCount(20, $ranking['species']);
+        $this->assertSame(20, $ranking['total_count']);
+        $this->assertSame('hakoniwa_custom.monster.synthetic_monster_10', $ranking['asset']['key']);
+        $this->assertFalse($ranking['asset']['available']);
+        $this->assertNull($ranking['asset']['url']);
+        $this->assertSame('試験怪獣10', $ranking['asset']['fallback_label']);
+        $this->assertSame(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'nation_monster_kill_stats'),
+        )->count());
+        $this->assertSame(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'from "monster_definitions"'),
+        )->count());
     }
 
     private function temporaryAssetDirectory(): string

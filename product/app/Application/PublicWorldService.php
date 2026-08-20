@@ -2,14 +2,17 @@
 
 namespace App\Application;
 
+use App\Domain\Monster\MonsterDisplayOrderResolver;
 use App\Domain\World\HakoniwaCalendar;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonsterDefinition;
 use App\Models\Nation;
+use App\Models\NationMonsterKillStat;
 use App\Models\World;
 use App\Support\MoneyFormatter;
+use DomainException;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 final class PublicWorldService
 {
@@ -19,6 +22,7 @@ final class PublicWorldService
         private readonly TurnScheduleStatus $turnSchedule,
         private readonly PublicRankingAchievementProjection $achievements,
         private readonly HakoniwaCalendar $calendar,
+        private readonly MonsterDisplayOrderResolver $monsterDisplayOrders,
     ) {}
 
     /** @return array<string, mixed> */
@@ -79,27 +83,36 @@ final class PublicWorldService
             ->where('key', config('hakoniwa.world.map_space_key'))
             ->firstOrFail();
         $capital = $nation->capital()->first();
-        $monsterKillStats = DB::table('nation_monster_kill_stats')
-            ->join('monster_definitions', 'monster_definitions.id', '=', 'nation_monster_kill_stats.monster_definition_id')
-            ->where('nation_monster_kill_stats.world_id', $nation->world_id)
-            ->where('nation_monster_kill_stats.nation_id', $nation->id)
-            ->orderBy('monster_definitions.key')
-            ->limit(8)
-            ->get([
-                'monster_definitions.key',
-                'monster_definitions.name',
-                'nation_monster_kill_stats.kill_count',
-                'nation_monster_kill_stats.first_killed_turn',
-                'nation_monster_kill_stats.last_killed_turn',
-            ])
-            ->map(static fn (object $stat): array => [
-                'key' => (string) $stat->key,
-                'name' => (string) $stat->name,
-                'kill_count' => (int) $stat->kill_count,
-                'first_killed_turn' => (int) $stat->first_killed_turn,
-                'last_killed_turn' => (int) $stat->last_killed_turn,
-            ])
-            ->values();
+        $monsterKillRows = NationMonsterKillStat::query()
+            ->where('world_id', $nation->world_id)
+            ->where('nation_id', $nation->id)
+            ->where('kill_count', '>', 0)
+            ->with('definition')
+            ->get();
+        $definitions = $monsterKillRows->map(function (NationMonsterKillStat $stat) use ($world): MonsterDefinition {
+            $definition = $stat->definition;
+            if (! $definition instanceof MonsterDefinition || $definition->ruleset_version_id !== $world->ruleset_version_id) {
+                throw new DomainException('Public monster statistic references a missing or cross-ruleset definition.');
+            }
+
+            return $definition;
+        });
+        $orders = $this->monsterDisplayOrders->uniqueOrders($definitions);
+        $monsterKillStats = $monsterKillRows
+            ->sort(function (NationMonsterKillStat $left, NationMonsterKillStat $right) use ($orders): int {
+                $byOrder = $orders[$left->monster_definition_id] <=> $orders[$right->monster_definition_id];
+
+                return $byOrder !== 0
+                    ? $byOrder
+                    : $left->definition->key <=> $right->definition->key;
+            })
+            ->map(static fn (NationMonsterKillStat $stat): array => [
+                'key' => $stat->definition->key,
+                'name' => $stat->definition->name,
+                'kill_count' => $stat->kill_count,
+                'first_killed_turn' => $stat->first_killed_turn,
+                'last_killed_turn' => $stat->last_killed_turn,
+            ])->values();
 
         return [
             ...$this->publicNationFields($nation, $world),

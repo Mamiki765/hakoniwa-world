@@ -649,12 +649,24 @@ describe('application lobby and island entry', () => {
     });
 
     it('opens a guest preview through public-only endpoints', async () => {
+        const monsterKillStats = Array.from({ length: 11 }, (_, index) => ({
+            key: `monster_${index}`,
+            name: `怪獣${index}`,
+            kill_count: index + 1,
+            first_killed_turn: index + 2,
+            last_killed_turn: index + 3,
+        }));
+        const detailWithManySpecies: PublicNationDetail = {
+            ...publicDetail,
+            monster_final_blow_count: 66,
+            monster_kill_stats: monsterKillStats,
+        };
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             const lobby = publicResponse(path);
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response(null, 401);
-            if (path === '/api/v1/public/nations/7') return response(publicDetail);
+            if (path === '/api/v1/public/nations/7') return response(detailWithManySpecies);
             if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
             return response(null, 404);
         });
@@ -675,6 +687,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.preview-heading').text()).toContain('採掘場規模5,000人');
         expect(wrapper.text()).toContain('島主：公開島主');
         expect(wrapper.text()).toContain('公開コメント');
+        expect(wrapper.find('.monster-kill-marks').text()).toContain('怪獣10 × 11');
+        expect(wrapper.findAll('.monster-kill-marks > span')).toHaveLength(11);
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
         expect(wrapper.find('.preview-page > .message-board').exists()).toBe(true);
         const previewBoard = wrapper.get('.preview-page > .message-board').element;

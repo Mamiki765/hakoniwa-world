@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Award\NationAwardCatalog;
+use App\Domain\Monster\MonsterDisplayOrderResolver;
 use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\NationAward;
@@ -14,7 +15,10 @@ use Illuminate\Database\Eloquent\Collection;
 
 final class PublicRankingAchievementProjection
 {
-    public function __construct(private readonly AssetManifestResolver $assets) {}
+    public function __construct(
+        private readonly AssetManifestResolver $assets,
+        private readonly MonsterDisplayOrderResolver $monsterDisplayOrders,
+    ) {}
 
     /**
      * @param  Collection<int, Nation>  $nations
@@ -108,25 +112,32 @@ final class PublicRankingAchievementProjection
             ->get()
             ->groupBy('nation_id');
         foreach ($nationIds as $nationId) {
-            $species = [];
-            foreach ($rows->get($nationId, collect()) as $stat) {
+            $stats = $rows->get($nationId, collect());
+            $definitions = $stats->map(function (NationMonsterKillStat $stat) use ($world): MonsterDefinition {
                 $definition = $stat->definition;
-                if (! $definition instanceof MonsterDefinition) {
-                    throw new DomainException('Public monster achievement references a missing definition.');
+                if (! $definition instanceof MonsterDefinition || $definition->ruleset_version_id !== $world->ruleset_version_id) {
+                    throw new DomainException('Public monster achievement references a missing or cross-ruleset definition.');
                 }
-                $kind = $definition->source_metadata['kind'] ?? null;
-                if (! is_int($kind) || $kind < 0 || $kind > 7) {
-                    throw new DomainException('Public monster achievement requires stable source kind 0..7.');
-                }
+
+                return $definition;
+            });
+            $orders = $this->monsterDisplayOrders->uniqueOrders($definitions);
+            $species = [];
+            foreach ($stats as $stat) {
+                $definition = $stat->definition;
                 $species[] = [
                     'key' => $definition->key,
                     'name' => $definition->name,
                     'kill_count' => $stat->kill_count,
-                    'kind' => $kind,
+                    'display_order' => $orders[$definition->id],
                     'asset_key' => $definition->asset_key,
                 ];
             }
-            usort($species, static fn (array $left, array $right): int => $left['kind'] <=> $right['kind']);
+            usort($species, static function (array $left, array $right): int {
+                $byOrder = $left['display_order'] <=> $right['display_order'];
+
+                return $byOrder !== 0 ? $byOrder : $left['key'] <=> $right['key'];
+            });
             if ($species === []) {
                 continue;
             }
