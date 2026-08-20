@@ -54,6 +54,7 @@ const unnamedSecretaryFixture: Secretary = {
     name: null,
     named_at: null,
     header_label: '？？？',
+    equipment_version: 1,
     skills: [
         { key: 'agricultural_policy', name: '農業政策', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '小麦生産＋0.0%' },
         { key: 'specialty_development', name: '特産品開発', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '工場生産＋0.0%' },
@@ -72,6 +73,7 @@ const unnamedSecretaryFixture: Secretary = {
     },
     equipment: {
         slot_count: 5,
+        category_limits: [{ category: 'bow', label: '弓', maximum_equipped: 1 }],
         slots: [
             { slot: 1, item: null },
             { slot: 2, item: null },
@@ -997,6 +999,111 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(renameRequest?.[1]?.body))).toEqual({ name: 'エメラルド' });
         expect(wrapper.text()).toContain('秘書の名前を「エメラルド」に変更しました。');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
+    });
+
+    it('loads authoritative equipment options and handles duplicate submit, stale refresh, validation, and success', async () => {
+        let serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        let optionsCalls = 0;
+        let putCalls = 0;
+        let resolveFirstPut: ((response: Response) => void) | undefined;
+        const firstPut = new Promise<Response>((resolve) => { resolveFirstPut = resolve; });
+
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') {
+                return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, can_manage_inquiries: false, providers: [] });
+            }
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary') return response(serverSecretary);
+            if (path === '/api/v1/me/secretary/equipment/1/options') {
+                optionsCalls++;
+                const current = serverSecretary.equipment.slots[0]!.item;
+                return response({
+                    slot: 1,
+                    equipment_version: serverSecretary.equipment_version,
+                    current_item: current === null ? null : {
+                        id: current.id, key: current.key, name: current.name, level: current.level,
+                        category: current.category, category_label: current.category_label, equipped_slot: current.equipped_slot,
+                    },
+                    items: current === null ? [] : [{
+                        id: current.id, key: current.key, name: current.name, level: current.level,
+                        category: current.category, category_label: current.category_label, equipped_slot: current.equipped_slot,
+                    }],
+                    category_limits: serverSecretary.equipment.category_limits,
+                });
+            }
+            if (path === '/api/v1/me/secretary/equipment/1' && init?.method === 'PUT') {
+                putCalls++;
+                if (putCalls === 1) {
+                    serverSecretary.equipment_version = 2;
+                    return firstPut;
+                }
+                if (putCalls === 2) {
+                    return new Response(JSON.stringify({
+                        code: 'secretary_equipment_invalid',
+                        message: 'この装備は選択できません。',
+                    }), { status: 422, headers: { 'Content-Type': 'application/json' } });
+                }
+
+                serverSecretary.equipment_version = 3;
+                serverSecretary.inventory.items[0]!.equipped_slot = null;
+                serverSecretary.inventory.items[0]!.is_equipped = false;
+                serverSecretary.equipment.slots[0]!.item = null;
+                return response(serverSecretary);
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.findAll('[role="tab"]')[1]!.trigger('click');
+        expect(wrapper.findAll('.secretary-equipment button')).toHaveLength(5);
+        expect(wrapper.get('.equipment-category-limits').text()).toContain('弓・1個まで');
+        await wrapper.findAll('.secretary-equipment button')[0]!.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.equipment-modal').attributes('aria-modal')).toBe('true');
+        expect(wrapper.findAll('.equipment-option-row').map((row) => row.text())).toEqual(['外す', '古びた弓Lv1・弓']);
+        expect(wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[1]!.element.checked).toBe(true);
+        const submit = wrapper.get('.equipment-modal-footer button');
+        await submit.trigger('click');
+        await submit.trigger('click');
+        expect(putCalls).toBe(1);
+
+        resolveFirstPut?.(new Response(JSON.stringify({
+            code: 'secretary_equipment_version_conflict',
+            message: '装備状態が更新されています。',
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+        await flushPromises();
+        expect(optionsCalls).toBe(2);
+        expect(wrapper.get('.equipment-modal-notice').text()).toContain('最新の候補から選び直してください');
+        expect(wrapper.get<HTMLButtonElement>('.equipment-modal-footer button').element.disabled).toBe(true);
+
+        await wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[0]!.setValue(true);
+        expect(wrapper.get<HTMLButtonElement>('.equipment-modal-footer button').element.disabled).toBe(false);
+        await wrapper.get('.equipment-modal-footer button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.equipment-modal-error').text()).toBe('この装備は選択できません。');
+        expect(wrapper.find('.equipment-modal').exists()).toBe(true);
+
+        await wrapper.get('.equipment-modal-footer button').trigger('click');
+        await flushPromises();
+        expect(putCalls).toBe(3);
+        expect(wrapper.find('.equipment-modal').exists()).toBe(false);
+        expect(wrapper.findAll('.secretary-equipment li')[0]!.text()).toContain('空き');
+        const successfulBody = JSON.parse(String(fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/secretary/equipment/1'
+        )).at(-1)?.[1]?.body));
+        expect(successfulBody).toEqual({ item_id: null, expected_version: 2 });
     });
 
     it('shows only a compact header inquiry shortcut to non-admin users', async () => {
