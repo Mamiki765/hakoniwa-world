@@ -102,6 +102,11 @@ final class SecretaryItemGameplayContractTest extends TestCase
 
             return $settings;
         }];
+        yield 'overflowing finance bonus' => [static function (array $settings): array {
+            $settings['secretary']['items']['ring']['effects'][0]['bonus_money_per_level'] = intdiv(PHP_INT_MAX, 50) + 1;
+
+            return $settings;
+        }];
         yield 'unknown field' => [static function (array $settings): array {
             $settings['secretary']['items']['ring']['effects'][0]['expression'] = 'level * 1';
 
