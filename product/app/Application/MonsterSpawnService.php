@@ -47,9 +47,7 @@ final class MonsterSpawnService
             ->orderBy('id')
             ->get()
             ->keyBy('key');
-        if ($definitions->count() !== 8) {
-            throw new DomainException('The active ruleset does not have the exact PR21 monster catalog.');
-        }
+        $this->policy->validatePoolReferences($system, $definitions->keys()->all());
 
         $nations = Nation::query()
             ->where('world_id', $context->world->id)
