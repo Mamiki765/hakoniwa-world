@@ -103,4 +103,33 @@ describe('RankingAchievements', () => {
         expect(wrapper.find('.ranking-achievements').exists()).toBe(false);
         expect(wrapper.find('button').exists()).toBe(false);
     });
+
+    it('renders eleven ordered species with an accessible missing-asset fallback', async () => {
+        const species = Array.from({ length: 11 }, (_, index) => ({
+            key: `monster_${index}`,
+            name: `怪獣${index}`,
+            kill_count: index + 1,
+        }));
+        const wrapper = mount(RankingAchievements, {
+            props: {
+                achievements: {
+                    awards: [],
+                    monster_kills: {
+                        total_count: 66,
+                        asset: asset('hakoniwa_custom.monster.missing', false),
+                        species,
+                    },
+                },
+            },
+        });
+
+        const trigger = wrapper.get('button');
+        expect(trigger.attributes('aria-label')).toBe('怪獣討伐 66体');
+        expect(wrapper.get('.achievement-fallback').text()).toBe('怪');
+        await trigger.trigger('focus');
+        expect(wrapper.findAll('.achievement-turns > span')).toHaveLength(11);
+        expect(wrapper.findAll('.achievement-turns > span').map((node) => node.text()))
+            .toEqual(species.map((row) => `${row.name} ×${row.kill_count}`));
+        expect(trigger.attributes('aria-describedby')).toBe(wrapper.get('[role="tooltip"]').attributes('id'));
+    });
 });

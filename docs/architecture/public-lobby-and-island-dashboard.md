@@ -56,9 +56,9 @@ public eventsはraw `audit_events`を返さない。PR5のallowlistは `nation.c
 
 PR21のowner-only player island event projectionは怪獣eventをallowlistへ追加するが、metadata自体は返さない。Nation attributed final blowは`monster.reward_distributed`一件をrole-awareに投影し、killerには撃破とapplied賞金、死亡時hostには怪獣肉のappliedトン数を示す。同一Nationなら両方を一つの明確なmessageへまとめ、neutral hostならkiller messageだけを返す。unattributed death、spawn、movement/trample、hardening block、defense contact、terrain removalも安全な定型文へ変換する。seed、draw、candidate、内部move counter、source metadataは文面/APIへ入れない。
 
-公開Nation detailは対象Nationの`nation_monster_kill_stats`を一query・最大8行で取得する。`monster_final_blow_count = SUM(kill_count)`とdefinition別key/name/`kill_count`/`first_killed_turn`/`last_killed_turn`を返す。
+公開Nation detailは対象Nationの正数`nation_monster_kill_stats`を一括取得する。種類数に上限は設けず、`monster_final_blow_count = SUM(kill_count)`とdefinition別key/name/`kill_count`/`first_killed_turn`/`last_killed_turn`を返す。並び順は明示`display_order`、historical nullでは監査済み`source_metadata.kind * 100`を使う。v1〜v10のruleset authoringは従来の正確な8種を維持するが、公開projectionは加算的catalogを切り捨てない。
 
-ver 1.3.0の公開TOPランキングだけは全Nationの`nation_awards`と正数の`nation_monster_kill_stats`をtableごとの一括queryで投影する。各Nationは順位と主要数値の1行、島主名とprofile commentの2行目で表示する。ver 1.3.1 overrideにより、2行目はcommentがある場合は`島主名：comment`、ない場合は島主名だけとする。賞は全反復受賞turn、怪獣markは最大stable source kindの画像、tooltipはkind昇順の種類別正確countを返す。raw kind、source metadata、seed、周期内部countは公開しない。World summaryとpublic Nation detailへ`achievements`を追加しない。正本は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`とする。
+ver 1.3.0の公開TOPランキングだけは全Nationの`nation_awards`と正数の`nation_monster_kill_stats`をtableごとの一括queryで投影する。各Nationは順位と主要数値の1行、島主名とprofile commentの2行目で表示する。ver 1.3.1 overrideにより、2行目はcommentがある場合は`島主名：comment`、ない場合は島主名だけとする。賞は全反復受賞turn、怪獣markは最大effective display orderのspecies画像、tooltipは同じ順序の全種類について正確なcountを返す。raw order、source metadata、seed、周期内部countは公開しない。World summaryとpublic Nation detailへ`achievements`を追加しない。賞の正本は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`、加算的な怪獣projectionの正本は`product/docs/ver-2.3.0-c3-monster-foundation.md`とする。
 
 ## Effective 20-slot plan
 

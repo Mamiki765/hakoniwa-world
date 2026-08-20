@@ -44,7 +44,9 @@ pre-1.3.0期間の区間値はeventや永久累積値から推測しない。mig
 
 賞は`prize0.gif`〜`prize10.gif`を16×16 CSSで表示する。反復賞は1〜9回を`×n`、10回以上を数字だけで表示し、tooltipに全受賞turnを昇順で列挙する。画像不足時は短いtext fallbackを使う。
 
-怪獣討伐markは永久種類別countが1以上のときだけ表示する。表示画像は討伐済みdefinitionの最大`source_metadata.kind`から選び、DB primary keyや名称順へ依存しない。tooltipはkind昇順で種類名と正確なcountを示す。raw kindとsource metadataはAPIへ返さない。
+怪獣討伐markは永久種類別countが1以上のときだけ表示する。本ADRが決定したv1〜v10のhistorical catalogでは、表示画像を討伐済みdefinitionの最大`source_metadata.kind`から選び、tooltipをkind昇順で示す。
+
+ver 2.3.0 C3以降の公開projectionでは、この固定8種向け順序契約を`product/docs/ver-2.3.0-c3-monster-foundation.md`が明示的にsupersedeする。正数statを種類数の上限なしで投影し、明示`display_order`、historical nullでは`source_metadata.kind * 100`をeffective display orderとして使う。markはその最大値のspecies、tooltipは同じ順序の全speciesと正確なcountを示す。v1〜v10のruleset authoring自体は従来の正確な8種を維持し、raw order、kind、source metadataはAPIへ返さない。賞の決定は本ADRのままである。
 
 tooltipは専用buttonをtriggerとし、hover、keyboard focus、tap/click、Escapeで操作できる。`title`属性だけには依存しない。
 

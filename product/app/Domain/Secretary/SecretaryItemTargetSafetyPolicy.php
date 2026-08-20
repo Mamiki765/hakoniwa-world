@@ -26,17 +26,23 @@ final class SecretaryItemTargetSafetyPolicy
         if ($remainingHp === 0) {
             return true;
         }
-        $hazard = $monster->definition->source_metadata[self::METADATA_KEY] ?? null;
-        if ($hazard === null) {
+        $metadata = $monster->definition->source_metadata;
+        if (! array_key_exists(self::METADATA_KEY, $metadata)) {
             return true;
         }
+        $hazard = $metadata[self::METADATA_KEY];
+        $this->validateMetadata($hazard);
+
+        return $remainingHp !== $hazard['remaining_hp'];
+    }
+
+    public function validateMetadata(mixed $hazard): void
+    {
         if (! is_array($hazard) || count($hazard) !== 2
             || ! array_key_exists('policy', $hazard) || ! array_key_exists('remaining_hp', $hazard)
             || ($hazard['policy'] ?? null) !== self::CERTAIN_SELF_ACTION_AT_REMAINING_HP
             || ! is_int($hazard['remaining_hp'] ?? null) || $hazard['remaining_hp'] < 1) {
             throw new DomainException('Monster Secretary Item target-safety metadata is invalid.');
         }
-
-        return $remainingHp !== $hazard['remaining_hp'];
     }
 }

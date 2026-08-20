@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $name
  * @property string $asset_key
  * @property string|null $hardened_asset_key
+ * @property int|null $display_order
  * @property int $base_hp
  * @property int $hp_variation
  * @property string $skill_key
@@ -30,7 +31,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 final class MonsterDefinition extends Model
 {
     protected $fillable = [
-        'ruleset_version_id', 'key', 'name', 'asset_key', 'hardened_asset_key', 'base_hp',
+        'ruleset_version_id', 'key', 'name', 'asset_key', 'hardened_asset_key', 'display_order', 'base_hp',
         'hp_variation', 'skill_key', 'movement_limit', 'natural_spawn_tier',
         'wreckage_value_money', 'missile_base_experience', 'skill_description', 'visibility',
         'movement_terrain_contract', 'trample_contract', 'hardening_contract', 'source_metadata',
@@ -40,7 +41,7 @@ final class MonsterDefinition extends Model
     protected function casts(): array
     {
         return [
-            'base_hp' => 'integer', 'hp_variation' => 'integer', 'movement_limit' => 'integer',
+            'display_order' => 'integer', 'base_hp' => 'integer', 'hp_variation' => 'integer', 'movement_limit' => 'integer',
             'natural_spawn_tier' => 'integer', 'wreckage_value_money' => 'integer',
             'missile_base_experience' => 'integer', 'movement_terrain_contract' => 'array',
             'trample_contract' => 'array', 'hardening_contract' => 'array', 'source_metadata' => 'array',

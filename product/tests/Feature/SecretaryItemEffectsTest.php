@@ -725,8 +725,17 @@ final class SecretaryItemEffectsTest extends TestCase
             foreach ($model::query()->where('ruleset_version_id', $previousRulesetId)->orderBy('id')->get() as $definition) {
                 $copy = $definition->replicate();
                 $copy->ruleset_version_id = $ruleset->id;
+                if ($copy instanceof MonsterDefinition) {
+                    $copy->display_order = V11SecretaryItemRulesetFixture::displayOrderFor($definition->key);
+                }
                 $copy->save();
             }
+        }
+        foreach (V11SecretaryItemRulesetFixture::newMonsterDefinitions() as $definition) {
+            MonsterDefinition::query()->create([
+                'ruleset_version_id' => $ruleset->id,
+                ...$definition,
+            ]);
         }
         $world->update(['ruleset_version_id' => $ruleset->id]);
 

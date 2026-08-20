@@ -640,6 +640,21 @@ Minimum:
 - existing rewards unchanged;
 - Aoi hostless full payout contract.
 
+## C3 verified implementation result (2026-08-20)
+
+- Started from the reverified `release/ver-2.3.0` integration head after PR #66 Quality and exact-head review gates were confirmed. No C3-related Open item reached its `Required before` gate.
+- Added nullable, non-negative, per-ruleset unique `monster_definitions.display_order` without updating published v1-v10 payloads or rows. Historical publisher execution was verified both before and after the column capability is available.
+- One query-free resolver owns PostgreSQL-integer-bounded explicit order and audited null fallback (`kind * 100`). Public Nation detail and rankings use it for all positive species; representative selection is the greatest effective order.
+- The repository's established stable key `whale` remains unchanged while its player-facing name/asset remain クジラ/`hakoniwa_original.monster.kujira`.
+- The shared inactive v11-shaped test fixture contains the eight historical definitions plus `mecha_inora_zero` and `aoi_inora`. Validator mode is selected by matching v11 identity/version, so v1-v10 remain exact-eight and v11 cannot omit explicit orders. That exact test fixture reuses only already-decided v10 non-monster contracts; it does not publish v11 or resolve B-12. New definitions have no invented legacy provenance and remain outside Nation natural-spawn pools.
+- Natural-spawn references fail closed before draws. Ten loaded definitions preserve the same pool and deterministic type selection; there is no exact-eight runtime maximum.
+- Added exact custom asset mappings only. No GIF binary was created or committed, and missing files resolve to the existing null-URL fallback.
+- Added ruleset-owned standard split and hostless-full-killer-money policies. v1-v10 preserve the legacy split and event shape; Aoi's neutral-host fixture requests all 1,200億円 for the killer, applies capacity, creates no host meat, and increments the kill statistic once.
+- The advanced manual has ten display-order-sorted rows. Its order and values are contract-tested directly from the shared fixture.
+- Public detail and ranking each use one aggregate query plus one eager definition query for ten and twenty species; the ranking bound is unchanged across two Nations. Frontend ranking/detail tests render eleven species with accessible missing-asset fallback and bounded scrolling.
+- Local verification: historical `migrate:fresh` through C3 passed; open-question contract remains 77 IDs (Decided 55, Deferred 17, Open 5); Pint passed all 442 PHP files; full-app PHPStan passed; frontend 129 tests/lint/typecheck/build passed; the 16-shard plan covered 108 test files with duplicate/missing/unexpected counts all zero and every shard passed (one existing skip), followed by a focused 38-test/483-assertion final self-audit run.
+- C4 still owns actual Aoi/Zero spawn, movement, dispatch, and self-destruction. C5 still owns the formal v11 config/publication migration, World/data rebind, and release conversion.
+
 ---
 
 # C4 — new monsters
