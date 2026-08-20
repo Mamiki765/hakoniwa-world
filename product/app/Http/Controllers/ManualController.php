@@ -14,6 +14,7 @@ final class ManualController extends Controller
         'beginner' => '初級編',
         'intermediate' => '中級編',
         'advanced' => '上級編',
+        'secretary' => '秘書',
     ];
 
     public function __invoke(?string $section = null): View

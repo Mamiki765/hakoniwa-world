@@ -7,6 +7,7 @@
 - [初級編](/manual/beginner)：最初の開発、人口、食料、資源、生産
 - [中級編](/manual/intermediate)：開発計画、一括操作、特殊施設、ミサイル、怪獣
 - [上級編](/manual/advanced)：ターン順序、災害、上限、長期運営
+- [秘書](/manual/secretary)：スキル、倉庫、装備、アイテムの効果
 
 ゲームの運営方針は[利用ルール](/community-guidelines)、使用素材などは[クレジット](/credits)で確認できます。
 

@@ -178,6 +178,13 @@ final class FirstProductionReleaseTest extends TestCase
         $this->get('/manual/advanced')->assertOk()
             ->assertSee('地盤沈下')
             ->assertSee('島の破棄');
+        $this->get('/manual/secretary')->assertOk()
+            ->assertSee('倉庫には最大50個')
+            ->assertSee('装備スロットが5個')
+            ->assertSee('10%の確率で、自領の地上にいる怪獣に1ダメージを与える。')
+            ->assertSee('次に開始できるターンから反映')
+            ->assertSee('自動の資金繰り')
+            ->assertSee('島を破棄しても');
         $this->get('/community-guidelines')->assertOk()
             ->assertSee('利用ルール')
             ->assertSee('通報・異議申立て窓口を開く');
@@ -188,5 +195,19 @@ final class FirstProductionReleaseTest extends TestCase
             $this->assertDoesNotMatchRegularExpression('/\b(?:source|legacy|ruleset)\b/i', $manual);
             $this->assertDoesNotMatchRegularExpression('/自爆|飛翔|とてつもない|Karma/i', $manual);
         }
+        $css = file_get_contents(resource_path('css/hakoniwa.css'));
+        $this->assertIsString($css);
+        $this->assertStringContainsString(
+            '.secretary-equipment { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));',
+            $css,
+        );
+        $this->assertStringContainsString(
+            '.secretary-equipment { grid-template-columns: repeat(2, minmax(0, 1fr)); }',
+            $css,
+        );
+        $this->assertStringContainsString(
+            '.secretary-warehouse .item-flavor { color: var(--muted); font-style: italic;',
+            $css,
+        );
     }
 }
