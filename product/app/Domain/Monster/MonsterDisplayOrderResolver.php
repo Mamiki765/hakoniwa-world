@@ -7,6 +7,8 @@ use DomainException;
 
 final class MonsterDisplayOrderResolver
 {
+    private const POSTGRESQL_INTEGER_MAX = 2_147_483_647;
+
     public function forDefinition(MonsterDefinition $definition): int
     {
         return $this->resolve($definition->display_order, $definition->source_metadata);
@@ -16,8 +18,13 @@ final class MonsterDisplayOrderResolver
     public function resolve(mixed $displayOrder, array $sourceMetadata): int
     {
         if ($displayOrder !== null) {
-            if (! is_int($displayOrder) || $displayOrder < 0) {
-                throw new DomainException('Monster display order must be a non-negative integer.');
+            if (! is_int($displayOrder)
+                || $displayOrder < 0
+                || $displayOrder > self::POSTGRESQL_INTEGER_MAX) {
+                throw new DomainException(
+                    'Monster display order must fit the PostgreSQL integer range 0..'
+                    .self::POSTGRESQL_INTEGER_MAX.'.',
+                );
             }
 
             return $displayOrder;

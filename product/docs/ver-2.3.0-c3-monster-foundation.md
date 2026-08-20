@@ -10,7 +10,7 @@ The shared test-only `V11SecretaryItemRulesetFixture` is inactive and contains t
 
 `monster_definitions.display_order` is nullable for historical compatibility, constrained to non-negative integers, and unique per ruleset when non-null. The migration does not update existing rows and is forward-only.
 
-The effective order resolver uses an explicit non-negative value when present. A historical null falls back to the audited `source_metadata.kind * 100`, accepting only integer kinds 0 through 7. Duplicate effective orders fail closed. The resolver performs no database query and is shared by public Nation detail and ranking achievements.
+The effective order resolver uses an explicit non-negative PostgreSQL integer value when present and rejects values above `2,147,483,647` before publication. A historical null falls back to the audited `source_metadata.kind * 100`, accepting only integer kinds 0 through 7. Duplicate effective orders fail closed. The resolver performs no database query and is shared by public Nation detail and ranking achievements.
 
 `RulesetPublisher` checks the column capability once per publish. Historical migrations that execute the mutable publisher before the C3 migration omit the unavailable field. Once the column exists, historical snapshots persist and compare null, while explicitly ordered definitions persist their authored value. Published v1-v10 settings and rows are not rewritten.
 

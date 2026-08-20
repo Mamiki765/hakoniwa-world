@@ -82,6 +82,18 @@ final class MonsterFoundationContractTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
+    public function test_authored_display_order_fits_the_postgresql_integer_range(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $settings = V11SecretaryItemRulesetFixture::settings();
+        $settings['monster_definitions'][0]['display_order'] = 2_147_483_647;
+        $this->assertSame(10, $validator->validate($settings)['monsters']);
+
+        $settings['monster_definitions'][0]['display_order'] = 2_147_483_648;
+        $this->expectException(DomainException::class);
+        $validator->validate($settings);
+    }
+
     public function test_extended_monster_shape_is_available_only_to_matching_v11_identity_and_version(): void
     {
         $validator = app(RulesetAuthoringValidator::class);
