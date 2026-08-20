@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\InitialIslandGenerator;
+use App\Application\InitialIslandPlan;
 use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
@@ -146,6 +147,17 @@ class NationCreationTest extends TestCase
         $world = $this->lightweightWorld();
         $this->app->bind(InitialIslandGenerator::class, fn () => new class implements InitialIslandGenerator
         {
+            public function plan(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): InitialIslandPlan
+            {
+                MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', $center->x)->where('y', $center->y)->update(['population' => 999]);
+                throw new RuntimeException('injected island failure');
+            }
+
+            public function apply(InitialIslandPlan $plan, MapSpace $mapSpace, Nation $nation): NationCapital
+            {
+                throw new RuntimeException('unreachable island apply');
+            }
+
             public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital
             {
                 MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', $center->x)->where('y', $center->y)->update(['population' => 999]);

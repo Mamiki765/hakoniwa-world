@@ -448,7 +448,7 @@ export interface CommandDefinition {
     target_type: 'cell' | 'nation';
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_default: number | null;
-    quantity_options: Array<{ value: number; key: string; label: string }>;
+    quantity_options: Array<{ value: number; key: string; label: string; cost_money?: number }>;
     parameters: Record<string, {
         label: string;
         type: 'integer';
@@ -509,6 +509,7 @@ export interface CommandQueueItem {
     quantity: number;
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_label: string | null;
+    effective_cost_money?: number;
     parameters: Record<string, unknown>;
     status: string;
     queued_at: string | null;

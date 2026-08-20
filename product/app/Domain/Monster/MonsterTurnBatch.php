@@ -49,8 +49,12 @@ final class MonsterTurnBatch
         return $this->occupancyByCellId[$cellId] ?? null;
     }
 
-    public function move(MonsterOccupancy $occupancy, int $fromCellId, int $toCellId): void
-    {
+    public function move(
+        MonsterOccupancy $occupancy,
+        int $fromCellId,
+        int $toCellId,
+        bool $trampled = true,
+    ): void {
         if (($this->occupancyByCellId[$fromCellId] ?? null)?->id !== $occupancy->id
             || isset($this->occupancyByCellId[$toCellId])) {
             throw new InvalidArgumentException('Monster movement would desynchronize the turn-local occupancy index.');
@@ -61,7 +65,9 @@ final class MonsterTurnBatch
         $moves = ($this->movesTakenByMonster[$monsterId] ?? 0) + 1;
         $this->movesTakenByMonster[$monsterId] = $moves;
         $this->metrics['monster_moves']++;
-        $this->metrics['cells_trampled']++;
+        if ($trampled) {
+            $this->metrics['cells_trampled']++;
+        }
         $this->metrics['maximum_moves_by_single_monster'] = max(
             $this->metrics['maximum_moves_by_single_monster'],
             $moves,
@@ -103,6 +109,19 @@ final class MonsterTurnBatch
     public function countDefenseSelfDestruct(): void
     {
         $this->metrics['defense_self_destructs']++;
+    }
+
+    public function countWaterMove(bool $destructive): void
+    {
+        $this->metrics['aoi_water_moves'] = ($this->metrics['aoi_water_moves'] ?? 0) + 1;
+        if ($destructive) {
+            $this->metrics['aoi_destructive_moves'] = ($this->metrics['aoi_destructive_moves'] ?? 0) + 1;
+        }
+    }
+
+    public function countNuclearSelfDestruct(): void
+    {
+        $this->metrics['nuclear_self_destructs'] = ($this->metrics['nuclear_self_destructs'] ?? 0) + 1;
     }
 
     /** @return array<string, int> */

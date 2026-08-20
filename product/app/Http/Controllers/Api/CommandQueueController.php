@@ -12,6 +12,7 @@ use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Ruleset\ResetRequiredException;
 use App\Http\Controllers\Controller;
 use App\Models\CommandDefinition;
@@ -31,6 +32,7 @@ final class CommandQueueController extends Controller
         private readonly LegacyCommandQueueOrder $legacyOrder,
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
+        private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
     ) {}
 
     public function definitions(
@@ -205,6 +207,8 @@ final class CommandQueueController extends Controller
             'quantity' => ['sometimes'],
             'parameters' => ['sometimes', 'array'],
             'position' => ['sometimes', 'integer', 'min:1', "max:{$limit}"],
+            'monster_key' => ['prohibited'],
+            'cost_money' => ['prohibited'],
         ]);
 
         try {
@@ -403,6 +407,10 @@ final class CommandQueueController extends Controller
                     'quantity' => $item->quantity,
                     'quantity_semantics' => $this->quantitySemantics->for($item->definition),
                     'quantity_label' => $this->quantitySemantics->label($item->definition, $item->quantity),
+                    'effective_cost_money' => $item->definition->key === 'monster_dispatch'
+                        && ($item->definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
+                            ? $this->monsterDispatchOptions->resolve($item->definition, $item->quantity)->costMoney
+                            : $item->definition->cost_money,
                     'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                     'status' => $item->status,
                     'queued_at' => $item->queued_at?->toIso8601String(),

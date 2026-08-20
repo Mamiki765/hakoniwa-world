@@ -16,13 +16,27 @@ use Illuminate\Support\Facades\DB;
 
 final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerator
 {
+    /** @var list<string> */
+    private const PLANNED_CELL_FIELDS = [
+        'map_space_id', 'map_chunk_id', 'x', 'y',
+        'terrain_definition_id', 'facility_definition_id', 'monument_definition_id',
+        'owner_nation_id', 'population', 'terrain_quantity', 'facility_scale',
+        'facility_experience', 'facility_operational_state', 'state', 'version',
+    ];
+
     public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital
     {
-        $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+        return $this->apply($this->plan($mapSpace, $nation, $center, $seed), $mapSpace, $nation);
+    }
+
+    public function plan(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): InitialIslandPlan
+    {
+        $ruleset = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail();
+        $rules = $ruleset->settings;
         $random = new DeterministicRandom($seed);
         $reservation = $center->radius($rules['initial_island_reservation_radius']);
         $terrainIds = TerrainDefinition::query()->pluck('id', 'key');
-        $cells = MapCell::query()
+        $lockedCells = MapCell::query()
             ->where('map_space_id', $mapSpace->id)
             ->where(function ($query) use ($reservation): void {
                 foreach ($reservation as $coordinate) {
@@ -32,6 +46,8 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             ->lockForUpdate()
             ->get()
             ->keyBy(fn (MapCell $cell): string => $cell->x.':'.$cell->y);
+
+        $cells = $lockedCells->map(static fn (MapCell $cell): MapCell => clone $cell);
 
         if ($cells->count() !== count($reservation)) {
             throw new DomainException('初期島の予約範囲が生成済み世界からはみ出しています。');
@@ -154,29 +170,92 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         );
 
         $changedChunks = [];
+        $cellPrestates = [];
+        $cellWrites = [];
         foreach ($cells as $cell) {
             if ($cell->isDirty()) {
                 $cell->version++;
-                $cell->save();
                 $changedChunks[$cell->map_chunk_id] = true;
+                /** @var MapCell $lockedCell */
+                $lockedCell = $lockedCells->get($cell->x.':'.$cell->y);
+                $cellPrestates[$cell->id] = $this->plannedAttributes($lockedCell);
+                $cellWrites[$cell->id] = $this->plannedAttributes($cell);
             }
         }
-        DB::table('map_chunks')->whereIn('id', array_keys($changedChunks))->increment('version');
+        ksort($cellWrites, SORT_NUMERIC);
+        $changedCellIds = array_map(static fn ($id): int => (int) $id, array_keys($cellWrites));
+        $changedChunkIds = array_map(static fn ($id): int => (int) $id, array_keys($changedChunks));
+        sort($changedChunkIds, SORT_NUMERIC);
 
+        return new InitialIslandPlan(
+            mapSpaceId: $mapSpace->id,
+            nationId: $nation->id,
+            rulesetVersionId: $ruleset->id,
+            centerX: $center->x,
+            centerY: $center->y,
+            seed: $seed,
+            changedCellIds: $changedCellIds,
+            cellPrestates: $cellPrestates,
+            cellWrites: $cellWrites,
+            changedChunkIds: $changedChunkIds,
+            capitalCellId: $capitalCell->id,
+        );
+    }
+
+    public function apply(InitialIslandPlan $plan, MapSpace $mapSpace, Nation $nation): NationCapital
+    {
+        $rulesetId = (int) $nation->world()->firstOrFail()->ruleset_version_id;
+        if ($plan->mapSpaceId !== $mapSpace->id || $plan->nationId !== $nation->id
+            || $plan->rulesetVersionId !== $rulesetId) {
+            throw new DomainException('Initial-island plan does not match the locked Nation and ruleset.');
+        }
+        $cells = MapCell::query()->whereIn('id', $plan->changedCellIds)
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        if ($cells->count() !== count($plan->changedCellIds)) {
+            throw new DomainException('Initial-island plan references missing changed cells.');
+        }
+        foreach ($plan->changedCellIds as $cellId) {
+            /** @var MapCell $cell */
+            $cell = $cells->get($cellId);
+            if ($this->plannedAttributes($cell) !== $plan->cellPrestates[$cellId]) {
+                throw new DomainException('Initial-island changed-cell prestate no longer matches its immutable plan.');
+            }
+            $cell->forceFill($plan->cellWrites[$cellId]);
+            $cell->save();
+        }
+        DB::table('map_chunks')->whereIn('id', $plan->changedChunkIds)->increment('version');
         $capital = NationCapital::query()->create([
-            'nation_id' => $nation->id, 'map_cell_id' => $capitalCell->id,
-            'x' => $center->x, 'y' => $center->y,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $plan->capitalCellId,
+            'x' => $plan->centerX,
+            'y' => $plan->centerY,
         ]);
-
         DB::table('world_generation_runs')->insert([
             'map_space_id' => $mapSpace->id,
             'generator_id' => config('hakoniwa.initial_island.generator_id'),
             'generator_version' => config('hakoniwa.initial_island.generator_version'),
-            'seed' => $seed, 'status' => 'completed', 'completed_at' => now(),
-            'created_at' => now(), 'updated_at' => now(),
+            'seed' => $plan->seed,
+            'status' => 'completed',
+            'completed_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return $capital;
+    }
+
+    /** @return array<string, int|string|null> */
+    private function plannedAttributes(MapCell $cell): array
+    {
+        $attributes = [];
+        foreach (self::PLANNED_CELL_FIELDS as $field) {
+            $value = $cell->getAttribute($field);
+            $attributes[$field] = is_int($value) || is_string($value) || $value === null
+                ? $value
+                : (int) $value;
+        }
+
+        return $attributes;
     }
 
     /** @param Collection<string, MapCell> $cells */

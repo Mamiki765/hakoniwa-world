@@ -8,6 +8,8 @@ use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Monster\MonsterBehaviorResolver;
+use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Monster\MonsterDisplayOrderResolver;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
 use App\Domain\Monster\MonsterRewardPolicyResolver;
@@ -61,8 +63,10 @@ final class RulesetAuthoringValidator
 
     public function __construct(
         private readonly MonsterDisplayOrderResolver $monsterDisplayOrders,
+        private readonly MonsterBehaviorResolver $monsterBehaviors,
         private readonly MonsterNaturalSpawnPolicy $monsterSpawnPolicy,
         private readonly MonsterRewardPolicyResolver $monsterRewardPolicies,
+        private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
         private readonly SecretaryItemTargetSafetyPolicy $secretaryItemTargetSafety,
     ) {}
 
@@ -314,7 +318,7 @@ final class RulesetAuthoringValidator
         $this->validateInitialIslandFacilities($settings, $facilityKeys);
         $this->validateTerrainQuantities($settings);
         $this->validateFacilities($settings, $commandKeys, $productionKeys);
-        $this->validateCommands($settings, $resourceKeys, $facilityKeys);
+        $this->validateCommands($settings, $resourceKeys, $facilityKeys, $authoredKey, $version);
         $this->validateProduction($settings, $resourceKeys, $facilityKeys);
         $this->validateVersionAdditions(
             $settings,
@@ -712,6 +716,9 @@ final class RulesetAuthoringValidator
             }
             $baseHp = $this->integer($definition['base_hp'], "{$path}.base_hp", 1);
             $variation = $this->integer($definition['hp_variation'], "{$path}.hp_variation", 0);
+            if ($variation > 18) {
+                throw new DomainException("{$path}.hp_variation must be at most 18.");
+            }
             if ($baseHp + $variation > 65_535) {
                 throw new DomainException("{$path} HP range must fit an unsigned small integer.");
             }
@@ -723,6 +730,9 @@ final class RulesetAuthoringValidator
             $tier = $definition['natural_spawn_tier'] === null
                 ? null
                 : $this->integer($definition['natural_spawn_tier'], "{$path}.natural_spawn_tier", 1);
+            if ($tier !== null && $tier > 3) {
+                throw new DomainException("{$path}.natural_spawn_tier must be at most 3.");
+            }
             $value = $this->integer($definition['wreckage_value_money'], "{$path}.wreckage_value_money", 0);
             $experience = $this->integer($definition['missile_base_experience'], "{$path}.missile_base_experience", 0);
             $this->persistedString($definition['skill_description'], "{$path}.skill_description");
@@ -743,6 +753,10 @@ final class RulesetAuthoringValidator
                     throw new DomainException("{$path}.source_metadata requires an explicit reward policy.");
                 }
                 $this->monsterRewardPolicies->validate($source[MonsterRewardPolicyResolver::METADATA_KEY]);
+                if (! array_key_exists(MonsterBehaviorResolver::METADATA_KEY, $source)) {
+                    throw new DomainException("{$path}.source_metadata requires explicit monster behavior.");
+                }
+                $this->monsterBehaviors->validate($source[MonsterBehaviorResolver::METADATA_KEY], $key);
             } elseif (array_key_exists(MonsterRewardPolicyResolver::METADATA_KEY, $source)) {
                 $this->monsterRewardPolicies->validate($source[MonsterRewardPolicyResolver::METADATA_KEY]);
             }
@@ -769,7 +783,20 @@ final class RulesetAuthoringValidator
                 throw new DomainException("{$path}.display_order duplicates another effective monster order.");
             }
             $displayOrders[$displayOrder] = true;
-            $this->validateMonsterMovementContract($movement, $facilityKeys, "{$path}.movement_terrain_contract");
+            if ($key === 'aoi_inora') {
+                $expectedWaterMovement = [
+                    'candidate_attempts_per_action' => 3,
+                    'allowed_terrain_keys' => ['sea', 'shallow'],
+                    'removable_facility_keys' => ['seabed_base', 'seabed_oil_field'],
+                    'destination_terrain_key' => 'sea',
+                    'clear_owner' => true,
+                ];
+                if ($movement !== $expectedWaterMovement) {
+                    throw new DomainException("{$path}.movement_terrain_contract differs from the Aoi water contract.");
+                }
+            } else {
+                $this->validateMonsterMovementContract($movement, $facilityKeys, "{$path}.movement_terrain_contract");
+            }
             if ($trample !== ['population_after' => 0, 'remove_facility' => true, 'restore_previous_terrain' => false]) {
                 throw new DomainException("{$path}.trample_contract differs from the PR21 owner decision.");
             }
@@ -1226,8 +1253,13 @@ final class RulesetAuthoringValidator
      * @param  list<string>  $resourceKeys
      * @param  list<string>  $facilityKeys
      */
-    private function validateCommands(array $settings, array $resourceKeys, array $facilityKeys): void
-    {
+    private function validateCommands(
+        array $settings,
+        array $resourceKeys,
+        array $facilityKeys,
+        string $authoredRulesetKey,
+        int $authoredRulesetVersion,
+    ): void {
         foreach ($this->list($settings['command_definitions'], 'ruleset.command_definitions') as $index => $definition) {
             $path = "ruleset.command_definitions.{$index}";
             $definition = $this->map($definition, $path);
@@ -1257,6 +1289,13 @@ final class RulesetAuthoringValidator
             }
             $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
             $metadata = $this->map($definition['metadata'], "{$path}.metadata");
+            if ($commandKey === 'monster_dispatch'
+                && $this->usesV11MonsterContract($authoredRulesetKey, $authoredRulesetVersion)) {
+                if ($definition['cost_money'] !== 3_000) {
+                    throw new DomainException("{$path}.cost_money must remain 3000 for the default dispatch option.");
+                }
+                $this->monsterDispatchOptions->validateMetadata($metadata);
+            }
             if ($commandKey === 'reclaim' && array_key_exists('adjacent_water_spread_maximum', $metadata)) {
                 $this->integer(
                     $metadata['adjacent_water_spread_maximum'],

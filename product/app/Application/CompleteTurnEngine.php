@@ -329,7 +329,12 @@ final class CompleteTurnEngine
         ])->all();
         $disasterCells = DisasterMutableCellIndex::fromCells(
             $cells,
-            terrainDefinitions: ['wasteland' => $this->terrainDefinition($context, 'wasteland')],
+            activeNationIds: $activeNations->keys()->map(static fn ($id): int => (int) $id)->all(),
+            terrainDefinitions: [
+                'sea' => $this->terrainDefinition($context, 'sea'),
+                'shallow' => $this->terrainDefinition($context, 'shallow'),
+                'wasteland' => $this->terrainDefinition($context, 'wasteland'),
+            ],
         );
         $monsterBatch = $this->monsters->load($context);
         $this->missiles->begin($cellsByCoordinate);
@@ -344,7 +349,14 @@ final class CompleteTurnEngine
             }
             $metrics['processed']++;
             if (! $separateNormalMonsterPass
-                && $this->monsters->processCell($context, $space, $cell, $cellsByCoordinate, $monsterBatch)) {
+                && $this->monsters->processCell(
+                    $context,
+                    $space,
+                    $cell,
+                    $cellsByCoordinate,
+                    $monsterBatch,
+                    $disasterCells,
+                )) {
                 continue;
             }
             if (in_array($cell->facility?->key, $launchBaseKeys, true)) {
@@ -454,7 +466,14 @@ final class CompleteTurnEngine
                 if (! $cell instanceof MapCell) {
                     throw new DomainException("Surface cell order references missing cell {$cellId}.");
                 }
-                $this->monsters->processCell($context, $space, $cell, $cellsByCoordinate, $monsterBatch);
+                $this->monsters->processCell(
+                    $context,
+                    $space,
+                    $cell,
+                    $cellsByCoordinate,
+                    $monsterBatch,
+                    $disasterCells,
+                );
             }
         }
 

@@ -9,5 +9,9 @@ use App\Models\NationCapital;
 
 interface InitialIslandGenerator
 {
+    public function plan(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): InitialIslandPlan;
+
+    public function apply(InitialIslandPlan $plan, MapSpace $mapSpace, Nation $nation): NationCapital;
+
     public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital;
 }

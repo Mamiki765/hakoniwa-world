@@ -653,6 +653,71 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->assertGreaterThanOrEqual(2, $monster->fresh()->version);
     }
 
+    public function test_old_bow_uses_authored_zero_hp_safety_without_a_monster_key_branch(): void
+    {
+        $world = $this->lightweightWorld();
+        [, $hpTwoNation] = $this->nation($world, '零式HP2国');
+        [, $hpOneNation] = $this->nation($world, '零式HP1国');
+        [, $hpThreeNation] = $this->nation($world, '零式HP3国');
+        $ruleset = $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+        $hpTwo = $this->monster(
+            $world,
+            $ruleset,
+            $this->ownedNonCapitalCell($hpTwoNation),
+            2,
+            'mecha_inora_zero',
+        );
+        $hpOne = $this->monster(
+            $world,
+            $ruleset,
+            $this->ownedNonCapitalCell($hpOneNation),
+            1,
+            'mecha_inora_zero',
+        );
+        $hpThree = $this->monster(
+            $world,
+            $ruleset,
+            $this->ownedNonCapitalCell($hpThreeNation),
+            3,
+            'mecha_inora_zero',
+        );
+        $seed = null;
+        for ($candidate = 0; $candidate < 10_000; $candidate++) {
+            $attempt = hash('sha256', "zero-old-bow-{$candidate}");
+            $random = new TurnRandomStreamFactory($attempt);
+            if ($random->stream(TurnRandomStreamFactory::secretaryOldBow($hpOneNation->id, 'trigger', 1))
+                ->integer(0, 9_999) < 1_000
+                && $random->stream(TurnRandomStreamFactory::secretaryOldBow($hpThreeNation->id, 'trigger', 1))
+                    ->integer(0, 9_999) < 1_000) {
+                $seed = $attempt;
+                break;
+            }
+        }
+        if ($seed === null) {
+            throw new RuntimeException('No deterministic dual Old Bow trigger seed was found.');
+        }
+        $nationIds = [$hpTwoNation->id, $hpOneNation->id, $hpThreeNation->id];
+        $context = $this->context($world, $seed, $nationIds);
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
+
+        $metrics = app(SecretaryOldBowService::class)->execute(
+            $context,
+            $this->surfaceMapSpace($world),
+            true,
+        );
+
+        $this->assertSame(3, $metrics['secretary_old_bow_eligible_nations']);
+        $this->assertSame(1, $metrics['secretary_old_bow_no_safe_target']);
+        $this->assertSame(2, $metrics['secretary_old_bow_hits']);
+        $this->assertSame(1, $metrics['secretary_old_bow_kills']);
+        $this->assertSame(2, $hpTwo->fresh()->current_hp);
+        $this->assertSame('alive', $hpTwo->fresh()->state);
+        $this->assertSame('killed', $hpOne->fresh()->state);
+        $this->assertSame(2, $hpThree->fresh()->current_hp);
+        $this->assertSame('alive', $hpThree->fresh()->state);
+    }
+
     public function test_old_bow_rollback_and_same_seed_retry_replay_one_kill(): void
     {
         $world = $this->lightweightWorld();
@@ -843,7 +908,7 @@ final class SecretaryItemEffectsTest extends TestCase
             'world_id' => $world->id,
             'monster_definition_id' => $definition->id,
             'current_hp' => $hp,
-            'spawned_max_hp' => $hp,
+            'spawned_max_hp' => max($hp, $definition->base_hp),
             'state' => 'alive',
             'spawned_target_turn' => 1,
             'version' => 1,

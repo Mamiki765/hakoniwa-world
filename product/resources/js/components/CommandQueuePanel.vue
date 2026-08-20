@@ -66,6 +66,13 @@ const basePath = (nationId = props.nationId, mapSpaceId = props.mapSpaceId) => `
 const applicableDefinitions = computed(() => definitions.value.filter((definition) => definition.applicable));
 const pendingQuantityIsValid = computed(() => quantityIsValid(pendingQuantity.value));
 const editingQuantityIsValid = computed(() => quantityIsValid(editingQuantity.value));
+const pendingCostMoney = computed(() => {
+    const definition = pendingDefinition.value;
+    if (definition === null) return 0;
+    if (definition.quantity_semantics !== 'selector') return definition.cost_money;
+    return definition.quantity_options.find((option) => option.value === pendingQuantity.value)?.cost_money
+        ?? definition.cost_money;
+});
 
 watch(
     () => [props.selected?.x, props.selected?.y, props.nationId, props.mapSpaceId, selectedPosition.value],
@@ -519,9 +526,14 @@ onBeforeUnmount(() => {
                         <label v-if="pendingDefinition.quantity_semantics === 'selector'">種類
                             <select v-model.number="pendingQuantity" required>
                                 <option :value="null" disabled>選択してください</option>
-                                <option v-for="option in pendingDefinition.quantity_options" :key="option.key" :value="option.value">{{ option.label }}</option>
+                                <option v-for="option in pendingDefinition.quantity_options" :key="option.key" :value="option.value">
+                                    {{ option.label }}<template v-if="option.cost_money !== undefined">（{{ formatExactMoney(option.cost_money) }}）</template>
+                                </option>
                             </select>
                         </label>
+                        <p v-if="pendingDefinition.quantity_semantics === 'selector'" class="selector-cost">
+                            必要資金 {{ formatExactMoney(pendingCostMoney) }}
+                        </p>
                         <template v-else-if="pendingDefinition.quantity_semantics === 'ordinary'">
                             <div class="preset-row">
                                 <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="pendingQuantity = preset">{{ preset }}</button>

@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Monster\MonsterDisplayOrderResolver;
 use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
@@ -42,6 +43,39 @@ final class MonsterFoundationContractTest extends TestCase
                 $this->assertArrayNotHasKey('kind', $definition['source_metadata']);
                 $this->assertArrayNotHasKey('skill_code', $definition['source_metadata']);
                 $this->assertArrayNotHasKey('filename', $definition['source_metadata']);
+            }
+        }
+    }
+
+    public function test_v11_monster_dispatch_is_one_exact_two_option_contract(): void
+    {
+        $settings = $this->authoringSettings();
+        $dispatches = array_values(array_filter(
+            $settings['command_definitions'],
+            static fn (array $definition): bool => $definition['key'] === 'monster_dispatch',
+        ));
+
+        $this->assertCount(1, $dispatches);
+        $this->assertSame(3_000, $dispatches[0]['cost_money']);
+        $this->assertSame(MonsterDispatchOptionResolver::CATALOG, $dispatches[0]['metadata']['quantity_selects_catalog']);
+        $this->assertSame(1, $dispatches[0]['metadata']['default_selector_value']);
+        $this->assertSame([
+            ['value' => 1, 'monster_key' => 'mecha_inora', 'label' => 'メカいのら', 'cost_money' => 3_000, 'enabled' => true],
+            ['value' => 2, 'monster_key' => 'mecha_inora_zero', 'label' => 'メカいのら零式', 'cost_money' => 9_999, 'enabled' => true],
+        ], $dispatches[0]['metadata'][MonsterDispatchOptionResolver::OPTIONS_METADATA_KEY]);
+    }
+
+    public function test_authoring_rejects_monster_values_that_the_database_constraints_reject(): void
+    {
+        foreach ([['hp_variation', 19], ['natural_spawn_tier', 4]] as [$field, $value]) {
+            $settings = $this->authoringSettings();
+            $settings['monster_definitions'][0][$field] = $value;
+
+            try {
+                app(RulesetAuthoringValidator::class)->validate($settings);
+                $this->fail("Authoring accepted {$field} outside the persisted database range.");
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString($field, $exception->getMessage());
             }
         }
     }
@@ -144,6 +178,13 @@ final class MonsterFoundationContractTest extends TestCase
         $eleventh['asset_key'] = 'hakoniwa_custom.monster.future_fixture_monster';
         $eleventh['display_order'] = 800;
         unset($eleventh['source_metadata']['secretary_item_target_safety']);
+        $eleventh['source_metadata']['behavior'] = [
+            'movement' => 'legacy_land',
+            'dispatchable' => false,
+            'can_act_on_spawn_turn' => false,
+            'special_action' => 'none',
+            'island_creation_displaceable' => false,
+        ];
         $base['monster_definitions'][] = $eleventh;
         $this->assertSame(11, app(RulesetAuthoringValidator::class)->validate($base)['monsters']);
 
