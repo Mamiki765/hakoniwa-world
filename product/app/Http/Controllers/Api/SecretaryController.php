@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\SecretaryEquipmentService;
+use App\Application\SecretaryItemEffectContextResolver;
 use App\Application\SecretaryNamingService;
 use App\Application\SecretaryPresenter;
 use App\Domain\Secretary\SecretaryEquipmentConflictException;
@@ -19,15 +20,29 @@ use Illuminate\Validation\ValidationException;
 
 final class SecretaryController extends Controller
 {
-    public function show(Request $request, SecretaryPresenter $presenter): JsonResponse
-    {
+    public function show(
+        Request $request,
+        SecretaryPresenter $presenter,
+        SecretaryItemEffectContextResolver $effectContexts,
+    ): JsonResponse {
         $secretary = Secretary::query()->where('user_id', $request->user()->id)
             ->with(['skills', 'itemInstances'])->first();
         if (! $secretary instanceof Secretary) {
             return response()->json(['data' => null]);
         }
+        try {
+            $projection = $effectContexts->resolve(
+                $request->user(),
+                $this->equipmentWorldId($request),
+            );
+        } catch (SecretaryEquipmentValidationException $exception) {
+            return response()->json([
+                'code' => SecretaryEquipmentValidationException::ERROR_CODE,
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
 
-        return response()->json(['data' => $presenter->present($secretary)]);
+        return response()->json(['data' => $presenter->present($secretary, $projection)]);
     }
 
     public function name(

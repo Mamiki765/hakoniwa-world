@@ -3,21 +3,25 @@
 namespace App\Application;
 
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 
 final class SecretaryItemPresenter
 {
-    public function __construct(private readonly SecretaryItemCatalog $catalog) {}
+    public function __construct(
+        private readonly SecretaryItemCatalog $catalog,
+        private readonly SecretaryItemGameplayContract $gameplay,
+    ) {}
 
-    /** @return array{equipment_version: int, inventory: array{capacity: int, used: int, items: list<array<string, mixed>>}, equipment: array{slot_count: int, slots: list<array<string, mixed>>, category_limits: list<array{category: string, label: string, maximum_equipped: int}>}} */
-    public function present(Secretary $secretary): array
+    /** @return array{effect_context: array<string, mixed>|null, equipment_version: int, inventory: array{capacity: int, used: int, items: list<array<string, mixed>>}, equipment: array{slot_count: int, slots: list<array<string, mixed>>, category_limits: list<array{category: string, label: string, maximum_equipped: int}>}} */
+    public function present(Secretary $secretary, ?SecretaryItemEffectProjection $projection = null): array
     {
         $secretary->loadMissing('itemInstances');
         $items = $secretary->itemInstances->sortBy([
             ['obtained_at', 'asc'],
             ['id', 'asc'],
-        ])->values()->map(fn (SecretaryItemInstance $item): array => $this->item($item));
+        ])->values()->map(fn (SecretaryItemInstance $item): array => $this->item($item, $projection));
         $equipped = $items->filter(fn (array $item): bool => $item['equipped_slot'] !== null)
             ->keyBy('equipped_slot');
         $slots = collect(range(1, SecretaryItemGrantService::EQUIPMENT_SLOT_COUNT))
@@ -25,6 +29,7 @@ final class SecretaryItemPresenter
             ->all();
 
         return [
+            'effect_context' => $projection?->context,
             'equipment_version' => $secretary->equipment_version,
             'inventory' => [
                 'capacity' => SecretaryItemGrantService::INVENTORY_CAPACITY,
@@ -40,8 +45,10 @@ final class SecretaryItemPresenter
     }
 
     /** @return array<string, mixed> */
-    private function item(SecretaryItemInstance $item): array
-    {
+    private function item(
+        SecretaryItemInstance $item,
+        ?SecretaryItemEffectProjection $projection,
+    ): array {
         $definition = $this->catalog->definition($item->item_key);
 
         return [
@@ -53,6 +60,9 @@ final class SecretaryItemPresenter
             'category_label' => $definition['category_label'],
             'equipped_slot' => $item->equipped_slot,
             'is_equipped' => $item->equipped_slot !== null,
+            'effect_text' => $projection === null
+                ? null
+                : $this->gameplay->effectText($projection->rulesetSettings, $item->item_key, $item->level),
             'flavor_text' => $definition['flavor_text'],
             'obtained_at' => $item->obtained_at->toIso8601String(),
         ];
