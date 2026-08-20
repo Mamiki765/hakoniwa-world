@@ -8,6 +8,7 @@ use App\Application\LegacyInspiredInitialIslandGenerator;
 use App\Application\MonsterRemovalService;
 use App\Console\ProductionDestructiveDatabaseCommandGuard;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\Nation\UserMembershipMutationLock;
 use App\Domain\Turn\GameplayTurnPhase;
 use App\Domain\Turn\RandomTurnSeedGenerator;
 use App\Domain\Turn\TurnPipeline;
@@ -30,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
         // Advisory-lock ownership is process state shared by all World mutation
         // services participating in one request or worker execution.
         $this->app->singleton(WorldMutationLock::class);
+        $this->app->singleton(UserMembershipMutationLock::class);
         $this->app->singleton(ChunkCoordinateService::class, fn (): ChunkCoordinateService => new ChunkCoordinateService(
             (int) config('hakoniwa.ruleset.chunk_size'),
         ));

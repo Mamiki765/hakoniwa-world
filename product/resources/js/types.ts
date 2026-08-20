@@ -27,6 +27,7 @@ export interface Secretary {
     name: string | null;
     named_at: string | null;
     header_label: string;
+    equipment_version: number;
     skills: SecretarySkill[];
     inventory: {
         capacity: 50;
@@ -36,7 +37,42 @@ export interface Secretary {
     equipment: {
         slot_count: 5;
         slots: Array<{ slot: number; item: SecretaryItem | null }>;
+        category_limits: SecretaryEquipmentCategoryLimit[];
     };
+}
+
+export interface SecretaryEquipmentCategoryLimit {
+    category: string;
+    label: string;
+    maximum_equipped: number;
+}
+
+export interface SecretaryEquipmentOptionItem {
+    id: number;
+    key: string;
+    name: string;
+    level: number;
+    category: string;
+    category_label: string;
+    equipped_slot: number | null;
+    effect_text: string | null;
+}
+
+export interface SecretaryEquipmentEffectContext {
+    source: 'owned_world' | 'configured_current';
+    world_id: number | null;
+    ruleset_version_id: number;
+    ruleset_key: string;
+    ruleset_version: number;
+}
+
+export interface SecretaryEquipmentOptions {
+    slot: number;
+    equipment_version: number;
+    current_item: SecretaryEquipmentOptionItem | null;
+    items: SecretaryEquipmentOptionItem[];
+    category_limits: SecretaryEquipmentCategoryLimit[];
+    effect_context: SecretaryEquipmentEffectContext | null;
 }
 
 export interface SecretaryItem {

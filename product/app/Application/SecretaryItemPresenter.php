@@ -10,7 +10,7 @@ final class SecretaryItemPresenter
 {
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
-    /** @return array{inventory: array{capacity: int, used: int, items: list<array<string, mixed>>}, equipment: array{slot_count: int, slots: list<array<string, mixed>>}} */
+    /** @return array{equipment_version: int, inventory: array{capacity: int, used: int, items: list<array<string, mixed>>}, equipment: array{slot_count: int, slots: list<array<string, mixed>>, category_limits: list<array{category: string, label: string, maximum_equipped: int}>}} */
     public function present(Secretary $secretary): array
     {
         $secretary->loadMissing('itemInstances');
@@ -25,6 +25,7 @@ final class SecretaryItemPresenter
             ->all();
 
         return [
+            'equipment_version' => $secretary->equipment_version,
             'inventory' => [
                 'capacity' => SecretaryItemGrantService::INVENTORY_CAPACITY,
                 'used' => $items->count(),
@@ -33,6 +34,7 @@ final class SecretaryItemPresenter
             'equipment' => [
                 'slot_count' => SecretaryItemGrantService::EQUIPMENT_SLOT_COUNT,
                 'slots' => $slots,
+                'category_limits' => $this->catalog->categoryLimits(),
             ],
         ];
     }

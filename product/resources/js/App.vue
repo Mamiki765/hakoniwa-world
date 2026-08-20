@@ -8,6 +8,7 @@ import IslandEventLog from './components/IslandEventLog.vue';
 import MessageBoard from './components/MessageBoard.vue';
 import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
+import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import type {
@@ -24,6 +25,7 @@ import type {
     PublicRankingEntry,
     PublicWorldSummary,
     Secretary,
+    SecretaryEquipmentOptions,
     World,
 } from './types';
 
@@ -49,6 +51,13 @@ const announcementErrors = ref<Record<string, string>>({});
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
 const secretarySection = ref<'skills' | 'equipment' | 'warehouse'>('skills');
+const equipmentModalSlot = ref<number | null>(null);
+const equipmentOptions = ref<SecretaryEquipmentOptions | null>(null);
+const equipmentOptionsLoading = ref(false);
+const equipmentSubmitting = ref(false);
+const equipmentError = ref('');
+const equipmentRequireFreshChoice = ref(false);
+let equipmentRequestGeneration = 0;
 const latestInquiries = ref<InquirySummary[]>([]);
 const inquiryItems = ref<InquirySummary[]>([]);
 const inquiryDetail = ref<InquiryDetail | null>(null);
@@ -687,6 +696,77 @@ async function refreshMyNation(): Promise<void> {
 async function loadSecretary(): Promise<void> {
     if (user.value === null) return;
     secretary.value = await api<Secretary | null>('/api/v1/me/secretary');
+}
+
+async function loadEquipmentOptions(slot: number, preserveFreshChoice = false): Promise<void> {
+    const requestGeneration = ++equipmentRequestGeneration;
+    equipmentOptionsLoading.value = true;
+    equipmentError.value = '';
+    if (!preserveFreshChoice) equipmentRequireFreshChoice.value = false;
+    try {
+        const worldQuery = nation.value === null ? '' : `?world_id=${nation.value.world_id}`;
+        const options = await api<SecretaryEquipmentOptions>(
+            `/api/v1/me/secretary/equipment/${slot}/options${worldQuery}`,
+        );
+        if (requestGeneration !== equipmentRequestGeneration || equipmentModalSlot.value !== slot) return;
+        equipmentOptions.value = options;
+    } catch (error) {
+        if (requestGeneration !== equipmentRequestGeneration || equipmentModalSlot.value !== slot) return;
+        equipmentOptions.value = null;
+        equipmentError.value = error instanceof Error ? error.message : '装備候補を読み込めませんでした。';
+    } finally {
+        if (requestGeneration === equipmentRequestGeneration) equipmentOptionsLoading.value = false;
+    }
+}
+
+async function openEquipmentModal(slot: number): Promise<void> {
+    if (secretary.value === null) return;
+    equipmentModalSlot.value = slot;
+    equipmentOptions.value = null;
+    equipmentError.value = '';
+    equipmentRequireFreshChoice.value = false;
+    await loadEquipmentOptions(slot);
+}
+
+function closeEquipmentModal(): void {
+    if (equipmentSubmitting.value) return;
+    equipmentRequestGeneration++;
+    equipmentModalSlot.value = null;
+    equipmentOptions.value = null;
+    equipmentOptionsLoading.value = false;
+    equipmentError.value = '';
+    equipmentRequireFreshChoice.value = false;
+}
+
+async function submitEquipment(itemId: number | null): Promise<void> {
+    const slot = equipmentModalSlot.value;
+    const options = equipmentOptions.value;
+    if (slot === null || options === null || equipmentSubmitting.value || equipmentRequireFreshChoice.value) return;
+
+    equipmentSubmitting.value = true;
+    equipmentError.value = '';
+    try {
+        secretary.value = await api<Secretary>(`/api/v1/me/secretary/equipment/${slot}`, {
+            method: 'PUT',
+            body: JSON.stringify({ item_id: itemId, expected_version: options.equipment_version }),
+        });
+        equipmentSubmitting.value = false;
+        closeEquipmentModal();
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 409 && error.code === 'secretary_equipment_version_conflict') {
+            equipmentRequireFreshChoice.value = true;
+            try {
+                await loadSecretary();
+                await loadEquipmentOptions(slot, true);
+            } catch {
+                equipmentError.value = '最新の装備状態を読み込めませんでした。画面を開き直してください。';
+            }
+        } else {
+            equipmentError.value = error instanceof Error ? error.message : '装備を変更できませんでした。';
+        }
+    } finally {
+        equipmentSubmitting.value = false;
+    }
 }
 
 async function openSecretary(): Promise<void> {
@@ -1468,11 +1548,16 @@ async function abandonNation(): Promise<void> {
                     <h3 class="secretary-section-title">装備</h3>
                     <ol class="secretary-equipment">
                         <li v-for="slot in secretary.equipment.slots" :key="slot.slot">
-                            <span class="equipment-slot-number">{{ slot.slot }}</span>
-                            <strong v-if="slot.item">{{ slot.item.name }} <small>Lv{{ slot.item.level }}</small></strong>
-                            <span v-else class="empty-state">空き</span>
+                            <button type="button" :aria-label="`装備 slot ${slot.slot} を変更`" @click="openEquipmentModal(slot.slot)">
+                                <span class="equipment-slot-number">{{ slot.slot }}</span>
+                                <strong v-if="slot.item">{{ slot.item.name }} <small>Lv{{ slot.item.level }}</small></strong>
+                                <span v-else class="empty-state">空き</span>
+                            </button>
                         </li>
                     </ol>
+                    <ul class="equipment-category-limits" aria-label="装備数の上限">
+                        <li v-for="limit in secretary.equipment.category_limits" :key="limit.category">{{ limit.label }}・{{ limit.maximum_equipped }}個まで</li>
+                    </ul>
                     <p class="field-hint">現在、装備アイテムはターン処理へ影響しません。</p>
                 </section>
                 <section v-else id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
@@ -1554,6 +1639,19 @@ async function abandonNation(): Promise<void> {
             <p>原作GIFは本リポジトリとDocker imageに含まれません。未配置時はCSS fallbackを表示します。</p>
         </section>
     </main>
+
+    <SecretaryEquipmentModal
+        v-if="equipmentModalSlot !== null"
+        :target-slot="equipmentModalSlot"
+        :options="equipmentOptions"
+        :loading="equipmentOptionsLoading"
+        :submitting="equipmentSubmitting"
+        :error="equipmentError"
+        :require-fresh-choice="equipmentRequireFreshChoice"
+        @close="closeEquipmentModal"
+        @submit="submitEquipment"
+        @selection-change="equipmentRequireFreshChoice = false"
+    />
 
     <div v-if="abandonmentModalOpen && nation" class="modal-backdrop" @click.self="closeAbandonmentModal">
         <section class="abandonment-modal" role="dialog" aria-modal="true" aria-labelledby="abandonment-title">
