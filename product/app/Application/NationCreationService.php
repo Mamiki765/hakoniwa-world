@@ -63,17 +63,6 @@ final class NationCreationService
                     $world = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
                     $ruleset = $world->rulesetVersion()->firstOrFail();
                     $this->rulesetGuard->assertMutable($world, $ruleset);
-                    try {
-                        $this->turnRunGuard->assertClear($world);
-                    } catch (UnresolvedNextTurnRunException $exception) {
-                        throw new NationCreationConflictException(
-                            'nation_creation_turn_unresolved',
-                            '次のターン処理が未解決のためNationを登録できません。',
-                            $exception,
-                        );
-                    }
-                    $rules = $ruleset->settings;
-
                     $requestKey ??= (string) Str::uuid();
                     $existingRequest = DB::table('nation_creation_requests')
                         ->where('request_key', $requestKey)->lockForUpdate()->first();
@@ -99,6 +88,17 @@ final class NationCreationService
                             ->with(['capital', 'resourceBalances.definition'])
                             ->firstOrFail();
                     }
+
+                    try {
+                        $this->turnRunGuard->assertClear($world);
+                    } catch (UnresolvedNextTurnRunException $exception) {
+                        throw new NationCreationConflictException(
+                            'nation_creation_turn_unresolved',
+                            '次のターン処理が未解決のためNationを登録できません。',
+                            $exception,
+                        );
+                    }
+                    $rules = $ruleset->settings;
 
                     if (NationMembership::query()->where('user_id', $user->id)->where('world_id', $world->id)->exists()) {
                         throw new NationCreationConflictException(

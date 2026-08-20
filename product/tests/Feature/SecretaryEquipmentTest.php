@@ -89,12 +89,14 @@ final class SecretaryEquipmentTest extends TestCase
         $secondBow = $second->itemInstances()->create($this->itemAttributes('old_bow', null));
         $user = $first->user()->firstOrFail();
 
-        foreach ([0, 6] as $slot) {
+        foreach ([-1, 0, 6] as $slot) {
             $this->actingAs($user)->putJson("/api/v1/me/secretary/equipment/{$slot}", [
                 'item_id' => null,
                 'expected_version' => 1,
-            ])->assertUnprocessable();
+            ])->assertUnprocessable()->assertJsonPath('code', 'secretary_equipment_invalid');
         }
+        $this->actingAs($user)->getJson('/api/v1/me/secretary/equipment/-1/options')
+            ->assertUnprocessable()->assertJsonPath('code', 'secretary_equipment_invalid');
         foreach ([$secondBow->id, 9_999_999] as $itemId) {
             $this->actingAs($user)->putJson('/api/v1/me/secretary/equipment/1', [
                 'item_id' => $itemId,

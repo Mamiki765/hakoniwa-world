@@ -74,9 +74,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
     Route::get('/me/secretary/equipment/{slot}/options', [SecretaryController::class, 'equipmentOptions'])
-        ->whereNumber('slot');
+        ->where('slot', '-?\d+');
     Route::put('/me/secretary/equipment/{slot}', [SecretaryController::class, 'updateEquipment'])
-        ->whereNumber('slot');
+        ->where('slot', '-?\d+');
     Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1');
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/map-spaces', [ApiController::class, 'mapSpaces']);

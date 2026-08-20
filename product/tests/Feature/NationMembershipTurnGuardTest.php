@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -38,6 +39,36 @@ final class NationMembershipTurnGuardTest extends TestCase
             $this->assertSame('nation_creation_turn_unresolved', $exception->errorCode);
         }
 
+        $this->assertSame($before, $this->registrationState($world, $user));
+    }
+
+    #[DataProvider('unresolvedTurnStatuses')]
+    public function test_completed_registration_replay_remains_idempotent_during_an_unresolved_next_turn(
+        string $status,
+    ): void {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $requestKey = (string) Str::uuid();
+        $service = app(NationCreationService::class);
+        $nation = $service->create(
+            $user,
+            $world,
+            '完了済再送島',
+            '完了済再送島主',
+            requestKey: $requestKey,
+        );
+        $this->turnRun($world, $status);
+        $before = $this->registrationState($world, $user);
+
+        $replayed = $service->create(
+            $user,
+            $world->fresh(),
+            '再送時の入力は不使用',
+            '再送時の島主名は不使用',
+            requestKey: $requestKey,
+        );
+
+        $this->assertSame($nation->id, $replayed->id);
         $this->assertSame($before, $this->registrationState($world, $user));
     }
 
