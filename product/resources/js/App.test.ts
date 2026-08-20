@@ -1020,6 +1020,128 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
     });
 
+    it('keeps a committed equipment mutation when the scoped projection refresh fails', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        let scopedSecretaryGets = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false, can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') {
+                scopedSecretaryGets++;
+                return scopedSecretaryGets <= 2 ? response(serverSecretary) : response(null, 500);
+            }
+            if (path === '/api/v1/me/secretary/equipment/1/options?world_id=1') {
+                const current = serverSecretary.equipment.slots[0]!.item;
+                return response({
+                    slot: 1,
+                    equipment_version: serverSecretary.equipment_version,
+                    effect_context: serverSecretary.effect_context,
+                    current_item: current,
+                    items: serverSecretary.inventory.items,
+                    category_limits: serverSecretary.equipment.category_limits,
+                });
+            }
+            if (path === '/api/v1/me/secretary/equipment/1' && init?.method === 'PUT') {
+                serverSecretary.equipment_version = 2;
+                serverSecretary.inventory.items[0]!.equipped_slot = null;
+                serverSecretary.inventory.items[0]!.is_equipped = false;
+                serverSecretary.equipment.slots[0]!.item = null;
+
+                return response(serverSecretary);
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.findAll('[role="tab"]')[1]!.trigger('click');
+        await wrapper.findAll('.secretary-equipment button')[0]!.trigger('click');
+        await flushPromises();
+        await wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[0]!.setValue(true);
+        await wrapper.get('.equipment-modal-footer button').trigger('click');
+        await flushPromises();
+
+        const put = fetchMock.mock.calls.find(([path, request]) => (
+            String(path) === '/api/v1/me/secretary/equipment/1' && request?.method === 'PUT'
+        ));
+        expect(JSON.parse(String(put?.[1]?.body))).toEqual({ item_id: null, expected_version: 1 });
+        expect(wrapper.find('.equipment-modal').exists()).toBe(false);
+        expect(wrapper.findAll('.secretary-equipment li')[0]!.text()).toContain('空き');
+        expect(wrapper.text()).toContain('装備は変更されましたが、最新の効果表示を読み込めませんでした。');
+        expect(wrapper.text()).not.toContain('装備を変更できませんでした。');
+    });
+
+    it('keeps committed naming and rename results when scoped projection refreshes fail', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        let scopedSecretaryGets = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false, can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') {
+                scopedSecretaryGets++;
+                return scopedSecretaryGets <= 2 ? response(serverSecretary) : response(null, 500);
+            }
+            if (path === '/api/v1/me/secretary/name' && init?.method === 'POST') {
+                const body = JSON.parse(String(init.body)) as { name: string };
+                serverSecretary.name = body.name;
+                serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+                serverSecretary.header_label = body.name;
+
+                return response(serverSecretary);
+            }
+            if (path === '/api/v1/me/secretary/name' && init?.method === 'PATCH') {
+                const body = JSON.parse(String(init.body)) as { name: string };
+                serverSecretary.name = body.name;
+                serverSecretary.header_label = body.name;
+
+                return response(serverSecretary);
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '？？？')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-naming-form').trigger('submit');
+        await flushPromises();
+
+        expect(wrapper.find('.secretary-story').exists()).toBe(false);
+        expect(wrapper.get('.secretary-name').text()).toBe('ペリドット');
+        expect(wrapper.text()).toContain('秘書は「ペリドット」と命名されましたが、最新の効果表示を読み込めませんでした。');
+        expect(wrapper.text()).not.toContain('Secretaryを命名できませんでした。');
+
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!.trigger('click');
+        await wrapper.get('.secretary-rename-form input').setValue('エメラルド');
+        await wrapper.get('.secretary-rename-form').trigger('submit');
+        await flushPromises();
+
+        expect(wrapper.get<HTMLInputElement>('.secretary-rename-form input').element.value).toBe('エメラルド');
+        expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
+        expect(wrapper.text()).toContain('秘書の名前は「エメラルド」に変更されましたが、最新の効果表示を読み込めませんでした。');
+        expect(wrapper.text()).not.toContain('秘書名を変更できませんでした。');
+    });
+
     it('keeps a v10 warehouse ruleset-neutral without substituting category text as an effect', async () => {
         const secretary = structuredClone(unnamedSecretaryFixture);
         secretary.name = 'ペリドット';

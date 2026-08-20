@@ -746,12 +746,18 @@ async function submitEquipment(itemId: number | null): Promise<void> {
 
     equipmentSubmitting.value = true;
     equipmentError.value = '';
+    message.value = '';
     try {
-        await api<Secretary>(`/api/v1/me/secretary/equipment/${slot}`, {
+        const committedSecretary = await api<Secretary>(`/api/v1/me/secretary/equipment/${slot}`, {
             method: 'PUT',
             body: JSON.stringify({ item_id: itemId, expected_version: options.equipment_version }),
         });
-        await loadSecretary();
+        secretary.value = committedSecretary;
+        try {
+            await loadSecretary();
+        } catch {
+            message.value = '装備は変更されましたが、最新の効果表示を読み込めませんでした。画面を開き直してください。';
+        }
         equipmentSubmitting.value = false;
         closeEquipmentModal();
     } catch (error) {
@@ -795,11 +801,16 @@ async function nameSecretary(): Promise<void> {
     message.value = '';
     secretaryErrors.value = {};
     try {
-        await api<Secretary>('/api/v1/me/secretary/name', {
+        const committedSecretary = await api<Secretary>('/api/v1/me/secretary/name', {
             method: 'POST',
             body: JSON.stringify({ name: secretaryName.value }),
         });
-        await loadSecretary();
+        secretary.value = committedSecretary;
+        try {
+            await loadSecretary();
+        } catch {
+            message.value = `秘書は「${committedSecretary.name ?? secretaryName.value}」と命名されましたが、最新の効果表示を読み込めませんでした。画面を開き直してください。`;
+        }
     } catch (error) {
         secretaryErrors.value = validationErrors(error);
         message.value = Object.keys(secretaryErrors.value).length === 0
@@ -865,13 +876,19 @@ async function renameProfileSecretary(): Promise<void> {
     message.value = '';
     profileSecretaryErrors.value = {};
     try {
-        await api<Secretary>('/api/v1/me/secretary/name', {
+        const committedSecretary = await api<Secretary>('/api/v1/me/secretary/name', {
             method: 'PATCH',
             body: JSON.stringify({ name: profileSecretaryName.value }),
         });
-        await loadSecretary();
-        profileSecretaryName.value = secretary.value.name ?? '';
-        message.value = `秘書の名前を「${profileSecretaryName.value}」に変更しました。`;
+        secretary.value = committedSecretary;
+        profileSecretaryName.value = committedSecretary.name ?? profileSecretaryName.value;
+        try {
+            await loadSecretary();
+            profileSecretaryName.value = secretary.value.name ?? '';
+            message.value = `秘書の名前を「${profileSecretaryName.value}」に変更しました。`;
+        } catch {
+            message.value = `秘書の名前は「${profileSecretaryName.value}」に変更されましたが、最新の効果表示を読み込めませんでした。画面を開き直してください。`;
+        }
     } catch (error) {
         profileSecretaryErrors.value = validationErrors(error);
         message.value = Object.keys(profileSecretaryErrors.value).length === 0

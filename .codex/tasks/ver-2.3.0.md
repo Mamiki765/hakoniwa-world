@@ -507,11 +507,16 @@ Minimum:
   Nations, 50 inventory Items, five equipped Items, and multiple MapSpaces; Old Bow candidate loading
   has a stable upper bound of 5 and is exactly 5 in the many-monster/two-Nation fixture; neutral/explicit
   presentation remains exactly 2/3 queries with no per-Item SQL.
-- Local validation passes: 71 focused backend tests / 481 assertions; full frontend 126 tests plus
+- Local validation passes: 71 focused backend tests / 481 assertions; full frontend 128 tests plus
   ESLint, `vue-tsc --noEmit`, and Vite production build; full-app PHPStan; Pint over 245 files;
   open-question validator; isolated `migrate:fresh`; v10 ruleset validation; and all 106 PHPUnit files
   across the complete 16-shard plan. Ruleset-source/migration and `_references` diffs from the release
   baseline are zero.
+- The first exact-head Codex review found two P2 UI transaction-boundary cases: a successful equipment
+  mutation and a successful name/name-change mutation could be reported as failed when only the following
+  scoped projection refresh failed. Red regressions now require the committed neutral mutation result and
+  new equipment version/name to remain authoritative locally, close the completed equipment modal, and
+  report only the effect-projection refresh failure. The C1 stale-409 retry/reselect branch is unchanged.
 - Verified C0 divergence: post-missile eligibility is safest as one bounded current-state occupancy
   load followed by in-memory Nation grouping, while the authoritative damage/removal services keep the
   already-loaded monster batch synchronized. This is the audited combination boundary rather than
