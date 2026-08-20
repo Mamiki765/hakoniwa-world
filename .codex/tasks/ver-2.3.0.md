@@ -501,8 +501,10 @@ Minimum:
   Omission is always neutral and does no ruleset query. Mutation/name responses remain neutral, while
   the active-Nation UI reloads scoped presentation and preserves the C1 stale-409 reselect contract.
   Warehouse and modal show ruleset-derived effects; the five slot cards remain compact. The Secretary
-  manual records shared User equipment, surface-only Old Bow, Nation-wide Ring, snapshots, safety,
-  stacking, capacity priority, and abandonment persistence.
+  manual is the dedicated player-facing `秘書について` page and records all four passive skills and
+  their experience sources, equipment limits and changes, surface-only Old Bow, Nation-wide Ring,
+  snapshots, safety, stacking, capacity priority, and abandonment persistence. The ordinary beginner,
+  intermediate, and advanced manuals do not duplicate those details.
 - Query results: v10 prepare Item increase 0; v11-shaped equipped Item load exactly 1 for one/many
   Nations, 50 inventory Items, five equipped Items, and multiple MapSpaces; Old Bow candidate loading
   has a stable upper bound of 5 and is exactly 5 in the many-monster/two-Nation fixture; neutral/explicit
@@ -517,6 +519,10 @@ Minimum:
   scoped projection refresh failed. Red regressions now require the committed neutral mutation result and
   new equipment version/name to remain authoritative locally, close the completed equipment modal, and
   report only the effect-projection refresh failure. The C1 stale-409 retry/reselect branch is unchanged.
+- The following exact-head review found one P2 documentation gap: the Secretary navigation advertised
+  skill guidance without documenting the four skill effects and experience sources. The dedicated page
+  now carries that guidance, uses the same navigation immediately after `上級編`, and states abandonment
+  behavior without implying that equipment can be changed through the normal UI while no island is active.
 - Verified C0 divergence: post-missile eligibility is safest as one bounded current-state occupancy
   load followed by in-memory Nation grouping, while the authoritative damage/removal services keep the
   already-loaded monster batch synchronized. This is the audited combination boundary rather than
