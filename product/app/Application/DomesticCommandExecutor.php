@@ -14,6 +14,8 @@ use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
+use App\Domain\Secretary\SecretaryRingFinanceBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -55,6 +57,8 @@ final class DomesticCommandExecutor
         private readonly CapitalCorePolicy $capitalCores,
         private readonly ChunkCoordinateService $chunks,
         private readonly NationCommandTargetService $nationTargets,
+        private readonly SecretaryItemGameplayContract $secretaryItems,
+        private readonly SecretaryRingFinanceBonus $ringFinance,
     ) {}
 
     /**
@@ -208,6 +212,10 @@ final class DomesticCommandExecutor
             if ($queue !== null && $queueMutated) {
                 $queue->increment('version');
             }
+        }
+
+        if ($this->secretaryItems->exists($context->ruleset->settings)) {
+            return [...$metrics, ...$context->state->secretaryRingFinanceMetrics()];
         }
 
         return $metrics;
@@ -1464,16 +1472,46 @@ final class DomesticCommandExecutor
     {
         $requested = $context->ruleset->settings['turn_processing']['automatic_finance_money'];
         $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
-        $addition = $this->addition->calculate((int) $nation->money, $requested, $capacity);
-        $nation->update(['money' => $addition->after]);
-        $this->events->record($context, $eventType, $nation, [
-            'before' => $addition->before,
-            'requested' => $addition->requested,
-            'applied' => $addition->applied,
-            'overflow' => $addition->overflow,
-            'after' => $addition->after,
-            'capacity' => $addition->capacity,
-        ]);
+        $base = $this->addition->calculate((int) $nation->money, $requested, $capacity);
+        $ring = $this->ringFinance->resolve($context->state, $nation->id);
+        $bonus = $this->addition->calculate($base->after, $ring['requested'], $capacity);
+        $nation->update(['money' => $bonus->after]);
+        $metadata = [
+            'before' => $base->before,
+            'requested' => $base->requested,
+            'applied' => $base->applied,
+            'overflow' => $base->overflow,
+            'after' => $base->after,
+            'capacity' => $base->capacity,
+        ];
+        if ($ring['requested'] > 0) {
+            $context->state->recordSecretaryRingFinanceBonus(
+                $nation->id,
+                $ring['requested'],
+                $bonus->applied,
+                $bonus->overflow,
+            );
+            $metadata = [
+                'before' => $base->before,
+                'requested' => $base->requested + $bonus->requested,
+                'applied' => $base->applied + $bonus->applied,
+                'overflow' => $base->overflow + $bonus->overflow,
+                'after' => $bonus->after,
+                'capacity' => $capacity,
+                'source' => $eventType === 'command.finance' ? 'explicit' : 'automatic',
+                'base_requested' => $base->requested,
+                'base_applied' => $base->applied,
+                'base_overflow' => $base->overflow,
+                'ring_equipped_level_sum' => $ring['equipped_level_sum'],
+                'ring_bonus_requested' => $bonus->requested,
+                'ring_bonus_applied' => $bonus->applied,
+                'ring_bonus_overflow' => $bonus->overflow,
+                'total_applied' => $base->applied + $bonus->applied,
+                'final_money' => $bonus->after,
+                'resolved_money_capacity' => $capacity,
+            ];
+        }
+        $this->events->record($context, $eventType, $nation, $metadata);
     }
 
     /**

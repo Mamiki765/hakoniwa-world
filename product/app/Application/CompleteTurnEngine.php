@@ -61,6 +61,7 @@ final class CompleteTurnEngine
         private readonly TerritoryInfluenceService $territoryInfluence,
         private readonly SecretaryTurnService $secretaries,
         private readonly SecretaryProductionBonus $secretaryProduction,
+        private readonly SecretaryOldBowService $secretaryOldBow,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -98,11 +99,17 @@ final class CompleteTurnEngine
 
         $secretarySnapshots = $this->secretaries->loadAttemptSnapshots($context, $nationIds);
 
-        return [
+        $metrics = [
             'nations' => count($nationIds),
             'ruleset_validated' => true,
             'secretary_snapshots' => $secretarySnapshots,
         ];
+        if ($this->secretaries->itemEffectsEnabled($context)) {
+            $metrics['secretary_item_effect_snapshots'] = $context->state->secretaryItemEffectSnapshotCount();
+            $metrics['secretary_item_effect_items'] = $context->state->secretaryItemEffectItemCount();
+        }
+
+        return $metrics;
     }
 
     /** @return array<string, int> */
@@ -427,6 +434,15 @@ final class CompleteTurnEngine
         $launches = $this->missiles->finalize($context);
         $metrics['missile_launches'] = $launches['launches'];
         $metrics['missile_idle_counter_resets'] = $launches['idle_counter_resets'];
+
+        $secretaryItemMetrics = $this->secretaryOldBow->execute(
+            $context,
+            $space,
+            $separateNormalMonsterPass,
+        );
+        if ($secretaryItemMetrics !== []) {
+            $metrics = [...$metrics, ...$secretaryItemMetrics];
+        }
 
         if ($separateNormalMonsterPass) {
             // Reuse the ordinary pass order without another shuffle or random

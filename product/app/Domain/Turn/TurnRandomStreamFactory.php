@@ -84,6 +84,8 @@ final class TurnRandomStreamFactory
 
     private const MONUMENT_FLIGHT_PREFIX = 'development_commands:monument:item:';
 
+    private const SECRETARY_OLD_BOW_PREFIX = 'secretary_item:old_bow:nation:';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 
@@ -186,5 +188,14 @@ final class TurnRandomStreamFactory
         }
 
         return self::MONUMENT_FLIGHT_PREFIX.$queueItemId.':target:v1';
+    }
+
+    public static function secretaryOldBow(int $nationId, string $purpose, int $streamVersion): string
+    {
+        if ($nationId < 1 || $streamVersion < 1 || ! in_array($purpose, ['trigger', 'target'], true)) {
+            throw new InvalidArgumentException('Secretary Old Bow stream identity is invalid.');
+        }
+
+        return self::SECRETARY_OLD_BOW_PREFIX.$nationId.':'.$purpose.':v'.$streamVersion;
     }
 }
