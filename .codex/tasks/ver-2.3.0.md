@@ -1031,7 +1031,7 @@ turn processing and v1-v10 rulesets effect-free.
 
 ## Validation and C0 divergence
 
-- Focused backend: schema/history 3 tests/7 assertions; equipment 12/92; registration/abandonment guard
+- Focused backend: schema/history 3 tests/7 assertions; equipment 12/96; registration/abandonment guard
   13/27; isolated PostgreSQL concurrency 5/68.
 - Focused frontend: modal 4 tests; App API/stale/error/success integration 1 test; ESLint and
   `vue-tsc --noEmit` pass.
@@ -1040,11 +1040,12 @@ turn processing and v1-v10 rulesets effect-free.
   86 Secretary/Nation/TurnRunner/complete-turn tests plus the corrected 12-test equipment rerun, and
   5 existing PostgreSQL registration/abandonment lock tests pass. Ruleset source diff and `_references`
   diff are both zero.
-- PR #65's initial Quality run `32334209852` passed. Codex review against `d51f219ce0` found two P2
-  boundary regressions: completed registration replay ran after the unresolved-TurnRun guard, and
-  signed invalid slot routes bypassed the stable equipment error. C1 now proves all four unresolved
-  statuses replay the completed Nation without writes, and GET/PUT negative slots return 422
-  `secretary_equipment_invalid`. Final-head CI/review/thread evidence belongs in the PR handoff so a
+- PR #65's initial Quality run `32334209852` passed. Two Codex review rounds found three P2 boundary
+  regressions: completed registration replay ran after the unresolved-TurnRun guard, negative slot
+  routes bypassed the stable equipment error, and oversized numeric slot strings overflowed typed
+  controller dispatch. C1 now proves all four unresolved statuses replay the completed Nation without
+  writes, while GET/PUT negative and oversized slots return 422 `secretary_equipment_invalid` after
+  explicit safe string validation. Final-head CI/review/thread evidence belongs in the PR handoff so a
   documentation-only evidence edit cannot invalidate the reviewed HEAD.
 - C0 hypothesis divergence: no runtime Ring definition or effect DTO was needed in C1. The C0 audit
   assigns World-scoped effect presentation and Ring/effect definitions to C2, so C1 keeps neutral DTOs

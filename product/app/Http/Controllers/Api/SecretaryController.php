@@ -60,11 +60,11 @@ final class SecretaryController extends Controller
 
     public function equipmentOptions(
         Request $request,
-        int $slot,
+        string $slot,
         SecretaryEquipmentService $equipment,
     ): JsonResponse {
         try {
-            $options = $equipment->options($request->user(), $slot);
+            $options = $equipment->options($request->user(), $this->equipmentSlot($slot));
         } catch (SecretaryNotFoundException $exception) {
             return response()->json([
                 'code' => SecretaryNotFoundException::ERROR_CODE,
@@ -82,14 +82,14 @@ final class SecretaryController extends Controller
 
     public function updateEquipment(
         UpdateSecretaryEquipmentRequest $request,
-        int $slot,
+        string $slot,
         SecretaryEquipmentService $equipment,
         SecretaryPresenter $presenter,
     ): JsonResponse {
         try {
             $secretary = $equipment->mutate(
                 $request->user(),
-                $slot,
+                $this->equipmentSlot($slot),
                 $request->integer('item_id') ?: null,
                 $request->integer('expected_version'),
             );
@@ -111,5 +111,14 @@ final class SecretaryController extends Controller
         }
 
         return response()->json(['data' => $presenter->present($secretary)]);
+    }
+
+    private function equipmentSlot(string $slot): int
+    {
+        if (! in_array($slot, ['1', '2', '3', '4', '5'], true)) {
+            throw new SecretaryEquipmentValidationException('装備slotは1から5で指定してください。');
+        }
+
+        return (int) $slot;
     }
 }

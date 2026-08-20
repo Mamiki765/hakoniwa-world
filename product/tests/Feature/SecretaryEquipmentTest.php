@@ -97,6 +97,13 @@ final class SecretaryEquipmentTest extends TestCase
         }
         $this->actingAs($user)->getJson('/api/v1/me/secretary/equipment/-1/options')
             ->assertUnprocessable()->assertJsonPath('code', 'secretary_equipment_invalid');
+        $overflowSlot = str_repeat('9', 30);
+        $this->actingAs($user)->putJson("/api/v1/me/secretary/equipment/{$overflowSlot}", [
+            'item_id' => null,
+            'expected_version' => 1,
+        ])->assertUnprocessable()->assertJsonPath('code', 'secretary_equipment_invalid');
+        $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/{$overflowSlot}/options")
+            ->assertUnprocessable()->assertJsonPath('code', 'secretary_equipment_invalid');
         foreach ([$secondBow->id, 9_999_999] as $itemId) {
             $this->actingAs($user)->putJson('/api/v1/me/secretary/equipment/1', [
                 'item_id' => $itemId,
