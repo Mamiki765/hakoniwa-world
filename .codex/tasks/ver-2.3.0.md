@@ -963,3 +963,89 @@ final-head reviewed with unresolved P0-P2 = 0, explicitly merged to `release/ver
 C1 branch is created from the re-verified release HEAD. The subsequent order is C1 equipment, C2 Item
 effects, C3 monster foundation, C4 Aoi/Zero/dispatch, and C5 final v11 publication/migration. Each
 checkpoint targets the release branch and receives its own focused validation/review.
+
+---
+
+# C1 progress/results
+
+Implemented on `codex/ver-2.3.0-c1-equipment` from release baseline
+`45cfa49fdff08ad764701012b27708b61f211172`.
+
+## Final schema and historical compatibility
+
+- Forward migration `2026_08_20_000000_add_secretary_equipment_version.php` adds unsigned bigint
+  `secretaries.equipment_version`, default/backfill `1`, plus PostgreSQL `>= 1` check. The migration is
+  forward-only and does not rewrite Item rows.
+- Meaningful commit increments exactly once; exact no-op, rejection, and rollback do not increment.
+- The historical v2.2.0 grant path remains unchanged and independent of C1 schema/API/World/v11. Fresh
+  and repeated execution regression proves exactly one level-1 `old_bow`, slot 1,
+  `starter:old_bow`, no Ring, and equipment version 1.
+- Runtime catalog remains Old Bow only. C1 generic category/same-item behavior uses test-only fixtures;
+  Ring presentation/acquisition/effects remain C2.
+
+## Lock ordering, affected Worlds, and TurnRun guard
+
+`SecretaryEquipmentService` acquires `UserMembershipMutationLock`, snapshots all active owner
+memberships, sorts unique Worlds ascending, acquires every `WorldMutationLock`, then opens the DB
+transaction. It locks Worlds, owner memberships/Nations, Secretary, and all owned Items in stable order,
+rechecks the frozen membership set, validates the complete final five-slot state, writes atomically, and
+releases Worlds in reverse then the User lock in `finally`. A partial World-lock failure releases only
+already-acquired locks in reverse and writes nothing. Zero active Worlds skips World locks but retains
+the User lock and Secretary/Item transaction.
+
+`NextProductionTurnRunGuard` uses the existing authoritative `TurnRun::unresolvedProduction()` scope
+and the exact next target turn. Any affected World's next non-dry `pending`, `running`, `failed`, or
+`blocked` run rejects the whole mutation; completed/history and dry runs do not block it.
+
+Nation registration and abandonment now take the same User-then-World order and apply that guard before
+membership/game-state writes. Abandonment otherwise retains its prior validation, history, audit,
+resource, monster, cell, queue, and Secretary/User persistence behavior. Separate-process PostgreSQL
+tests prove equipment-first, abandonment-first, and registration-first orderings, including authoritative
+post-abandonment zero-World enumeration and newly registered World detection.
+
+## API, policy, audit, and query result
+
+- `GET /api/v1/me/secretary/equipment/{slot}/options`: slot, version, current Item, legal candidates,
+  category-limit metadata.
+- `PUT /api/v1/me/secretary/equipment/{slot}`: nullable `item_id`, required `expected_version`, neutral
+  authoritative Secretary response.
+- Stable conflicts: 409 `secretary_equipment_version_conflict` plus membership/World/TurnRun conflicts;
+  player-safe invalid slot/ownership/policy is 422 `secretary_equipment_invalid`.
+- Options are current Item first then legal unequipped Items; Vue prepends `外す`. Items equipped in
+  another slot are omitted and forged moves are rejected. Mutation repeats complete final-state
+  category, same-item, instance, ownership, level, and slot validation.
+- Meaningful mutation writes private `secretary.equipment_changed` metadata with User/Secretary/slot,
+  prior/new Item key/ID, and prior/new version. No-op creates no audit event and no public news.
+- Exact options query count is 2 for empty inventory, Old Bow only, 50 Items, and all five slots
+  occupied; Item count adds no SQL queries.
+
+## UI and interaction result
+
+The existing five compact slots are buttons. `SecretaryEquipmentModal.vue` supplies a native vertical
+scroll list, `外す` first, current selection default, legal server candidates, fixed external footer,
+top-right close button, backdrop/Escape cancellation, focus entry/return and Tab containment, native
+radio keyboard behavior, mobile layout, loading/duplicate-submit prevention, inline backend error, and
+409 authoritative Secretary/options refresh that requires a fresh choice. Modal rows omit Warehouse
+flavor and do not fabricate effect text. Compact category badges render from server metadata. C1 keeps
+turn processing and v1-v10 rulesets effect-free.
+
+## Validation and C0 divergence
+
+- Focused backend: schema/history 3 tests/7 assertions; equipment 12/86; registration/abandonment guard
+  9/19; isolated PostgreSQL concurrency 5/68.
+- Focused frontend: modal 4 tests; App API/stale/error/success integration 1 test; ESLint and
+  `vue-tsc --noEmit` pass.
+- Local final validation: full frontend Vitest 125 tests, production build, full-app PHPStan, Pint,
+  open-question validator, `migrate:fresh`, v10 ruleset command, 157 authoring/immutability tests,
+  86 Secretary/Nation/TurnRunner/complete-turn tests plus the corrected 12-test equipment rerun, and
+  5 existing PostgreSQL registration/abandonment lock tests pass. Ruleset source diff and `_references`
+  diff are both zero.
+- Quality URL/result and final-head Codex review/thread counts are added before PR handoff.
+- C0 hypothesis divergence: no runtime Ring definition or effect DTO was needed in C1. The C0 audit
+  assigns World-scoped effect presentation and Ring/effect definitions to C2, so C1 keeps neutral DTOs
+  and a modal structure ready for the later effect line without inventing v10 effect text.
+
+Durable architecture and the exact C2 entry boundary are recorded in
+[`product/docs/ver-2.3.0-c1-equipment.md`](../../product/docs/ver-2.3.0-c1-equipment.md). C2 begins only
+after C1 is integrated into `release/ver-2.3.0` with green Quality and unresolved P0/P1/P2 all zero. It
+must preserve C1 lock/version/API semantics and v1-v10 effect-free behavior; v11 publication remains C5.
