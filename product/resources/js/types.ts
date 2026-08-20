@@ -27,6 +27,7 @@ export interface Secretary {
     name: string | null;
     named_at: string | null;
     header_label: string;
+    effect_context: SecretaryEquipmentEffectContext | null;
     equipment_version: number;
     skills: SecretarySkill[];
     inventory: {
@@ -59,8 +60,8 @@ export interface SecretaryEquipmentOptionItem {
 }
 
 export interface SecretaryEquipmentEffectContext {
-    source: 'owned_world' | 'configured_current';
-    world_id: number | null;
+    source: 'owned_world';
+    world_id: number;
     ruleset_version_id: number;
     ruleset_key: string;
     ruleset_version: number;
@@ -84,6 +85,7 @@ export interface SecretaryItem {
     category_label: string;
     equipped_slot: number | null;
     is_equipped: boolean;
+    effect_text: string | null;
     flavor_text: string;
     obtained_at: string;
 }

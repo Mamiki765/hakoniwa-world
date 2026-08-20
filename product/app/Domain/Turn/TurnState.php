@@ -64,6 +64,34 @@ final class TurnState
      */
     private array $secretarySnapshots = [];
 
+    /**
+     * @var array<int, array{
+     *     secretary_id: int,
+     *     equipment_version: int,
+     *     items: list<array{
+     *         item_instance_id: int,
+     *         item_key: string,
+     *         category: string,
+     *         level: int,
+     *         equipped_slot: int,
+     *         effects: list<array{
+     *             type: string,
+     *             timing: string,
+     *             parameters: array<string, mixed>,
+     *             target_map_space_keys: list<string>,
+     *             random_stream_version: int|null
+     *         }>
+     *     }>
+     * }>
+     */
+    private array $secretaryItemEffectSnapshots = [];
+
+    /** @var array<int, true> */
+    private array $secretaryRingFinanceNationIds = [];
+
+    /** @var array{requested: int, applied: int, overflow: int} */
+    private array $secretaryRingFinanceTotals = ['requested' => 0, 'applied' => 0, 'overflow' => 0];
+
     /** @var array<int, array<string, int>> */
     private array $pendingSecretaryExperience = [];
 
@@ -445,6 +473,144 @@ final class TurnState
         $nationId = $this->validatedNationId($nationId);
 
         return isset($this->secretarySnapshots[$nationId]);
+    }
+
+    /** @param array<array-key, mixed> $items */
+    public function setSecretaryItemEffectSnapshot(
+        mixed $nationId,
+        mixed $secretaryId,
+        mixed $equipmentVersion,
+        array $items,
+    ): void {
+        $nationId = $this->validatedNationId($nationId);
+        if (! is_int($secretaryId) || $secretaryId < 1
+            || ! is_int($equipmentVersion) || $equipmentVersion < 1
+            || ! array_is_list($items)) {
+            throw new InvalidArgumentException('Secretary Item snapshot identity and Item list are invalid.');
+        }
+        if (isset($this->secretaryItemEffectSnapshots[$nationId])) {
+            throw new InvalidArgumentException("Nation {$nationId} already has a Secretary Item snapshot for this attempt.");
+        }
+        $validatedItems = [];
+        $slots = [];
+        foreach ($items as $item) {
+            if (! is_array($item)
+                || ! is_int($item['item_instance_id'] ?? null) || $item['item_instance_id'] < 1
+                || ! is_string($item['item_key'] ?? null) || $item['item_key'] === ''
+                || ! is_string($item['category'] ?? null) || $item['category'] === ''
+                || ! is_int($item['level'] ?? null) || $item['level'] < 1
+                || ! is_int($item['equipped_slot'] ?? null)
+                || $item['equipped_slot'] < 1 || $item['equipped_slot'] > 5
+                || ! is_array($item['effects'] ?? null) || ! array_is_list($item['effects'])) {
+                throw new InvalidArgumentException('Secretary Item snapshot row is invalid.');
+            }
+            if (isset($slots[$item['equipped_slot']])) {
+                throw new InvalidArgumentException('Secretary Item snapshot contains a duplicate equipped slot.');
+            }
+            $slots[$item['equipped_slot']] = true;
+            $effects = [];
+            foreach ($item['effects'] as $effect) {
+                if (! is_array($effect)
+                    || ! is_string($effect['type'] ?? null) || $effect['type'] === ''
+                    || ! is_string($effect['timing'] ?? null) || $effect['timing'] === ''
+                    || ! is_array($effect['parameters'] ?? null) || array_is_list($effect['parameters'])
+                    || ! is_array($effect['target_map_space_keys'] ?? null)
+                    || ! array_is_list($effect['target_map_space_keys'])
+                    || (! is_int($effect['random_stream_version'] ?? null)
+                        && ($effect['random_stream_version'] ?? null) !== null)) {
+                    throw new InvalidArgumentException('Secretary Item snapshot effect is invalid.');
+                }
+                foreach ($effect['target_map_space_keys'] as $mapSpaceKey) {
+                    if (! is_string($mapSpaceKey) || $mapSpaceKey === '') {
+                        throw new InvalidArgumentException('Secretary Item target MapSpace keys must be non-empty strings.');
+                    }
+                }
+                $effects[] = [
+                    'type' => $effect['type'],
+                    'timing' => $effect['timing'],
+                    'parameters' => $effect['parameters'],
+                    'target_map_space_keys' => $effect['target_map_space_keys'],
+                    'random_stream_version' => $effect['random_stream_version'],
+                ];
+            }
+            $validatedItems[] = [
+                'item_instance_id' => $item['item_instance_id'],
+                'item_key' => $item['item_key'],
+                'category' => $item['category'],
+                'level' => $item['level'],
+                'equipped_slot' => $item['equipped_slot'],
+                'effects' => $effects,
+            ];
+        }
+        $this->secretaryItemEffectSnapshots[$nationId] = [
+            'secretary_id' => $secretaryId,
+            'equipment_version' => $equipmentVersion,
+            'items' => $validatedItems,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     secretary_id: int,
+     *     equipment_version: int,
+     *     items: list<array<string, mixed>>
+     * }
+     */
+    public function secretaryItemEffectSnapshot(mixed $nationId): array
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! isset($this->secretaryItemEffectSnapshots[$nationId])) {
+            throw new InvalidArgumentException("Nation {$nationId} has no Secretary Item snapshot for this attempt.");
+        }
+
+        return $this->secretaryItemEffectSnapshots[$nationId];
+    }
+
+    public function hasSecretaryItemEffectSnapshot(mixed $nationId): bool
+    {
+        $nationId = $this->validatedNationId($nationId);
+
+        return isset($this->secretaryItemEffectSnapshots[$nationId]);
+    }
+
+    public function secretaryItemEffectSnapshotCount(): int
+    {
+        return count($this->secretaryItemEffectSnapshots);
+    }
+
+    public function secretaryItemEffectItemCount(): int
+    {
+        return array_sum(array_map(
+            static fn (array $snapshot): int => count($snapshot['items']),
+            $this->secretaryItemEffectSnapshots,
+        ));
+    }
+
+    public function recordSecretaryRingFinanceBonus(
+        mixed $nationId,
+        int $requested,
+        int $applied,
+        int $overflow,
+    ): void {
+        $nationId = $this->validatedNationId($nationId);
+        if ($requested < 1 || $applied < 0 || $overflow < 0 || $applied + $overflow !== $requested) {
+            throw new InvalidArgumentException('Secretary Ring finance metrics are invalid.');
+        }
+        $this->secretaryRingFinanceNationIds[$nationId] = true;
+        $this->secretaryRingFinanceTotals['requested'] += $requested;
+        $this->secretaryRingFinanceTotals['applied'] += $applied;
+        $this->secretaryRingFinanceTotals['overflow'] += $overflow;
+    }
+
+    /** @return array{secretary_ring_nations: int, secretary_ring_bonus_requested: int, secretary_ring_bonus_applied: int, secretary_ring_bonus_overflow: int} */
+    public function secretaryRingFinanceMetrics(): array
+    {
+        return [
+            'secretary_ring_nations' => count($this->secretaryRingFinanceNationIds),
+            'secretary_ring_bonus_requested' => $this->secretaryRingFinanceTotals['requested'],
+            'secretary_ring_bonus_applied' => $this->secretaryRingFinanceTotals['applied'],
+            'secretary_ring_bonus_overflow' => $this->secretaryRingFinanceTotals['overflow'],
+        ];
     }
 
     public function secretarySkillLevel(mixed $nationId, string $skillKey): int

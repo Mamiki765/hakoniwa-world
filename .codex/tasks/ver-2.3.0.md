@@ -219,8 +219,8 @@ Item effect text is ruleset-scoped even though Item identity, inventory, and equ
 arbitrary owned World. When the UI is opened for an active Nation it sends that Nation's explicit
 `world_id`; the server verifies an active owner membership, resolves effects from that World's exact
 ruleset, and returns an effect presentation context containing `world_id`, ruleset version ID/version,
-and each Item's derived `effect_text`. If the User has no active Nation, omission may use the configured
-current ruleset only when the response marks the context as `configured_current`. Name/rename and
+and each Item's derived `effect_text`. Omission is always ruleset-neutral, including when the User has
+no active Nation; there is no configured-current fallback. Name/rename and
 equipment mutation responses remain ruleset-neutral; the UI reloads the World-scoped projection after
 mutation. An omitted World while one or more active memberships exist never implies first/latest/current.
 
@@ -272,6 +272,14 @@ Minimum:
 ---
 
 # C2 — item gameplay definitions and effects
+
+## Owner clarification for C2
+
+- Secretary Items and equipment are User-global and shared across every MapSpace and active owned Nation; there is no separate equipment set per screen, target cell, World, Nation, or MapSpace.
+- Old Bow is the only C2 effect scoped to a MapSpace and targets only the `surface` MapSpace. Ring is a Nation-wide economy effect and has no MapSpace target.
+- C2 implements only these two closed effects. It does not introduce a generic layer/effect framework, per-space equipment state, or a second equipment version.
+- Omitting `world_id` from Secretary presentation is always neutral, even when the User has no active Nation. Only an explicit authorized World may supply ruleset-derived effect text.
+- The C1 equipment mutation API, lock/version contract, neutral mutation/name responses, and stale-409 modal refresh-and-reselect behavior remain unchanged.
 
 ## Definition boundary
 
@@ -330,7 +338,7 @@ Stable key: `old_bow`
 
 Displayed effect:
 
-> 10%の確率で、自領内の怪獣に1ダメージを与える。
+> 10%の確率で、自領の地上にいる怪獣に1ダメージを与える。
 
 Internal v11 parameters may preserve the earlier scalable formula (`9% + Lv × 1%`) as long as Lv1 resolves exactly to 10%, but do not show unnecessary formula detail to players.
 
@@ -469,7 +477,69 @@ Minimum:
 - explicit v11-World DTO and warehouse/modal effect text matches v11 parameters;
 - the same User owning active Nations in v10 and v11 Worlds receives distinct World-scoped projections,
   an omitted World never selects either implicitly, unauthorized World context is rejected, and the
-  zero-active-Nation configured-current projection is explicitly labelled.
+  omission remains neutral even when the User has zero active Nations.
+
+## C2 progress/results
+
+- Implemented on `codex/ver-2.3.0-c2-item-effects` from verified release/C1 baseline
+  `41ed06294939b63b6796069d589abb262c12baeb`. The global catalog now contains exact Ring presentation
+  and five-copy legality without adding any grant/acquisition path or changing the historical Old Bow
+  grant. No production schema migration, formal v11 file, publication migration, production registry
+  entry, World rebind, or published v1-v10 payload change was added.
+- The test-only inactive `test-hakoniwa-2s-plus-v11-secretary-items` fixture defines the two closed,
+  integer-only effects. Authoring validation rejects missing/unknown/open-ended/catalog-divergent
+  fields. `prepare_turn` snapshots Secretary/equipment identity, equipped Item identity/slot/level, and
+  resolved effect identity once per active Nation; v1-v10 retain zero Item query, snapshot, draw, and
+  effect, including same-seed historical retry.
+- Old Bow runs after missile finalization and before the existing normal-monster pass, uses isolated
+  Nation trigger/target streams, filters current surface/ownership/alive/hardening/ruleset-owned hazard
+  state, and delegates damage, reward, occupancy, batch synchronization, and kill statistics to the
+  existing authoritative services. Ring level sums run through the centralized explicit/automatic
+  finance path after base finance against the same money capacity; logging and other income remain
+  unchanged, and no-Ring finance preserves the legacy metadata shape.
+- Secretary reads/options derive effect text only from an explicit authorized active-owner World.
+  Omission is always neutral and does no ruleset query. Mutation/name responses remain neutral, while
+  the active-Nation UI reloads scoped presentation and preserves the C1 stale-409 reselect contract.
+  Warehouse and modal show ruleset-derived effects; the five slot cards remain compact. The Secretary
+  manual is the dedicated player-facing `秘書について` page and records all four passive skills and
+  their experience sources, equipment limits and changes, surface-only Old Bow, Nation-wide Ring,
+  snapshots, safety, stacking, capacity priority, and abandonment persistence. The ordinary beginner,
+  intermediate, and advanced manuals do not duplicate those details.
+- Query results: v10 prepare Item increase 0; v11-shaped equipped Item load exactly 1 for one/many
+  Nations, 50 inventory Items, five equipped Items, and multiple MapSpaces; Old Bow candidate loading
+  has a stable upper bound of 5 and is exactly 5 in the many-monster/two-Nation fixture; neutral/explicit
+  presentation remains exactly 2/3 queries with no per-Item SQL.
+- Local validation passes: 71 focused backend tests / 481 assertions; full frontend 128 tests plus
+  ESLint, `vue-tsc --noEmit`, and Vite production build; full-app PHPStan; Pint over 245 files;
+  open-question validator; isolated `migrate:fresh`; v10 ruleset validation; and all 106 PHPUnit files
+  across the complete 16-shard plan. Ruleset-source/migration and `_references` diffs from the release
+  baseline are zero.
+- The first exact-head Codex review found two P2 UI transaction-boundary cases: a successful equipment
+  mutation and a successful name/name-change mutation could be reported as failed when only the following
+  scoped projection refresh failed. Red regressions now require the committed neutral mutation result and
+  new equipment version/name to remain authoritative locally, close the completed equipment modal, and
+  report only the effect-projection refresh failure. The C1 stale-409 retry/reselect branch is unchanged.
+- The following exact-head review found one P2 documentation gap: the Secretary navigation advertised
+  skill guidance without documenting the four skill effects and experience sources. The dedicated page
+  now carries that guidance, uses the same navigation immediately after `上級編`, and states abandonment
+  behavior without implying that equipment can be changed through the normal UI while no island is active.
+- The next exact-head review found one P2 authoring gap: Item definitions could validate without the
+  separated normal-monster stage that Old Bow requires at runtime. The Item gameplay contract now rejects
+  a missing or incompatible stage before publication, and authoring/runtime share the same stage constant.
+- The subsequent exact-head review found one P2 target-safety parsing gap: valid JSON object metadata was
+  rejected when its two fields appeared in a different insertion order. Validation now compares the exact
+  key set without assigning meaning to object field order, while unknown fields and invalid values still
+  fail closed.
+- Verified C0 divergence: post-missile eligibility is safest as one bounded current-state occupancy
+  load followed by in-memory Nation grouping, while the authoritative damage/removal services keep the
+  already-loaded monster batch synchronized. This is the audited combination boundary rather than
+  treating the pre-missile batch alone as candidate truth. The C1 2/3-query presentation bound was
+  preserved despite v11-derived effect text, and no production schema change was required.
+
+C3 may start only after this C2 PR is green in repository-required Quality, reviewed at its exact final
+HEAD with unresolved P0/P1/P2 all zero, explicitly integrated into `release/ver-2.3.0`, and a clean C3
+branch is created from the reverified release HEAD. C3 owns the monster-extension foundation and must
+preserve the C2 Item contract; final v11 authoring/publication/migration remains C5 only.
 
 ---
 
@@ -921,7 +991,7 @@ removed so this file is the single temporary Owner-contract source.
 | catalog/queue/executor assume static definition cost (`CommandQueueController.php:36-178,370-440`; `DomesticCommandExecutor.php:403-547`) | 3,000/9,999 selected cost | retain truthful default definition cost 3,000; one typed effective-cost result for preview, queue, validation, deduction and events | shortfall, insufficient execution funds, queue label/cost, no fictional static cost | decided | C4 |
 | five Item slots/storage exist but no mutation/version, and `(user_id, world_id)` permits one active owned Nation in each of multiple Worlds (`SecretaryItemPresenter.php:13-55`; `SecretaryController.php:15-55`; `2026_07_26_000000_create_hakoniwa_schema.php:109-115`) | atomic globally consistent equip/unequip without a phantom membership insert | shared User membership-set advisory lock is first for registration/equipment, then every active owned World in stable order, then Secretary/Items; zero-World path retains the user lock | registration race in both orders, zero/one/multiple Worlds, guard in any World, partial lock release, no-op/version conflict/mobile/keyboard | decided | C1 |
 | current membership-set writers are registration create and abandonment delete; abandonment holds only the World lock, deletes the membership/queue, removes monsters, and rewrites cells/Nation without an unresolved-run guard (`NationCreationService.php:88-156`; `NationAbandonmentService.php:45-224`) | freeze the complete membership set and retry inputs across equipment, create, and delete | require registration and abandonment to take User then World lock and apply the same next non-dry four-status guard before mutation | equipment/create/delete races in both orders, four statuses, active state and all dependent rows unchanged on rejection | decided | C1 |
-| `/api/v1/me/secretary` has no World identifier while Item effects are ruleset-owned and a User may own Nations in multiple Worlds (`SecretaryController.php:15-25`; `SecretaryItemPresenter.php:13-55`) | prevent cross-ruleset effect misrepresentation | keep the User-global DTO neutral; derive effect text only for an explicit authorized World, with a labelled configured-current projection only when no active Nation exists | same User v10/v11 projections, omitted/unauthorized World, neutral mutation/name response, zero-Nation marker | decided | C2 |
+| `/api/v1/me/secretary` has no World identifier while Item effects are ruleset-owned and a User may own Nations in multiple Worlds (`SecretaryController.php:15-25`; `SecretaryItemPresenter.php:13-55`) | prevent cross-ruleset effect misrepresentation | keep the User-global DTO neutral and derive effect text only for an explicit authorized World; omission always remains neutral, including with no active Nation | same User v10/v11 projections, omitted/unauthorized World, neutral mutation/name response, zero-Nation omission | decided | C2 |
 | turn state snapshots four skills only; v9+ has a missile-finalize/normal-monster seam (`SecretaryTurnService.php:21-66`; `CompleteTurnEngine.php:327-441`) | deterministic Item effects | snapshot v11 Item/effect identity at prepare; Old Bow after missiles/before monsters; Ring in centralized explicit/automatic finance | v10 retry effect-free, stream isolation, safe target, reward/XP, capacity | decided | C2 |
 | validator/spawn/public detail/ranking encode exact eight/kind 0..7 (`RulesetAuthoringValidator.php:619-697`; `MonsterSpawnService.php:45-52`; `PublicWorldService.php:82-113`; `PublicRankingAchievementProjection.php:101-142`) | additive v11 display | nullable DB order, null historical fallback `kind*100`, v11 explicit unique order, no public limit, max killed order representative | 10+ species, totals/order/representative, duplicate/null validation, v1-v10 immutable | decided | C3 |
 | huge meteor/removal/batch paths are reusable (`DisasterTurnService.php:672-748,946-1004`; `MonsterRemovalService.php`) | Aoi/Zero behavior | Aoi World substage after subsidence/before natural spawn; water-neutralizing movement; Zero removal before one fixed-center blast | candidate radius/query bounds, displacement, hostless payout, self/collateral rewardless, no chain | delegated details fixed by C0 | C4 |

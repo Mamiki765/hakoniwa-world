@@ -162,6 +162,12 @@ final class FirstProductionReleaseTest extends TestCase
 
         $this->get('/manual')->assertOk()
             ->assertSee('箱庭諸島２S＋マニュアル')
+            ->assertSeeInOrder([
+                'href="/manual/advanced"',
+                '>上級編</a>',
+                'href="/manual/secretary"',
+                '>秘書について</a>',
+            ], false)
             ->assertSee('href="/credits"', false)
             ->assertSee('href="/community-guidelines"', false);
         $this->get('/manual/beginner')->assertOk()
@@ -178,6 +184,30 @@ final class FirstProductionReleaseTest extends TestCase
         $this->get('/manual/advanced')->assertOk()
             ->assertSee('地盤沈下')
             ->assertSee('島の破棄');
+        $this->get('/manual/secretary')->assertOk()
+            ->assertSee('<title>秘書について | 箱庭諸島２S＋</title>', false)
+            ->assertSee('<h1>秘書について</h1>', false)
+            ->assertSee('農業政策')
+            ->assertSee('Lv1ごとに小麦生産が0.1%増えます')
+            ->assertSee('農場建設が1回成功するごとに経験値を1獲得します')
+            ->assertSee('特産品開発')
+            ->assertSee('Lv1ごとに工場生産が0.1%増えます')
+            ->assertSee('工場建設が1回成功するごとに経験値を1獲得します')
+            ->assertSee('金鉱脈調査')
+            ->assertSee('Lv1ごとに採掘場生産が0.1%増えます')
+            ->assertSee('採掘場建設が1回成功するごとに経験値を1獲得します')
+            ->assertSee('最終防衛ライン')
+            ->assertSee('自領のマスへミサイルが1発到達するごとに経験値を1獲得します')
+            ->assertSee('倉庫には最大50個')
+            ->assertSee('装備スロットが5個')
+            ->assertSee('10%の確率で、自領の地上にいる怪獣に1ダメージを与える。')
+            ->assertSee('次に開始できるターンから反映')
+            ->assertSee('自動の資金繰り')
+            ->assertSee('Lv3とLv2の指輪を装備していれば、追加分は5億円です')
+            ->assertSee('島を破棄しても、秘書と倉庫のアイテム、装備状態は保持されます。活動中の島がない間は装備効果は発生せず、再参加後に必要に応じて装備を変更できます。')
+            ->assertSee('アイテムと装備状態は秘書に対して共通で、対象マスや画面ごとに別管理されません。')
+            ->assertDontSee('現在活動中の島がない間は、装備を変えることはできます')
+            ->assertDontSee('複数の海域や島を持っていても、装備セットは一つです');
         $this->get('/community-guidelines')->assertOk()
             ->assertSee('利用ルール')
             ->assertSee('通報・異議申立て窓口を開く');
@@ -188,5 +218,19 @@ final class FirstProductionReleaseTest extends TestCase
             $this->assertDoesNotMatchRegularExpression('/\b(?:source|legacy|ruleset)\b/i', $manual);
             $this->assertDoesNotMatchRegularExpression('/自爆|飛翔|とてつもない|Karma/i', $manual);
         }
+        $css = file_get_contents(resource_path('css/hakoniwa.css'));
+        $this->assertIsString($css);
+        $this->assertStringContainsString(
+            '.secretary-equipment { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));',
+            $css,
+        );
+        $this->assertStringContainsString(
+            '.secretary-equipment { grid-template-columns: repeat(2, minmax(0, 1fr)); }',
+            $css,
+        );
+        $this->assertStringContainsString(
+            '.secretary-warehouse .item-flavor { color: var(--muted); font-style: italic;',
+            $css,
+        );
     }
 }

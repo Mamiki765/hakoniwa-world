@@ -8,6 +8,8 @@ use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\DeterministicRandomStream;
 use DomainException;
@@ -402,6 +404,8 @@ final class RulesetAuthoringValidator
                 throw new DomainException("{$path} does not match the Secretary v1 final-defense contract.");
             }
         }
+
+        (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($settings);
     }
 
     /**

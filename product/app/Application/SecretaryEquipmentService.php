@@ -6,6 +6,7 @@ use App\Domain\Nation\UserMembershipMutationLock;
 use App\Domain\Secretary\SecretaryEquipmentConflictException;
 use App\Domain\Secretary\SecretaryEquipmentValidationException;
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryNotFoundException;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\UnresolvedNextTurnRunException;
@@ -27,6 +28,8 @@ class SecretaryEquipmentService
         private readonly WorldMutationLock $worldMutationLock,
         private readonly NextProductionTurnRunGuard $turnRunGuard,
         private readonly SecretaryItemCatalog $catalog,
+        private readonly SecretaryItemEffectContextResolver $effectContexts,
+        private readonly SecretaryItemGameplayContract $itemGameplay,
     ) {}
 
     /**
@@ -42,7 +45,7 @@ class SecretaryEquipmentService
     public function options(User $user, int $slot, ?int $worldId = null): array
     {
         $this->assertSlot($slot);
-        $effectContext = $this->effectContext($user, $worldId);
+        $effectProjection = $this->effectContexts->resolve($user, $worldId);
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
             ->with('itemInstances')
@@ -61,7 +64,7 @@ class SecretaryEquipmentService
         );
         $candidateItems = [];
         if ($current instanceof SecretaryItemInstance) {
-            $candidateItems[] = $this->optionItem($current);
+            $candidateItems[] = $this->optionItem($current, $effectProjection);
         }
         foreach ($items as $item) {
             if ($current instanceof SecretaryItemInstance && $item->id === $current->id) {
@@ -77,16 +80,18 @@ class SecretaryEquipmentService
             } catch (SecretaryEquipmentValidationException) {
                 continue;
             }
-            $candidateItems[] = $this->optionItem($item);
+            $candidateItems[] = $this->optionItem($item, $effectProjection);
         }
 
         return [
             'slot' => $slot,
             'equipment_version' => $secretary->equipment_version,
-            'current_item' => $current instanceof SecretaryItemInstance ? $this->optionItem($current) : null,
+            'current_item' => $current instanceof SecretaryItemInstance
+                ? $this->optionItem($current, $effectProjection)
+                : null,
             'items' => $candidateItems,
             'category_limits' => $this->catalog->categoryLimits(),
-            'effect_context' => $effectContext,
+            'effect_context' => $effectProjection?->context,
         ];
     }
 
@@ -364,47 +369,11 @@ class SecretaryEquipmentService
         }
     }
 
-    /**
-     * @return array{source: string, world_id: int, ruleset_version_id: int, ruleset_key: string, ruleset_version: int}|null
-     */
-    private function effectContext(User $user, ?int $worldId): ?array
-    {
-        if ($worldId === null) {
-            return null;
-        }
-
-        $context = DB::table('nation_memberships as membership')
-            ->join('nations as nation', 'nation.id', '=', 'membership.nation_id')
-            ->join('worlds as world', 'world.id', '=', 'membership.world_id')
-            ->join('ruleset_versions as ruleset', 'ruleset.id', '=', 'world.ruleset_version_id')
-            ->where('membership.user_id', $user->id)
-            ->where('membership.world_id', $worldId)
-            ->where('membership.role', 'owner')
-            ->where('nation.state', 'active')
-            ->whereColumn('nation.world_id', 'membership.world_id')
-            ->select([
-                'world.id as world_id',
-                'ruleset.id as ruleset_version_id',
-                'ruleset.key as ruleset_key',
-                'ruleset.version as ruleset_version',
-            ])
-            ->first();
-        if ($context === null) {
-            throw new SecretaryEquipmentValidationException('指定したWorldの装備効果を表示できません。');
-        }
-
-        return [
-            'source' => 'owned_world',
-            'world_id' => (int) $context->world_id,
-            'ruleset_version_id' => (int) $context->ruleset_version_id,
-            'ruleset_key' => (string) $context->ruleset_key,
-            'ruleset_version' => (int) $context->ruleset_version,
-        ];
-    }
-
     /** @return array<string, mixed> */
-    private function optionItem(SecretaryItemInstance $item): array
-    {
+    private function optionItem(
+        SecretaryItemInstance $item,
+        ?SecretaryItemEffectProjection $projection,
+    ): array {
         $definition = $this->catalog->definition($item->item_key);
 
         return [
@@ -415,7 +384,13 @@ class SecretaryEquipmentService
             'category' => $definition['category'],
             'category_label' => $definition['category_label'],
             'equipped_slot' => $item->equipped_slot,
-            'effect_text' => null,
+            'effect_text' => $projection === null
+                ? null
+                : $this->itemGameplay->effectText(
+                    $projection->rulesetSettings,
+                    $item->item_key,
+                    $item->level,
+                ),
         ];
     }
 

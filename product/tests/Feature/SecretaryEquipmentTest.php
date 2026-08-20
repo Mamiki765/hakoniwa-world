@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Application\NationCreationService;
 use App\Application\NextProductionTurnRunGuard;
 use App\Application\SecretaryEquipmentService;
+use App\Application\SecretaryItemEffectContextResolver;
 use App\Domain\Nation\UserMembershipMutationLock;
 use App\Domain\Secretary\SecretaryEquipmentConflictException;
 use App\Domain\Secretary\SecretaryEquipmentValidationException;
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\World\WorldMutationLock;
 use App\Models\Nation;
@@ -46,6 +48,8 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertJsonPath('data.items.0.id', $bow->id)
             ->assertJsonPath('data.items.0.effect_text', null)
             ->assertJsonPath('data.category_limits.0.category', 'bow')
+            ->assertJsonPath('data.category_limits.1.category', 'ring')
+            ->assertJsonPath('data.category_limits.1.maximum_equipped', 5)
             ->assertJsonMissingPath('data.items.0.flavor_text');
 
         $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
@@ -176,6 +180,40 @@ final class SecretaryEquipmentTest extends TestCase
             $this->addToAssertionCount(1);
         }
         $this->assertNull($currentBow->fresh()->equipped_slot);
+    }
+
+    public function test_five_rings_fill_the_shared_slots_and_a_sixth_cannot_be_equipped(): void
+    {
+        $secretary = $this->secretaryFixture();
+        $user = $secretary->user()->firstOrFail();
+        $rings = collect(range(1, 6))->map(fn (int $number) => $secretary->itemInstances()->create([
+            ...$this->itemAttributes(SecretaryItemCatalog::RING, null),
+            'level' => $number === 6 ? 10 : $number,
+            'grant_key' => "test:ring:equipment:{$number}",
+        ]));
+        $service = $this->service();
+
+        foreach (range(1, 5) as $slot) {
+            $service->mutate($user, $slot, $rings[$slot - 1]->id, $slot);
+        }
+
+        $this->assertSame([1, 2, 3, 4, 5], $secretary->itemInstances()
+            ->where('item_key', SecretaryItemCatalog::RING)
+            ->whereNotNull('equipped_slot')
+            ->orderBy('equipped_slot')
+            ->pluck('equipped_slot')->all());
+        $this->assertSame(6, $secretary->fresh()->equipment_version);
+        $this->assertSame(5, app(SecretaryItemCatalog::class)->sameItemMaximum(SecretaryItemCatalog::RING));
+        $this->assertSame(5, app(SecretaryItemCatalog::class)->maximumEquipped('ring'));
+
+        try {
+            $service->mutate($user, 6, $rings[5]->id, 6);
+            $this->fail('Expected the sixth Ring to have no legal equipment slot.');
+        } catch (SecretaryEquipmentValidationException) {
+            $this->addToAssertionCount(1);
+        }
+        $this->assertNull($rings[5]->fresh()->equipped_slot);
+        $this->assertSame(6, $secretary->fresh()->equipment_version);
     }
 
     public function test_failed_replacement_rolls_back_both_slots_version_and_audit(): void
@@ -477,6 +515,8 @@ SQL);
             $worldLock,
             new NextProductionTurnRunGuard($worldLock),
             $catalog ?? app(SecretaryItemCatalog::class),
+            app(SecretaryItemEffectContextResolver::class),
+            app(SecretaryItemGameplayContract::class),
         );
     }
 
