@@ -209,14 +209,8 @@ final class SecretaryItemGameplayContract
             || ($effect['stacking'] ?? null) !== self::RING_STACKING) {
             throw new DomainException("{$path} is not the supported Ring effect contract.");
         }
-        $bonus = $this->integer($effect['bonus_money_per_level'] ?? null, "{$path}.bonus_money_per_level", 1);
-        $ring = $this->catalog->definition(SecretaryItemCatalog::RING);
-        $maximumLevelSum = $ring['max_level'] * min(
-            $ring['category_max_equipped'],
-            $ring['same_item_max_equipped'],
-        );
-        if ($bonus > intdiv(PHP_INT_MAX, $maximumLevelSum)) {
-            throw new DomainException("{$path}.bonus_money_per_level exceeds the supported equipment total.");
+        if ($this->integer($effect['bonus_money_per_level'] ?? null, "{$path}.bonus_money_per_level", 1) !== 1) {
+            throw new DomainException("{$path}.bonus_money_per_level must be 1 in C2.");
         }
     }
 
