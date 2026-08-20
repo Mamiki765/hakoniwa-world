@@ -30,7 +30,8 @@ final class SecretaryItemTargetSafetyPolicy
         if ($hazard === null) {
             return true;
         }
-        if (! is_array($hazard) || array_keys($hazard) !== ['policy', 'remaining_hp']
+        if (! is_array($hazard) || count($hazard) !== 2
+            || ! array_key_exists('policy', $hazard) || ! array_key_exists('remaining_hp', $hazard)
             || ($hazard['policy'] ?? null) !== self::CERTAIN_SELF_ACTION_AT_REMAINING_HP
             || ! is_int($hazard['remaining_hp'] ?? null) || $hazard['remaining_hp'] < 1) {
             throw new DomainException('Monster Secretary Item target-safety metadata is invalid.');

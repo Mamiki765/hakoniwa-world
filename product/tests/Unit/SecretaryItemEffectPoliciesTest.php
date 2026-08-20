@@ -46,6 +46,18 @@ final class SecretaryItemEffectPoliciesTest extends TestCase
         $this->assertFalse(app(SecretaryItemTargetSafetyPolicy::class)->allows($monster, 1, 1));
     }
 
+    public function test_target_safety_metadata_field_order_has_no_meaning(): void
+    {
+        $monster = $this->monster(2, 'none', [
+            SecretaryItemTargetSafetyPolicy::METADATA_KEY => [
+                'remaining_hp' => 1,
+                'policy' => SecretaryItemTargetSafetyPolicy::CERTAIN_SELF_ACTION_AT_REMAINING_HP,
+            ],
+        ]);
+
+        $this->assertFalse(app(SecretaryItemTargetSafetyPolicy::class)->allows($monster, 1, 2));
+    }
+
     public function test_target_safety_rejects_malformed_ruleset_metadata(): void
     {
         $monster = $this->monster(2, 'none', [

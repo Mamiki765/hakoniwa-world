@@ -526,6 +526,10 @@ Minimum:
 - The next exact-head review found one P2 authoring gap: Item definitions could validate without the
   separated normal-monster stage that Old Bow requires at runtime. The Item gameplay contract now rejects
   a missing or incompatible stage before publication, and authoring/runtime share the same stage constant.
+- The subsequent exact-head review found one P2 target-safety parsing gap: valid JSON object metadata was
+  rejected when its two fields appeared in a different insertion order. Validation now compares the exact
+  key set without assigning meaning to object field order, while unknown fields and invalid values still
+  fail closed.
 - Verified C0 divergence: post-missile eligibility is safest as one bounded current-state occupancy
   load followed by in-memory Nation grouping, while the authoritative damage/removal services keep the
   already-loaded monster batch synchronized. This is the audited combination boundary rather than
