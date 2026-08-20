@@ -3,9 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\RulesetPublisher;
-use App\Models\CommandDefinition;
 use App\Models\MonsterDefinition;
-use App\Models\ProductionDefinition;
 use App\Models\RulesetVersion;
 use DomainException;
 use Illuminate\Database\QueryException;
@@ -91,17 +89,12 @@ final class MonsterFoundationPersistenceTest extends TestCase
 
     public function test_publisher_persists_and_immutably_compares_every_explicit_order_in_the_extended_fixture(): void
     {
-        $historical = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->firstOrFail();
-        foreach ([CommandDefinition::class, ProductionDefinition::class, MonsterDefinition::class] as $model) {
-            $model::query()->where('ruleset_version_id', $historical->id)->delete();
-        }
-        $historical->delete();
         $settings = V11SecretaryItemRulesetFixture::settings();
-        $settings['key'] = 'hakoniwa-2s-plus-v10';
-        $settings['version'] = 10;
 
         $published = app(RulesetPublisher::class)->publish($settings);
 
+        $this->assertSame($settings['key'], $published->key);
+        $this->assertSame($settings['version'], $published->version);
         $this->assertSame(
             [0, 50, 100, 200, 300, 400, 450, 500, 600, 700],
             MonsterDefinition::query()->where('ruleset_version_id', $published->id)

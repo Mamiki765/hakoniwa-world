@@ -21,6 +21,10 @@ use JsonException;
 
 final class RulesetAuthoringValidator
 {
+    private const UNPUBLISHED_V11_FIXTURE_KEY = 'test-hakoniwa-2s-plus-v11-secretary-items';
+
+    private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
+
     private const ARCHITECTURE_CHUNK_SIZE = 16;
 
     private const INITIAL_X_MIN = 0;
@@ -112,7 +116,7 @@ final class RulesetAuthoringValidator
 
         $this->requireKeys($settings, self::REQUIRED_TOP_LEVEL_KEYS, 'ruleset');
 
-        $key = $this->persistedString($settings['key'], 'ruleset.key');
+        $authoredKey = $this->persistedString($settings['key'], 'ruleset.key');
         $version = $this->integer($settings['version'], 'ruleset.version', 1);
         if ($version > self::POSTGRESQL_INTEGER_MAX) {
             throw new DomainException(
@@ -120,6 +124,8 @@ final class RulesetAuthoringValidator
                 .self::POSTGRESQL_INTEGER_MAX.'.',
             );
         }
+        $key = $this->nonMonsterValidationKey($authoredKey, $version);
+        $settings['key'] = $key;
         if (in_array($key, ['hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)) {
             $turnResolution = $this->map($settings['turn_resolution'] ?? null, 'ruleset.turn_resolution');
             if ($turnResolution !== [
@@ -317,12 +323,18 @@ final class RulesetAuthoringValidator
             $reservationRadius,
             $landRadius,
         );
-        $monsterCount = $this->validateMonsterSystem($settings, $resourceKeys, $facilityKeys);
+        $monsterCount = $this->validateMonsterSystem(
+            $settings,
+            $resourceKeys,
+            $facilityKeys,
+            $authoredKey,
+            $version,
+        );
         $this->validateMilitary($settings, $facilityKeys);
         $this->validateSecretary($settings, $resourceKeys, $commandKeys);
 
         return [
-            'key' => $key,
+            'key' => $authoredKey,
             'version' => $version,
             'resources' => count($resourceKeys),
             'facilities' => count($facilityKeys),
@@ -622,7 +634,10 @@ final class RulesetAuthoringValidator
         array $settings,
         array $resourceKeys,
         array $facilityKeys,
+        string $rulesetKey,
+        int $rulesetVersion,
     ): int {
+        $extended = $this->usesV11MonsterContract($rulesetKey, $rulesetVersion);
         $hasDefinitions = array_key_exists('monster_definitions', $settings);
         $hasSystem = array_key_exists('monster_system', $settings);
         if ($hasDefinitions !== $hasSystem) {
@@ -631,15 +646,15 @@ final class RulesetAuthoringValidator
             );
         }
         if (! $hasDefinitions) {
+            if ($extended) {
+                throw new DomainException('A v11 ruleset requires the extended monster contract.');
+            }
+
             return 0;
         }
 
         $definitions = $this->list($settings['monster_definitions'], 'ruleset.monster_definitions');
         $keys = $this->definitionKeys($definitions, 'ruleset.monster_definitions');
-        $extended = collect($definitions)->contains(
-            static fn (mixed $definition): bool => is_array($definition)
-                && array_key_exists('display_order', $definition),
-        );
         $expected = [
             'mecha_inora' => [2, 0, 'none', 1, null, 0, 5, 'hakoniwa_original.monster.mecha_inora', null, 0, 0, 'monster7.gif'],
             'inora' => [1, 1, 'none', 1, 1, 400, 5, 'hakoniwa_original.monster.inora', null, 1, 0, 'monster0.gif'],
@@ -897,6 +912,27 @@ final class RulesetAuthoringValidator
         }
 
         return count($keys);
+    }
+
+    private function usesV11MonsterContract(string $key, int $version): bool
+    {
+        $hasV11Identity = preg_match('/(?:^|-)v11(?:-|$)/', $key) === 1;
+        if ($hasV11Identity !== ($version === 11)) {
+            throw new DomainException('The v11 ruleset identity and version must be authored together.');
+        }
+
+        return $version === 11;
+    }
+
+    private function nonMonsterValidationKey(string $key, int $version): string
+    {
+        // C2's inactive fixture composes the decided v10 non-monster contracts with the
+        // v11 monster authoring shape. Formal v11 remains gated and is not aliased here.
+        if ($key === self::UNPUBLISHED_V11_FIXTURE_KEY && $version === 11) {
+            return self::CURRENT_PUBLISHED_BASELINE_KEY;
+        }
+
+        return $key;
     }
 
     /**

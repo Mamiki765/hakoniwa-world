@@ -16,7 +16,7 @@ The effective order resolver uses an explicit non-negative value when present. A
 
 ## Authoring and natural spawn
 
-An extended monster catalog is selected by authored `display_order`. Every definition in that shape must provide a unique order and an explicit valid reward policy. Historical definitions retain their audited source metadata; new definitions must not invent legacy kind, skill-code, or filename provenance. The shared C2 `secretary_item_target_safety` metadata is validated through its runtime policy and remains independent of JSON object key order.
+The extended monster catalog is available only when validated ruleset identity and version both name v11. A v1-v10/roadmap identity remains on the exact historical eight contract even if a payload attempts to add `display_order`; a v11 identity requires every monster definition to provide a unique order and an explicit valid reward policy. The one inactive C2/C3 test fixture explicitly inherits already-decided v10 non-monster contracts while exercising the v11 monster shape; this does not publish a formal v11 or decide B-12. Historical definitions retain their audited source metadata; new definitions must not invent legacy kind, skill-code, or filename provenance. The shared C2 `secretary_item_target_safety` metadata is validated through its runtime policy and remains independent of JSON object key order.
 
 Natural-spawn pools are validated against the loaded catalog before any gameplay draw. Unknown and duplicate pool references fail closed. Merely adding a definition does not add it to a pool: メカいのら零式 and あおいのら remain outside every Nation natural-spawn pool in the C3 fixture. There is no maximum definition count.
 

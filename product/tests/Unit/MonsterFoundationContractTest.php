@@ -82,6 +82,47 @@ final class MonsterFoundationContractTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
+    public function test_extended_monster_shape_is_available_only_to_matching_v11_identity_and_version(): void
+    {
+        $validator = app(RulesetAuthoringValidator::class);
+        $v11 = V11SecretaryItemRulesetFixture::settings();
+        $this->assertSame(10, $validator->validate($v11)['monsters']);
+
+        $legacyIdentity = $v11;
+        $legacyIdentity['key'] = 'hakoniwa-2s-plus-v10';
+        $legacyIdentity['version'] = 10;
+        try {
+            $validator->validate($legacyIdentity);
+            $this->fail('A v10 identity accepted the extended monster shape.');
+        } catch (DomainException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $missingOrder = $v11;
+        unset($missingOrder['monster_definitions'][0]['display_order']);
+        try {
+            $validator->validate($missingOrder);
+            $this->fail('A v11 identity accepted a monster definition without explicit display order.');
+        } catch (DomainException) {
+            $this->addToAssertionCount(1);
+        }
+
+        foreach ([
+            ['key' => 'hakoniwa-2s-plus-v11', 'version' => 10],
+            ['key' => 'hakoniwa-2s-plus-v10', 'version' => 11],
+        ] as $identity) {
+            $mismatch = $v11;
+            $mismatch['key'] = $identity['key'];
+            $mismatch['version'] = $identity['version'];
+            try {
+                $validator->validate($mismatch);
+                $this->fail('A mismatched ruleset identity/version accepted the v11 monster contract.');
+            } catch (DomainException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function test_v11_authoring_supports_more_than_ten_and_fails_closed_for_pool_policy_and_safety_drift(): void
     {
         $base = $this->authoringSettings();
@@ -205,10 +246,6 @@ final class MonsterFoundationContractTest extends TestCase
     /** @return array<string, mixed> */
     private function authoringSettings(): array
     {
-        $settings = V11SecretaryItemRulesetFixture::settings();
-        $settings['key'] = 'hakoniwa-2s-plus-v10';
-        $settings['version'] = 10;
-
-        return $settings;
+        return V11SecretaryItemRulesetFixture::settings();
     }
 }

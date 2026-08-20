@@ -19,10 +19,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $contract = app(SecretaryItemGameplayContract::class);
         $contract->validate($settings);
 
-        $authoringHook = $settings;
-        $authoringHook['key'] = 'hakoniwa-2s-plus-v10';
-        $authoringHook['version'] = 10;
-        app(RulesetAuthoringValidator::class)->validate($authoringHook);
+        app(RulesetAuthoringValidator::class)->validate($settings);
 
         $this->assertSame(
             '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
