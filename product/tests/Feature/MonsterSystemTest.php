@@ -260,7 +260,11 @@ class MonsterSystemTest extends TestCase
         }
         $this->setCell($origin, 'wasteland', null, $first->id, 0);
         $monster = $this->createMonster($world, $ruleset, $origin, 'dark_inora', 3);
-        [$context] = $this->context($world, $ruleset, 2, 'dark-two-moves', [$first->id, $second->id]);
+        $seedLabel = $this->twoMoveSeedThatDoesNotReturnToOrigin(
+            $monster,
+            new GridCoordinate($origin->x, $origin->y),
+        );
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$first->id, $second->id]);
         $service = app(MonsterTurnService::class);
         $batch = $service->load($context);
         $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
@@ -1345,6 +1349,26 @@ class MonsterSystemTest extends TestCase
         }
 
         throw new RuntimeException('No interior monster test cell was available.');
+    }
+
+    private function twoMoveSeedThatDoesNotReturnToOrigin(
+        MonsterInstance $monster,
+        GridCoordinate $origin,
+    ): string {
+        foreach (range(0, 99) as $candidate) {
+            $label = "dark-two-moves-{$candidate}";
+            $seed = hash('sha256', $label);
+            $stream = (new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::monsterMovement($monster->id, 1),
+            );
+            $firstDestination = $origin->neighbor($stream->integer(0, 5));
+            $secondDestination = $firstDestination->neighbor($stream->integer(0, 5));
+            if ($secondDestination->x !== $origin->x || $secondDestination->y !== $origin->y) {
+                return $label;
+            }
+        }
+
+        throw new RuntimeException('No deterministic two-move monster seed was available.');
     }
 
     private function setCell(
