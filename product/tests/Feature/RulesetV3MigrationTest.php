@@ -278,6 +278,8 @@ final class RulesetV3MigrationTest extends TestCase
         $this->assertSame('territory_expand', $item->fresh()->definition()->value('key'));
         $this->assertSame($preserved, Arr::except($item->fresh()->getAttributes(), ['command_definition_id']));
 
+        config(['hakoniwa.ruleset' => $v10->settings]);
+
         $messageBoardMigration->up();
         $this->assertTrue(Schema::hasTable('island_messages'));
         $this->assertTrue(Schema::hasColumn('users', 'visitor_code'));

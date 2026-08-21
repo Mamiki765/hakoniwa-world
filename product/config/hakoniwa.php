@@ -23,11 +23,12 @@ $publishedRulesets = RulesetAuthoringCollection::fromFiles([
     __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v8.php',
     __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v9.php',
     __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v10.php',
+    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v11.php',
 ])->all();
 
 return [
-    'application_version' => '2.2.1',
-    'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v10'],
+    'application_version' => '2.3.0',
+    'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v11'],
     'published_rulesets' => $publishedRulesets,
     'world' => [
         'key' => 'shared-world',

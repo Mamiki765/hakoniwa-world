@@ -6,6 +6,7 @@ use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\SecretaryTurnService;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -593,10 +594,10 @@ class TurnCellProcessingTest extends TestCase
             $state->markFamine($nation->id);
         }
 
-        return [
-            new TurnContext($world, $run, $ruleset, 1, $seed, new TurnRandomStreamFactory($seed), $state),
-            $run,
-        ];
+        $context = new TurnContext($world, $run, $ruleset, 1, $seed, new TurnRandomStreamFactory($seed), $state);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$nation->id]);
+
+        return [$context, $run];
     }
 
     private function seedForSettlementSequence(int $firstExpected, int $secondExpected): string

@@ -81,11 +81,7 @@ class MonsterSystemTest extends TestCase
     public function test_natural_spawn_supports_ten_definitions_without_adding_non_pool_species_or_changing_the_type_draw(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('十種自然発生国');
-        foreach (V11SecretaryItemRulesetFixture::newMonsterDefinitions() as $payload) {
-            MonsterDefinition::query()->create(['ruleset_version_id' => $ruleset->id, ...$payload]);
-        }
         $settings = $ruleset->settings;
-        $settings['monster_definitions'] = V11SecretaryItemRulesetFixture::settings()['monster_definitions'];
         $ruleset->settings = $settings;
         $this->prepareSettlement($nation, 400_000);
         $ruleset = $this->guaranteeNaturalSpawn($ruleset);
@@ -114,10 +110,6 @@ class MonsterSystemTest extends TestCase
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('多種自然発生国');
         $settings = $ruleset->settings;
-        $settings['monster_definitions'] = V11SecretaryItemRulesetFixture::settings()['monster_definitions'];
-        foreach (V11SecretaryItemRulesetFixture::newMonsterDefinitions() as $payload) {
-            MonsterDefinition::query()->create(['ruleset_version_id' => $ruleset->id, ...$payload]);
-        }
         $template = V11SecretaryItemRulesetFixture::newMonsterDefinitions()[0];
         foreach (range(1, 10) as $index) {
             $payload = $template;
@@ -955,27 +947,7 @@ class MonsterSystemTest extends TestCase
     {
         [$world, $killer, $ruleset, $space] = $this->worldAndNation('あおい撃破国');
         $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
-            ->where('key', 'inora')->firstOrFail();
-        $definition->update([
-            'key' => 'aoi_inora',
-            'name' => 'あおいのら',
-            'asset_key' => 'hakoniwa_custom.monster.aoi_inora',
-            'wreckage_value_money' => 1_200,
-            'missile_base_experience' => 18,
-            'display_order' => 450,
-            'source_metadata' => ['reward_policy' => 'hostless_full_killer_money'],
-        ]);
-        $settings = $ruleset->settings;
-        foreach ($settings['monster_definitions'] as &$authored) {
-            if ($authored['key'] !== 'inora') {
-                continue;
-            }
-            $authored['key'] = 'aoi_inora';
-            $authored['wreckage_value_money'] = 1_200;
-            $authored['source_metadata']['reward_policy'] = 'hostless_full_killer_money';
-        }
-        unset($authored);
-        $ruleset->settings = $settings;
+            ->where('key', 'aoi_inora')->firstOrFail();
         $neutral = MapCell::query()->where('map_space_id', $space->id)
             ->whereNull('owner_nation_id')->with(['terrain', 'facility'])->firstOrFail();
         $this->setCell($neutral, 'wasteland', null, null, 0);

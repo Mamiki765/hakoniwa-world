@@ -791,7 +791,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v10', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v11', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -2600,7 +2600,10 @@ class CommandAndMissileTest extends TestCase
 
     public function test_v9_lethal_missile_removes_monster_before_normal_monster_pass(): void
     {
-        [$world, $firingUser, $firing, $targetNation] = $this->combatants('v9 lethal order');
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants(
+            'v9 lethal order',
+            'hakoniwa-2s-plus-v9',
+        );
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $target = $this->monsterArena($world, $targetNation);
@@ -2622,7 +2625,10 @@ class CommandAndMissileTest extends TestCase
 
     public function test_v9_surviving_monster_moves_after_missile_damage(): void
     {
-        [$world, $firingUser, $firing, $targetNation] = $this->combatants('v9 survivor order');
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants(
+            'v9 survivor order',
+            'hakoniwa-2s-plus-v9',
+        );
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $target = $this->monsterArena($world, $targetNation);
@@ -2645,7 +2651,10 @@ class CommandAndMissileTest extends TestCase
 
     public function test_v9_defense_and_secretary_interceptions_still_precede_normal_monster_actions(): void
     {
-        [$world, $firingUser, $firing, $targetNation] = $this->combatants('v9 interception order');
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants(
+            'v9 interception order',
+            'hakoniwa-2s-plus-v9',
+        );
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $covered = $this->monsterArena($world, $targetNation);
@@ -2688,7 +2697,10 @@ class CommandAndMissileTest extends TestCase
 
     public function test_v9_land_destruction_and_multiple_missiles_never_leave_ghost_actions_or_duplicate_rewards(): void
     {
-        [$world, $firingUser, $firing, $targetNation] = $this->combatants('v9 removal order');
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants(
+            'v9 removal order',
+            'hakoniwa-2s-plus-v9',
+        );
         $firing->update(['money' => 20_000]);
         $space = $this->surfaceMapSpace($world);
         $destroyed = $this->monsterArena($world, $targetNation);
@@ -2731,7 +2743,10 @@ class CommandAndMissileTest extends TestCase
 
     public function test_v9_population_growth_occurs_before_later_normal_monster_trample(): void
     {
-        [$world, , , $targetNation] = $this->combatants('v9 growth order');
+        [$world, , , $targetNation] = $this->combatants(
+            'v9 growth order',
+            'hakoniwa-2s-plus-v9',
+        );
         $origin = $this->monsterArena($world, $targetNation);
         $monster = $this->monster($world, $origin);
         $seed = hash('sha256', 'v9 growth before trample');
@@ -2793,8 +2808,13 @@ class CommandAndMissileTest extends TestCase
     }
 
     /** @return array{World, User, Nation, Nation} */
-    private function combatants(string $suffix = ''): array
+    private function combatants(string $suffix = '', ?string $rulesetKey = null): array
     {
+        if ($rulesetKey !== null) {
+            config([
+                'hakoniwa.ruleset' => config("hakoniwa.published_rulesets.{$rulesetKey}"),
+            ]);
+        }
         $world = $this->lightweightWorld();
         [$user, $firing] = $this->nation($world, '発射国'.$suffix);
         [, $target] = $this->nation($world, '標的国'.$suffix);

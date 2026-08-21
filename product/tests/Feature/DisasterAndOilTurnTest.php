@@ -8,6 +8,7 @@ use App\Application\DisasterTurnService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\SecretaryTurnService;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -696,10 +697,10 @@ class DisasterAndOilTurnTest extends TestCase
         $state->setDevelopmentNationIds($nationIds);
         $state->setSurfaceCellIds($cellIds);
 
-        return [
-            new TurnContext($world, $run, $ruleset, 2, $seed, new TurnRandomStreamFactory($seed), $state),
-            $run,
-        ];
+        $context = new TurnContext($world, $run, $ruleset, 2, $seed, new TurnRandomStreamFactory($seed), $state);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
+
+        return [$context, $run];
     }
 
     private function setCell(

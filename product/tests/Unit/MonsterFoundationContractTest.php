@@ -13,7 +13,7 @@ use Tests\TestCase;
 
 final class MonsterFoundationContractTest extends TestCase
 {
-    public function test_unpublished_v11_fixture_has_the_exact_ten_species_and_no_new_natural_spawn_members(): void
+    public function test_formal_v11_fixture_has_the_exact_ten_species_and_no_new_natural_spawn_members(): void
     {
         $settings = $this->authoringSettings();
 
@@ -266,7 +266,7 @@ final class MonsterFoundationContractTest extends TestCase
     public function test_reward_policies_are_ruleset_owned_and_preserve_standard_split(): void
     {
         $resolver = app(MonsterRewardPolicyResolver::class);
-        $v10 = config('hakoniwa.ruleset');
+        $v10 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v10');
         $v11 = V11SecretaryItemRulesetFixture::settings();
 
         $this->assertSame([

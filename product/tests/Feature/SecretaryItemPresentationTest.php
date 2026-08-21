@@ -25,6 +25,9 @@ final class SecretaryItemPresentationTest extends TestCase
     public function test_item_effect_projection_is_explicit_owned_world_scoped_and_never_falls_back(): void
     {
         $v10World = $this->lightweightWorld();
+        $v10 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->sole();
+        $v10World->update(['ruleset_version_id' => $v10->id]);
+        config(['hakoniwa.ruleset' => $v10->settings]);
         $user = User::factory()->create();
         app(NationCreationService::class)->create($user, $v10World, 'v10表示国', '表示島主');
         $secretary = $user->secretary()->firstOrFail();
