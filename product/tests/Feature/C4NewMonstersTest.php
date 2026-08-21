@@ -18,15 +18,18 @@ use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\HistoricalMonsterDispatchRequestInspector;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
 use App\Models\CommandDefinition;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
+use App\Models\MonumentDefinition;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMonsterKillStat;
@@ -377,6 +380,194 @@ final class C4NewMonstersTest extends TestCase
         $this->assertSame($nation->id, $this->eventMetadata('monster.trampled')['pre_impact_owner_nation_id']);
     }
 
+    public function test_aoi_invades_an_owned_settlement_and_atomically_turns_it_into_neutral_sea(): void
+    {
+        [$world, $ruleset] = $this->v11World();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '侵食国', '侵食主');
+        $space = $this->surfaceMapSpace($world);
+        [$monster, $origin, $destination, $seed] = $this->directedAoiScenario(
+            $world,
+            $ruleset,
+            $space,
+            $nation,
+            'aoi-owned-settlement',
+            'plain',
+            'village',
+            $nation->id,
+            4_300,
+        );
+        $destinationVersion = $destination->version;
+        $monsterVersion = $monster->version;
+        $occupancyId = $monster->occupancy->id;
+
+        [$context, $batch] = $this->processAoi(
+            $world,
+            $ruleset,
+            $space,
+            $origin,
+            $seed,
+            [$nation->id],
+        );
+
+        $destination = $destination->fresh(['terrain', 'facility']);
+        $occupancy = $monster->fresh()->occupancy()->firstOrFail();
+        $this->assertSame($destination->id, $occupancy->map_cell_id);
+        $this->assertSame($occupancyId, $occupancy->id);
+        $this->assertSame('sea', $destination->terrain->key);
+        $this->assertNull($destination->owner_nation_id);
+        $this->assertSame(0, $destination->population);
+        $this->assertNull($destination->facility_definition_id);
+        $this->assertSame($destinationVersion + 1, $destination->version);
+        $this->assertSame($monsterVersion + 1, $monster->fresh()->version);
+        $this->assertNull($batch->occupancyAt($origin->id));
+        $this->assertSame($occupancyId, $batch->occupancyAt($destination->id)?->id);
+        $this->assertContains($origin->map_chunk_id, $context->state->changedMapChunkIds());
+        $this->assertContains($destination->map_chunk_id, $context->state->changedMapChunkIds());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.moved')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.trampled')->count());
+        $metadata = $this->eventMetadata('monster.trampled');
+        $this->assertSame($nation->id, $metadata['pre_impact_owner_nation_id']);
+        $this->assertSame('plain', $metadata['pre_impact_terrain_key']);
+        $this->assertSame('village', $metadata['pre_impact_facility_key']);
+        $this->assertSame(4_300, $metadata['before_population']);
+        $movementLabel = TurnRandomStreamFactory::monsterMovement($monster->id, 1);
+        $expectedStream = (new TurnRandomStreamFactory($seed))->stream($movementLabel);
+        $expectedStream->integer(0, 5);
+        $this->assertSame(
+            $expectedStream->integer(0, 5),
+            $context->random->stream($movementLabel)->integer(0, 5),
+        );
+    }
+
+    public function test_aoi_can_continue_inland_from_the_sea_cell_it_created(): void
+    {
+        [$world, $ruleset] = $this->v11World();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '内陸侵食国', '内陸侵食主');
+        $space = $this->surfaceMapSpace($world);
+        [$monster, $origin, $coast, $firstSeed] = $this->directedAoiScenario(
+            $world,
+            $ruleset,
+            $space,
+            $nation,
+            'aoi-coast-invasion',
+            'plain',
+            null,
+            $nation->id,
+            0,
+        );
+        $this->processAoi($world, $ruleset, $space, $origin, $firstSeed, [$nation->id], 2);
+        $this->assertSame('sea', $coast->fresh()->terrain()->value('key'));
+
+        $current = $coast->fresh(['terrain', 'facility', 'ownerNation']);
+        $secondSeed = hash('sha256', 'aoi-inland-invasion');
+        $direction = (new TurnRandomStreamFactory($secondSeed))->stream(
+            TurnRandomStreamFactory::monsterMovement($monster->id, 1),
+        )->integer(0, 5);
+        $inlandCoordinate = (new GridCoordinate($current->x, $current->y))->neighbor($direction);
+        $inland = $this->cellAt($space, $inlandCoordinate);
+        $this->blockNeighborsExcept($space, $current, $inland);
+        $this->setCell($inland, 'plain', 'farm', $nation->id, 0);
+
+        $this->processAoi($world, $ruleset, $space, $current, $secondSeed, [$nation->id], 3);
+
+        $this->assertSame('sea', $coast->fresh()->terrain()->value('key'));
+        $this->assertSame('sea', $inland->fresh()->terrain()->value('key'));
+        $this->assertNull($inland->fresh()->owner_nation_id);
+        $this->assertSame($inland->id, $monster->fresh()->occupancy()->value('map_cell_id'));
+    }
+
+    public function test_aoi_cannot_invade_a_mountain(): void
+    {
+        $this->assertAoiProtectedDestination('mountain', null);
+    }
+
+    public function test_aoi_cannot_invade_a_monument(): void
+    {
+        $this->assertAoiProtectedDestination('plain', 'monument');
+    }
+
+    public function test_aoi_cannot_invade_a_capital(): void
+    {
+        [$world, $ruleset] = $this->v11World();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '首都保護国', '首都保護主');
+        $space = $this->surfaceMapSpace($world);
+        $capital = MapCell::query()->with(['terrain', 'facility', 'ownerNation'])
+            ->findOrFail($nation->capital()->valueOrFail('map_cell_id'));
+        $capitalCoordinate = new GridCoordinate($capital->x, $capital->y);
+        $originCoordinate = collect($capitalCoordinate->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        ))->firstOrFail();
+        $origin = $this->cellAt($space, $originCoordinate);
+        $this->setCell($origin, 'sea', null, null, 0);
+        $monster = $this->monster($world, $ruleset, $origin, 'aoi_inora', 2);
+        $seed = $this->movementSeedToward($monster, $originCoordinate, $capitalCoordinate, 'aoi-capital');
+        $this->blockNeighborsExcept($space, $origin, $capital);
+        $before = $this->cellSnapshot($capital);
+
+        $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
+
+        $this->assertSame($origin->id, $monster->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertSame($before, $this->cellSnapshot($capital->fresh(['terrain', 'facility'])));
+        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', ['monster.moved', 'monster.trampled'])->count());
+    }
+
+    public function test_aoi_cannot_enter_an_occupied_destination(): void
+    {
+        [$world, $ruleset] = $this->v11World();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '占有保護国', '占有保護主');
+        $space = $this->surfaceMapSpace($world);
+        [$aoi, $origin, $destination, $seed] = $this->directedAoiScenario(
+            $world,
+            $ruleset,
+            $space,
+            $nation,
+            'aoi-occupied',
+            'plain',
+            null,
+            $nation->id,
+            0,
+        );
+        $blocker = $this->monster($world, $ruleset, $destination, 'inora', 1);
+
+        $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
+
+        $this->assertSame($origin->id, $aoi->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertSame($destination->id, $blocker->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertSame(2, MonsterOccupancy::query()->count());
+        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', ['monster.moved', 'monster.trampled'])->count());
+    }
+
+    public function test_aoi_preserves_the_ordinary_defense_contact_self_destruct(): void
+    {
+        [$world, $ruleset] = $this->v11World();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '海獣防衛国', '海獣防衛主');
+        $space = $this->surfaceMapSpace($world);
+        [$aoi, $origin, , $seed] = $this->directedAoiScenario(
+            $world,
+            $ruleset,
+            $space,
+            $nation,
+            'aoi-defense-contact',
+            'plain',
+            'defense',
+            $nation->id,
+            0,
+        );
+
+        [, $batch] = $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
+
+        $this->assertSame('removed', $aoi->fresh()->state);
+        $this->assertSame('defense_self_destruct', $aoi->fresh()->removal_reason);
+        $this->assertFalse($aoi->fresh()->occupancy()->exists());
+        $this->assertSame(1, $batch->metrics()['defense_self_destructs']);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.defense_self_destructed')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'disaster.triggered')
+            ->whereRaw("metadata->>'disaster_key' = 'defense_self_destruct'")->count());
+    }
+
     public function test_real_hostless_aoi_kill_credits_the_full_wreckage_value_once(): void
     {
         [$world, $ruleset] = $this->v11World();
@@ -693,6 +884,167 @@ final class C4NewMonstersTest extends TestCase
             ->with(['terrain', 'facility', 'ownerNation'])->orderBy('id')->get()
             ->first(fn (MapCell $cell): bool => (new GridCoordinate($cell->x, $cell->y))->distanceTo($capital) > 5)
             ?? throw new DomainException('No neutral interior sea cell was available.');
+    }
+
+    /** @return array{MonsterInstance, MapCell, MapCell, string} */
+    private function directedAoiScenario(
+        World $world,
+        RulesetVersion $ruleset,
+        MapSpace $space,
+        Nation $nation,
+        string $seedLabel,
+        string $terrainKey,
+        ?string $facilityKey,
+        ?int $ownerNationId,
+        int $population,
+    ): array {
+        $origin = $this->neutralInteriorSea($space, $nation);
+        $monster = $this->monster($world, $ruleset, $origin, 'aoi_inora', 2);
+        $seed = hash('sha256', $seedLabel);
+        $direction = (new TurnRandomStreamFactory($seed))->stream(
+            TurnRandomStreamFactory::monsterMovement($monster->id, 1),
+        )->integer(0, 5);
+        $destination = $this->cellAt($space, (new GridCoordinate($origin->x, $origin->y))->neighbor($direction));
+        $this->blockNeighborsExcept($space, $origin, $destination);
+        $this->setCell($destination, $terrainKey, $facilityKey, $ownerNationId, $population);
+
+        return [$monster, $origin, $destination->fresh(['terrain', 'facility', 'ownerNation']), $seed];
+    }
+
+    /** @return array{TurnContext, MonsterTurnBatch} */
+    private function processAoi(
+        World $world,
+        RulesetVersion $ruleset,
+        MapSpace $space,
+        MapCell $origin,
+        string $seed,
+        array $nationIds,
+        int $turn = 2,
+    ): array {
+        $context = $this->contextFromSeed($world, $ruleset, $turn, $seed, $nationIds);
+        $service = app(MonsterTurnService::class);
+        $batch = $service->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)
+            ->with(['terrain', 'facility', 'ownerNation'])->orderBy('id')->get();
+        $byCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
+            $cell->x.':'.$cell->y => $cell,
+        ])->all();
+
+        $this->assertTrue($service->processCell(
+            $context,
+            $space,
+            $origin->fresh(['terrain', 'facility', 'ownerNation']),
+            $byCoordinate,
+            $batch,
+        ));
+
+        return [$context, $batch];
+    }
+
+    private function assertAoiProtectedDestination(string $terrainKey, ?string $facilityKey): void
+    {
+        [$world, $ruleset] = $this->v11World();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '保護対象国', '保護対象主');
+        $space = $this->surfaceMapSpace($world);
+        [$monster, $origin, $destination, $seed] = $this->directedAoiScenario(
+            $world,
+            $ruleset,
+            $space,
+            $nation,
+            'aoi-protected-'.$terrainKey.'-'.$facilityKey,
+            $terrainKey,
+            $facilityKey,
+            $nation->id,
+            0,
+        );
+        $before = $this->cellSnapshot($destination);
+
+        $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
+
+        $this->assertSame($origin->id, $monster->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertSame($before, $this->cellSnapshot($destination->fresh(['terrain', 'facility'])));
+        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', ['monster.moved', 'monster.trampled'])->count());
+    }
+
+    private function blockNeighborsExcept(MapSpace $space, MapCell $origin, MapCell $allowed): void
+    {
+        foreach ((new GridCoordinate($origin->x, $origin->y))->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        ) as $coordinate) {
+            $cell = $this->cellAt($space, $coordinate);
+            if ($cell->id !== $allowed->id) {
+                $this->setCell($cell, 'mountain', null, null, 0);
+            }
+        }
+    }
+
+    private function movementSeedToward(
+        MonsterInstance $monster,
+        GridCoordinate $origin,
+        GridCoordinate $destination,
+        string $label,
+    ): string {
+        $direction = collect(range(0, 5))->first(
+            static fn (int $candidate): bool => $origin->neighbor($candidate)->x === $destination->x
+                && $origin->neighbor($candidate)->y === $destination->y,
+        );
+        if (! is_int($direction)) {
+            throw new DomainException('Aoi test destination must be adjacent to its origin.');
+        }
+        for ($index = 0; $index < 100; $index++) {
+            $seed = hash('sha256', $label.'-'.$index);
+            $draw = (new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::monsterMovement($monster->id, 1),
+            )->integer(0, 5);
+            if ($draw === $direction) {
+                return $seed;
+            }
+        }
+
+        throw new DomainException('No deterministic Aoi direction seed was available.');
+    }
+
+    private function setCell(
+        MapCell $cell,
+        string $terrainKey,
+        ?string $facilityKey,
+        ?int $ownerNationId,
+        int $population,
+    ): void {
+        $cell = $cell->fresh(['terrain', 'facility']);
+        $states = app(MapCellStateService::class);
+        $states->setFacility($cell, null);
+        $states->transitionTerrain($cell, TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail());
+        if ($facilityKey !== null) {
+            $states->setFacility($cell, FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail());
+            if ($facilityKey === 'monument') {
+                $cell->monument_definition_id = MonumentDefinition::query()->orderBy('id')->valueOrFail('id');
+            }
+        }
+        $cell->owner_nation_id = $ownerNationId;
+        $cell->population = $population;
+        $cell->version++;
+        $cell->save();
+    }
+
+    private function cellAt(MapSpace $space, GridCoordinate $coordinate): MapCell
+    {
+        return MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $coordinate->x)->where('y', $coordinate->y)
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+    }
+
+    /** @return array<string, mixed> */
+    private function cellSnapshot(MapCell $cell): array
+    {
+        return $cell->only([
+            'terrain_definition_id', 'owner_nation_id', 'population', 'facility_definition_id',
+            'monument_definition_id', 'facility_scale', 'facility_experience',
+            'facility_operational_state', 'version',
+        ]);
     }
 
     /** @param callable(string): bool $matches */

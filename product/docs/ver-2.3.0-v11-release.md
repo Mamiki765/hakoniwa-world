@@ -5,7 +5,7 @@
 ver 2.3.0の正式なproduction rulesetは`hakoniwa-2s-plus-v11`、version `11`である。authoring sourceは`config/hakoniwa/rulesets/hakoniwa-2s-plus-v11.php`、payload checksumは次で固定する。
 
 ```text
-b39469ed710e0a80db966e630d7eb7dfaf64b2863ae56346679b829e175da8fe
+5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8
 ```
 
 v11はimmutableなv10 authoring fileを読み、key/versionを進め、C1-C4で検証済みのSecretary Item、monster foundation、Aoi Inora、Mecha Inora Zero、monster dispatch selectorだけを決定的に適用するdelta authoringである。runtimeはtest fixtureを参照しない。test fixtureは逆にformal v11を読み、test専用identityだけを差し替えるため、fixtureとproduction payloadの意味差を作れない。
@@ -40,4 +40,4 @@ test-only Closure seamはprovenance、queue、monster、kill-stat、World activa
 
 ## Runtime activation
 
-v11開始後のTurnRunだけがC1-C4のItem effects、Aoi stage、Zero action、dispatch selectorを実行する。既存starter Old Bowはinstanceとslotを維持し、装備中なら最初のv11 TurnRunから効果が始まる。外していれば発動しない。historical failed v10 TurnRunはsame-target/same-ruleset/same-seed retryでもv10 settingsを使い、Item effects、Aoi stage、Zero action、random populationの変更を受けない。
+v11開始後のTurnRunだけがC1-C4のItem effects、Aoi stage、Zero action、dispatch selectorを実行する。Aoiは通常怪獣と同じ保護対象、防衛施設接触、occupancy、候補抽選を使い、追加で海・浅瀬・海底基地・海底油田へ侵入できる。合法な着地点は施設と人口を失った中立の海となるため、その海を足場に次のturnからさらに合法な陸地へ侵攻できる。既存starter Old Bowはinstanceとslotを維持し、装備中なら最初のv11 TurnRunから効果が始まる。外していれば発動しない。historical failed v10 TurnRunはsame-target/same-ruleset/same-seed retryでもv10 settingsを使い、Item effects、Aoi stage、Zero action、random populationの変更を受けない。

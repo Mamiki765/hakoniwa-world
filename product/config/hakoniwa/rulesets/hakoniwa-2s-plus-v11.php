@@ -73,11 +73,12 @@ $aoi['hp_variation'] = 1;
 $aoi['wreckage_value_money'] = 1_200;
 $aoi['missile_base_experience'] = 18;
 $aoi['display_order'] = 450;
-$aoi['skill_description'] = '海を移動し、中立海上では撃破者へ残骸資金を全額付与';
+$aoi['skill_description'] = '海から陸地へ侵攻し、踏み荒らした場所を中立の海へ変える';
 $aoi['movement_terrain_contract'] = [
     'candidate_attempts_per_action' => 3,
-    'allowed_terrain_keys' => ['sea', 'shallow'],
-    'removable_facility_keys' => ['seabed_base', 'seabed_oil_field'],
+    'blocked_terrain_keys' => ['mountain'],
+    'blocked_facility_keys' => ['mine', 'monument', 'capital'],
+    'defense_facility_key' => 'defense',
     'destination_terrain_key' => 'sea',
     'clear_owner' => true,
 ];
@@ -85,7 +86,7 @@ $aoi['source_metadata'] = [
     'reward_policy' => 'hostless_full_killer_money',
     'manual' => [
         'appearance' => 'Worldの海上災害',
-        'special' => '海を移動。中立海上の通常撃破は撃破者へ残骸資金100%',
+        'special' => '海から陸地へ侵攻し中立の海へ変化。中立海上の通常撃破は撃破者へ残骸資金100%',
     ],
     'behavior' => [
         'movement' => 'water_neutralizing',

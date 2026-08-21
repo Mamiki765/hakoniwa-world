@@ -23,7 +23,7 @@ final readonly class RulesetV11MigrationService
 
     public const SOURCE_CHECKSUM = '6a0f5354f8894081bacdb8eaaba328d3e4ee80a2c4136819b16cfa924f485dc1';
 
-    public const TARGET_CHECKSUM = 'b39469ed710e0a80db966e630d7eb7dfaf64b2863ae56346679b829e175da8fe';
+    public const TARGET_CHECKSUM = '5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8';
 
     public const FAILURE_AFTER_PROVENANCE = 'after_provenance';
 

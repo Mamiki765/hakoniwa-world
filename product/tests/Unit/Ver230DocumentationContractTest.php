@@ -33,6 +33,9 @@ final class Ver230DocumentationContractTest extends TestCase
         $aoiValue = number_format($monsters['aoi_inora']['wreckage_value_money']).'億円';
         $this->assertStringContainsString($aoiValue, $announcement);
         $this->assertStringContainsString($aoiValue, $advancedManual);
+        foreach (['《海獣》', '海から島へ侵攻', '中立の海', '山・首都・記念碑', '海底基地', '海底油田'] as $aoiContract) {
+            $this->assertStringContainsString($aoiContract, $announcement.$advancedManual);
+        }
         $this->assertStringContainsString('HP1', $announcement);
         $this->assertStringContainsString('HP1', $advancedManual);
 

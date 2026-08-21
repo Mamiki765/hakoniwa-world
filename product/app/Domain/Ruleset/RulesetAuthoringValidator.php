@@ -795,16 +795,37 @@ final class RulesetAuthoringValidator
             }
             $displayOrders[$displayOrder] = true;
             if ($key === 'aoi_inora') {
-                $expectedWaterMovement = [
+                $expectedAoiMovement = [
                     'candidate_attempts_per_action' => 3,
-                    'allowed_terrain_keys' => ['sea', 'shallow'],
-                    'removable_facility_keys' => ['seabed_base', 'seabed_oil_field'],
+                    'blocked_terrain_keys' => ['mountain'],
+                    'blocked_facility_keys' => ['mine', 'monument', 'capital'],
+                    'defense_facility_key' => 'defense',
                     'destination_terrain_key' => 'sea',
                     'clear_owner' => true,
                 ];
-                if ($movement !== $expectedWaterMovement) {
-                    throw new DomainException("{$path}.movement_terrain_contract differs from the Aoi water contract.");
+                if ($movement !== $expectedAoiMovement) {
+                    throw new DomainException("{$path}.movement_terrain_contract differs from the Aoi land-invasion contract.");
                 }
+                foreach ($movement['blocked_terrain_keys'] as $terrainKey) {
+                    $this->reference($terrainKey, self::TERRAIN_KEYS, "{$path}.movement_terrain_contract.blocked_terrain_keys");
+                }
+                foreach ($movement['blocked_facility_keys'] as $facilityKey) {
+                    $this->facilityReferenceOrFuture(
+                        $facilityKey,
+                        $facilityKeys,
+                        "{$path}.movement_terrain_contract.blocked_facility_keys",
+                    );
+                }
+                $this->facilityReferenceOrFuture(
+                    $movement['defense_facility_key'],
+                    $facilityKeys,
+                    "{$path}.movement_terrain_contract.defense_facility_key",
+                );
+                $this->reference(
+                    $movement['destination_terrain_key'],
+                    self::TERRAIN_KEYS,
+                    "{$path}.movement_terrain_contract.destination_terrain_key",
+                );
             } else {
                 $this->validateMonsterMovementContract($movement, $facilityKeys, "{$path}.movement_terrain_contract");
             }
