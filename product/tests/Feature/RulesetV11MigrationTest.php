@@ -93,6 +93,39 @@ final class RulesetV11MigrationTest extends TestCase
             ->pluck('request_fingerprint', 'id')->all());
     }
 
+    #[DataProvider('migratedTerminalStatuses')]
+    public function test_second_run_accepts_migrated_commands_that_later_become_terminal(
+        string $status,
+        string $timestampColumn,
+    ): void {
+        $fixture = $this->v10Fixture();
+        app(RulesetV11MigrationService::class)->migrate();
+
+        $v11Id = RulesetVersion::query()->where('key', RulesetV11MigrationService::TARGET_KEY)
+            ->valueOrFail('id');
+        $items = collect([$fixture['dispatch'], $fixture['queued']])->map->fresh();
+        $fingerprints = $items->pluck('request_fingerprint', 'id')->all();
+
+        foreach ($items as $item) {
+            $item->update([
+                'status' => $status,
+                'queue_position' => null,
+                $timestampColumn => now(),
+            ]);
+        }
+
+        $second = app(RulesetV11MigrationService::class)->migrate();
+
+        $this->assertTrue($second->alreadyCompleted);
+        foreach ($items as $item) {
+            $terminal = $item->fresh();
+            $this->assertSame($status, $terminal->status);
+            $this->assertSame($v11Id, $terminal->definition()->value('ruleset_version_id'));
+            $this->assertSame($fixture['v10']->id, $terminal->request_ruleset_version_id);
+            $this->assertSame($fingerprints[$terminal->id], $terminal->request_fingerprint);
+        }
+    }
+
     public function test_historical_selector_less_dispatch_retry_converges_after_real_migration_and_selector_two_conflicts(): void
     {
         $fixture = $this->v10Fixture();
@@ -429,6 +462,16 @@ final class RulesetV11MigrationTest extends TestCase
             'running' => [TurnRun::STATUS_RUNNING],
             'failed' => [TurnRun::STATUS_FAILED],
             'blocked' => [TurnRun::STATUS_BLOCKED],
+        ];
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function migratedTerminalStatuses(): array
+    {
+        return [
+            'completed' => ['completed', 'execution_completed_at'],
+            'failed' => ['failed', 'execution_failed_at'],
+            'cancelled' => ['cancelled', 'cancelled_at'],
         ];
     }
 

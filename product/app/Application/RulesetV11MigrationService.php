@@ -475,9 +475,25 @@ SQL, [$target->id, $world->id, $source->id]);
                 continue;
             }
 
+            $migratedTerminalRequest = $worldState === 'target'
+                && $targetRulesetId !== null
+                && $definition->ruleset_version_id === $targetRulesetId
+                && $item->request_ruleset_version_id === $sourceRulesetId;
             if ($item->request_ruleset_version_id !== null
-                && $item->request_ruleset_version_id !== $definition->ruleset_version_id) {
+                && $item->request_ruleset_version_id !== $definition->ruleset_version_id
+                && ! $migratedTerminalRequest) {
                 throw new RuntimeException("Terminal queue item {$item->id} has contradictory request provenance.");
+            }
+            if ($migratedTerminalRequest) {
+                $sourceDefinition = CommandDefinition::query()
+                    ->where('ruleset_version_id', $sourceRulesetId)
+                    ->where('key', $definition->key)
+                    ->sole();
+                $this->assertStoredRequestMatchesDefinition($item, $sourceDefinition);
+                if ($definition->key === 'monster_dispatch'
+                    && ! $this->historicalDispatchInspector->inspect($item)->proven) {
+                    throw new RuntimeException("Terminal monster dispatch {$item->id} is not safely attributable to v10.");
+                }
             }
             if ($item->request_fingerprint !== null) {
                 if ($worldState === 'source' && $item->request_ruleset_version_id === null
