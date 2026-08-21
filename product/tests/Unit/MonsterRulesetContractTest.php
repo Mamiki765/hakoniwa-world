@@ -12,6 +12,13 @@ use Tests\TestCase;
 
 class MonsterRulesetContractTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['hakoniwa.ruleset' => config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v10')]);
+    }
+
     public function test_production_ruleset_publishes_the_exact_audited_eight_monster_catalog(): void
     {
         $settings = config('hakoniwa.published_rulesets')['hakoniwa-2s-plus-v1'];

@@ -19,7 +19,6 @@ use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
-use App\Models\ProductionDefinition;
 use App\Models\RulesetVersion;
 use App\Models\SecretaryItemInstance;
 use App\Models\TurnRun;
@@ -31,7 +30,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
 final class SecretaryItemEffectsTest extends TestCase
@@ -42,6 +40,7 @@ final class SecretaryItemEffectsTest extends TestCase
     public function test_v10_prepare_adds_no_item_query_snapshot_metric_or_effect(): void
     {
         $world = $this->lightweightWorld();
+        $this->switchToV10Ruleset($world);
         [, $nation] = $this->nation($world, 'v10装備互換国');
         $context = $this->context($world, hash('sha256', 'v10 item free'), [$nation->id]);
         $queries = [];
@@ -779,29 +778,19 @@ final class SecretaryItemEffectsTest extends TestCase
 
     private function switchToItemRuleset(World $world): RulesetVersion
     {
-        $previousRulesetId = $world->ruleset_version_id;
-        $ruleset = RulesetVersion::query()->create([
-            'key' => V11SecretaryItemRulesetFixture::settings()['key'],
-            'version' => 11,
-            'settings' => V11SecretaryItemRulesetFixture::settings(),
-            'is_active' => false,
-        ]);
-        foreach ([CommandDefinition::class, ProductionDefinition::class, MonsterDefinition::class] as $model) {
-            foreach ($model::query()->where('ruleset_version_id', $previousRulesetId)->orderBy('id')->get() as $definition) {
-                $copy = $definition->replicate();
-                $copy->ruleset_version_id = $ruleset->id;
-                if ($copy instanceof MonsterDefinition) {
-                    $copy->display_order = V11SecretaryItemRulesetFixture::displayOrderFor($definition->key);
-                }
-                $copy->save();
-            }
+        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v11')->sole();
+        config(['hakoniwa.ruleset' => $ruleset->settings]);
+        if ($world->ruleset_version_id !== $ruleset->id) {
+            $world->update(['ruleset_version_id' => $ruleset->id]);
         }
-        foreach (V11SecretaryItemRulesetFixture::newMonsterDefinitions() as $definition) {
-            MonsterDefinition::query()->create([
-                'ruleset_version_id' => $ruleset->id,
-                ...$definition,
-            ]);
-        }
+
+        return $ruleset;
+    }
+
+    private function switchToV10Ruleset(World $world): RulesetVersion
+    {
+        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->sole();
+        config(['hakoniwa.ruleset' => $ruleset->settings]);
         $world->update(['ruleset_version_id' => $ruleset->id]);
 
         return $ruleset;

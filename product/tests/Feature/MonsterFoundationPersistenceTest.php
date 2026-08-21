@@ -20,7 +20,9 @@ final class MonsterFoundationPersistenceTest extends TestCase
     public function test_migration_keeps_all_historical_monster_rows_null_and_enforces_nonnegative_unique_explicit_orders(): void
     {
         $this->assertTrue(Schema::hasColumn('monster_definitions', 'display_order'));
-        $this->assertSame(0, MonsterDefinition::query()->whereNotNull('display_order')->count());
+        $this->assertSame(0, MonsterDefinition::query()
+            ->whereHas('rulesetVersion', fn ($query) => $query->where('version', '<=', 10))
+            ->whereNotNull('display_order')->count());
         $current = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->firstOrFail();
         $definitions = MonsterDefinition::query()->where('ruleset_version_id', $current->id)->orderBy('id')->get();
         $this->assertCount(8, $definitions);
@@ -74,7 +76,7 @@ final class MonsterFoundationPersistenceTest extends TestCase
 
     public function test_historical_publisher_remains_idempotent_with_and_without_the_new_schema_capability(): void
     {
-        $settings = config('hakoniwa.ruleset');
+        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v10');
         $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->firstOrFail();
         $this->assertSame($published->id, app(RulesetPublisher::class)->publish($settings)->id);
         $this->assertSame(0, MonsterDefinition::query()

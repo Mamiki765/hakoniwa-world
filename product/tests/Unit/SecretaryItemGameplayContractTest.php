@@ -13,7 +13,7 @@ use Tests\TestCase;
 
 final class SecretaryItemGameplayContractTest extends TestCase
 {
-    public function test_unpublished_v11_shaped_contract_validates_and_resolves_exact_player_text(): void
+    public function test_formal_v11_contract_validates_and_resolves_exact_player_text(): void
     {
         $settings = V11SecretaryItemRulesetFixture::settings();
         $contract = app(SecretaryItemGameplayContract::class);
@@ -34,9 +34,9 @@ final class SecretaryItemGameplayContractTest extends TestCase
             SecretaryItemCatalog::OLD_BOW,
             1,
         )[0]['target_map_space_keys']);
-        $this->assertArrayNotHasKey('hakoniwa-2s-plus-v11', config('hakoniwa.published_rulesets'));
-        $this->assertFileDoesNotExist(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
-        $this->assertSame([], glob(database_path('migrations/*v11*')) ?: []);
+        $this->assertArrayHasKey('hakoniwa-2s-plus-v11', config('hakoniwa.published_rulesets'));
+        $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
+        $this->assertCount(1, glob(database_path('migrations/*v11*')) ?: []);
         $this->assertSame(
             'secretary_item:old_bow:nation:7:trigger:v1',
             TurnRandomStreamFactory::secretaryOldBow(7, 'trigger', 1),

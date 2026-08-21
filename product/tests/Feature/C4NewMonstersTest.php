@@ -154,7 +154,7 @@ final class C4NewMonstersTest extends TestCase
 
     public function test_historical_v10_dispatch_inspection_is_state_safe_and_duplicate_comparison_preserves_the_hash(): void
     {
-        $world = $this->lightweightWorld();
+        [$world] = $this->v10World();
         $user = User::factory()->create();
         $sender = app(NationCreationService::class)->create($user, $world, '履歴元', '履歴主');
         $target = app(NationCreationService::class)->create(User::factory()->create(), $world, '履歴先', '対象主');
@@ -220,7 +220,7 @@ final class C4NewMonstersTest extends TestCase
 
     public function test_proven_v10_selector_less_retry_survives_request_provenance_backfill_and_execution_definition_rebind(): void
     {
-        $world = $this->lightweightWorld();
+        [$world] = $this->v10World();
         $v10 = $world->rulesetVersion;
         $user = User::factory()->create();
         $sender = app(NationCreationService::class)->create($user, $world, '再束縛元', '履歴主');
@@ -606,9 +606,20 @@ final class C4NewMonstersTest extends TestCase
     private function v11World(): array
     {
         $world = $this->lightweightWorld();
-        $settings = V11SecretaryItemRulesetFixture::settings();
+        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v11');
         $ruleset = app(RulesetPublisher::class)->publish($settings);
         config(['hakoniwa.ruleset' => $settings]);
+        $world->update(['ruleset_version_id' => $ruleset->id]);
+
+        return [$world->fresh(), $ruleset];
+    }
+
+    /** @return array{World, RulesetVersion} */
+    private function v10World(): array
+    {
+        $world = $this->lightweightWorld();
+        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->sole();
+        config(['hakoniwa.ruleset' => $ruleset->settings]);
         $world->update(['ruleset_version_id' => $ruleset->id]);
 
         return [$world->fresh(), $ruleset];

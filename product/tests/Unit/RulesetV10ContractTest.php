@@ -22,10 +22,9 @@ final class RulesetV10ContractTest extends TestCase
         $v10['version'] = 9;
         $this->assertSame($v9, $v10);
         $this->assertSame('after_population_nutrition_consumption', $stage);
-        $this->assertSame('hakoniwa-2s-plus-v10', config('hakoniwa.ruleset.key'));
-        $this->assertSame(10, config('hakoniwa.ruleset.version'));
-
-        $validated = app(RulesetAuthoringValidator::class)->validate(config('hakoniwa.ruleset'));
+        $validated = app(RulesetAuthoringValidator::class)->validate(
+            config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v10'),
+        );
         $this->assertSame('hakoniwa-2s-plus-v10', $validated['key']);
         $this->assertSame(10, $validated['version']);
         $this->assertSame(

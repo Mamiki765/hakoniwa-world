@@ -25,6 +25,8 @@ final class RulesetAuthoringValidator
 {
     private const UNPUBLISHED_V11_FIXTURE_KEY = 'test-hakoniwa-2s-plus-v11-secretary-items';
 
+    private const FORMAL_V11_KEY = 'hakoniwa-2s-plus-v11';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -1009,9 +1011,13 @@ final class RulesetAuthoringValidator
 
     private function nonMonsterValidationKey(string $key, int $version): string
     {
-        // C2's inactive fixture composes the decided v10 non-monster contracts with the
-        // v11 monster authoring shape. Formal v11 remains gated and is not aliased here.
-        if ($key === self::UNPUBLISHED_V11_FIXTURE_KEY && $version === 11) {
+        // v11 composes the approved ver 2.3.0 additions with the immutable v10
+        // non-monster contracts. This alias validates inherited closed decisions such
+        // as B-12 without changing their authored values.
+        if ($version === 11 && in_array($key, [
+            self::UNPUBLISHED_V11_FIXTURE_KEY,
+            self::FORMAL_V11_KEY,
+        ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 

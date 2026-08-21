@@ -247,9 +247,6 @@ class MonsterApiAssetTest extends TestCase
         [$world, $nation, $ruleset] = $this->worldAndNation('十種討伐国');
         $secondNation = $this->createNation($world, '第二十種討伐国');
         $fixture = collect(V11SecretaryItemRulesetFixture::settings()['monster_definitions'])->keyBy('key');
-        foreach (V11SecretaryItemRulesetFixture::newMonsterDefinitions() as $payload) {
-            MonsterDefinition::query()->create(['ruleset_version_id' => $ruleset->id, ...$payload]);
-        }
         $definitions = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->get();
         foreach ($definitions as $index => $definition) {
             DB::table('nation_monster_kill_stats')->insert([
@@ -325,9 +322,6 @@ class MonsterApiAssetTest extends TestCase
     public function test_public_detail_and_rankings_keep_the_same_query_bound_for_twenty_species(): void
     {
         [$world, $nation, $ruleset] = $this->worldAndNation('二十種討伐国');
-        foreach (V11SecretaryItemRulesetFixture::newMonsterDefinitions() as $payload) {
-            MonsterDefinition::query()->create(['ruleset_version_id' => $ruleset->id, ...$payload]);
-        }
         $template = V11SecretaryItemRulesetFixture::newMonsterDefinitions()[0];
         foreach (range(1, 10) as $index) {
             $payload = $template;

@@ -309,6 +309,7 @@ final class MonsterDispatchTurnTest extends TestCase
             expectedVersion: $version,
             quantity: 1,
             parameters: ['target_nation_id' => $target->id],
+            quantityProvided: true,
         )['item'];
     }
 

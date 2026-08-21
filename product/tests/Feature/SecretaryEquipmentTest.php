@@ -57,8 +57,8 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertJsonPath('data.effect_context.source', 'owned_world')
             ->assertJsonPath('data.effect_context.world_id', $world->id)
             ->assertJsonPath('data.effect_context.ruleset_version_id', $world->ruleset_version_id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 10)
-            ->assertJsonPath('data.items.0.effect_text', null);
+            ->assertJsonPath('data.effect_context.ruleset_version', 11)
+            ->assertJsonPath('data.items.0.effect_text', '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。');
 
         $unownedWorld = World::query()->create([
             'key' => 'equipment-unowned-world',
@@ -360,13 +360,13 @@ SQL);
     public function test_options_queries_are_bounded_for_neutral_and_owned_world_contexts(): void
     {
         [$user, $secretary, $world] = $this->affectedWorldFixture();
-        $service = $this->service(catalog: $this->bulkCatalog());
+        $service = $this->service();
         $counts = [];
 
         foreach ([0, 1, 50] as $count) {
             $secretary->itemInstances()->delete();
             for ($index = 1; $index <= $count; $index++) {
-                $secretary->itemInstances()->create($this->itemAttributes('test_bulk', null));
+                $secretary->itemInstances()->create($this->itemAttributes(SecretaryItemCatalog::RING, null));
             }
             DB::flushQueryLog();
             DB::enableQueryLog();
@@ -382,7 +382,7 @@ SQL);
 
         $secretary->itemInstances()->delete();
         foreach (range(1, 5) as $slot) {
-            $secretary->itemInstances()->create($this->itemAttributes('test_bulk', $slot));
+            $secretary->itemInstances()->create($this->itemAttributes(SecretaryItemCatalog::RING, $slot));
         }
         DB::flushQueryLog();
         DB::enableQueryLog();
@@ -552,29 +552,6 @@ SQL);
                     'flavor_text' => 'test only',
                     'unique_per_secretary' => false,
                     'same_item_max_equipped' => $sameItemMaximum,
-                ];
-            }
-        };
-    }
-
-    private function bulkCatalog(): SecretaryItemCatalog
-    {
-        return new class extends SecretaryItemCatalog
-        {
-            public function definitions(): array
-            {
-                return [
-                    'test_bulk' => [
-                        'key' => 'test_bulk',
-                        'category' => 'bulk',
-                        'category_label' => '一括',
-                        'category_max_equipped' => 5,
-                        'max_level' => 1,
-                        'name' => '一括fixture',
-                        'flavor_text' => 'test only',
-                        'unique_per_secretary' => false,
-                        'same_item_max_equipped' => 5,
-                    ],
                 ];
             }
         };

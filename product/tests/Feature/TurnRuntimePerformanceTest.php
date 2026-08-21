@@ -175,7 +175,8 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->assertGreaterThan(0, $globalDisasters['queries']);
         $this->assertSame(0, $globalDisasters['coordinate_cell_lookup_queries']);
         $this->assertSame(0, $globalDisasters['active_nation_lookup_queries']);
-        $this->assertLessThanOrEqual(1, $globalDisasters['terrain_definition_lookup_queries']);
+        // Formal v11 adds the Aoi sea/shallow candidate terrain lookup beside the forced disaster.
+        $this->assertLessThanOrEqual(2, $globalDisasters['terrain_definition_lookup_queries']);
         $this->assertSame(0, $globalDisasters['monster_occupancy_lookup_queries']);
         $this->assertLessThanOrEqual(20, $globalDisasters['query_types']['select'] ?? 0);
     }
