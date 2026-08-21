@@ -28,7 +28,7 @@ docker compose run --rm --no-deps \
 
 同じread-only repeatable-read snapshotで次を件数付きで記録する。
 
-- `shared-world.ruleset_version_id`がexact `hakoniwa-2s-plus-v11`で、published checksumが`b39469ed710e0a80db966e630d7eb7dfaf64b2863ae56346679b829e175da8fe`である。
+- `shared-world.ruleset_version_id`がexact `hakoniwa-2s-plus-v11`で、published checksumが`5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8`である。
 - queued itemのdefinitionがv11で、request provenanceはproved original v10 identityを保持する。queue position、quantity、parameters、target snapshot、request key、fingerprint、status、timestampsはpreflight snapshotと同一である。
 - `completed`、`failed`、`cancelled` itemのdefinition、payload、status、fingerprintはhistorical v10のままである。safe non-null fingerprintのprovenance backfill以外に差分がない。
 - alive MonsterInstanceはすべてv11 definitionを参照し、HP、state、occupancy、spawn turn、versionが同一である。killed/removed rowsはv10 definitionを保持する。

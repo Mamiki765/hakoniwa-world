@@ -2,13 +2,14 @@
 
 namespace Tests\Unit;
 
+use App\Application\RulesetV11MigrationService;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
 final class RulesetV11ContractTest extends TestCase
 {
-    public const CHECKSUM = 'b39469ed710e0a80db966e630d7eb7dfaf64b2863ae56346679b829e175da8fe';
+    public const CHECKSUM = '5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8';
 
     public function test_formal_v11_is_the_current_immutable_c1_through_c4_payload(): void
     {
@@ -22,6 +23,7 @@ final class RulesetV11ContractTest extends TestCase
             self::CHECKSUM,
             hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
+        $this->assertSame(self::CHECKSUM, RulesetV11MigrationService::TARGET_CHECKSUM);
 
         $fixture = V11SecretaryItemRulesetFixture::settings();
         $fixture['key'] = 'hakoniwa-2s-plus-v11';
@@ -61,6 +63,14 @@ final class RulesetV11ContractTest extends TestCase
         $this->assertSame('hostless_full_killer_money', $aoi['source_metadata']['reward_policy']);
         $this->assertSame('world_aoi_disaster', $aoi['source_metadata']['behavior']['world_spawn']['type']);
         $this->assertSame(4, $aoi['source_metadata']['behavior']['world_spawn']['minimum_land_distance']);
+        $this->assertSame([
+            'candidate_attempts_per_action' => 3,
+            'blocked_terrain_keys' => ['mountain'],
+            'blocked_facility_keys' => ['mine', 'monument', 'capital'],
+            'defense_facility_key' => 'defense',
+            'destination_terrain_key' => 'sea',
+            'clear_owner' => true,
+        ], $aoi['movement_terrain_contract']);
 
         $zero = $monsters->get('mecha_inora_zero');
         $this->assertSame([4, 0, 0, 35], [

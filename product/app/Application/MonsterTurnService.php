@@ -112,16 +112,6 @@ final class MonsterTurnService
                 continue;
             }
             $facilityKey = $destination->facility?->key;
-            if ($behavior->movement === MonsterBehaviorResolver::WATER_NEUTRALIZING) {
-                if (! in_array($destination->terrain->key, $movement['allowed_terrain_keys'] ?? [], true)
-                    || ($facilityKey !== null
-                        && ! in_array($facilityKey, $movement['removable_facility_keys'] ?? [], true))) {
-                    continue;
-                }
-                $this->moveAcrossWater($context, $cell, $destination, $occupancy, $batch);
-
-                return true;
-            }
             if ($facilityKey === ($movement['defense_facility_key'] ?? null)) {
                 $this->defenseSelfDestruct(
                     $context,
@@ -138,6 +128,11 @@ final class MonsterTurnService
                 || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true)) {
                 continue;
             }
+            if ($behavior->movement === MonsterBehaviorResolver::WATER_NEUTRALIZING) {
+                $this->moveAndNeutralizeToSea($context, $cell, $destination, $occupancy, $batch);
+
+                return true;
+            }
 
             $this->moveAndTrample($context, $cell, $destination, $occupancy, $batch);
 
@@ -149,7 +144,7 @@ final class MonsterTurnService
         return true;
     }
 
-    private function moveAcrossWater(
+    private function moveAndNeutralizeToSea(
         TurnContext $context,
         MapCell $origin,
         MapCell $destination,
@@ -162,7 +157,10 @@ final class MonsterTurnService
         $beforeOwnerId = $destination->owner_nation_id;
         $beforeOwnerName = $destination->ownerNation?->name;
         $beforePopulation = $destination->population;
-        $destructive = $beforeOwnerId !== null || $beforeFacility !== null || $beforePopulation > 0;
+        $destructive = $beforeTerrain !== 'sea'
+            || $beforeOwnerId !== null
+            || $beforeFacility !== null
+            || $beforePopulation > 0;
         $this->cells->setFacility($destination, null);
         $this->cells->transitionTerrain($destination, $this->sea());
         $destination->owner_nation_id = null;
