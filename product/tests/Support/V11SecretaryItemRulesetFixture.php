@@ -2,6 +2,7 @@
 
 namespace Tests\Support;
 
+use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Secretary\SecretaryItemTargetSafetyPolicy;
 
@@ -58,6 +59,13 @@ final class V11SecretaryItemRulesetFixture
             $definition['source_metadata'][MonsterRewardPolicyResolver::METADATA_KEY]
                 = MonsterRewardPolicyResolver::STANDARD_SPLIT;
             $definition['source_metadata']['manual'] = $manual[$definition['key']];
+            $definition['source_metadata']['behavior'] = [
+                'movement' => 'legacy_land',
+                'dispatchable' => $definition['key'] === 'mecha_inora',
+                'can_act_on_spawn_turn' => false,
+                'special_action' => 'none',
+                'island_creation_displaceable' => false,
+            ];
         }
         unset($definition);
 
@@ -77,6 +85,13 @@ final class V11SecretaryItemRulesetFixture
                 'remaining_hp' => 1,
             ],
             'manual' => ['appearance' => '怪獣派遣（9,999億円）', 'special' => 'HP1で核爆発'],
+            'behavior' => [
+                'movement' => 'legacy_land',
+                'dispatchable' => true,
+                'can_act_on_spawn_turn' => false,
+                'special_action' => 'nuclear_self_destruct_at_hp_one',
+                'island_creation_displaceable' => false,
+            ],
         ];
 
         $aoi = $template;
@@ -89,9 +104,31 @@ final class V11SecretaryItemRulesetFixture
         $aoi['missile_base_experience'] = 18;
         $aoi['display_order'] = 450;
         $aoi['skill_description'] = '海を移動し、中立海上では撃破者へ残骸資金を全額付与';
+        $aoi['movement_terrain_contract'] = [
+            'candidate_attempts_per_action' => 3,
+            'allowed_terrain_keys' => ['sea', 'shallow'],
+            'removable_facility_keys' => ['seabed_base', 'seabed_oil_field'],
+            'destination_terrain_key' => 'sea',
+            'clear_owner' => true,
+        ];
         $aoi['source_metadata'] = [
             MonsterRewardPolicyResolver::METADATA_KEY => MonsterRewardPolicyResolver::HOSTLESS_FULL_KILLER_MONEY,
             'manual' => ['appearance' => 'Worldの海上災害', 'special' => '海を移動。中立海上の通常撃破は撃破者へ残骸資金100%'],
+            'behavior' => [
+                'movement' => 'water_neutralizing',
+                'dispatchable' => false,
+                'can_act_on_spawn_turn' => false,
+                'special_action' => 'none',
+                'island_creation_displaceable' => true,
+                'world_spawn' => [
+                    'type' => 'world_aoi_disaster',
+                    'probability_per_active_owned_land_cell' => ['numerator' => 1, 'denominator' => 10_000],
+                    'maximum_probability_numerator' => 10_000,
+                    'terrain_keys' => ['sea', 'shallow'],
+                    'minimum_land_distance' => 4,
+                    'stream_version' => 1,
+                ],
+            ],
         ];
 
         $settings['monster_definitions'][] = $zero;
@@ -100,6 +137,23 @@ final class V11SecretaryItemRulesetFixture
             $settings['monster_definitions'],
             static fn (array $left, array $right): int => $left['display_order'] <=> $right['display_order'],
         );
+        foreach ($settings['command_definitions'] as &$command) {
+            if ($command['key'] !== 'monster_dispatch') {
+                continue;
+            }
+            $command['cost_money'] = 3_000;
+            $command['metadata'] = [
+                'parameters' => $command['metadata']['parameters'],
+                'private_command' => true,
+                'quantity_selects_catalog' => MonsterDispatchOptionResolver::CATALOG,
+                'default_selector_value' => 1,
+                MonsterDispatchOptionResolver::OPTIONS_METADATA_KEY => [
+                    ['value' => 1, 'monster_key' => 'mecha_inora', 'label' => 'メカいのら', 'cost_money' => 3_000, 'enabled' => true],
+                    ['value' => 2, 'monster_key' => 'mecha_inora_zero', 'label' => 'メカいのら零式', 'cost_money' => 9_999, 'enabled' => true],
+                ],
+            ];
+        }
+        unset($command);
         unset($settings['monster_system']['kill_stats']['maximum_species_rows_per_nation']);
         $settings['secretary']['item_categories'] = [
             'bow' => ['key' => 'bow', 'max_equipped' => 1],

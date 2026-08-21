@@ -25,6 +25,7 @@ final class DisasterTurnService
         private readonly LandSubsidenceThresholdResolver $subsidenceThreshold,
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly MonsterSpawnService $monsterSpawn,
+        private readonly MonsterWorldSpawnService $monsterWorldSpawn,
     ) {}
 
     /** @return array<string, int> */
@@ -148,6 +149,9 @@ final class DisasterTurnService
         $metrics['land_subsidence_capitals_damaged'] = $subsidence['capitals_damaged'];
         $metrics['land_subsidence_affected_chunks'] = $subsidence['affected_chunks'];
 
+        foreach ($this->monsterWorldSpawn->spawn($context, $space) as $key => $value) {
+            $metrics[$key] = $value;
+        }
         foreach ($this->monsterSpawn->spawnNatural($context, $space) as $key => $value) {
             $metrics[$key] = $value;
         }

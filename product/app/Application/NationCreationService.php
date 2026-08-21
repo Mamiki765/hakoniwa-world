@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Nation\NationCreationConflictException;
 use App\Domain\Nation\NationNameConflictException;
 use App\Domain\Nation\NationPlacementUnavailableException;
@@ -13,6 +14,7 @@ use App\Domain\Turn\UnresolvedNextTurnRunException;
 use App\Domain\World\RegistrationWorldExpansionPlanner;
 use App\Domain\World\WorldMutationLock;
 use App\Models\MapSpace;
+use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\User;
@@ -33,6 +35,8 @@ final class NationCreationService
         private readonly WorldMutationLock $worldMutationLock,
         private readonly NextProductionTurnRunGuard $turnRunGuard,
         private readonly SecretaryService $secretaries,
+        private readonly MonsterBehaviorResolver $monsterBehaviors,
+        private readonly MonsterRemovalService $monsterRemoval,
     ) {}
 
     public function create(
@@ -164,7 +168,58 @@ final class NationCreationService
                         'idle_counter' => 100,
                     ]);
                     $this->resources->initialize($nation);
-                    $this->islands->generate($mapSpace, $nation, $center, $seed);
+                    $islandPlan = $this->islands->plan($mapSpace, $nation, $center, $seed);
+                    $occupancies = MonsterOccupancy::query()
+                        ->whereIn('map_cell_id', $islandPlan->changedCellIds)
+                        ->with(['monster.definition', 'cell'])
+                        ->orderBy('id')
+                        ->lockForUpdate()
+                        ->get();
+                    foreach ($occupancies as $occupancy) {
+                        $monster = $occupancy->monster;
+                        $behavior = $this->monsterBehaviors->forDefinition($monster->definition);
+                        if (! $behavior->explicitlyAuthored || ! $behavior->islandCreationDisplaceable) {
+                            throw new \DomainException('初期島の変更セルは退避できない怪獣に占有されています。');
+                        }
+                        $this->monsterRemoval->removeForWorldMutation(
+                            $occupancy,
+                            'island_creation_displacement',
+                        );
+                        DB::table('audit_events')->insert([
+                            'actor_user_id' => $user->id,
+                            'world_id' => $world->id,
+                            'turn' => $world->current_turn,
+                            'nation_id' => $nation->id,
+                            'x' => $occupancy->cell->x,
+                            'y' => $occupancy->cell->y,
+                            'message' => null,
+                            'visibility' => 'admin',
+                            'event_type' => 'monster.island_creation_displaced',
+                            'severity' => 'info',
+                            'subject_type' => $monster->getMorphClass(),
+                            'subject_id' => $monster->id,
+                            'metadata' => json_encode([
+                                'world_id' => $world->id,
+                                'target_turn' => $world->current_turn,
+                                'request_key' => $requestKey,
+                                'new_nation_id' => $nation->id,
+                                'new_nation_name' => $nation->name,
+                                'ruleset_version_id' => $ruleset->id,
+                                'monster_key' => $monster->definition->key,
+                                'map_cell_id' => $occupancy->map_cell_id,
+                                'x' => $occupancy->cell->x,
+                                'y' => $occupancy->cell->y,
+                                'removal_reason' => 'island_creation_displacement',
+                                'rewardless' => true,
+                                'rewards_granted' => false,
+                                'kill_stat_incremented' => false,
+                            ], JSON_THROW_ON_ERROR),
+                            'occurred_at' => now(),
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+                    $this->islands->apply($islandPlan, $mapSpace, $nation);
                     NationMembership::query()->create([
                         'user_id' => $user->id, 'world_id' => $world->id,
                         'nation_id' => $nation->id, 'role' => 'owner',

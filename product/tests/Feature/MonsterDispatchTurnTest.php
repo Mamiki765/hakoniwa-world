@@ -118,6 +118,68 @@ final class MonsterDispatchTurnTest extends TestCase
         $this->assertNotSame($spawnedCell->id, $monster->fresh()->occupancy()->value('map_cell_id'));
     }
 
+    public function test_spawn_turn_deferred_dispatch_occupancy_blocks_existing_monster_movement_without_acting(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $sender] = $this->nation($world, '占有監査派遣国');
+        [, $target] = $this->nation($world, '占有監査対象国');
+        $space = $this->surfaceMapSpace($world);
+        $sender->update(['money' => 3_000]);
+        $deferredCell = $this->singleDispatchCandidate($target);
+        $origin = $this->neighborCells($space, $deferredCell)[0];
+        $this->setCell($origin, 'wasteland', null, $target->id, 0);
+        foreach ($this->neighborCells($space, $origin) as $neighbor) {
+            if ($neighbor->id !== $deferredCell->id) {
+                $this->setCell($neighbor, 'sea', null, null, 0);
+            }
+        }
+        $existing = $this->createMonster($world, $origin, 'inora', 1);
+        $direction = null;
+        $originCoordinate = new GridCoordinate($origin->x, $origin->y);
+        foreach (range(0, 5) as $candidateDirection) {
+            $candidate = $originCoordinate->neighbor($candidateDirection);
+            if ($candidate->x === $deferredCell->x && $candidate->y === $deferredCell->y) {
+                $direction = $candidateDirection;
+                break;
+            }
+        }
+        $this->assertIsInt($direction);
+        $this->queueDispatch($user, $sender, $target, $space);
+        $seed = $this->movementSeedForDirection($existing->id, $direction);
+        $context = $this->context($world, 2, 'deferred occupancy collision', [$sender->id], $seed);
+
+        app(DomesticCommandExecutor::class)->execute($context);
+
+        $deferred = MonsterInstance::query()->where('world_id', $world->id)
+            ->whereKeyNot($existing->id)->with('occupancy')->sole();
+        $service = app(MonsterTurnService::class);
+        $batch = $service->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $byCoordinate = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+
+        $this->assertTrue($service->processCell(
+            $context,
+            $space,
+            $origin->fresh(['terrain', 'facility']),
+            $byCoordinate,
+            $batch,
+        ));
+        $this->assertSame($origin->id, (int) $existing->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertSame($deferredCell->id, (int) $deferred->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertFalse($service->processCell(
+            $context,
+            $space,
+            $deferredCell->fresh(['terrain', 'facility']),
+            $byCoordinate,
+            $batch,
+        ));
+        $this->assertSame(1, $batch->metrics()['monsters_loaded']);
+        $this->assertSame(1, $batch->metrics()['monster_actions']);
+        $this->assertSame(0, $batch->metrics()['monster_moves']);
+        $this->assertSame(2, MonsterOccupancy::query()->count());
+        $this->assertSame(TurnRun::STATUS_DRY_RUN, $context->run->fresh()->status);
+    }
+
     public function test_multiple_dispatches_are_all_deferred_and_never_share_occupancy(): void
     {
         $world = $this->lightweightWorld();
@@ -316,9 +378,29 @@ final class MonsterDispatchTurnTest extends TestCase
     }
 
     /** @param list<int> $developmentNationIds */
-    private function context(World $world, int $targetTurn, string $seedLabel, array $developmentNationIds): TurnContext
+    private function movementSeedForDirection(int $monsterId, int $direction): string
     {
-        $seed = hash('sha256', $seedLabel);
+        foreach (range(0, 10_000) as $candidate) {
+            $seed = hash('sha256', "deferred occupancy collision {$candidate}");
+            $draw = (new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::monsterMovement($monsterId, 1),
+            )->integer(0, 5);
+            if ($draw === $direction) {
+                return $seed;
+            }
+        }
+
+        throw new RuntimeException('No deterministic movement seed was available.');
+    }
+
+    private function context(
+        World $world,
+        int $targetTurn,
+        string $seedLabel,
+        array $developmentNationIds,
+        ?string $seedOverride = null,
+    ): TurnContext {
+        $seed = $seedOverride ?? hash('sha256', $seedLabel);
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $run = TurnRun::query()->create([
             'world_id' => $world->id,

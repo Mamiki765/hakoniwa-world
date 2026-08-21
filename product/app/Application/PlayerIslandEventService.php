@@ -91,6 +91,7 @@ final class PlayerIslandEventService
         'monster.damaged',
         'monster.killed',
         'monster.defense_self_destructed',
+        'monster.nuclear_self_destructed',
         'monster.removed_by_terrain_event',
         'missile.launched',
         'missile.ineffective_aggregated',
@@ -725,8 +726,10 @@ final class PlayerIslandEventService
             'land_subsidence.triggered' => $nation === '島'
                 ? '地盤沈下が発生しました。'
                 : "{$nation}で地盤沈下が発生しました。",
-            'monster.spawned' => "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
-            'monster.moved' => "{$nation}({$x},{$y})へ{$monster}が移動した模様です。",
+            'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_aoi_disaster'
+                ? "中立海域({$x},{$y})に{$monster}が出現しました。"
+                : "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
+            'monster.moved' => ($nation === '島' ? '中立海域' : $nation)."({$x},{$y})へ{$monster}が移動した模様です。",
             'monster.trampled' => sprintf(
                 '%s(%s,%s)の%sが%sに踏み荒らされました。',
                 $nation,
@@ -747,6 +750,12 @@ final class PlayerIslandEventService
                 $this->publicCoordinate($metadata, 'center_x'),
                 $this->publicCoordinate($metadata, 'center_y'),
                 $monster,
+            ),
+            'monster.nuclear_self_destructed' => sprintf(
+                '%s(%s,%s)のメカいのら零式が突然輝きだし、とてつもない爆発を起こしました！',
+                $nation === '島' ? '中立海域' : $nation,
+                $this->publicCoordinate($metadata, 'center_x'),
+                $this->publicCoordinate($metadata, 'center_y'),
             ),
             'monster.removed_by_terrain_event' => "{$nation}({$x},{$y})の{$monster}が地形変化により消滅しました。",
             'missile.launched' => sprintf(
@@ -831,10 +840,14 @@ final class PlayerIslandEventService
                 'nation_name', 'old_owner_nation_name', 'new_owner_nation_name', 'x', 'y',
             ],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y'],
-            'monster.spawned', 'monster.damage_blocked', 'monster.damaged',
+            'monster.damage_blocked', 'monster.damaged',
             'monster.killed',
             'monster.removed_by_terrain_event' => ['nation_name', 'monster_key', 'x', 'y'],
+            'monster.spawned' => ['nation_name', 'monster_key', 'x', 'y', 'spawn_source'],
             'monster.defense_self_destructed' => [
+                'nation_name', 'monster_key', 'center_x', 'center_y',
+            ],
+            'monster.nuclear_self_destructed' => [
                 'nation_name', 'monster_key', 'center_x', 'center_y',
             ],
             'monster.moved' => ['nation_name', 'monster_key', 'x', 'y'],
@@ -1209,6 +1222,7 @@ final class PlayerIslandEventService
                 '%sが防衛施設へ接触し、施設とともに消滅しました。',
                 $this->monsterLabel($metadata['monster_key'] ?? null),
             ),
+            'monster.nuclear_self_destructed' => 'メカいのら零式が突然輝きだし、とてつもない爆発を起こしました（撃破報酬なし）。',
             'monster.removed_by_terrain_event' => sprintf(
                 '%sが地形変化により消滅しました（撃破報酬なし）。',
                 $this->monsterLabel($metadata['monster_key'] ?? null),
@@ -2168,10 +2182,12 @@ final class PlayerIslandEventService
     {
         return match ($key) {
             'mecha_inora' => 'メカいのら',
+            'mecha_inora_zero' => 'メカいのら零式',
             'inora' => 'いのら',
             'sanjira' => 'サンジラ',
             'red_inora' => 'レッドいのら',
             'dark_inora' => 'ダークいのら',
+            'aoi_inora' => 'あおいのら',
             'inora_ghost' => 'いのらゴースト',
             'whale' => 'クジラ',
             'king_inora' => 'キングいのら',
@@ -2186,6 +2202,7 @@ final class PlayerIslandEventService
             'famine.applied', 'facility.riot', 'capacity.overflow', 'resource.food_overflow_resolved',
             'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged', 'oil.depleted',
             'monster.damage_blocked', 'monster.damaged', 'monster.defense_self_destructed',
+            'monster.nuclear_self_destructed',
             'monster.removed_by_terrain_event' => 'warning',
             'missile.launch_failed' => 'warning',
             'command.buried_treasure', 'command.seabed_oil_search',
