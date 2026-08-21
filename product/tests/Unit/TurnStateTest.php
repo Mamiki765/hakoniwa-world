@@ -83,10 +83,13 @@ class TurnStateTest extends TestCase
     {
         $state = new TurnState;
         $state->recordMonsterSpawned(9, MonsterSpawnSource::MonsterDispatchCommand);
+        $state->recordMonsterSpawned(10, MonsterSpawnSource::WorldAoiDisaster);
 
-        $this->assertSame([9], $state->monsterIdsDeferredFromSpawnTurnMovement());
+        $this->assertSame([9, 10], $state->monsterIdsDeferredFromSpawnTurnMovement());
+        $this->assertSame('world_aoi_disaster', MonsterSpawnSource::WorldAoiDisaster->value);
         $this->assertFalse(MonsterSpawnSource::MonsterDispatchCommand->canActOnSpawnTurn());
         $this->assertFalse(MonsterSpawnSource::Natural->canActOnSpawnTurn());
+        $this->assertFalse(MonsterSpawnSource::WorldAoiDisaster->canActOnSpawnTurn());
     }
 
     public function test_turn_local_nation_activity_aggregates_missile_results_until_idle_finalization(): void

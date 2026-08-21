@@ -86,7 +86,7 @@ final class MonsterBehaviorResolver
         }
         if ($monsterKey === 'aoi_inora') {
             $expectedSpawn = [
-                'type' => 'world_sea_disaster',
+                'type' => 'world_aoi_disaster',
                 'probability_per_active_owned_land_cell' => ['numerator' => 1, 'denominator' => 10_000],
                 'maximum_probability_numerator' => 10_000,
                 'terrain_keys' => ['sea', 'shallow'],

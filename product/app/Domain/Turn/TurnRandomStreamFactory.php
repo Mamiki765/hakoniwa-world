@@ -80,7 +80,7 @@ final class TurnRandomStreamFactory
 
     private const MONSTER_DISPATCH_PREFIX = 'development_commands:monster_dispatch:item:';
 
-    private const MONSTER_WORLD_SPAWN_PREFIX = 'global_disasters:monster_spawn:world:';
+    private const MONSTER_WORLD_SPAWN_PREFIX = 'global_disasters:aoi_inora:';
 
     private const MISSILE_IMPACT_PREFIX = 'development_commands:missile:item:';
 

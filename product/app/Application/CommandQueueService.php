@@ -98,21 +98,42 @@ final class CommandQueueService
                     throw new CommandRequestConflictException;
                 }
                 $requestRuleset = $duplicate->requestRulesetVersion;
+                $inspection = $this->historicalDispatchRequests->inspect($duplicate);
                 if ($requestRuleset === null) {
-                    $inspection = $this->historicalDispatchRequests->inspect($duplicate);
                     if (! $inspection->proven || $inspection->requestRulesetVersionId === null) {
                         throw new CommandRequestConflictException;
                     }
-                    $requestRuleset = $duplicateDefinition->rulesetVersion;
+                    $requestRuleset = RulesetVersion::query()->find($inspection->requestRulesetVersionId);
+                }
+                if ($requestRuleset === null) {
+                    throw new CommandRequestConflictException;
+                }
+                $requestDefinition = $duplicateDefinition;
+                if ($inspection->proven) {
+                    if ($inspection->requestRulesetVersionId !== $requestRuleset->id
+                        || $inspection->requestCommandDefinitionId === null) {
+                        throw new CommandRequestConflictException;
+                    }
+                    $requestDefinition = CommandDefinition::query()
+                        ->whereKey($inspection->requestCommandDefinitionId)
+                        ->where('ruleset_version_id', $requestRuleset->id)
+                        ->first();
+                    if ($requestDefinition === null) {
+                        throw new CommandRequestConflictException;
+                    }
+                } elseif ($requestRuleset->key === 'hakoniwa-2s-plus-v10'
+                    && $requestRuleset->version === 10
+                    && $duplicateDefinition->key === 'monster_dispatch') {
+                    throw new CommandRequestConflictException;
                 }
                 try {
                     $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
                     $this->quantitySemantics->validateForRegistration(
-                        $duplicateDefinition,
+                        $requestDefinition,
                         $quantity,
                         $quantityProvided,
                     );
-                    $schemas = $duplicateDefinition->metadata['parameters'] ?? [];
+                    $schemas = $requestDefinition->metadata['parameters'] ?? [];
                     if (! is_array($schemas)) {
                         throw new DomainException('Historical command parameter schema is malformed.');
                     }
@@ -128,7 +149,7 @@ final class CommandQueueService
                 }
                 $requestFingerprint = $this->requestFingerprint(
                     $requestRuleset,
-                    $duplicateDefinition,
+                    $requestDefinition,
                     $targetX,
                     $targetY,
                     $quantity,

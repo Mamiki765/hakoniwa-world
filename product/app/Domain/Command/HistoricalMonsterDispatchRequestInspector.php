@@ -2,24 +2,41 @@
 
 namespace App\Domain\Command;
 
+use App\Models\CommandDefinition;
 use App\Models\NationCommandQueueItem;
 
 final class HistoricalMonsterDispatchRequestInspector
 {
     public function inspect(NationCommandQueueItem $item): HistoricalMonsterDispatchRequestInspection
     {
-        $definition = $item->relationLoaded('definition') ? $item->definition : $item->definition()->first();
-        $ruleset = $definition?->relationLoaded('rulesetVersion')
-            ? $definition->rulesetVersion
-            : $definition?->rulesetVersion()->first();
+        $executionDefinition = $item->relationLoaded('definition') ? $item->definition : $item->definition()->first();
+        $executionRuleset = $executionDefinition?->relationLoaded('rulesetVersion')
+            ? $executionDefinition->rulesetVersion
+            : $executionDefinition?->rulesetVersion()->first();
+        $requestRuleset = $item->request_ruleset_version_id !== null
+            ? ($item->relationLoaded('requestRulesetVersion')
+                ? $item->requestRulesetVersion
+                : $item->requestRulesetVersion()->first())
+            : $executionRuleset;
+        $requestDefinition = $executionDefinition !== null
+            && $requestRuleset !== null
+            && $executionDefinition->ruleset_version_id === $requestRuleset->id
+                ? $executionDefinition
+                : CommandDefinition::query()
+                    ->where('ruleset_version_id', $requestRuleset?->id)
+                    ->where('key', 'monster_dispatch')
+                    ->first();
         $historicalTarget = $item->parameters;
-        $valid = $definition !== null
-            && $ruleset !== null
-            && $definition->key === 'monster_dispatch'
-            && $definition->target_type === 'nation'
-            && ($definition->metadata['monster_key'] ?? null) === 'mecha_inora'
-            && $ruleset->key === 'hakoniwa-2s-plus-v10'
-            && $ruleset->version === 10
+        $valid = $executionDefinition !== null
+            && $requestRuleset !== null
+            && $requestDefinition !== null
+            && $executionDefinition->key === 'monster_dispatch'
+            && $executionDefinition->target_type === 'nation'
+            && $requestDefinition->key === 'monster_dispatch'
+            && $requestDefinition->target_type === 'nation'
+            && ($requestDefinition->metadata['monster_key'] ?? null) === 'mecha_inora'
+            && $requestRuleset->key === 'hakoniwa-2s-plus-v10'
+            && $requestRuleset->version === 10
             && $item->quantity === 1
             && in_array($item->status, ['queued', 'completed', 'failed', 'cancelled'], true)
             && array_keys($historicalTarget) === ['target_nation_id']
@@ -32,7 +49,8 @@ final class HistoricalMonsterDispatchRequestInspector
 
         return new HistoricalMonsterDispatchRequestInspection(
             proven: $valid,
-            requestRulesetVersionId: $valid ? (int) $ruleset->id : null,
+            requestRulesetVersionId: $valid ? (int) $requestRuleset->id : null,
+            requestCommandDefinitionId: $valid ? (int) $requestDefinition->id : null,
             selector: $valid ? 1 : null,
             reason: $valid ? 'exact_v10_mecha_dispatch_request' : 'ambiguous_or_non_historical_request',
         );

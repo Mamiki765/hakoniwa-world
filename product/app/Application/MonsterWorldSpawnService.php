@@ -144,7 +144,7 @@ final class MonsterWorldSpawnService
             'monster_instance_id' => $monster->id,
             'map_cell_id' => $cell->id,
         ]);
-        $context->state->recordMonsterSpawned($monster->id, MonsterSpawnSource::WorldSeaDisaster);
+        $context->state->recordMonsterSpawned($monster->id, MonsterSpawnSource::WorldAoiDisaster);
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $this->events->record($context, 'monster.spawned', $monster, [
             'monster_key' => $definition->key,
@@ -154,7 +154,7 @@ final class MonsterWorldSpawnService
             'initial_hp' => $hp,
             'before_terrain_key' => $beforeTerrain,
             'to_terrain_key' => 'sea',
-            'spawn_source' => MonsterSpawnSource::WorldSeaDisaster->value,
+            'spawn_source' => MonsterSpawnSource::WorldAoiDisaster->value,
             'owner_preserved' => false,
         ]);
         $metrics['world_sea_monsters_spawned'] = 1;

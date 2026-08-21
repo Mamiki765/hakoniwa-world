@@ -21,6 +21,7 @@ use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
+use App\Models\CommandDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
@@ -217,6 +218,75 @@ final class C4NewMonstersTest extends TestCase
         );
     }
 
+    public function test_proven_v10_selector_less_retry_survives_request_provenance_backfill_and_execution_definition_rebind(): void
+    {
+        $world = $this->lightweightWorld();
+        $v10 = $world->rulesetVersion;
+        $user = User::factory()->create();
+        $sender = app(NationCreationService::class)->create($user, $world, '再束縛元', '履歴主');
+        $target = app(NationCreationService::class)->create(User::factory()->create(), $world, '再束縛先', '対象主');
+        $space = $this->surfaceMapSpace($world);
+        $requestKey = (string) Str::uuid();
+        $item = app(CommandQueueService::class)->add(
+            user: $user,
+            nation: $sender,
+            mapSpace: $space,
+            commandKey: 'monster_dispatch',
+            targetX: null,
+            targetY: null,
+            requestKey: $requestKey,
+            expectedVersion: 1,
+            parameters: ['target_nation_id' => $target->id],
+        )['item'];
+        $fingerprint = $item->request_fingerprint;
+
+        $v11Settings = V11SecretaryItemRulesetFixture::settings();
+        $v11 = app(RulesetPublisher::class)->publish($v11Settings);
+        $v11Dispatch = CommandDefinition::query()
+            ->where('ruleset_version_id', $v11->id)
+            ->where('key', 'monster_dispatch')
+            ->sole();
+        config(['hakoniwa.ruleset' => $v11Settings]);
+        $world->update(['ruleset_version_id' => $v11->id]);
+        $item->update([
+            'request_ruleset_version_id' => $v10->id,
+            'command_definition_id' => $v11Dispatch->id,
+        ]);
+
+        $duplicate = app(CommandQueueService::class)->add(
+            user: $user,
+            nation: $sender,
+            mapSpace: $space,
+            commandKey: 'monster_dispatch',
+            targetX: null,
+            targetY: null,
+            requestKey: $requestKey,
+            expectedVersion: 999,
+            parameters: ['target_nation_id' => $target->id],
+        );
+
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($v10->id, $duplicate['item']->request_ruleset_version_id);
+        $this->assertSame($v11Dispatch->id, $duplicate['item']->command_definition_id);
+        $this->assertSame($fingerprint, $duplicate['item']->request_fingerprint);
+        $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
+
+        $this->expectException(CommandRequestConflictException::class);
+        app(CommandQueueService::class)->add(
+            user: $user,
+            nation: $sender,
+            mapSpace: $space,
+            commandKey: 'monster_dispatch',
+            targetX: null,
+            targetY: null,
+            requestKey: $requestKey,
+            expectedVersion: 999,
+            quantity: 2,
+            parameters: ['target_nation_id' => $target->id],
+            quantityProvided: true,
+        );
+    }
+
     public function test_aoi_world_spawn_uses_one_world_draw_stable_water_candidates_and_no_spawn_turn_action(): void
     {
         [$world, $ruleset] = $this->v11World();
@@ -242,7 +312,14 @@ final class C4NewMonstersTest extends TestCase
         $this->assertSame('sea', $occupancy->cell->terrain->key);
         $this->assertNull($occupancy->cell->owner_nation_id);
         $this->assertContains($occupancy->monster->id, $context->state->monsterIdsDeferredFromSpawnTurnMovement());
-        $this->assertSame('world_sea_disaster', $this->eventMetadata('monster.spawned')['spawn_source']);
+        $this->assertSame('world_aoi_disaster', $this->eventMetadata('monster.spawned')['spawn_source']);
+        $event = collect(app(PlayerIslandEventService::class)->publicWorldPage($world, 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->firstWhere('type', 'monster.spawned');
+        $this->assertSame(
+            '中立海域('.$occupancy->cell->x.','.$occupancy->cell->y.')にあおいのらが出現しました。',
+            $event['message'],
+        );
         $this->assertSame(0, app(MonsterTurnService::class)->load($context)->metrics()['monsters_loaded']);
     }
 

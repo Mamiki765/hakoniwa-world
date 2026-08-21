@@ -726,7 +726,7 @@ final class PlayerIslandEventService
             'land_subsidence.triggered' => $nation === '島'
                 ? '地盤沈下が発生しました。'
                 : "{$nation}で地盤沈下が発生しました。",
-            'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_sea_disaster'
+            'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_aoi_disaster'
                 ? "中立海域({$x},{$y})に{$monster}が出現しました。"
                 : "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
             'monster.moved' => ($nation === '島' ? '中立海域' : $nation)."({$x},{$y})へ{$monster}が移動した模様です。",
