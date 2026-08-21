@@ -225,6 +225,44 @@ final class MonsterFoundationContractTest extends TestCase
         }
     }
 
+    public function test_v11_authoring_rejects_a_dispatch_option_whose_monster_definition_is_missing(): void
+    {
+        $settings = $this->authoringSettings();
+        $settings['monster_definitions'] = array_values(array_filter(
+            $settings['monster_definitions'],
+            static fn (array $definition): bool => $definition['key'] !== 'mecha_inora_zero',
+        ));
+
+        $this->expectException(DomainException::class);
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_v11_authoring_requires_the_aoi_c4_baseline_without_forbidding_future_species(): void
+    {
+        $settings = $this->authoringSettings();
+        $settings['monster_definitions'] = array_values(array_filter(
+            $settings['monster_definitions'],
+            static fn (array $definition): bool => $definition['key'] !== 'aoi_inora',
+        ));
+
+        $this->expectException(DomainException::class);
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
+    public function test_v11_dispatch_options_require_dispatchable_authored_behaviors(): void
+    {
+        $settings = $this->authoringSettings();
+        foreach ($settings['monster_definitions'] as &$definition) {
+            if ($definition['key'] === 'mecha_inora_zero') {
+                $definition['source_metadata']['behavior']['dispatchable'] = false;
+            }
+        }
+        unset($definition);
+
+        $this->expectException(DomainException::class);
+        app(RulesetAuthoringValidator::class)->validate($settings);
+    }
+
     public function test_reward_policies_are_ruleset_owned_and_preserve_standard_split(): void
     {
         $resolver = app(MonsterRewardPolicyResolver::class);

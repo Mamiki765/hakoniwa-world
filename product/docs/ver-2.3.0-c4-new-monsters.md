@@ -12,13 +12,13 @@ The World Aoi stage runs once after ordinary global disasters and land subsidenc
 
 Aoi uses three dedicated versioned streams:
 
-- `global_disasters:monster_spawn:world:trigger:v1`
-- `global_disasters:monster_spawn:world:candidate:v1`
-- `global_disasters:monster_spawn:world:hp:v1`
+- `global_disasters:aoi_inora:trigger:v1`
+- `global_disasters:aoi_inora:candidate:v1`
+- `global_disasters:aoi_inora:hp:v1`
 
-The trigger probability is `min(10_000, active-Nation-owned land cells) / 10_000`. Zero active owned land consumes no draw. A successful trigger loads and locks the surface cells once, computes the radius-3 land exclusion in memory, loads occupied cell IDs once, and selects uniformly from stable cell-ID-ordered neutral empty sea/shallow candidates. Shallow water is normalized to sea before occupancy creation. Failure to find a candidate is nondestructive and player-silent.
+The durable spawn-source token is exactly `world_aoi_disaster`; it is retained in `TurnState` tracking and `monster.spawned` audit metadata but is never rendered to players. The trigger probability is `min(10_000, active-Nation-owned land cells) / 10_000`. Zero active owned land consumes no draw. A successful trigger loads and locks the surface cells once, computes the radius-3 land exclusion in memory, loads occupied cell IDs once, and selects uniformly from stable cell-ID-ordered neutral empty sea/shallow candidates. Shallow water is normalized to sea before occupancy creation. Failure to find a candidate is nondestructive and player-silent.
 
-Both World-spawned Aoi and dispatched monsters are recorded in `TurnState` and excluded from the normal monster batch for that spawn turn.
+Both World-spawned Aoi and dispatched monsters are recorded in `TurnState`. They remain in the complete turn-local occupancy index so other monsters cannot enter their cells, but are excluded from the action set for that spawn turn. They consume no action count or movement draw; terrain/disaster removal keeps using the complete synchronized batch.
 
 ## Aoi movement, reward, and island displacement
 
@@ -41,7 +41,9 @@ The definition cost remains the real selector-1 cost, 3,000. A narrow typed reso
 
 C4 adds nullable `nation_command_queue_items.request_ruleset_version_id` as request provenance. Existing rows remain null; every newly authored single or bulk queue row stores the locked request ruleset. The request fingerprint uses that immutable identity and is never reconstructed from the mutable current queue position. Provenance does not require equality with a later execution ruleset: C5 must be able to retain v10 request identity while rebinding a safely attributable queued definition for v11 execution.
 
-`HistoricalMonsterDispatchRequestInspector` is the reusable C5 boundary. It can prove only an exact v10 `monster_dispatch`, quantity 1, target-only parameter and coordinate snapshot, valid request key, supported queue/terminal status, and null-or-lowercase-64-hex fingerprint. It does not infer from cost, queue position, target Nation identity, database ID, display order, or current World ruleset. A proved row may normalize the omitted historical selector only to 1 for duplicate comparison while preserving fingerprint bytes. Selector 2 conflicts. Null fingerprints and all ambiguous rows remain conflict-only. C4 performs no backfill or rebind.
+`HistoricalMonsterDispatchRequestInspector` is the reusable C5 boundary. It separates immutable request provenance from the mutable execution definition: explicit v10 request provenance remains the historical identity after the queued execution definition is rebound to v11. The inspector can prove only an exact v10 `monster_dispatch`, quantity 1, target-only parameter and coordinate snapshot, valid request key, supported queue/terminal status, and null-or-lowercase-64-hex fingerprint. It does not use the current execution definition alone as v10 evidence and does not infer from cost, queue position, target Nation identity, database ID, display order, or current World ruleset. A proved row may normalize the omitted historical selector only to 1 for duplicate comparison while preserving fingerprint bytes. Selector 2 conflicts. Null fingerprints and all ambiguous rows remain conflict-only. C4 performs no backfill or rebind.
+
+The pure authoring validator cross-checks every v11 `monster_dispatch` option against exactly one authored definition with `dispatchable = true`. The C4 baseline requires Zero and Aoi in addition to the historical eight, while retaining C3's support for additional species; it does not impose an exact-ten ceiling. Initial-island reservation cells are locked in stable cell-ID order before plan construction.
 
 ## Mecha Inora Zero action
 
@@ -73,4 +75,4 @@ Before C5, preserve these C4 invariants:
 
 ## Verification snapshot
 
-The implementation is covered by focused ruleset, dispatch, provenance, Aoi spawn/movement/reward, island plan/displacement, Zero action/no-chain/message, and Old Bow safety regressions. The final PR validation also runs the complete migration chain on the isolated `hakoniwa_test` database, backend tests, PHPStan, Pint, frontend tests/lint/typecheck/build, open-question validation, immutable-source diffs, and exact-head CI/review gates.
+The implementation is covered by focused ruleset, dispatch, provenance/rebind retry, Aoi exact stream/source identity, spawn/movement/reward, deferred-occupancy collision, island plan/displacement, Zero action/no-chain/message, and Old Bow safety regressions. The final PR validation also runs the complete migration chain on the isolated `hakoniwa_test` database, backend tests, PHPStan, Pint, frontend tests/lint/typecheck/build, open-question validation, immutable-source diffs, and exact-head CI/review gates.

@@ -39,16 +39,12 @@ final class MonsterTurnService
                 ->where('state', 'alive')
                 ->whereHas('definition', fn ($definition) => $definition
                     ->where('ruleset_version_id', $context->ruleset->id)))
-            ->when($deferredMonsterIds !== [], fn ($query) => $query->whereNotIn(
-                'monster_instance_id',
-                $deferredMonsterIds,
-            ))
             ->with(['monster.definition'])
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
-        $batch = new MonsterTurnBatch($occupancies);
-        $this->removal->useBatch($batch, $context, $deferredMonsterIds === []);
+        $batch = new MonsterTurnBatch($occupancies, $deferredMonsterIds);
+        $this->removal->useBatch($batch, $context);
 
         return $batch;
     }
@@ -66,6 +62,9 @@ final class MonsterTurnService
     ): bool {
         $occupancy = $batch->occupancyAt($cell->id);
         if ($occupancy === null) {
+            return false;
+        }
+        if ($batch->isActionDeferred($occupancy->monster_instance_id)) {
             return false;
         }
         $batch->countAction();

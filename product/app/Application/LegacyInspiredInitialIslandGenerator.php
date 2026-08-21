@@ -43,6 +43,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
                     $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
                 }
             })
+            ->orderBy('id')
             ->lockForUpdate()
             ->get()
             ->keyBy(fn (MapCell $cell): string => $cell->x.':'.$cell->y);

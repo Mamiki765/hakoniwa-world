@@ -678,10 +678,16 @@ final class RulesetAuthoringValidator
                     throw new DomainException("ruleset.monster_definitions is missing historical monster {$historicalKey}.");
                 }
             }
+            foreach (['mecha_inora_zero', 'aoi_inora'] as $requiredC4Key) {
+                if (! in_array($requiredC4Key, $keys, true)) {
+                    throw new DomainException("ruleset.monster_definitions is missing required C4 monster {$requiredC4Key}.");
+                }
+            }
         }
 
         $assetKeys = [];
         $displayOrders = [];
+        $authoredBehaviors = [];
         $knownSkills = ['none', 'move_2', 'move_9999', 'harden_odd', 'harden_even'];
         foreach ($definitions as $index => $definitionValue) {
             $path = "ruleset.monster_definitions.{$index}";
@@ -756,7 +762,10 @@ final class RulesetAuthoringValidator
                 if (! array_key_exists(MonsterBehaviorResolver::METADATA_KEY, $source)) {
                     throw new DomainException("{$path}.source_metadata requires explicit monster behavior.");
                 }
-                $this->monsterBehaviors->validate($source[MonsterBehaviorResolver::METADATA_KEY], $key);
+                $authoredBehaviors[$key] = $this->monsterBehaviors->validate(
+                    $source[MonsterBehaviorResolver::METADATA_KEY],
+                    $key,
+                );
             } elseif (array_key_exists(MonsterRewardPolicyResolver::METADATA_KEY, $source)) {
                 $this->monsterRewardPolicies->validate($source[MonsterRewardPolicyResolver::METADATA_KEY]);
             }
@@ -808,6 +817,9 @@ final class RulesetAuthoringValidator
             if ($hardening !== $expectedHardening) {
                 throw new DomainException("{$path}.hardening_contract does not match skill_key.");
             }
+        }
+        if ($extended) {
+            $this->validateMonsterDispatchDefinitionReferences($settings, $definitions, $authoredBehaviors);
         }
 
         $systemPath = 'ruleset.monster_system';
@@ -939,6 +951,50 @@ final class RulesetAuthoringValidator
         }
 
         return count($keys);
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<mixed>  $monsterDefinitions
+     * @param  array<string, array<string, mixed>>  $authoredBehaviors
+     */
+    private function validateMonsterDispatchDefinitionReferences(
+        array $settings,
+        array $monsterDefinitions,
+        array $authoredBehaviors,
+    ): void {
+        $dispatchMetadata = null;
+        foreach ($this->list($settings['command_definitions'], 'ruleset.command_definitions') as $index => $value) {
+            $definition = $this->map($value, "ruleset.command_definitions.{$index}");
+            if (($definition['key'] ?? null) === 'monster_dispatch') {
+                $dispatchMetadata = $this->map(
+                    $definition['metadata'] ?? null,
+                    "ruleset.command_definitions.{$index}.metadata",
+                );
+                break;
+            }
+        }
+        if ($dispatchMetadata === null) {
+            throw new DomainException('A v11 ruleset requires monster_dispatch authoring.');
+        }
+
+        foreach ($this->monsterDispatchOptions->validateMetadata($dispatchMetadata) as $option) {
+            $matches = array_values(array_filter(
+                $monsterDefinitions,
+                static fn (mixed $value): bool => is_array($value)
+                    && ($value['key'] ?? null) === $option['monster_key'],
+            ));
+            if (count($matches) !== 1) {
+                throw new DomainException(
+                    "monster_dispatch option {$option['value']} must reference exactly one authored monster definition.",
+                );
+            }
+            if (($authoredBehaviors[$option['monster_key']]['dispatchable'] ?? null) !== true) {
+                throw new DomainException(
+                    "monster_dispatch option {$option['value']} must reference a dispatchable monster definition.",
+                );
+            }
+        }
     }
 
     private function usesV11MonsterContract(string $key, int $version): bool
