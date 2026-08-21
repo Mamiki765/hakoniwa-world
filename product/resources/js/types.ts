@@ -27,6 +27,8 @@ export interface Secretary {
     name: string | null;
     named_at: string | null;
     header_label: string;
+    effect_context: SecretaryEquipmentEffectContext | null;
+    equipment_version: number;
     skills: SecretarySkill[];
     inventory: {
         capacity: 50;
@@ -36,7 +38,42 @@ export interface Secretary {
     equipment: {
         slot_count: 5;
         slots: Array<{ slot: number; item: SecretaryItem | null }>;
+        category_limits: SecretaryEquipmentCategoryLimit[];
     };
+}
+
+export interface SecretaryEquipmentCategoryLimit {
+    category: string;
+    label: string;
+    maximum_equipped: number;
+}
+
+export interface SecretaryEquipmentOptionItem {
+    id: number;
+    key: string;
+    name: string;
+    level: number;
+    category: string;
+    category_label: string;
+    equipped_slot: number | null;
+    effect_text: string | null;
+}
+
+export interface SecretaryEquipmentEffectContext {
+    source: 'owned_world';
+    world_id: number;
+    ruleset_version_id: number;
+    ruleset_key: string;
+    ruleset_version: number;
+}
+
+export interface SecretaryEquipmentOptions {
+    slot: number;
+    equipment_version: number;
+    current_item: SecretaryEquipmentOptionItem | null;
+    items: SecretaryEquipmentOptionItem[];
+    category_limits: SecretaryEquipmentCategoryLimit[];
+    effect_context: SecretaryEquipmentEffectContext | null;
 }
 
 export interface SecretaryItem {
@@ -48,6 +85,7 @@ export interface SecretaryItem {
     category_label: string;
     equipped_slot: number | null;
     is_equipped: boolean;
+    effect_text: string | null;
     flavor_text: string;
     obtained_at: string;
 }
@@ -410,7 +448,7 @@ export interface CommandDefinition {
     target_type: 'cell' | 'nation';
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_default: number | null;
-    quantity_options: Array<{ value: number; key: string; label: string }>;
+    quantity_options: Array<{ value: number; key: string; label: string; cost_money?: number }>;
     parameters: Record<string, {
         label: string;
         type: 'integer';
@@ -471,6 +509,7 @@ export interface CommandQueueItem {
     quantity: number;
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_label: string | null;
+    effective_cost_money?: number;
     parameters: Record<string, unknown>;
     status: string;
     queued_at: string | null;

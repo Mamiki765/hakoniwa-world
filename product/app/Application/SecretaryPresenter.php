@@ -17,7 +17,7 @@ final class SecretaryPresenter
     ) {}
 
     /** @return array<string, mixed> */
-    public function present(Secretary $secretary): array
+    public function present(Secretary $secretary, ?SecretaryItemEffectProjection $projection = null): array
     {
         $definitions = $this->catalog->definitions(config('hakoniwa.ruleset'));
         $rows = $secretary->skills->keyBy('skill_key');
@@ -48,7 +48,7 @@ final class SecretaryPresenter
             'named_at' => $secretary->named_at?->toIso8601String(),
             'header_label' => $secretary->name ?? '？？？',
             'skills' => $skills,
-            ...$this->items->present($secretary),
+            ...$this->items->present($secretary, $projection),
         ];
     }
 

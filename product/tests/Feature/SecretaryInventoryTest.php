@@ -44,6 +44,7 @@ final class SecretaryInventoryTest extends TestCase
             'grant_key' => SecretaryItemGrantService::STARTER_OLD_BOW_GRANT,
         ]);
         $this->assertNotNull($secretary->itemInstances()->firstOrFail()->getKey());
+        $this->assertSame(0, $secretary->itemInstances()->where('item_key', SecretaryItemCatalog::RING)->count());
     }
 
     public function test_inventory_migration_backfills_an_existing_secretary_exactly_once_on_rerun(): void
@@ -214,6 +215,68 @@ final class SecretaryInventoryTest extends TestCase
         $this->assertSame('古びた弓', $definition['name']);
         $this->assertStringContainsString('施設の最奥', $definition['flavor_text']);
         $this->assertArrayNotHasKey('effect', $definition);
+    }
+
+    public function test_ring_catalog_values_are_exact_and_no_registration_path_grants_one(): void
+    {
+        $catalog = app(SecretaryItemCatalog::class);
+        $definition = $catalog->definition(SecretaryItemCatalog::RING);
+
+        $this->assertSame([
+            'key' => SecretaryItemCatalog::RING,
+            'category' => 'ring',
+            'category_label' => '指輪',
+            'category_max_equipped' => 5,
+            'max_level' => 10,
+            'name' => '指輪',
+            'flavor_text' => '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
+            'unique_per_secretary' => false,
+            'same_item_max_equipped' => 5,
+        ], $definition);
+        $this->assertSame(5, $catalog->maximumEquipped('ring'));
+        $this->assertSame(5, $catalog->sameItemMaximum(SecretaryItemCatalog::RING));
+        $this->assertArrayNotHasKey('effect', $definition);
+
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        app(NationCreationService::class)->create($user, $world, '指輪未配布島', '指輪未配布島主');
+        $this->assertSame(0, $user->secretary->itemInstances()
+            ->where('item_key', SecretaryItemCatalog::RING)->count());
+    }
+
+    public function test_ring_grants_accept_levels_one_and_ten_but_reject_level_eleven(): void
+    {
+        $secretary = Secretary::query()->create(['user_id' => User::factory()->create()->id]);
+        $grants = app(SecretaryItemGrantService::class);
+
+        $this->assertSame(1, $grants->grant(
+            $secretary,
+            SecretaryItemCatalog::RING,
+            1,
+            null,
+            'test:ring:level-1',
+        )?->level);
+        $this->assertSame(10, $grants->grant(
+            $secretary,
+            SecretaryItemCatalog::RING,
+            10,
+            null,
+            'test:ring:level-10',
+        )?->level);
+
+        try {
+            $grants->grant(
+                $secretary,
+                SecretaryItemCatalog::RING,
+                11,
+                null,
+                'test:ring:level-11',
+            );
+            $this->fail('Expected Ring level 11 to be rejected.');
+        } catch (DomainException $exception) {
+            $this->assertSame('Invalid level 11 for Secretary item ring.', $exception->getMessage());
+        }
+        $this->assertSame(2, $secretary->itemInstances()->where('item_key', SecretaryItemCatalog::RING)->count());
     }
 
     /** @return array<string, array{string}> */

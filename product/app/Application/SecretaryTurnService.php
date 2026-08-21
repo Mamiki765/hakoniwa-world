@@ -2,6 +2,8 @@
 
 namespace App\Application;
 
+use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
 use App\Domain\Turn\TurnContext;
@@ -15,19 +17,41 @@ final class SecretaryTurnService
     public function __construct(
         private readonly SecretarySkillCatalog $catalog,
         private readonly SecretarySkillProgression $progression,
+        private readonly SecretaryItemCatalog $items,
+        private readonly SecretaryItemGameplayContract $itemGameplay,
     ) {}
+
+    public function itemEffectsEnabled(TurnContext $context): bool
+    {
+        return $this->itemGameplay->exists($context->ruleset->settings);
+    }
 
     /** @param list<int> $nationIds */
     public function loadAttemptSnapshots(TurnContext $context, array $nationIds): int
     {
-        if (! isset($context->ruleset->settings['secretary']) || $nationIds === []) {
+        if (! isset($context->ruleset->settings['secretary'])) {
             return 0;
+        }
+        $itemEffectsEnabled = $this->itemEffectsEnabled($context);
+        if ($itemEffectsEnabled) {
+            $this->itemGameplay->validate($context->ruleset->settings);
+        }
+        if ($nationIds === []) {
+            return 0;
+        }
+        $relations = ['user.secretary.skills'];
+        if ($itemEffectsEnabled) {
+            $relations['user.secretary.itemInstances'] = static fn ($query) => $query
+                ->whereNotNull('equipped_slot')
+                ->orderBy('secretary_id')
+                ->orderBy('equipped_slot')
+                ->orderBy('id');
         }
         $memberships = NationMembership::query()
             ->whereIn('nation_id', $nationIds)
             ->where('world_id', $context->world->id)
             ->where('role', 'owner')
-            ->with(['user.secretary.skills'])
+            ->with($relations)
             ->get()
             ->keyBy('nation_id');
         if ($memberships->count() !== count($nationIds)) {
@@ -60,9 +84,66 @@ final class SecretaryTurnService
                 $secretary->name,
                 $skills,
             );
+            if ($itemEffectsEnabled) {
+                $context->state->setSecretaryItemEffectSnapshot(
+                    $nationId,
+                    (int) $secretary->id,
+                    (int) $secretary->equipment_version,
+                    $this->resolvedItemSnapshots($context, $secretary),
+                );
+            }
         }
 
         return count($nationIds);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function resolvedItemSnapshots(TurnContext $context, Secretary $secretary): array
+    {
+        if ((int) $secretary->equipment_version < 1) {
+            throw new DomainException("Secretary {$secretary->id} has an invalid equipment version.");
+        }
+        $rows = $secretary->itemInstances;
+        if ($rows->count() > 5) {
+            throw new DomainException("Secretary {$secretary->id} exceeds the five equipment slots.");
+        }
+        $slots = [];
+        $categoryCounts = [];
+        $itemCounts = [];
+        $snapshots = [];
+        foreach ($rows as $row) {
+            $definition = $this->items->definition($row->item_key);
+            $slot = (int) $row->equipped_slot;
+            $level = (int) $row->level;
+            if ($slot < 1 || $slot > 5 || isset($slots[$slot])) {
+                throw new DomainException("Secretary {$secretary->id} has invalid or duplicate equipped slots.");
+            }
+            if ($level < 1 || $level > $definition['max_level']) {
+                throw new DomainException("Secretary Item {$row->id} has a level outside the global catalog.");
+            }
+            $slots[$slot] = true;
+            $category = $definition['category'];
+            $categoryCounts[$category] = ($categoryCounts[$category] ?? 0) + 1;
+            $itemCounts[$row->item_key] = ($itemCounts[$row->item_key] ?? 0) + 1;
+            if ($categoryCounts[$category] > $this->items->maximumEquipped($category)
+                || $itemCounts[$row->item_key] > $this->items->sameItemMaximum($row->item_key)) {
+                throw new DomainException("Secretary {$secretary->id} equipped Item limits are invalid.");
+            }
+            $snapshots[] = [
+                'item_instance_id' => (int) $row->id,
+                'item_key' => $row->item_key,
+                'category' => $category,
+                'level' => $level,
+                'equipped_slot' => $slot,
+                'effects' => $this->itemGameplay->resolvedEffects(
+                    $context->ruleset->settings,
+                    $row->item_key,
+                    $level,
+                ),
+            ];
+        }
+
+        return $snapshots;
     }
 
     /** @return array{experience_awarded: int, skills_changed: int, levels_gained: int} */

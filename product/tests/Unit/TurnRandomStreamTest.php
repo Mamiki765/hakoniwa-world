@@ -89,6 +89,30 @@ class TurnRandomStreamTest extends TestCase
         );
     }
 
+    public function test_aoi_world_spawn_uses_the_approved_raw_stream_labels_without_changing_existing_identities(): void
+    {
+        $this->assertSame(
+            'global_disasters:aoi_inora:trigger:v1',
+            TurnRandomStreamFactory::monsterWorldSpawn('trigger', 1),
+        );
+        $this->assertSame(
+            'global_disasters:aoi_inora:candidate:v1',
+            TurnRandomStreamFactory::monsterWorldSpawn('candidate', 1),
+        );
+        $this->assertSame(
+            'global_disasters:aoi_inora:hp:v1',
+            TurnRandomStreamFactory::monsterWorldSpawn('hp', 1),
+        );
+        $this->assertSame(
+            'global_disasters:monster_spawn:nation:7:trigger:v1',
+            TurnRandomStreamFactory::monsterSpawn(7, 'trigger', 1),
+        );
+        $this->assertSame(
+            'global_disasters:huge_meteor:trigger:v1',
+            TurnRandomStreamFactory::GLOBAL_HUGE_METEOR_TRIGGER,
+        );
+    }
+
     #[DataProvider('invalidSeedProvider')]
     public function test_invalid_master_seed_is_rejected(string $seed): void
     {

@@ -45,6 +45,8 @@ final class AssetManifestResolver
         'hakoniwa_original.monster.kujira' => 'monster6.gif',
         'hakoniwa_original.monster.king_inora' => 'monster3.gif',
         'hakoniwa_original.monster.hardened' => 'monster4.gif',
+        'hakoniwa_custom.monster.aoi_inora' => 'monster-aoi-inora.gif',
+        'hakoniwa_custom.monster.mecha_inora_zero' => 'monster-mecha-inora-zero.gif',
         'award.turn' => 'prize0.gif',
         'award.prosperity' => 'prize1.gif',
         'award.prosperity_great' => 'prize2.gif',
@@ -112,6 +114,11 @@ final class AssetManifestResolver
         }
 
         return $this->validatedPath($filename);
+    }
+
+    public function filenameForAssetKey(string $assetKey): ?string
+    {
+        return self::MANIFEST[$assetKey] ?? null;
     }
 
     public function contentTypeForFilename(string $filename): string

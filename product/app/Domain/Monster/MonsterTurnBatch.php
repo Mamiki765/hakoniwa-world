@@ -17,6 +17,9 @@ final class MonsterTurnBatch
     /** @var array<int, int> */
     private array $movesTakenByMonster = [];
 
+    /** @var array<int, true> */
+    private array $actionDeferredMonsterIds = [];
+
     /** @var array<string, int> */
     private array $metrics = [
         'monsters_loaded' => 0,
@@ -27,9 +30,13 @@ final class MonsterTurnBatch
         'maximum_moves_by_single_monster' => 0,
     ];
 
-    /** @param iterable<MonsterOccupancy> $occupancies */
-    public function __construct(iterable $occupancies)
+    /**
+     * @param  iterable<MonsterOccupancy>  $occupancies
+     * @param  list<int>  $actionDeferredMonsterIds
+     */
+    public function __construct(iterable $occupancies, array $actionDeferredMonsterIds = [])
     {
+        $this->actionDeferredMonsterIds = array_fill_keys($actionDeferredMonsterIds, true);
         foreach ($occupancies as $occupancy) {
             if (isset($this->occupancyByCellId[$occupancy->map_cell_id])) {
                 throw new InvalidArgumentException('Monster batch contains duplicate occupied cells.');
@@ -40,7 +47,9 @@ final class MonsterTurnBatch
             $this->occupancyByCellId[$occupancy->map_cell_id] = $occupancy;
             $this->occupancyByMonsterId[$occupancy->monster_instance_id] = $occupancy;
             $this->movesTakenByMonster[$occupancy->monster_instance_id] = 0;
-            $this->metrics['monsters_loaded']++;
+            if (! $this->isActionDeferred($occupancy->monster_instance_id)) {
+                $this->metrics['monsters_loaded']++;
+            }
         }
     }
 
@@ -49,8 +58,17 @@ final class MonsterTurnBatch
         return $this->occupancyByCellId[$cellId] ?? null;
     }
 
-    public function move(MonsterOccupancy $occupancy, int $fromCellId, int $toCellId): void
+    public function isActionDeferred(int $monsterId): bool
     {
+        return isset($this->actionDeferredMonsterIds[$monsterId]);
+    }
+
+    public function move(
+        MonsterOccupancy $occupancy,
+        int $fromCellId,
+        int $toCellId,
+        bool $trampled = true,
+    ): void {
         if (($this->occupancyByCellId[$fromCellId] ?? null)?->id !== $occupancy->id
             || isset($this->occupancyByCellId[$toCellId])) {
             throw new InvalidArgumentException('Monster movement would desynchronize the turn-local occupancy index.');
@@ -61,7 +79,9 @@ final class MonsterTurnBatch
         $moves = ($this->movesTakenByMonster[$monsterId] ?? 0) + 1;
         $this->movesTakenByMonster[$monsterId] = $moves;
         $this->metrics['monster_moves']++;
-        $this->metrics['cells_trampled']++;
+        if ($trampled) {
+            $this->metrics['cells_trampled']++;
+        }
         $this->metrics['maximum_moves_by_single_monster'] = max(
             $this->metrics['maximum_moves_by_single_monster'],
             $moves,
@@ -76,6 +96,7 @@ final class MonsterTurnBatch
         if (($this->occupancyByMonsterId[$occupancy->monster_instance_id] ?? null)?->id === $occupancy->id) {
             unset($this->occupancyByMonsterId[$occupancy->monster_instance_id]);
         }
+        unset($this->actionDeferredMonsterIds[$occupancy->monster_instance_id]);
     }
 
     public function synchronizeMonsterSnapshot(MonsterInstance $monster): void
@@ -103,6 +124,19 @@ final class MonsterTurnBatch
     public function countDefenseSelfDestruct(): void
     {
         $this->metrics['defense_self_destructs']++;
+    }
+
+    public function countWaterMove(bool $destructive): void
+    {
+        $this->metrics['aoi_water_moves'] = ($this->metrics['aoi_water_moves'] ?? 0) + 1;
+        if ($destructive) {
+            $this->metrics['aoi_destructive_moves'] = ($this->metrics['aoi_destructive_moves'] ?? 0) + 1;
+        }
+    }
+
+    public function countNuclearSelfDestruct(): void
+    {
+        $this->metrics['nuclear_self_destructs'] = ($this->metrics['nuclear_self_destructs'] ?? 0) + 1;
     }
 
     /** @return array<string, int> */

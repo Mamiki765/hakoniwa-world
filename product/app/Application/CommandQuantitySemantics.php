@@ -3,12 +3,15 @@
 namespace App\Application;
 
 use App\Domain\Command\PlayerFacingCommandException;
+use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Models\CommandDefinition;
 use App\Models\MonumentDefinition;
 use DomainException;
 
 final class CommandQuantitySemantics
 {
+    public function __construct(private readonly MonsterDispatchOptionResolver $monsterDispatchOptions) {}
+
     /** @var list<string> */
     private const QUANTITY_COMMAND_KEYS = [
         'build_farm', 'build_factory', 'build_mine',
@@ -39,7 +42,7 @@ final class CommandQuantitySemantics
     public function presentationDefault(CommandDefinition $definition): ?int
     {
         if ($this->for($definition) === self::SELECTOR) {
-            return null;
+            return $this->monsterDispatchOptions->defaultSelector($definition);
         }
 
         return in_array($definition->key, ['missile', 'pp_missile', 'land_destruction_missile'], true)
@@ -47,11 +50,17 @@ final class CommandQuantitySemantics
             : 1;
     }
 
-    /** @return list<array{value: int, key: string, label: string}> */
+    /** @return list<array{value: int, key: string, label: string}|array{value: int, key: string, label: string, cost_money: int}> */
     public function options(CommandDefinition $definition): array
     {
         if ($this->for($definition) !== self::SELECTOR) {
             return [];
+        }
+        if (($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            return array_map(
+                static fn ($option): array => $option->presentation(),
+                $this->monsterDispatchOptions->options($definition),
+            );
         }
         if (($definition->metadata['quantity_selects_catalog'] ?? null) !== 'monument_definitions') {
             throw new DomainException('未対応のquantity selector catalogです。');
@@ -100,6 +109,16 @@ final class CommandQuantitySemantics
     {
         if ($this->for($definition) !== self::SELECTOR) {
             return null;
+        }
+
+        if (($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            foreach ($this->monsterDispatchOptions->options($definition) as $option) {
+                if ($option->selector === $quantity) {
+                    return $option->label;
+                }
+            }
+
+            return '存在しない選択肢';
         }
 
         $option = MonumentDefinition::query()->find($quantity);

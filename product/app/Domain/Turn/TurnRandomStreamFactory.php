@@ -80,9 +80,13 @@ final class TurnRandomStreamFactory
 
     private const MONSTER_DISPATCH_PREFIX = 'development_commands:monster_dispatch:item:';
 
+    private const MONSTER_WORLD_SPAWN_PREFIX = 'global_disasters:aoi_inora:';
+
     private const MISSILE_IMPACT_PREFIX = 'development_commands:missile:item:';
 
     private const MONUMENT_FLIGHT_PREFIX = 'development_commands:monument:item:';
+
+    private const SECRETARY_OLD_BOW_PREFIX = 'secretary_item:old_bow:nation:';
 
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
@@ -170,6 +174,15 @@ final class TurnRandomStreamFactory
         return self::MONSTER_DISPATCH_PREFIX.$queueItemId.':candidate:v1';
     }
 
+    public static function monsterWorldSpawn(string $purpose, int $streamVersion): string
+    {
+        if ($streamVersion < 1 || ! in_array($purpose, ['trigger', 'candidate', 'hp'], true)) {
+            throw new InvalidArgumentException('World monster-spawn stream identity is invalid.');
+        }
+
+        return self::MONSTER_WORLD_SPAWN_PREFIX.$purpose.':v'.$streamVersion;
+    }
+
     public static function missileImpact(int $queueItemId): string
     {
         if ($queueItemId < 1) {
@@ -186,5 +199,14 @@ final class TurnRandomStreamFactory
         }
 
         return self::MONUMENT_FLIGHT_PREFIX.$queueItemId.':target:v1';
+    }
+
+    public static function secretaryOldBow(int $nationId, string $purpose, int $streamVersion): string
+    {
+        if ($nationId < 1 || $streamVersion < 1 || ! in_array($purpose, ['trigger', 'target'], true)) {
+            throw new InvalidArgumentException('Secretary Old Bow stream identity is invalid.');
+        }
+
+        return self::SECRETARY_OLD_BOW_PREFIX.$nationId.':'.$purpose.':v'.$streamVersion;
     }
 }

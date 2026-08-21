@@ -182,7 +182,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .achievement-icon, .achievement-fallback { width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; image-rendering: pixelated; }
 .achievement-fallback { display: inline-grid; place-items: center; border: 1px solid var(--line); background: var(--paper-deep); color: var(--navy); font-size: .58rem; font-weight: 900; line-height: 1; }
 .achievement-count { color: var(--ink); font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; }
-.achievement-tooltip { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; display: grid; min-width: 9rem; gap: 5px; padding: 8px 10px; border: 1px solid var(--navy); background: var(--paper); color: var(--ink); box-shadow: 0 8px 20px rgba(18, 63, 73, .18); font-size: .7rem; font-weight: 650; line-height: 1.45; text-align: left; white-space: normal; }
+.achievement-tooltip { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; display: grid; min-width: 9rem; max-width: min(20rem, calc(100vw - 2rem)); max-height: min(24rem, calc(100vh - 4rem)); overflow: auto; gap: 5px; padding: 8px 10px; border: 1px solid var(--navy); background: var(--paper); color: var(--ink); box-shadow: 0 8px 20px rgba(18, 63, 73, .18); font-size: .7rem; font-weight: 650; line-height: 1.45; text-align: left; white-space: normal; }
 .achievement-turns { display: grid; }
 .event-list { list-style: none; display: grid; gap: 16px; margin: 18px 0 0; padding: 0; }
 .event-list li { display: grid; grid-template-columns: 10px 1fr; gap: 10px; }
@@ -224,13 +224,19 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .secretary-skill-progress { grid-area: progress; display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; margin: 0; color: var(--coral-dark); font-size: .86rem; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .secretary-skill-effect { grid-area: effect; margin: 0; font-size: .8rem; line-height: 1.45; }
 .secretary-equipment { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 12px 0; padding: 0; list-style: none; }
-.secretary-equipment li { position: relative; display: grid; place-content: center; min-height: 82px; padding: 10px; border: 1px solid var(--line); background: white; text-align: center; }
+.secretary-equipment li { position: relative; min-height: 82px; border: 1px solid var(--line); background: white; text-align: center; }
+.secretary-equipment li:focus-within { outline: 3px solid color-mix(in srgb, var(--coral-dark) 42%, transparent); outline-offset: 2px; }
+.secretary-equipment button { display: grid; width: 100%; min-height: 80px; place-content: center; padding: 10px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.secretary-equipment button:hover { background: #fff8ee; }
 .secretary-equipment strong { font-size: .84rem; }
 .secretary-equipment small { display: block; color: var(--coral-dark); }
+.equipment-category-limits { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
+.equipment-category-limits li { padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-size: .76rem; }
 .equipment-slot-number { position: absolute; top: 4px; left: 6px; color: var(--muted); font-size: .64rem; }
 .secretary-warehouse { display: grid; gap: 9px; margin: 12px 0 0; padding: 0; list-style: none; }
 .secretary-warehouse li { padding: 13px 15px; border: 1px solid var(--line); background: white; }
 .secretary-warehouse p { margin: 5px 0 0; font-size: .78rem; }
+.secretary-warehouse .item-effect { color: var(--ink); font-weight: 600; line-height: 1.5; }
 .secretary-warehouse .item-flavor { color: var(--muted); font-style: italic; line-height: 1.55; }
 .profile-actions { display: flex; gap: 10px; }
 .danger-zone { max-width: 680px; margin-top: 30px; padding: 20px; border: 2px solid #b94a3f; background: #fff5f3; }
@@ -244,6 +250,19 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .abandonment-modal label { font-weight: 800; }
 .abandonment-modal input { min-height: 46px; padding: 9px 11px; border: 1px solid #91a09b; font: inherit; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+.equipment-modal { display: flex; width: min(100%, 560px); max-height: calc(100dvh - 40px); flex-direction: column; overflow: hidden; border: 2px solid var(--line); background: #fff; box-shadow: 0 18px 60px rgb(0 0 0 / 35%); }
+.equipment-modal-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 17px; border-bottom: 1px solid var(--line); }
+.equipment-modal-header h2 { margin: 0; font-size: 1.08rem; }
+.equipment-modal-close { width: 38px; min-height: 38px; padding: 0; border: 0; background: transparent; font-size: 1.55rem; line-height: 1; }
+.equipment-modal-status { min-height: 160px; padding: 26px 18px; color: var(--muted); }
+.equipment-options-scroll { min-height: 0; max-height: min(56dvh, 430px); overflow-y: auto; overscroll-behavior: contain; padding: 6px 16px; -webkit-overflow-scrolling: touch; }
+.equipment-option-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 11px; align-items: center; min-height: 58px; padding: 9px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.equipment-option-row:last-child { border-bottom: 0; }
+.equipment-option-row input { width: 19px; height: 19px; margin: 0; accent-color: var(--coral-dark); }
+.equipment-option-row span { display: grid; gap: 2px; min-width: 0; }
+.equipment-option-row small { color: var(--muted); }
+.equipment-modal-notice, .equipment-modal-error { margin: 10px 17px 0; }
+.equipment-modal-footer { display: flex; flex: 0 0 auto; justify-content: flex-end; padding: 14px 17px; border-top: 1px solid var(--line); background: #fff; }
 .profile-owner, .profile-comment { margin: 4px 0 0; }
 .profile-owner { color: var(--muted); font-size: .78rem; font-weight: 750; }
 .nation-hud .profile-owner { color: #c9dede; }
@@ -644,7 +663,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .secretary-tabs { overflow-x: auto; }
     .secretary-tabs button { flex: 1 0 auto; min-height: 44px; padding-inline: 14px; }
     .secretary-equipment { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .secretary-equipment li { min-height: 72px; }
+    .secretary-equipment li, .secretary-equipment button { min-height: 72px; }
+    .equipment-modal-backdrop { padding: 10px; }
+    .equipment-modal { max-height: calc(100dvh - 20px); }
+    .equipment-options-scroll { max-height: min(58dvh, 430px); }
     .inquiry-detail dl div { grid-template-columns: 1fr; gap: 3px; }
 }
 

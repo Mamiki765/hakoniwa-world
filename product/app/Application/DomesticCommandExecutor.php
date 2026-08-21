@@ -14,6 +14,9 @@ use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Monster\MonsterDispatchOptionResolver;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
+use App\Domain\Secretary\SecretaryRingFinanceBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -55,6 +58,9 @@ final class DomesticCommandExecutor
         private readonly CapitalCorePolicy $capitalCores,
         private readonly ChunkCoordinateService $chunks,
         private readonly NationCommandTargetService $nationTargets,
+        private readonly SecretaryItemGameplayContract $secretaryItems,
+        private readonly SecretaryRingFinanceBonus $ringFinance,
+        private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
     ) {}
 
     /**
@@ -183,16 +189,22 @@ final class DomesticCommandExecutor
                 } elseif ($meaningfulActivity) {
                     $context->state->recordImmediateNormalCommandSucceeded($nation->id);
                 }
-                $this->events->record($context, 'command.success', $item, [
+                $dispatchOption = $definition->key === 'monster_dispatch'
+                    && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
+                        ? $this->monsterDispatchOptions->resolve($definition, $item->quantity)
+                        : null;
+                $this->events->record($context, 'command.success', $item, array_filter([
                     'nation_id' => $nation->id,
                     'command_key' => $definition->key,
                     'cost_money' => $executionCost,
+                    'dispatch_selector' => $dispatchOption?->selector,
+                    'monster_key' => $dispatchOption?->monsterDefinitionKey,
                     'consumes_turn' => $consumedTurn,
                     'meaningful_activity' => $meaningfulActivity,
                     'remaining_quantity' => $remainingQuantity,
                     'before' => $before,
                     'after' => $after,
-                ]);
+                ], static fn (mixed $value): bool => $value !== null));
             }
 
             if (! $consumedTurn) {
@@ -208,6 +220,10 @@ final class DomesticCommandExecutor
             if ($queue !== null && $queueMutated) {
                 $queue->increment('version');
             }
+        }
+
+        if ($this->secretaryItems->exists($context->ruleset->settings)) {
+            return [...$metrics, ...$context->state->secretaryRingFinanceMetrics()];
         }
 
         return $metrics;
@@ -378,7 +394,16 @@ final class DomesticCommandExecutor
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }
         }
-        if ((int) $nation->money < $definition->cost_money) {
+        $requiredMoney = $definition->cost_money;
+        if ($definition->key === 'monster_dispatch'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            try {
+                $requiredMoney = $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
+            } catch (DomainException) {
+                return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+            }
+        }
+        if ((int) $nation->money < $requiredMoney) {
             return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
         }
         foreach ($definition->required_resources as $resourceKey => $required) {
@@ -407,7 +432,16 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
     ): ?array {
         $observed = $this->emptyObservedState();
-        if ((int) $nation->money < $definition->cost_money) {
+        $requiredMoney = $definition->cost_money;
+        if ($definition->key === 'monster_dispatch'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            try {
+                $requiredMoney = $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
+            } catch (DomainException) {
+                return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+            }
+        }
+        if ((int) $nation->money < $requiredMoney) {
             return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
         }
         if ($definition->key === 'attraction') {
@@ -506,6 +540,10 @@ final class DomesticCommandExecutor
     ): int {
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             return 0;
+        }
+        if ($definition->key === 'monster_dispatch'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            return $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
         }
         if (! $this->isSeabedOilSearch($definition, $cell)) {
             return $definition->cost_money;
@@ -1178,10 +1216,23 @@ final class DomesticCommandExecutor
             return $addition->applied > 0;
         }
         if ($definition->key === 'monster_dispatch') {
-            $monster = $this->monsterSpawn->dispatch($context, $target, $item->id);
+            $option = ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
+                ? $this->monsterDispatchOptions->resolve($definition, $item->quantity)
+                : null;
+            $monsterKey = 'mecha_inora';
+            $dispatchSelector = 1;
+            $dispatchCostMoney = $definition->cost_money;
+            if ($option !== null) {
+                $monsterKey = $option->monsterDefinitionKey;
+                $dispatchSelector = $option->selector;
+                $dispatchCostMoney = $option->costMoney;
+            }
+            $monster = $this->monsterSpawn->dispatch($context, $target, $item->id, $option);
             $this->events->record($context, 'command.monster_dispatched', $monster, [
                 'nation_id' => $nation->id, 'target_nation_id' => $target->id,
-                'monster_key' => 'mecha_inora',
+                'monster_key' => $monsterKey,
+                'dispatch_selector' => $dispatchSelector,
+                'cost_money' => $dispatchCostMoney,
             ], 'private');
 
             return true;
@@ -1464,16 +1515,46 @@ final class DomesticCommandExecutor
     {
         $requested = $context->ruleset->settings['turn_processing']['automatic_finance_money'];
         $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
-        $addition = $this->addition->calculate((int) $nation->money, $requested, $capacity);
-        $nation->update(['money' => $addition->after]);
-        $this->events->record($context, $eventType, $nation, [
-            'before' => $addition->before,
-            'requested' => $addition->requested,
-            'applied' => $addition->applied,
-            'overflow' => $addition->overflow,
-            'after' => $addition->after,
-            'capacity' => $addition->capacity,
-        ]);
+        $base = $this->addition->calculate((int) $nation->money, $requested, $capacity);
+        $ring = $this->ringFinance->resolve($context->state, $nation->id);
+        $bonus = $this->addition->calculate($base->after, $ring['requested'], $capacity);
+        $nation->update(['money' => $bonus->after]);
+        $metadata = [
+            'before' => $base->before,
+            'requested' => $base->requested,
+            'applied' => $base->applied,
+            'overflow' => $base->overflow,
+            'after' => $base->after,
+            'capacity' => $base->capacity,
+        ];
+        if ($ring['requested'] > 0) {
+            $context->state->recordSecretaryRingFinanceBonus(
+                $nation->id,
+                $ring['requested'],
+                $bonus->applied,
+                $bonus->overflow,
+            );
+            $metadata = [
+                'before' => $base->before,
+                'requested' => $base->requested + $bonus->requested,
+                'applied' => $base->applied + $bonus->applied,
+                'overflow' => $base->overflow + $bonus->overflow,
+                'after' => $bonus->after,
+                'capacity' => $capacity,
+                'source' => $eventType === 'command.finance' ? 'explicit' : 'automatic',
+                'base_requested' => $base->requested,
+                'base_applied' => $base->applied,
+                'base_overflow' => $base->overflow,
+                'ring_equipped_level_sum' => $ring['equipped_level_sum'],
+                'ring_bonus_requested' => $bonus->requested,
+                'ring_bonus_applied' => $bonus->applied,
+                'ring_bonus_overflow' => $bonus->overflow,
+                'total_applied' => $base->applied + $bonus->applied,
+                'final_money' => $bonus->after,
+                'resolved_money_capacity' => $capacity,
+            ];
+        }
+        $this->events->record($context, $eventType, $nation, $metadata);
     }
 
     /**
@@ -1500,6 +1581,17 @@ final class DomesticCommandExecutor
             'quantity' => $item->quantity,
             'target_turn' => $context->targetTurn,
         ];
+        if ($item->definition->key === 'monster_dispatch'
+            && ($item->definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            try {
+                $option = $this->monsterDispatchOptions->resolve($item->definition, $item->quantity);
+                $metadata['dispatch_selector'] = $option->selector;
+                $metadata['monster_key'] = $option->monsterDefinitionKey;
+                $metadata['cost_money'] = $option->costMoney;
+            } catch (DomainException) {
+                // Keep the normal invalid-parameter failure without inventing option metadata.
+            }
+        }
         $item->update([
             'status' => 'failed',
             'queue_position' => null,

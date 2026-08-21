@@ -7,6 +7,7 @@ use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\HistoricalMonsterDispatchRequestInspector;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
@@ -15,6 +16,7 @@ use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
@@ -47,6 +49,8 @@ final class CommandQueueService
         private readonly NationCommandTargetService $nationTargets,
         private readonly TerritoryExpansionPolicy $territoryExpansion,
         private readonly CapitalCorePolicy $capitalCores,
+        private readonly HistoricalMonsterDispatchRequestInspector $historicalDispatchRequests,
+        private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
     ) {}
 
     /**
@@ -73,15 +77,6 @@ final class CommandQueueService
             $world = $this->lockWorldForQueue($nation);
             [$lockedNation, $membership] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $this->assertMapSpace($lockedNation, $mapSpace);
-            $definition = CommandDefinition::query()
-                ->where('ruleset_version_id', $world->ruleset_version_id)
-                ->where('key', $commandKey)
-                ->where('enabled', true)
-                ->first();
-            if ($definition === null) {
-                throw new PlayerFacingCommandException('利用できないcommandです。');
-            }
-
             $queue = NationCommandQueue::query()->firstOrCreate(
                 ['nation_id' => $lockedNation->id],
                 ['map_space_id' => $mapSpace->id, 'version' => 1],
@@ -89,6 +84,93 @@ final class CommandQueueService
             $queue = NationCommandQueue::query()->whereKey($queue->id)->lockForUpdate()->firstOrFail();
             if ($queue->map_space_id !== $mapSpace->id) {
                 throw new DomainException('queueとmap spaceが一致しません。');
+            }
+
+            $duplicate = NationCommandQueueItem::query()
+                ->where('nation_command_queue_id', $queue->id)
+                ->where('request_key', $requestKey)
+                ->lockForUpdate()
+                ->with(['definition.rulesetVersion', 'requestRulesetVersion'])
+                ->first();
+            if ($duplicate !== null) {
+                $duplicateDefinition = $duplicate->definition;
+                if ($commandKey !== $duplicateDefinition->key) {
+                    throw new CommandRequestConflictException;
+                }
+                $requestRuleset = $duplicate->requestRulesetVersion;
+                $inspection = $this->historicalDispatchRequests->inspect($duplicate);
+                if ($requestRuleset === null) {
+                    if (! $inspection->proven || $inspection->requestRulesetVersionId === null) {
+                        throw new CommandRequestConflictException;
+                    }
+                    $requestRuleset = RulesetVersion::query()->find($inspection->requestRulesetVersionId);
+                }
+                if ($requestRuleset === null) {
+                    throw new CommandRequestConflictException;
+                }
+                $requestDefinition = $duplicateDefinition;
+                if ($inspection->proven) {
+                    if ($inspection->requestRulesetVersionId !== $requestRuleset->id
+                        || $inspection->requestCommandDefinitionId === null) {
+                        throw new CommandRequestConflictException;
+                    }
+                    $requestDefinition = CommandDefinition::query()
+                        ->whereKey($inspection->requestCommandDefinitionId)
+                        ->where('ruleset_version_id', $requestRuleset->id)
+                        ->first();
+                    if ($requestDefinition === null) {
+                        throw new CommandRequestConflictException;
+                    }
+                } elseif ($requestRuleset->key === 'hakoniwa-2s-plus-v10'
+                    && $requestRuleset->version === 10
+                    && $duplicateDefinition->key === 'monster_dispatch') {
+                    throw new CommandRequestConflictException;
+                }
+                try {
+                    $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
+                    $this->quantitySemantics->validateForRegistration(
+                        $requestDefinition,
+                        $quantity,
+                        $quantityProvided,
+                    );
+                    $schemas = $requestDefinition->metadata['parameters'] ?? [];
+                    if (! is_array($schemas)) {
+                        throw new DomainException('Historical command parameter schema is malformed.');
+                    }
+                    $parameters = $this->parameters->validate($schemas, $parameters);
+                } catch (DomainException) {
+                    throw new CommandRequestConflictException;
+                }
+                if ($duplicateDefinition->target_type === 'nation') {
+                    $targetX = $duplicate->target_x;
+                    $targetY = $duplicate->target_y;
+                } elseif (! is_int($targetX) || ! is_int($targetY)) {
+                    throw new CommandRequestConflictException;
+                }
+                $requestFingerprint = $this->requestFingerprint(
+                    $requestRuleset,
+                    $requestDefinition,
+                    $targetX,
+                    $targetY,
+                    $quantity,
+                    $parameters,
+                    $position,
+                );
+                if ($duplicate->request_fingerprint === null
+                    || ! hash_equals($duplicate->request_fingerprint, $requestFingerprint)) {
+                    throw new CommandRequestConflictException;
+                }
+
+                return ['queue' => $queue, 'item' => $duplicate->load('definition'), 'duplicate' => true];
+            }
+
+            $definition = CommandDefinition::query()
+                ->where('ruleset_version_id', $world->ruleset_version_id)
+                ->where('key', $commandKey)
+                ->where('enabled', true)
+                ->first();
+            if ($definition === null) {
+                throw new PlayerFacingCommandException('利用できないcommandです。');
             }
 
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
@@ -100,23 +182,13 @@ final class CommandQueueService
             $parameters = $this->parameters->validate($schemas, $parameters);
             $ruleset = RulesetVersion::query()->whereKey($world->ruleset_version_id)
                 ->firstOrFail(['id', 'key', 'version']);
-            $duplicate = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('request_key', $requestKey)
-                ->lockForUpdate()
-                ->first();
-            if ($duplicate !== null && $definition->target_type === 'nation') {
-                $targetX = $duplicate->target_x;
-                $targetY = $duplicate->target_y;
-            } else {
-                [$targetX, $targetY] = $this->resolveTargetCoordinates(
-                    $lockedNation,
-                    $mapSpace,
-                    $definition,
-                    $targetX,
-                    $targetY,
-                );
-            }
+            [$targetX, $targetY] = $this->resolveTargetCoordinates(
+                $lockedNation,
+                $mapSpace,
+                $definition,
+                $targetX,
+                $targetY,
+            );
             $requestFingerprint = $this->requestFingerprint(
                 $ruleset,
                 $definition,
@@ -126,14 +198,6 @@ final class CommandQueueService
                 $parameters,
                 $position,
             );
-            if ($duplicate !== null) {
-                if ($duplicate->request_fingerprint === null
-                    || ! hash_equals($duplicate->request_fingerprint, $requestFingerprint)) {
-                    throw new CommandRequestConflictException;
-                }
-
-                return ['queue' => $queue, 'item' => $duplicate->load('definition'), 'duplicate' => true];
-            }
             $this->assertVersion($queue, $expectedVersion);
             $this->repairLegacyStagedItems($user, $queue);
 
@@ -248,6 +312,7 @@ final class CommandQueueService
             $item = NationCommandQueueItem::query()->create([
                 'nation_command_queue_id' => $queue->id,
                 'command_definition_id' => $definition->id,
+                'request_ruleset_version_id' => $ruleset->id,
                 'queue_position' => $position,
                 'target_x' => $targetX,
                 'target_y' => $targetY,
@@ -262,12 +327,19 @@ final class CommandQueueService
             ]);
             $queue->increment('version');
             $queue->refresh();
-            $this->audit($user, 'command.queued', $item, [
+            $dispatchOption = $definition->key === 'monster_dispatch'
+                && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
+                    ? $this->monsterDispatchOptions->resolve($definition, $quantity)
+                    : null;
+            $this->audit($user, 'command.queued', $item, array_filter([
                 'command_key' => $commandKey,
                 'x' => $targetX,
                 'y' => $targetY,
                 'quantity' => $quantity,
-            ]);
+                'monster_key' => $dispatchOption?->monsterDefinitionKey,
+                'cost_money' => $dispatchOption?->costMoney,
+                'request_ruleset_version_id' => $ruleset->id,
+            ], static fn (mixed $value): bool => $value !== null));
 
             return ['queue' => $queue, 'item' => $item->load('definition'), 'duplicate' => false];
         }, 3);
@@ -692,6 +764,7 @@ final class CommandQueueService
                 NationCommandQueueItem::query()->create([
                     'nation_command_queue_id' => $queue->id,
                     'command_definition_id' => $candidate['definition']->id,
+                    'request_ruleset_version_id' => $world->ruleset_version_id,
                     'queue_position' => $queuePosition,
                     'target_x' => $candidate['x'],
                     'target_y' => $candidate['y'],

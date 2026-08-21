@@ -54,6 +54,11 @@ const unnamedSecretaryFixture: Secretary = {
     name: null,
     named_at: null,
     header_label: '？？？',
+    effect_context: {
+        source: 'owned_world', world_id: 1, ruleset_version_id: 11,
+        ruleset_key: 'test-hakoniwa-2s-plus-v11-secretary-items', ruleset_version: 11,
+    },
+    equipment_version: 1,
     skills: [
         { key: 'agricultural_policy', name: '農業政策', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '小麦生産＋0.0%' },
         { key: 'specialty_development', name: '特産品開発', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '工場生産＋0.0%' },
@@ -62,16 +67,27 @@ const unnamedSecretaryFixture: Secretary = {
     ],
     inventory: {
         capacity: 50,
-        used: 1,
+        used: 2,
         items: [{
             id: 21, key: 'old_bow', name: '古びた弓', level: 1, category: 'bow', category_label: '弓',
             equipped_slot: 1, is_equipped: true,
+            effect_text: '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
             flavor_text: '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
             obtained_at: '2026-08-17T00:00:00Z',
+        }, {
+            id: 22, key: 'ring', name: '指輪', level: 3, category: 'ring', category_label: '指輪',
+            equipped_slot: null, is_equipped: false,
+            effect_text: '資金繰りの際、追加で3億円を得る。',
+            flavor_text: '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
+            obtained_at: '2026-08-18T00:00:00Z',
         }],
     },
     equipment: {
         slot_count: 5,
+        category_limits: [
+            { category: 'bow', label: '弓', maximum_equipped: 1 },
+            { category: 'ring', label: '指輪', maximum_equipped: 5 },
+        ],
         slots: [
             { slot: 1, item: null },
             { slot: 2, item: null },
@@ -126,7 +142,7 @@ function publicResponse(path: string): Response | null {
 beforeEach(() => {
     const meta = document.createElement('meta');
     meta.name = 'hakoniwa-application-version';
-    meta.content = '2.2.1';
+    meta.content = '2.3.0';
     document.head.append(meta);
 });
 
@@ -164,7 +180,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 2.2.1');
+        expect(wrapper.find('.app-version').text()).toBe('ver 2.3.0');
         expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');
@@ -633,12 +649,24 @@ describe('application lobby and island entry', () => {
     });
 
     it('opens a guest preview through public-only endpoints', async () => {
+        const monsterKillStats = Array.from({ length: 11 }, (_, index) => ({
+            key: `monster_${index}`,
+            name: `怪獣${index}`,
+            kill_count: index + 1,
+            first_killed_turn: index + 2,
+            last_killed_turn: index + 3,
+        }));
+        const detailWithManySpecies: PublicNationDetail = {
+            ...publicDetail,
+            monster_final_blow_count: 66,
+            monster_kill_stats: monsterKillStats,
+        };
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             const lobby = publicResponse(path);
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response(null, 401);
-            if (path === '/api/v1/public/nations/7') return response(publicDetail);
+            if (path === '/api/v1/public/nations/7') return response(detailWithManySpecies);
             if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
             return response(null, 404);
         });
@@ -659,6 +687,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.preview-heading').text()).toContain('採掘場規模5,000人');
         expect(wrapper.text()).toContain('島主：公開島主');
         expect(wrapper.text()).toContain('公開コメント');
+        expect(wrapper.find('.monster-kill-marks').text()).toContain('怪獣10 × 11');
+        expect(wrapper.findAll('.monster-kill-marks > span')).toHaveLength(11);
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
         expect(wrapper.find('.preview-page > .message-board').exists()).toBe(true);
         const previewBoard = wrapper.get('.preview-page > .message-board').element;
@@ -924,7 +954,7 @@ describe('application lobby and island entry', () => {
 
                 return response(secretary);
             }
-            if (path === '/api/v1/me/secretary') return response(secretary);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(secretary);
 
             return response(null, 404);
         });
@@ -966,7 +996,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.secretary-skills').text()).not.toContain('次のlevelまで');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'ペリドット')).toBe(true);
 
-        const secretaryGetCount = () => fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/secretary').length;
+        const secretaryGetCount = () => fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/secretary?world_id=1').length;
         const beforeTabSwitch = secretaryGetCount();
         const tabs = wrapper.findAll('[role="tab"]');
         expect(tabs.map((tab) => tab.text())).toEqual(['熟練度', '装備', '倉庫']);
@@ -980,8 +1010,13 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.secretary-equipment li')[0]!.text()).toContain('古びた弓');
         expect(wrapper.findAll('.secretary-equipment li').slice(1).every((slot) => slot.text().includes('空き'))).toBe(true);
         await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
-        expect(wrapper.get('.secretary-section-title').text()).toBe('倉庫 1 / 50');
+        expect(wrapper.get('.secretary-section-title').text()).toBe('倉庫 2 / 50');
+        expect(wrapper.findAll('.item-effect').map((effect) => effect.text())).toEqual([
+            '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
+            '資金繰りの際、追加で3億円を得る。',
+        ]);
         expect(wrapper.get('.secretary-warehouse').text()).toContain('施設の最奥');
+        expect(wrapper.get('.secretary-warehouse').text()).toContain('貴金属が使われた豪華な指輪');
         expect(wrapper.get('.item-flavor').classes()).toContain('item-flavor');
         expect(secretaryGetCount()).toBe(beforeTabSwitch);
 
@@ -997,6 +1032,287 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(renameRequest?.[1]?.body))).toEqual({ name: 'エメラルド' });
         expect(wrapper.text()).toContain('秘書の名前を「エメラルド」に変更しました。');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
+    });
+
+    it('keeps a committed equipment mutation when the scoped projection refresh fails', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        let scopedSecretaryGets = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false, can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') {
+                scopedSecretaryGets++;
+                return scopedSecretaryGets <= 2 ? response(serverSecretary) : response(null, 500);
+            }
+            if (path === '/api/v1/me/secretary/equipment/1/options?world_id=1') {
+                const current = serverSecretary.equipment.slots[0]!.item;
+                return response({
+                    slot: 1,
+                    equipment_version: serverSecretary.equipment_version,
+                    effect_context: serverSecretary.effect_context,
+                    current_item: current,
+                    items: serverSecretary.inventory.items,
+                    category_limits: serverSecretary.equipment.category_limits,
+                });
+            }
+            if (path === '/api/v1/me/secretary/equipment/1' && init?.method === 'PUT') {
+                serverSecretary.equipment_version = 2;
+                serverSecretary.inventory.items[0]!.equipped_slot = null;
+                serverSecretary.inventory.items[0]!.is_equipped = false;
+                serverSecretary.equipment.slots[0]!.item = null;
+
+                return response(serverSecretary);
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.findAll('[role="tab"]')[1]!.trigger('click');
+        await wrapper.findAll('.secretary-equipment button')[0]!.trigger('click');
+        await flushPromises();
+        await wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[0]!.setValue(true);
+        await wrapper.get('.equipment-modal-footer button').trigger('click');
+        await flushPromises();
+
+        const put = fetchMock.mock.calls.find(([path, request]) => (
+            String(path) === '/api/v1/me/secretary/equipment/1' && request?.method === 'PUT'
+        ));
+        expect(JSON.parse(String(put?.[1]?.body))).toEqual({ item_id: null, expected_version: 1 });
+        expect(wrapper.find('.equipment-modal').exists()).toBe(false);
+        expect(wrapper.findAll('.secretary-equipment li')[0]!.text()).toContain('空き');
+        expect(wrapper.text()).toContain('装備は変更されましたが、最新の効果表示を読み込めませんでした。');
+        expect(wrapper.text()).not.toContain('装備を変更できませんでした。');
+    });
+
+    it('keeps committed naming and rename results when scoped projection refreshes fail', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        let scopedSecretaryGets = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false, can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') {
+                scopedSecretaryGets++;
+                return scopedSecretaryGets <= 2 ? response(serverSecretary) : response(null, 500);
+            }
+            if (path === '/api/v1/me/secretary/name' && init?.method === 'POST') {
+                const body = JSON.parse(String(init.body)) as { name: string };
+                serverSecretary.name = body.name;
+                serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+                serverSecretary.header_label = body.name;
+
+                return response(serverSecretary);
+            }
+            if (path === '/api/v1/me/secretary/name' && init?.method === 'PATCH') {
+                const body = JSON.parse(String(init.body)) as { name: string };
+                serverSecretary.name = body.name;
+                serverSecretary.header_label = body.name;
+
+                return response(serverSecretary);
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '？？？')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-naming-form').trigger('submit');
+        await flushPromises();
+
+        expect(wrapper.find('.secretary-story').exists()).toBe(false);
+        expect(wrapper.get('.secretary-name').text()).toBe('ペリドット');
+        expect(wrapper.text()).toContain('秘書は「ペリドット」と命名されましたが、最新の効果表示を読み込めませんでした。');
+        expect(wrapper.text()).not.toContain('Secretaryを命名できませんでした。');
+
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!.trigger('click');
+        await wrapper.get('.secretary-rename-form input').setValue('エメラルド');
+        await wrapper.get('.secretary-rename-form').trigger('submit');
+        await flushPromises();
+
+        expect(wrapper.get<HTMLInputElement>('.secretary-rename-form input').element.value).toBe('エメラルド');
+        expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
+        expect(wrapper.text()).toContain('秘書の名前は「エメラルド」に変更されましたが、最新の効果表示を読み込めませんでした。');
+        expect(wrapper.text()).not.toContain('秘書名を変更できませんでした。');
+    });
+
+    it('keeps a v10 warehouse ruleset-neutral without substituting category text as an effect', async () => {
+        const secretary = structuredClone(unnamedSecretaryFixture);
+        secretary.name = 'ペリドット';
+        secretary.named_at = '2026-08-16T15:00:00+09:00';
+        secretary.header_label = 'ペリドット';
+        secretary.effect_context = {
+            source: 'owned_world', world_id: 1, ruleset_version_id: 10,
+            ruleset_key: 'hakoniwa-2s-plus-v10', ruleset_version: 10,
+        };
+        secretary.inventory.items.forEach((item) => { item.effect_text = null; });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false, can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(secretary);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
+
+        expect(wrapper.findAll('.item-effect')).toHaveLength(0);
+        expect(wrapper.get('.secretary-warehouse').text()).toContain('弓');
+        expect(wrapper.get('.secretary-warehouse').text()).toContain('指輪');
+        expect(wrapper.get('.secretary-warehouse').text()).toContain('貴金属が使われた豪華な指輪');
+        expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/me/secretary')).toBe(false);
+    });
+
+    it('loads authoritative equipment options and handles duplicate submit, stale refresh, validation, and success', async () => {
+        let serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        let optionsCalls = 0;
+        let putCalls = 0;
+        let resolveFirstPut: ((response: Response) => void) | undefined;
+        const firstPut = new Promise<Response>((resolve) => { resolveFirstPut = resolve; });
+
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') {
+                return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, can_manage_inquiries: false, providers: [] });
+            }
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
+            if (path === '/api/v1/me/secretary/equipment/1/options?world_id=1') {
+                optionsCalls++;
+                const current = serverSecretary.equipment.slots[0]!.item;
+                return response({
+                    slot: 1,
+                    equipment_version: serverSecretary.equipment_version,
+                    effect_context: {
+                        source: 'owned_world', world_id: 1, ruleset_version_id: 10,
+                        ruleset_key: 'hakoniwa-2s-plus-v10', ruleset_version: 10,
+                    },
+                    current_item: current === null ? null : {
+                        id: current.id, key: current.key, name: current.name, level: current.level,
+                        category: current.category, category_label: current.category_label,
+                        equipped_slot: current.equipped_slot, effect_text: current.effect_text,
+                    },
+                    items: serverSecretary.inventory.items.map((item) => ({
+                        id: item.id, key: item.key, name: item.name, level: item.level,
+                        category: item.category, category_label: item.category_label,
+                        equipped_slot: item.equipped_slot, effect_text: item.effect_text,
+                    })),
+                    category_limits: serverSecretary.equipment.category_limits,
+                });
+            }
+            if (path === '/api/v1/me/secretary/equipment/1' && init?.method === 'PUT') {
+                putCalls++;
+                if (putCalls === 1) {
+                    serverSecretary.equipment_version = 2;
+                    return firstPut;
+                }
+                if (putCalls === 2) {
+                    return new Response(JSON.stringify({
+                        code: 'secretary_equipment_invalid',
+                        message: 'この装備は選択できません。',
+                    }), { status: 422, headers: { 'Content-Type': 'application/json' } });
+                }
+
+                serverSecretary.equipment_version = 3;
+                serverSecretary.inventory.items[0]!.equipped_slot = null;
+                serverSecretary.inventory.items[0]!.is_equipped = false;
+                serverSecretary.equipment.slots[0]!.item = null;
+                return response(serverSecretary);
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        const scopedSecretaryGets = () => fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/secretary?world_id=1'
+        )).length;
+        await wrapper.findAll('[role="tab"]')[1]!.trigger('click');
+        expect(wrapper.findAll('.secretary-equipment button')).toHaveLength(5);
+        expect(wrapper.get('.equipment-category-limits').text()).toContain('弓・1個まで');
+        await wrapper.findAll('.secretary-equipment button')[0]!.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.equipment-modal').attributes('aria-modal')).toBe('true');
+        expect(wrapper.findAll('.equipment-option-row').map((row) => row.text())).toEqual([
+            '外す',
+            '古びた弓Lv110%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
+            '指輪Lv3資金繰りの際、追加で3億円を得る。',
+        ]);
+        expect(wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[1]!.element.checked).toBe(true);
+        const submit = wrapper.get('.equipment-modal-footer button');
+        const beforeStaleRefresh = scopedSecretaryGets();
+        await submit.trigger('click');
+        await submit.trigger('click');
+        expect(putCalls).toBe(1);
+
+        resolveFirstPut?.(new Response(JSON.stringify({
+            code: 'secretary_equipment_version_conflict',
+            message: '装備状態が更新されています。',
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+        await flushPromises();
+        expect(scopedSecretaryGets()).toBe(beforeStaleRefresh + 1);
+        expect(optionsCalls).toBe(2);
+        expect(wrapper.get('.equipment-modal-notice').text()).toContain('最新の候補から選び直してください');
+        expect(wrapper.get<HTMLButtonElement>('.equipment-modal-footer button').element.disabled).toBe(true);
+
+        await wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[0]!.setValue(true);
+        expect(wrapper.get<HTMLButtonElement>('.equipment-modal-footer button').element.disabled).toBe(false);
+        await wrapper.get('.equipment-modal-footer button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.equipment-modal-error').text()).toBe('この装備は選択できません。');
+        expect(wrapper.find('.equipment-modal').exists()).toBe(true);
+
+        const beforeSuccessfulReload = scopedSecretaryGets();
+        await wrapper.get('.equipment-modal-footer button').trigger('click');
+        await flushPromises();
+        expect(putCalls).toBe(3);
+        expect(scopedSecretaryGets()).toBe(beforeSuccessfulReload + 1);
+        expect(wrapper.find('.equipment-modal').exists()).toBe(false);
+        expect(wrapper.findAll('.secretary-equipment li')[0]!.text()).toContain('空き');
+        const successfulBody = JSON.parse(String(fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/secretary/equipment/1'
+        )).at(-1)?.[1]?.body));
+        expect(successfulBody).toEqual({ item_id: null, expected_version: 2 });
     });
 
     it('shows only a compact header inquiry shortcut to non-admin users', async () => {

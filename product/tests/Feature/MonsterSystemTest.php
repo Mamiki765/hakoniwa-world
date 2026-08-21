@@ -11,6 +11,7 @@ use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Monster\MonsterNaturalSpawnPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -36,6 +37,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
 class MonsterSystemTest extends TestCase
@@ -74,6 +76,73 @@ class MonsterSystemTest extends TestCase
         }
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'monster.spawned')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
+    public function test_natural_spawn_supports_ten_definitions_without_adding_non_pool_species_or_changing_the_type_draw(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('十種自然発生国');
+        $settings = $ruleset->settings;
+        $ruleset->settings = $settings;
+        $this->prepareSettlement($nation, 400_000);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        $seedLabel = 'ten-definition-spawn';
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+        $pool = app(MonsterNaturalSpawnPolicy::class)->poolForPopulation(
+            $ruleset->settings['monster_system']['natural_spawn'],
+            400_000,
+        );
+        $seed = hash('sha256', $seedLabel);
+        $expected = $pool[(new TurnRandomStreamFactory($seed))->stream(
+            TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
+        )->integer(0, count($pool) - 1)];
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(1, $metrics['monsters_spawned']);
+        $spawnedKey = MonsterInstance::query()->with('definition')->sole()->definition->key;
+        $this->assertSame($expected, $spawnedKey);
+        $this->assertNotContains($spawnedKey, ['mecha_inora_zero', 'aoi_inora']);
+        $this->assertSame(10, MonsterDefinition::query()
+            ->where('ruleset_version_id', $ruleset->id)->count());
+    }
+
+    public function test_natural_spawn_keeps_the_authored_pool_and_draw_with_many_unpooled_definitions(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('多種自然発生国');
+        $settings = $ruleset->settings;
+        $template = V11SecretaryItemRulesetFixture::newMonsterDefinitions()[0];
+        foreach (range(1, 10) as $index) {
+            $payload = $template;
+            $payload['key'] = "unpooled_monster_{$index}";
+            $payload['name'] = "非抽選怪獣{$index}";
+            $payload['asset_key'] = "hakoniwa_custom.monster.unpooled_monster_{$index}";
+            $payload['display_order'] = 700 + ($index * 100);
+            $settings['monster_definitions'][] = $payload;
+            MonsterDefinition::query()->create(['ruleset_version_id' => $ruleset->id, ...$payload]);
+        }
+        $ruleset->settings = $settings;
+        $this->prepareSettlement($nation, 400_000);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        $seedLabel = 'many-definition-spawn';
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+        $pool = app(MonsterNaturalSpawnPolicy::class)->poolForPopulation(
+            $ruleset->settings['monster_system']['natural_spawn'],
+            400_000,
+        );
+        $seed = hash('sha256', $seedLabel);
+        $expected = $pool[(new TurnRandomStreamFactory($seed))->stream(
+            TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
+        )->integer(0, count($pool) - 1)];
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(1, $metrics['spawn_draws']);
+        $this->assertSame(1, $metrics['monsters_spawned']);
+        $spawnedKey = MonsterInstance::query()->with('definition')->sole()->definition->key;
+        $this->assertSame($expected, $spawnedKey);
+        $this->assertContains($spawnedKey, $pool);
+        $this->assertSame(20, MonsterDefinition::query()
+            ->where('ruleset_version_id', $ruleset->id)->count());
     }
 
     #[DataProvider('inactiveStateProvider')]
@@ -183,7 +252,11 @@ class MonsterSystemTest extends TestCase
         }
         $this->setCell($origin, 'wasteland', null, $first->id, 0);
         $monster = $this->createMonster($world, $ruleset, $origin, 'dark_inora', 3);
-        [$context] = $this->context($world, $ruleset, 2, 'dark-two-moves', [$first->id, $second->id]);
+        $seedLabel = $this->twoMoveSeedThatDoesNotReturnToOrigin(
+            $monster,
+            new GridCoordinate($origin->x, $origin->y),
+        );
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$first->id, $second->id]);
         $service = app(MonsterTurnService::class);
         $batch = $service->load($context);
         $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
@@ -870,6 +943,37 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(200, $neutralMetadata['unclaimed_host_value_money']);
     }
 
+    public function test_explicit_hostless_full_killer_policy_uses_exact_turn_ruleset_and_respects_money_capacity(): void
+    {
+        [$world, $killer, $ruleset, $space] = $this->worldAndNation('あおい撃破国');
+        $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'aoi_inora')->firstOrFail();
+        $neutral = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->with(['terrain', 'facility'])->firstOrFail();
+        $this->setCell($neutral, 'wasteland', null, null, 0);
+        $monster = $this->createMonster($world, $ruleset, $neutral, 'aoi_inora', 2);
+        $killer->update(['money' => 9_500]);
+        [$context] = $this->context($world, $ruleset, 2, 'aoi-hostless-full', [$killer->id]);
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster, 2, 'monster_missile', $killer, null, $neutral, $context,
+        );
+
+        $this->assertSame('killed', $result->status);
+        $this->assertSame(1_200, $result->killerMoney['requested']);
+        $this->assertSame(499, $result->killerMoney['applied']);
+        $this->assertSame(701, $result->killerMoney['overflow']);
+        $this->assertSame(9_999, $killer->fresh()->money);
+        $this->assertNull($result->hostMeat);
+        $this->assertSame(1, $result->newKillCount);
+        $metadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'monster.reward_distributed')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('hostless_full_killer_money', $metadata['monster_reward_policy']);
+        $this->assertSame(1_200, $metadata['killer_requested_share_money']);
+        $this->assertSame(0, $metadata['host_requested_share_money']);
+        $this->assertSame(0, $metadata['unclaimed_host_value_money']);
+    }
+
     public function test_odd_wreckage_value_remainder_goes_to_current_host(): void
     {
         [$world, $host, $ruleset] = $this->worldAndNation('奇数所在国');
@@ -1217,6 +1321,26 @@ class MonsterSystemTest extends TestCase
         }
 
         throw new RuntimeException('No interior monster test cell was available.');
+    }
+
+    private function twoMoveSeedThatDoesNotReturnToOrigin(
+        MonsterInstance $monster,
+        GridCoordinate $origin,
+    ): string {
+        foreach (range(0, 99) as $candidate) {
+            $label = "dark-two-moves-{$candidate}";
+            $seed = hash('sha256', $label);
+            $stream = (new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::monsterMovement($monster->id, 1),
+            );
+            $firstDestination = $origin->neighbor($stream->integer(0, 5));
+            $secondDestination = $firstDestination->neighbor($stream->integer(0, 5));
+            if ($secondDestination->x !== $origin->x || $secondDestination->y !== $origin->y) {
+                return $label;
+            }
+        }
+
+        throw new RuntimeException('No deterministic two-move monster seed was available.');
     }
 
     private function setCell(

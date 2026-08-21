@@ -1939,7 +1939,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ]], $aid['parameters']['target_nation_id']['options']);
         $this->assertSame('ordinary', $aid['quantity_semantics']);
         $this->assertSame('ordinary', $foodAid['quantity_semantics']);
-        $this->assertSame('unused', $dispatch['quantity_semantics']);
+        $this->assertSame('selector', $dispatch['quantity_semantics']);
 
         $created = $this->postJson("{$base}/command-queue", [
             'command_key' => 'finance',

@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Monster\MonsterHardening;
 use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Turn\TurnContext;
@@ -18,12 +19,15 @@ final class MonsterTurnService
 {
     private ?TerrainDefinition $wasteland = null;
 
+    private ?TerrainDefinition $sea = null;
+
     public function __construct(
         private readonly MapCellStateService $cells,
         private readonly MonsterHardening $hardening,
         private readonly MonsterRemovalService $removal,
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
+        private readonly MonsterBehaviorResolver $behaviors,
     ) {}
 
     public function load(TurnContext $context): MonsterTurnBatch
@@ -35,16 +39,12 @@ final class MonsterTurnService
                 ->where('state', 'alive')
                 ->whereHas('definition', fn ($definition) => $definition
                     ->where('ruleset_version_id', $context->ruleset->id)))
-            ->when($deferredMonsterIds !== [], fn ($query) => $query->whereNotIn(
-                'monster_instance_id',
-                $deferredMonsterIds,
-            ))
             ->with(['monster.definition'])
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
-        $batch = new MonsterTurnBatch($occupancies);
-        $this->removal->useBatch($batch, $context, $deferredMonsterIds === []);
+        $batch = new MonsterTurnBatch($occupancies, $deferredMonsterIds);
+        $this->removal->useBatch($batch, $context);
 
         return $batch;
     }
@@ -58,14 +58,25 @@ final class MonsterTurnService
         MapCell $cell,
         array $cellsByCoordinate,
         MonsterTurnBatch $batch,
+        ?DisasterMutableCellIndex $disasterCells = null,
     ): bool {
         $occupancy = $batch->occupancyAt($cell->id);
         if ($occupancy === null) {
             return false;
         }
+        if ($batch->isActionDeferred($occupancy->monster_instance_id)) {
+            return false;
+        }
         $batch->countAction();
         $monster = $occupancy->monster;
         $definition = $monster->definition;
+        $behavior = $this->behaviors->forDefinition($definition);
+        if ($behavior->specialAction === MonsterBehaviorResolver::NUCLEAR_AT_HP_ONE
+            && $monster->current_hp === 1) {
+            $this->nuclearSelfDestruct($context, $space, $cell, $batch, $disasterCells);
+
+            return true;
+        }
         if ($this->hardening->isHardened($definition, $context->targetTurn)) {
             $this->recordStayed($context, $monster->id, $definition->key, $cell, 'hardened');
 
@@ -117,6 +128,11 @@ final class MonsterTurnService
                 || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true)) {
                 continue;
             }
+            if ($behavior->movement === MonsterBehaviorResolver::WATER_NEUTRALIZING) {
+                $this->moveAndNeutralizeToSea($context, $cell, $destination, $occupancy, $batch);
+
+                return true;
+            }
 
             $this->moveAndTrample($context, $cell, $destination, $occupancy, $batch);
 
@@ -126,6 +142,113 @@ final class MonsterTurnService
         $this->recordStayed($context, $monster->id, $definition->key, $cell, 'no_candidate');
 
         return true;
+    }
+
+    private function moveAndNeutralizeToSea(
+        TurnContext $context,
+        MapCell $origin,
+        MapCell $destination,
+        MonsterOccupancy $occupancy,
+        MonsterTurnBatch $batch,
+    ): void {
+        $monster = $occupancy->monster;
+        $beforeTerrain = $destination->terrain->key;
+        $beforeFacility = $destination->facility?->key;
+        $beforeOwnerId = $destination->owner_nation_id;
+        $beforeOwnerName = $destination->ownerNation?->name;
+        $beforePopulation = $destination->population;
+        $destructive = $beforeTerrain !== 'sea'
+            || $beforeOwnerId !== null
+            || $beforeFacility !== null
+            || $beforePopulation > 0;
+        $this->cells->setFacility($destination, null);
+        $this->cells->transitionTerrain($destination, $this->sea());
+        $destination->owner_nation_id = null;
+        $destination->population = 0;
+        $destination->version++;
+        $destination->save();
+        $fromCellId = $occupancy->map_cell_id;
+        $occupancy->map_cell_id = $destination->id;
+        $occupancy->save();
+        $batch->move($occupancy, $fromCellId, $destination->id, $destructive);
+        $batch->countWaterMove($destructive);
+        $monster->version++;
+        $monster->save();
+        $context->state->markMapChunkChanged($origin->map_chunk_id);
+        $context->state->markMapChunkChanged($destination->map_chunk_id);
+        $metadata = [
+            'monster_key' => $monster->definition->key,
+            'nation_id' => $beforeOwnerId,
+            'pre_impact_owner_nation_id' => $beforeOwnerId,
+            'pre_impact_owner_nation_name' => $beforeOwnerName,
+            'from_x' => $origin->x,
+            'from_y' => $origin->y,
+            'x' => $destination->x,
+            'y' => $destination->y,
+            'from_terrain_key' => $origin->terrain->key,
+            'pre_impact_terrain_key' => $beforeTerrain,
+            'to_terrain_key' => 'sea',
+            'removed_facility_key' => $beforeFacility,
+            'pre_impact_facility_key' => $beforeFacility,
+            'before_population' => $beforePopulation,
+            'after_population' => 0,
+            'owner_preserved' => false,
+        ];
+        $this->events->record($context, 'monster.moved', $monster, $metadata);
+        if ($destructive) {
+            $this->events->record($context, 'monster.trampled', $destination, $metadata);
+        }
+    }
+
+    private function nuclearSelfDestruct(
+        TurnContext $context,
+        MapSpace $space,
+        MapCell $origin,
+        MonsterTurnBatch $batch,
+        ?DisasterMutableCellIndex $disasterCells,
+    ): void {
+        $occupancy = $batch->occupancyAt($origin->id)
+            ?? throw new DomainException('Nuclear self-destruct lost the monster occupancy.');
+        $monster = $occupancy->monster;
+        $ownerName = $origin->ownerNation?->name;
+        $settings = $context->ruleset->settings['turn_processing']['disasters']['huge_meteor'] ?? null;
+        if (! is_array($settings) || $disasterCells === null) {
+            throw new DomainException('Nuclear self-destruct requires the loaded huge-meteor cell index.');
+        }
+        $metadata = [
+            'monster_instance_id' => $monster->id,
+            'monster_key' => $monster->definition->key,
+            'center_x' => $origin->x,
+            'center_y' => $origin->y,
+            'nation_id' => $origin->owner_nation_id,
+            'nation_name' => $ownerName,
+            'pre_impact_owner_nation_id' => $origin->owner_nation_id,
+            'pre_impact_owner_nation_name' => $ownerName,
+            'initial_trigger_hp' => 1,
+            'trigger' => 'hp_one_special_action',
+            'fixed_center' => true,
+            'random_draw_used' => false,
+            'collateral_rewards_granted' => false,
+            'collateral_kill_stats_incremented' => false,
+        ];
+        $this->removal->removeInstance(
+            $context,
+            $monster,
+            $origin,
+            'nuclear_self_destruct',
+            'monster.nuclear_self_destructed',
+            $metadata,
+        );
+        $batch->countNuclearSelfDestruct();
+        $this->disasters->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            new GridCoordinate($origin->x, $origin->y),
+            $settings,
+            'nuclear_self_destruct_blast',
+            $metadata,
+            $disasterCells,
+        );
     }
 
     private function moveAndTrample(
@@ -249,5 +372,10 @@ final class MonsterTurnService
     private function wasteland(): TerrainDefinition
     {
         return $this->wasteland ??= TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+    }
+
+    private function sea(): TerrainDefinition
+    {
+        return $this->sea ??= TerrainDefinition::query()->where('key', 'sea')->firstOrFail();
     }
 }

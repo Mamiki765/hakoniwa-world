@@ -42,7 +42,7 @@ movement、spawn trigger/candidate/type/HPは用途別labelled random streamを�
 
 `MapChunkService`はcellとmonster graphをeager loadし、`MapCellPresenter`がviewer-safe overlayを作る。overlayはcurrent HP、hardened、effective asset、現在host Nation number/nameを返す。terrain/facility projectionは従来どおり残り、Vueは独立layerとして描く。asset不足時はnull URLとfallback labelを返し、broken imageを作らない。
 
-公開Nation detailは対象Nationの`nation_monster_kill_stats`を一query・最大8行で取得し、総final blow count、definition key/name、種類別count、first/last turnを返す。ver 1.3.0の公開TOPだけは全Nationの正数statを一括取得し、最大stable source kindのkill markとkind昇順の種類別countを投影する。周期count、seed、draw、raw source metadataは公開しない。賞判定と表示は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`を正本とする。個別撃破はstructured eventへ残し、player island eventはraw auditを返さずkiller/host roleに応じたmessageへ変換する。
+公開Nation detailは対象Nationの正数`nation_monster_kill_stats`を一括取得し、総final blow count、definition key/name、種類別count、first/last turnを返す。種類数に上限は設けず、明示`display_order`、historical nullでは監査済み`source_metadata.kind * 100`の順で投影する。ver 1.3.0の公開TOPも全Nationの正数statを一括取得し、同じeffective display orderで種類別countを並べ、その最大値のspeciesをkill markに選ぶ。v1〜v10のruleset authoringは従来の正確な8種を維持するが、公開projectionは将来の加算的catalogを切り捨てない。周期count、seed、draw、raw source metadataは公開しない。賞判定と表示は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`を正本とする。個別撃破はstructured eventへ残し、player island eventはraw auditを返さずkiller/host roleに応じたmessageへ変換する。
 
 ## Observability
 
