@@ -18,6 +18,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $settings = V11SecretaryItemRulesetFixture::settings();
         $contract = app(SecretaryItemGameplayContract::class);
         $contract->validate($settings);
+        $effectCatalog = $contract->validatedEffectCatalog($settings);
 
         app(RulesetAuthoringValidator::class)->validate($settings);
 
@@ -34,6 +35,14 @@ final class SecretaryItemGameplayContractTest extends TestCase
             SecretaryItemCatalog::OLD_BOW,
             1,
         )[0]['target_map_space_keys']);
+        $this->assertSame(
+            $contract->resolvedEffects($settings, SecretaryItemCatalog::OLD_BOW, 1),
+            $effectCatalog[SecretaryItemCatalog::OLD_BOW],
+        );
+        $this->assertSame(
+            $contract->resolvedEffects($settings, SecretaryItemCatalog::RING, 3),
+            $effectCatalog[SecretaryItemCatalog::RING],
+        );
         $this->assertArrayHasKey('hakoniwa-2s-plus-v11', config('hakoniwa.published_rulesets'));
         $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
         $this->assertCount(1, glob(database_path('migrations/*v11*')) ?: []);

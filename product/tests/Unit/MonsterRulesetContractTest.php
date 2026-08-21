@@ -2,8 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Monster\MonsterBehavior;
 use App\Domain\Monster\MonsterHardening;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
+use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MonsterDefinition;
@@ -226,5 +228,21 @@ class MonsterRulesetContractTest extends TestCase
         $this->assertSame($baseline, $withAnotherNation->stream(
             TurnRandomStreamFactory::monsterSpawn(3, 'trigger', 1),
         )->integer(0, 9_999));
+    }
+
+    public function test_turn_batch_reuses_the_behavior_resolved_for_a_definition(): void
+    {
+        $behavior = new MonsterBehavior(
+            movement: 'legacy_land',
+            dispatchable: false,
+            canActOnSpawnTurn: false,
+            specialAction: 'none',
+            islandCreationDisplaceable: false,
+            worldSpawn: null,
+            explicitlyAuthored: true,
+        );
+        $batch = new MonsterTurnBatch([], [], [17 => $behavior]);
+
+        $this->assertSame($behavior, $batch->behaviorForDefinition(17));
     }
 }

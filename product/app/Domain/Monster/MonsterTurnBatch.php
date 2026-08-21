@@ -17,6 +17,9 @@ final class MonsterTurnBatch
     /** @var array<int, int> */
     private array $movesTakenByMonster = [];
 
+    /** @var array<int, MonsterBehavior> */
+    private array $behaviorByDefinitionId = [];
+
     /** @var array<int, true> */
     private array $actionDeferredMonsterIds = [];
 
@@ -33,10 +36,15 @@ final class MonsterTurnBatch
     /**
      * @param  iterable<MonsterOccupancy>  $occupancies
      * @param  list<int>  $actionDeferredMonsterIds
+     * @param  array<int, MonsterBehavior>  $behaviorByDefinitionId
      */
-    public function __construct(iterable $occupancies, array $actionDeferredMonsterIds = [])
-    {
+    public function __construct(
+        iterable $occupancies,
+        array $actionDeferredMonsterIds = [],
+        array $behaviorByDefinitionId = [],
+    ) {
         $this->actionDeferredMonsterIds = array_fill_keys($actionDeferredMonsterIds, true);
+        $this->behaviorByDefinitionId = $behaviorByDefinitionId;
         foreach ($occupancies as $occupancy) {
             if (isset($this->occupancyByCellId[$occupancy->map_cell_id])) {
                 throw new InvalidArgumentException('Monster batch contains duplicate occupied cells.');
@@ -114,6 +122,12 @@ final class MonsterTurnBatch
     public function movesTaken(int $monsterId): int
     {
         return $this->movesTakenByMonster[$monsterId] ?? 0;
+    }
+
+    public function behaviorForDefinition(int $definitionId): MonsterBehavior
+    {
+        return $this->behaviorByDefinitionId[$definitionId]
+            ?? throw new InvalidArgumentException('Monster batch is missing its resolved definition behavior.');
     }
 
     public function countAction(): void
