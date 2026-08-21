@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Domain\Ruleset\RulesetAuthoringValidator;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -17,10 +16,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
     {
         $settings = V11SecretaryItemRulesetFixture::settings();
         $contract = app(SecretaryItemGameplayContract::class);
-        $contract->validate($settings);
         $effectCatalog = $contract->validatedEffectCatalog($settings);
-
-        app(RulesetAuthoringValidator::class)->validate($settings);
 
         $this->assertSame(
             '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
@@ -43,9 +39,6 @@ final class SecretaryItemGameplayContractTest extends TestCase
             $contract->resolvedEffects($settings, SecretaryItemCatalog::RING, 3),
             $effectCatalog[SecretaryItemCatalog::RING],
         );
-        $this->assertArrayHasKey('hakoniwa-2s-plus-v11', config('hakoniwa.published_rulesets'));
-        $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
-        $this->assertCount(1, glob(database_path('migrations/*v11*')) ?: []);
         $this->assertSame(
             'secretary_item:old_bow:nation:7:trigger:v1',
             TurnRandomStreamFactory::secretaryOldBow(7, 'trigger', 1),

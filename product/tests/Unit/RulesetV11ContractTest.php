@@ -19,6 +19,8 @@ final class RulesetV11ContractTest extends TestCase
         $this->assertSame(11, $settings['version']);
         $this->assertSame('hakoniwa-2s-plus-v11', config('hakoniwa.ruleset.key'));
         $this->assertSame(11, config('hakoniwa.ruleset.version'));
+        $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
+        $this->assertCount(1, glob(database_path('migrations/*v11*')) ?: []);
         $this->assertSame(
             self::CHECKSUM,
             hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
