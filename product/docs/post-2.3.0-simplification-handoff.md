@@ -72,6 +72,20 @@ gameplay checksumから分離できる候補はdescription、Item flavor、manua
 
 C5でこのrefactorを行わない。
 
+## Test suite rationalization
+
+通常PRでserial fullと16-shard fullを二重実行しない方向を検討する。full correctness gateはCIの16-shard実行を正本候補とし、serial fullはCI構成変更時、release検証時など、本当に必要な場合に限定する。
+
+test contractは次の方針で棚卸しする。
+
+- 同一contractのstatusまたはboundaryだけが異なるtestは、data provider等による統合候補とする。
+- checkpoint時代に追加した再現専用testが、後の上位integration testで同じcontractを十分保証している場合は統合・削除候補とする。
+- migration、transaction、retry/idempotency、RNG stream identity、checksum/immutability、DB integrityを保証するtestは優先して残す。
+- 単純なtest file数削減を目標にせず、wall time、重複している保証、変更時に直すtest箇所数をbefore/afterで計測する。
+- test削減によってproduction停止またはmigration破損を検出する安全網を弱めない。
+
+具体的な統合・削除対象は、C5完了後のdocumentation-only simplification auditで実測してから決定する。C5ではtestを削除せず、CI workflowを軽量化せず、serial/shard構成を変更せず、この目的でgameplay、runtime、migration codeを変更しない。
+
 ## Cleanup sequence
 
 ```text
