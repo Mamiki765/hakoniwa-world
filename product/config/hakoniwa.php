@@ -27,7 +27,7 @@ $publishedRulesets = RulesetAuthoringCollection::fromFiles([
 ])->all();
 
 return [
-    'application_version' => '2.3.0',
+    'application_version' => '2.3.1',
     'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v11'],
     'published_rulesets' => $publishedRulesets,
     'world' => [

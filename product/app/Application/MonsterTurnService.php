@@ -43,7 +43,12 @@ final class MonsterTurnService
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
-        $batch = new MonsterTurnBatch($occupancies, $deferredMonsterIds);
+        $behaviorByDefinitionId = [];
+        foreach ($occupancies as $occupancy) {
+            $definition = $occupancy->monster->definition;
+            $behaviorByDefinitionId[$definition->id] ??= $this->behaviors->forDefinition($definition);
+        }
+        $batch = new MonsterTurnBatch($occupancies, $deferredMonsterIds, $behaviorByDefinitionId);
         $this->removal->useBatch($batch, $context);
 
         return $batch;
@@ -70,7 +75,7 @@ final class MonsterTurnService
         $batch->countAction();
         $monster = $occupancy->monster;
         $definition = $monster->definition;
-        $behavior = $this->behaviors->forDefinition($definition);
+        $behavior = $batch->behaviorForDefinition((int) $definition->id);
         if ($behavior->specialAction === MonsterBehaviorResolver::NUCLEAR_AT_HP_ONE
             && $monster->current_hp === 1) {
             $this->nuclearSelfDestruct($context, $space, $cell, $batch, $disasterCells);

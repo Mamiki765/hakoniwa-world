@@ -111,19 +111,50 @@ final class SecretaryItemGameplayContract
      */
     public function resolvedEffects(array $settings, string $itemKey, int $level): array
     {
-        $this->validate($settings);
-        if (! $this->exists($settings)) {
+        $effects = $this->validatedEffectCatalog($settings);
+        if ($effects === []) {
             return [];
         }
         $catalog = $this->catalog->definition($itemKey);
         if ($level < 1 || $level > $catalog['max_level']) {
             throw new DomainException("Secretary item {$itemKey} level is outside the global catalog.");
         }
-        $item = $settings['secretary']['items'][$itemKey] ?? null;
-        if (! is_array($item)) {
-            throw new DomainException("Ruleset Secretary item {$itemKey} is missing.");
+
+        return $effects[$itemKey]
+            ?? throw new DomainException("Ruleset Secretary item {$itemKey} is missing.");
+    }
+
+    /**
+     * Validate the immutable Item contract once before building turn-local snapshots.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array<string, list<array<string, mixed>>>
+     */
+    public function validatedEffectCatalog(array $settings): array
+    {
+        $this->validate($settings);
+        if (! $this->exists($settings)) {
+            return [];
         }
-        $effect = $item['effects'][0];
+
+        $effects = [];
+        foreach ([SecretaryItemCatalog::OLD_BOW, SecretaryItemCatalog::RING] as $itemKey) {
+            $item = $settings['secretary']['items'][$itemKey] ?? null;
+            if (! is_array($item)) {
+                throw new DomainException("Ruleset Secretary item {$itemKey} is missing.");
+            }
+            $effects[$itemKey] = $this->resolvedAuthoredEffect($item['effects'][0]);
+        }
+
+        return $effects;
+    }
+
+    /**
+     * @param  array<string, mixed>  $effect
+     * @return list<array<string, mixed>>
+     */
+    private function resolvedAuthoredEffect(array $effect): array
+    {
         if (($effect['type'] ?? null) === self::PRE_NORMAL_MONSTER_ATTACK) {
             return [[
                 'type' => self::PRE_NORMAL_MONSTER_ATTACK,
