@@ -1,0 +1,45 @@
+# Current Ruleset baseline
+
+## Scope
+
+The normal application configuration resolves only the current immutable Ruleset,
+`hakoniwa-2s-plus-v11`. Its standalone authored file contains the complete payload and does
+not execute any historical Ruleset source. Its identity and formal checksum remain:
+
+```text
+key: hakoniwa-2s-plus-v11
+version: 11
+checksum: 5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8
+```
+
+This is a source-dependency baseline only. It does not publish a new Ruleset, change balance,
+rewrite an immutable database row, migrate player data, or change TurnRun, RNG, request-key,
+fingerprint, or provenance semantics.
+
+## Dependency boundary
+
+`config/hakoniwa.php` loads only the standalone v11 file. Current services obtain gameplay
+from `hakoniwa.ruleset`; Secretary initialization uses the current v11-derived
+`hakoniwa.current_catalogs.secretary` snapshot so historical test execution cannot reintroduce
+an authored v7 runtime dependency.
+
+Historical authored files remain available through `RulesetUpgradeAuthoringCatalog` for two
+explicit consumers:
+
+- the historical migration chain, installed only when Laravel emits `MigrationsStarted`;
+- the PHPUnit base class, which preserves existing historical contract and migration tests.
+
+The exact v10 monster-dispatch duplicate-request compatibility remains in the current request
+path. It reads immutable database Ruleset and command-definition snapshots and does not make
+normal configuration execute the v10 authored PHP source.
+
+## Retained data and deferred work
+
+Historical RulesetVersion rows, definition rows, Worlds, Nations, cells, resources,
+Secretaries, Items, equipment, command/audit/event history, request identity and provenance,
+and TurnRun/RNG history remain unchanged. Historical Worlds remain readable and fail closed
+for mutation under the existing current-Ruleset guard.
+
+Fresh-install rebaseline, production source preflight, unresolved-TurnRun upgrade cutoff,
+migration squash/removal, and historical compatibility/test retirement remain separate ver
+2.4.0 follow-up work.

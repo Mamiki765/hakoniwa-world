@@ -29,6 +29,23 @@ final class SecretaryPersistenceTest extends TestCase
 
     private const PROBE_CONNECTION = 'pgsql-secretary-migration-lock-probe';
 
+    public function test_current_secretary_initialization_does_not_require_the_historical_v7_source(): void
+    {
+        $publishedRulesets = config('hakoniwa.published_rulesets');
+        unset($publishedRulesets['hakoniwa-2s-plus-v7']);
+        config(['hakoniwa.published_rulesets' => $publishedRulesets]);
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+
+        app(NationCreationService::class)->create($user, $world, '現行秘書島', '現行島主');
+
+        $skills = $user->secretary()->firstOrFail()->skills()->pluck('level', 'skill_key');
+        $this->assertSame(0, $skills[SecretarySkillCatalog::AGRICULTURAL_POLICY]);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::SPECIALTY_DEVELOPMENT]);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::GOLD_VEIN_SURVEY]);
+        $this->assertSame(1, $skills[SecretarySkillCatalog::FINAL_DEFENSE_LINE]);
+    }
+
     public function test_first_successful_registration_creates_one_unnamed_secretary_and_replay_is_idempotent(): void
     {
         $world = $this->lightweightWorld();

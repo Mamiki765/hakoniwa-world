@@ -5,10 +5,12 @@ historical published MVP snapshots; `hakoniwa-2s-plus-v1.php` through `v11.php` 
 published Rulesets. Pre-MVP prototypes live only in repository history, while test fixtures
 live under `tests/` and must never be registered or published as gameplay Rulesets.
 
-`config/hakoniwa.php` lists every authoring file explicitly. Do not replace the list with a
-glob: order and provenance must stay deterministic and reviewable. Authored bytes, resolved
+`config/hakoniwa.php` loads only the standalone current Ruleset. Historical authored files
+remain explicit inputs to `RulesetUpgradeAuthoringCatalog`, which is installed only when a
+database migration starts or by the test base class. Do not replace that list with a glob:
+order and provenance must stay deterministic and reviewable. Authored bytes, resolved
 payloads, checksums, and published database snapshots are immutable. In particular, normally
-do not edit, format, comment, rename, or remove any existing roadmap or v1-v11 file.
+do not edit, format, comment, rename, or remove an existing historical file.
 
 The configured current identity is in `config/hakoniwa.php`. Verify its source with:
 

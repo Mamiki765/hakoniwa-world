@@ -2,6 +2,7 @@
 
 namespace Tests;
 
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use Illuminate\Database\SQLiteConnection;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,9 @@ abstract class TestCase extends BaseTestCase
         }
 
         parent::setUp();
+
+        // Historical authored payloads are test fixtures, not normal application config.
+        app(RulesetUpgradeAuthoringCatalog::class)->installIntoConfig();
 
         $connection = DB::connection();
         if ($connection instanceof SQLiteConnection) {

@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\HistoricalMonsterDispatchRequestInspector;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\CommandDefinition;
 use App\Models\NationCommandQueueItem;
 use App\Models\RulesetVersion;
@@ -74,6 +75,7 @@ final readonly class RulesetV11MigrationService
         private SecretaryV1MigrationSafetyGuard $worldGuard,
         private CommandParametersValidator $parametersValidator,
         private HistoricalMonsterDispatchRequestInspector $historicalDispatchInspector,
+        private RulesetUpgradeAuthoringCatalog $upgradeRulesets,
     ) {}
 
     /**
@@ -82,11 +84,8 @@ final readonly class RulesetV11MigrationService
     public function migrate(?Closure $failureInjector = null): RulesetV11MigrationResult
     {
         return DB::transaction(function () use ($failureInjector): RulesetV11MigrationResult {
-            $sourceSettings = config('hakoniwa.published_rulesets.'.self::SOURCE_KEY);
-            $targetSettings = config('hakoniwa.published_rulesets.'.self::TARGET_KEY);
-            if (! is_array($sourceSettings) || ! is_array($targetSettings)) {
-                throw new RuntimeException('The immutable v10 or v11 production ruleset snapshot is missing.');
-            }
+            $sourceSettings = $this->upgradeRulesets->get(self::SOURCE_KEY);
+            $targetSettings = $this->upgradeRulesets->get(self::TARGET_KEY);
             if ($this->settingsChecksum($sourceSettings) !== self::SOURCE_CHECKSUM) {
                 throw new RuntimeException('The authored v10 checksum differs from the immutable release baseline.');
             }
