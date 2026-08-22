@@ -116,115 +116,6 @@ final class MonsterFoundationContractTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    public function test_authored_display_order_fits_the_postgresql_integer_range(): void
-    {
-        $validator = app(RulesetAuthoringValidator::class);
-        $settings = V11SecretaryItemRulesetFixture::settings();
-        $settings['monster_definitions'][0]['display_order'] = 2_147_483_647;
-        $this->assertSame(10, $validator->validate($settings)['monsters']);
-
-        $settings['monster_definitions'][0]['display_order'] = 2_147_483_648;
-        $this->expectException(DomainException::class);
-        $validator->validate($settings);
-    }
-
-    public function test_extended_monster_shape_is_available_only_to_matching_v11_identity_and_version(): void
-    {
-        $validator = app(RulesetAuthoringValidator::class);
-        $v11 = V11SecretaryItemRulesetFixture::settings();
-        $this->assertSame(10, $validator->validate($v11)['monsters']);
-
-        $legacyIdentity = $v11;
-        $legacyIdentity['key'] = 'hakoniwa-2s-plus-v10';
-        $legacyIdentity['version'] = 10;
-        try {
-            $validator->validate($legacyIdentity);
-            $this->fail('A v10 identity accepted the extended monster shape.');
-        } catch (DomainException) {
-            $this->addToAssertionCount(1);
-        }
-
-        $missingOrder = $v11;
-        unset($missingOrder['monster_definitions'][0]['display_order']);
-        try {
-            $validator->validate($missingOrder);
-            $this->fail('A v11 identity accepted a monster definition without explicit display order.');
-        } catch (DomainException) {
-            $this->addToAssertionCount(1);
-        }
-
-        foreach ([
-            ['key' => 'hakoniwa-2s-plus-v11', 'version' => 10],
-            ['key' => 'hakoniwa-2s-plus-v10', 'version' => 11],
-        ] as $identity) {
-            $mismatch = $v11;
-            $mismatch['key'] = $identity['key'];
-            $mismatch['version'] = $identity['version'];
-            try {
-                $validator->validate($mismatch);
-                $this->fail('A mismatched ruleset identity/version accepted the v11 monster contract.');
-            } catch (DomainException) {
-                $this->addToAssertionCount(1);
-            }
-        }
-    }
-
-    public function test_v11_authoring_supports_more_than_ten_and_fails_closed_for_pool_policy_and_safety_drift(): void
-    {
-        $base = $this->authoringSettings();
-        $eleventh = $base['monster_definitions'][1];
-        $eleventh['key'] = 'future_fixture_monster';
-        $eleventh['name'] = '将来試験怪獣';
-        $eleventh['asset_key'] = 'hakoniwa_custom.monster.future_fixture_monster';
-        $eleventh['display_order'] = 800;
-        unset($eleventh['source_metadata']['secretary_item_target_safety']);
-        $eleventh['source_metadata']['behavior'] = [
-            'movement' => 'legacy_land',
-            'dispatchable' => false,
-            'can_act_on_spawn_turn' => false,
-            'special_action' => 'none',
-            'island_creation_displaceable' => false,
-        ];
-        $base['monster_definitions'][] = $eleventh;
-        $this->assertSame(11, app(RulesetAuthoringValidator::class)->validate($base)['monsters']);
-
-        $mutations = [
-            static function (array $settings): array {
-                $settings['monster_definitions'][1]['source_metadata']['kind'] = 8;
-
-                return $settings;
-            },
-            static function (array $settings): array {
-                $settings['monster_definitions'][1]['source_metadata']['reward_policy'] = 'unknown';
-
-                return $settings;
-            },
-            static function (array $settings): array {
-                $settings['monster_definitions'][1]['source_metadata']['secretary_item_target_safety']['remaining_hp'] = 0;
-
-                return $settings;
-            },
-            static function (array $settings): array {
-                $settings['monster_system']['natural_spawn']['population_tiers'][0]['monster_keys'][] = 'missing';
-
-                return $settings;
-            },
-            static function (array $settings): array {
-                $settings['monster_system']['natural_spawn']['population_tiers'][0]['monster_keys'][] = 'inora';
-
-                return $settings;
-            },
-        ];
-        foreach ($mutations as $mutate) {
-            try {
-                app(RulesetAuthoringValidator::class)->validate($mutate($this->authoringSettings()));
-                $this->fail('Malformed v11 monster authoring was accepted.');
-            } catch (DomainException) {
-                $this->addToAssertionCount(1);
-            }
-        }
-    }
-
     public function test_v11_authoring_rejects_a_dispatch_option_whose_monster_definition_is_missing(): void
     {
         $settings = $this->authoringSettings();
@@ -266,13 +157,8 @@ final class MonsterFoundationContractTest extends TestCase
     public function test_reward_policies_are_ruleset_owned_and_preserve_standard_split(): void
     {
         $resolver = app(MonsterRewardPolicyResolver::class);
-        $v10 = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v10');
         $v11 = V11SecretaryItemRulesetFixture::settings();
 
-        $this->assertSame([
-            'policy' => 'standard_split', 'explicitly_authored' => false,
-            'killer_share' => 600, 'host_share' => 0, 'unclaimed_share' => 600,
-        ], $resolver->shares($v10, 'inora', 1_200, false));
         $this->assertSame([
             'policy' => 'standard_split', 'explicitly_authored' => true,
             'killer_share' => 600, 'host_share' => 600, 'unclaimed_share' => 0,

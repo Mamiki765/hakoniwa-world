@@ -5,21 +5,20 @@ namespace Tests\Feature;
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
 use App\Application\NationCreationService;
+use App\Application\RulesetPublisher;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\Nation;
-use App\Models\RulesetVersion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 class NationProfileTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_registration_validates_and_saves_explicit_profile_text_without_oauth_fallback(): void
     {
@@ -156,34 +155,14 @@ class NationProfileTest extends TestCase
         $this->assertSame('', $nation->fresh()->profile_comment);
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'nation.profile_updated')->count());
 
-        $historical = RulesetVersion::query()->where('key', 'roadmap-pr18-v1')->firstOrFail();
+        $historical = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr18-v1'),
+        );
         $world->update(['ruleset_version_id' => $historical->id]);
         $this->actingAs($owner)->patchJson($endpoint, [
             'owner_name' => '旧World変更',
         ])->assertConflict()->assertJsonPath('code', 'reset_required');
         $this->assertSame('新島主', $nation->fresh()->owner_name);
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'nation.profile_updated')->count());
-    }
-
-    public function test_profile_schema_uses_non_personal_empty_defaults_for_existing_rows(): void
-    {
-        $world = $this->lightweightWorld();
-        $migration = require database_path('migrations/2026_08_04_010000_add_nation_profiles.php');
-        $migration->down();
-        $nationId = DB::table('nations')->insertGetId([
-            'world_id' => $world->id,
-            'nation_number' => 1,
-            'name' => '既存島',
-            'money' => 100,
-            'state' => 'active',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $migration->up();
-
-        $row = DB::table('nations')->where('id', $nationId)->firstOrFail();
-        $this->assertSame('', $row->owner_name);
-        $this->assertSame('', $row->profile_comment);
     }
 }

@@ -10,14 +10,14 @@ use Tests\TestCase;
 
 final class TerritoryExpansionPolicyTest extends TestCase
 {
-    #[DataProvider('v3Cases')]
-    public function test_v3_manual_expansion_contract(
+    #[DataProvider('currentCases')]
+    public function test_current_manual_expansion_contract(
         array $changes,
         ?CommandFailureReason $expected,
     ): void {
         $facts = $this->facts($changes);
         $metadata = $this->territoryDefinition(
-            config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v3'),
+            config('hakoniwa.ruleset'),
         )['metadata'];
 
         $this->assertSame(
@@ -27,7 +27,7 @@ final class TerritoryExpansionPolicyTest extends TestCase
     }
 
     /** @return iterable<string, array{array<string, mixed>, CommandFailureReason|null}> */
-    public static function v3Cases(): iterable
+    public static function currentCases(): iterable
     {
         yield 'neutral wasteland remains allowed' => [
             ['targetOwnerNationId' => null, 'targetOwnerNationState' => null],
@@ -45,22 +45,6 @@ final class TerritoryExpansionPolicyTest extends TestCase
         yield 'sunken foreign owner' => [['targetOwnerNationState' => 'sunken_archived'], CommandFailureReason::InvalidTargetNation];
         yield 'foreign owner from another World' => [['targetOwnerInActorWorld' => false], CommandFailureReason::InvalidTargetNation];
         yield 'self owned' => [['targetOwnerNationId' => 10], CommandFailureReason::AlreadyOwned];
-    }
-
-    public function test_v1_and_v2_metadata_remain_neutral_only(): void
-    {
-        $policy = app(TerritoryExpansionPolicy::class);
-        foreach (['hakoniwa-2s-plus-v1', 'hakoniwa-2s-plus-v2'] as $key) {
-            $metadata = $this->territoryDefinition(config("hakoniwa.published_rulesets.{$key}"))['metadata'];
-            $this->assertNull($policy->failureReason(
-                $metadata,
-                $this->facts(['targetOwnerNationId' => null, 'targetOwnerNationState' => null]),
-            ));
-            $this->assertSame(
-                CommandFailureReason::ForeignOwned,
-                $policy->failureReason($metadata, $this->facts()),
-            );
-        }
     }
 
     /** @param array<string, mixed> $changes */

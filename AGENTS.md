@@ -112,6 +112,65 @@ and propose the split before implementing it.
 
 In Code Mode, within each bounded stage, run independent, functions.exec-available tool calls concurrently in one functions.exec call. Use await Promise.allSettled([...]) when partial results are useful, and inspect every result; use await Promise.all([...]) only when any failure should abort the batch. Keep dependencies, waits/resumes, approvals, conflicting or interdependent mutations, and adaptive investigations where each result may change the next step sequential. Do not split otherwise batchable inspections across outer tool calls.
 
+## Test scope policy
+
+Add a test only when it protects at least one of:
+
+- a new supported production contract;
+- a previously observed real regression;
+- a production-reachable integrity boundary;
+- a production-reachable transaction, concurrency, or lock boundary;
+- a current security or authorization boundary; or
+- a currently supported install, upgrade, or release boundary.
+
+Prefer extending an existing representative contract test. Do not add another fixture,
+matrix, or file for the same invariant. Do not add tests solely for unsupported historical
+applications or Rulesets, direct upgrades outside the product contract, states rejected by
+request validation or database integrity, theoretical integer or identifier maxima, the same
+invariant at every internal layer, every Item/command/monster variant of a shared subsystem,
+speculative future compatibility, or precautionary abnormal cases without a production
+path. A bug fix does not require a new test file when an existing contract test can contain
+the regression.
+
+## Review scope policy
+
+A review finding must show at least one of:
+
+- reachability from a supported production path;
+- damage to the current migration or install contract;
+- risk to persistent data;
+- a security or authorization risk;
+- a transaction, concurrency, or lock risk;
+- a current player-visible regression; or
+- a current operator-contract regression.
+
+Do not require P1 or P2 work solely because an unsupported historical version no longer
+runs, a rollback outside the product contract is unavailable, an impossible state rejected
+by database or request boundaries is unhandled, a theoretical maximum is untested, the
+same validation is not duplicated in every internal layer, only representative variants are
+tested, or an explicit Owner decision ended compatibility. An Owner-declared product
+constraint is not missing compatibility.
+
+## Verification policy
+
+For an ordinary feature or fix PR, exact-head sharded Quality CI plus appropriate focused
+local tests and static checks may provide complete verification. A 30-minute-class local
+full serial run is not automatically required. Require local full serial primarily for a
+release or rebaseline, migration or test-infrastructure changes, shard-planner changes,
+broad cross-cutting runtime changes, or an explicit Owner request. Do not request another
+local serial run without a concrete reason when focused local verification and exact-head
+full sharded CI are appropriate.
+
+Do not reacquire verification evidence for the same conditions and content without a new
+decision need. Exact-head evidence may be reused while the source tree or commit, test
+configuration, dependency lock state, runtime or container image, database/test environment,
+and performance-relevant hardware or execution environment are unchanged. If the Owner
+declares an environment change, or repository evidence shows a new PC, CI runner, runtime
+image, dependency, or test infrastructure, do not treat old performance numbers as the same
+baseline. When more timing evidence is needed, profile the relevant test group, known slow
+shard, or suspected files first. Run full serial on the meaningful final candidate state, or
+after a cross-cutting change when there is a concrete reason.
+
 ## Coordinate system
 
 The canonical surface-map coordinate system is the staggered square-tile `x`/`y` grid defined by `docs/decisions/ADR-0003-hex-coordinate-system.md`.

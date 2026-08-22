@@ -54,9 +54,4 @@ final class RulesetUpgradeAuthoringCatalog
 
         return $ruleset;
     }
-
-    public function installIntoConfig(): void
-    {
-        config(['hakoniwa.published_rulesets' => $this->all()]);
-    }
 }

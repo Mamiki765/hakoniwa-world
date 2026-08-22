@@ -16,7 +16,6 @@ use App\Domain\Turn\TurnPipeline;
 use App\Domain\Turn\TurnSeedGenerator;
 use App\Domain\World\WorldMutationLock;
 use Illuminate\Console\Events\CommandStarting;
-use Illuminate\Database\Events\MigrationsStarted;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Discord\Provider;
@@ -60,10 +59,6 @@ class AppServiceProvider extends ServiceProvider
     {
         $databaseCommandGuard->configure();
         Event::listen(CommandStarting::class, $databaseCommandGuard);
-        Event::listen(MigrationsStarted::class, function (): void {
-            app(RulesetUpgradeAuthoringCatalog::class)->installIntoConfig();
-        });
-
         Event::listen(function (SocialiteWasCalled $event): void {
             $event->extendSocialite('discord', Provider::class);
         });

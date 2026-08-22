@@ -214,7 +214,7 @@ final class MonsterSpawnService
         TurnContext $context,
         Nation $target,
         int $queueItemId,
-        ?MonsterDispatchOption $option = null,
+        MonsterDispatchOption $option,
     ): MonsterInstance {
         if ($target->world_id !== $context->world->id || $target->state !== 'active') {
             throw new DomainException('A dispatched monster requires an active target Nation in the current World.');
@@ -227,20 +227,12 @@ final class MonsterSpawnService
             ->integer(0, $candidates->count() - 1);
         /** @var MapCell $cell */
         $cell = $candidates->values()->get($index);
-        $monsterKey = 'mecha_inora';
-        $dispatchSelector = 1;
-        $dispatchCostMoney = 3_000;
-        if ($option !== null) {
-            if ($option->rulesetVersionId !== (int) $context->ruleset->id) {
-                throw new DomainException('Monster dispatch option does not match the locked Turn ruleset.');
-            }
-            $monsterKey = $option->monsterDefinitionKey;
-            $dispatchSelector = $option->selector;
-            $dispatchCostMoney = $option->costMoney;
+        if ($option->rulesetVersionId !== (int) $context->ruleset->id) {
+            throw new DomainException('Monster dispatch option does not match the locked Turn ruleset.');
         }
         $definition = MonsterDefinition::query()
             ->where('ruleset_version_id', $context->ruleset->id)
-            ->where('key', $monsterKey)
+            ->where('key', $option->monsterDefinitionKey)
             ->firstOrFail();
         $beforeFacility = $cell->facility?->key;
         $beforePopulation = $cell->population;
@@ -277,8 +269,8 @@ final class MonsterSpawnService
             'owner_preserved' => true,
             'spawn_source' => MonsterSpawnSource::MonsterDispatchCommand->value,
             'queue_item_id' => $queueItemId,
-            'dispatch_selector' => $dispatchSelector,
-            'dispatch_cost_money' => $dispatchCostMoney,
+            'dispatch_selector' => $option->selector,
+            'dispatch_cost_money' => $option->costMoney,
         ]);
 
         return $monster;

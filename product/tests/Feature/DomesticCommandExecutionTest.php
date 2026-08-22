@@ -40,7 +40,7 @@ class DomesticCommandExecutionTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_v6_owner_facility_overbuilds_reuse_huge_meteor_damage_and_keep_source_metadata_private(): void
+    public function test_current_owner_facility_overbuilds_reuse_huge_meteor_damage_and_keep_source_metadata_private(): void
     {
         $world = $this->lightweightWorld();
         [$firingUser, $firing] = $this->createNation($world, '発射国');
@@ -132,38 +132,6 @@ class DomesticCommandExecutionTest extends TestCase
             ->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
         $this->assertContains('何かとてつもないものが落ちてきました！', $messages);
         $this->assertNotContains("{$monumentCell->x},{$monumentCell->y}", $messages);
-    }
-
-    public function test_v5_defense_overbuild_remains_a_failed_plan_without_self_destruct(): void
-    {
-        $this->useRulesetAsCurrent('hakoniwa-2s-plus-v5');
-        $world = $this->lightweightWorld();
-        [$user, $nation] = $this->createNation($world, 'v5防衛国');
-        $space = $this->surfaceMapSpace($world);
-        $cell = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->firstOrFail();
-        app(MapCellStateService::class)->transitionTerrain(
-            $cell,
-            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
-        );
-        app(MapCellStateService::class)->setFacility(
-            $cell,
-            FacilityDefinition::query()->where('key', 'defense')->firstOrFail(),
-        );
-        $cell->save();
-        $item = $this->queue($user, $nation, $space, 'build_defense_facility', $cell);
-
-        $result = app(DomesticCommandExecutor::class)->execute($this->context(
-            $world,
-            [$nation->id],
-            hash('sha256', 'v5 defense overbuild'),
-        ));
-
-        $this->assertSame(1, $result['failures']);
-        $this->assertSame('facility_exists', $item->fresh()->failure_code);
-        $this->assertSame('defense', $cell->fresh()->facility()->value('key'));
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'disaster.triggered')
-            ->whereRaw("metadata->>'source_queue_item_id' = ?", [(string) $item->id])->count());
     }
 
     public function test_monument_flight_revalidates_target_nation_before_charging_or_destroying_source(): void
@@ -505,6 +473,8 @@ class DomesticCommandExecutionTest extends TestCase
             ->firstOrFail();
         $plain = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->whereNull('facility_definition_id')
+            ->orderBy('id')
             ->firstOrFail();
         $first = $this->queue($user, $nation, $space, 'land_clear', $forest, 1, 1);
         $second = $this->queue($user, $nation, $space, 'plant_forest', $plain, 1, 2);
