@@ -20,12 +20,14 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 final class RulesetV4MigrationTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_v3_world_is_forward_migrated_with_seabed_experience_and_stable_live_references(): void
     {

@@ -39,12 +39,14 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 class CommandAndMissileTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     #[DataProvider('v8DefenseMissileProvider')]
     public function test_v8_radius_two_defense_intercepts_every_source_missile_kind(

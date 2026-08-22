@@ -24,7 +24,7 @@ FROM php:8.5.8-apache-bookworm
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y curl libicu-dev libpq-dev libzip-dev unzip \
+    && apt-get install --no-install-recommends -y curl libicu-dev libpq-dev libzip-dev postgresql-client unzip \
     && docker-php-ext-install -j4 intl pdo_pgsql \
     && a2enmod headers rewrite \
     && rm -rf /var/lib/apt/lists/*

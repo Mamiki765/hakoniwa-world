@@ -200,6 +200,8 @@ jobs:
           coverage: none
       - name: Map the Compose test hostname to the service container
         run: echo "127.0.0.1 hakoniwa-postgres" | sudo tee -a /etc/hosts
+      - name: Install PostgreSQL client for Laravel schema loading
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
       - name: Download validated dependency tree
         uses: actions/download-artifact@v8
         with:

@@ -25,12 +25,14 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 class TurnEconomyTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_food_production_is_consumed_before_residual_hard_cap_overflow_is_resolved(): void
     {

@@ -24,12 +24,14 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 final class WorldExpansionServiceTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_60_by_60_expands_to_64_by_64_without_mutating_existing_cells_or_chunks(): void
     {

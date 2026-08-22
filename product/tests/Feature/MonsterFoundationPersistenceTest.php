@@ -10,12 +10,14 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
 final class MonsterFoundationPersistenceTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_migration_keeps_all_historical_monster_rows_null_and_enforces_nonnegative_unique_explicit_orders(): void
     {
@@ -44,7 +46,7 @@ final class MonsterFoundationPersistenceTest extends TestCase
             ->count());
 
         $differentRuleset = MonsterDefinition::query()
-            ->where('ruleset_version_id', '!=', $current->id)
+            ->whereHas('rulesetVersion', fn ($query) => $query->where('version', '<', 10))
             ->firstOrFail();
         $differentRuleset->update(['display_order' => 50]);
         $this->assertSame(50, $differentRuleset->fresh()->display_order);

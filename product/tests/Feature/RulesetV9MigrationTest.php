@@ -23,12 +23,14 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 final class RulesetV9MigrationTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_migration_preserves_history_and_rebinds_only_live_references_idempotently(): void
     {

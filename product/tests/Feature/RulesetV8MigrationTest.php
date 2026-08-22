@@ -22,12 +22,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 final class RulesetV8MigrationTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     private const REVIEWED_MISSILE_REBIND_ENV = 'HAKONIWA_V8_REBIND_REVIEWED_MISSILE_ITEMS';
 

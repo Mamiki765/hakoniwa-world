@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Application\CurrentCatalogInstaller;
 use App\Application\MapSpaceCoveragePreflight;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
@@ -71,7 +72,7 @@ class WorldInitializationTest extends TestCase
 
     public function test_failure_rolls_back_world_and_cells(): void
     {
-        $generator = new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class), app(MapSpaceCoveragePreflight::class)) extends OceanWorldGenerator
+        $generator = new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class), app(MapSpaceCoveragePreflight::class), app(CurrentCatalogInstaller::class)) extends OceanWorldGenerator
         {
             protected function afterBatchInserted(int $inserted): void
             {
