@@ -799,6 +799,40 @@ therefore a Draft visibility checkpoint, not a Ready/finished claim. Further dec
 focused profiles and exact-head shard/Quality evidence; they do not trigger another unchanged
 full-serial rerun.
 
+Post-Draft focused profiling then isolated two current fixture/runtime costs without repeating
+the serial baseline:
+
+| Focused candidate | Before evidence | Candidate evidence | Decision |
+|---|---:|---:|---|
+| `NationCapacityTest` | 4 tests, 19 assertions, 42.501s | 1 test, 18 assertions, 3.692s | consolidate the same current resolver, deferred-modifier, money and food-capacity contracts on one Nation fixture |
+| `NationAutomaticExpansionTest` fixture reuse | the first 3 of 5 tests were still running at about 150s; 2 tests remained | 2 consolidated tests, 43 assertions, 207.161s before query optimization | reuse one production World with savepoint rollbacks while retaining initial 60x60 partial-chunk expansion, 64x64 left expansion, request idempotency and one-attempt rollback |
+| production zero-capacity Capital search | the consolidated automatic-expansion file took 207.161s; the large contract alone accounted for about 205s | 2 tests/43 assertions in 46.621s; the large contract completed in 45.347s | keep the exact hex-distance predicate and ordering, but use its necessary x/y bounds so the existing map-space index does not rescan every cell per candidate |
+| `WorldExpansionServiceTest` | fail-closed group: 8 tests/26 assertions in 4.821s; actual expansion group: 5 tests/75 assertions in 28.005s | no change | keep: current expansion, audit/news, rollback, idempotency and post-expansion registration contracts justify the measured cost |
+| World command/init/reset files | command 10.490s; initialization 2.281s; reset 47.051s | no change | keep: production operator guard and reset transaction/cascade proofs are distinct current contracts |
+| Turn/territory/rebaseline candidates | `TurnRunnerTest` 4.380s; territory/influence pair 30.736s; `Ver240InstallUpgradeRebaselineTest` 4.723s | no change | keep: transaction/order, territory semantics and exact supported upgrade contracts are not redundant slow fixtures |
+
+The Capital search optimization adds only coarse necessary conditions before the existing exact
+distance test. Candidate eligibility, nearest-Capital ordering, limit, transaction and lock
+boundaries remain unchanged; no RNG is involved. Focused current creation, second-Capital
+distance/determinism, automatic expansion and abandoned-Capital reuse tests remained green.
+
+The meaningful final candidate then completed the one required same-machine full serial run.
+The test command and runtime/container/database environment were unchanged from the Draft
+checkpoint; no second final serial was run merely to obtain another timing format.
+
+| Metric | PR #75 final-head before | PR D final candidate | Change |
+|---|---:|---:|---:|
+| PHPUnit files | 114 | 90 | -24 (-21.1%) |
+| identifiers/tests | 1,056 | 729 | -327 (-31.0%) |
+| passed / skipped | 1,055 / 1 | 728 / 1 | -327 executed passes; skip contract retained |
+| assertions | 13,369 | 12,006 | -1,363 (-10.2%) |
+| local full serial | 1,805.00s (30:05) | PHPUnit 543.732s (9:03.732); observed Docker process wall about 9:05 | approximately -69.8% including conservative process overhead |
+
+The after timing uses PHPUnit's exact reported duration because the Docker command was not
+wrapped in a second stopwatch. Docker startup/exit overhead was about two seconds at the Draft
+checkpoint and does not affect either the 50% reduction or the 10-minute target conclusion.
+The run was green with 729 tests, 12,006 assertions and one retained skip.
+
 ### 20.3 Runtime/code reduction candidates
 
 Expected structural reductions:
@@ -893,6 +927,7 @@ contract are not the Nation natural-spawn flow.
 | Secretary Ring finance bonus | equipped Item adds money during finance | canonical finance/capacity path | small level-based requested bonus calculation | keep | already a small local calculation; no duplicate finance executor exists |
 | historical monster display order | old immutable definition rows have null `display_order` | explicit current display order | read-only fallback from historical source kind | keep | required by supported historical presentation/ranking, not current gameplay mutation |
 | legacy staged command queue order | production repair can leave fail-closed staged rows above the legacy offset | canonical queue projection/execution | discard/project corrupt staged rows with audit reason | keep | production-reachable data-integrity recovery; removing it could expose or execute corrupted rows |
+| Capital candidate correlated full-map scan | exact reservation-radius eligibility was evaluated by rescanning every MapSpace cell for every candidate | existing map-space x/y index plus the same exact hex-distance predicate | safe coarse x/y bounds derived from the configured radius | implemented | preserves the candidate set and order while removing production registration and test cost that grew quadratically with World size |
 | initial-island generator interface and Ocean World generator subclass seam | Nation creation needs transactional failure injection; World init/reset tests verify rollback after partial batches | current generator implementation is already canonical | failure/rollback seam and debug/production bounds profile | keep | not a variant-specific gameplay engine; collapsing it would weaken transaction-boundary proof |
 | command, terrain, facility and monument differences inside current executors/presenter | commands and cells have genuinely different effects or presentation data | existing single command executor and map presenter | local definition-driven branch only | keep | repository-wide search found no parallel executor or duplicated targeting/persistence flow to collapse safely |
 

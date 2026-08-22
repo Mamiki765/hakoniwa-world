@@ -509,7 +509,11 @@ class DomesticCommandExecutionTest extends TestCase
         $nation->update(['money' => 1_000]);
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         $reclaimTarget = $this->reclaimTarget($nation, $space);
-        $plain = $this->ownedTerrain($nation, 'plain');
+        $plain = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->whereNull('facility_definition_id')
+            ->orderBy('id')
+            ->firstOrFail();
         $first = $this->queue($user, $nation, $space, 'reclaim', $reclaimTarget, 1, 1);
         $cancelled = $this->queue($user, $nation, $space, 'plant_forest', $plain, 1, 2);
         $third = $this->queue($user, $nation, $space, 'build_farm', $plain, 1, 3);
