@@ -37,11 +37,13 @@ from `hakoniwa.ruleset`; Secretary initialization uses the current v11-derived
 `hakoniwa.current_catalogs.secretary` snapshot so historical test execution cannot reintroduce
 an authored v7 runtime dependency.
 
-Historical authored files remain available through `RulesetUpgradeAuthoringCatalog` for two
+Historical authored files remain available through `RulesetUpgradeAuthoringCatalog` for three
 explicit consumers:
 
 - the historical migration chain, installed only when Laravel emits `MigrationsStarted`;
 - the PHPUnit base class, which preserves existing historical contract and migration tests.
+- the operator validation command, which reads the catalog directly without installing it
+  into normal application configuration.
 
 The exact v10 monster-dispatch duplicate-request compatibility remains in the current request
 path. It reads immutable database Ruleset and command-definition snapshots and does not make

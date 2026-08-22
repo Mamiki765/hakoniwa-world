@@ -13,6 +13,20 @@ class RulesetValidationCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_validation_command_loads_historical_authoring_while_normal_config_stays_current_only(): void
+    {
+        config(['hakoniwa' => require config_path('hakoniwa.php')]);
+        $currentKeys = ['hakoniwa-2s-plus-v11'];
+
+        $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
+
+        $this->artisan('hakoniwa:ruleset:validate', ['--key' => 'hakoniwa-2s-plus-v10'])
+            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v10 is valid: version=10')
+            ->assertSuccessful();
+
+        $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
+    }
+
     public function test_validation_command_reports_summary_without_mutating_database_or_world_ruleset(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
