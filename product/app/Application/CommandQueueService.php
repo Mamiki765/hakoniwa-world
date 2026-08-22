@@ -101,7 +101,13 @@ final class CommandQueueService
                 }
                 $requestDefinition = $duplicateDefinition;
                 if ($requestDefinition->ruleset_version_id !== $requestRuleset->id) {
-                    throw new CommandRequestConflictException;
+                    $requestDefinition = CommandDefinition::query()
+                        ->where('ruleset_version_id', $requestRuleset->id)
+                        ->where('key', $duplicateDefinition->key)
+                        ->first();
+                    if (! $requestDefinition instanceof CommandDefinition) {
+                        throw new CommandRequestConflictException;
+                    }
                 }
                 try {
                     $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
@@ -118,7 +124,7 @@ final class CommandQueueService
                 } catch (DomainException) {
                     throw new CommandRequestConflictException;
                 }
-                if ($duplicateDefinition->target_type === 'nation') {
+                if ($requestDefinition->target_type === 'nation') {
                     $targetX = $duplicate->target_x;
                     $targetY = $duplicate->target_y;
                 } elseif (! is_int($targetX) || ! is_int($targetY)) {
