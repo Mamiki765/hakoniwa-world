@@ -24,15 +24,7 @@ final class MonsterBehaviorResolver
     public function resolve(array $sourceMetadata, string $monsterKey): MonsterBehavior
     {
         if (! array_key_exists(self::METADATA_KEY, $sourceMetadata)) {
-            return new MonsterBehavior(
-                movement: self::LEGACY_LAND,
-                dispatchable: $monsterKey === 'mecha_inora',
-                canActOnSpawnTurn: false,
-                specialAction: 'none',
-                islandCreationDisplaceable: false,
-                worldSpawn: null,
-                explicitlyAuthored: false,
-            );
+            throw new DomainException("Monster {$monsterKey} behavior must be explicitly authored.");
         }
 
         $behavior = $this->validate($sourceMetadata[self::METADATA_KEY], $monsterKey);
@@ -44,7 +36,6 @@ final class MonsterBehaviorResolver
             specialAction: $behavior['special_action'],
             islandCreationDisplaceable: $behavior['island_creation_displaceable'],
             worldSpawn: $behavior['world_spawn'] ?? null,
-            explicitlyAuthored: true,
         );
     }
 

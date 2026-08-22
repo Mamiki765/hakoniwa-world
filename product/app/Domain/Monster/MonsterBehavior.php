@@ -12,6 +12,5 @@ final readonly class MonsterBehavior
         public string $specialAction,
         public bool $islandCreationDisplaceable,
         public ?array $worldSpawn,
-        public bool $explicitlyAuthored,
     ) {}
 }

@@ -7,6 +7,7 @@ use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -1710,7 +1711,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
     public function test_future_special_parameter_api_distinguishes_omitted_defaults_from_explicit_null(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('特殊parameter国');
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings = app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr6-v1');
         $settings['key'] = 'test-special-parameters-v1';
         foreach ($settings['command_definitions'] as &$definition) {
             if ($definition['key'] !== 'land_clear') {

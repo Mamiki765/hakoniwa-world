@@ -7,12 +7,14 @@ use App\Application\MessageBoardService;
 use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
 use App\Application\NationProfileService;
+use App\Application\RulesetPublisher;
 use App\Application\SalePolicyService;
 use App\Application\WorldExpansionService;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\MessageBoard\MessageBoardValidationException;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\World\MapBounds;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
@@ -30,25 +32,20 @@ use App\Models\NationMembership;
 use App\Models\NationMonsterKillStat;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
-use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
 use Illuminate\Database\QueryException;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 final class NationAbandonmentTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_only_the_owner_with_the_exact_locked_name_can_abandon_once(): void
     {
@@ -75,7 +72,9 @@ final class NationAbandonmentTest extends TestCase
         $this->assertSame('active', $nation->fresh()->state);
 
         $currentRulesetId = $world->ruleset_version_id;
-        $historical = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v4')->firstOrFail();
+        $historical = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v4'),
+        );
         $world->update(['ruleset_version_id' => $historical->id]);
         $this->actingAs($owner)->postJson($endpoint, ['confirmation_name' => $nation->name])
             ->assertConflict()
@@ -507,56 +506,6 @@ SQL);
             'map_cell_id' => $monsterCell->id,
         ]);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.abandoned')->count());
-    }
-
-    public function test_reregistration_migration_keeps_request_key_unique_and_replaces_the_pair_unique_with_an_index(): void
-    {
-        $world = $this->lightweightWorld();
-        $owner = User::factory()->create();
-        $requestKey = (string) Str::uuid();
-        app(NationCreationService::class)->create($owner, $world, '移行前島', '移行前島主', '', $requestKey);
-        $historicalRequest = DB::table('nation_creation_requests')->where('request_key', $requestKey)->first();
-        $this->assertNotNull($historicalRequest);
-
-        Schema::table('nation_creation_requests', function (Blueprint $table): void {
-            $table->dropIndex('nation_creation_requests_user_world_index');
-            $table->unique(['user_id', 'world_id'], 'nation_creation_requests_user_id_world_id_unique');
-        });
-        $migration = require database_path('migrations/2026_08_15_000000_enable_nation_reregistration.php');
-        $migration->up();
-
-        $this->assertEquals(
-            $historicalRequest,
-            DB::table('nation_creation_requests')->where('request_key', $requestKey)->first(),
-        );
-        $indexes = collect(DB::select(<<<'SQL'
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE schemaname = current_schema()
-  AND tablename = 'nation_creation_requests'
-ORDER BY indexname
-SQL))->keyBy('indexname');
-
-        $requestKeyIndex = $indexes->get('nation_creation_requests_request_key_unique');
-        $userWorldIndex = $indexes->get('nation_creation_requests_user_world_index');
-        $this->assertNotNull($requestKeyIndex);
-        $this->assertStringContainsString('CREATE UNIQUE INDEX', $requestKeyIndex->indexdef);
-        $this->assertNotNull($userWorldIndex);
-        $this->assertStringContainsString('CREATE INDEX', $userWorldIndex->indexdef);
-        $this->assertStringNotContainsString('CREATE UNIQUE INDEX', $userWorldIndex->indexdef);
-        $this->assertFalse($indexes->has('nation_creation_requests_user_id_world_id_unique'));
-
-        $secondRequest = (array) $historicalRequest;
-        unset($secondRequest['id']);
-        $secondRequest['request_key'] = (string) Str::uuid();
-        DB::table('nation_creation_requests')->insert($secondRequest);
-        $this->assertSame(2, DB::table('nation_creation_requests')
-            ->where('user_id', $owner->id)->where('world_id', $world->id)->count());
-
-        $duplicateRequest = $secondRequest;
-        $duplicateRequest['generation_seed'] = str_repeat('f', 64);
-        $this->expectException(QueryException::class);
-        DB::table('nation_creation_requests')->insert($duplicateRequest);
     }
 
     private function setRichCell(

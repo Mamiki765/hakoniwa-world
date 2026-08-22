@@ -178,7 +178,7 @@ final class NationCreationService
                     foreach ($occupancies as $occupancy) {
                         $monster = $occupancy->monster;
                         $behavior = $this->monsterBehaviors->forDefinition($monster->definition);
-                        if (! $behavior->explicitlyAuthored || ! $behavior->islandCreationDisplaceable) {
+                        if (! $behavior->islandCreationDisplaceable) {
                             throw new \DomainException('初期島の変更セルは退避できない怪獣に占有されています。');
                         }
                         $this->monsterRemoval->removeForWorldMutation(

@@ -55,10 +55,10 @@ final class MonsterRewardPolicyResolver
         if (! is_array($sourceMetadata) || array_is_list($sourceMetadata)) {
             throw new DomainException('Monster reward resolution requires definition source metadata.');
         }
-        $explicitlyAuthored = array_key_exists(self::METADATA_KEY, $sourceMetadata);
-        $policy = $explicitlyAuthored
-            ? $this->validate($sourceMetadata[self::METADATA_KEY])
-            : self::STANDARD_SPLIT;
+        if (! array_key_exists(self::METADATA_KEY, $sourceMetadata)) {
+            throw new DomainException('Monster reward policy must be explicitly authored.');
+        }
+        $policy = $this->validate($sourceMetadata[self::METADATA_KEY]);
 
         if ($policy === self::HOSTLESS_FULL_KILLER_MONEY && ! $hostNationExists) {
             return [
@@ -75,7 +75,7 @@ final class MonsterRewardPolicyResolver
 
         return [
             'policy' => $policy,
-            'explicitly_authored' => $explicitlyAuthored,
+            'explicitly_authored' => true,
             'killer_share' => $killerShare,
             'host_share' => $hostNationExists ? $remainder : 0,
             'unclaimed_share' => $hostNationExists ? 0 : $remainder,

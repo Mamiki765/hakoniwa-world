@@ -72,10 +72,8 @@ final class TurnRuntimePerformanceTest extends TestCase
      */
     public static function expandedWorldProfiles(): iterable
     {
-        // Keep the rectangular production expansion state plus the smallest and largest square bounds.
-        // The intermediate 80x80 square does not add a distinct size or shape regression signal.
-        yield '64x64' => ['64x64', 4_096];
-        yield '80x64' => ['80x64', 5_120];
+        // The largest supported World proves the cell-count scaling bound. Expansion topology and
+        // each intermediate bound are covered by WorldExpansionServiceTest without rerunning a turn.
         yield '96x96' => ['96x96', 9_216];
     }
 
@@ -118,30 +116,14 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->assertLessThanOrEqual(20, $measurement['phases']['process_cells']['queries']);
     }
 
-    #[DataProvider('normalProcessCellProfiles')]
-    public function test_normal_world_process_cell_profile_reports_query_scaling(
-        string $profile,
-        int $expectedCells,
-    ): void {
-        $world = $this->processCellProfileWorld($expectedCells, 'normal');
-
-        $measurement = $this->measureTurn($world);
-
-        $this->report($profile, $measurement);
-        $this->assertSame($expectedCells, $measurement['phases']['process_cells']['metrics']['processed']);
-        $this->assertGreaterThan(0, $measurement['phases']['process_cells']['queries']);
-    }
-
-    #[DataProvider('matureProcessCellProfiles')]
-    public function test_mature_world_process_cell_profile_reports_query_scaling(
-        string $profile,
-        int $expectedCells,
-    ): void {
+    public function test_production_mature_world_has_bounded_process_cell_queries(): void
+    {
+        $expectedCells = 3_600;
         $world = $this->processCellProfileWorld($expectedCells, 'mature');
 
         $measurement = $this->measureTurn($world);
 
-        $this->report($profile, $measurement);
+        $this->report('60x60-mature', $measurement);
         $this->assertSame($expectedCells, $measurement['phases']['process_cells']['metrics']['processed']);
         $this->assertSame(0, $measurement['phases']['process_cells']['coordinate_cell_lookup_queries']);
         $this->assertLessThanOrEqual(40, $measurement['phases']['process_cells']['query_types']['select'] ?? 0);
@@ -164,7 +146,7 @@ final class TurnRuntimePerformanceTest extends TestCase
     public function test_forced_global_disaster_profile_reports_query_shape(string $disasterKey): void
     {
         [$world, $ruleset] = $this->forcedDisasterWorld($disasterKey);
-        $seed = $this->forcedDisasterSeed($disasterKey);
+        $seed = $this->forcedDisasterSeed($world, $disasterKey);
 
         $measurement = $this->measureGlobalDisasters($world, $ruleset, $seed);
         $globalDisasters = $measurement['phases']['global_disasters'];
@@ -179,22 +161,6 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->assertLessThanOrEqual(2, $globalDisasters['terrain_definition_lookup_queries']);
         $this->assertSame(0, $globalDisasters['monster_occupancy_lookup_queries']);
         $this->assertLessThanOrEqual(20, $globalDisasters['query_types']['select'] ?? 0);
-    }
-
-    /** @return iterable<string, array{string, int}> */
-    public static function normalProcessCellProfiles(): iterable
-    {
-        yield '32x32 normal' => ['32x32-normal', 1_024];
-        yield '64x64 normal' => ['64x64-normal', 4_096];
-        yield '96x96 normal' => ['96x96-normal', 9_216];
-    }
-
-    /** @return iterable<string, array{string, int}> */
-    public static function matureProcessCellProfiles(): iterable
-    {
-        yield '32x32 mature' => ['32x32-mature', 1_024];
-        yield '64x64 mature' => ['64x64-mature', 4_096];
-        yield '96x96 mature' => ['96x96-mature', 9_216];
     }
 
     /** @return iterable<string, array{string, string}> */
@@ -449,7 +415,11 @@ final class TurnRuntimePerformanceTest extends TestCase
 
     private function processCellProfileWorld(int $expectedCells, string $fixture): World
     {
-        $world = $expectedCells === 1_024 ? $this->lightweightWorld() : $this->expandedWorld($expectedCells);
+        $world = match ($expectedCells) {
+            1_024 => $this->lightweightWorld(),
+            3_600 => app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Production),
+            default => $this->expandedWorld($expectedCells),
+        };
         $nation = app(NationCreationService::class)->create(
             User::factory()->create(),
             $world,
@@ -543,7 +513,9 @@ final class TurnRuntimePerformanceTest extends TestCase
     /** @return array{World, RulesetVersion} */
     private function forcedDisasterWorld(string $disasterKey): array
     {
-        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Production);
+        // Exercise each effect/query shape without rebuilding 60x60 for every variant.
+        // Production World opportunity scaling is covered by DisasterAndOilTurnTest.
+        $world = $this->lightweightWorld();
         $nation = app(NationCreationService::class)->create(
             User::factory()->create(),
             $world,
@@ -647,11 +619,19 @@ final class TurnRuntimePerformanceTest extends TestCase
         return [$world, $ruleset->fresh()];
     }
 
-    private function forcedDisasterSeed(string $disasterKey): string
+    private function forcedDisasterSeed(World $world, string $disasterKey): string
     {
         if ($disasterKey === 'land_subsidence') {
             return hash('sha256', 'turn-runtime-forced-land-subsidence');
         }
+        $space = $this->surfaceMapSpace($world);
+        $minX = (int) $space->min_x;
+        $maxX = (int) $space->max_x;
+        $minY = (int) $space->min_y;
+        $maxY = (int) $space->max_y;
+        $scaleNumerator = 16 * $space->currentBounds()->chunkCount();
+        $fullOpportunities = intdiv($scaleNumerator, 225);
+        $fractionalNumerator = $scaleNumerator % 225;
         $centerLabel = match ($disasterKey) {
             'earthquake' => TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER,
             'tsunami' => TurnRandomStreamFactory::GLOBAL_TSUNAMI_CENTER,
@@ -669,13 +649,15 @@ final class TurnRuntimePerformanceTest extends TestCase
             $random = new TurnRandomStreamFactory($seed);
             $fractionalGate = $random->stream(TurnRandomStreamFactory::worldDisasterAreaFraction($disasterKey))
                 ->integer(0, 224);
-            if ($fractionalGate < 31) {
+            if (($fullOpportunities === 0 && $fractionalGate >= $fractionalNumerator)
+                || ($fullOpportunities === 1 && $fractionalGate < $fractionalNumerator)) {
                 continue;
             }
             $center = $random->stream($centerLabel);
-            $x = $center->integer(0, 59);
-            $y = $center->integer(0, 59);
-            if ($x < $padding || $x > 59 - $padding || $y < $padding || $y > 59 - $padding) {
+            $x = $center->integer($minX, $maxX);
+            $y = $center->integer($minY, $maxY);
+            if ($x < $minX + $padding || $x > $maxX - $padding
+                || $y < $minY + $padding || $y > $maxY - $padding) {
                 continue;
             }
             if ($disasterKey === 'meteor_shower') {

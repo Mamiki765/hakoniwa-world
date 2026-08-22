@@ -7,3 +7,5 @@ parameters:
     level: 6
     tmpDir: storage/framework/cache/phpstan
     checkModelProperties: true
+    squashedMigrationsPath:
+        - storage/framework/cache/phpstan-schema

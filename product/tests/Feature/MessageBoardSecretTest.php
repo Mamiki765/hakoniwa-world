@@ -4,11 +4,12 @@ namespace Tests\Feature;
 
 use App\Application\MessageBoardAuditRecorder;
 use App\Application\MessageBoardService;
+use App\Application\RulesetPublisher;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\AuthIdentity;
 use App\Models\IslandMessage;
 use App\Models\Nation;
 use App\Models\NationMembership;
-use App\Models\RulesetVersion;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,14 +18,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 class MessageBoardSecretTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-    use UsesHistoricalRulesetDatabaseFixtures;
 
     protected function tearDown(): void
     {
@@ -176,7 +175,9 @@ class MessageBoardSecretTest extends TestCase
         $world = $this->lightweightWorld();
         [$owner, $sender] = $this->ownerAndNation($world, '履歴送信島', 500);
         [, $target] = $this->ownerAndNation($world, '履歴受信島', 500);
-        $historical = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
+        $historical = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr2-v1'),
+        );
         $world->update(['ruleset_version_id' => $historical->id]);
 
         $this->actingAs($owner)
