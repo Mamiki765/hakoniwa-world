@@ -16,6 +16,20 @@ This is a source-dependency baseline only. It does not publish a new Ruleset, ch
 rewrite an immutable database row, migrate player data, or change TurnRun, RNG, request-key,
 fingerprint, or provenance semantics.
 
+## One-time source representation rebaseline
+
+The ver 2.4.0 rebaseline makes one explicit exception to authored-source byte immutability:
+the current `hakoniwa-2s-plus-v11` PHP source is mechanically rewritten from the historical
+inheritance/delta representation into a standalone representation. The rewrite was accepted
+only after strict resolved-array equality and an unchanged formal checksum were demonstrated.
+
+This exception is limited to source representation. The v11 key/version, resolved payload,
+formal checksum, published RulesetVersion row and definitions, gameplay, and balance remain
+immutable. The former v11 source representation remains recoverable from Git history. This
+one-time exception does not permit future semantic changes under the v11 identity; any future
+gameplay or balance change requires a new unique Ruleset version and immutable publication.
+Historical authored Ruleset sources continue to be treated as byte-for-byte immutable.
+
 ## Dependency boundary
 
 `config/hakoniwa.php` loads only the standalone v11 file. Current services obtain gameplay
