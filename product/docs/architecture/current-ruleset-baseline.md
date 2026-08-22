@@ -41,7 +41,8 @@ Historical authored files remain available through `RulesetUpgradeAuthoringCatal
 explicit consumers:
 
 - the historical migration chain, installed only when Laravel emits `MigrationsStarted`;
-- the PHPUnit base class, which preserves existing historical contract and migration tests.
+- historical migration/contract tests that opt in through an explicit database-fixture
+  concern; and
 - the operator validation command, which reads the catalog directly without installing it
   into normal application configuration.
 
@@ -56,6 +57,8 @@ Secretaries, Items, equipment, command/audit/event history, request identity and
 and TurnRun/RNG history remain unchanged. Historical Worlds remain readable and fail closed
 for mutation under the existing current-Ruleset guard.
 
-Fresh-install rebaseline, production source preflight, unresolved-TurnRun upgrade cutoff,
-migration squash/removal, and historical compatibility/test retirement remain separate ver
-2.4.0 follow-up work.
+Fresh install now loads the canonical schema dump and publishes only current v11. The direct
+production upgrade boundary accepts only the operator-declared 2.3.1/exact-v11 source after a
+fail-closed source and global unresolved-TurnRun preflight. Historical migration removal and
+historical compatibility/test retirement remain separate follow-up work; see
+`install-upgrade-rebaseline.md`.

@@ -12,13 +12,15 @@ use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 class RulesetImmutabilityTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
-    public function test_clean_database_publishes_immutable_legacy_snapshots_and_initializer_is_idempotent(): void
+    public function test_explicit_historical_fixtures_publish_immutable_snapshots_and_initializer_is_idempotent(): void
     {
         $source = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
         $pr6 = RulesetVersion::query()->where('key', 'roadmap-pr6-v1')->firstOrFail();

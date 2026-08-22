@@ -43,6 +43,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
@@ -50,6 +51,7 @@ final class C4NewMonstersTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_zero_dispatch_uses_the_selector_for_price_definition_provenance_and_fingerprint(): void
     {

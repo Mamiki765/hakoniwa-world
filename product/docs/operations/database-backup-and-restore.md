@@ -1,5 +1,22 @@
 # PostgreSQL backup and restore
 
+## ver 2.4.0 upgrade recovery boundary
+
+The supported direct ver 2.4.0 source is an operator-declared application 2.3.1 database in
+the exact v11 state documented in `../architecture/install-upgrade-rebaseline.md`. Before
+crossing that boundary, obtain a verified backup with the production wrapper below and keep
+the exact object name, size, MD5, and independent passphrase-recovery evidence. The upgrade
+preflight must also report zero unresolved non-dry `pending`, `running`, `failed`, or
+`blocked` TurnRuns. A failed preflight is not approval to mutate or repair production data
+with 2.4.0.
+
+The ver 2.4.0 migration is forward-only. Do not run the old application against a partially
+or successfully migrated database and do not rely on migration `down()`. If upgrade fails,
+restore the verified backup to the supported 2.3.1/v11 state using this runbook, resolve the
+cause there, verify the source contract again, and perform a forward re-upgrade. This section
+defines the recovery design; it does not authorize a production backup, restore, migration,
+deploy, or Turn execution.
+
 ## Production契約（ver 1.3.2）
 
 ver 1.3.2はgameplay、public API contract、ruleset、database schema、World/Nation gameplay stateを変更せず、production PostgreSQL backupの取得、暗号化、off-host保存、検証、local保持だけを自動化する。

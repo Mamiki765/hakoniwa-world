@@ -14,6 +14,7 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
@@ -21,6 +22,7 @@ final class SecretaryItemPresentationTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_item_effect_projection_is_explicit_owned_world_scoped_and_never_falls_back(): void
     {

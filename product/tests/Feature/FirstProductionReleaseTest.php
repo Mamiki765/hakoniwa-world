@@ -18,22 +18,19 @@ final class FirstProductionReleaseTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_first_production_schema_and_ruleset_are_the_fresh_install_baseline(): void
+    public function test_current_schema_and_v11_are_the_fresh_install_baseline(): void
     {
+        config(['hakoniwa' => require config_path('hakoniwa.php')]);
+
         $this->assertTrue(Schema::hasColumn('nations', 'registered_turn'));
         $this->assertTrue(Schema::hasTable('moderation_records'));
         $this->assertFalse(Schema::hasColumn('users', 'moderation_suspended_at'));
         $this->assertFalse(Schema::hasColumn('nations', 'moderation_suspended_at'));
 
-        $v1 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v1')->firstOrFail();
         $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v11')->firstOrFail();
-        $previous = RulesetVersion::query()->where('key', 'roadmap-pr22-v1')->firstOrFail();
         $this->assertSame('hakoniwa-2s-plus-v11', config('hakoniwa.ruleset.key'));
-        $this->assertEquals(config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v1'), $v1->settings);
-        $this->assertEquals(
-            config('hakoniwa.published_rulesets.roadmap-pr22-v1'),
-            $previous->settings,
-        );
+        $this->assertSame(['hakoniwa-2s-plus-v11'], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(['hakoniwa-2s-plus-v11'], RulesetVersion::query()->pluck('key')->all());
         $this->assertSame($published->id, $this->lightweightWorld()->ruleset_version_id);
     }
 
