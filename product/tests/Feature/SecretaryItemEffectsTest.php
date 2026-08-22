@@ -30,57 +30,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\TestCase;
 
 final class SecretaryItemEffectsTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-    use UsesHistoricalRulesetDatabaseFixtures;
-
-    public function test_v10_prepare_adds_no_item_query_snapshot_metric_or_effect(): void
-    {
-        $world = $this->lightweightWorld();
-        $this->switchToV10Ruleset($world);
-        [, $nation] = $this->nation($world, 'v10装備互換国');
-        $context = $this->context($world, hash('sha256', 'v10 item free'), [$nation->id]);
-        $queries = [];
-        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
-            $queries[] = strtolower($query->sql);
-        });
-
-        $result = app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
-
-        $this->assertFalse($context->state->hasSecretaryItemEffectSnapshot($nation->id));
-        $this->assertArrayNotHasKey('secretary_item_effect_snapshots', $result->metrics);
-        $this->assertSame(0, collect($queries)->filter(
-            static fn (string $sql): bool => str_contains($sql, 'secretary_item_instances'),
-        )->count());
-        $label = TurnRandomStreamFactory::secretaryOldBow($nation->id, 'trigger', 1);
-        $expectedFirstDraw = (new TurnRandomStreamFactory($context->randomSeed))->stream($label)->integer(0, 9_999);
-        $this->assertSame([], app(SecretaryOldBowService::class)->execute(
-            $context,
-            $this->surfaceMapSpace($world),
-            true,
-        ));
-        $this->assertSame($expectedFirstDraw, $context->random->stream($label)->integer(0, 9_999));
-
-        $context->run->update([
-            'is_dry_run' => false,
-            'status' => TurnRun::STATUS_FAILED,
-            'failure_context' => ['same_seed_retry' => true],
-        ]);
-        $retry = $this->retryContext($context);
-        $retryResult = app(CompleteTurnEngine::class)->execute('prepare_turn', $retry);
-        $this->assertArrayNotHasKey('secretary_item_effect_snapshots', $retryResult->metrics);
-        $this->assertSame([], app(SecretaryOldBowService::class)->execute(
-            $retry,
-            $this->surfaceMapSpace($world),
-            true,
-        ));
-        $this->assertSame($expectedFirstDraw, $retry->random->stream($label)->integer(0, 9_999));
-    }
 
     public function test_v11_shaped_prepare_batch_loads_equipped_items_once_and_keeps_an_immutable_stable_snapshot(): void
     {
@@ -785,15 +740,6 @@ final class SecretaryItemEffectsTest extends TestCase
         if ($world->ruleset_version_id !== $ruleset->id) {
             $world->update(['ruleset_version_id' => $ruleset->id]);
         }
-
-        return $ruleset;
-    }
-
-    private function switchToV10Ruleset(World $world): RulesetVersion
-    {
-        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->sole();
-        config(['hakoniwa.ruleset' => $ruleset->settings]);
-        $world->update(['ruleset_version_id' => $ruleset->id]);
 
         return $ruleset;
     }

@@ -17,7 +17,7 @@ final class TerritoryInfluencePolicyTest extends TestCase
         bool $core,
         bool $expected,
     ): void {
-        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v3.turn_processing.territory_influence');
+        $settings = config('hakoniwa.ruleset.turn_processing.territory_influence');
 
         $this->assertSame($expected, app(TerritoryInfluencePolicy::class)->targetEligible(
             $settings,
@@ -53,7 +53,7 @@ final class TerritoryInfluencePolicyTest extends TestCase
     public function test_source_uses_a_separate_denylist_and_allows_monument(): void
     {
         $policy = app(TerritoryInfluencePolicy::class);
-        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v3.turn_processing.territory_influence');
+        $settings = config('hakoniwa.ruleset.turn_processing.territory_influence');
         $active = [1 => true, 2 => true];
 
         $this->assertTrue($policy->sourceEligible($settings, 2, 1, 'plain', 'monument', false, $active));

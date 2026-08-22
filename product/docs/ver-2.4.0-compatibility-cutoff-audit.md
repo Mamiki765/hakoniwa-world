@@ -163,7 +163,7 @@ Classification meanings:
 | Transaction and rollback | `TurnRunnerTest`, `RuntimeMetadataFailureTest`, command/Item retry tests | one-turn atomicity, fail-closed rollback | KEEP; consolidate duplicate corrupt-fixture cases only with replacement proof |
 | Concurrency and locks | PostgreSQL registration, equipment, OAuth, abandonment and World-lock tests | lock ordering and race safety | KEEP |
 | Current retry/idempotency | `TurnRunnerTest`, request-key/fingerprint tests, equipment optimistic-concurrency tests | current same-run/same-seed and request idempotency | KEEP |
-| Performance/query budget | `TurnRuntimePerformanceTest`, `MonsterPerformanceTest`, `TerritoryInfluencePerformanceTest`, `RuntimeMutationQueryCountTest` | current hot-path regression | KEEP initially; remeasure after implementation |
+| Performance/query budget | `TurnRuntimePerformanceTest`, `MonsterPerformanceTest`, `TerritoryInfluencePerformanceTest`, `RuntimeMutationQueryCountTest` | current hot-path regression | KEEP representative production/maximum-size bounds; remove report-only intermediate profiles |
 | Current Ruleset validation | `RulesetV11ContractTest`, current parts of `RulesetAuthoringValidatorTest`, `RulesetValidationCommandTest` | current authored payload and publisher contract | KEEP until replaced by standalone canonical Ruleset tests |
 | Historical formal Ruleset contracts | `FirstProductionRulesetContractTest`, `RulesetV6ContractTest` through `RulesetV10ContractTest` | exact old payload behavior/checksum | ARCHIVE / REMOVE CANDIDATE from normal CI |
 | Historical migration suites | `RulesetV2MigrationTest`, `RulesetV2LiveMonsterReferenceRepairTest`, `RulesetV3MigrationTest` through `RulesetV10MigrationTest` | direct upgrade and exact idempotency of unsupported source versions | ARCHIVE / REMOVE CANDIDATE from normal CI after direct old-source upgrades end |
@@ -218,7 +218,7 @@ This list does not authorize deletion. It identifies tests whose only durable va
 | `RuntimeMetadataFailureTest` | corrupt current DB metadata fails without partial game mutation | runtime metadata readers plus transaction rollback | Yes in representative form; individual artificial cases may consolidate |
 | command request history tests | duplicate request keeps key/fingerprint/provenance semantics | `CommandQueueService`, `HistoricalMonsterDispatchRequestInspector`, request definition lookup | Current request integrity yes; exact v10 reconstruction only UPGRADE-ONLY |
 | `FirstProductionReleaseTest` | original v1 fresh go-live and production invariants | first-release migration/config and current safety code | mixed; split current safeguards from historical v1 reproduction |
-| performance tests | current paths stay within query/runtime budgets | current services and fixtures | Yes, but baseline must be remeasured after rebaseline |
+| performance tests | current paths stay within query/runtime budgets | current services and fixtures | Yes, in representative form with explicit query/runtime assertions |
 | current gameplay integration | current player-visible behavior | current Ruleset, Turn engine, services | Yes |
 
 ### 4.1 Code that exists partly because historical tests require it
@@ -762,6 +762,77 @@ Potential outcomes include:
 
 Do not claim a target file count, identifier count, or CI duration until the implementation PR runs exact-head CI and reports before/after data.
 
+PR D used the verified PR #75 final-head measurements as the authoritative unchanged
+baseline instead of spending another full-serial run to reproduce them. Focused profiling
+then found that repeated large-World fixture construction, rather than the measured turn,
+dominated several profiles:
+
+| Focused profile | Evidence before rationalization | Decision |
+|---|---:|---|
+| empty maximum 96x96 turn | 21.343s wall; measured turn 1.008s | keep as the maximum supported cell-count query bound |
+| normal 96x96 reporting profile | 101.896s wall; measured turn 1.047s; only three non-budget assertions | remove along with its 32x32/64x64 reporting-only matrix |
+| mature 96x96 reporting profile | still incomplete after 120s and stopped | replace the three-size reporting matrix with one current production 60x60 query-bound contract |
+| forced earthquake on a new 60x60 World | 17.154s wall; measured effect 0.700s | exercise each distinct effect/query shape on Debug32x32; retain exact World opportunity scaling in `DisasterAndOilTurnTest` |
+
+The rationalized `TurnRuntimePerformanceTest` keeps 20 contracts and completed focused
+PostgreSQL execution in 89.524s with 155 assertions. It still covers the maximum 96x96
+empty World, a settlement-heavy 64x64 World, a mature production 60x60 World, each special
+cell-processing fixture, every global-disaster effect, Nation/resource scaling, natural
+monster spawn hydration, and missile defense lookup scaling. It does not add a second
+performance framework or alter gameplay, RNG, event, persistence, transaction, or lock
+behavior.
+
+The first green Draft-PR checkpoint produced this same-machine local serial comparison.
+The PR #75 final-head evidence is the authoritative before measurement; it was not rerun on
+the byte-identical release tree merely to reproduce the baseline.
+
+| Metric | PR #75 final-head before | PR D green Draft checkpoint | Change |
+|---|---:|---:|---:|
+| PHPUnit files | 114 | 90 | -24 (-21.1%) |
+| identifiers/tests | 1,056 | 735 | -321 (-30.4%) |
+| passed / skipped | 1,055 / 1 | 734 / 1 | -321 executed passes; skip contract retained |
+| assertions | 13,369 | 11,995 | -1,374 (-10.3%) |
+| local full-serial wall | 1,805.00s (30:05) | 1,163.76s (19:23.76) | -641.24s (-35.5%) |
+
+The checkpoint is green but does not yet meet the 50% local-wall reduction objective. It is
+therefore a Draft visibility checkpoint, not a Ready/finished claim. Further decisions use
+focused profiles and exact-head shard/Quality evidence; they do not trigger another unchanged
+full-serial rerun.
+
+Post-Draft focused profiling then isolated two current fixture/runtime costs without repeating
+the serial baseline:
+
+| Focused candidate | Before evidence | Candidate evidence | Decision |
+|---|---:|---:|---|
+| `NationCapacityTest` | 4 tests, 19 assertions, 42.501s | 1 test, 18 assertions, 3.692s | consolidate the same current resolver, deferred-modifier, money and food-capacity contracts on one Nation fixture |
+| `NationAutomaticExpansionTest` fixture reuse | the first 3 of 5 tests were still running at about 150s; 2 tests remained | 2 consolidated tests, 43 assertions, 207.161s before query optimization | reuse one production World with savepoint rollbacks while retaining initial 60x60 partial-chunk expansion, 64x64 left expansion, request idempotency and one-attempt rollback |
+| production zero-capacity Capital search | the consolidated automatic-expansion file took 207.161s; the large contract alone accounted for about 205s | 2 tests/43 assertions in 46.621s; the large contract completed in 45.347s | keep the exact hex-distance predicate and ordering, but use its necessary x/y bounds so the existing map-space index does not rescan every cell per candidate |
+| `WorldExpansionServiceTest` | fail-closed group: 8 tests/26 assertions in 4.821s; actual expansion group: 5 tests/75 assertions in 28.005s | no change | keep: current expansion, audit/news, rollback, idempotency and post-expansion registration contracts justify the measured cost |
+| World command/init/reset files | command 10.490s; initialization 2.281s; reset 47.051s | no change | keep: production operator guard and reset transaction/cascade proofs are distinct current contracts |
+| Turn/territory/rebaseline candidates | `TurnRunnerTest` 4.380s; territory/influence pair 30.736s; `Ver240InstallUpgradeRebaselineTest` 4.723s | no change | keep: transaction/order, territory semantics and exact supported upgrade contracts are not redundant slow fixtures |
+
+The Capital search optimization adds only coarse necessary conditions before the existing exact
+distance test. Candidate eligibility, nearest-Capital ordering, limit, transaction and lock
+boundaries remain unchanged; no RNG is involved. Focused current creation, second-Capital
+distance/determinism, automatic expansion and abandoned-Capital reuse tests remained green.
+
+The meaningful final candidate then completed the one required same-machine full serial run.
+The test command and runtime/container/database environment were unchanged from the Draft
+checkpoint; no second final serial was run merely to obtain another timing format.
+
+| Metric | PR #75 final-head before | PR D final candidate | Change |
+|---|---:|---:|---:|
+| PHPUnit files | 114 | 90 | -24 (-21.1%) |
+| identifiers/tests | 1,056 | 729 | -327 (-31.0%) |
+| passed / skipped | 1,055 / 1 | 728 / 1 | -327 executed passes; skip contract retained |
+| assertions | 13,369 | 12,006 | -1,363 (-10.2%) |
+| local full serial | 1,805.00s (30:05) | PHPUnit 543.732s (9:03.732); observed Docker process wall about 9:05 | approximately -69.8% including conservative process overhead |
+
+The after timing uses PHPUnit's exact reported duration because the Docker command was not
+wrapped in a second stopwatch. Docker startup/exit overhead was about two seconds at the Draft
+checkpoint and does not affect either the 50% reduction or the 10-minute target conclusion.
+The run was green with 729 tests, 12,006 assertions and one retained skip.
+
 ### 20.3 Runtime/code reduction candidates
 
 Expected structural reductions:
@@ -826,6 +897,43 @@ This PR.
 - consolidate duplicate corrupt-fixture/extreme-value tests;
 - preserve current safety, data integrity, retry and read-only history tests;
 - report exact before/after files, identifiers, shard durations and Quality wall time.
+
+PR D implemented this boundary after PR C established the exact source and forward-only
+rebaseline. Historical migration PHP, migration-only runtime, the exact v10 dispatch
+reconstruction path, pre-v5 sea-edge turn execution, and unauthored monster behavior/reward
+fallbacks were removed. Historical authored Ruleset PHP remains available only through the
+operator catalog; historical DB rows remain immutable and readable; historical World
+mutation remains fail-closed.
+
+The current-runtime audit also confirmed that Aoi movement already reuses the standard
+monster candidate, occupancy, movement-limit, protected facility, defense-contact, and
+normal action flow. Its local difference remains water-capable movement followed by
+neutral-sea normalization. The dedicated World-spawn service remains because its
+world-level probability, distance-filtered water candidates, RNG streams, and spawn event
+contract are not the Nation natural-spawn flow.
+
+### Current runtime simplification
+
+| Current special case | Why it exists | Standard path that could replace it | Remaining local difference | Status | Reason |
+|---|---|---|---|---|---|
+| exact-v10 duplicate `monster_dispatch` reconstruction | old selector-less requests predated explicit provenance | request Ruleset + same-key request-time definition + canonical fingerprint comparison | generic cross-version provenance lookup for supported current DB rows | implemented | removed `HistoricalMonsterDispatchRequestInspector`; current migrated requests converge without an exact-v10 engine, while missing definitions, invalid metadata and mismatched fingerprints fail closed |
+| pre-v5 settlement sea-edge execution | old Rulesets authored population bands that v5 removed | current settlement growth path | none for mutable v11 Worlds | implemented | removed legacy state/calculation branch without changing current RNG draws or phase order |
+| unauthored monster behavior and reward defaults | early monster definitions relied on implicit standard behavior | explicit v11 `source_metadata.behavior` consumed by the existing monster action/damage/reward paths | authored behavior/reward values only | implemented | current publication must be explicit; operator validation may still inspect historical authored payloads |
+| selector-less dispatch fallback in `MonsterSpawnService` | pre-v11 dispatch had one implicit monster choice | `MonsterDispatchOptionResolver` and the standard dispatch spawn path | explicit selected option | implemented | removed hard-coded default/mecha selection while preserving current cost, persistence, RNG and events |
+| unused Turn handler interfaces and command DTOs | pre-canonical pipeline scaffold anticipated multiple handlers | `CompleteTurnEngine` → `DomesticCommandExecutor` and the existing phase result | none | implemented | reference-zero dead abstraction; no binding, implementation, test or runtime call existed |
+| Aoi movement | Aoi can enter water and neutralizes a legal destination to sea | normal `MonsterTurnService` candidate, occupancy, movement-limit, defense-contact and action path | water-capable terrain contract plus `moveAndNeutralizeToSea` | keep | already has the preferred canonical-path-plus-local-difference shape; merging the mutation helper would obscure distinct persistence/events |
+| Aoi World spawn | one monster spawns from a World-wide active-land probability into distant water | no equivalent Nation natural-spawn path | World probability, distance-filtered water candidates, dedicated streams and World event | keep | combining it with Nation spawn would alter RNG order and event semantics |
+| Secretary Old Bow | pre-normal-monster Item attack has its own eligibility, timing and RNG streams | canonical `MonsterDamageService` for the actual hit | per-Nation Item snapshot, safe-target selection, trigger/target streams | keep | damage is already shared; the remaining flow is observably distinct |
+| Secretary Ring finance bonus | equipped Item adds money during finance | canonical finance/capacity path | small level-based requested bonus calculation | keep | already a small local calculation; no duplicate finance executor exists |
+| historical monster display order | old immutable definition rows have null `display_order` | explicit current display order | read-only fallback from historical source kind | keep | required by supported historical presentation/ranking, not current gameplay mutation |
+| legacy staged command queue order | production repair can leave fail-closed staged rows above the legacy offset | canonical queue projection/execution | discard/project corrupt staged rows with audit reason | keep | production-reachable data-integrity recovery; removing it could expose or execute corrupted rows |
+| Capital candidate correlated full-map scan | exact reservation-radius eligibility was evaluated by rescanning every MapSpace cell for every candidate | existing map-space x/y index plus the same exact hex-distance predicate | safe coarse x/y bounds derived from the configured radius | implemented | preserves the candidate set and order while removing production registration and test cost that grew quadratically with World size |
+| initial-island generator interface and Ocean World generator subclass seam | Nation creation needs transactional failure injection; World init/reset tests verify rollback after partial batches | current generator implementation is already canonical | failure/rollback seam and debug/production bounds profile | keep | not a variant-specific gameplay engine; collapsing it would weaken transaction-boundary proof |
+| command, terrain, facility and monument differences inside current executors/presenter | commands and cells have genuinely different effects or presentation data | existing single command executor and map presenter | local definition-driven branch only | keep | repository-wide search found no parallel executor or duplicated targeting/persistence flow to collapse safely |
+
+No broader current-gameplay refactor was included. Disaster families, missile impacts,
+World expansion, monster kill cycles, and Secretary equipment remain separate where their
+RNG, event, transaction, lock, or persistence contracts differ.
 
 Each PR should target `release/2.4.0` and use a separate stacked work branch.
 

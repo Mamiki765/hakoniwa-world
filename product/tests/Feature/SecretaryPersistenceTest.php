@@ -5,20 +5,13 @@ namespace Tests\Feature;
 use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
 use App\Domain\Secretary\SecretarySkillCatalog;
-use App\Domain\World\WorldMutationLock;
 use App\Models\Secretary;
 use App\Models\SecretarySkill;
-use App\Models\TurnRun;
 use App\Models\User;
-use App\Models\World;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use PHPUnit\Framework\Attributes\DataProvider;
-use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -27,13 +20,8 @@ final class SecretaryPersistenceTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    private const PROBE_CONNECTION = 'pgsql-secretary-migration-lock-probe';
-
-    public function test_current_secretary_initialization_does_not_require_the_historical_v7_source(): void
+    public function test_current_secretary_initialization_uses_the_current_catalog(): void
     {
-        $publishedRulesets = config('hakoniwa.published_rulesets');
-        unset($publishedRulesets['hakoniwa-2s-plus-v7']);
-        config(['hakoniwa.published_rulesets' => $publishedRulesets]);
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
 
@@ -201,155 +189,6 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame('サファイア', $user->secretary()->value('name'));
     }
 
-    public function test_backfill_is_idempotent_and_its_exact_user_id_set_excludes_users_without_history(): void
-    {
-        $world = $this->lightweightWorld();
-        $activeUser = User::factory()->create();
-        $abandonedUser = User::factory()->create();
-        $noHistoryUser = User::factory()->create();
-        $service = app(NationCreationService::class);
-        $service->create($activeUser, $world, '現役履歴島', '現役島主');
-        $abandoned = $service->create($abandonedUser, $world->fresh(), '破棄履歴島', '破棄島主');
-        app(NationAbandonmentService::class)->abandon($abandonedUser, $abandoned, $abandoned->name);
-
-        Schema::drop('secretary_item_instances');
-        Schema::drop('secretary_skills');
-        Schema::drop('secretaries');
-        $migration = $this->secretaryMigration();
-        $migration->up();
-        $migration->up();
-
-        $this->assertSame(
-            [$activeUser->id, $abandonedUser->id],
-            Secretary::query()->orderBy('user_id')->pluck('user_id')->all(),
-        );
-        $this->assertSame(0, Secretary::query()->where('user_id', $noHistoryUser->id)->count());
-        $this->assertSame(8, SecretarySkill::query()->count());
-    }
-
-    public function test_backfill_rerun_fails_closed_on_an_unexpected_secretary_user_id(): void
-    {
-        $world = $this->lightweightWorld();
-        $historyUser = User::factory()->create();
-        $noHistoryUser = User::factory()->create();
-        app(NationCreationService::class)->create($historyUser, $world, '集合検証島', '集合検証島主');
-        Schema::drop('secretary_item_instances');
-        Schema::drop('secretary_skills');
-        Schema::drop('secretaries');
-        $migration = $this->secretaryMigration();
-        $migration->up();
-        Secretary::query()->create([
-            'user_id' => $noHistoryUser->id,
-            'name' => null,
-            'named_at' => null,
-        ]);
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage(
-            'Secretary backfill user_id set does not exactly match the Nation-history User set.',
-        );
-        $migration->up();
-    }
-
-    #[DataProvider('unresolvedTurnStatuses')]
-    public function test_secretary_migration_rejects_unresolved_next_turn_before_schema_or_backfill(
-        string $status,
-    ): void {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-        app(NationCreationService::class)->create($user, $world, "020000拒否{$status}島", '拒否島主');
-        $run = $this->turnRun($world, $status);
-        $runBefore = $run->fresh()->getAttributes();
-        Schema::drop('secretary_item_instances');
-        Schema::drop('secretary_skills');
-        Schema::drop('secretaries');
-
-        try {
-            $this->secretaryMigration()->up();
-            $this->fail("Expected {$status} next TurnRun to block the Secretary migration.");
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString("status={$status}", $exception->getMessage());
-        }
-
-        $this->assertFalse(Schema::hasTable('secretaries'));
-        $this->assertFalse(Schema::hasTable('secretary_skills'));
-        $this->assertSame($runBefore, $run->fresh()->getAttributes());
-    }
-
-    public function test_secretary_migration_allows_a_resolved_next_turn(): void
-    {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-        app(NationCreationService::class)->create($user, $world, '020000解決済島', '解決済島主');
-        $run = $this->turnRun($world, TurnRun::STATUS_COMPLETED);
-        $runBefore = $run->fresh()->getAttributes();
-        Schema::drop('secretary_item_instances');
-        Schema::drop('secretary_skills');
-        Schema::drop('secretaries');
-
-        $this->secretaryMigration()->up();
-
-        $this->assertTrue(Schema::hasTable('secretaries'));
-        $this->assertTrue(Schema::hasTable('secretary_skills'));
-        $this->assertDatabaseHas('secretaries', ['user_id' => $user->id]);
-        $this->assertSame($runBefore, $run->fresh()->getAttributes());
-    }
-
-    public function test_secretary_migration_uses_the_existing_world_turn_lock_before_schema_creation(): void
-    {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-        app(NationCreationService::class)->create($user, $world, '020000 lock島', 'lock島主');
-        Schema::drop('secretary_item_instances');
-        Schema::drop('secretary_skills');
-        Schema::drop('secretaries');
-        $primaryConnection = DB::getDefaultConnection();
-        config([
-            'database.connections.'.self::PROBE_CONNECTION => config(
-                'database.connections.'.$primaryConnection,
-            ),
-        ]);
-        $probe = DB::connection(self::PROBE_CONNECTION);
-        $lockKey = app(WorldMutationLock::class)->key($world);
-        $acquired = $probe->selectOne(
-            'SELECT pg_try_advisory_lock(hashtextextended(?, 0)) AS acquired',
-            [$lockKey],
-        );
-        $this->assertTrue($acquired->acquired);
-
-        try {
-            $this->secretaryMigration()->up();
-            $this->fail('Expected the shared World turn lock to block the Secretary migration.');
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('turn operation holds its advisory lock', $exception->getMessage());
-        } finally {
-            $released = $probe->selectOne(
-                'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released',
-                [$lockKey],
-            );
-            $this->assertTrue($released->released);
-            DB::purge(self::PROBE_CONNECTION);
-        }
-
-        $this->assertFalse(Schema::hasTable('secretaries'));
-        $this->assertFalse(Schema::hasTable('secretary_skills'));
-    }
-
-    public function test_secretary_migration_allows_a_fresh_install_without_shared_world(): void
-    {
-        $this->assertFalse(DB::table('worlds')->where('key', 'shared-world')->exists());
-        Schema::drop('secretary_item_instances');
-        Schema::drop('secretary_skills');
-        Schema::drop('secretaries');
-
-        $this->secretaryMigration()->up();
-
-        $this->assertTrue(Schema::hasTable('secretaries'));
-        $this->assertTrue(Schema::hasTable('secretary_skills'));
-        $this->assertDatabaseCount('secretaries', 0);
-        $this->assertDatabaseCount('secretary_skills', 0);
-    }
-
     public function test_naming_requires_a_secretary_and_safe_single_line_plain_text(): void
     {
         $user = User::factory()->create();
@@ -365,38 +204,5 @@ final class SecretaryPersistenceTest extends TestCase
         $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => '<b>秘書</b>'])
             ->assertUnprocessable();
         $this->assertNull($user->secretary()->value('name'));
-    }
-
-    private function secretaryMigration(): Migration
-    {
-        return require database_path('migrations/2026_08_16_020000_create_secretary_system.php');
-    }
-
-    private function turnRun(World $world, string $status): TurnRun
-    {
-        return TurnRun::query()->create([
-            'world_id' => $world->id,
-            'target_turn' => $world->current_turn + 1,
-            'ruleset_version_id' => $world->ruleset_version_id,
-            'random_seed' => str_repeat('2', 64),
-            'source' => 'cron',
-            'is_dry_run' => false,
-            'status' => $status,
-            'attempt_count' => 1,
-            'pipeline' => [],
-            'phase_results' => [],
-            'failure_context' => ['preserve' => true],
-        ]);
-    }
-
-    /** @return array<string, array{string}> */
-    public static function unresolvedTurnStatuses(): array
-    {
-        return [
-            'pending' => [TurnRun::STATUS_PENDING],
-            'running' => [TurnRun::STATUS_RUNNING],
-            'failed' => [TurnRun::STATUS_FAILED],
-            'blocked' => [TurnRun::STATUS_BLOCKED],
-        ];
     }
 }

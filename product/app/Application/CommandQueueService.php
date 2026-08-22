@@ -7,7 +7,6 @@ use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
-use App\Domain\Command\HistoricalMonsterDispatchRequestInspector;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
@@ -49,7 +48,6 @@ final class CommandQueueService
         private readonly NationCommandTargetService $nationTargets,
         private readonly TerritoryExpansionPolicy $territoryExpansion,
         private readonly CapitalCorePolicy $capitalCores,
-        private readonly HistoricalMonsterDispatchRequestInspector $historicalDispatchRequests,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
     ) {}
 
@@ -98,33 +96,18 @@ final class CommandQueueService
                     throw new CommandRequestConflictException;
                 }
                 $requestRuleset = $duplicate->requestRulesetVersion;
-                $inspection = $this->historicalDispatchRequests->inspect($duplicate);
-                if ($requestRuleset === null) {
-                    if (! $inspection->proven || $inspection->requestRulesetVersionId === null) {
-                        throw new CommandRequestConflictException;
-                    }
-                    $requestRuleset = RulesetVersion::query()->find($inspection->requestRulesetVersionId);
-                }
                 if ($requestRuleset === null) {
                     throw new CommandRequestConflictException;
                 }
                 $requestDefinition = $duplicateDefinition;
-                if ($inspection->proven) {
-                    if ($inspection->requestRulesetVersionId !== $requestRuleset->id
-                        || $inspection->requestCommandDefinitionId === null) {
-                        throw new CommandRequestConflictException;
-                    }
+                if ($requestDefinition->ruleset_version_id !== $requestRuleset->id) {
                     $requestDefinition = CommandDefinition::query()
-                        ->whereKey($inspection->requestCommandDefinitionId)
                         ->where('ruleset_version_id', $requestRuleset->id)
+                        ->where('key', $duplicateDefinition->key)
                         ->first();
-                    if ($requestDefinition === null) {
+                    if (! $requestDefinition instanceof CommandDefinition) {
                         throw new CommandRequestConflictException;
                     }
-                } elseif ($requestRuleset->key === 'hakoniwa-2s-plus-v10'
-                    && $requestRuleset->version === 10
-                    && $duplicateDefinition->key === 'monster_dispatch') {
-                    throw new CommandRequestConflictException;
                 }
                 try {
                     $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
@@ -141,7 +124,7 @@ final class CommandQueueService
                 } catch (DomainException) {
                     throw new CommandRequestConflictException;
                 }
-                if ($duplicateDefinition->target_type === 'nation') {
+                if ($requestDefinition->target_type === 'nation') {
                     $targetX = $duplicate->target_x;
                     $targetY = $duplicate->target_y;
                 } elseif (! is_int($targetX) || ! is_int($targetY)) {

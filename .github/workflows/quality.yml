@@ -150,7 +150,7 @@ jobs:
             vendor/bin/pint --test "${changed_php[@]}"
           fi
       - name: Run static analysis on the complete application
-        run: vendor/bin/phpstan analyse app --memory-limit=1G
+        run: composer analyse
       - name: Validate complete 16-shard assignment
         run: php tests/scripts/test_shards.php verify 16
       - name: Verify serial and sharded test identifiers

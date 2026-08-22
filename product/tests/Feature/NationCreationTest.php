@@ -7,6 +7,7 @@ use App\Application\InitialIslandPlan;
 use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -124,7 +125,7 @@ class NationCreationTest extends TestCase
     public function test_initial_island_meets_the_guaranteed_coastal_candidate_capacity(): void
     {
         $world = $this->lightweightWorld();
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings = app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr6-v1');
         $settings['key'] = 'test-shallow-candidate-capacity-v1';
         $settings['initial_island_growth_steps'] = 0;
         $settings['initial_island_minimum_shallow_cells'] = 18;

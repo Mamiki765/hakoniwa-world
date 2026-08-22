@@ -93,43 +93,35 @@ path are not supported. The backup and restore procedure remains the contract in
 ## Historical responsibilities after this PR
 
 Historical authored PHP is not normal runtime input. `RulesetUpgradeAuthoringCatalog`
-remains the explicit source for historical migrations, historical migration/contract test
-fixtures, and `hakoniwa:ruleset:validate`. The validation command must continue to validate a
-historical key while normal config contains only v11.
+remains the explicit source for operator validation, immutable authoring audit, and the few
+focused tests that prove historical DB rows remain readable while mutation fails closed.
+`hakoniwa:ruleset:validate` continues to validate a historical key while normal config
+contains only v11.
 
-The `MigrationsStarted` listener remains for existing-production historical migration code
-and tests. A direct fresh install triggers the event but does not execute the historical
-migrations. Removing that listener or historical migration files is deferred because the
-same sources still have explicit non-fresh consumers.
+Historical migration PHP, its `MigrationsStarted` bootstrap, and migration-only runtime
+services were retired after the exact-source rebaseline was proven. The schema dump keeps
+the historical migration ledger, so fresh installation does not rediscover or replay those
+files. Existing production has already crossed the exact 2.3.1/v11 source preflight and
+executes only the forward-only ver 2.4.0 rebaseline migration.
 
-## PR D retirement evidence
+## PR D retirement result
 
-The following are candidates for a separate deletion PR, not changes authorized here:
+The historical-retirement PR removed:
 
-### A. No longer required by fresh install
+- roadmap/formal publication replay and historical repair/data-conversion migrations;
+- direct v2-v10 and roadmap-snapshot conversion services;
+- historical migration/idempotency suites and obsolete release checkpoint contracts; and
+- normal-test bootstrap that published all 21 authored Rulesets for every fixture.
 
-- roadmap and formal v1-v10 Ruleset publication replay;
-- historical repair/data-conversion replay; and
-- tests whose only product claim is that an empty database executes that history.
+It retained:
 
-### B. No longer required by direct production upgrade
+- historical authored Ruleset PHP and `RulesetUpgradeAuthoringCatalog`;
+- immutable historical database rows and definition links;
+- validation proof that historical authoring is available without restoring it to normal
+  config;
+- historical World read presentation and current mutation fail-closed tests; and
+- exact current fresh-install/source-upgrade, checksum, fingerprint, provenance, TurnRun,
+  lock, transaction, and integrity coverage.
 
-- direct v2-v10 or roadmap-snapshot to 2.4.0 conversions;
-- source-specific rebind overrides and guards used only by those direct conversions; and
-- old-application in-place rollback guarantees.
-
-### C. Still required only by historical tests until PR D changes them
-
-- `RulesetV2MigrationTest` through `RulesetV10MigrationTest` and associated repair suites;
-- historical migration idempotency/override fixtures; and
-- obsolete release-checkpoint assertions that do not express the new fresh/source contract.
-
-### D. Still required by operator validation
-
-- historical authored Ruleset PHP and `RulesetUpgradeAuthoringCatalog`; and
-- validation regressions proving a historical key is available without restoring it to
-  normal application config.
-
-Migration replay retirement therefore does not prove that historical authored source can be
-deleted. Archiving that source requires a replacement source-of-truth contract for operator
-validation.
+Historical authored source is therefore an audit/operator artifact, not an executable
+upgrade chain.

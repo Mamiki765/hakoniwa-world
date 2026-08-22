@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Application\RulesetPublisher;
 use App\Application\SecretaryEquipmentService;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Models\Nation;
 use App\Models\NationMembership;
@@ -14,7 +16,6 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Concerns\UsesHistoricalRulesetDatabaseFixtures;
 use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
@@ -22,12 +23,13 @@ final class SecretaryItemPresentationTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-    use UsesHistoricalRulesetDatabaseFixtures;
 
     public function test_item_effect_projection_is_explicit_owned_world_scoped_and_never_falls_back(): void
     {
         $v10World = $this->lightweightWorld();
-        $v10 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->sole();
+        $v10 = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
+        );
         $v10World->update(['ruleset_version_id' => $v10->id]);
         config(['hakoniwa.ruleset' => $v10->settings]);
         $user = User::factory()->create();

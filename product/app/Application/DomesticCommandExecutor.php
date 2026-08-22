@@ -1216,23 +1216,13 @@ final class DomesticCommandExecutor
             return $addition->applied > 0;
         }
         if ($definition->key === 'monster_dispatch') {
-            $option = ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
-                ? $this->monsterDispatchOptions->resolve($definition, $item->quantity)
-                : null;
-            $monsterKey = 'mecha_inora';
-            $dispatchSelector = 1;
-            $dispatchCostMoney = $definition->cost_money;
-            if ($option !== null) {
-                $monsterKey = $option->monsterDefinitionKey;
-                $dispatchSelector = $option->selector;
-                $dispatchCostMoney = $option->costMoney;
-            }
+            $option = $this->monsterDispatchOptions->resolve($definition, $item->quantity);
             $monster = $this->monsterSpawn->dispatch($context, $target, $item->id, $option);
             $this->events->record($context, 'command.monster_dispatched', $monster, [
                 'nation_id' => $nation->id, 'target_nation_id' => $target->id,
-                'monster_key' => $monsterKey,
-                'dispatch_selector' => $dispatchSelector,
-                'cost_money' => $dispatchCostMoney,
+                'monster_key' => $option->monsterDefinitionKey,
+                'dispatch_selector' => $option->selector,
+                'cost_money' => $option->costMoney,
             ], 'private');
 
             return true;
