@@ -52,6 +52,8 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
             'phase_results' => [],
             'failure_context' => [],
         ]);
+        $current = config('hakoniwa.ruleset');
+        config(['hakoniwa.published_rulesets' => [$current['key'] => $current]]);
 
         $this->getJson("/api/v1/public/worlds/{$world->id}/summary")->assertOk();
         $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")->assertOk();

@@ -19,11 +19,11 @@ final class SecretaryService
     public function ensureForUser(User $user): Secretary
     {
         $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v7');
-        if (! is_array($settings)) {
-            throw new DomainException('The immutable Secretary v1 ruleset contract is missing.');
+        $secretaryCatalog = config('hakoniwa.current_catalogs.secretary');
+        if (! is_array($secretaryCatalog)) {
+            throw new DomainException('The current immutable Secretary ruleset contract is missing.');
         }
-        $initialStates = $this->catalog->initialStates($settings);
+        $initialStates = $this->catalog->initialStates(['secretary' => $secretaryCatalog]);
         $secretary = Secretary::query()->firstOrCreate(
             ['user_id' => $lockedUser->id],
             ['name' => null, 'named_at' => null],

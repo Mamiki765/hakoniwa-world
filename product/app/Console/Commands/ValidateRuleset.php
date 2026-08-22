@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Domain\Ruleset\RulesetAuthoringValidator;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use DomainException;
 use Illuminate\Console\Command;
 
@@ -12,8 +13,10 @@ final class ValidateRuleset extends Command
 
     protected $description = 'Validate an authored ruleset without publishing it or changing a World';
 
-    public function handle(RulesetAuthoringValidator $validator): int
-    {
+    public function handle(
+        RulesetAuthoringValidator $validator,
+        RulesetUpgradeAuthoringCatalog $authoredRulesets,
+    ): int {
         $key = $this->option('key');
         if (! is_string($key) || $key === '') {
             $this->error('A non-empty --key is required.');
@@ -21,8 +24,12 @@ final class ValidateRuleset extends Command
             return self::FAILURE;
         }
 
-        $rulesets = config('hakoniwa.published_rulesets');
-        $settings = is_array($rulesets) && array_key_exists($key, $rulesets)
+        $rulesets = $authoredRulesets->all();
+        $configuredRulesets = config('hakoniwa.published_rulesets');
+        if (is_array($configuredRulesets)) {
+            $rulesets = array_replace($rulesets, $configuredRulesets);
+        }
+        $settings = array_key_exists($key, $rulesets)
             ? $rulesets[$key]
             : null;
         if (! is_array($settings)) {
