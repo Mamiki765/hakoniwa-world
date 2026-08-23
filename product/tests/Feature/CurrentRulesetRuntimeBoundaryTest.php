@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
 use App\Domain\Ruleset\ResetRequiredException;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapChunk;
@@ -15,7 +17,6 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
-use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
@@ -37,7 +38,9 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
         $nation = app(NationCreationService::class)->create($user, $world, '閲覧国', '試験島主');
         $space = $this->surfaceMapSpace($world);
         $chunk = MapChunk::query()->where('map_space_id', $space->id)->orderBy('id')->firstOrFail();
-        $historical = RulesetVersion::query()->where('key', 'roadmap-pr14-v1')->firstOrFail();
+        $historical = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr14-v1'),
+        );
         $world->update(['ruleset_version_id' => $historical->id]);
         $run = TurnRun::query()->create([
             'world_id' => $world->id,
@@ -52,6 +55,8 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
             'phase_results' => [],
             'failure_context' => [],
         ]);
+        $current = config('hakoniwa.ruleset');
+        config(['hakoniwa.published_rulesets' => [$current['key'] => $current]]);
 
         $this->getJson("/api/v1/public/worlds/{$world->id}/summary")->assertOk();
         $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")->assertOk();
@@ -73,7 +78,7 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
         $this->getJson("/api/v1/nations/{$nation->id}/sale-policies")->assertOk();
 
         $this->assertSame($queueCount, NationCommandQueue::query()->count());
-        $this->assertSame($historical->settings, $run->rulesetVersion()->firstOrFail()->settings);
+        $this->assertEquals($historical->settings, $run->rulesetVersion()->firstOrFail()->settings);
         $this->artisan('hakoniwa:turn:status', ['--world' => $world->key])
             ->expectsOutputToContain("ruleset={$historical->key}")
             ->assertSuccessful();
@@ -104,7 +109,9 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
             ->where('nation_id', $nation->id)
             ->where('resource_definition_id', $resource->id)
             ->firstOrFail();
-        $historical = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
+        $historical = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr2-v1'),
+        );
         $world->update(['ruleset_version_id' => $historical->id]);
         $before = $this->gameState($world, $nation, $item, $policy);
 

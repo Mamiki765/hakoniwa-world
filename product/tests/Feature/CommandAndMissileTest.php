@@ -27,7 +27,6 @@ use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
-use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -182,11 +181,15 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('defense_intercepted', $selfDetail['impacts'][0]['effect']);
     }
 
-    public function test_dormant_owned_defense_covers_active_target_while_dormant_target_protection_stays_first(): void
+    public function test_dormant_owned_defense_covers_an_active_target_outside_the_protected_radius(): void
     {
         [$world, $firingUser, $firing, $activeTarget] = $this->combatants();
         [, $dormantDefenseOwner] = $this->nation($world, '休眠防衛施設国');
-        $dormantDefenseOwner->update(['state' => 'dormant_frozen']);
+        $dormantDefenseOwner->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -215,28 +218,6 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('defense_intercepted', $coveredDetail['impacts'][0]['effect']);
         $this->assertNotNull($defense->fresh()->facility_definition_id);
         $this->assertSame(0, $coveredContext->state->finalDefenseInterceptionsUsed($activeTarget->id));
-
-        $protectedItem = $this->queue(
-            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile',
-            $defense->fresh(['terrain', 'facility', 'ownerNation']),
-        );
-        $protectedContext = $this->context(
-            $world, 3, hash('sha256', 'dormant target protection before defense'),
-            [$firing->id, $activeTarget->id, $dormantDefenseOwner->id],
-        );
-        app(SecretaryTurnService::class)->loadAttemptSnapshots(
-            $protectedContext,
-            [$firing->id, $activeTarget->id, $dormantDefenseOwner->id],
-        );
-
-        $this->resolveMissile($protectedContext, $base->fresh(['terrain', 'facility']));
-
-        $protectedDetail = json_decode((string) DB::table('audit_events')
-            ->where('event_type', 'missile.launch_detail')
-            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $protectedItem->id])
-            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame('dormant_owner_protected', $protectedDetail['impacts'][0]['effect']);
-        $this->assertNotNull($defense->fresh()->facility_definition_id);
     }
 
     public function test_later_shot_observes_defense_destroyed_earlier_in_the_same_base_processing(): void
@@ -607,13 +588,13 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, $first['finance_commands']);
         $this->assertSame(1, $first['idle_counter_increments']);
         $this->assertSame('invalid_terrain', $failed->fresh()->failure_code);
-        $this->assertSame(101, $nation->fresh()->idle_counter);
+        $this->assertSame(2001, $nation->fresh()->idle_counter);
         $this->assertSame('queued', $logging->fresh()->status);
 
         $second = app(DomesticCommandExecutor::class)->execute($this->context($world, 3, str_repeat('2', 64), [$nation->id]));
         $this->assertSame(1, $second['finance_commands']);
         $this->assertSame(1, $second['idle_counter_increments']);
-        $this->assertSame(102, $nation->fresh()->idle_counter);
+        $this->assertSame(2002, $nation->fresh()->idle_counter);
 
         $third = app(DomesticCommandExecutor::class)->execute($this->context($world, 4, str_repeat('3', 64), [$nation->id]));
         $this->assertSame(1, $third['successes']);
@@ -791,7 +772,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v11', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v12', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -2085,18 +2066,24 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.reward_distributed')->count());
     }
 
-    public function test_deviation_to_dormant_owned_cell_preserves_every_state_and_is_aggregated_as_ineffective(): void
+    public function test_missile_impact_at_the_dormant_capital_radius_is_a_logged_complete_noop(): void
     {
-        [$world, $firingUser, $firing, $activeTarget] = $this->combatants();
+        [$world, $firingUser, $firing] = $this->combatants();
         [, $dormant] = $this->nation($world, '休眠標的国');
-        $dormant->update(['state' => 'dormant_frozen']);
+        $dormant->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
-        $aim = $activeTarget->capital()->firstOrFail()->cell()->firstOrFail();
+        $capital = $dormant->capital()->firstOrFail();
+        $aim = $capital->cell()->firstOrFail();
+        $capitalCoordinate = new GridCoordinate($aim->x, $aim->y);
         $coordinate = collect((new GridCoordinate($aim->x, $aim->y))->radius(2))
             ->first(fn (GridCoordinate $candidate): bool => $candidate->x >= $space->min_x
                 && $candidate->x <= $space->max_x && $candidate->y >= $space->min_y
-                && $candidate->y <= $space->max_y && ($candidate->x !== $aim->x || $candidate->y !== $aim->y));
+                && $candidate->y <= $space->max_y && $capitalCoordinate->distanceTo($candidate) === 2);
         if (! $coordinate instanceof GridCoordinate) {
             $this->fail('No in-bounds deviation coordinate was available for the dormant target test.');
         }
@@ -2120,8 +2107,17 @@ class CommandAndMissileTest extends TestCase
         ]);
         $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $aim);
         $seed = $this->seedForImpactIndex($item, $aim, 2, $dormantCell);
+        $context = $this->context($world, 2, $seed, [$firing->id, $dormant->id]);
+        $context->state->setNationLifecycleSnapshot($dormant->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
 
-        $this->resolveMissile($this->context($world, 2, $seed, [$firing->id, $activeTarget->id]), $base);
+        $this->resolveMissile($context, $base);
 
         $this->assertSame($snapshot, $dormantCell->fresh()->only(array_keys($snapshot)));
         $this->assertTrue(MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
@@ -2129,63 +2125,11 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.ineffective_aggregated')->count());
         $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame('dormant_owner_protected', $detail['impacts'][0]['effect']);
-    }
-
-    public function test_v2_direct_dormant_and_sunken_targets_are_selectable_but_complete_no_ops(): void
-    {
-        $world = $this->lightweightWorld();
-        [$user, $firing] = $this->nation($world, '休眠直接発射国');
-        $firing->update(['money' => 10_000]);
-        $space = $this->surfaceMapSpace($world);
-        $base = $this->missileBase($firing);
-
-        foreach (['dormant_frozen', 'dormant_contestable', 'sunken_archived'] as $index => $state) {
-            [, $targetNation] = $this->nation($world, "休眠直接標的{$index}");
-            $target = MapCell::query()->where('owner_nation_id', $targetNation->id)
-                ->whereKeyNot($targetNation->capital()->value('map_cell_id'))->firstOrFail();
-            app(MapCellStateService::class)->transitionTerrain(
-                $target,
-                TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
-            );
-            app(MapCellStateService::class)->setFacility(
-                $target,
-                FacilityDefinition::query()->where('key', 'city')->firstOrFail(),
-            );
-            $target->population = 777;
-            $target->version++;
-            $target->save();
-            $targetNation->update(['state' => $state]);
-            $monster = $this->monster($world, $target);
-            $snapshot = $target->fresh()->only([
-                'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population',
-                'facility_scale', 'facility_experience', 'facility_operational_state', 'version',
-            ]);
-            $item = $this->queue(
-                app(CommandQueueService::class),
-                $user,
-                $firing,
-                $space,
-                'spp_missile',
-                $target,
-            );
-
-            $this->resolveMissile($this->context(
-                $world,
-                $index + 2,
-                hash('sha256', "v2-direct-protected:{$state}"),
-                [$firing->id, $targetNation->id],
-            ), $base);
-
-            $this->assertSame('completed', $item->fresh()->status);
-            $this->assertSame($snapshot, $target->fresh()->only(array_keys($snapshot)));
-            $this->assertTrue(MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
-                ->where('map_cell_id', $target->id)->exists());
-            $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
-                ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-            $this->assertSame('dormant_owner_protected', $detail['impacts'][0]['effect']);
-            $this->assertSame($state, $detail['impacts'][0]['owner_state']);
-        }
+        $this->assertSame('dormant_capital_protected', $detail['impacts'][0]['effect']);
+        $this->assertSame(
+            "{$dormant->name}({$dormantCell->x},{$dormantCell->y})にミサイルが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました",
+            DB::table('audit_events')->where('event_type', 'missile.dormancy_protected')->value('message'),
+        );
     }
 
     public function test_pp_deviation_stays_within_one_hex_and_out_of_bounds_is_treated_as_sea(): void
@@ -2598,223 +2542,9 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')->count());
     }
 
-    public function test_v9_lethal_missile_removes_monster_before_normal_monster_pass(): void
-    {
-        [$world, $firingUser, $firing, $targetNation] = $this->combatants(
-            'v9 lethal order',
-            'hakoniwa-2s-plus-v9',
-        );
-        $firing->update(['money' => 10_000]);
-        $space = $this->surfaceMapSpace($world);
-        $target = $this->monsterArena($world, $targetNation);
-        $monster = $this->monster($world, $target);
-        $monster->update(['current_hp' => 1, 'spawned_max_hp' => 1]);
-        $base = $this->missileBase($firing);
-        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $target);
-        $context = $this->context($world, 2, hash('sha256', 'v9 lethal before monster'), [$firing->id, $targetNation->id]);
-
-        $this->executeCellResolution($context, $base, $target);
-
-        $this->assertSame('killed', $monster->fresh()->state);
-        $this->assertFalse(MonsterOccupancy::query()->where('monster_instance_id', $monster->id)->exists());
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.moved')
-            ->where('subject_id', $monster->id)->count());
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.killed')
-            ->where('subject_id', $monster->id)->count());
-    }
-
-    public function test_v9_surviving_monster_moves_after_missile_damage(): void
-    {
-        [$world, $firingUser, $firing, $targetNation] = $this->combatants(
-            'v9 survivor order',
-            'hakoniwa-2s-plus-v9',
-        );
-        $firing->update(['money' => 10_000]);
-        $space = $this->surfaceMapSpace($world);
-        $target = $this->monsterArena($world, $targetNation);
-        $monster = $this->monster($world, $target);
-        $monster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
-        $base = $this->missileBase($firing);
-        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $target);
-        $context = $this->context($world, 2, hash('sha256', 'v9 survivor after missile'), [$firing->id, $targetNation->id]);
-
-        $this->executeCellResolution($context, $base, $target);
-
-        $this->assertSame('alive', $monster->fresh()->state);
-        $this->assertSame(1, $monster->fresh()->current_hp);
-        $this->assertSame(3, $monster->fresh()->version);
-        $this->assertNotSame($target->id, MonsterOccupancy::query()
-            ->where('monster_instance_id', $monster->id)->valueOrFail('map_cell_id'));
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.moved')
-            ->where('subject_id', $monster->id)->count());
-    }
-
-    public function test_v9_defense_and_secretary_interceptions_still_precede_normal_monster_actions(): void
-    {
-        [$world, $firingUser, $firing, $targetNation] = $this->combatants(
-            'v9 interception order',
-            'hakoniwa-2s-plus-v9',
-        );
-        $firing->update(['money' => 10_000]);
-        $space = $this->surfaceMapSpace($world);
-        $covered = $this->monsterArena($world, $targetNation);
-        $coveredMonster = $this->monster($world, $covered);
-        $this->placeFacilityAtDistance($space, $covered, $targetNation, 1, 'defense');
-        $base = $this->missileBase($firing);
-        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $covered);
-        $coveredContext = $this->context(
-            $world, 2, hash('sha256', 'v9 defense then monster'), [$firing->id, $targetNation->id],
-        );
-
-        $this->executeCellResolution($coveredContext, $base, $covered);
-
-        $this->assertSame('alive', $coveredMonster->fresh()->state);
-        $this->assertNotSame($covered->id, MonsterOccupancy::query()
-            ->where('monster_instance_id', $coveredMonster->id)->valueOrFail('map_cell_id'));
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
-
-        [$secondUser, $secondFiring] = $this->nation($world, '秘書順序発射国');
-        $secondFiring->update(['money' => 10_000]);
-        $secondArena = $this->monsterArena($world, $targetNation);
-        $secondMonster = $this->monster($world, $secondArena);
-        $secretaryTarget = $this->monsterArena($world, $targetNation);
-        $secondBase = $this->missileBase($secondFiring);
-        $this->queue(
-            app(CommandQueueService::class), $secondUser, $secondFiring, $space, 'spp_missile', $secretaryTarget,
-        );
-        $secretaryContext = $this->context(
-            $world, 3, hash('sha256', 'v9 secretary then monster'),
-            [$firing->id, $secondFiring->id, $targetNation->id],
-        );
-
-        $this->executeCellResolution($secretaryContext, $secondBase, $secondArena, $secretaryTarget);
-
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
-        $this->assertSame('alive', $secondMonster->fresh()->state);
-        $this->assertNotSame($secondArena->id, MonsterOccupancy::query()
-            ->where('monster_instance_id', $secondMonster->id)->valueOrFail('map_cell_id'));
-    }
-
-    public function test_v9_land_destruction_and_multiple_missiles_never_leave_ghost_actions_or_duplicate_rewards(): void
-    {
-        [$world, $firingUser, $firing, $targetNation] = $this->combatants(
-            'v9 removal order',
-            'hakoniwa-2s-plus-v9',
-        );
-        $firing->update(['money' => 20_000]);
-        $space = $this->surfaceMapSpace($world);
-        $destroyed = $this->monsterArena($world, $targetNation);
-        $removedMonster = $this->monster($world, $destroyed);
-        $base = $this->missileBase($firing);
-        $landItem = $this->queue(
-            app(CommandQueueService::class), $firingUser, $firing, $space, 'land_destruction_missile', $destroyed,
-        );
-        $landContext = $this->context(
-            $world, 2, $this->seedForImpactIndex($landItem, $destroyed, 2, $destroyed),
-            [$firing->id, $targetNation->id],
-        );
-
-        $this->executeCellResolution($landContext, $base, $destroyed);
-
-        $this->assertNotSame('alive', $removedMonster->fresh()->state);
-        $this->assertFalse(MonsterOccupancy::query()->where('monster_instance_id', $removedMonster->id)->exists());
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.moved')
-            ->where('subject_id', $removedMonster->id)->count());
-
-        $multipleTarget = $this->monsterArena($world, $targetNation);
-        $multipleMonster = $this->monster($world, $multipleTarget);
-        $multipleMonster->update(['current_hp' => 1, 'spawned_max_hp' => 1]);
-        $base = $this->missileBase($firing);
-        $this->queue(
-            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $multipleTarget, quantity: 2,
-        );
-        $multipleContext = $this->context(
-            $world, 3, hash('sha256', 'v9 multiple missile single reward'), [$firing->id, $targetNation->id],
-        );
-
-        $this->executeCellResolution($multipleContext, $base, $multipleTarget);
-
-        $this->assertSame('killed', $multipleMonster->fresh()->state);
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.reward_distributed')
-            ->whereRaw("metadata->>'monster_instance_id' = ?", [(string) $multipleMonster->id])->count());
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.kill_stat_incremented')
-            ->whereRaw("metadata->>'monster_instance_id' = ?", [(string) $multipleMonster->id])->count());
-    }
-
-    public function test_v9_population_growth_occurs_before_later_normal_monster_trample(): void
-    {
-        [$world, , , $targetNation] = $this->combatants(
-            'v9 growth order',
-            'hakoniwa-2s-plus-v9',
-        );
-        $origin = $this->monsterArena($world, $targetNation);
-        $monster = $this->monster($world, $origin);
-        $seed = hash('sha256', 'v9 growth before trample');
-        $rulesetSettings = $world->rulesetVersion()->valueOrFail('settings');
-        $streamVersion = $rulesetSettings['monster_system']['natural_spawn']['stream_version'];
-        $direction = (new TurnRandomStreamFactory($seed))
-            ->stream(TurnRandomStreamFactory::monsterMovement($monster->id, $streamVersion))
-            ->integer(0, 5);
-        $destinationCoordinate = (new GridCoordinate($origin->x, $origin->y))->neighbor($direction);
-        $destination = MapCell::query()->where('map_space_id', $origin->map_space_id)
-            ->where('x', $destinationCoordinate->x)->where('y', $destinationCoordinate->y)
-            ->with(['terrain', 'facility'])->firstOrFail();
-        app(MapCellStateService::class)->transitionTerrain(
-            $destination, TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
-        );
-        app(MapCellStateService::class)->setFacility(
-            $destination, FacilityDefinition::query()->where('key', 'village')->firstOrFail(),
-        );
-        $destination->owner_nation_id = $targetNation->id;
-        $destination->population = 2_900;
-        $destination->save();
-        $context = $this->context($world, 2, $seed, [$targetNation->id]);
-
-        $this->executeCellResolution($context, $origin, $destination);
-
-        $this->assertSame($destination->id, MonsterOccupancy::query()
-            ->where('monster_instance_id', $monster->id)->valueOrFail('map_cell_id'));
-        $trample = json_decode((string) DB::table('audit_events')->where('event_type', 'monster.trampled')
-            ->where('subject_id', $destination->id)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertGreaterThan(2_900, $trample['before_population']);
-        $this->assertSame('town', $trample['pre_impact_facility_key']);
-        $this->assertSame(0, $destination->fresh()->population);
-        $this->assertSame('wasteland', $destination->fresh()->terrain()->value('key'));
-    }
-
-    public function test_published_v8_keeps_historical_interleaved_monster_cell_semantics(): void
-    {
-        [$world, , , $targetNation] = $this->combatants('v8 historical order');
-        $v8 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v8')->firstOrFail();
-        $world->update(['ruleset_version_id' => $v8->id]);
-        $origin = $this->monsterArena($world, $targetNation);
-        app(MapCellStateService::class)->transitionTerrain(
-            $origin, TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
-        );
-        app(MapCellStateService::class)->setFacility(
-            $origin, FacilityDefinition::query()->where('key', 'village')->firstOrFail(),
-        );
-        $origin->population = 2_900;
-        $origin->save();
-        $monster = $this->monster($world, $origin);
-        $context = $this->context($world, 2, hash('sha256', 'v8 historical interleave'), [$targetNation->id]);
-
-        $this->executeCellResolution($context, $origin);
-
-        $this->assertSame(2_900, $origin->fresh()->population);
-        $this->assertSame('village', $origin->fresh()->facility()->value('key'));
-        $this->assertNotSame($origin->id, MonsterOccupancy::query()
-            ->where('monster_instance_id', $monster->id)->valueOrFail('map_cell_id'));
-    }
-
     /** @return array{World, User, Nation, Nation} */
-    private function combatants(string $suffix = '', ?string $rulesetKey = null): array
+    private function combatants(string $suffix = ''): array
     {
-        if ($rulesetKey !== null) {
-            config([
-                'hakoniwa.ruleset' => config("hakoniwa.published_rulesets.{$rulesetKey}"),
-            ]);
-        }
         $world = $this->lightweightWorld();
         [$user, $firing] = $this->nation($world, '発射国'.$suffix);
         [, $target] = $this->nation($world, '標的国'.$suffix);

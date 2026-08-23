@@ -69,14 +69,30 @@ final class AssetManifestResolver
         'hakoniwa_original.missile_base' => 'land9.gif',
     ];
 
+    /** @var array<string, string> */
+    private const SNOW_OVERRIDES = [
+        'tile.wasteland' => 'land1.gif', 'tile.plain' => 'land2.gif',
+        'tile.village' => 'land3.gif', 'tile.town' => 'land4.gif', 'tile.city' => 'land5.gif',
+        'tile.forest' => 'land6.gif', 'tile.farm' => 'land7.gif', 'tile.factory' => 'land8.gif',
+        'tile.missile_base' => 'land9.gif', 'tile.defense' => 'land10.gif', 'tile.decoy' => 'land10.gif',
+        'tile.mountain' => 'land11.gif', 'tile.scorched' => 'land13.gif', 'tile.mine' => 'land15.gif',
+        'tile.monument' => 'monument0.gif',
+    ];
+
     /** @var array<string, true> */
     private array $loggedFailures = [];
 
     /** @return array{key: string, url: ?string, available: bool, fallback_label: string, fallback_style: string} */
-    public function resolve(string $assetKey, string $fallbackLabel): array
+    public function resolve(string $assetKey, string $fallbackLabel, ?string $theme = null): array
     {
         $filename = self::MANIFEST[$assetKey] ?? null;
-        $path = $filename === null ? null : $this->validatedPath($filename);
+        $themeFilename = $theme === 'snow' ? (self::SNOW_OVERRIDES[$assetKey] ?? null) : null;
+        $themeDirectory = $theme === null ? null : config("hakoniwa.assets.themes.{$theme}");
+        $themePath = is_string($themeFilename) && is_string($themeDirectory)
+            ? $this->validatedPath($themeFilename, $themeDirectory)
+            : null;
+        $path = $themePath ?? ($filename === null ? null : $this->validatedPath($filename));
+        $resolvedFilename = $themePath === null ? $filename : $themeDirectory.'/'.$themeFilename;
 
         if ($filename !== null && $path === null && ! isset($this->loggedFailures[$assetKey])) {
             $this->loggedFailures[$assetKey] = true;
@@ -85,7 +101,7 @@ final class AssetManifestResolver
 
         return [
             'key' => $assetKey,
-            'url' => $path === null ? null : $this->versionedUrl($filename, $path),
+            'url' => $path === null || $resolvedFilename === null ? null : $this->versionedUrl($resolvedFilename, $path),
             'available' => $path !== null,
             'fallback_label' => $fallbackLabel,
             'fallback_style' => str_replace(['.', '_'], '-', $assetKey),
@@ -96,10 +112,14 @@ final class AssetManifestResolver
      * @param  array<int, string>  $overlayAssetKeys
      * @return array{completed: array{key: string, url: ?string, available: bool, fallback_label: string, fallback_style: string}, overlays: array<int, array{key: string, url: ?string, available: bool, fallback_label: string, fallback_style: string}>}
      */
-    public function resolveLayers(string $completedAssetKey, string $fallbackLabel, array $overlayAssetKeys = []): array
-    {
+    public function resolveLayers(
+        string $completedAssetKey,
+        string $fallbackLabel,
+        array $overlayAssetKeys = [],
+        ?string $theme = null,
+    ): array {
         return [
-            'completed' => $this->resolve($completedAssetKey, $fallbackLabel),
+            'completed' => $this->resolve($completedAssetKey, $fallbackLabel, $theme),
             'overlays' => array_values(array_map(
                 fn (string $key): array => $this->resolve($key, ''),
                 $overlayAssetKeys,
@@ -107,8 +127,16 @@ final class AssetManifestResolver
         ];
     }
 
-    public function pathForFilename(string $filename): ?string
+    public function pathForFilename(string $filename, ?string $theme = null): ?string
     {
+        if ($theme !== null) {
+            $directory = config("hakoniwa.assets.themes.{$theme}");
+            if (! is_string($directory) || ! in_array($filename, self::SNOW_OVERRIDES, true)) {
+                return null;
+            }
+
+            return $this->validatedPath($filename, $directory);
+        }
         if (! in_array($filename, self::MANIFEST, true)) {
             return null;
         }
@@ -130,9 +158,12 @@ final class AssetManifestResolver
         };
     }
 
-    private function validatedPath(string $filename): ?string
+    private function validatedPath(string $filename, ?string $directory = null): ?string
     {
         if (basename($filename) !== $filename || str_contains($filename, '..')) {
+            return null;
+        }
+        if ($directory !== null && (basename($directory) !== $directory || str_contains($directory, '..'))) {
             return null;
         }
 
@@ -142,7 +173,8 @@ final class AssetManifestResolver
             return null;
         }
 
-        $path = rtrim((string) config('hakoniwa.assets.path'), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$filename;
+        $relative = $directory === null ? $filename : $directory.DIRECTORY_SEPARATOR.$filename;
+        $path = rtrim((string) config('hakoniwa.assets.path'), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$relative;
         if (! is_readable($path) || ! is_file($path)) {
             return null;
         }

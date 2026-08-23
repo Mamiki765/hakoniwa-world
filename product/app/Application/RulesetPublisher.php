@@ -59,6 +59,29 @@ final class RulesetPublisher
     }
 
     /** @param array<string, mixed> $settings */
+    public function assertPublished(array $settings): RulesetVersion
+    {
+        $this->validator->validate($settings);
+        $key = $settings['key'] ?? null;
+        $version = $settings['version'] ?? null;
+        if (! is_string($key) || $key === '' || ! is_int($version) || $version < 1) {
+            throw new DomainException('ruleset snapshotには一意なkeyと正の整数versionが必要です。');
+        }
+
+        $ruleset = RulesetVersion::query()->where('key', $key)->first();
+        if ($ruleset === null) {
+            throw new DomainException("Published ruleset {$key} is missing.");
+        }
+
+        $supportsMonsterDisplayOrder = array_key_exists('monster_definitions', $settings)
+            && Schema::hasColumn('monster_definitions', 'display_order');
+        $this->assertSameSnapshot($ruleset, $settings, $version);
+        $this->assertDefinitions($ruleset, $settings, $supportsMonsterDisplayOrder);
+
+        return $ruleset;
+    }
+
+    /** @param array<string, mixed> $settings */
     private function assertSameSnapshot(RulesetVersion $ruleset, array $settings, int $version): void
     {
         if ($ruleset->version !== $version

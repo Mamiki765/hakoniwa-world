@@ -16,7 +16,6 @@ use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
-use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -196,33 +195,7 @@ class TurnEconomyTest extends TestCase
             ->count());
     }
 
-    public function test_v9_retry_keeps_the_published_pre_nutrition_overflow_order(): void
-    {
-        $world = $this->lightweightWorld();
-        $v9 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v9')->firstOrFail();
-        $nation = app(NationCreationService::class)->create(
-            User::factory()->create(),
-            $world,
-            'v9再試行国',
-            '試験島主',
-        );
-        $world->update(['ruleset_version_id' => $v9->id]);
-        $capacity = app(NationCapacityResolver::class)->resolve($nation, $v9);
-        $this->facilityCell($nation, 'farm', 2);
-        $this->setPopulation($nation, 1_100);
-        $this->setResources($nation, ['wheat' => $capacity->foodTons, 'fish' => 0, 'monster_meat' => 0]);
-        $nation->update(['money' => 0]);
-        [$context, $run] = $this->context($world->fresh(), $nation);
-
-        $economy = app(CompleteTurnEngine::class)->execute('nation_economy', $context);
-
-        $this->assertSame(1_000, $economy->metrics['food_overflow_sold']);
-        $this->assertSame(100, $economy->metrics['food_overflow_discarded']);
-        $this->assertSame($capacity->foodTons - 220, $this->resourceAmount($nation, 'wheat'));
-        $this->assertSame(1_100, $this->event($run, 'resource.food_overflow_resolved', 'wheat')['requested_overflow_tons']);
-    }
-
-    public function test_v10_preserves_preexisting_overcapacity_and_resolves_only_residual_production(): void
+    public function test_current_ruleset_preserves_preexisting_overcapacity_and_resolves_only_residual_production(): void
     {
         $world = $this->lightweightWorld();
         $nation = app(NationCreationService::class)->create(

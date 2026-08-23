@@ -4,11 +4,12 @@ namespace Tests\Feature;
 
 use App\Application\MessageBoardAuditRecorder;
 use App\Application\MessageBoardService;
+use App\Application\RulesetPublisher;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\AuthIdentity;
 use App\Models\IslandMessage;
 use App\Models\Nation;
 use App\Models\NationMembership;
-use App\Models\RulesetVersion;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -163,10 +164,10 @@ class MessageBoardSecretTest extends TestCase
         $this->actingAs($owner)->postJson("/api/v1/nations/{$crossWorldTarget->id}/message-board/secret", ['body' => 'cross'])
             ->assertForbidden();
 
-        $target->update(['state' => 'sunken_archived']);
+        $target->update(['state' => 'abandoned']);
         Carbon::setTestNow(now()->addSeconds(10));
         $this->actingAs($owner)->postJson("/api/v1/nations/{$target->id}/message-board/secret", ['body' => 'archive'])
-            ->assertUnprocessable();
+            ->assertNotFound();
     }
 
     public function test_historical_world_rejects_public_and_secret_posts_without_any_mutation(): void
@@ -174,7 +175,9 @@ class MessageBoardSecretTest extends TestCase
         $world = $this->lightweightWorld();
         [$owner, $sender] = $this->ownerAndNation($world, '履歴送信島', 500);
         [, $target] = $this->ownerAndNation($world, '履歴受信島', 500);
-        $historical = RulesetVersion::query()->where('key', 'roadmap-pr2-v1')->firstOrFail();
+        $historical = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr2-v1'),
+        );
         $world->update(['ruleset_version_id' => $historical->id]);
 
         $this->actingAs($owner)

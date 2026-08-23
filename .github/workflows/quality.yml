@@ -150,7 +150,7 @@ jobs:
             vendor/bin/pint --test "${changed_php[@]}"
           fi
       - name: Run static analysis on the complete application
-        run: vendor/bin/phpstan analyse app --memory-limit=1G
+        run: composer analyse
       - name: Validate complete 16-shard assignment
         run: php tests/scripts/test_shards.php verify 16
       - name: Verify serial and sharded test identifiers
@@ -200,6 +200,8 @@ jobs:
           coverage: none
       - name: Map the Compose test hostname to the service container
         run: echo "127.0.0.1 hakoniwa-postgres" | sudo tee -a /etc/hosts
+      - name: Install PostgreSQL client for Laravel schema loading
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
       - name: Download validated dependency tree
         uses: actions/download-artifact@v8
         with:

@@ -24,6 +24,13 @@ class TileAssetTest extends TestCase
 
     protected function tearDown(): void
     {
+        $snowDirectory = $this->assetDirectory.DIRECTORY_SEPARATOR.'snow';
+        foreach (glob($snowDirectory.DIRECTORY_SEPARATOR.'*') ?: [] as $file) {
+            unlink($file);
+        }
+        if (is_dir($snowDirectory)) {
+            rmdir($snowDirectory);
+        }
         foreach (glob($this->assetDirectory.DIRECTORY_SEPARATOR.'*') ?: [] as $file) {
             unlink($file);
         }
@@ -82,6 +89,33 @@ class TileAssetTest extends TestCase
         $this->assertStringContainsString('/land13.gif?v=', (string) $resolver->resolve('tile.scorched', '焼け跡')['url']);
         $this->assertStringContainsString('/land10.gif?v=', (string) $resolver->resolve('tile.defense', '防衛施設')['url']);
         $this->assertStringContainsString('/land10.gif?v=', (string) $resolver->resolve('tile.decoy', 'ハリボテ')['url']);
+    }
+
+    public function test_snow_theme_uses_only_same_basename_allowlisted_overrides_and_falls_back_to_normal(): void
+    {
+        mkdir($this->assetDirectory.DIRECTORY_SEPARATOR.'snow', 0777, true);
+        config(['hakoniwa.assets.themes.snow' => 'snow']);
+        foreach (['land0.gif', 'land1.gif', 'capital.gif', 'monument.png'] as $filename) {
+            $this->writeGif($filename);
+        }
+        foreach (['snow/land1.gif', 'snow/monument0.gif'] as $filename) {
+            $this->writeGif($filename);
+        }
+        $resolver = app(AssetManifestResolver::class);
+
+        $this->assertStringContainsString('/snow/land1.gif?v=', (string) $resolver
+            ->resolve('tile.wasteland', '荒地', 'snow')['url']);
+        $this->assertStringContainsString('/snow/monument0.gif?v=', (string) $resolver
+            ->resolve('tile.monument', '記念碑', 'snow')['url']);
+        $this->assertStringContainsString('/land0.gif?v=', (string) $resolver
+            ->resolve('tile.sea', '海', 'snow')['url']);
+        $this->assertStringContainsString('/capital.gif?v=', (string) $resolver
+            ->resolve('tile.capital', '首都', 'snow')['url']);
+        $this->assertNull($resolver->pathForFilename('land0.gif', 'snow'));
+        $this->assertNull($resolver->pathForFilename('land1.gif', 'unknown'));
+        $this->get('/assets/hakoniwa-tiles/snow/land1.gif')->assertOk()
+            ->assertHeader('Content-Type', 'image/gif');
+        $this->get('/assets/hakoniwa-tiles/snow/land0.gif')->assertNotFound();
     }
 
     public function test_awards_use_only_the_allowlisted_original_prize_zero_through_ten_assets(): void

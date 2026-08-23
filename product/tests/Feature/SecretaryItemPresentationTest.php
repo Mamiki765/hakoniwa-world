@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Application\NationCreationService;
+use App\Application\RulesetPublisher;
 use App\Application\SecretaryEquipmentService;
+use App\Application\SecretaryService;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Models\Nation;
 use App\Models\NationMembership;
@@ -25,12 +27,30 @@ final class SecretaryItemPresentationTest extends TestCase
     public function test_item_effect_projection_is_explicit_owned_world_scoped_and_never_falls_back(): void
     {
         $v10World = $this->lightweightWorld();
-        $v10 = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->sole();
+        $v10 = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
+        );
         $v10World->update(['ruleset_version_id' => $v10->id]);
         config(['hakoniwa.ruleset' => $v10->settings]);
         $user = User::factory()->create();
-        app(NationCreationService::class)->create($user, $v10World, 'v10表示国', '表示島主');
-        $secretary = $user->secretary()->firstOrFail();
+        $v10Nation = Nation::query()->create([
+            'world_id' => $v10World->id,
+            'nation_number' => 1,
+            'registered_turn' => 1,
+            'name' => 'v10表示国',
+            'owner_name' => '表示島主',
+            'profile_comment' => '',
+            'money' => 100,
+            'state' => 'active',
+            'idle_counter' => 100,
+        ]);
+        NationMembership::query()->create([
+            'user_id' => $user->id,
+            'world_id' => $v10World->id,
+            'nation_id' => $v10Nation->id,
+            'role' => 'owner',
+        ]);
+        $secretary = app(SecretaryService::class)->ensureForUser($user);
         SecretaryItemInstance::query()->create([
             'secretary_id' => $secretary->id,
             'item_key' => SecretaryItemCatalog::RING,
@@ -91,7 +111,11 @@ final class SecretaryItemPresentationTest extends TestCase
                 '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
             );
 
-        $v11Nation->update(['state' => 'dormant_frozen']);
+        $v11Nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $this->actingAs($user)->getJson('/api/v1/me/secretary')
             ->assertOk()
             ->assertJsonPath('data.effect_context', null)

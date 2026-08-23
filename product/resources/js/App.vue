@@ -106,6 +106,8 @@ const profileComment = ref('');
 const abandonmentModalOpen = ref(false);
 const abandonmentConfirmationName = ref('');
 const abandonmentError = ref('');
+const dormancyDays = ref(1);
+const dormancyError = ref('');
 const registrationErrors = ref<Record<string, string>>({});
 const profileErrors = ref<Record<string, string>>({});
 const profileSecretaryName = ref('');
@@ -929,6 +931,29 @@ async function updateProfile(): Promise<void> {
     }
 }
 
+async function requestDormancy(): Promise<void> {
+    const target = nation.value;
+    if (target === null || !target.can_request_dormancy) return;
+    busy.value = true;
+    message.value = '';
+    dormancyError.value = '';
+    try {
+        nation.value = await api<Nation>(`/api/v1/nations/${target.id}/dormancy`, {
+            method: 'POST',
+            body: JSON.stringify({ days: dormancyDays.value }),
+        });
+        nationStateGeneration++;
+        message.value = `${dormancyDays.value}日間の休止を開始しました。期限前には解除できません。`;
+        await loadPublicLobby();
+    } catch (error) {
+        const errors = validationErrors(error);
+        dormancyError.value = errors.days
+            ?? (error instanceof Error ? error.message : '島を休止できませんでした。');
+    } finally {
+        busy.value = false;
+    }
+}
+
 function openAbandonmentModal(): void {
     abandonmentConfirmationName.value = '';
     abandonmentError.value = '';
@@ -1142,11 +1167,11 @@ async function abandonNation(): Promise<void> {
                                             type="button"
                                             :class="{
                                                 'is-finance-only': entry.finance_only_turns > 0,
-                                                'is-dormant': entry.state === 'dormant_frozen' || entry.state === 'dormant_contestable',
+                                                'is-dormant': entry.state === 'dormant',
                                             }"
                                             @click="openPreview(entry.id)"
                                         >
-                                            {{ entry.name }}<template v-if="entry.state === 'dormant_frozen' || entry.state === 'dormant_contestable'">（休止中）</template><template v-else-if="entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
+                                            {{ entry.name }} <span class="state-badge">{{ entry.state_label }}</span><template v-if="entry.state !== 'dormant' && entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
                                         </button>
                                         <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
                                     </td>
@@ -1379,6 +1404,7 @@ async function abandonNation(): Promise<void> {
                 <div class="hud-identity">
                     <p class="eyebrow">MY ISLAND</p>
                     <h1>N{{ nation.nation_number }} {{ nation.name }}</h1>
+                    <p><span class="state-badge">{{ nation.state_label }}</span><template v-if="nation.winter_theme_active"> 冬theme適用中</template></p>
                     <p class="turn-indicator">現在ターン {{ nation.current_turn }}</p>
                     <p class="profile-owner">島主：{{ nation.owner_name }}</p>
                     <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
@@ -1459,7 +1485,6 @@ async function abandonNation(): Promise<void> {
                 context="development"
                 @posted="refreshMyNation"
             />
-            <IslandEventLog :key="`public:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="public" />
             <IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" />
         </section>
 
@@ -1631,8 +1656,36 @@ async function abandonNation(): Promise<void> {
             </form>
             <section class="danger-zone" aria-labelledby="danger-zone-title">
                 <h2 id="danger-zone-title">危険な操作</h2>
-                <p>島の破棄は元に戻せません。領土・人口・施設・資源・開発予定はすべて失われます。</p>
-                <button class="button danger" type="button" :disabled="busy" @click="openAbandonmentModal">この島を破棄する</button>
+                <section class="dormancy-block" aria-labelledby="dormancy-title">
+                    <h3 id="dormancy-title">島を休止する</h3>
+                    <template v-if="nation.state === 'dormant'">
+                        <p><strong>現在休止中</strong></p>
+                        <dl class="dormancy-status">
+                            <div><dt>理由</dt><dd>{{ nation.state_reason === 'manual' ? '手動休止' : nation.state_reason === 'collapse' ? '人口・食料の枯渇' : '無活動' }}</dd></div>
+                            <div><dt>指定期間</dt><dd>{{ nation.manual_dormancy_days === null ? '自動休止' : `${nation.manual_dormancy_days}日` }}</dd></div>
+                            <div><dt>再開予定turn</dt><dd>{{ nation.resume_at_turn === null ? '通常command登録後の次official Turn' : `Turn ${nation.resume_at_turn}` }}</dd></div>
+                            <div><dt>残りturn / 日数</dt><dd>{{ nation.dormancy_remaining_turns === null ? '期限なし' : `${nation.dormancy_remaining_turns} turn / 約${nation.dormancy_remaining_days}日` }}</dd></div>
+                            <div><dt>自動破棄まで</dt><dd>{{ nation.abandonment_remaining_turns }} turn</dd></div>
+                            <div><dt>表示</dt><dd>冬theme適用中</dd></div>
+                        </dl>
+                        <p class="field-hint">手動休止は指定期間が終わるまで解除できません。</p>
+                    </template>
+                    <form v-else class="dormancy-form" @submit.prevent="requestDormancy">
+                        <p>1〜7日から期間を選択します。指定期間中は早期解除できません。</p>
+                        <label for="dormancy-days">休止期間</label>
+                        <select id="dormancy-days" v-model.number="dormancyDays" :disabled="busy">
+                            <option v-for="days in 7" :key="days" :value="days">{{ days }}日</option>
+                        </select>
+                        <p class="field-hint">選択した期間と期限前解除不可の説明を確認して申請してください。</p>
+                        <p v-if="dormancyError" class="field-error" role="alert">{{ dormancyError }}</p>
+                        <button class="button secondary" type="submit" :disabled="busy || !nation.can_request_dormancy">この島を休止する</button>
+                    </form>
+                </section>
+                <section class="abandonment-block" aria-labelledby="abandonment-block-title">
+                    <h3 id="abandonment-block-title">島を破棄する</h3>
+                    <p>島の破棄は元に戻せません。領土・人口・施設・資源・開発予定はすべて失われます。</p>
+                    <button class="button danger" type="button" :disabled="busy || nation.state !== 'active'" @click="openAbandonmentModal">この島を破棄する</button>
+                </section>
             </section>
         </section>
 
@@ -1656,6 +1709,12 @@ async function abandonNation(): Promise<void> {
             <p class="eyebrow">CREDITS</p>
             <h1>参考作品と画像</h1>
             <p>箱庭諸島2＋：字・原作 徳岡宏樹、画像 小川克人、題字 稲葉修吾。</p>
+            <p>
+                雪国チップ / K.Y studio / <a href="https://web.archive.org/web/20080115185144/http://www.propel.ne.jp/~yysky/gallery/" target="_blank" rel="noopener noreferrer">配布元</a>
+            </p>
+            <a href="https://web.archive.org/web/20080115185144/http://www.propel.ne.jp/~yysky/gallery/" target="_blank" rel="noopener noreferrer">
+                <img src="https://assets.pbwlove.com/hakoniwa/snow/banner_y.gif" alt="雪国チップ / K.Y studio" loading="lazy">
+            </a>
             <p><a href="http://www.bekkoame.ne.jp/~tokuoka/hakoniwa.html" rel="external">原配布元</a></p>
             <p>原作GIFは本リポジトリとDocker imageに含まれません。未配置時はCSS fallbackを表示します。</p>
         </section>

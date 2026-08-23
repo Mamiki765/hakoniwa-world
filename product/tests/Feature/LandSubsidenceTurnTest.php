@@ -24,7 +24,6 @@ use App\Models\User;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -75,8 +74,7 @@ class LandSubsidenceTurnTest extends TestCase
         $this->assertSame(101, $this->event($run, 'land_subsidence.triggered')['owned_land_cells_before']);
     }
 
-    #[DataProvider('dormantStateProvider')]
-    public function test_dormant_nations_are_excluded_and_keep_their_map_and_capital_frozen(string $state): void
+    public function test_dormant_land_subsidence_protects_the_capital_radius_but_mutates_outside_it(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation();
         $this->resetSurface($space);
@@ -89,27 +87,34 @@ class LandSubsidenceTurnTest extends TestCase
         $nation->capital()->firstOrFail()->update([
             'map_cell_id' => $capital->id, 'x' => $capital->x, 'y' => $capital->y,
         ]);
-        $nation->update(['state' => $state]);
-        $before = $this->surfaceSnapshot($space);
-        [$context, $run] = $this->context($world, $ruleset, hash('sha256', "land-subsidence-{$state}"));
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'land-subsidence-dormant'));
+        $context->state->setNationLifecycleSnapshot($nation->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
 
         $metrics = app(DisasterTurnService::class)->executeGlobal($context);
 
-        $this->assertSame(0, $metrics['land_subsidence_nations']);
-        $this->assertSame($before, $this->surfaceSnapshot($space));
-        $this->assertFalse(DB::table('audit_events')
+        $this->assertSame(1, $metrics['land_subsidence_nations']);
+        $this->assertGreaterThan(
+            0,
+            $metrics['land_subsidence_changed_to_sea'] + $metrics['land_subsidence_changed_to_shallow'],
+        );
+        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+        $this->assertSame(1_000, $capital->fresh()->population);
+        $this->assertTrue(DB::table('audit_events')
             ->where('event_type', 'land_subsidence.triggered')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
             ->exists());
-    }
-
-    /** @return array<string, array{string}> */
-    public static function dormantStateProvider(): array
-    {
-        return [
-            'frozen' => ['dormant_frozen'],
-            'contestable' => ['dormant_contestable'],
-        ];
     }
 
     public function test_snapshot_effects_preserve_mountains_capital_foreign_cells_and_player_secrecy(): void

@@ -27,6 +27,17 @@ class NationResource extends JsonResource
             ? app(NationCapacityResolver::class)->resolve($this->resource)
             : null;
         $currentTurn = (int) $this->world()->value('current_turn');
+        $lifecycle = config('hakoniwa.ruleset.nation_lifecycle', []);
+        $turnsPerDay = is_int($lifecycle['turns_per_day'] ?? null) ? $lifecycle['turns_per_day'] : 12;
+        $abandonmentThreshold = is_int($lifecycle['abandonment_idle_threshold'] ?? null)
+            ? $lifecycle['abandonment_idle_threshold'] : 2160;
+        $remainingTurns = $this->state === 'dormant' && $this->resume_at_turn !== null
+            ? max(0, (int) $this->resume_at_turn - $currentTurn - 1)
+            : null;
+        $manualDays = $this->state_reason === 'manual'
+            && $this->state_started_turn !== null && $this->resume_at_turn !== null
+                ? intdiv((int) $this->resume_at_turn - (int) $this->state_started_turn - 1, $turnsPerDay)
+                : null;
         $money = app(MoneyFormatter::class);
         $publicMoney = $money->publicEstimate((int) $this->money);
 
@@ -48,11 +59,26 @@ class NationResource extends JsonResource
                 (int) $this->money >= ($capacities->money ?? PHP_INT_MAX),
             ),
             'state' => $this->state,
+            'state_label' => match ($this->state) {
+                'active' => '通常', 'dormant' => '放置', 'recovery' => '終戦',
+                'abandoned' => '破棄', default => $this->state,
+            },
+            'state_reason' => $this->state_reason,
+            'state_started_turn' => $this->state_started_turn,
+            'resume_at_turn' => $this->resume_at_turn,
+            'manual_dormancy_days' => $manualDays,
+            'dormancy_remaining_turns' => $remainingTurns,
+            'dormancy_remaining_days' => $remainingTurns === null ? null : (int) ceil($remainingTurns / $turnsPerDay),
+            'abandonment_remaining_turns' => max(0, $abandonmentThreshold - (int) $this->idle_counter),
+            'can_request_dormancy' => $isOwner && $this->state === 'active',
+            'winter_theme_active' => $this->state === 'dormant',
             'current_turn' => $currentTurn,
             'registered_turn' => (int) $this->registered_turn,
             'survival_turns' => max(0, $currentTurn - (int) $this->registered_turn),
             'finance_only_turns' => (int) $this->idle_counter,
-            'activity_status' => (int) $this->idle_counter > 0 ? 'finance_only' : 'active',
+            'activity_status' => $this->state === 'dormant'
+                ? 'dormant'
+                : ((int) $this->idle_counter > 0 ? 'finance_only' : 'active'),
             'total_population' => $basicStatus['total_population'],
             'territory_cell_count' => $basicStatus['territory_cell_count'],
             'owned_land_cells' => $basicStatus['owned_land_cells'],

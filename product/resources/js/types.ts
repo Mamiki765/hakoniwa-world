@@ -156,12 +156,22 @@ export interface Nation {
     mine_capacity_people: number;
     food_resources: FoodResource[];
     resources: NationResource[];
-    state: string;
+    state: 'active' | 'dormant' | 'recovery' | 'abandoned';
+    state_label: string;
+    state_reason: 'idle' | 'collapse' | 'manual' | null;
+    state_started_turn: number | null;
+    resume_at_turn: number | null;
+    manual_dormancy_days: number | null;
+    dormancy_remaining_turns: number | null;
+    dormancy_remaining_days: number | null;
+    abandonment_remaining_turns: number;
+    can_request_dormancy: boolean;
+    winter_theme_active: boolean;
     current_turn: number;
     registered_turn: number;
     survival_turns: number;
     finance_only_turns: number;
-    activity_status: 'active' | 'finance_only';
+    activity_status: 'active' | 'finance_only' | 'dormant';
     total_population: number;
     territory_cell_count: number;
     owned_land_cells: number;
@@ -190,6 +200,7 @@ export interface PublicNationSummary {
     name: string;
     owner_name: string;
     state: string;
+    state_label: string;
     total_population: number;
     territory_cell_count: number;
     owned_land_cells: number;
@@ -202,7 +213,7 @@ export interface PublicNationSummary {
     registered_turn: number;
     survival_turns: number;
     finance_only_turns: number;
-    activity_status: 'active' | 'finance_only';
+    activity_status: 'active' | 'finance_only' | 'dormant';
     last_updated_turn: number;
     comment: string;
 }

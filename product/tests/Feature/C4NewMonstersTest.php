@@ -15,14 +15,12 @@ use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\RulesetPublisher;
 use App\Domain\Command\CommandRequestConflictException;
-use App\Domain\Command\HistoricalMonsterDispatchRequestInspector;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
-use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -43,7 +41,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
 final class C4NewMonstersTest extends TestCase
@@ -153,141 +150,6 @@ final class C4NewMonstersTest extends TestCase
         $this->assertSame(9_999, $item->failure_metadata['cost_money']);
         $this->assertSame(9_999, $sender->fresh()->money);
         $this->assertDatabaseCount('monster_instances', 0);
-    }
-
-    public function test_historical_v10_dispatch_inspection_is_state_safe_and_duplicate_comparison_preserves_the_hash(): void
-    {
-        [$world] = $this->v10World();
-        $user = User::factory()->create();
-        $sender = app(NationCreationService::class)->create($user, $world, '履歴元', '履歴主');
-        $target = app(NationCreationService::class)->create(User::factory()->create(), $world, '履歴先', '対象主');
-        $space = $this->surfaceMapSpace($world);
-        $requestKey = (string) Str::uuid();
-        $item = app(CommandQueueService::class)->add(
-            user: $user,
-            nation: $sender,
-            mapSpace: $space,
-            commandKey: 'monster_dispatch',
-            targetX: null,
-            targetY: null,
-            requestKey: $requestKey,
-            expectedVersion: 1,
-            parameters: ['target_nation_id' => $target->id],
-        )['item'];
-        $fingerprint = $item->request_fingerprint;
-        $item->update(['request_ruleset_version_id' => null]);
-        $item->load('definition.rulesetVersion');
-        $inspector = app(HistoricalMonsterDispatchRequestInspector::class);
-
-        foreach (['queued', 'completed', 'failed', 'cancelled'] as $status) {
-            $item->status = $status;
-            $inspection = $inspector->inspect($item);
-            $this->assertTrue($inspection->proven, $status);
-            $this->assertSame(1, $inspection->selector);
-        }
-        $item->status = 'queued';
-        $item->request_fingerprint = null;
-        $this->assertTrue($inspector->inspect($item)->proven);
-        $item->request_fingerprint = $fingerprint;
-        $item->syncOriginal();
-
-        $duplicate = app(CommandQueueService::class)->add(
-            user: $user,
-            nation: $sender,
-            mapSpace: $space,
-            commandKey: 'monster_dispatch',
-            targetX: null,
-            targetY: null,
-            requestKey: $requestKey,
-            expectedVersion: 999,
-            parameters: ['target_nation_id' => $target->id],
-        );
-        $this->assertTrue($duplicate['duplicate']);
-        $this->assertSame($fingerprint, $duplicate['item']->request_fingerprint);
-
-        $this->expectException(CommandRequestConflictException::class);
-        app(CommandQueueService::class)->add(
-            user: $user,
-            nation: $sender,
-            mapSpace: $space,
-            commandKey: 'monster_dispatch',
-            targetX: null,
-            targetY: null,
-            requestKey: $requestKey,
-            expectedVersion: 999,
-            quantity: 2,
-            parameters: ['target_nation_id' => $target->id],
-            quantityProvided: true,
-        );
-    }
-
-    public function test_proven_v10_selector_less_retry_survives_request_provenance_backfill_and_execution_definition_rebind(): void
-    {
-        [$world] = $this->v10World();
-        $v10 = $world->rulesetVersion;
-        $user = User::factory()->create();
-        $sender = app(NationCreationService::class)->create($user, $world, '再束縛元', '履歴主');
-        $target = app(NationCreationService::class)->create(User::factory()->create(), $world, '再束縛先', '対象主');
-        $space = $this->surfaceMapSpace($world);
-        $requestKey = (string) Str::uuid();
-        $item = app(CommandQueueService::class)->add(
-            user: $user,
-            nation: $sender,
-            mapSpace: $space,
-            commandKey: 'monster_dispatch',
-            targetX: null,
-            targetY: null,
-            requestKey: $requestKey,
-            expectedVersion: 1,
-            parameters: ['target_nation_id' => $target->id],
-        )['item'];
-        $fingerprint = $item->request_fingerprint;
-
-        $v11Settings = V11SecretaryItemRulesetFixture::settings();
-        $v11 = app(RulesetPublisher::class)->publish($v11Settings);
-        $v11Dispatch = CommandDefinition::query()
-            ->where('ruleset_version_id', $v11->id)
-            ->where('key', 'monster_dispatch')
-            ->sole();
-        config(['hakoniwa.ruleset' => $v11Settings]);
-        $world->update(['ruleset_version_id' => $v11->id]);
-        $item->update([
-            'request_ruleset_version_id' => $v10->id,
-            'command_definition_id' => $v11Dispatch->id,
-        ]);
-
-        $duplicate = app(CommandQueueService::class)->add(
-            user: $user,
-            nation: $sender,
-            mapSpace: $space,
-            commandKey: 'monster_dispatch',
-            targetX: null,
-            targetY: null,
-            requestKey: $requestKey,
-            expectedVersion: 999,
-            parameters: ['target_nation_id' => $target->id],
-        );
-
-        $this->assertTrue($duplicate['duplicate']);
-        $this->assertSame($v10->id, $duplicate['item']->request_ruleset_version_id);
-        $this->assertSame($v11Dispatch->id, $duplicate['item']->command_definition_id);
-        $this->assertSame($fingerprint, $duplicate['item']->request_fingerprint);
-        $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
-
-        $this->expectException(CommandRequestConflictException::class);
-        app(CommandQueueService::class)->add(
-            user: $user,
-            nation: $sender,
-            mapSpace: $space,
-            commandKey: 'monster_dispatch',
-            targetX: null,
-            targetY: null,
-            requestKey: $requestKey,
-            expectedVersion: 999,
-            quantity: 2,
-            parameters: ['target_nation_id' => $target->id],
-            quantityProvided: true,
-        );
     }
 
     public function test_aoi_world_spawn_uses_one_world_draw_stable_water_candidates_and_no_spawn_turn_action(): void
@@ -797,20 +659,10 @@ final class C4NewMonstersTest extends TestCase
     private function v11World(): array
     {
         $world = $this->lightweightWorld();
-        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v11');
+        // The feature set authored in v11 remains supported by the current v12 ruleset.
+        $settings = config('hakoniwa.ruleset');
         $ruleset = app(RulesetPublisher::class)->publish($settings);
         config(['hakoniwa.ruleset' => $settings]);
-        $world->update(['ruleset_version_id' => $ruleset->id]);
-
-        return [$world->fresh(), $ruleset];
-    }
-
-    /** @return array{World, RulesetVersion} */
-    private function v10World(): array
-    {
-        $world = $this->lightweightWorld();
-        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v10')->sole();
-        config(['hakoniwa.ruleset' => $ruleset->settings]);
         $world->update(['ruleset_version_id' => $ruleset->id]);
 
         return [$world->fresh(), $ruleset];

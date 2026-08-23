@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Application\CurrentCatalogInstaller;
 use App\Application\MapSpaceCoveragePreflight;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
@@ -71,7 +72,7 @@ class WorldInitializationTest extends TestCase
 
     public function test_failure_rolls_back_world_and_cells(): void
     {
-        $generator = new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class), app(MapSpaceCoveragePreflight::class)) extends OceanWorldGenerator
+        $generator = new class(app(ChunkCoordinateService::class), app(RulesetPublisher::class), app(CurrentRulesetGuard::class), app(MapSpaceCoveragePreflight::class), app(CurrentCatalogInstaller::class)) extends OceanWorldGenerator
         {
             protected function afterBatchInserted(int $inserted): void
             {
@@ -100,7 +101,7 @@ class WorldInitializationTest extends TestCase
         $worldRuleset = $world->rulesetVersion()->firstOrFail();
 
         $this->assertSame($published->id, $worldRuleset->id);
-        $this->assertSame('hakoniwa-2s-plus-v11', $worldRuleset->key);
+        $this->assertSame('hakoniwa-2s-plus-v12', $worldRuleset->key);
         $this->assertSame($settingsFingerprint, hash('sha256', (string) $worldRuleset->getRawOriginal('settings')));
         $this->assertSame(59, $worldRuleset->settings['initial_x_max']);
         $this->assertSame(59, $worldRuleset->settings['initial_y_max']);

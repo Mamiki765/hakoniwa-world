@@ -19,6 +19,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $money
  * @property string $state
  * @property int $idle_counter
+ * @property string|null $state_reason
+ * @property int|null $state_started_turn
+ * @property int|null $resume_at_turn
  * @property-read NationCapital|null $capital
  * @property-read Collection<int, NationResource> $resourceBalances
  */
@@ -26,7 +29,7 @@ class Nation extends Model
 {
     protected $fillable = [
         'world_id', 'nation_number', 'registered_turn', 'name', 'owner_name', 'profile_comment', 'money', 'state',
-        'idle_counter',
+        'idle_counter', 'state_reason', 'state_started_turn', 'resume_at_turn',
     ];
 
     /** @return array<string, string> */
@@ -36,6 +39,8 @@ class Nation extends Model
             'nation_number' => 'integer',
             'registered_turn' => 'integer',
             'idle_counter' => 'integer',
+            'state_started_turn' => 'integer',
+            'resume_at_turn' => 'integer',
         ];
     }
 

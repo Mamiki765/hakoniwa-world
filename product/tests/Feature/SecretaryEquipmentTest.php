@@ -57,7 +57,7 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertJsonPath('data.effect_context.source', 'owned_world')
             ->assertJsonPath('data.effect_context.world_id', $world->id)
             ->assertJsonPath('data.effect_context.ruleset_version_id', $world->ruleset_version_id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 11)
+            ->assertJsonPath('data.effect_context.ruleset_version', 12)
             ->assertJsonPath('data.items.0.effect_text', '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。');
 
         $unownedWorld = World::query()->create([

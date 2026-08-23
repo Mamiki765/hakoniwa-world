@@ -20,7 +20,7 @@ class NationCapacityTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_resolver_uses_published_base_capacities_without_modifiers(): void
+    public function test_current_capacity_resolution_modifier_boundary_and_bounded_credits(): void
     {
         [, $nation] = $this->nation('容量国');
         $base = app(NationCapacityResolver::class)->resolve($nation);
@@ -31,22 +31,18 @@ class NationCapacityTest extends TestCase
             'industrial_goods' => 9_999_000,
             'minerals' => 9_999_000,
         ], $base->resources);
-    }
-
-    public function test_modifier_boundary_stays_fail_closed_until_e04_is_decided(): void
-    {
-        [, $nation] = $this->nation('容量拡張保留国');
         $modifier = new class implements CapacityModifier {};
 
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Capacity modifier semantics are deferred until E-04 is decided.');
+        try {
+            (new NationCapacityResolver([$modifier]))->resolve($nation);
+            $this->fail('Expected the deferred capacity modifier boundary to fail closed.');
+        } catch (DomainException $exception) {
+            $this->assertSame(
+                'Capacity modifier semantics are deferred until E-04 is decided.',
+                $exception->getMessage(),
+            );
+        }
 
-        (new NationCapacityResolver([$modifier]))->resolve($nation);
-    }
-
-    public function test_money_credit_never_exceeds_capacity_and_reports_actual_application(): void
-    {
-        [, $nation] = $this->nation('資金容量国');
         $service = app(CapacityBoundedAssetService::class);
 
         $nation->update(['money' => 9_998]);
@@ -60,11 +56,7 @@ class NationCapacityTest extends TestCase
         $this->assertSame(0, $full->applied);
         $this->assertSame(1, $full->overflow);
         $this->assertSame(9_999, $nation->fresh()->money);
-    }
 
-    public function test_food_capacity_sums_every_food_category_and_excludes_non_food(): void
-    {
-        [, $nation] = $this->nation('食料容量国');
         $balances = NationResource::query()->where('nation_id', $nation->id)->get()
             ->keyBy('resource_definition_id');
         $definitions = ResourceDefinition::query()->get()->keyBy('key');

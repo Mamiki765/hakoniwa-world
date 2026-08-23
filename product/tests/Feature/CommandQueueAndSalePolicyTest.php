@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
+use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -1042,6 +1044,114 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->where('subject_id', $itemId)->count());
     }
 
+    public function test_current_duplicate_uses_immutable_cross_version_request_provenance(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('移行済み冪等国');
+        $target = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $nation->world()->firstOrFail(),
+            '移行済み対象国',
+            '対象島主',
+        );
+        $world = $nation->world()->firstOrFail();
+        $v10 = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
+        );
+        $v10Definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $v10->id)
+            ->where('key', 'monster_dispatch')
+            ->sole();
+        $v11Definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'monster_dispatch')
+            ->sole();
+        $this->assertArrayNotHasKey('quantity_selects_catalog', $v10Definition->metadata);
+        $this->assertSame('monster_dispatch_options', $v11Definition->metadata['quantity_selects_catalog']);
+
+        $queue = NationCommandQueue::query()->create([
+            'nation_id' => $nation->id,
+            'map_space_id' => $mapSpace->id,
+            'version' => 2,
+        ]);
+        $parameters = ['target_nation_id' => $target->id];
+        $capital = $nation->capital()->firstOrFail();
+        $requestKey = (string) Str::uuid();
+        $fingerprint = hash('sha256', json_encode([
+            'command_key' => $v10Definition->key,
+            'parameters' => $parameters,
+            'quantity' => 1,
+            'requested_position' => null,
+            'ruleset' => ['key' => $v10->key, 'version' => $v10->version],
+            'target_x' => (int) $capital->x,
+            'target_y' => (int) $capital->y,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $item = NationCommandQueueItem::query()->create([
+            'nation_command_queue_id' => $queue->id,
+            'command_definition_id' => $v11Definition->id,
+            'request_ruleset_version_id' => $v10->id,
+            'queue_position' => 1,
+            'target_x' => $capital->x,
+            'target_y' => $capital->y,
+            'quantity' => 1,
+            'parameters' => $parameters,
+            'status' => 'queued',
+            'queued_by_membership_id' => NationMembership::query()
+                ->where('nation_id', $nation->id)->valueOrFail('id'),
+            'request_key' => $requestKey,
+            'request_fingerprint' => $fingerprint,
+            'queued_at' => now(),
+            'failure_metadata' => [],
+        ]);
+        $immutable = $item->only([
+            'command_definition_id', 'request_ruleset_version_id', 'request_fingerprint',
+            'target_x', 'target_y', 'quantity', 'parameters',
+        ]);
+        $service = app(CommandQueueService::class);
+
+        $duplicate = $service->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $mapSpace,
+            commandKey: 'monster_dispatch',
+            targetX: null,
+            targetY: null,
+            requestKey: $requestKey,
+            expectedVersion: 999,
+            parameters: $parameters,
+        );
+
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($v11Definition->id, $duplicate['item']->command_definition_id);
+        $this->assertSame($v10->id, $duplicate['item']->request_ruleset_version_id);
+        $this->assertSame($fingerprint, $duplicate['item']->request_fingerprint);
+        $this->assertSame($immutable, $item->fresh()->only(array_keys($immutable)));
+
+        foreach ([
+            'quantity' => [2, $parameters, true],
+            'parameters' => [1, ['target_nation_id' => $nation->id], false],
+        ] as $label => [$quantity, $conflictingParameters, $quantityProvided]) {
+            try {
+                $service->add(
+                    user: $user,
+                    nation: $nation,
+                    mapSpace: $mapSpace,
+                    commandKey: 'monster_dispatch',
+                    targetX: null,
+                    targetY: null,
+                    requestKey: $requestKey,
+                    expectedVersion: 999,
+                    quantity: $quantity,
+                    parameters: $conflictingParameters,
+                    quantityProvided: $quantityProvided,
+                );
+                $this->fail("{$label} mismatch must conflict with immutable request provenance.");
+            } catch (CommandRequestConflictException) {
+                $this->addToAssertionCount(1);
+            }
+            $this->assertSame($immutable, $item->fresh()->only(array_keys($immutable)), $label);
+        }
+    }
+
     public function test_nation_target_retry_uses_persisted_coordinates_after_capital_relocation_and_completion(): void
     {
         [$user, $nation, $mapSpace] = $this->nation('暗黙対象冪等国');
@@ -1710,7 +1820,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
     public function test_future_special_parameter_api_distinguishes_omitted_defaults_from_explicit_null(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('特殊parameter国');
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr6-v1');
+        $settings = app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr6-v1');
         $settings['key'] = 'test-special-parameters-v1';
         foreach ($settings['command_definitions'] as &$definition) {
             if ($definition['key'] !== 'land_clear') {
@@ -1962,12 +2072,23 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'parameters' => ['target_nation_id' => $nation->id],
         ])->assertUnprocessable();
 
-        $target->update(['state' => 'dormant_frozen']);
+        $target->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $catalogWithoutTarget = $this->getJson("{$base}/command-definitions")->assertOk();
         $unavailableAid = collect($catalogWithoutTarget->json('data.commands'))->firstWhere('key', 'money_aid');
+        $availableDispatch = collect($catalogWithoutTarget->json('data.commands'))->firstWhere('key', 'monster_dispatch');
         $this->assertFalse($unavailableAid['applicable']);
         $this->assertFalse($unavailableAid['available']);
         $this->assertSame([], $unavailableAid['parameters']['target_nation_id']['options']);
+        $this->assertTrue($availableDispatch['applicable']);
+        $this->assertSame([[
+            'value' => $target->id,
+            'label' => $target->name,
+            'nation_number' => $target->nation_number,
+        ]], $availableDispatch['parameters']['target_nation_id']['options']);
         $this->postJson("{$base}/command-queue", [
             'command_key' => 'money_aid',
             'request_key' => (string) Str::uuid(),
@@ -1980,6 +2101,13 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 3,
             'parameters' => [],
         ])->assertUnprocessable();
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'monster_dispatch',
+            'quantity' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+            'parameters' => ['target_nation_id' => $target->id],
+        ])->assertCreated()->assertJsonPath('data.queue.items.2.parameters.target_nation_id', $target->id);
     }
 
     public function test_sale_policy_validation_authorization_audit_and_concurrency(): void

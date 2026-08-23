@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\LaunchIntent;
 use App\Domain\Turn\TurnContext;
@@ -50,6 +51,7 @@ final class MissileImpactResolver
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly TurnEventRecorder $events,
         private readonly NationIdleCounterFinalizer $idleCounters,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -235,16 +237,41 @@ final class MissileImpactResolver
         }
         $cell = $this->surfaceCellAt($space, $coordinate);
         $base['terrain_key'] = $cell->terrain->key;
+        $protectedNationId = $this->nationProtection->protectedNationId(
+            $context,
+            $coordinate->x,
+            $coordinate->y,
+        );
+        if ($protectedNationId !== null) {
+            $protectedNation = Nation::query()->findOrFail($protectedNationId);
+            $missileName = match ($intent->definitionKey) {
+                'missile' => 'ミサイル', 'pp_missile' => 'PPミサイル',
+                'land_destruction_missile' => '陸地破壊弾', 'spp_missile' => 'SPPミサイル',
+                default => $intent->definitionKey,
+            };
+            $this->events->record($context, 'missile.dormancy_protected', $cell, [
+                'nation_id' => $protectedNationId,
+                'nation_name' => $protectedNation->name,
+                'x' => $coordinate->x,
+                'y' => $coordinate->y,
+                'missile_key' => $intent->definitionKey,
+                'missile_name' => $missileName,
+            ], 'public', 'info',
+                "{$protectedNation->name}({$coordinate->x},{$coordinate->y})に{$missileName}が落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました",
+            );
+
+            return [
+                ...$base,
+                'effect' => 'dormant_capital_protected',
+                'protected_nation_id' => $protectedNationId,
+            ];
+        }
         $targetNationId = $cell->owner_nation_id;
         if ($targetNationId !== null && $context->state->hasSecretarySnapshot($targetNationId)) {
             $context->state->awardSecretaryExperience(
                 $targetNationId,
                 SecretarySkillCatalog::FINAL_DEFENSE_LINE,
             );
-        }
-        $ownerState = $cell->ownerNation?->state;
-        if (in_array($ownerState, ['dormant_frozen', 'dormant_contestable', 'sunken_archived'], true)) {
-            return [...$base, 'effect' => 'dormant_owner_protected', 'owner_state' => $ownerState];
         }
         $defense = $this->defenseInterception($context, $space, $cell, $base, $intent->definitionKey);
         if ($defense !== null) {

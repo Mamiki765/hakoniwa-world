@@ -44,7 +44,7 @@ describe('IslandEventLog', () => {
         await flushPromises();
 
         expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/api/v1/nations/3/events?page=1');
-        expect(wrapper.get('h2').text()).toBe('owner-onlyログ');
+        expect(wrapper.get('h2').text()).toBe('島ログ');
         expect(wrapper.get('.event-confidential-label').text()).toBe('秘密');
         expect(wrapper.get('.island-event-group li').text()).toContain('試験島(12,8)で伐採し、500億円を得ました。');
         expect(wrapper.text()).not.toContain('座標');
@@ -107,7 +107,7 @@ describe('IslandEventLog', () => {
         const wrapper = mount(IslandEventLog, { props: { nationId: 3, audience: 'owner' } });
         await flushPromises();
 
-        expect(wrapper.get('[role="alert"]').text()).toContain('owner-onlyログを取得できませんでした');
+        expect(wrapper.get('[role="alert"]').text()).toContain('島ログを取得できませんでした');
         await wrapper.get('.island-events-error button').trigger('click');
         await flushPromises();
 

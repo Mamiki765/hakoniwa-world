@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\OceanWorldGenerator;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\RulesetVersion;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -12,6 +13,20 @@ use Tests\TestCase;
 class RulesetValidationCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_validation_command_loads_historical_authoring_while_normal_config_stays_current_only(): void
+    {
+        config(['hakoniwa' => require config_path('hakoniwa.php')]);
+        $currentKeys = ['hakoniwa-2s-plus-v12'];
+
+        $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
+
+        $this->artisan('hakoniwa:ruleset:validate', ['--key' => 'hakoniwa-2s-plus-v10'])
+            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v10 is valid: version=10')
+            ->assertSuccessful();
+
+        $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
+    }
 
     public function test_validation_command_reports_summary_without_mutating_database_or_world_ruleset(): void
     {
@@ -43,7 +58,7 @@ class RulesetValidationCommandTest extends TestCase
     public function test_validation_command_looks_up_dot_containing_key_literally(): void
     {
         $key = 'season.2-v1';
-        $settings = config('hakoniwa.published_rulesets.roadmap-pr7-v1');
+        $settings = app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr7-v1');
         $settings['key'] = $key;
         $rulesets = config('hakoniwa.published_rulesets');
         $rulesets[$key] = $settings;

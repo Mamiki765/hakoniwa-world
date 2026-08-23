@@ -16,6 +16,9 @@ final class CapitalPlacementService
         $radius = (int) $rules['initial_island_reservation_radius'];
         $minimumDistance = (int) $rules['minimum_capital_distance'];
         $requiredCells = 1 + 3 * $radius * ($radius + 1);
+        // These coarse bounds are necessary for hex distance <= radius. The exact
+        // GREATEST predicate remains authoritative, while the map-space x/y index
+        // avoids rescanning every cell for every candidate.
         $sql = <<<'SQL'
             WITH candidates AS (
                 SELECT candidate.*,
@@ -50,6 +53,8 @@ final class CapitalPlacementService
                 FROM map_cells surrounding
                 JOIN terrain_definitions surrounding_terrain ON surrounding_terrain.id = surrounding.terrain_definition_id
                 WHERE surrounding.map_space_id = candidate.map_space_id
+                  AND surrounding.x BETWEEN candidate.x - (? * 2) AND candidate.x + (? * 2)
+                  AND surrounding.y BETWEEN candidate.y - ? AND candidate.y + ?
                   AND GREATEST(
                     ABS(
                         (surrounding.x - FLOOR((surrounding.y + 1) / 2.0))
@@ -90,6 +95,7 @@ final class CapitalPlacementService
             $mapSpace->world_id, $mapSpace->id,
             $mapSpace->min_x + $radius, $mapSpace->max_x - $radius,
             $mapSpace->min_y + $radius, $mapSpace->max_y - $radius,
+            $radius, $radius, $radius, $radius,
             $radius, $requiredCells, $mapSpace->world_id, $minimumDistance, $limit,
         ]);
 

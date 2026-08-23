@@ -12,13 +12,18 @@ final class TurnState
     private array $stableNationIds = [];
 
     /** @var list<int> */
+    private array $lifecycleNationIds = [];
+
+    /**
+     * @var array<int, array{state: 'active'|'dormant', reason: string|null, state_started_turn: int|null, resume_at_turn: int|null, capital_x: int, capital_y: int}>
+     */
+    private array $nationLifecycleSnapshots = [];
+
+    /** @var list<int> */
     private array $developmentNationIds = [];
 
     /** @var list<int> */
     private array $surfaceCellIds = [];
-
-    /** @var array<int, int> */
-    private array $legacySeaEdgeByCellId = [];
 
     /** @var array<int, true> */
     private array $famineNationIds = [];
@@ -113,6 +118,62 @@ final class TurnState
     }
 
     /** @param array<array-key, mixed> $nationIds */
+    public function setLifecycleNationIds(array $nationIds): void
+    {
+        $this->lifecycleNationIds = $this->positiveIntegerList($nationIds, 'Lifecycle Nation order');
+    }
+
+    /** @return list<int> */
+    public function lifecycleNationIds(): array
+    {
+        return $this->lifecycleNationIds;
+    }
+
+    /** @param array<string, mixed> $snapshot */
+    public function setNationLifecycleSnapshot(int $nationId, array $snapshot): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $state = $snapshot['state'] ?? null;
+        $reason = $snapshot['reason'] ?? null;
+        $stateStartedTurn = $snapshot['state_started_turn'] ?? null;
+        $resumeAtTurn = $snapshot['resume_at_turn'] ?? null;
+        $capitalX = $snapshot['capital_x'] ?? null;
+        $capitalY = $snapshot['capital_y'] ?? null;
+        if (! in_array($state, ['active', 'dormant'], true)
+            || (! is_string($reason) && $reason !== null)
+            || (! is_int($stateStartedTurn) && $stateStartedTurn !== null)
+            || (! is_int($resumeAtTurn) && $resumeAtTurn !== null)
+            || ! is_int($capitalX) || ! is_int($capitalY)) {
+            throw new InvalidArgumentException('Nation lifecycle snapshot is invalid.');
+        }
+        $this->nationLifecycleSnapshots[$nationId] = [
+            'state' => $state,
+            'reason' => $reason,
+            'state_started_turn' => $stateStartedTurn,
+            'resume_at_turn' => $resumeAtTurn,
+            'capital_x' => $capitalX,
+            'capital_y' => $capitalY,
+        ];
+    }
+
+    /**
+     * @return array<int, array{state: 'active'|'dormant', reason: string|null, state_started_turn: int|null, resume_at_turn: int|null, capital_x: int, capital_y: int}>
+     */
+    public function nationLifecycleSnapshots(): array
+    {
+        return $this->nationLifecycleSnapshots;
+    }
+
+    /** @return list<int> */
+    public function dormantNationIds(): array
+    {
+        return array_map('intval', array_keys(array_filter(
+            $this->nationLifecycleSnapshots,
+            static fn (array $snapshot): bool => $snapshot['state'] === 'dormant',
+        )));
+    }
+
+    /** @param array<array-key, mixed> $nationIds */
     public function setDevelopmentNationIds(array $nationIds): void
     {
         $this->developmentNationIds = $this->positiveIntegerList($nationIds, 'Development Nation order');
@@ -134,28 +195,6 @@ final class TurnState
     public function surfaceCellIds(): array
     {
         return $this->surfaceCellIds;
-    }
-
-    /** @param array<array-key, mixed> $seaEdgeByCellId */
-    public function setLegacySeaEdgeByCellId(array $seaEdgeByCellId): void
-    {
-        $validated = [];
-        foreach ($seaEdgeByCellId as $cellId => $seaEdge) {
-            if (! is_int($cellId) || $cellId < 1 || ! is_int($seaEdge) || $seaEdge < 0) {
-                throw new InvalidArgumentException('Legacy sea-edge context must map positive cell IDs to non-negative integers.');
-            }
-            $validated[$cellId] = $seaEdge;
-        }
-        $this->legacySeaEdgeByCellId = $validated;
-    }
-
-    public function legacySeaEdgeForCell(int $cellId): int
-    {
-        if (! array_key_exists($cellId, $this->legacySeaEdgeByCellId)) {
-            throw new InvalidArgumentException("Legacy sea-edge context is missing cell {$cellId}.");
-        }
-
-        return $this->legacySeaEdgeByCellId[$cellId];
     }
 
     public function markFamine(int $nationId): void

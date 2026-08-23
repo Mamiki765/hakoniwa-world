@@ -7,6 +7,7 @@ use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterDispatchOption;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
 use App\Domain\Monster\MonsterSpawnSource;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -28,6 +29,7 @@ final class MonsterSpawnService
         private readonly MonsterNaturalSpawnPolicy $policy,
         private readonly MapCellStateService $cells,
         private readonly TurnEventRecorder $events,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     /** @return array<string, int> */
@@ -110,7 +112,8 @@ final class MonsterSpawnService
             if ($cell->owner_nation_id === null) {
                 continue;
             }
-            if (! $occupied->has($cell->id)) {
+            if (! $occupied->has($cell->id)
+                && ! $this->nationProtection->protects($context, $cell->x, $cell->y)) {
                 $candidatesByNation[$cell->owner_nation_id][] = $cell;
             }
         }
@@ -214,10 +217,11 @@ final class MonsterSpawnService
         TurnContext $context,
         Nation $target,
         int $queueItemId,
-        ?MonsterDispatchOption $option = null,
+        MonsterDispatchOption $option,
     ): MonsterInstance {
-        if ($target->world_id !== $context->world->id || $target->state !== 'active') {
-            throw new DomainException('A dispatched monster requires an active target Nation in the current World.');
+        if ($target->world_id !== $context->world->id
+            || ! in_array($target->state, ['active', 'dormant'], true)) {
+            throw new DomainException('A dispatched monster requires a current target Nation in the current World.');
         }
         $candidates = $this->dispatchCandidates($context, $target, true);
         if ($candidates->isEmpty()) {
@@ -227,20 +231,12 @@ final class MonsterSpawnService
             ->integer(0, $candidates->count() - 1);
         /** @var MapCell $cell */
         $cell = $candidates->values()->get($index);
-        $monsterKey = 'mecha_inora';
-        $dispatchSelector = 1;
-        $dispatchCostMoney = 3_000;
-        if ($option !== null) {
-            if ($option->rulesetVersionId !== (int) $context->ruleset->id) {
-                throw new DomainException('Monster dispatch option does not match the locked Turn ruleset.');
-            }
-            $monsterKey = $option->monsterDefinitionKey;
-            $dispatchSelector = $option->selector;
-            $dispatchCostMoney = $option->costMoney;
+        if ($option->rulesetVersionId !== (int) $context->ruleset->id) {
+            throw new DomainException('Monster dispatch option does not match the locked Turn ruleset.');
         }
         $definition = MonsterDefinition::query()
             ->where('ruleset_version_id', $context->ruleset->id)
-            ->where('key', $monsterKey)
+            ->where('key', $option->monsterDefinitionKey)
             ->firstOrFail();
         $beforeFacility = $cell->facility?->key;
         $beforePopulation = $cell->population;
@@ -277,8 +273,8 @@ final class MonsterSpawnService
             'owner_preserved' => true,
             'spawn_source' => MonsterSpawnSource::MonsterDispatchCommand->value,
             'queue_item_id' => $queueItemId,
-            'dispatch_selector' => $dispatchSelector,
-            'dispatch_cost_money' => $dispatchCostMoney,
+            'dispatch_selector' => $option->selector,
+            'dispatch_cost_money' => $option->costMoney,
         ]);
 
         return $monster;
@@ -302,7 +298,9 @@ final class MonsterSpawnService
             $query->lockForUpdate();
         }
 
-        return $query->get();
+        return $query->get()->reject(
+            fn (MapCell $cell): bool => $this->nationProtection->protects($context, $cell->x, $cell->y),
+        )->values();
     }
 
     private function wasteland(): TerrainDefinition

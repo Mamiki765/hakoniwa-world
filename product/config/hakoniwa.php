@@ -1,35 +1,14 @@
 <?php
 
-use App\Domain\Ruleset\RulesetAuthoringCollection;
-
-$publishedRulesets = RulesetAuthoringCollection::fromFiles([
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr2-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr6-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr7-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr11-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr14-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr15-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr18-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr19-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr21-v1.php',
-    __DIR__.'/hakoniwa/rulesets/roadmap-pr22-v1.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v1.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v2.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v3.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v4.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v5.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v6.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v7.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v8.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v9.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v10.php',
-    __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v11.php',
-])->all();
+$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v12.php';
 
 return [
-    'application_version' => '2.3.0',
-    'ruleset' => $publishedRulesets['hakoniwa-2s-plus-v11'],
-    'published_rulesets' => $publishedRulesets,
+    'application_version' => '2.4.0-beta',
+    'ruleset' => $currentRuleset,
+    'published_rulesets' => [$currentRuleset['key'] => $currentRuleset],
+    'current_catalogs' => [
+        'secretary' => $currentRuleset['secretary'],
+    ],
     'world' => [
         'key' => 'shared-world',
         'name' => '箱庭諸島２S＋',
@@ -47,6 +26,9 @@ return [
         'base_url' => env('HAKONIWA_TILE_ASSET_BASE_URL', env('HAKONIWA_ORIGINAL_ASSET_BASE_URL', '/assets/hakoniwa-tiles')),
         'path' => env('HAKONIWA_TILE_ASSET_PATH', env('HAKONIWA_ORIGINAL_ASSET_PATH', '/srv/hakoniwa-assets/tiles')),
         'allowed_extensions' => ['gif', 'png', 'webp'],
+        'themes' => [
+            'snow' => 'snow',
+        ],
     ],
     'community' => [
         'contact_url' => env('HAKONIWA_MODERATION_CONTACT_URL'),

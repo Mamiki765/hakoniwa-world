@@ -383,7 +383,6 @@ final class WorldExpansionServiceTest extends TestCase
     private function publishedRulesetPayloads(): array
     {
         return RulesetVersion::query()
-            ->whereIn('key', ['hakoniwa-2s-plus-v1', 'hakoniwa-2s-plus-v2', 'hakoniwa-2s-plus-v3'])
             ->orderBy('key')
             ->get()
             ->mapWithKeys(static fn (RulesetVersion $ruleset): array => [

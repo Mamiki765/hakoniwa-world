@@ -204,7 +204,7 @@ class AwardSystemTest extends TestCase
                 'version' => 1,
             ]);
         }
-        $second->update(['state' => 'sunken_archived']);
+        $second->update(['state' => 'abandoned']);
         $turn100 = $this->context($world, 100, [$first, $second]);
         $metrics = app(AwardTurnFinalizer::class)->finalize($turn100);
         $this->assertSame(2, $metrics['turn_awards']);

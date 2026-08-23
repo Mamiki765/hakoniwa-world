@@ -7,9 +7,12 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class AssetController extends Controller
 {
-    public function __invoke(string $filename, AssetManifestResolver $assets): BinaryFileResponse
+    public function __invoke(string $filename, AssetManifestResolver $assets, ?string $theme = null): BinaryFileResponse
     {
-        $path = $assets->pathForFilename($filename);
+        if ($theme !== null) {
+            [$theme, $filename] = [$filename, $theme];
+        }
+        $path = $assets->pathForFilename($filename, $theme);
         abort_if($path === null, 404);
 
         return response()->file($path, [

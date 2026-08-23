@@ -159,13 +159,18 @@ final class NationCreationService
                         'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
                     ]);
 
+                    $initialIdleCounter = $rules['nation_lifecycle']['initial_idle_counter'] ?? null;
+                    if (! is_int($initialIdleCounter) || $initialIdleCounter < 0) {
+                        throw new \DomainException('The current Ruleset has an invalid initial Nation idle counter.');
+                    }
+
                     $nation = Nation::query()->create([
                         'world_id' => $world->id, 'nation_number' => $nationNumber,
                         'registered_turn' => $world->current_turn, 'name' => $name,
                         'owner_name' => $ownerName, 'profile_comment' => $profileComment,
                         'money' => $rules['initial_money'],
                         'state' => 'active',
-                        'idle_counter' => 100,
+                        'idle_counter' => $initialIdleCounter,
                     ]);
                     $this->resources->initialize($nation);
                     $islandPlan = $this->islands->plan($mapSpace, $nation, $center, $seed);
@@ -178,7 +183,7 @@ final class NationCreationService
                     foreach ($occupancies as $occupancy) {
                         $monster = $occupancy->monster;
                         $behavior = $this->monsterBehaviors->forDefinition($monster->definition);
-                        if (! $behavior->explicitlyAuthored || ! $behavior->islandCreationDisplaceable) {
+                        if (! $behavior->islandCreationDisplaceable) {
                             throw new \DomainException('初期島の変更セルは退避できない怪獣に占有されています。');
                         }
                         $this->monsterRemoval->removeForWorldMutation(

@@ -84,6 +84,9 @@ final class PlayerIslandEventService
         'territory.influenced',
         'disaster.triggered',
         'land_subsidence.triggered',
+        'disaster.cell_damaged',
+        'capital.disaster_damaged',
+        'fire.damaged',
         'monster.spawned',
         'monster.moved',
         'monster.trampled',
@@ -95,8 +98,11 @@ final class PlayerIslandEventService
         'monster.removed_by_terrain_event',
         'missile.launched',
         'missile.ineffective_aggregated',
+        'missile.dormancy_protected',
         'missile.impact',
         'refugee_generated',
+        'nation.dormant',
+        'nation.dormancy_resumed',
     ];
 
     /** @var list<string> */
@@ -726,6 +732,22 @@ final class PlayerIslandEventService
             'land_subsidence.triggered' => $nation === '島'
                 ? '地盤沈下が発生しました。'
                 : "{$nation}で地盤沈下が発生しました。",
+            'disaster.cell_damaged', 'fire.damaged' => sprintf(
+                '%s(%s,%s)で%s',
+                $nation,
+                $x,
+                $y,
+                $this->disasterCellDamageMessage($metadata),
+            ),
+            'capital.disaster_damaged' => sprintf(
+                '%s(%s,%s)で%sにより首都人口が%s%%減少し、%s人になりました。',
+                $nation,
+                $x,
+                $y,
+                $this->disasterLabel($metadata['disaster_key'] ?? null),
+                number_format($this->integer($metadata, 'damage_percent')),
+                number_format($this->integer($metadata, 'after_population')),
+            ),
             'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_aoi_disaster'
                 ? "中立海域({$x},{$y})に{$monster}が出現しました。"
                 : "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
@@ -769,6 +791,13 @@ final class PlayerIslandEventService
                 $this->missileLabel($metadata['command_key'] ?? null),
                 number_format($this->integer($metadata, 'ineffective_impacts')),
             ),
+            'missile.dormancy_protected' => sprintf(
+                '%s(%s,%s)に%sが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました',
+                $nation,
+                $x,
+                $y,
+                $this->missileLabel($metadata['missile_key'] ?? null),
+            ),
             'missile.impact' => sprintf(
                 '%s(%s,%s)に%sの%sが着弾し、%s。',
                 $metadata['target_nation_name'] ?? $nation,
@@ -779,8 +808,23 @@ final class PlayerIslandEventService
                 $this->missileEffectLabel($metadata['effect'] ?? null),
             ),
             'refugee_generated' => "{$nation}でミサイル攻撃による難民が発生しました。",
+            'nation.dormant' => $this->publicDormancyMessage($metadata),
+            'nation.dormancy_resumed' => "{$nation}に春が訪れ、活動を再開しました。",
             default => "{$nation}で出来事がありました。",
         };
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function publicDormancyMessage(array $metadata): string
+    {
+        $nation = is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '島';
+        $secretary = is_string($metadata['secretary_name'] ?? null)
+            ? '秘書の'.$metadata['secretary_name']
+            : '秘書';
+
+        return ($metadata['reason'] ?? null) === 'collapse'
+            ? "{$nation}から住民が居なくなった悲しみで{$secretary}が涙を流しました。{$nation}に冬が訪れています……"
+            : "主が帰ってくるまでの間、{$secretary}が禁呪を解き放ちました。{$nation}に冬が訪れています……";
     }
 
     /** @param array<string, mixed> $metadata */
@@ -812,7 +856,8 @@ final class PlayerIslandEventService
      * Reduce raw audit metadata to an event-specific public DTO before the
      * formatter sees it. Secret coordinates, identities, draws, complete
      * missile impacts, and non-aid asset details cannot cross this boundary
-     * by accident. Aid's applied transfer is an explicit public exception.
+     * by accident. Aid's applied transfer and the exact identity of a facility
+     * after it is destroyed are explicit public exceptions.
      *
      * @param  array<string, mixed>  $metadata
      * @return array<string, mixed>
@@ -840,6 +885,13 @@ final class PlayerIslandEventService
                 'nation_name', 'old_owner_nation_name', 'new_owner_nation_name', 'x', 'y',
             ],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y'],
+            'disaster.cell_damaged', 'fire.damaged' => [
+                'nation_name', 'x', 'y', 'disaster_key', 'from_terrain_key',
+                'to_terrain_key', 'removed_facility_key',
+            ],
+            'capital.disaster_damaged' => [
+                'nation_name', 'x', 'y', 'disaster_key', 'damage_percent', 'after_population',
+            ],
             'monster.damage_blocked', 'monster.damaged',
             'monster.killed',
             'monster.removed_by_terrain_event' => ['nation_name', 'monster_key', 'x', 'y'],
@@ -856,10 +908,13 @@ final class PlayerIslandEventService
             'missile.ineffective_aggregated' => [
                 'nation_name', 'command_key', 'ineffective_impacts',
             ],
+            'missile.dormancy_protected' => ['nation_name', 'x', 'y', 'missile_key'],
             'missile.impact' => [
                 'nation_name', 'target_nation_name', 'firing_nation_name',
                 'missile_key', 'effect', 'x', 'y',
             ],
+            'nation.dormant' => ['nation_name', 'reason', 'secretary_name'],
+            'nation.dormancy_resumed' => ['nation_name'],
             default => [],
         };
         $safe = array_intersect_key($metadata, array_fill_keys($keys, true));
@@ -937,12 +992,7 @@ final class PlayerIslandEventService
     {
         $facility = $metadata['pre_impact_facility_key'] ?? $metadata['removed_facility_key'] ?? null;
         if (is_string($facility) && $facility !== '') {
-            return match ($facility) {
-                'decoy' => '防衛施設',
-                'missile_base' => '森',
-                'seabed_base' => '海域',
-                default => $this->facilityLabel($facility),
-            };
+            return $this->facilityLabel($facility);
         }
 
         return $this->terrainLabel(

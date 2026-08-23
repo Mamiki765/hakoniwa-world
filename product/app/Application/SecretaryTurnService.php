@@ -33,9 +33,9 @@ final class SecretaryTurnService
             return 0;
         }
         $itemEffectsEnabled = $this->itemEffectsEnabled($context);
-        if ($itemEffectsEnabled) {
-            $this->itemGameplay->validate($context->ruleset->settings);
-        }
+        $effectCatalog = $itemEffectsEnabled
+            ? $this->itemGameplay->validatedEffectCatalog($context->ruleset->settings)
+            : [];
         if ($nationIds === []) {
             return 0;
         }
@@ -89,7 +89,7 @@ final class SecretaryTurnService
                     $nationId,
                     (int) $secretary->id,
                     (int) $secretary->equipment_version,
-                    $this->resolvedItemSnapshots($context, $secretary),
+                    $this->resolvedItemSnapshots($secretary, $effectCatalog),
                 );
             }
         }
@@ -97,8 +97,11 @@ final class SecretaryTurnService
         return count($nationIds);
     }
 
-    /** @return list<array<string, mixed>> */
-    private function resolvedItemSnapshots(TurnContext $context, Secretary $secretary): array
+    /**
+     * @param  array<string, list<array<string, mixed>>>  $effectCatalog
+     * @return list<array<string, mixed>>
+     */
+    private function resolvedItemSnapshots(Secretary $secretary, array $effectCatalog): array
     {
         if ((int) $secretary->equipment_version < 1) {
             throw new DomainException("Secretary {$secretary->id} has an invalid equipment version.");
@@ -135,11 +138,8 @@ final class SecretaryTurnService
                 'category' => $category,
                 'level' => $level,
                 'equipped_slot' => $slot,
-                'effects' => $this->itemGameplay->resolvedEffects(
-                    $context->ruleset->settings,
-                    $row->item_key,
-                    $level,
-                ),
+                'effects' => $effectCatalog[$row->item_key]
+                    ?? throw new DomainException("Ruleset Secretary item {$row->item_key} is missing."),
             ];
         }
 

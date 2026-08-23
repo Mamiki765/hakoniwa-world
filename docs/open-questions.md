@@ -13,8 +13,8 @@
 | Milestone | Blocking Open IDs | 実装境界 |
 |---|---|---|
 | monster | — | MONSTER-01〜04はPR21、AWARD-01はver 1.3.0のowner decisionで決定・実装済み。 |
-| missile / commands / combat | B-03、B-05、B-12、B-13 | 対応するattack、占領抵抗、dormancy機能の実装前にだけ停止する。B-07のactive Nation間territory influenceとCapital core protection、B-10のPR22 missile visibilityは決定済み。怪獣単体PRの一律blockerではない。 |
-| lifecycle / automatic turn operations | T-02 | 30日休眠Jobは公開後roadmapまで実装しない。production cronと手動retry境界はD-02で決定済み。 |
+| missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2保護を変更する将来combatを実装する前に停止する。ver 2.4.0の範囲はADR-0014で決定済み。 |
+| lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014により専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-01、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
@@ -244,9 +244,9 @@
 ### B-17 緊急農場
 
 - Status: Decided
-- Implemented: Not applicable; the command is intentionally excluded.
-- Decision: emergency farm commandは現行MVPへ導入しない。automatic financeと明示的なabandonment/recreationを立て直し境界とする。
-- Decision record: `docs/architecture/roadmap-pr2-systems.md`
+- Implemented: ver 2.4.0 dormant entry/heartbeat recovery only. Player command remains excluded.
+- Decision: 汎用のemergency farm commandは導入しない。dormant Nationのfarm capacityが0の場合だけ、首都distance 2以内のallowlist候補から`distance, y, x`順・乱数なしで最小農場を1つ作る。
+- Decision record: `docs/architecture/roadmap-pr2-systems.md`、`docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`
 
 ### E-03 追加資源
 
@@ -346,17 +346,18 @@
 ### B-12 dormant国家への攻撃詳細
 
 - Status: Open
-- Required before: dormant Nationを対象にするcombat実装前
-- Implemented minimum: `hakoniwa-2s-plus-v1`ではexplicit missile targetをactive Nation所有cellだけに限定する。1.1.0の`hakoniwa-2s-plus-v2`ではWorld内の既存座標を所有状態にかかわらずaim pointとして選択できるが、`dormant_frozen`、`dormant_contestable`、`sunken_archived`所有cellへのimpactはcell、facility、population、owner、monster occupancyを変更せず、完全な効果なしとして扱う。怪獣だけを討伐する例外も設けない。v1 payloadは変更せず、production Worldとqueue definitionはforward migrationでv2へ対応付ける。v8の周辺防衛では、防衛施設自身のowner stateは迎撃能力を停止させない。これはdormant target cellへの攻撃可否とは独立したowner decisionであり、着弾cellの保護判定が引き続き先行する。
-- Open decision: 将来`dormant_contestable`を攻撃・占領可能にするときの施設、防壁、Capital保護、怪獣討伐例外を決める。今回のminimum境界を将来仕様の暗黙決定にしない。
-- Decision record: `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`、`docs/decisions/ADR-0009-ruleset-v2-missile-targeting.md`、`docs/decisions/ADR-0012-ver-2.1.0-defense-and-secretary-rename.md`、`product/docs/command-audit-pr22.md`
+- Required before: Ruleset v12のdistance 2保護を変更する将来のdormant combat実装前
+- Implemented minimum: ver 2.4.0ではtarget Turn開始時に`dormant`だったNationのCapitalからhex distance 2以内を保護する。missile、disaster、territoryは最終候補決定後にno-opとする。monsterは開始cellが範囲内なら即`stayed`、範囲外から範囲内cellを引いた場合はmonument等と同じ進入不可candidateとして1 attemptを消費し、`candidate_attempts_per_action = 3`の残り候補へ進む。範囲外は通常のattack・damage契約を適用し、全領土凍結や怪獣討伐専用例外は設けない。旧v1/v2/v8 payloadとhistorical記録は変更しない。
+- Open decision: v12より後に保護ring、対象mutation、または範囲外のdormant combat契約を変更する場合の互換性とmigrationを決める。v12のowner決定を再度の実装gateにはしない。
+- Decision record: `docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`、`docs/decisions/ADR-0009-ruleset-v2-missile-targeting.md`、`docs/decisions/ADR-0012-ver-2.1.0-defense-and-secretary-rename.md`
 
 ### B-13 Capital周辺の占領保護
 
 - Status: Open
-- Required before: dormant territory占領実装前
-- Open decision: `dormant_contestable`でCapitalから何ringを保護するか決める。
-- Decision record: `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`、`docs/architecture/capital-and-territory.md`
+- Required before: Ruleset v12のdistance 2保護を変更する将来のdormant territory占領実装前
+- Implemented minimum: ver 2.4.0では`dormant` Capitalからhex distance 2以内をterritory influenceとmanual expansionによるowner変更から保護し、範囲外のdormant territoryは通常の対象とする。
+- Open decision: v12より後に保護ringまたはdormant territory占領条件を変更する場合の互換性とmigrationを決める。v12のowner決定を再度の実装gateにはしない。
+- Decision record: `docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`、`docs/architecture/capital-and-territory.md`
 
 ## Release gates
 
@@ -377,9 +378,10 @@
 ### T-02 休眠状態遷移Job
 
 - Status: Open
-- Required before: 休眠状態遷移実装前
-- Open decision: scheduler、World lock、turnとの直列化、batch checkpointを確定する。
-- Decision record: `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`、`docs/architecture/nation-lifecycle.md`
+- Required before: official Turn統合を専用lifecycle schedulerまたはbatch処理へ変更する前
+- Implemented minimum: ver 2.4.0では専用Lifecycle Jobや実時間判定を作らない。official TurnのWorld transaction内で開始stateをfreezeし、counter確定後の終端で`active ↔ dormant`と`dormant → abandoned`を確定する。manual requestはWorld lockとunresolved TurnRun guardで直列化し、大規模batch/checkpoint engineは追加しない。
+- Open decision: 将来official Turnから分離する必要が生じた場合にscheduler、World lock、turnとの直列化、batch checkpointを決める。ver 2.4.0のowner決定を再度の実装gateにはしない。
+- Decision record: `docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`、`docs/architecture/nation-lifecycle.md`
 
 ### D-02 turn失敗時の再試行
 
@@ -391,9 +393,9 @@
 ### B-14 明示的放棄の安全策
 
 - Status: Decided
-- Implemented: ver 1.6.0でowner本人の手動破棄を実装。自動休眠・自動破棄は未実装。
-- Decision: 危険領域button、modal、現在の島名完全一致を二段階確認とする。backendもlocked active Nation名とowner membershipを再確認し、WorldMutationLockと単一transactionでsurface map、monster、現役asset、Capital、membershipを終了する。Nationと歴史recordは保持し、同じUserは別名の新Nationを登録できる。
-- Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`、`docs/decisions/ADR-0008-first-production-release.md`、`docs/decisions/ADR-0004-nation-dormancy-lifecycle.md`
+- Implemented: ver 1.6.0 manual abandonment、ver 2.4.0 automatic abandonment
+- Decision: manualは既存の危険領域button、modal、現在の島名完全一致を維持する。automaticはidle 2160到達Turn終端から同じinternal cleanup operationをsystem actorで呼ぶ。どちらも単一transactionでsurface map、monster、現役asset、Capital、membershipを終了し、Nation、Secretary、歴史recordを保持する。
+- Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`、`docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`
 
 ### B-15 再入植
 

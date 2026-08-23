@@ -2,29 +2,58 @@
 
 namespace Tests\Unit;
 
-use App\Application\RulesetV11MigrationService;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use Tests\Support\V11SecretaryItemRulesetFixture;
 use Tests\TestCase;
 
 final class RulesetV11ContractTest extends TestCase
 {
-    public const CHECKSUM = '5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8';
+    public const V11_CHECKSUM = '5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8';
+
+    public const V12_CHECKSUM = 'cf55370616b56822fe6807f29cdaec6cb0fd3d9bcc12849d3e61df015bdf656e';
+
+    public function test_normal_config_loads_only_the_standalone_current_payload(): void
+    {
+        $normalConfig = require config_path('hakoniwa.php');
+        $current = $normalConfig['ruleset'];
+        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v12.php'));
+
+        $this->assertIsString($source);
+        $this->assertDoesNotMatchRegularExpression('/\brequire\b/', $source);
+        $this->assertSame(['hakoniwa-2s-plus-v12'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v12']);
+        $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
+        $this->assertSame(
+            self::V12_CHECKSUM,
+            hash('sha256', json_encode($current, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
+        );
+
+        $upgradeRulesets = app(RulesetUpgradeAuthoringCatalog::class)->all();
+        $this->assertCount(22, $upgradeRulesets);
+        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v12']);
+    }
 
     public function test_formal_v11_is_the_current_immutable_c1_through_c4_payload(): void
     {
-        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v11');
+        $settings = app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v11');
         $this->assertIsArray($settings);
         $this->assertSame('hakoniwa-2s-plus-v11', $settings['key']);
         $this->assertSame(11, $settings['version']);
-        $this->assertSame('hakoniwa-2s-plus-v11', config('hakoniwa.ruleset.key'));
-        $this->assertSame(11, config('hakoniwa.ruleset.version'));
+        $this->assertSame('hakoniwa-2s-plus-v12', config('hakoniwa.ruleset.key'));
+        $this->assertSame(12, config('hakoniwa.ruleset.version'));
+        $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
         $this->assertSame(
-            self::CHECKSUM,
+            [
+                '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade.php',
+                '2026_08_23_000000_add_nation_dormancy_and_publish_v12.php',
+            ],
+            array_map('basename', glob(database_path('migrations/*.php')) ?: []),
+        );
+        $this->assertSame(
+            self::V11_CHECKSUM,
             hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
-        $this->assertSame(self::CHECKSUM, RulesetV11MigrationService::TARGET_CHECKSUM);
-
         $fixture = V11SecretaryItemRulesetFixture::settings();
         $fixture['key'] = 'hakoniwa-2s-plus-v11';
         $this->assertSame($settings, $fixture);
@@ -38,7 +67,7 @@ final class RulesetV11ContractTest extends TestCase
 
     public function test_formal_v11_has_exact_monster_dispatch_and_secretary_contracts(): void
     {
-        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v11');
+        $settings = app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v11');
         $monsters = collect($settings['monster_definitions'])->keyBy('key');
         $this->assertSame([
             'mecha_inora',

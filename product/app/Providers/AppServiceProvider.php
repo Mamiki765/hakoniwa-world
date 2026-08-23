@@ -9,6 +9,7 @@ use App\Application\MonsterRemovalService;
 use App\Console\ProductionDestructiveDatabaseCommandGuard;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Nation\UserMembershipMutationLock;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\Turn\GameplayTurnPhase;
 use App\Domain\Turn\RandomTurnSeedGenerator;
 use App\Domain\Turn\TurnPipeline;
@@ -32,6 +33,7 @@ class AppServiceProvider extends ServiceProvider
         // services participating in one request or worker execution.
         $this->app->singleton(WorldMutationLock::class);
         $this->app->singleton(UserMembershipMutationLock::class);
+        $this->app->singleton(RulesetUpgradeAuthoringCatalog::class);
         $this->app->singleton(ChunkCoordinateService::class, fn (): ChunkCoordinateService => new ChunkCoordinateService(
             (int) config('hakoniwa.ruleset.chunk_size'),
         ));
@@ -57,7 +59,6 @@ class AppServiceProvider extends ServiceProvider
     {
         $databaseCommandGuard->configure();
         Event::listen(CommandStarting::class, $databaseCommandGuard);
-
         Event::listen(function (SocialiteWasCalled $event): void {
             $event->extendSocialite('discord', Provider::class);
         });
