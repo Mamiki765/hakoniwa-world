@@ -498,7 +498,9 @@ final class DomesticCommandExecutor
             return ['reason' => CommandFailureReason::SameNationTarget, 'observed' => $observed];
         }
         $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->first();
-        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant', 'recovery'] : ['active'];
+        $targetStates = $definition->key === 'monster_dispatch'
+            ? ['active', 'dormant', 'recovery']
+            : ['active', 'recovery'];
         if ($target === null || $target->world_id !== $context->world->id
             || ! in_array($target->state, $targetStates, true)) {
             return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
@@ -893,6 +895,22 @@ final class DomesticCommandExecutor
                 'target_nation_id' => $target->id,
             ],
         );
+        if ($target->id !== $nation->id
+            && array_key_exists($target->id, $context->state->karmaStartSnapshots())
+            && $context->state->karmaStartSnapshot($target->id) <= 0) {
+            $points = $context->ruleset->settings['karma']['hostile_monument_points'] ?? null;
+            if ($points !== 15) {
+                throw new DomainException('The active ruleset has an invalid hostile-monument KARMA contract.');
+            }
+            $context->state->addKarmaCrime($nation->id, $points);
+            $this->events->record($context, 'karma.hostile_monument', $nation, [
+                'nation_id' => $nation->id,
+                'target_nation_id' => $target->id,
+                'source_queue_item_id' => $item->id,
+                'target_start_karma' => $context->state->karmaStartSnapshot($target->id),
+                'crime_points' => $points,
+            ], 'admin');
+        }
         $this->events->record($context, 'command.monument_launched', $nation, [
             'nation_id' => $nation->id,
             'source_queue_item_id' => $item->id,
@@ -1287,7 +1305,11 @@ final class DomesticCommandExecutor
             throw new DomainException('Nation command target changed after validation.');
         }
 
-        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant', 'recovery'] : ['active'];
+        $targetStates = match ($definition->key) {
+            'monster_dispatch' => ['active', 'dormant', 'recovery'],
+            'money_aid', 'food_aid' => ['active', 'recovery'],
+            default => ['active'],
+        };
 
         return Nation::query()->whereKey($targetNationId)
             ->where('world_id', $context->world->id)->whereIn('state', $targetStates)

@@ -284,7 +284,7 @@ class SecretaryEquipmentService
         $snapshot = [];
         foreach ($memberships as $membership) {
             $nation = $nationsById->get($membership->nation_id);
-            if (! $nation instanceof Nation || $nation->state !== 'active') {
+            if (! $nation instanceof Nation || ! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             if ($nation->world_id !== $membership->world_id) {

@@ -776,6 +776,10 @@ final class CompleteTurnEngine
             'ruleset_key' => $context->ruleset->key,
             'phase_count' => count(TurnPipeline::CANONICAL_PHASE_KEYS),
         ], 'admin');
+        $karmaResultMetrics = [];
+        foreach ($karmaMetrics as $key => $value) {
+            $karmaResultMetrics['karma_'.$key] = $value;
+        }
 
         return [
             'completed' => true,
@@ -784,10 +788,7 @@ final class CompleteTurnEngine
             'secretary_skills_changed' => $secretaryMetrics['skills_changed'],
             'secretary_levels_gained' => $secretaryMetrics['levels_gained'],
             ...$lifecycleMetrics,
-            ...array_combine(
-                array_map(static fn (string $key): string => 'karma_'.$key, array_keys($karmaMetrics)),
-                array_values($karmaMetrics),
-            ),
+            ...$karmaResultMetrics,
             ...$awardMetrics,
         ];
     }

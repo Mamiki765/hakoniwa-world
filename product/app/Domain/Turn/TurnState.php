@@ -211,7 +211,7 @@ final class TurnState
     {
         $validated = [];
         foreach ($coordinates as $coordinate => $nationId) {
-            if (! is_string($coordinate) || preg_match('/\A-?\d+:-?\d+\z/D', $coordinate) !== 1) {
+            if (preg_match('/\A-?\d+:-?\d+\z/D', $coordinate) !== 1) {
                 throw new InvalidArgumentException('Recovery territory coordinates must use canonical x:y keys.');
             }
             $validated[$coordinate] = $this->validatedNationId($nationId);
@@ -379,7 +379,7 @@ final class TurnState
         return $this->karmaStartSnapshots;
     }
 
-    /** @param array<array-key, string> $coordinates */
+    /** @param array<array-key, mixed> $coordinates */
     public function setMonsterCoordinateSnapshot(string $boundary, array $coordinates): void
     {
         if (! in_array($boundary, ['turn_start', 'missile_boundary'], true)) {
@@ -399,7 +399,7 @@ final class TurnState
         }
     }
 
-    /** @param array<array-key, string> $coordinates */
+    /** @param array<array-key, mixed> $coordinates */
     public function monsterSnapshotIntersects(string $boundary, array $coordinates): bool
     {
         $snapshot = match ($boundary) {

@@ -13,25 +13,34 @@ final class RulesetV11ContractTest extends TestCase
 
     public const V12_CHECKSUM = 'cf55370616b56822fe6807f29cdaec6cb0fd3d9bcc12849d3e61df015bdf656e';
 
+    public const V13_CHECKSUM = '26b0e5549e3e6f40b7fd2822a0df53d9dd5cd9a1482cc4cd42dede3c9f14c614';
+
     public function test_normal_config_loads_only_the_standalone_current_payload(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
-        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v12.php'));
+        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v13.php'));
 
         $this->assertIsString($source);
         $this->assertDoesNotMatchRegularExpression('/\brequire\b/', $source);
-        $this->assertSame(['hakoniwa-2s-plus-v12'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v12']);
+        $this->assertSame(['hakoniwa-2s-plus-v13'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v13']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
         $this->assertSame(
-            self::V12_CHECKSUM,
+            self::V13_CHECKSUM,
             hash('sha256', json_encode($current, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
 
         $upgradeRulesets = app(RulesetUpgradeAuthoringCatalog::class)->all();
-        $this->assertCount(22, $upgradeRulesets);
-        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v12']);
+        $this->assertCount(23, $upgradeRulesets);
+        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v13']);
+        $this->assertSame(
+            self::V12_CHECKSUM,
+            hash('sha256', json_encode(
+                $upgradeRulesets['hakoniwa-2s-plus-v12'],
+                JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
+            )),
+        );
     }
 
     public function test_formal_v11_is_the_current_immutable_c1_through_c4_payload(): void
@@ -40,13 +49,14 @@ final class RulesetV11ContractTest extends TestCase
         $this->assertIsArray($settings);
         $this->assertSame('hakoniwa-2s-plus-v11', $settings['key']);
         $this->assertSame(11, $settings['version']);
-        $this->assertSame('hakoniwa-2s-plus-v12', config('hakoniwa.ruleset.key'));
-        $this->assertSame(12, config('hakoniwa.ruleset.version'));
+        $this->assertSame('hakoniwa-2s-plus-v13', config('hakoniwa.ruleset.key'));
+        $this->assertSame(13, config('hakoniwa.ruleset.version'));
         $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
         $this->assertSame(
             [
                 '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade.php',
                 '2026_08_23_000000_add_nation_dormancy_and_publish_v12.php',
+                '2026_08_23_010000_add_nation_karma_and_publish_v13.php',
             ],
             array_map('basename', glob(database_path('migrations/*.php')) ?: []),
         );

@@ -48,7 +48,7 @@ final class NationDormancyTest extends TestCase
         $response = $this->actingAs($owner)->postJson($endpoint, ['days' => 1])
             ->assertOk()
             ->assertJsonPath('data.state', 'dormant')
-            ->assertJsonPath('data.state_label', '放置')
+            ->assertJsonPath('data.state_label', '休眠')
             ->assertJsonPath('data.state_reason', 'manual')
             ->assertJsonPath('data.state_started_turn', 1)
             ->assertJsonPath('data.resume_at_turn', 14)

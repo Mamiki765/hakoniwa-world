@@ -49,7 +49,7 @@ final class NationCommandTargetService
         if ($sender->state === 'recovery') {
             return [];
         }
-        $targets = $this->selectableQuery($sender)
+        $targets = $this->selectableQuery($sender, ['active'])
             ->orderBy('nation_number')
             ->orderBy('id')
             ->get(['id', 'world_id', 'name', 'nation_number'])
@@ -168,7 +168,11 @@ final class NationCommandTargetService
         if ($targetNationId === null && ($schema['required'] ?? false) !== true) {
             return;
         }
-        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant', 'recovery'] : ['active'];
+        $targetStates = match ($definition->key) {
+            'monster_dispatch' => ['active', 'dormant', 'recovery'],
+            'money_aid', 'food_aid' => ['active', 'recovery'],
+            default => ['active'],
+        };
         $target = is_int($targetNationId)
             ? $this->selectableQuery($sender, $targetStates)->whereKey($targetNationId)->first()
             : null;
@@ -187,7 +191,7 @@ final class NationCommandTargetService
      * @param  non-empty-list<string>  $states
      * @return Builder<Nation>
      */
-    private function selectableQuery(Nation $sender, array $states = ['active']): Builder
+    private function selectableQuery(Nation $sender, array $states = ['active', 'recovery']): Builder
     {
         return Nation::query()
             ->where('world_id', $sender->world_id)

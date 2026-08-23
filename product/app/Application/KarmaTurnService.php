@@ -110,7 +110,8 @@ final class KarmaTurnService
             if ($candidate >= 0) {
                 $candidate = max(0, $candidate - $victimReduction);
             }
-            $decay = $context->targetTurn % $settings['decay_interval_turns'] === 0 && $candidate > 0
+            $decay = $context->targetTurn % $settings['decay_interval_turns'] === 0
+                && $start > 0 && $candidate > 0
                 ? min($candidate, $settings['decay_amount'])
                 : 0;
             $candidate -= $decay;

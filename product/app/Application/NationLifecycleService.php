@@ -206,7 +206,8 @@ final class NationLifecycleService
             if ($nation->state !== 'active') {
                 throw new DomainException('Active Nation state changed inside a frozen target Turn.');
             }
-            if ($context->state->karmaLedgerForNation($nationId)['recovery_entry']) {
+            if (array_key_exists($nationId, $context->state->karmaStartSnapshots())
+                && $context->state->karmaLedgerForNation($nationId)['recovery_entry']) {
                 $metrics['recovery_monsters_removed'] += $this->enterRecovery($context, $nation, $settings);
                 $metrics['entered_recovery']++;
 

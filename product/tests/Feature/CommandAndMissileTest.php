@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
+use App\Application\KarmaTurnService;
 use App\Application\MissileImpactResolver;
 use App\Application\MonsterRemovalService;
 use App\Application\NationCreationService;
@@ -44,6 +45,167 @@ class CommandAndMissileTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_v13_karma_ledger_uses_turn_start_decay_and_the_exact_settlement_order(): void
+    {
+        [$world, $_user, $newlyCriminal, $sanctioned] = $this->combatants('karma-ledger');
+        $goodUser = User::factory()->create();
+        $goodNation = app(NationCreationService::class)->create(
+            $goodUser,
+            $world,
+            '善行島',
+            '善行島主',
+        );
+        $newlyCriminal->update(['karma' => 0]);
+        $sanctioned->update(['karma' => 3]);
+        $goodNation->update(['karma' => -9]);
+        $nationIds = [$newlyCriminal->id, $sanctioned->id, $goodNation->id];
+        $context = $this->context($world, 6, hash('sha256', 'v13 karma ledger order'), $nationIds);
+        $context->state->setLifecycleNationIds($nationIds);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+
+        $context->state->addKarmaCrime($newlyCriminal->id, 5);
+        $context->state->recordKarmaSanctions($newlyCriminal->id, 0);
+
+        $context->state->addKarmaCrime($sanctioned->id, 100);
+        for ($impact = 0; $impact < 5; $impact++) {
+            $context->state->recordHostileImpactReceived($sanctioned->id);
+        }
+        $context->state->markRecoveryEntry($sanctioned->id);
+        $context->state->markForeignMonsterKill($sanctioned->id);
+        $context->state->recordKarmaSanctions($sanctioned->id, 3);
+
+        $context->state->recordHostileImpactReceived($goodNation->id);
+        $context->state->markRecoveryEntry($goodNation->id);
+        $context->state->markForeignMonsterKill($goodNation->id);
+        $context->state->recordKarmaSanctions($goodNation->id, 0);
+
+        $metrics = $karma->finalize($context);
+
+        $this->assertSame(5, (int) $newlyCriminal->fresh()->karma,
+            'Turn-start KARMA 0 must not decay merely because same-Turn crime made it positive.');
+        $this->assertSame(92, (int) $sanctioned->fresh()->karma);
+        $this->assertSame(-10, (int) $goodNation->fresh()->karma);
+        $this->assertSame(3, $context->state->karmaLedgerForNation($sanctioned->id)['sanction_count']);
+        $this->assertSame([
+            'nations' => 3,
+            'changed' => 3,
+            'crime_points' => 105,
+            'victim_reductions' => 3,
+            'decay_reductions' => 1,
+            'recovery_reductions' => 3,
+            'monster_kill_reductions' => 2,
+        ], $metrics);
+    }
+
+    public function test_v13_canonical_missile_impacts_apply_the_highest_single_karma_category(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('karma-categories');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $cells = app(MapCellStateService::class);
+        $wasteland = TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $town = FacilityDefinition::query()->where('key', 'town')->firstOrFail();
+        $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $turn = 2;
+
+        $cells->setFacility($cell, null);
+        $cells->transitionTerrain($cell, $wasteland);
+        $cell->population = 0;
+        $cell->save();
+        $this->resolveKarmaMissileTurn(
+            $world, $firingUser, $firing, $target, $base, 'spp_missile', $cell, $turn++,
+        );
+        $this->assertSame(1, (int) $firing->fresh()->karma);
+
+        foreach ([3, 4, 5, 7, 8] as $townTurn) {
+            $cell->refresh()->load(['terrain', 'facility', 'ownerNation']);
+            $cells->transitionTerrain($cell, $plain);
+            $cells->setFacility($cell, $town);
+            $cell->owner_nation_id = $target->id;
+            $cell->population = 500;
+            $cell->save();
+            $this->resolveKarmaMissileTurn(
+                $world, $firingUser, $firing, $target, $base, 'spp_missile', $cell, $townTurn,
+            );
+        }
+        $turn = 9;
+        $this->assertSame(11, (int) $firing->fresh()->karma,
+            'Five separate town impacts must add 10, not stack terrain plus settlement categories.');
+
+        $cell->refresh()->load(['terrain', 'facility', 'ownerNation']);
+        $cells->transitionTerrain($cell, $plain);
+        $cells->setFacility($cell, $farm);
+        $cell->owner_nation_id = $target->id;
+        $cell->population = 0;
+        $cell->save();
+        $this->resolveKarmaMissileTurn(
+            $world, $firingUser, $firing, $target, $base, 'spp_missile', $cell, $turn++,
+        );
+        $this->assertSame(13, (int) $firing->fresh()->karma);
+
+        $oil = $this->ownedWaterFacility($target, 'seabed_oil_field');
+        $this->resolveKarmaMissileTurn(
+            $world, $firingUser, $firing, $target, $base, 'spp_missile', $oil, $turn++,
+        );
+        $this->assertSame(23, (int) $firing->fresh()->karma);
+
+        $land = $this->monsterArena($world, $target);
+        $landItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space,
+            'land_destruction_missile', $land,
+        );
+        $this->resolvePreparedKarmaMissileTurn(
+            $world,
+            $firing,
+            $target,
+            $base,
+            $landItem,
+            $turn++,
+            $this->seedForImpactIndex($landItem, $land, 2, $land),
+        );
+        $this->assertSame(33, (int) $firing->fresh()->karma);
+
+        $seabedBase = $this->ownedWaterFacility($target, 'seabed_base');
+        $seabedItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space,
+            'land_destruction_missile', $seabedBase,
+        );
+        $this->resolvePreparedKarmaMissileTurn(
+            $world,
+            $firing,
+            $target,
+            $base,
+            $seabedItem,
+            $turn++,
+            $this->seedForImpactIndex($seabedItem, $seabedBase, 2, $seabedBase),
+        );
+        $this->assertSame(36, (int) $firing->fresh()->karma);
+
+        MapCell::query()->where('owner_nation_id', $target->id)->update(['population' => 0]);
+        $capital = MapCell::query()->whereKey($target->capital()->value('map_cell_id'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $capital->update(['population' => 200]);
+        $this->resolveKarmaMissileTurn(
+            $world, $firingUser, $firing, $target, $base, 'spp_missile', $capital, $turn++,
+        );
+        $this->assertSame(38, (int) $firing->fresh()->karma);
+        $capital->refresh()->update(['population' => 100]);
+        $this->resolveKarmaMissileTurn(
+            $world, $firingUser, $firing, $target, $base, 'spp_missile', $capital, $turn,
+        );
+        $this->assertSame(38, (int) $firing->fresh()->karma);
+    }
 
     #[DataProvider('v8DefenseMissileProvider')]
     public function test_v8_radius_two_defense_intercepts_every_source_missile_kind(
@@ -772,7 +934,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v12', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v13', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -2771,6 +2933,72 @@ class CommandAndMissileTest extends TestCase
             'shots_fired' => $shotsFired,
             'finalize' => $resolver->finalize($context),
         ];
+    }
+
+    private function resolveKarmaMissileTurn(
+        World $world,
+        User $user,
+        Nation $firing,
+        Nation $target,
+        MapCell $base,
+        string $missileKey,
+        MapCell $targetCell,
+        int $targetTurn,
+    ): void {
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $user,
+            $firing->fresh(),
+            $this->surfaceMapSpace($world),
+            $missileKey,
+            $targetCell->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $this->resolvePreparedKarmaMissileTurn(
+            $world,
+            $firing,
+            $target,
+            $base,
+            $item,
+            $targetTurn,
+            hash('sha256', "v13 karma category {$targetTurn} {$missileKey}"),
+        );
+    }
+
+    private function resolvePreparedKarmaMissileTurn(
+        World $world,
+        Nation $firing,
+        Nation $target,
+        MapCell $base,
+        NationCommandQueueItem $item,
+        int $targetTurn,
+        string $seed,
+    ): void {
+        $nationIds = [$firing->id, $target->id];
+        $context = $this->context($world, $targetTurn, $seed, $nationIds);
+        $context->state->setLifecycleNationIds($nationIds);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
+        app(DomesticCommandExecutor::class)->execute($context);
+        $karma->snapshotMissileBoundary($context);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $metrics = $resolver->processBase(
+            $context,
+            $this->surfaceMapSpace($world),
+            $base->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $itemState = $item->fresh();
+        $this->assertSame(1, $metrics['shots_fired'], sprintf(
+            'Queue item %d must fire exactly once; status=%s failure=%s.',
+            $item->id,
+            $itemState->status,
+            json_encode($itemState->failure_metadata, JSON_THROW_ON_ERROR),
+        ));
+        $resolver->finalize($context);
+        $karma->settleAllianceMoney($context);
+        $resolver->resolveSanctions($context);
+        $karma->finalize($context);
     }
 
     /** @return array<string, MapCell> */

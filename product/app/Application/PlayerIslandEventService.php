@@ -65,6 +65,7 @@ final class PlayerIslandEventService
         'missile.defense_intercepted',
         'secretary.missile_intercepted',
         'refugee_received',
+        'karma.spp_self_destruct_setup',
         'turn.summary',
     ];
 
@@ -99,10 +100,16 @@ final class PlayerIslandEventService
         'missile.launched',
         'missile.ineffective_aggregated',
         'missile.dormancy_protected',
+        'missile.recovery_protected',
         'missile.impact',
         'refugee_generated',
         'nation.dormant',
         'nation.dormancy_resumed',
+        'nation.recovery_started',
+        'nation.recovery_ended',
+        'nation.recovery_monsters_removed',
+        'karma.sanction_decided',
+        'karma.sanction_launched',
     ];
 
     /** @var list<string> */
@@ -137,6 +144,7 @@ final class PlayerIslandEventService
         'command.monument_launched',
         'command.monster_dispatched',
         'missile.launch_detail',
+        'karma.spp_self_destruct_setup',
     ];
 
     /**
@@ -798,6 +806,13 @@ final class PlayerIslandEventService
                 $y,
                 $this->missileLabel($metadata['missile_key'] ?? null),
             ),
+            'missile.recovery_protected' => sprintf(
+                '%s(%s,%s)への%s攻撃は箱庭協定によって禁じられ、空中で自爆しました。',
+                $nation,
+                $x,
+                $y,
+                $this->missileLabel($metadata['missile_key'] ?? null),
+            ),
             'missile.impact' => sprintf(
                 '%s(%s,%s)に%sの%sが着弾し、%s。',
                 $metadata['target_nation_name'] ?? $nation,
@@ -810,6 +825,15 @@ final class PlayerIslandEventService
             'refugee_generated' => "{$nation}でミサイル攻撃による難民が発生しました。",
             'nation.dormant' => $this->publicDormancyMessage($metadata),
             'nation.dormancy_resumed' => "{$nation}に春が訪れ、活動を再開しました。",
+            'nation.recovery_started' => "{$nation}は壊滅し、箱庭連合の復興支援による休戦に入りました。",
+            'nation.recovery_ended' => "{$nation}の休戦期間が終了しました。",
+            'nation.recovery_monsters_removed' => "{$nation}の怪獣は、復興支援に入った箱庭連合によって退治されました。",
+            'karma.sanction_decided' => "箱庭連合は、{$nation}への制裁を決議しました。",
+            'karma.sanction_launched' => sprintf(
+                '%sに箱庭連合の制裁ミサイルが%s発発射されました。',
+                $nation,
+                number_format($this->integer($metadata, 'sanction_shots')),
+            ),
             default => "{$nation}で出来事がありました。",
         };
     }
@@ -908,13 +932,19 @@ final class PlayerIslandEventService
             'missile.ineffective_aggregated' => [
                 'nation_name', 'command_key', 'ineffective_impacts',
             ],
-            'missile.dormancy_protected' => ['nation_name', 'x', 'y', 'missile_key'],
+            'missile.dormancy_protected', 'missile.recovery_protected' => [
+                'nation_name', 'x', 'y', 'missile_key',
+            ],
             'missile.impact' => [
                 'nation_name', 'target_nation_name', 'firing_nation_name',
                 'missile_key', 'effect', 'x', 'y',
             ],
             'nation.dormant' => ['nation_name', 'reason', 'secretary_name'],
             'nation.dormancy_resumed' => ['nation_name'],
+            'nation.recovery_started', 'nation.recovery_ended',
+            'nation.recovery_monsters_removed' => ['nation_name'],
+            'karma.sanction_decided' => ['nation_name'],
+            'karma.sanction_launched' => ['nation_name', 'sanction_shots'],
             default => [],
         };
         $safe = array_intersect_key($metadata, array_fill_keys($keys, true));
@@ -1354,6 +1384,11 @@ final class PlayerIslandEventService
                 number_format(max(1, $this->integer($metadata, 'intercepted_impacts'))),
             ),
             'missile.impact' => $this->missileImpactMessage($metadata),
+            'karma.spp_self_destruct_setup' => sprintf(
+                '%s「%s様……先ほどのSPPミサイルの本数ですが……」（カルマ +20）',
+                is_string($metadata['secretary_name'] ?? null) ? $metadata['secretary_name'] : '秘書',
+                $metadata['player_address'] ?? '島主',
+            ),
             'refugee_generated' => sprintf(
                 'ミサイル被害により難民%s人が発生しました。',
                 number_format($this->integer($metadata, 'generated_population')),

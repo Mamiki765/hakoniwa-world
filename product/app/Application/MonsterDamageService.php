@@ -189,7 +189,8 @@ final class MonsterDamageService
             $foreignMonsterKill = $killerNation !== null
                 && $hostNation !== null
                 && $hostNation->id !== $killerNation->id;
-            if ($foreignMonsterKill) {
+            if ($foreignMonsterKill
+                && array_key_exists($killerNation->id, $context->state->karmaStartSnapshots())) {
                 $context->state->markForeignMonsterKill($killerNation->id);
             }
 

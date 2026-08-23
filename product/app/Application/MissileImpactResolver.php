@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\LaunchIntent;
@@ -14,6 +15,7 @@ use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
+use App\Models\MonsterInstance;
 use App\Models\Nation;
 use App\Models\TerrainDefinition;
 use DomainException;
@@ -32,7 +34,16 @@ final class MissileImpactResolver
      *     cost: int,
      *     ineffective: int,
      *     impacts: list<array<string, mixed>>,
-     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>
+     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>,
+     *     prepared: bool,
+     *     footprint: list<string>,
+     *     turn_start_monster: bool,
+     *     missile_boundary_monster: bool,
+     *     population_start: array<int, int>,
+     *     population_remaining: array<int, int>,
+     *     spp_candidates: array<int, array{start_hp: int, host_nation_id: int}>,
+     *     spp_qualified_monster_ids: array<int, true>,
+     *     spp_evaluated: bool
      * }>
      */
     private array $launches = [];
@@ -52,6 +63,8 @@ final class MissileImpactResolver
         private readonly TurnEventRecorder $events,
         private readonly NationIdleCounterFinalizer $idleCounters,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly MonsterBehaviorResolver $monsterBehaviors,
+        private readonly KarmaTurnService $karma,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -109,9 +122,13 @@ final class MissileImpactResolver
                 if ((int) $nation->money < $cost) {
                     break;
                 }
+                if (! $launch['prepared']) {
+                    $this->prepareLaunchContext($context, $space, $nation, $intent, $settings, $launch);
+                }
                 $nation->decrement('money', $cost);
                 $nation->refresh();
                 $impact = $this->impact($context, $space, $nation, $base, $intent, $settings);
+                $this->recordKarmaForImpact($context, $intent, $launch, $impact);
                 $context->state->consumeLaunchIntentShots($intent, 1);
                 $remainingCapacity--;
                 $launch['fired']++;
@@ -156,7 +173,12 @@ final class MissileImpactResolver
             $launch = $this->launches[$intent->queueItemId] ?? [
                 'intent' => $intent, 'nation' => $nation, 'fired' => 0,
                 'cost' => 0, 'ineffective' => 0, 'impacts' => [], 'firing_bases' => [],
+                'prepared' => false, 'footprint' => [],
+                'turn_start_monster' => false, 'missile_boundary_monster' => false,
+                'population_start' => [], 'population_remaining' => [],
+                'spp_candidates' => [], 'spp_qualified_monster_ids' => [], 'spp_evaluated' => false,
             ];
+            $this->evaluateSppSelfDestructSetup($context, $launch);
             $shotsFiredByNation[$nation->id] = ($shotsFiredByNation[$nation->id] ?? 0) + $launch['fired'];
             if ($launch['fired'] === 0) {
                 $this->events->record($context, 'missile.launch_failed', $nation, [
@@ -208,6 +230,340 @@ final class MissileImpactResolver
         return $metrics;
     }
 
+    /** @return array{karma_sanction_nations: int, karma_sanction_shots: int, karma_sanction_intercepted: int, karma_sanction_impacts: int} */
+    public function resolveSanctions(TurnContext $context): array
+    {
+        $metrics = [
+            'karma_sanction_nations' => 0,
+            'karma_sanction_shots' => 0,
+            'karma_sanction_intercepted' => 0,
+            'karma_sanction_impacts' => 0,
+        ];
+        $space = MapSpace::query()->where('world_id', $context->world->id)
+            ->where('key', 'surface')->firstOrFail();
+        $streamVersion = $context->ruleset->settings['karma']['sanction']['random_stream_version'] ?? null;
+        if ($streamVersion !== 1) {
+            throw new DomainException('The active ruleset has an invalid KARMA sanction RNG contract.');
+        }
+
+        foreach (array_keys($context->state->karmaLedgers()) as $nationId) {
+            $shots = $this->karma->sanctionCount($context, $nationId);
+            $context->state->recordKarmaSanctions($nationId, $shots);
+            if ($shots < 1) {
+                continue;
+            }
+            $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
+            $territory = collect($this->surfaceCellsByCoordinate ?? [])
+                ->filter(static fn (MapCell $cell): bool => (int) $cell->map_space_id === (int) $space->id
+                    && $cell->owner_nation_id === $nationId)
+                ->sort(static fn (MapCell $left, MapCell $right): int => [$left->x, $left->y, $left->id] <=> [$right->x, $right->y, $right->id])
+                ->values();
+            $this->events->record($context, 'karma.sanction_decided', $nation, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+                'sanction_shots' => $shots,
+                'territory_coordinate_count' => $territory->count(),
+            ], 'public', 'warning', "箱庭連合は、{$nation->name}への制裁を決議しました。");
+            $this->events->record($context, 'karma.sanction_launched', $nation, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+                'sanction_shots' => $shots,
+            ], 'public', 'warning', "{$nation->name}に箱庭連合の制裁ミサイルが{$shots}発発射されました。");
+            $metrics['karma_sanction_nations']++;
+            $metrics['karma_sanction_shots'] += $shots;
+            if ($territory->isEmpty()) {
+                continue;
+            }
+            $stream = $context->random->stream(TurnRandomStreamFactory::karmaSanction($nationId, $streamVersion));
+            for ($shot = 1; $shot <= $shots; $shot++) {
+                $cell = $territory->get($stream->integer(0, $territory->count() - 1));
+                if (! $cell instanceof MapCell) {
+                    throw new DomainException('KARMA sanction selected an invalid territory cell.');
+                }
+                $cell->refresh()->load(['terrain', 'facility', 'ownerNation']);
+                $base = [
+                    'x' => $cell->x,
+                    'y' => $cell->y,
+                    'terrain_key' => $cell->terrain->key,
+                    'meaningful' => false,
+                    'effect' => 'ineffective_sea',
+                ];
+                $impact = $this->defenseInterception($context, $space, $cell, $base, 'missile')
+                    ?? $this->ordinaryImpact($context, null, null, $cell, $base, 'missile', null);
+                if (in_array($impact['effect'], ['defense_intercepted', 'secretary_intercepted'], true)) {
+                    $metrics['karma_sanction_intercepted']++;
+                } elseif ($impact['meaningful']) {
+                    $metrics['karma_sanction_impacts']++;
+                }
+                $this->events->record($context, 'karma.sanction_impact', $cell, [
+                    'nation_id' => $nation->id,
+                    'nation_name' => $nation->name,
+                    'sanction_shot' => $shot,
+                    'x' => $cell->x,
+                    'y' => $cell->y,
+                    'meaningful' => $impact['meaningful'],
+                    'effect' => $impact['effect'],
+                ], 'admin');
+            }
+        }
+
+        return $metrics;
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  array<string, mixed>  $launch
+     */
+    private function prepareLaunchContext(
+        TurnContext $context,
+        MapSpace $space,
+        Nation $firingNation,
+        LaunchIntent $intent,
+        array $settings,
+        array &$launch,
+    ): void {
+        $radius = $settings['deviation_radius'] ?? null;
+        if (! is_int($radius) || $radius < 0) {
+            throw new DomainException('Missile deviation radius is invalid.');
+        }
+        $footprint = [];
+        $cellIds = [];
+        $targetNationIds = [];
+        foreach ((new GridCoordinate($intent->targetX, $intent->targetY))->radius($radius) as $coordinate) {
+            if ($coordinate->x < $space->min_x || $coordinate->x > $space->max_x
+                || $coordinate->y < $space->min_y || $coordinate->y > $space->max_y) {
+                continue;
+            }
+            $key = $coordinate->x.':'.$coordinate->y;
+            $footprint[] = $key;
+            $cell = $this->surfaceCellsByCoordinate[$key] ?? null;
+            if (! $cell instanceof MapCell) {
+                throw new DomainException('The locked surface-cell index is missing a launch footprint coordinate.');
+            }
+            $cellIds[] = $cell->id;
+            if ($cell->owner_nation_id !== null) {
+                $targetNationIds[$cell->owner_nation_id] = true;
+            }
+        }
+        $turnStartMonster = $context->state->monsterSnapshotIntersects('turn_start', $footprint);
+        $missileBoundaryMonster = $context->state->monsterSnapshotIntersects('missile_boundary', $footprint);
+        $eligible = in_array(
+            $intent->definitionKey,
+            $context->ruleset->settings['karma']['anti_monster_missile_keys'] ?? [],
+            true,
+        );
+        $intent->classifyAntiMonsterContext($eligible && ($turnStartMonster || $missileBoundaryMonster));
+        $populationStart = [];
+        if ($targetNationIds !== []) {
+            $rows = MapCell::query()->whereIn('owner_nation_id', array_keys($targetNationIds))
+                ->selectRaw('owner_nation_id, SUM(population) AS aggregate')
+                ->groupBy('owner_nation_id')->pluck('aggregate', 'owner_nation_id');
+            foreach ($targetNationIds as $nationId => $_present) {
+                $populationStart[$nationId] = (int) ($rows[$nationId] ?? 0);
+            }
+        }
+        $sppCandidates = [];
+        if ($intent->definitionKey === 'spp_missile' && $cellIds !== []) {
+            $occupancies = MonsterOccupancy::query()->whereIn('map_cell_id', $cellIds)
+                ->with(['cell', 'monster.definition'])->orderBy('monster_instance_id')->lockForUpdate()->get();
+            foreach ($occupancies as $occupancy) {
+                $monster = $occupancy->monster;
+                $hostNationId = $occupancy->cell->owner_nation_id;
+                if ($monster->state !== 'alive' || $monster->current_hp <= 1
+                    || $hostNationId === null || $hostNationId === $firingNation->id
+                    || $this->monsterBehaviors->forDefinition($monster->definition)->specialAction
+                        !== MonsterBehaviorResolver::NUCLEAR_AT_HP_ONE) {
+                    continue;
+                }
+                $sppCandidates[$monster->id] = [
+                    'start_hp' => (int) $monster->current_hp,
+                    'host_nation_id' => (int) $hostNationId,
+                ];
+            }
+        }
+        $launch['prepared'] = true;
+        $launch['footprint'] = $footprint;
+        $launch['turn_start_monster'] = $turnStartMonster;
+        $launch['missile_boundary_monster'] = $missileBoundaryMonster;
+        $launch['population_start'] = $populationStart;
+        $launch['population_remaining'] = $populationStart;
+        $launch['spp_candidates'] = $sppCandidates;
+        $this->events->record($context, 'karma.anti_monster_classified', $firingNation, [
+            'nation_id' => $firingNation->id,
+            'queue_item_id' => $intent->queueItemId,
+            'missile_key' => $intent->definitionKey,
+            'footprint_coordinate_count' => count($footprint),
+            'turn_start_monster' => $turnStartMonster,
+            'missile_boundary_monster' => $missileBoundaryMonster,
+            'anti_monster_context' => $intent->antiMonsterContext(),
+        ], 'admin');
+    }
+
+    /** @param array<string, mixed> $launch
+     * @param array<string, mixed> $impact
+     */
+    private function recordKarmaForImpact(
+        TurnContext $context,
+        LaunchIntent $intent,
+        array &$launch,
+        array $impact,
+    ): void {
+        if (($impact['meaningful'] ?? false) !== true) {
+            return;
+        }
+        $monsterId = $impact['monster_instance_id'] ?? null;
+        if ($intent->definitionKey === 'spp_missile' && is_int($monsterId)
+            && isset($launch['spp_candidates'][$monsterId])
+            && ($impact['before_hp'] ?? null) > 1 && ($impact['after_hp'] ?? null) === 1) {
+            $launch['spp_qualified_monster_ids'][$monsterId] = true;
+        }
+        $targetNationId = $impact['target_nation_id'] ?? null;
+        if (! is_int($targetNationId) || $targetNationId === $intent->nationId
+            || ! array_key_exists($targetNationId, $context->state->karmaStartSnapshots())) {
+            return;
+        }
+        $points = $this->impactCrimePoints($context, $impact);
+        if ($points < 1) {
+            return;
+        }
+        $targetStartKarma = $context->state->karmaStartSnapshot($targetNationId);
+        $attackerStartKarma = $context->state->karmaStartSnapshot($intent->nationId);
+        $antiMonsterExempt = $intent->definitionKey !== 'land_destruction_missile'
+            && $intent->antiMonsterContext();
+        $crimePoints = $targetStartKarma <= 0 && ! $antiMonsterExempt ? $points : 0;
+        if ($crimePoints > 0) {
+            $context->state->addKarmaCrime($intent->nationId, $crimePoints);
+        }
+        $context->state->recordHostileImpactReceived($targetNationId);
+        $allianceMoney = 0;
+        if ($attackerStartKarma <= 0 && $targetStartKarma > 0) {
+            $perKarma = $context->ruleset->settings['karma']['alliance_reward_money_per_karma_per_impact'] ?? null;
+            if ($perKarma !== 1) {
+                throw new DomainException('The active ruleset has an invalid KARMA alliance reward contract.');
+            }
+            $allianceMoney = $targetStartKarma * $perKarma;
+            $context->state->addAllianceMoney($intent->nationId, $allianceMoney);
+        }
+        $beforePopulation = $impact['before_population'] ?? null;
+        $afterPopulation = $impact['after_population'] ?? null;
+        if (is_int($beforePopulation) && is_int($afterPopulation) && $beforePopulation > $afterPopulation
+            && isset($launch['population_remaining'][$targetNationId])) {
+            $launch['population_remaining'][$targetNationId] = max(
+                0,
+                $launch['population_remaining'][$targetNationId] - ($beforePopulation - $afterPopulation),
+            );
+            if (($launch['population_start'][$targetNationId] ?? 0) > 100
+                && $launch['population_remaining'][$targetNationId] === 100
+                && ! $context->state->karmaLedgerForNation($targetNationId)['recovery_entry']) {
+                $context->state->markRecoveryEntry($targetNationId);
+                $this->events->record($context, 'recovery.entry_qualified', null, [
+                    'nation_id' => $targetNationId,
+                    'firing_nation_id' => $intent->nationId,
+                    'queue_item_id' => $intent->queueItemId,
+                    'sequence_start_population' => $launch['population_start'][$targetNationId],
+                    'population_after_impact' => 100,
+                ], 'admin');
+            }
+        }
+        $this->events->record($context, 'karma.missile_impact', null, [
+            'nation_id' => $intent->nationId,
+            'target_nation_id' => $targetNationId,
+            'queue_item_id' => $intent->queueItemId,
+            'missile_key' => $intent->definitionKey,
+            'effect' => $impact['effect'],
+            'impact_category_points' => $points,
+            'crime_points' => $crimePoints,
+            'attacker_start_karma' => $attackerStartKarma,
+            'target_start_karma' => $targetStartKarma,
+            'turn_start_monster' => $launch['turn_start_monster'],
+            'missile_boundary_monster' => $launch['missile_boundary_monster'],
+            'anti_monster_context' => $intent->antiMonsterContext(),
+            'anti_monster_exempt' => $antiMonsterExempt,
+            'alliance_money' => $allianceMoney,
+        ], 'admin');
+    }
+
+    /** @param array<string, mixed> $impact */
+    private function impactCrimePoints(TurnContext $context, array $impact): int
+    {
+        $points = $context->ruleset->settings['karma']['impact_points'] ?? null;
+        if (! is_array($points)) {
+            throw new DomainException('The active ruleset has no KARMA impact categories.');
+        }
+        $removedFacility = $impact['removed_facility_key'] ?? null;
+        if ($removedFacility === 'seabed_oil_field') {
+            return $points['seabed_oil_field_destroyed'];
+        }
+        if ($removedFacility === 'seabed_base') {
+            return $points['seabed_base_destroyed'];
+        }
+        if (($impact['effect'] ?? null) === 'terrain_destroyed') {
+            return $points['land_destroyed'];
+        }
+        if (($impact['effect'] ?? null) === 'capital_damaged') {
+            return $points['capital_above_minimum'];
+        }
+        if (($impact['effect'] ?? null) === 'capital_at_minimum') {
+            return $points['capital_at_minimum'];
+        }
+        if (is_string($removedFacility) && $removedFacility !== '') {
+            return $points['settlement_or_facility'];
+        }
+        if (in_array($impact['effect'] ?? null, ['land_scorched', 'water_facility_destroyed'], true)) {
+            return $points['terrain'];
+        }
+
+        return 0;
+    }
+
+    /** @param array<string, mixed> $launch */
+    private function evaluateSppSelfDestructSetup(TurnContext $context, array &$launch): void
+    {
+        if ($launch['spp_evaluated'] || ! $launch['prepared']
+            || $launch['intent']->definitionKey !== 'spp_missile'
+            || $launch['spp_qualified_monster_ids'] === []
+            || ! array_key_exists($launch['nation']->id, $context->state->karmaStartSnapshots())) {
+            $launch['spp_evaluated'] = true;
+
+            return;
+        }
+        $launch['spp_evaluated'] = true;
+        $monsters = MonsterInstance::query()->whereIn('id', array_keys($launch['spp_qualified_monster_ids']))
+            ->orderBy('id')->lockForUpdate()->get(['id', 'current_hp', 'state'])->keyBy('id');
+        foreach ($launch['spp_candidates'] as $monsterId => $candidate) {
+            if (! isset($launch['spp_qualified_monster_ids'][$monsterId])) {
+                continue;
+            }
+            $monster = $monsters->get($monsterId);
+            if (! $monster instanceof MonsterInstance || $monster->state !== 'alive'
+                || $monster->current_hp !== 1 || $candidate['start_hp'] <= 1) {
+                continue;
+            }
+            $nation = $launch['nation'];
+            $points = $context->ruleset->settings['karma']['spp_self_destruct_setup_points'] ?? null;
+            if ($points !== 20) {
+                throw new DomainException('The active ruleset has an invalid deliberate SPP KARMA contract.');
+            }
+            $context->state->addKarmaCrime($nation->id, $points);
+            $snapshot = $context->state->secretarySnapshot($nation->id);
+            $speaker = $snapshot['name'] ?? '秘書';
+            $message = $speaker.'「'.$nation->owner_name.'様……先ほどのSPPミサイルの本数ですが……」（カルマ +20）';
+            $this->events->record($context, 'karma.spp_self_destruct_setup', $nation, [
+                'nation_id' => $nation->id,
+                'player_address' => $nation->owner_name,
+                'queue_item_id' => $launch['intent']->queueItemId,
+                'monster_instance_id' => $monsterId,
+                'host_nation_id' => $candidate['host_nation_id'],
+                'start_hp' => $candidate['start_hp'],
+                'final_hp' => 1,
+                'crime_points' => $points,
+                'secretary_name' => $snapshot['name'],
+            ], 'private', 'warning', $message);
+
+            break;
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $settings
      * @return array<string, mixed>
@@ -244,25 +600,32 @@ final class MissileImpactResolver
         );
         if ($protectedNationId !== null) {
             $protectedNation = Nation::query()->findOrFail($protectedNationId);
+            $recoveryProtection = $context->state->recoveryTerritoryNationId(
+                $coordinate->x,
+                $coordinate->y,
+            ) === $protectedNationId;
             $missileName = match ($intent->definitionKey) {
                 'missile' => 'ミサイル', 'pp_missile' => 'PPミサイル',
                 'land_destruction_missile' => '陸地破壊弾', 'spp_missile' => 'SPPミサイル',
                 default => $intent->definitionKey,
             };
-            $this->events->record($context, 'missile.dormancy_protected', $cell, [
+            $this->events->record($context, $recoveryProtection
+                ? 'missile.recovery_protected'
+                : 'missile.dormancy_protected', $cell, [
                 'nation_id' => $protectedNationId,
                 'nation_name' => $protectedNation->name,
                 'x' => $coordinate->x,
                 'y' => $coordinate->y,
                 'missile_key' => $intent->definitionKey,
                 'missile_name' => $missileName,
-            ], 'public', 'info',
-                "{$protectedNation->name}({$coordinate->x},{$coordinate->y})に{$missileName}が落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました",
+            ], 'public', 'info', $recoveryProtection
+                ? "{$protectedNation->name}({$coordinate->x},{$coordinate->y})への{$missileName}攻撃は箱庭協定によって禁じられ、空中で自爆しました"
+                : "{$protectedNation->name}({$coordinate->x},{$coordinate->y})に{$missileName}が落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました",
             );
 
             return [
                 ...$base,
-                'effect' => 'dormant_capital_protected',
+                'effect' => $recoveryProtection ? 'recovery_protected' : 'dormant_capital_protected',
                 'protected_nation_id' => $protectedNationId,
             ];
         }
@@ -409,12 +772,12 @@ final class MissileImpactResolver
      */
     private function ordinaryImpact(
         TurnContext $context,
-        Nation $firingNation,
-        MapCell $firingBase,
+        ?Nation $firingNation,
+        ?MapCell $firingBase,
         MapCell $cell,
         array $base,
         string $missileKey,
-        int $queueItemId,
+        ?int $queueItemId,
     ): array {
         $resistance = $context->ruleset->settings['military']['seabed_base_resistance'] ?? null;
         if (is_array($resistance)
@@ -437,11 +800,11 @@ final class MissileImpactResolver
                 1,
                 $missileKey,
                 $firingNation,
-                $firingBase->facility_experience !== null ? $firingBase : null,
+                $firingBase?->facility_experience !== null ? $firingBase : null,
                 $cell,
                 $context,
             );
-            $terrainScorched = $result->killed && $result->status === 'killed'
+            $terrainScorched = $result->killed
                 ? $this->scorchWasteland($context, $cell)
                 : false;
             $scorchMetadata = $terrainScorched
@@ -461,6 +824,9 @@ final class MissileImpactResolver
 
             return [
                 ...$base, 'meaningful' => true, 'effect' => $result->status,
+                'target_nation_id' => $cell->owner_nation_id,
+                'target_nation_name' => $cell->ownerNation?->name,
+                'monster_instance_id' => $occupancy->monster->id,
                 'monster_key' => $occupancy->monster->definition->key,
                 'before_hp' => $result->beforeHp, 'after_hp' => $result->afterHp,
                 ...$scorchMetadata,
@@ -501,25 +867,31 @@ final class MissileImpactResolver
             if (is_array($experienceContract) && (! is_int($capitalMultiplier) || $capitalMultiplier < 1)) {
                 throw new DomainException('The active ruleset has an invalid Capital experience multiplier.');
             }
-            $experience = $this->creditSettlementExperience(
-                $context,
-                $firingNation,
-                $firingBase,
-                $missileKey,
-                $capitalMultiplier === null ? $loss : $loss * $capitalMultiplier,
-            );
-            $refugees = $this->generateAndReceiveRefugees(
-                $context,
-                $firingNation,
-                $cell,
-                intdiv($loss, 2),
-                $missileKey,
-                $queueItemId,
-            );
+            $experience = $firingNation !== null && $firingBase !== null
+                ? $this->creditSettlementExperience(
+                    $context,
+                    $firingNation,
+                    $firingBase,
+                    $missileKey,
+                    $capitalMultiplier === null ? $loss : $loss * $capitalMultiplier,
+                )
+                : 0;
+            $refugees = $firingNation !== null && $queueItemId !== null
+                ? $this->generateAndReceiveRefugees(
+                    $context,
+                    $firingNation,
+                    $cell,
+                    intdiv($loss, 2),
+                    $missileKey,
+                    $queueItemId,
+                    $targetNationId,
+                )
+                : 0;
 
             return [
                 ...$base, 'meaningful' => $loss > 0,
                 'effect' => $loss > 0 ? 'capital_damaged' : 'capital_at_minimum',
+                'target_nation_id' => $targetNationId, 'target_nation_name' => $targetNationName,
                 'before_population' => $beforePopulation, 'after_population' => $cell->population,
                 'refugees' => $refugees,
                 'firing_base_experience_applied' => $experience,
@@ -544,7 +916,7 @@ final class MissileImpactResolver
         $cell->version++;
         $cell->save();
         $this->markCellChanged($context, $cell);
-        $refugees = $settlement && $beforePopulation > 0
+        $refugees = $settlement && $beforePopulation > 0 && $firingNation !== null && $queueItemId !== null
             ? $this->generateAndReceiveRefugees(
                 $context,
                 $firingNation,
@@ -552,9 +924,10 @@ final class MissileImpactResolver
                 intdiv($beforePopulation, 2),
                 $missileKey,
                 $queueItemId,
+                $targetNationId,
             )
             : 0;
-        $experience = $settlement
+        $experience = $settlement && $firingNation !== null && $firingBase !== null
             ? $this->creditSettlementExperience(
                 $context,
                 $firingNation,
@@ -642,6 +1015,7 @@ final class MissileImpactResolver
             return [
                 ...$base, 'meaningful' => $loss > 0,
                 'effect' => $loss > 0 ? 'capital_damaged' : 'capital_at_minimum',
+                'target_nation_id' => $targetNationId, 'target_nation_name' => $targetNationName,
                 'before_population' => $beforePopulation, 'after_population' => $cell->population,
                 'refugees' => 0,
             ];
@@ -688,7 +1062,7 @@ final class MissileImpactResolver
             'target_nation_id' => $targetNationId, 'target_nation_name' => $targetNationName,
             'from_terrain_key' => $beforeTerrain, 'to_terrain_key' => $cell->terrain->key,
             'removed_facility_key' => $beforeFacility, 'before_population' => $beforePopulation,
-            'monster_removed' => $monsterRemoved, 'refugees' => 0,
+            'after_population' => 0, 'monster_removed' => $monsterRemoved, 'refugees' => 0,
         ];
     }
 
@@ -742,7 +1116,7 @@ final class MissileImpactResolver
 
     private function damageCapital(
         TurnContext $context,
-        Nation $firingNation,
+        ?Nation $firingNation,
         MapCell $cell,
         string $missileKey,
         int $percentage,
@@ -778,12 +1152,34 @@ final class MissileImpactResolver
         int $generated,
         string $missileKey,
         int $queueItemId,
+        ?int $sourceNationId = null,
     ): int {
         if ($generated < 1) {
             return 0;
         }
+        $sourceNationId ??= $source->owner_nation_id;
+        $baseGenerated = $generated;
+        if ($sourceNationId !== null && $sourceNationId !== $recipient->id
+            && array_key_exists($sourceNationId, $context->state->karmaStartSnapshots())
+            && $context->state->karmaStartSnapshot($recipient->id) <= 0) {
+            $targetKarma = $context->state->karmaStartSnapshot($sourceNationId);
+            if ($targetKarma > 0) {
+                $bonus = intdiv($baseGenerated * $targetKarma, 100);
+                $generated += $bonus;
+                $this->events->record($context, 'karma.refugee_bonus', $recipient, [
+                    'nation_id' => $recipient->id,
+                    'source_nation_id' => $sourceNationId,
+                    'queue_item_id' => $queueItemId,
+                    'missile_key' => $missileKey,
+                    'target_start_karma' => $targetKarma,
+                    'base_refugees' => $baseGenerated,
+                    'bonus_refugees' => $bonus,
+                    'total_refugees' => $generated,
+                ], 'admin');
+            }
+        }
         $this->events->record($context, 'refugee_generated', $source, [
-            'nation_id' => $source->owner_nation_id,
+            'nation_id' => $sourceNationId,
             'recipient_nation_id' => $recipient->id,
             'x' => $source->x, 'y' => $source->y,
             'missile_key' => $missileKey,
@@ -818,7 +1214,7 @@ final class MissileImpactResolver
         $context->state->addRefugeesReceived($recipient->id, $received);
         $this->events->record($context, 'refugee_received', $recipient, [
             'nation_id' => $recipient->id,
-            'source_nation_id' => $source->owner_nation_id,
+            'source_nation_id' => $sourceNationId,
             'missile_key' => $missileKey,
             'queue_item_id' => $queueItemId,
             'generated_population' => $generated,
@@ -858,9 +1254,10 @@ final class MissileImpactResolver
     ): void {
         $this->events->record($context, 'missile.impact', $cell, [
             'nation_id' => $targetNationId ?? $cell->owner_nation_id,
-            'target_nation_name' => $targetNationName ?? $cell->ownerNation?->name,
+            'target_nation_name' => $targetNationName ?? $cell->ownerNation->name,
             'firing_nation_id' => $firingNation?->id,
-            'firing_nation_name' => $firingNation?->name,
+            'firing_nation_name' => $firingNation === null ? '箱庭連合' : $firingNation->name,
+            'firing_source' => $firingNation === null ? 'hakoniwa_alliance' : 'player_nation',
             'missile_key' => $missileKey,
             'x' => $cell->x, 'y' => $cell->y,
             'effect' => $effect,
@@ -899,7 +1296,16 @@ final class MissileImpactResolver
      *     cost: int,
      *     ineffective: int,
      *     impacts: list<array<string, mixed>>,
-     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>
+     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>,
+     *     prepared: bool,
+     *     footprint: list<string>,
+     *     turn_start_monster: bool,
+     *     missile_boundary_monster: bool,
+     *     population_start: array<int, int>,
+     *     population_remaining: array<int, int>,
+     *     spp_candidates: array<int, array{start_hp: int, host_nation_id: int}>,
+     *     spp_qualified_monster_ids: array<int, true>,
+     *     spp_evaluated: bool
      * }
      */
     private function &launch(LaunchIntent $intent, Nation $nation): array
@@ -912,6 +1318,10 @@ final class MissileImpactResolver
                 'intent' => $intent, 'nation' => $nation,
                 'fired' => 0, 'cost' => 0, 'ineffective' => 0,
                 'impacts' => [], 'firing_bases' => [],
+                'prepared' => false, 'footprint' => [],
+                'turn_start_monster' => false, 'missile_boundary_monster' => false,
+                'population_start' => [], 'population_remaining' => [],
+                'spp_candidates' => [], 'spp_qualified_monster_ids' => [], 'spp_evaluated' => false,
             ];
         }
 
