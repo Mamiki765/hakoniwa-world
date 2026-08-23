@@ -7,10 +7,13 @@ use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
 use App\Application\Ver240DormancyRulesetUpgrade;
+use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
+use App\Models\CommandDefinition;
 use App\Models\MapCell;
 use App\Models\NationCommandQueueItem;
 use App\Models\RulesetVersion;
+use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
@@ -27,6 +30,8 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    private const REBASELINE_MIGRATION = '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade';
 
     private const MIGRATION = '2026_08_23_000000_add_nation_dormancy_and_publish_v12';
 
@@ -60,6 +65,51 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame('completed', $item->fresh()->status);
         $this->assertSame('plain', $target->fresh()->terrain()->value('key'));
+    }
+
+    public function test_historical_queued_v10_request_without_fingerprint_rebaselines_to_v12_and_remains_runnable(): void
+    {
+        [$world, $item, $target] = $this->supportedSourceWithQueuedCommand();
+        $v10 = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
+        );
+        $v11 = RulesetVersion::query()->where('key', Ver240DormancyRulesetUpgrade::SOURCE_KEY)->sole();
+        $buildMine = CommandDefinition::query()
+            ->where('ruleset_version_id', $v11->id)
+            ->where('key', 'build_mine')
+            ->sole();
+        $target = $target->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->transitionTerrain(
+            $target,
+            TerrainDefinition::query()->where('key', 'mountain')->sole(),
+        );
+        $target->save();
+        $item->update([
+            'command_definition_id' => $buildMine->id,
+            'request_ruleset_version_id' => $v10->id,
+            'request_fingerprint' => null,
+            'queue_position' => 10,
+        ]);
+        $world->nations()->sole()->update(['money' => 1_000]);
+        DB::table('migrations')->whereIn('migration', [self::REBASELINE_MIGRATION, self::MIGRATION])->delete();
+        $requestKey = $item->fresh()->request_key;
+
+        $this->assertSame(Ver240DormancyRulesetUpgrade::SOURCE_KEY, $item->fresh()->definition->rulesetVersion->key);
+        $this->assertSame($v10->id, $item->fresh()->request_ruleset_version_id);
+        $this->assertNull($item->fresh()->request_fingerprint);
+
+        $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
+
+        $this->assertNull($item->fresh()->request_fingerprint);
+        $this->assertSame($requestKey, $item->fresh()->request_key);
+        $this->assertSame($v10->id, $item->fresh()->request_ruleset_version_id);
+        $this->assertSame(10, $item->fresh()->queue_position);
+        $this->assertSame(Ver240DormancyRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
+
+        $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame('mine', $target->fresh()->facility()->value('key'));
     }
 
     #[DataProvider('unresolvedStatuses')]
