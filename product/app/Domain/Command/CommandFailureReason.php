@@ -24,4 +24,5 @@ enum CommandFailureReason: string
     case InvalidParameter = 'invalid_parameter';
     case NoLaunchBase = 'no_launch_base';
     case RulesetMismatch = 'ruleset_mismatch';
+    case CeasefireProhibited = 'ceasefire_prohibited';
 }

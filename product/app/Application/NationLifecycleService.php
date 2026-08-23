@@ -12,6 +12,7 @@ use App\Models\MapChunk;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCapital;
+use App\Models\MonsterOccupancy;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
@@ -29,19 +30,47 @@ final class NationLifecycleService
         private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly MapCellStateService $cellStates,
         private readonly TurnEventRecorder $events,
+        private readonly MonsterRemovalService $monsterRemoval,
     ) {}
 
-    /** @return array{participants: int, active: int, dormant: int, resumed: int} */
+    /** @return array{participants: int, active: int, dormant: int, recovery: int, resumed: int, recovery_resumed: int} */
     public function prepare(TurnContext $context): array
     {
         $settings = $this->settings($context->ruleset);
-        if (Nation::query()->where('world_id', $context->world->id)->where('state', 'recovery')->exists()) {
-            throw new DomainException('Recovery has no ver 2.4.0 runtime entry path and cannot enter an official Turn.');
-        }
         $nations = Nation::query()->where('world_id', $context->world->id)
-            ->whereIn('state', ['active', 'dormant'])->orderBy('id')->lockForUpdate()->get();
+            ->whereIn('state', ['active', 'dormant', 'recovery'])->orderBy('id')->lockForUpdate()->get();
         $resumed = 0;
+        $recoveryResumed = 0;
         foreach ($nations as $nation) {
+            if ($nation->state === 'recovery') {
+                if (! is_int($nation->resume_at_turn) || $context->targetTurn < $nation->resume_at_turn) {
+                    continue;
+                }
+                $hasMeaningfulQueue = $this->hasQueuedNonFinanceCommand($nation, $settings['finance_command_key']);
+                $nextState = ! $hasMeaningfulQueue && $nation->idle_counter >= $settings['dormant_idle_threshold']
+                    ? 'dormant'
+                    : 'active';
+                $beforeStartedTurn = $nation->state_started_turn;
+                $beforeResumeTurn = $nation->resume_at_turn;
+                $nation->state = $nextState;
+                $nation->state_reason = $nextState === 'dormant' ? 'idle' : null;
+                $nation->state_started_turn = $nextState === 'dormant' ? $context->targetTurn : null;
+                $nation->resume_at_turn = null;
+                $nation->save();
+                $recoveryResumed++;
+                $this->events->record($context, 'nation.recovery_ended', $nation, [
+                    'nation_id' => $nation->id,
+                    'nation_name' => $nation->name,
+                    'before_state' => 'recovery',
+                    'after_state' => $nextState,
+                    'state_started_turn' => $beforeStartedTurn,
+                    'resume_at_turn' => $beforeResumeTurn,
+                    'meaningful_non_finance_queue' => $hasMeaningfulQueue,
+                    'idle_counter' => (int) $nation->idle_counter,
+                ], 'public', message: "{$nation->name}の休戦期間が終了しました。");
+
+                continue;
+            }
             if ($nation->state !== 'dormant') {
                 continue;
             }
@@ -72,11 +101,11 @@ final class NationLifecycleService
         }
 
         $nations = Nation::query()->where('world_id', $context->world->id)
-            ->whereIn('state', ['active', 'dormant'])->orderBy('id')->get();
+            ->whereIn('state', ['active', 'dormant', 'recovery'])->orderBy('id')->get();
         $capitals = NationCapital::query()->whereIn('nation_id', $nations->modelKeys())
             ->orderBy('nation_id')->lockForUpdate()->get()->keyBy('nation_id');
         if ($capitals->count() !== $nations->count()) {
-            throw new DomainException('Every active or dormant Nation must retain exactly one Capital.');
+            throw new DomainException('Every current Nation must retain exactly one Capital.');
         }
         $context->state->setLifecycleNationIds($nations->modelKeys());
         foreach ($nations as $nation) {
@@ -90,12 +119,23 @@ final class NationLifecycleService
                 'capital_y' => (int) $capital->y,
             ]);
         }
+        $recoveryNationIds = $nations->where('state', 'recovery')->modelKeys();
+        $recoveryTerritory = $recoveryNationIds === []
+            ? []
+            : MapCell::query()->whereIn('owner_nation_id', $recoveryNationIds)
+                ->orderBy('x')->orderBy('y')->get(['owner_nation_id', 'x', 'y'])
+                ->mapWithKeys(static fn (MapCell $cell): array => [
+                    $cell->x.':'.$cell->y => (int) $cell->owner_nation_id,
+                ])->all();
+        $context->state->setRecoveryTerritoryNationIds($recoveryTerritory);
 
         return [
             'participants' => $nations->count(),
             'active' => $nations->where('state', 'active')->count(),
             'dormant' => $nations->where('state', 'dormant')->count(),
+            'recovery' => $nations->where('state', 'recovery')->count(),
             'resumed' => $resumed,
+            'recovery_resumed' => $recoveryResumed,
         ];
     }
 
@@ -130,14 +170,26 @@ final class NationLifecycleService
         return $metrics;
     }
 
-    /** @return array{entered_dormant: int, abandoned: int} */
+    /** @return array{entered_dormant: int, entered_recovery: int, recovery_monsters_removed: int, abandoned: int} */
     public function finalize(TurnContext $context): array
     {
         $settings = $this->settings($context->ruleset);
-        $metrics = ['entered_dormant' => 0, 'abandoned' => 0];
+        $metrics = [
+            'entered_dormant' => 0,
+            'entered_recovery' => 0,
+            'recovery_monsters_removed' => 0,
+            'abandoned' => 0,
+        ];
         foreach ($context->state->nationLifecycleSnapshots() as $nationId => $snapshot) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             if ($nation->state === 'abandoned') {
+                continue;
+            }
+            if ($snapshot['state'] === 'recovery') {
+                if ($nation->state !== 'recovery') {
+                    throw new DomainException('Recovery Nation state changed inside a frozen target Turn.');
+                }
+
                 continue;
             }
             if ($snapshot['state'] === 'dormant') {
@@ -153,6 +205,12 @@ final class NationLifecycleService
             }
             if ($nation->state !== 'active') {
                 throw new DomainException('Active Nation state changed inside a frozen target Turn.');
+            }
+            if ($context->state->karmaLedgerForNation($nationId)['recovery_entry']) {
+                $metrics['recovery_monsters_removed'] += $this->enterRecovery($context, $nation, $settings);
+                $metrics['entered_recovery']++;
+
+                continue;
             }
             if ($nation->idle_counter >= $settings['abandonment_idle_threshold']) {
                 $this->enterDormant($context->world, $context->ruleset, $nation, 'idle', $context->targetTurn, null, null, $context);
@@ -180,6 +238,65 @@ final class NationLifecycleService
         }
 
         return $metrics;
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function enterRecovery(TurnContext $context, Nation $nation, array $settings): int
+    {
+        $duration = $settings['recovery_duration_turns'] ?? null;
+        if ($nation->state !== 'active' || ! is_int($duration) || $duration !== 84) {
+            throw new DomainException('Nation cannot enter recovery without the exact v13 lifecycle contract.');
+        }
+        $nation->state = 'recovery';
+        $nation->state_reason = null;
+        $nation->state_started_turn = $context->targetTurn;
+        $nation->resume_at_turn = $context->targetTurn + $duration + 1;
+        $nation->save();
+
+        $occupancies = MonsterOccupancy::query()
+            ->whereHas('cell', fn ($query) => $query->where('owner_nation_id', $nation->id))
+            ->whereHas('monster', fn ($query) => $query->where('state', 'alive'))
+            ->with(['monster.definition', 'cell'])
+            ->orderBy('id')->lockForUpdate()->get();
+        $removed = 0;
+        foreach ($occupancies as $occupancy) {
+            if ($this->monsterRemoval->removeAtCell(
+                $context,
+                $occupancy->cell,
+                'recovery_alliance_removal',
+                'monster.removed_for_recovery',
+                [
+                    'recovery_nation_id' => $nation->id,
+                    'rewards_granted' => false,
+                    'experience_granted' => false,
+                    'karma_reduction' => false,
+                ],
+            )) {
+                $removed++;
+            }
+        }
+        $this->events->record($context, 'nation.recovery_started', $nation, [
+            'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
+            'before_state' => 'active',
+            'after_state' => 'recovery',
+            'state_started_turn' => $context->targetTurn,
+            'resume_at_turn' => $nation->resume_at_turn,
+            'full_recovery_turns' => $duration,
+            'monsters_removed' => $removed,
+        ], 'public', message: "{$nation->name}は壊滅し、箱庭連合の復興支援による休戦に入りました。");
+        if ($removed > 0) {
+            $this->events->record($context, 'nation.recovery_monsters_removed', $nation, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+                'monsters_removed' => $removed,
+                'rewards_granted' => false,
+                'experience_granted' => false,
+                'karma_reduction' => false,
+            ], 'public', message: "{$nation->name}の怪獣は、復興支援に入った箱庭連合によって退治されました。");
+        }
+
+        return $removed;
     }
 
     public function enterManual(
@@ -388,17 +505,16 @@ final class NationLifecycleService
         ]);
     }
 
-    /**
-     * @return array{initial_idle_counter: int, dormant_idle_threshold: int, abandonment_idle_threshold: int, turns_per_day: int, manual_dormancy_min_days: int, manual_dormancy_max_days: int, dormant_finance_money: int, dormant_protection_radius: int, dormant_visual_theme: string, initial_food_resource_key: string, finance_command_key: string, emergency_farm: array<string, mixed>}
-     */
+    /** @return array<string, mixed> */
     private function settings(RulesetVersion $ruleset): array
     {
         $settings = $ruleset->settings['nation_lifecycle'] ?? null;
-        if (! is_array($settings) || ($settings['recovery_entry_enabled'] ?? null) !== false) {
+        if (! is_array($settings)
+            || ($settings['recovery_entry_enabled'] ?? null) !== true
+            || ($settings['recovery_duration_turns'] ?? null) !== 84) {
             throw new DomainException('The current Ruleset has no supported Nation lifecycle contract.');
         }
 
-        /** @var array{initial_idle_counter: int, dormant_idle_threshold: int, abandonment_idle_threshold: int, turns_per_day: int, manual_dormancy_min_days: int, manual_dormancy_max_days: int, dormant_finance_money: int, dormant_protection_radius: int, dormant_visual_theme: string, initial_food_resource_key: string, finance_command_key: string, emergency_farm: array<string, mixed>} $settings */
         return $settings;
     }
 }

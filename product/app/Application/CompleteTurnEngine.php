@@ -64,6 +64,7 @@ final class CompleteTurnEngine
         private readonly SecretaryProductionBonus $secretaryProduction,
         private readonly SecretaryOldBowService $secretaryOldBow,
         private readonly NationLifecycleService $nationLifecycle,
+        private readonly KarmaTurnService $karma,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -76,7 +77,7 @@ final class CompleteTurnEngine
             'resource_sales' => $this->sellResources($context),
             'development_commands' => $this->developmentCommands($context),
             'process_cells' => $this->processCells($context),
-            'settle_deferred_effects' => ['settled_effects' => 0, 'extension_boundary' => true],
+            'settle_deferred_effects' => $this->settleDeferredEffects($context),
             'global_disasters' => $this->disasters->executeGlobal($context),
             'aggregate_nations' => $this->aggregateNations($context),
             'enforce_capacities' => $this->enforceCapacities($context),
@@ -94,6 +95,7 @@ final class CompleteTurnEngine
             throw new DomainException('The active ruleset does not implement the complete non-combat turn contract.');
         }
         $lifecycleMetrics = $this->nationLifecycle->prepare($context);
+        $karmaMetrics = $this->karma->prepare($context);
         $nationIds = $this->orders->stableNationIds($context->world);
         $context->state->setStableNationIds($nationIds);
         foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
@@ -110,6 +112,7 @@ final class CompleteTurnEngine
             'ruleset_validated' => true,
             'secretary_snapshots' => $secretarySnapshots,
             ...$lifecycleMetrics,
+            ...$karmaMetrics,
         ];
         if ($this->secretaries->itemEffectsEnabled($context)) {
             $metrics['secretary_item_effect_snapshots'] = $context->state->secretaryItemEffectSnapshotCount();
@@ -171,7 +174,7 @@ final class CompleteTurnEngine
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
-            if ($nation->state !== 'active') {
+            if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             $aggregate = $this->nationEconomyAggregate($nation);
@@ -302,10 +305,10 @@ final class CompleteTurnEngine
             'missile_idle_counter_resets' => 0,
         ];
         $activeNations = Nation::query()->where('world_id', $context->world->id)
-            ->where('state', 'active')
+            ->whereIn('state', ['active', 'recovery'])
             ->pluck('id')->map(static fn ($id): int => (int) $id)->flip();
         $disasterMutableNationIds = Nation::query()->where('world_id', $context->world->id)
-            ->whereIn('state', ['active', 'dormant'])
+            ->whereIn('state', ['active', 'dormant', 'recovery'])
             ->pluck('id')->map(static fn ($id): int => (int) $id)->all();
 
         $space = MapSpace::query()
@@ -332,6 +335,7 @@ final class CompleteTurnEngine
             ],
         );
         $monsterBatch = $this->monsters->load($context);
+        $metrics['missile_boundary_monsters'] = $this->karma->snapshotMissileBoundary($context);
         $this->missiles->begin($cellsByCoordinate);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
         $separateNormalMonsterPass = ($context->ruleset->settings['turn_resolution']['normal_monster_stage'] ?? null)
@@ -476,6 +480,21 @@ final class CompleteTurnEngine
     }
 
     /** @return array<string, int> */
+    private function settleDeferredEffects(TurnContext $context): array
+    {
+        $alliance = $this->karma->settleAllianceMoney($context);
+        $sanctions = $this->missiles->resolveSanctions($context);
+
+        return [
+            'alliance_nations' => $alliance['nations'],
+            'alliance_money_requested' => $alliance['requested'],
+            'alliance_money_applied' => $alliance['applied'],
+            'alliance_money_overflow' => $alliance['overflow'],
+            ...$sanctions,
+        ];
+    }
+
+    /** @return array<string, int> */
     private function aggregateNations(TurnContext $context): array
     {
         $changedChunks = $this->updateChangedMapChunkVersions($context);
@@ -557,7 +576,7 @@ final class CompleteTurnEngine
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
-            if ($nation->state !== 'active') {
+            if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
@@ -645,7 +664,7 @@ final class CompleteTurnEngine
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
-            if ($nation->state !== 'active') {
+            if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
@@ -734,6 +753,7 @@ final class CompleteTurnEngine
         $secretaryMetrics = $this->secretaries->flushExperience($context);
         $awardMetrics = $this->awards->finalize($context);
         $lifecycleMetrics = $this->nationLifecycle->finalize($context);
+        $karmaMetrics = $this->karma->finalize($context);
         foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
             $nation = $record['nation'];
             $start = $context->state->nationStartSummary($nationId);
@@ -764,6 +784,10 @@ final class CompleteTurnEngine
             'secretary_skills_changed' => $secretaryMetrics['skills_changed'],
             'secretary_levels_gained' => $secretaryMetrics['levels_gained'],
             ...$lifecycleMetrics,
+            ...array_combine(
+                array_map(static fn (string $key): string => 'karma_'.$key, array_keys($karmaMetrics)),
+                array_values($karmaMetrics),
+            ),
             ...$awardMetrics,
         ];
     }

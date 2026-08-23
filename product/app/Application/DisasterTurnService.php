@@ -193,7 +193,7 @@ final class DisasterTurnService
 
         $nations = Nation::query()
             ->where('world_id', $context->world->id)
-            ->whereIn('state', ['active', 'dormant'])
+            ->whereIn('state', ['active', 'dormant', 'recovery'])
             ->orderBy('id')
             ->get();
         $landByNation = $this->landArea->forNationIds(
@@ -1079,14 +1079,14 @@ final class DisasterTurnService
 
         return $cell->owner_nation_id === null
             || Nation::query()->whereKey($cell->owner_nation_id)
-                ->whereIn('state', ['active', 'dormant'])->exists();
+                ->whereIn('state', ['active', 'dormant', 'recovery'])->exists();
     }
 
     private function newMutableCellIndex(TurnContext $context): DisasterMutableCellIndex
     {
         $activeNationIds = Nation::query()
             ->where('world_id', $context->world->id)
-            ->whereIn('state', ['active', 'dormant'])
+            ->whereIn('state', ['active', 'dormant', 'recovery'])
             ->orderBy('id')
             ->pluck('id')
             ->map(static fn ($id): int => (int) $id)

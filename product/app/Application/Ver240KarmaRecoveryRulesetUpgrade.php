@@ -9,21 +9,21 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
-final readonly class Ver240DormancyRulesetUpgrade
+final readonly class Ver240KarmaRecoveryRulesetUpgrade
 {
-    public const SOURCE_KEY = 'hakoniwa-2s-plus-v11';
+    public const SOURCE_KEY = 'hakoniwa-2s-plus-v12';
 
-    public const SOURCE_VERSION = 11;
+    public const SOURCE_VERSION = 12;
 
-    public const SOURCE_CHECKSUM = Ver240InstallUpgradeRebaseline::CURRENT_CHECKSUM;
+    public const SOURCE_CHECKSUM = Ver240DormancyRulesetUpgrade::TARGET_CHECKSUM;
 
-    public const TARGET_KEY = 'hakoniwa-2s-plus-v12';
+    public const TARGET_KEY = 'hakoniwa-2s-plus-v13';
 
-    public const TARGET_VERSION = 12;
+    public const TARGET_VERSION = 13;
 
-    public const TARGET_CHECKSUM = 'cf55370616b56822fe6807f29cdaec6cb0fd3d9bcc12849d3e61df015bdf656e';
+    public const TARGET_CHECKSUM = '26b0e5549e3e6f40b7fd2822a0df53d9dd5cd9a1482cc4cd42dede3c9f14c614';
 
-    public const SOURCE_MIGRATION = '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade';
+    public const SOURCE_MIGRATION = '2026_08_23_000000_add_nation_dormancy_and_publish_v12';
 
     private const WORLD_KEY = 'shared-world';
 
@@ -43,8 +43,8 @@ final readonly class Ver240DormancyRulesetUpgrade
 
     public function run(): string
     {
-        $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php');
-        $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v12.php');
+        $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v12.php');
+        $targetSettings = config('hakoniwa.ruleset');
         if (! is_array($targetSettings)
             || ($sourceSettings['key'] ?? null) !== self::SOURCE_KEY
             || ($sourceSettings['version'] ?? null) !== self::SOURCE_VERSION
@@ -52,23 +52,20 @@ final readonly class Ver240DormancyRulesetUpgrade
             || ($targetSettings['key'] ?? null) !== self::TARGET_KEY
             || ($targetSettings['version'] ?? null) !== self::TARGET_VERSION
             || $this->checksum($targetSettings) !== self::TARGET_CHECKSUM) {
-            throw new RuntimeException('The exact v11/v12 Ruleset authoring required by the dormancy upgrade is missing or changed.');
+            throw new RuntimeException('The exact v12/v13 Ruleset authoring required by the KARMA/recovery upgrade is missing or changed.');
         }
 
         return DB::transaction(function () use ($sourceSettings, $targetSettings): string {
             $this->lockBusinessTables();
             $worlds = World::query()->orderBy('id')->lockForUpdate()->get(['id', 'key', 'current_turn', 'ruleset_version_id']);
             if ($worlds->isEmpty()) {
-                if (RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v13')->exists()) {
-                    return 'fresh_install_future_current';
-                }
                 $this->catalogs->assertInstalled($targetSettings);
                 $this->publisher->assertPublished($targetSettings);
 
-                return 'fresh_install_current_v12';
+                return 'fresh_install_current_v13';
             }
             if ($worlds->count() !== 1 || $worlds->first()->key !== self::WORLD_KEY) {
-                throw new RuntimeException('Dormancy upgrade supports exactly one shared-world.');
+                throw new RuntimeException('KARMA/recovery upgrade supports exactly one shared-world.');
             }
 
             $world = $worlds->first();
@@ -79,30 +76,47 @@ final readonly class Ver240DormancyRulesetUpgrade
                 $target = $this->publisher->assertPublished($targetSettings);
                 $this->assertPostconditions((int) $world->id, (int) $target->id);
 
-                return 'already_current_v12';
+                return 'already_current_v13';
             }
             if (! DB::table('migrations')->where('migration', self::SOURCE_MIGRATION)->exists()
                 || (int) $world->ruleset_version_id !== (int) $source->id) {
-                throw new RuntimeException('Dormancy upgrade requires the exact supported ver 2.4.0/v11 source.');
+                throw new RuntimeException('KARMA/recovery upgrade requires the exact supported ver 2.4.0/v12 source.');
             }
             $unresolved = TurnRun::query()->unresolvedProduction()->orderBy('id')->first(['id', 'status']);
             if ($unresolved instanceof TurnRun) {
                 throw new RuntimeException(
-                    "Dormancy upgrade blocked: unresolved non-dry TurnRun {$unresolved->id} has status {$unresolved->status}.",
+                    "KARMA/recovery upgrade blocked: unresolved non-dry TurnRun {$unresolved->id} has status {$unresolved->status}.",
                 );
             }
             $invalidNation = DB::table('nations')
-                ->whereNotIn('state', ['active', 'abandoned'])
+                ->whereNotIn('state', ['active', 'dormant', 'abandoned'])
                 ->orderBy('id')->first(['id', 'state']);
             if ($invalidNation !== null) {
                 throw new RuntimeException(
-                    "Dormancy upgrade cannot reinterpret Nation {$invalidNation->id} state {$invalidNation->state}.",
+                    "KARMA/recovery upgrade cannot reinterpret Nation {$invalidNation->id} state {$invalidNation->state}.",
                 );
+            }
+            if (DB::table('nations')->where('karma', '<>', 0)->exists()) {
+                throw new RuntimeException('Existing Nations must enter the v13 upgrade with initial KARMA 0.');
             }
 
             $fingerprints = DB::table('nation_command_queue_items')->orderBy('id')
                 ->pluck('request_fingerprint', 'id')->all();
             $idleCounters = DB::table('nations')->orderBy('id')->pluck('idle_counter', 'id')->all();
+            $lifecycleState = $this->rowsDigest(DB::table('nations')->orderBy('id')->get([
+                'id', 'state', 'state_reason', 'state_started_turn', 'resume_at_turn', 'idle_counter', 'karma',
+            ]));
+            $requestIdentity = $this->rowsDigest(DB::table('nation_command_queue_items')->orderBy('id')->get([
+                'id', 'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
+            ]));
+            $terminalHistory = $this->rowsDigest(DB::table('nation_command_queue_items')
+                ->where('status', '<>', 'queued')->orderBy('id')->get());
+            $monsterState = $this->rowsDigest(DB::table('monster_instances')->orderBy('id')->get([
+                'id', 'current_hp', 'spawned_max_hp', 'state', 'spawned_target_turn',
+                'removal_reason', 'removed_at', 'version',
+            ]));
+            $occupancyState = $this->tableDigest('monster_occupancies');
+            $auditHistory = $this->tableDigest('audit_events');
             $secretaryState = $this->tableDigest('secretaries').':'.$this->tableDigest('secretary_skills')
                 .':'.$this->tableDigest('secretary_item_instances');
 
@@ -154,7 +168,7 @@ SQL, [$target->id, $world->id, $source->id]);
                 ->where('ruleset_version_id', $source->id)
                 ->update(['ruleset_version_id' => $target->id, 'updated_at' => now()]);
             if ($updated !== 1) {
-                throw new RuntimeException('shared-world changed during the dormancy upgrade.');
+                throw new RuntimeException('shared-world changed during the KARMA/recovery upgrade.');
             }
 
             DB::statement('ALTER TABLE monster_instances ENABLE TRIGGER '.self::MONSTER_TRIGGER);
@@ -162,16 +176,30 @@ SQL, [$target->id, $world->id, $source->id]);
             DB::statement('SET CONSTRAINTS '.self::QUEUE_CONSTRAINT.' IMMEDIATE');
             if ($this->captureTrigger('monster_instances', self::MONSTER_TRIGGER) !== $monsterTrigger
                 || $this->captureTrigger('nation_monster_kill_stats', self::KILL_STAT_TRIGGER) !== $statTrigger) {
-                throw new RuntimeException('A gameplay integrity trigger changed during the dormancy upgrade.');
+                throw new RuntimeException('A gameplay integrity trigger changed during the KARMA/recovery upgrade.');
             }
 
             $this->assertPostconditions((int) $world->id, (int) $target->id);
             if ($fingerprints !== DB::table('nation_command_queue_items')->orderBy('id')
                 ->pluck('request_fingerprint', 'id')->all()
                 || $idleCounters !== DB::table('nations')->orderBy('id')->pluck('idle_counter', 'id')->all()
+                || $lifecycleState !== $this->rowsDigest(DB::table('nations')->orderBy('id')->get([
+                    'id', 'state', 'state_reason', 'state_started_turn', 'resume_at_turn', 'idle_counter', 'karma',
+                ]))
+                || $requestIdentity !== $this->rowsDigest(DB::table('nation_command_queue_items')->orderBy('id')->get([
+                    'id', 'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
+                ]))
+                || $terminalHistory !== $this->rowsDigest(DB::table('nation_command_queue_items')
+                    ->where('status', '<>', 'queued')->orderBy('id')->get())
+                || $monsterState !== $this->rowsDigest(DB::table('monster_instances')->orderBy('id')->get([
+                    'id', 'current_hp', 'spawned_max_hp', 'state', 'spawned_target_turn',
+                    'removal_reason', 'removed_at', 'version',
+                ]))
+                || $occupancyState !== $this->tableDigest('monster_occupancies')
+                || $auditHistory !== $this->tableDigest('audit_events')
                 || $secretaryState !== $this->tableDigest('secretaries').':'.$this->tableDigest('secretary_skills')
                     .':'.$this->tableDigest('secretary_item_instances')) {
-                throw new RuntimeException('Dormancy upgrade changed protected request, Nation counter, or Secretary data.');
+                throw new RuntimeException('KARMA/recovery upgrade changed protected request, Nation counter, or Secretary data.');
             }
 
             $now = now();
@@ -184,7 +212,7 @@ SQL, [$target->id, $world->id, $source->id]);
                 'y' => null,
                 'message' => null,
                 'visibility' => 'admin',
-                'event_type' => 'ruleset.v12_activated',
+                'event_type' => 'ruleset.v13_activated',
                 'severity' => 'info',
                 'subject_type' => $world->getMorphClass(),
                 'subject_id' => $world->id,
@@ -193,14 +221,18 @@ SQL, [$target->id, $world->id, $source->id]);
                     'target_key' => self::TARGET_KEY,
                     'target_checksum' => self::TARGET_CHECKSUM,
                     'existing_idle_counters_preserved' => true,
+                    'existing_karma_initialized_to_zero' => true,
                     'request_fingerprints_preserved' => true,
+                    'historical_request_provenance_preserved' => true,
+                    'terminal_command_history_preserved' => true,
+                    'live_monster_state_preserved' => true,
                 ], JSON_THROW_ON_ERROR),
                 'occurred_at' => $now,
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
 
-            return 'production_v11_to_v12';
+            return 'production_v12_to_v13';
         }, 1);
     }
 
@@ -223,7 +255,7 @@ SQL, [$target->id, $world->id, $source->id]);
             $source = DB::table($table)->where('ruleset_version_id', $sourceId)->orderBy('key')->pluck('key')->all();
             $target = DB::table($table)->where('ruleset_version_id', $targetId)->orderBy('key')->pluck('key')->all();
             if ($source !== $target || $source === []) {
-                throw new RuntimeException("{$table} keys are not stable across exact v11 to v12.");
+                throw new RuntimeException("{$table} keys are not stable across exact v12 to v13.");
             }
         }
     }
@@ -248,7 +280,7 @@ SQL, [$worldId, $targetId, $worldId, $targetId, $worldId, $targetId]);
             || (int) $mismatches->queued !== 0
             || (int) $mismatches->monsters !== 0
             || (int) $mismatches->stats !== 0) {
-            throw new RuntimeException('Exact v12 activation postconditions failed.');
+            throw new RuntimeException('Exact v13 activation postconditions failed.');
         }
     }
 
@@ -262,7 +294,7 @@ SELECT t.tgenabled, pg_get_triggerdef(t.oid, true) AS definition,
  WHERE t.tgrelid = ?::regclass AND t.tgname = ? AND NOT t.tgisinternal
 SQL, [$table, $trigger]);
         if ($row === null || $row->tgenabled !== 'O') {
-            throw new RuntimeException("{$trigger} must be enabled for the dormancy upgrade.");
+            throw new RuntimeException("{$trigger} must be enabled for the KARMA/recovery upgrade.");
         }
 
         return ['definition' => $row->definition, 'function' => $row->function];
@@ -272,6 +304,20 @@ SQL, [$table, $trigger]);
     {
         return hash('sha256', json_encode(
             DB::table($table)->orderBy('id')->get()->map(static fn (object $row): array => (array) $row)->all(),
+            JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
+        ));
+    }
+
+    /** @param iterable<int, object> $rows */
+    private function rowsDigest(iterable $rows): string
+    {
+        $normalized = [];
+        foreach ($rows as $row) {
+            $normalized[] = (array) $row;
+        }
+
+        return hash('sha256', json_encode(
+            $normalized,
             JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
         ));
     }

@@ -1463,6 +1463,7 @@ final class PlayerIslandEventService
                 default => "{$command}を実行可能な地形ではありませんでした。",
             },
             'ruleset_mismatch' => '現在のrulesetに属するcommandではないため実行できませんでした。',
+            'ceasefire_prohibited' => '箱庭協定による休戦中のため実行できませんでした。',
             default => '実行条件を満たさなくなったため実行できませんでした。',
         };
 

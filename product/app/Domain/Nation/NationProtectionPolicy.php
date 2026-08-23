@@ -10,6 +10,10 @@ final class NationProtectionPolicy
 {
     public function protectedNationId(TurnContext $context, int $x, int $y): ?int
     {
+        $recoveryNationId = $context->state->recoveryTerritoryNationId($x, $y);
+        if ($recoveryNationId !== null) {
+            return $recoveryNationId;
+        }
         $radius = $context->ruleset->settings['nation_lifecycle']['dormant_protection_radius'] ?? null;
         if (! is_int($radius) || $radius < 0) {
             throw new DomainException('The current Ruleset has an invalid dormant protection radius.');
