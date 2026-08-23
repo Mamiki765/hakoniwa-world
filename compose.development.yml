@@ -34,6 +34,7 @@ services:
       - ./product/bootstrap/providers.php:/var/www/html/bootstrap/providers.php:ro
       - ./product/config:/var/www/html/config:ro
       - ./product/database:/var/www/html/database:ro
+      - ./product/docs:/var/www/html/docs:ro
       - ./product/resources:/var/www/html/resources:ro
       - ./product/routes:/var/www/html/routes:ro
       - ./product/tests:/var/www/html/tests:ro

@@ -54,5 +54,6 @@ CMD ["apache2-foreground"]
 FROM runtime AS development
 
 COPY --from=vendor /usr/bin/composer /usr/local/bin/composer
+RUN composer dump-autoload --no-interaction --no-scripts
 
 FROM runtime AS production

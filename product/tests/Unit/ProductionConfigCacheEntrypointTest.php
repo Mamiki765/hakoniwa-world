@@ -31,6 +31,10 @@ final class ProductionConfigCacheEntrypointTest extends TestCase
             'COPY --from=vendor /usr/bin/composer /usr/local/bin/composer',
             $dockerfile,
         );
+        $this->assertStringContainsString(
+            'RUN composer dump-autoload --no-interaction --no-scripts',
+            $dockerfile,
+        );
         $this->assertStringEndsWith("FROM runtime AS production\n", str_replace("\r\n", "\n", $dockerfile));
     }
 }

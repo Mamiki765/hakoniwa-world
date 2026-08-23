@@ -40,7 +40,7 @@ docker compose -f compose.yml -f compose.development.yml build hakoniwa-dev
 docker compose -f compose.yml -f compose.development.yml up -d hakoniwa-dev
 ```
 
-`hakoniwa-dev`はHTTP portを公開せず、`APP_ENV=testing`、`DB_DATABASE=hakoniwa_test`を明示したtooling専用containerである。checkoutの`app`、`config`、`database`、`routes`、PHP view、`tests`とPHPUnit/PHPStan設定をread-only bind mountする。image内の`vendor`、`storage`、`bootstrap/cache`、`public/build`はbind mountで隠さず、rootまたはproductの`.env`もmountしない。
+`hakoniwa-dev`はHTTP portを公開せず、`APP_ENV=testing`、`DB_DATABASE=hakoniwa_test`を明示したtooling専用containerである。checkoutの`app`、`config`、`database`、`docs`、`routes`、PHP view、`tests`とPHPUnit/PHPStan設定をread-only bind mountする。development imageはPSR-4 fallbackを使える非authoritative autoloaderを持つため、新しいPHP classを追加した場合も再buildは不要である。image内の`vendor`、`storage`、`bootstrap/cache`、`public/build`はbind mountで隠さず、rootまたはproductの`.env`もmountしない。
 
 通常のPHP/test編集後はimageをbuildまたはcontainerを再作成せず、そのままfocused testとstatic analysisを再実行する。
 

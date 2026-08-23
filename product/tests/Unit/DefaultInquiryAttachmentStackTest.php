@@ -77,6 +77,7 @@ final class DefaultInquiryAttachmentStackTest extends TestCase
         $this->assertStringContainsString('APP_ENV: testing', $compose);
         $this->assertStringContainsString('DB_DATABASE: hakoniwa_test', $compose);
         $this->assertStringContainsString('./product/app:/var/www/html/app:ro', $compose);
+        $this->assertStringContainsString('./product/docs:/var/www/html/docs:ro', $compose);
         $this->assertStringContainsString('./product/tests:/var/www/html/tests:ro', $compose);
         $this->assertStringNotContainsString('./product:/var/www/html', $compose);
         $this->assertStringNotContainsString(':/var/www/html/vendor', $compose);
