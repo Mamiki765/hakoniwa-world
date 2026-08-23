@@ -423,9 +423,6 @@ final class MissileImpactResolver
             return;
         }
         $points = $this->impactCrimePoints($context, $impact);
-        if ($points < 1) {
-            return;
-        }
         $targetStartKarma = $context->state->karmaStartSnapshot($targetNationId);
         $attackerStartKarma = $context->state->karmaStartSnapshot($intent->nationId);
         $antiMonsterExempt = $intent->definitionKey !== 'land_destruction_missile'

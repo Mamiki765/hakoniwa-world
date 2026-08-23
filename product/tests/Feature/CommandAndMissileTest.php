@@ -3540,6 +3540,65 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')->count());
     }
 
+    public function test_v13_zero_point_monster_impact_still_reduces_victim_and_credits_alliance_money(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('karma-monster-impact');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 20]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])
+            ->firstOrFail();
+        app(MapCellStateService::class)->setFacility($cell, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
+        );
+        $cell->population = 0;
+        $cell->save();
+        $monster = $this->monster($world, $cell);
+        $monster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'missile',
+            $cell,
+        );
+        $cost = (int) $item->definition()->value('cost_money');
+
+        $result = $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $item,
+            [$base],
+            2,
+            static function (): void {},
+            $this->seedForImpactIndex($item, $cell, 2, $cell),
+        );
+
+        $this->assertSame(1, $result['shots_fired']);
+        $this->assertTrue($result['classification']['anti_monster_context']);
+        $this->assertSame(0, $result['crime_points']);
+        $this->assertSame(1, (int) $monster->fresh()->current_hp);
+        $this->assertSame(19, (int) $target->fresh()->karma);
+        $this->assertSame(9_999 - $cost + 20, (int) $firing->fresh()->money);
+        $impact = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'karma.missile_impact')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $impact['impact_category_points']);
+        $this->assertSame(0, $impact['crime_points']);
+        $this->assertSame(20, $impact['alliance_money']);
+    }
+
     /** @return array{World, User, Nation, Nation} */
     private function combatants(string $suffix = ''): array
     {
