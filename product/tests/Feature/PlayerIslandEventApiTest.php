@@ -397,7 +397,7 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertJsonPath('data.groups', []);
     }
 
-    public function test_secret_facilities_are_blurred_publicly_and_exact_only_for_the_owner(): void
+    public function test_secret_facility_construction_stays_blurred_but_destruction_reveals_the_facility(): void
     {
         [$world, $owner, $nation] = $this->nation('秘密島');
         $world->update(['current_turn' => 2]);
@@ -451,8 +451,8 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertContains('こころなしか、秘密島のどこかで森が増えた気がします。', $publicMessages);
         $this->assertContains('秘密島で海底基地が建設されたようです(?,?)。', $publicMessages);
         $this->assertContains('秘密島(7,8)で防衛施設が建設されました。', $publicMessages);
-        $this->assertContains('秘密島(9,9)の防衛施設がいのらに踏み荒らされました。', $publicMessages);
-        $this->assertContains('秘密島(10,10)の森がいのらに踏み荒らされました。', $publicMessages);
+        $this->assertContains('秘密島(9,9)のハリボテがいのらに踏み荒らされました。', $publicMessages);
+        $this->assertContains('秘密島(10,10)のミサイル基地がいのらに踏み荒らされました。', $publicMessages);
         foreach (['12,13', '22,23', '44,45', '9999', '800', 'actual_facility_key', 'decoy', 'missile_base', 'metadata'] as $hidden) {
             $this->assertStringNotContainsString($hidden, $publicBody);
         }
@@ -606,7 +606,7 @@ class PlayerIslandEventApiTest extends TestCase
     public function test_missile_public_projection_exposes_b10_summary_but_not_private_launch_detail(): void
     {
         [$world, $owner, $firing] = $this->nation('発射島');
-        [, , $target] = $this->nation('被弾島', $world);
+        [, $targetOwner, $target] = $this->nation('被弾島', $world);
         $world->update(['current_turn' => 2]);
         DB::table('audit_events')->delete();
 
@@ -632,6 +632,11 @@ class PlayerIslandEventApiTest extends TestCase
         $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 2, [
             'nation_name' => $firing->name, 'command_key' => 'pp_missile',
             'queue_item_id' => 99, 'ineffective_impacts' => 2,
+        ]);
+        $this->audit('missile.dormancy_protected', $target, $target, 'public', 2, [
+            'nation_id' => $target->id, 'nation_name' => $target->name,
+            'x' => 14, 'y' => 10, 'missile_key' => 'pp_missile',
+            'missile_name' => 'PPミサイル', 'protected_nation_secret' => 'hidden',
         ]);
         $this->audit('missile.launch_detail', $firing, $firing, 'private', 2, [
             'command_key' => 'pp_missile', 'queue_item_id' => 88, 'target_x' => 50, 'target_y' => 51,
@@ -662,10 +667,12 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertTrue(collect($publicMessages)->contains(
             static fn (string $message): bool => str_contains($message, 'PPミサイルのうち2発は効果がありませんでした。'),
         ));
+        $protectedMessage = '被弾島(14,10)にPPミサイルが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました';
+        $this->assertContains($protectedMessage, $publicMessages);
         foreach ([
             '(50,51)', '(44,45)', '費用900', 'all_impacts', 'cost_money', 'target_x',
             'firing_bases', 'impacts', 'from_terrain_key', 'to_terrain_key', 'terrain_only',
-            'terrain_scorched', 'wasteland', 'scorched',
+            'terrain_scorched', 'wasteland', 'scorched', 'missile_name', 'protected_nation_secret', 'hidden',
         ] as $hidden) {
             $this->assertStringNotContainsString($hidden, $publicBody);
         }
@@ -696,6 +703,12 @@ class PlayerIslandEventApiTest extends TestCase
         )->count());
         $this->assertStringNotContainsString('PPミサイルのうち8発は効果がありませんでした。', $ownerMessages);
         $this->assertStringContainsString('PPミサイルのうち2発は効果がありませんでした。', $ownerMessages);
+
+        $targetOwnerResponse = $this->actingAs($targetOwner)
+            ->getJson("/api/v1/nations/{$target->id}/events")
+            ->assertOk();
+        $this->assertContains($protectedMessage, $this->messages($targetOwnerResponse->json('data.groups')));
+        $this->assertStringNotContainsString('protected_nation_secret', (string) $targetOwnerResponse->getContent());
     }
 
     public function test_target_owner_gets_three_separate_aggregated_missile_outcome_classes(): void
@@ -745,37 +758,62 @@ class PlayerIslandEventApiTest extends TestCase
         );
     }
 
-    public function test_disaster_owner_message_prefers_the_pre_impact_removed_facility(): void
+    public function test_disaster_cell_damage_is_public_with_coordinates_and_only_safe_result_details(): void
     {
         [$world, $owner, $nation] = $this->nation('災害表示島');
         $world->update(['current_turn' => 2]);
         DB::table('audit_events')->delete();
-        $this->audit('disaster.cell_damaged', $nation, $nation, 'nation', 2, [
+        $this->audit('disaster.cell_damaged', $nation, $nation, 'public', 2, [
             'disaster_key' => 'typhoon',
             'from_terrain_key' => 'plain',
             'to_terrain_key' => 'plain',
             'removed_facility_key' => 'farm',
             'x' => 4,
             'y' => 5,
+            'draw' => 123,
         ]);
-        $this->audit('disaster.cell_damaged', $nation, $nation, 'nation', 2, [
+        $this->audit('disaster.cell_damaged', $nation, $nation, 'public', 2, [
             'disaster_key' => 'earthquake',
             'from_terrain_key' => 'forest',
             'to_terrain_key' => 'wasteland',
             'removed_facility_key' => null,
             'x' => 6,
             'y' => 7,
+            'before_population' => 9_999,
+        ]);
+        $this->audit('capital.disaster_damaged', $nation, $nation, 'public', 2, [
+            'disaster_key' => 'huge_meteor',
+            'damage_percent' => 90,
+            'before_population' => 1_000,
+            'after_population' => 100,
+            'minimum_population_adjustment' => 0,
+            'x' => 8,
+            'y' => 9,
+        ]);
+        $this->audit('disaster.cell_damaged', $nation, $nation, 'public', 2, [
+            'disaster_key' => 'huge_meteor',
+            'from_terrain_key' => 'forest',
+            'to_terrain_key' => 'wasteland',
+            'removed_facility_key' => 'missile_base',
+            'x' => 10,
+            'y' => 11,
         ]);
 
-        $response = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
-        $messages = $this->messages($response->json('data.groups'));
-        $this->assertTrue(collect($messages)->contains(
-            static fn (string $message): bool => str_contains($message, '台風により農場が失われ、平地になりました。'),
-        ));
-        $this->assertTrue(collect($messages)->contains(
-            static fn (string $message): bool => str_contains($message, '地震により森が荒地へ変化しました。'),
-        ));
-        $this->assertStringNotContainsString('平地が平地へ変化', (string) $response->getContent());
+        foreach ([
+            $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk(),
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+            $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
+        ] as $response) {
+            $messages = $this->messages($response->json('data.groups'));
+            $this->assertContains('災害表示島(4,5)で台風により農場が失われ、平地になりました。', $messages);
+            $this->assertContains('災害表示島(6,7)で地震により森が荒地へ変化しました。', $messages);
+            $this->assertContains('災害表示島(8,9)で巨大隕石により首都人口が90%減少し、100人になりました。', $messages);
+            $this->assertContains('災害表示島(10,11)で巨大隕石によりミサイル基地が失われ、荒地になりました。', $messages);
+            $body = (string) $response->getContent();
+            foreach (['平地が平地へ変化', '9,999', 'draw', 'before_population', 'minimum_population_adjustment', 'metadata'] as $hidden) {
+                $this->assertStringNotContainsString($hidden, $body);
+            }
+        }
     }
 
     /** @return array{World, User, Nation} */

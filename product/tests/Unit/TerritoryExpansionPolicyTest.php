@@ -40,9 +40,9 @@ final class TerritoryExpansionPolicyTest extends TestCase
         yield 'missing adjacency' => [['adjacentActorTerritory' => false], CommandFailureReason::MissingAdjacentTerritory];
         yield 'capital core' => [['capitalCoreProtected' => true], CommandFailureReason::CapitalProtected];
         yield 'monster occupancy' => [['monsterOccupied' => true], CommandFailureReason::OccupiedByMonster];
-        yield 'inactive actor' => [['actorNationState' => 'dormant_frozen'], CommandFailureReason::InvalidTargetNation];
-        yield 'dormant foreign owner' => [['targetOwnerNationState' => 'dormant_frozen'], CommandFailureReason::InvalidTargetNation];
-        yield 'sunken foreign owner' => [['targetOwnerNationState' => 'sunken_archived'], CommandFailureReason::InvalidTargetNation];
+        yield 'inactive actor' => [['actorNationState' => 'dormant'], CommandFailureReason::InvalidTargetNation];
+        yield 'dormant foreign owner outside protection' => [['targetOwnerNationState' => 'dormant'], null];
+        yield 'abandoned foreign owner' => [['targetOwnerNationState' => 'abandoned'], CommandFailureReason::InvalidTargetNation];
         yield 'foreign owner from another World' => [['targetOwnerInActorWorld' => false], CommandFailureReason::InvalidTargetNation];
         yield 'self owned' => [['targetOwnerNationId' => 10], CommandFailureReason::AlreadyOwned];
     }

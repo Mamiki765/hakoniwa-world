@@ -7,6 +7,7 @@ use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Monster\MonsterHardening;
 use App\Domain\Monster\MonsterTurnBatch;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -28,6 +29,7 @@ final class MonsterTurnService
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
         private readonly MonsterBehaviorResolver $behaviors,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     public function load(TurnContext $context): MonsterTurnBatch
@@ -75,6 +77,11 @@ final class MonsterTurnService
         $batch->countAction();
         $monster = $occupancy->monster;
         $definition = $monster->definition;
+        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            $this->recordStayed($context, $monster->id, $definition->key, $cell, 'dormant_capital_protected');
+
+            return true;
+        }
         $behavior = $batch->behaviorForDefinition((int) $definition->id);
         if ($behavior->specialAction === MonsterBehaviorResolver::NUCLEAR_AT_HP_ONE
             && $monster->current_hp === 1) {
@@ -114,6 +121,9 @@ final class MonsterTurnService
             }
             $destination = $cellsByCoordinate[$coordinate->x.':'.$coordinate->y] ?? null;
             if ($destination === null || $batch->occupancyAt($destination->id) !== null) {
+                continue;
+            }
+            if ($this->nationProtection->protects($context, $destination->x, $destination->y)) {
                 continue;
             }
             $facilityKey = $destination->facility?->key;

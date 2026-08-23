@@ -131,7 +131,7 @@ class PostgresCommandQueueAbandonmentLockTest extends TestCase
             $response = json_decode($worker['stdout'], true, 512, JSON_THROW_ON_ERROR);
             $this->assertSame('authorization', $response['status']);
             $this->assertSame(403, $response['http_status']);
-            $this->assertStringContainsString('現役ではない島', $response['message']);
+            $this->assertStringContainsString('現在の島ではないcommand queue', $response['message']);
             $this->assertSame('abandoned', $nation->fresh()->state);
             $this->assertDatabaseMissing('nation_memberships', ['nation_id' => $nation->id]);
             $this->assertSame(0, NationCommandQueue::query()->where('nation_id', $nation->id)->count());

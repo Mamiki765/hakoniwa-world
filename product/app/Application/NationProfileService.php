@@ -28,7 +28,7 @@ final class NationProfileService
                 ->where('world_id', $world->id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            if ($lockedNation->state !== 'active') {
+            if (! in_array($lockedNation->state, ['active', 'dormant'], true)) {
                 throw new DomainException('現役ではない島のプロフィールは変更できません。');
             }
             $this->authorize($user, $lockedNation);

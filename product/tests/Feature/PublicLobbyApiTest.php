@@ -117,7 +117,7 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.1.money_display', '約62,000億円')
             ->assertJsonPath('data.1.money_bucket', '62000')
             ->assertJsonPath('data.0.survival_turns', 0)
-            ->assertJsonPath('data.0.finance_only_turns', 100)
+            ->assertJsonPath('data.0.finance_only_turns', 2000)
             ->assertJsonPath('data.0.activity_status', 'finance_only');
         $rankingBody = $ranking->getContent();
         $this->assertStringNotContainsString('"money":', $rankingBody);

@@ -25,7 +25,7 @@ const emptyChunk: MapChunk = {
 };
 
 const publicDetail: PublicNationDetail = {
-    id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
+    id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', state_label: '通常', total_population: 1000,
     owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
     farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
     registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
@@ -44,7 +44,10 @@ const ownerNationFixture: Nation = {
     money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
     food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
     farm_capacity_people: 10000, factory_capacity_people: 0, mine_capacity_people: 0,
-    food_resources: [], resources: [], state: 'active', current_turn: 1, registered_turn: 1,
+    food_resources: [], resources: [], state: 'active', state_label: '通常', state_reason: null,
+    state_started_turn: null, resume_at_turn: null, manual_dormancy_days: null,
+    dormancy_remaining_turns: null, dormancy_remaining_days: null, abandonment_remaining_turns: 2060,
+    can_request_dormancy: true, winter_theme_active: false, current_turn: 1, registered_turn: 1,
     survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only', total_population: 1000,
     territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
 };
@@ -112,7 +115,7 @@ function publicResponse(path: string): Response | null {
         next_scheduled_turn_at: '2099-08-09T15:00:00Z', turn_schedule_timezone: 'Asia/Tokyo',
     });
     if (path.endsWith('/rankings')) return response([{
-        rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', total_population: 1000,
+        rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', state_label: '通常', total_population: 1000,
         owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
         farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
         registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
@@ -176,7 +179,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
         expect(wrapper.find('.ranking-owner-row').text()).toBe('公開島主：公開コメント');
-        expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
+        expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 通常 (100)');
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
@@ -220,11 +223,11 @@ describe('application lobby and island entry', () => {
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             if (path.endsWith('/rankings')) return response([{
-                rank: 1, id: 7, world_id: 1, nation_number: 1, name: '休止島', state: 'dormant_frozen',
+                rank: 1, id: 7, world_id: 1, nation_number: 1, name: '休止島', state: 'dormant', state_label: '放置',
                 total_population: 1000, owner_name: '休止島主', territory_cell_count: 19, owned_land_cells: 17,
                 money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
                 farm_capacity_people: 0, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
-                registered_turn: 1, survival_turns: 10, finance_only_turns: 7, activity_status: 'finance_only',
+                registered_turn: 1, survival_turns: 10, finance_only_turns: 7, activity_status: 'dormant',
                 last_updated_turn: 11, comment: '',
             }]);
             return publicResponse(path) ?? response(null, 401);
@@ -233,7 +236,8 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         const name = wrapper.find('.ranking-card tbody button');
-        expect(name.text()).toBe('休止島（休止中）');
+        expect(name.text()).toBe('休止島 放置');
+        expect(name.find('.state-badge').text()).toBe('放置');
         expect(name.classes()).toContain('is-dormant');
         expect(wrapper.find('.ranking-owner-row').text()).toBe('休止島主');
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
@@ -414,7 +418,11 @@ describe('application lobby and island entry', () => {
             money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
             food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
             farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
-            food_resources: [], resources: [], state: 'active', current_turn: 1, registered_turn: 1,
+            food_resources: [], resources: [], state: 'active', state_label: '通常', state_reason: null,
+            state_started_turn: null, resume_at_turn: null, manual_dormancy_days: null,
+            dormancy_remaining_turns: null, dormancy_remaining_days: null,
+            abandonment_remaining_turns: 2160, can_request_dormancy: true,
+            winter_theme_active: false, current_turn: 1, registered_turn: 1,
             survival_turns: 0, finance_only_turns: 0, activity_status: 'active', total_population: 1000,
             territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
         } as Nation;
@@ -754,7 +762,11 @@ describe('application lobby and island entry', () => {
                 { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },
                 { key: 'monster_meat', name: '怪獣肉', balance: 0, unit: 'ton', unit_label: 'トン' },
             ],
-            state: 'active', current_turn: 1, registered_turn: 1, survival_turns: 0,
+            state: 'active', state_label: '通常', state_reason: null, state_started_turn: null,
+            resume_at_turn: null, manual_dormancy_days: null, dormancy_remaining_turns: null,
+            dormancy_remaining_days: null, abandonment_remaining_turns: 2160,
+            can_request_dormancy: true, winter_theme_active: false,
+            current_turn: 1, registered_turn: 1, survival_turns: 0,
             finance_only_turns: 0, activity_status: 'active', total_population: 1000, territory_cell_count: 19,
             owned_land_cells: 17,
             capital: { x: 12, y: 8 },
@@ -869,7 +881,7 @@ describe('application lobby and island entry', () => {
         expect(workspaceScroll.find('.island-events-panel').exists()).toBe(false);
         const developmentBoard = wrapper.get('.island-page > .message-board').element;
         const developmentLogs = wrapper.findAll('.island-page > .island-events-panel');
-        expect(developmentLogs).toHaveLength(2);
+        expect(developmentLogs).toHaveLength(1);
         for (const log of developmentLogs) {
             expect(developmentBoard.compareDocumentPosition(log.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         }
@@ -880,9 +892,9 @@ describe('application lobby and island entry', () => {
         Object.defineProperty(workspaceScroll.element, 'scrollTo', { configurable: true, value: scrollTo });
         await workspaceJumpButtons[2]!.trigger('click');
         expect(scrollTo).toHaveBeenCalledWith({ left: expect.any(Number), behavior: 'smooth' });
-        expect(wrapper.findAll('.island-events-panel')).toHaveLength(2);
+        expect(wrapper.findAll('.island-events-panel')).toHaveLength(1);
         expect(wrapper.findAll('.island-events-panel').map((panel) => panel.get('h2').text()))
-            .toEqual(['公開島ログ', 'owner-onlyログ']);
+            .toEqual(['島ログ']);
         expect(wrapper.find('.island-page > .message-board').exists()).toBe(true);
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
@@ -1429,6 +1441,77 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/admin/inquiries?page=1')).toBe(true);
         expect(wrapper.find('.inquiry-detail').exists()).toBe(false);
         expect(wrapper.get('.inquiry-list.full').text()).toContain('INQ-000122 [バグ報告] 一覧の件名');
+    });
+
+    it('places neutral manual dormancy above the unchanged red abandonment operation and shows the active term', async () => {
+        const dormantNation: Nation = {
+            ...ownerNationFixture,
+            state: 'dormant', state_label: '放置', state_reason: 'manual', state_started_turn: 1,
+            resume_at_turn: 86, manual_dormancy_days: 7, dormancy_remaining_turns: 84,
+            dormancy_remaining_days: 7, abandonment_remaining_turns: 160,
+            can_request_dormancy: false, winter_theme_active: true, activity_status: 'dormant',
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/nations/3/dormancy' && init?.method === 'POST') return response(dormantNation);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const profileButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await profileButton.trigger('click');
+        expect(wrapper.findAll('.danger-zone h3').map((heading) => heading.text())).toEqual([
+            '島を休止する', '島を破棄する',
+        ]);
+        const dormancyButton = wrapper.get<HTMLButtonElement>('.dormancy-block button');
+        expect(dormancyButton.classes()).toContain('secondary');
+        expect(dormancyButton.classes()).not.toContain('danger');
+        expect(wrapper.get('.abandonment-block button').classes()).toContain('danger');
+        await wrapper.get('#dormancy-days').setValue('7');
+        await wrapper.get('.dormancy-form').trigger('submit');
+        await flushPromises();
+
+        const request = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/nations/3/dormancy');
+        expect(JSON.parse(String(request?.[1]?.body))).toEqual({ days: 7 });
+        const status = wrapper.get('.dormancy-block');
+        expect(status.text()).toContain('現在休止中');
+        expect(status.text()).toContain('指定期間7日');
+        expect(status.text()).toContain('再開予定turnTurn 86');
+        expect(status.text()).toContain('残りturn / 日数84 turn / 約7日');
+        expect(status.text()).toContain('指定期間が終わるまで解除できません');
+        expect(wrapper.get<HTMLButtonElement>('.abandonment-block button').element.disabled).toBe(true);
+
+        wrapper.unmount();
+        const automaticDormantNation: Nation = {
+            ...dormantNation,
+            state_reason: 'idle', resume_at_turn: null, manual_dormancy_days: null,
+            dormancy_remaining_turns: null, dormancy_remaining_days: null,
+        };
+        const automaticFetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') return response(automaticDormantNation);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', automaticFetchMock);
+        const automaticWrapper = mount(App);
+        await flushPromises();
+        const automaticProfileButton = automaticWrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await automaticProfileButton.trigger('click');
+        expect(automaticWrapper.get('.dormancy-status').text())
+            .toContain('再開予定turn通常command登録後の次official Turn');
     });
 
     it('requires the danger button, modal, and exact island name before abandonment and returns to registration', async () => {

@@ -301,6 +301,7 @@ class TurnRunnerTest extends TestCase
         foreach (['One', 'Two', 'Three', 'Four'] as $index => $name) {
             Nation::query()->create([
                 'world_id' => $world->id, 'nation_number' => $index + 1, 'name' => $name,
+                'state' => 'active', 'idle_counter' => 0,
             ]);
         }
         $orders = app(TurnOrderService::class);

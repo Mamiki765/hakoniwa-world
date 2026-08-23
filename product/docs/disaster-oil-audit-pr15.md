@@ -1,5 +1,9 @@
 # 怪獣を除く災害・油田稼働 事前監査
 
+> ver 2.4.0-betaのOwner decisionは表示境界だけを更新し、実際に変化した
+> `disaster.cell_damaged`、`capital.disaster_damaged`、`fire.damaged`を公開島ログへ投影する。
+> 本文表の「被害は該当Nationのみ」はPR15当時のhistorical contractである。
+
 この表はコード変更前に、Hakoniwa Islands 2+ の `_references/hakoniwa-2plus/extracted`、
 `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、ADR-0003、現行実装、owner decisionを突合した結果である。
 `_references/` はread-onlyで参照し、抽出した挙動を新作のversioned rulesetと独立実装へ写像する。

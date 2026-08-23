@@ -15,6 +15,7 @@ use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryRingFinanceBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -61,6 +62,7 @@ final class DomesticCommandExecutor
         private readonly SecretaryItemGameplayContract $secretaryItems,
         private readonly SecretaryRingFinanceBonus $ringFinance,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     /**
@@ -229,6 +231,30 @@ final class DomesticCommandExecutor
         return $metrics;
     }
 
+    /**
+     * Reuse the canonical bounded finance and idle-counter finalizer without
+     * inspecting or consuming a command queue.
+     *
+     * @return array{money_applied: int, idle_counter_incremented: int}
+     */
+    public function executeFinanceOnly(
+        TurnContext $context,
+        Nation $nation,
+        int $requested,
+        string $eventType,
+        string $source,
+    ): array {
+        $beforeMoney = (int) $nation->money;
+        $this->finance($context, $nation, $eventType, $requested, $source);
+        $context->state->recordFinanceSucceeded($nation->id);
+        $counter = $this->idleCounters->finalize($context, $nation);
+
+        return [
+            'money_applied' => (int) $nation->fresh()->money - $beforeMoney,
+            'idle_counter_incremented' => $counter === 'incremented' ? 1 : 0,
+        ];
+    }
+
     private function awardSecretaryDevelopmentExperience(
         TurnContext $context,
         int $nationId,
@@ -296,6 +322,9 @@ final class DomesticCommandExecutor
             return $this->missileValidationFailure($context, $nation, $definition, $cell, $observed);
         }
         if ($definition->key === 'territory_expand') {
+            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+                return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
+            }
             $reason = $this->territoryExpansionFailure($context, $nation, $definition, $cell, $occupancy !== null);
             if ($reason !== null) {
                 return ['reason' => $reason, 'observed' => $observed];
@@ -458,7 +487,9 @@ final class DomesticCommandExecutor
             return ['reason' => CommandFailureReason::SameNationTarget, 'observed' => $observed];
         }
         $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->first();
-        if ($target === null || $target->world_id !== $context->world->id || $target->state !== 'active') {
+        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant'] : ['active'];
+        if ($target === null || $target->world_id !== $context->world->id
+            || ! in_array($target->state, $targetStates, true)) {
             return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
         }
         if ($definition->key === 'money_aid') {
@@ -1133,7 +1164,7 @@ final class DomesticCommandExecutor
 
             return true;
         }
-        $target = $this->targetNation($context, $nation, $item);
+        $target = $this->targetNation($context, $nation, $item, $definition);
         if ($definition->key === 'money_aid') {
             $requested = $this->moneyAidAmount($item, $definition);
             $capacity = $this->capacities->resolve($target, $context->ruleset)->money;
@@ -1231,15 +1262,21 @@ final class DomesticCommandExecutor
         throw new DomainException("Unsupported Nation command {$definition->key}.");
     }
 
-    private function targetNation(TurnContext $context, Nation $sender, NationCommandQueueItem $item): Nation
-    {
+    private function targetNation(
+        TurnContext $context,
+        Nation $sender,
+        NationCommandQueueItem $item,
+        CommandDefinition $definition,
+    ): Nation {
         $targetNationId = $item->parameters['target_nation_id'] ?? null;
         if (! is_int($targetNationId) || $targetNationId === $sender->id) {
             throw new DomainException('Nation command target changed after validation.');
         }
 
+        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant'] : ['active'];
+
         return Nation::query()->whereKey($targetNationId)
-            ->where('world_id', $context->world->id)->where('state', 'active')
+            ->where('world_id', $context->world->id)->whereIn('state', $targetStates)
             ->lockForUpdate()->firstOrFail();
     }
 
@@ -1501,9 +1538,14 @@ final class DomesticCommandExecutor
         $this->finance($context, $nation, 'command.automatic_finance');
     }
 
-    private function finance(TurnContext $context, Nation $nation, string $eventType): void
-    {
-        $requested = $context->ruleset->settings['turn_processing']['automatic_finance_money'];
+    private function finance(
+        TurnContext $context,
+        Nation $nation,
+        string $eventType,
+        ?int $requested = null,
+        ?string $source = null,
+    ): void {
+        $requested ??= $context->ruleset->settings['turn_processing']['automatic_finance_money'];
         $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
         $base = $this->addition->calculate((int) $nation->money, $requested, $capacity);
         $ring = $this->ringFinance->resolve($context->state, $nation->id);
@@ -1517,6 +1559,9 @@ final class DomesticCommandExecutor
             'after' => $base->after,
             'capacity' => $base->capacity,
         ];
+        if ($source !== null) {
+            $metadata['source'] = $source;
+        }
         if ($ring['requested'] > 0) {
             $context->state->recordSecretaryRingFinanceBonus(
                 $nation->id,
@@ -1531,7 +1576,7 @@ final class DomesticCommandExecutor
                 'overflow' => $base->overflow + $bonus->overflow,
                 'after' => $bonus->after,
                 'capacity' => $capacity,
-                'source' => $eventType === 'command.finance' ? 'explicit' : 'automatic',
+                'source' => $source ?? ($eventType === 'command.finance' ? 'explicit' : 'automatic'),
                 'base_requested' => $base->requested,
                 'base_applied' => $base->applied,
                 'base_overflow' => $base->overflow,

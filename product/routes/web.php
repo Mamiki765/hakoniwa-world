@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\CommandQueueController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\MessageBoardController;
 use App\Http\Controllers\Api\NationAbandonmentController;
+use App\Http\Controllers\Api\NationDormancyController;
 use App\Http\Controllers\Api\NationProfileController;
 use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
@@ -28,6 +29,8 @@ Route::post('/logout', [OAuthController::class, 'logout'])->middleware('auth')->
 
 Route::get('/assets/hakoniwa-tiles/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
+Route::get('/assets/hakoniwa-tiles/{theme}/{filename}', AssetController::class)
+    ->where(['theme' => 'snow', 'filename' => '[A-Za-z0-9_-]+\.(?:gif|png|webp)']);
 Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 
@@ -88,6 +91,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/nations/{nation}/message-board/secret', [MessageBoardController::class, 'storeSecret']);
     Route::patch('/nations/{nation}/profile', [NationProfileController::class, 'update']);
     Route::post('/nations/{nation}/abandon', [NationAbandonmentController::class, 'store']);
+    Route::post('/nations/{nation}/dormancy', [NationDormancyController::class, 'store']);
     Route::get('/me/nation', [ApiController::class, 'myNation']);
     Route::get('/nations/{nation}/events', [PlayerEventController::class, 'index']);
     Route::get('/nations/{nation}/map-spaces/{mapSpace}/command-definitions', [CommandQueueController::class, 'definitions']);

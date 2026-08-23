@@ -34,7 +34,7 @@ MVPの初期TerritoryはCapital cellと、Capitalからx/y grid distance 2以内
 
 ## データモデル案
 
-- nations.current_capital_cell_idを一意とする。active、dormant_frozen、dormant_contestableでは非null、sunken_archivedではnullとする。
+- NationCapitalは`active`、`dormant`、`recovery`で非null、`abandoned`で終了する。
 - facility_instancesにcapital種別を持たせ、通常commandからの生成を禁止する。
 - capital_stateにpopulation、operational_level、damage_state、recovery_progressを持つ。
 - 現在地図に首都がある間、map_cell.owner_nation_idはcapitalのnationと一致させる。
@@ -48,7 +48,7 @@ MVPの初期TerritoryはCapital cellと、Capitalからx/y grid distance 2以内
 
 Capitalのcanonical populationは人単位で、初期値1,000、固定下限100、通常成長上限25,000とする。全てのCapital population damageは各event開始時点の現在人口へ逐次適用し、`max(100, floor(old_population * (100 - damage_percent) / 100))`をeventごとに確定する。turn内でdamageを合算して最後に1回だけ丸めたり、minimumを最後だけ適用したりしない。
 
-通常cellを荒地化するdamageは10%、一段階掘削・浅瀬化相当は30%、深海化相当は90%、噴火中心の山化は30%とする。Capital facility identity、owner、terrain、Nationのcapital coordinate、territory identityを維持し、population、cell version、chunk invalidation、audit/player logだけを変更する。`sunken_archived`への明示的な沈没処理ではCapital自体を地図から除去するため、このpopulation下限を適用しない。
+通常cellを荒地化するdamageは10%、一段階掘削・浅瀬化相当は30%、深海化相当は90%、噴火中心の山化は30%とする。Capital facility identity、owner、terrain、Nationのcapital coordinate、territory identityを維持し、population、cell version、chunk invalidation、audit/player logだけを変更する。`abandoned`へのmanual/automatic cleanupではCapital自体を地図から除去するため、このpopulation下限を適用しない。
 
 ## 復旧方式の案
 
@@ -67,7 +67,7 @@ randomized sequential cell processingで、所有者がいる人口0・施設な
 
 ## 緊急開拓のhistorical proposal
 
-以下は初期設計時のproposalであり、現在のcommand契約では採用していない。B-17によりemergency farm commandは現行MVPへ導入せず、automatic financeと明示的なabandonment/recreationを立て直し境界とする。将来の別rulesetで再検討する場合も、新しいowner decisionが必要である。
+以下は初期設計時のplayer command proposalであり、現在のcommand契約では採用していない。ADR-0014はこれと別に、dormant entry/heartbeatでfarm capacity 0の場合だけdistance 2以内へ決定的な最小農場を1つ作る。active Nation向けcommand、cooldown、債務等は実装しない。
 
 次を全て満たすactive国家だけが、首都から緊急開拓を実行できる。
 
@@ -108,7 +108,7 @@ randomized sequential cell processingで、所有者がいる人口0・施設な
 
 領土はmap_cell.owner_nation_idで表し、国境は隣接する異なる所有者から導出する。所有権変更は、攻撃影響、隣接支持、防御、地形、施設、保護状態を入力とする純粋な判定へ寄せる。
 
-中立地はownerがnullのセルであり、海・荒地などterrainとは別概念とする。ADR-0004に従い、dormant_contestableでは首都以外を占領可能にし、sunken_archivedでは残存領土を海へ戻す。どちらでも過去領土履歴は残す。
+中立地はownerがnullのセルであり、海・荒地などterrainとは別概念とする。ADR-0014に従い、dormant Capital distance 2以内はowner変更を禁止し、範囲外は通常のterritory契約を適用する。abandoned cleanupは残存領土を海へ戻し、過去履歴を残す。
 
 ## 防壁都市の比較
 
@@ -133,13 +133,13 @@ randomized sequential cell processingで、所有者がいる人口0・施設な
 
 ## 国家の存続と休眠
 
-首都人口0や戦闘敗北による即時削除を基本ルールにしない。国家stateはactive、dormant_frozen、dormant_contestable、sunken_archivedに統一し、30日、180日、365日のUTC経過または明示的放棄で遷移する。
+首都人口0や戦闘敗北による即時削除を基本ルールにしない。国家stateは`active`、`dormant`、`recovery`、`abandoned`とし、ver 2.4.0はidle/collapse/manualでdormant、期限/queueでactive、idle 2160または既存owner操作でabandonedへ遷移する。
 
-365日未満の復帰では残存首都から再建できる。他国に占領された領土を自動返還せず、凍結期間の生産も遡及しない。sunken_archivedでは首都も現在地図から除去するが、user、nation、event、統計、領土・首都履歴は物理削除しない。
+dormant復帰は現在の首都・領土から再開し、休止中の生産を遡及しない。abandonedでは首都も現在地図から除去するが、user、nation、Secretary、event、統計、領土・首都履歴は物理削除しない。
 
 ## 現在の要決定事項
 
-現在のblocking gateは`docs/open-questions.md`を正本とする。Capital関連ではB-03（機能停止と復旧）、B-05（防壁）、B-13（dormant占領保護）がOpen、B-15（再入植）がDeferredである。人口初期値、minimum、growth cap、初期Territory、settlement growth、緊急農場の現行採否は決定済みである。
+現在のblocking gateは`docs/open-questions.md`を正本とする。Capital関連ではB-03（機能停止と復旧）とB-05（防壁）がOpenであり、B-13（dormant距離2保護）はADR-0014でDecided、B-15（再入植）は現行manual abandonment契約としてDecidedである。
 
 ## Historical initial MVP実装記録（2026-07-26）
 

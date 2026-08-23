@@ -659,7 +659,8 @@ final class C4NewMonstersTest extends TestCase
     private function v11World(): array
     {
         $world = $this->lightweightWorld();
-        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v11');
+        // The feature set authored in v11 remains supported by the current v12 ruleset.
+        $settings = config('hakoniwa.ruleset');
         $ruleset = app(RulesetPublisher::class)->publish($settings);
         config(['hakoniwa.ruleset' => $settings]);
         $world->update(['ruleset_version_id' => $ruleset->id]);

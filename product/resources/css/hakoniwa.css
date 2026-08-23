@@ -239,8 +239,20 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .secretary-warehouse .item-effect { color: var(--ink); font-weight: 600; line-height: 1.5; }
 .secretary-warehouse .item-flavor { color: var(--muted); font-style: italic; line-height: 1.55; }
 .profile-actions { display: flex; gap: 10px; }
-.danger-zone { max-width: 680px; margin-top: 30px; padding: 20px; border: 2px solid #b94a3f; background: #fff5f3; }
-.danger-zone h2 { margin-top: 0; color: #8f2118; }
+.danger-zone { max-width: 680px; margin-top: 30px; display: grid; gap: 18px; }
+.danger-zone > h2 { margin: 0; }
+.danger-zone h3 { margin-top: 0; }
+.dormancy-block { padding: 20px; border: 1px solid #9aa5a1; background: #f4f6f5; }
+.dormancy-form { display: grid; gap: 10px; }
+.dormancy-form select { min-height: 42px; padding: 8px 10px; border: 1px solid #91a09b; background: #fff; color: var(--ink); font: inherit; }
+.dormancy-status { display: grid; gap: 8px; }
+.dormancy-status div { display: grid; grid-template-columns: minmax(110px, .45fr) 1fr; gap: 12px; }
+.dormancy-status dt { color: var(--muted); font-weight: 800; }
+.dormancy-status dd { margin: 0; }
+.button.secondary { color: var(--ink); border-color: #7f8c87; background: #e1e6e4; }
+.button.secondary:disabled { color: #77817d; border-color: #aeb6b3; background: #ecefed; }
+.abandonment-block { padding: 20px; border: 2px solid #b94a3f; background: #fff5f3; }
+.abandonment-block h3 { color: #8f2118; }
 .button.danger { color: #fff; border-color: #8f2118; background: #a72c21; }
 .button.danger:disabled { color: #f4d9d5; border-color: #a9716b; background: #a9716b; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgb(21 30 27 / 72%); }

@@ -37,7 +37,7 @@ async function loadPage(page: number): Promise<void> {
         currentPage.value = next.page;
         anchorTurn.value = next.anchor_turn;
     } catch {
-        error.value = `${props.audience === 'public' ? '公開島ログ' : 'owner-onlyログ'}を取得できませんでした。時間をおいて再度お試しください。`;
+        error.value = `${props.audience === 'public' ? '公開島ログ' : '島ログ'}を取得できませんでした。時間をおいて再度お試しください。`;
     } finally {
         loading.value = false;
     }
@@ -58,8 +58,8 @@ watch(() => [props.nationId, props.audience], resetAndLoad);
     <section class="island-events-panel" :aria-labelledby="`island-events-heading-${props.audience}`">
         <header class="island-events-heading">
             <div>
-                <p class="eyebrow">{{ props.audience === 'public' ? 'PUBLIC ISLAND LOG' : 'OWNER-ONLY LOG' }}</p>
-                <h2 :id="`island-events-heading-${props.audience}`">{{ props.audience === 'public' ? '公開島ログ' : 'owner-onlyログ' }}</h2>
+                <p class="eyebrow">{{ props.audience === 'public' ? 'PUBLIC ISLAND LOG' : 'ISLAND LOG' }}</p>
+                <h2 :id="`island-events-heading-${props.audience}`">{{ props.audience === 'public' ? '公開島ログ' : '島ログ' }}</h2>
             </div>
             <span v-if="result?.turn_range">
                 第{{ result.turn_range.start }}〜{{ result.turn_range.end }}ターン
@@ -100,7 +100,7 @@ watch(() => [props.nationId, props.audience], resetAndLoad);
             </section>
         </div>
 
-        <nav v-if="result" class="island-event-pagination" :aria-label="`${props.audience === 'public' ? '公開島ログ' : 'owner-onlyログ'}のページ`">
+        <nav v-if="result" class="island-event-pagination" :aria-label="`${props.audience === 'public' ? '公開島ログ' : '島ログ'}のページ`">
             <button
                 type="button"
                 :disabled="loading || !result.has_newer_page"

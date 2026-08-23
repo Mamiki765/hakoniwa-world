@@ -29,7 +29,7 @@ final class MapCellPresenter
     ) {}
 
     /** @return array<string, mixed> */
-    public function present(MapCell $cell, ?int $viewerNationId, int $currentTurn): array
+    public function present(MapCell $cell, ?int $viewerNationId, int $currentTurn, ?string $theme = null): array
     {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
         $isDisguised = $cell->facility?->visibility_policy === FacilityVisibilityPolicy::Disguised->value
@@ -53,7 +53,7 @@ final class MapCellPresenter
         $displayName = $facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->name
             : $displayDefinition->name;
-        $layers = $this->assets->resolveLayers($displayAssetKey, $displayName);
+        $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, theme: $theme);
         $seaAreaName = $this->seaAreas->forCoordinate($cell->x, $cell->y);
         $details = $this->details($cell, $isOwner, $isDisguised, $seaAreaName);
         $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership);

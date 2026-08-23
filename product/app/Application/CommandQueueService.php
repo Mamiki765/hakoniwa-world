@@ -1371,8 +1371,8 @@ final class CommandQueueService
             ->where('world_id', $world->id)
             ->lockForUpdate()
             ->first();
-        if ($lockedNation === null || $lockedNation->state !== 'active') {
-            throw new AuthorizationException('現役ではない島のcommand queueは操作できません。');
+        if ($lockedNation === null || ! in_array($lockedNation->state, ['active', 'dormant'], true)) {
+            throw new AuthorizationException('現在の島ではないcommand queueは操作できません。');
         }
 
         $membership = NationMembership::query()

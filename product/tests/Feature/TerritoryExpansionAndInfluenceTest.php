@@ -115,18 +115,11 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
     public function test_manual_expansion_failures_consume_items_without_cost_or_effect(): void
     {
         [$world, $space, $actorUser, $actor, $foreign] = $this->worldAndNations();
-        $dormant = app(NationCreationService::class)->create(
-            User::factory()->create(),
-            $world,
-            '領土試験休眠国',
-            '試験島主休眠',
-        );
-        $dormant->update(['state' => 'dormant_frozen']);
         $actor->update(['money' => 2_000]);
         [$baseTarget, $adjacent] = $this->remotePair($space, [$actor, $foreign]);
         $this->setCell($adjacent, 'plain', $actor->id);
         $targets = [$baseTarget];
-        for ($direction = 0; count($targets) < 5; $direction++) {
+        for ($direction = 0; count($targets) < 4; $direction++) {
             $coordinate = (new GridCoordinate($baseTarget->x, $baseTarget->y + 4 + $direction * 3));
             $candidate = MapCell::query()->where('map_space_id', $space->id)
                 ->where('x', $coordinate->x)->where('y', $coordinate->y)->first();
@@ -139,13 +132,11 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $this->setCell($targets[1], 'wasteland', $foreign->id, 'farm');
         $this->setCell($targets[2], 'wasteland', $foreign->id);
         $this->setCell($targets[3], 'wasteland', $foreign->id);
-        $this->setCell($targets[4], 'wasteland', $dormant->id);
 
         $this->setAdjacentOwner($targets[0], $actor->id);
         $this->setAdjacentOwner($targets[1], $actor->id);
         // targets[2] deliberately has no adjacent actor territory.
         $this->setAdjacentOwner($targets[3], $actor->id);
-        $this->setAdjacentOwner($targets[4], $actor->id);
         $this->occupy($world, $targets[3]);
 
         $coreTarget = $this->capitalCoreNeighbor($foreign, $space);
@@ -169,7 +160,7 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         )->all();
 
         $result = app(DomesticCommandExecutor::class)->execute(
-            $this->context($world, [$actor->id, $foreign->id, $dormant->id], hash('sha256', 'manual-failures')),
+            $this->context($world, [$actor->id, $foreign->id], hash('sha256', 'manual-failures')),
         );
 
         $this->assertSame(count($queued), $result['failures']);
@@ -186,8 +177,39 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $this->assertSame('facility_exists', $queued[1]->fresh()->failure_code);
         $this->assertSame('missing_adjacent_territory', $queued[2]->fresh()->failure_code);
         $this->assertSame('occupied_by_monster', $queued[3]->fresh()->failure_code);
-        $this->assertSame('invalid_target_nation', $queued[4]->fresh()->failure_code);
-        $this->assertSame('capital_protected', $queued[5]->fresh()->failure_code);
+        $this->assertSame('capital_protected', $queued[4]->fresh()->failure_code);
+    }
+
+    public function test_manual_expansion_cannot_take_a_cell_in_the_dormant_capital_radius(): void
+    {
+        [$world, $space, $actorUser, $actor, $dormant] = $this->worldAndNations();
+        $capital = $dormant->capital()->firstOrFail();
+        $coordinate = (new GridCoordinate($capital->x, $capital->y))->ring(2)[0];
+        $target = MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $coordinate->x)->where('y', $coordinate->y)->firstOrFail();
+        $this->setCell($target, 'wasteland', $dormant->id);
+        $this->setAdjacentOwner($target, $actor->id);
+        $dormant->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
+        $item = $this->queue($actorUser, $actor, $space, $target);
+        $context = $this->context($world, [$actor->id], hash('sha256', 'dormant-territory-protection'));
+        $context->state->setNationLifecycleSnapshot($dormant->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
+
+        $result = app(DomesticCommandExecutor::class)->execute($context);
+
+        $this->assertSame(1, $result['failures']);
+        $this->assertSame('capital_protected', $item->fresh()->failure_code);
+        $this->assertSame($dormant->id, $target->fresh()->owner_nation_id);
     }
 
     public function test_manual_expansion_fails_closed_for_a_cross_world_owner_anomaly(): void
@@ -233,7 +255,7 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
     }
 
     #[DataProvider('influenceCases')]
-    public function test_influence_active_only_target_source_and_exclusion_matrix(
+    public function test_influence_target_source_and_exclusion_matrix(
         string $case,
         bool $expectedMutation,
     ): void {
@@ -246,9 +268,13 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         if ($case === 'neutral') {
             $target->update(['owner_nation_id' => null]);
         } elseif ($case === 'dormant') {
-            $first->update(['state' => 'dormant_frozen']);
+            $first->update([
+                'state' => 'dormant',
+                'state_reason' => 'idle',
+                'state_started_turn' => 1,
+            ]);
         } elseif ($case === 'sunken') {
-            $first->update(['state' => 'sunken_archived']);
+            $first->update(['state' => 'abandoned']);
         } elseif ($case === 'wasteland') {
             $this->setCell($target, 'wasteland', $first->id);
         } elseif ($case === 'monument_target') {
@@ -287,7 +313,7 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
     {
         yield 'ordinary active-active' => ['ordinary', true];
         yield 'neutral target' => ['neutral', false];
-        yield 'dormant target' => ['dormant', false];
+        yield 'dormant target outside protection' => ['dormant', true];
         yield 'sunken target' => ['sunken', false];
         yield 'wasteland target' => ['wasteland', false];
         yield 'monument target' => ['monument_target', false];
@@ -399,6 +425,85 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $this->assertSame(2, $retryResult['mutations']);
         $this->assertSame($second->id, $left->fresh()->owner_nation_id);
         $this->assertSame($second->id, $middle->fresh()->owner_nation_id);
+
+        $dormant = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '領土休止保護国',
+            '休止島主',
+        );
+        $dormant->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
+        $this->resetSurface($space, [$first, $second, $dormant]);
+        [$outsideTarget, $outsideSource] = $this->remotePair($space, [$first, $second, $dormant]);
+        $this->setCell($outsideTarget, 'forest', $first->id);
+        $this->setCell($outsideSource, 'plain', $second->id);
+        $outsideDirection = $this->directionFrom($outsideTarget, $outsideSource);
+        $dormantCapital = $dormant->capital()->firstOrFail();
+        $capitalCellIds = array_map(
+            static fn (Nation $nation): int => (int) $nation->capital()->value('map_cell_id'),
+            [$first, $second, $dormant],
+        );
+        $protectedTarget = null;
+        $protectedSource = null;
+        $protectedDirection = null;
+        foreach ((new GridCoordinate($dormantCapital->x, $dormantCapital->y))->ring(2) as $coordinate) {
+            $targetCandidate = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $coordinate->x)->where('y', $coordinate->y)->first();
+            if (! $targetCandidate instanceof MapCell
+                || in_array($targetCandidate->id, $capitalCellIds, true)
+                || ! $this->outsideCapitalCores($targetCandidate, [$first, $second])) {
+                continue;
+            }
+            foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
+                if ($direction === $outsideDirection) {
+                    continue;
+                }
+                $sourceCoordinate = $coordinate->neighbor($direction);
+                $sourceCandidate = MapCell::query()->where('map_space_id', $space->id)
+                    ->where('x', $sourceCoordinate->x)->where('y', $sourceCoordinate->y)->first();
+                if ($sourceCandidate instanceof MapCell
+                    && ! in_array($sourceCandidate->id, $capitalCellIds, true)
+                    && ! in_array($sourceCandidate->id, [$outsideTarget->id, $outsideSource->id], true)) {
+                    $protectedTarget = $targetCandidate;
+                    $protectedSource = $sourceCandidate;
+                    $protectedDirection = $direction;
+                    break 2;
+                }
+            }
+        }
+        $this->assertInstanceOf(MapCell::class, $protectedTarget);
+        $this->assertInstanceOf(MapCell::class, $protectedSource);
+        $this->assertNotNull($protectedDirection);
+        $this->setCell($protectedTarget, 'forest', $first->id);
+        $this->setCell($protectedSource, 'plain', $second->id);
+
+        $protectedContext = $this->context(
+            $world,
+            [$first->id, $second->id, $dormant->id],
+            $this->seedForDirections([$protectedDirection, $outsideDirection]),
+        );
+        $protectedContext->state->setNationLifecycleSnapshot($dormant->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $dormantCapital->x,
+            'capital_y' => $dormantCapital->y,
+        ]);
+        $protectedContext->state->setSurfaceCellIds(
+            $this->surfaceOrder($space, [$protectedTarget->id, $outsideTarget->id]),
+        );
+        $protectedResult = app(TerritoryInfluenceService::class)->execute($protectedContext);
+
+        $this->assertSame(2, $protectedResult['eligible_targets']);
+        $this->assertSame(2, $protectedResult['direction_draws']);
+        $this->assertSame(1, $protectedResult['mutations']);
+        $this->assertSame($first->id, $protectedTarget->fresh()->owner_nation_id);
+        $this->assertSame($second->id, $outsideTarget->fresh()->owner_nation_id);
     }
 
     /** @return array{World, MapSpace, User, Nation, Nation} */

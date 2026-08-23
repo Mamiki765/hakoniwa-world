@@ -7,6 +7,7 @@ use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterDispatchOption;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
 use App\Domain\Monster\MonsterSpawnSource;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -28,6 +29,7 @@ final class MonsterSpawnService
         private readonly MonsterNaturalSpawnPolicy $policy,
         private readonly MapCellStateService $cells,
         private readonly TurnEventRecorder $events,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     /** @return array<string, int> */
@@ -110,7 +112,8 @@ final class MonsterSpawnService
             if ($cell->owner_nation_id === null) {
                 continue;
             }
-            if (! $occupied->has($cell->id)) {
+            if (! $occupied->has($cell->id)
+                && ! $this->nationProtection->protects($context, $cell->x, $cell->y)) {
                 $candidatesByNation[$cell->owner_nation_id][] = $cell;
             }
         }
@@ -216,8 +219,9 @@ final class MonsterSpawnService
         int $queueItemId,
         MonsterDispatchOption $option,
     ): MonsterInstance {
-        if ($target->world_id !== $context->world->id || $target->state !== 'active') {
-            throw new DomainException('A dispatched monster requires an active target Nation in the current World.');
+        if ($target->world_id !== $context->world->id
+            || ! in_array($target->state, ['active', 'dormant'], true)) {
+            throw new DomainException('A dispatched monster requires a current target Nation in the current World.');
         }
         $candidates = $this->dispatchCandidates($context, $target, true);
         if ($candidates->isEmpty()) {
@@ -294,7 +298,9 @@ final class MonsterSpawnService
             $query->lockForUpdate();
         }
 
-        return $query->get();
+        return $query->get()->reject(
+            fn (MapCell $cell): bool => $this->nationProtection->protects($context, $cell->x, $cell->y),
+        )->values();
     }
 
     private function wasteland(): TerrainDefinition

@@ -2,8 +2,10 @@
 
 namespace App\Application;
 
+use App\Domain\Map\GridCoordinate;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\NationCapital;
 use App\Services\MapCellPresenter;
 use DomainException;
 
@@ -44,10 +46,22 @@ final class MapChunkService
         }
 
         $currentTurn = (int) $mapSpace->world()->value('current_turn');
+        $lifecycle = config('hakoniwa.ruleset.nation_lifecycle', []);
+        $radius = is_int($lifecycle['dormant_protection_radius'] ?? null)
+            ? $lifecycle['dormant_protection_radius'] : 0;
+        $theme = is_string($lifecycle['dormant_visual_theme'] ?? null)
+            ? $lifecycle['dormant_visual_theme'] : null;
+        $dormantCapitals = NationCapital::query()
+            ->join('nations', 'nations.id', '=', 'nation_capitals.nation_id')
+            ->where('nations.world_id', $mapSpace->world_id)->where('nations.state', 'dormant')
+            ->orderBy('nation_capitals.nation_id')->get(['nation_capitals.x', 'nation_capitals.y']);
         $presentedCells = $cells->map(fn (MapCell $cell): array => $this->presenter->present(
             $cell,
             $viewerNationId,
             $currentTurn,
+            $dormantCapitals->contains(fn (NationCapital $capital): bool => (new GridCoordinate($capital->x, $capital->y))
+                ->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= $radius)
+                ? $theme : null,
         ))->values();
         $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
 

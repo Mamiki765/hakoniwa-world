@@ -42,26 +42,29 @@ final readonly class Ver240InstallUpgradeRebaseline
 
     public function run(): string
     {
-        $settings = config('hakoniwa.ruleset');
-        if (! is_array($settings)
-            || ($settings['key'] ?? null) !== self::CURRENT_KEY
-            || ($settings['version'] ?? null) !== self::CURRENT_VERSION
-            || $this->settingsChecksum($settings) !== self::CURRENT_CHECKSUM) {
+        $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php');
+        $currentSettings = config('hakoniwa.ruleset');
+        if (($sourceSettings['key'] ?? null) !== self::CURRENT_KEY
+            || ($sourceSettings['version'] ?? null) !== self::CURRENT_VERSION
+            || $this->settingsChecksum($sourceSettings) !== self::CURRENT_CHECKSUM) {
             throw new RuntimeException('The authored current v11 Ruleset differs from the immutable ver 2.4.0 baseline.');
         }
+        if (! is_array($currentSettings)) {
+            throw new RuntimeException('The authored current Ruleset is missing.');
+        }
 
-        return DB::transaction(function () use ($settings): string {
+        return DB::transaction(function () use ($sourceSettings, $currentSettings): string {
             $this->lockBusinessTables();
             if ($this->isFreshDatabase()) {
-                $this->catalogs->install($settings);
-                $this->publisher->publish($settings);
-                $this->catalogs->assertInstalled($settings);
-                $this->publisher->assertPublished($settings);
+                $this->catalogs->install($currentSettings);
+                $this->publisher->publish($currentSettings);
+                $this->catalogs->assertInstalled($currentSettings);
+                $this->publisher->assertPublished($currentSettings);
 
                 return self::RESULT_FRESH_INSTALL;
             }
 
-            $this->assertSupportedProductionSource($settings);
+            $this->assertSupportedProductionSource($sourceSettings);
 
             return self::RESULT_PRODUCTION_UPGRADE;
         }, 1);

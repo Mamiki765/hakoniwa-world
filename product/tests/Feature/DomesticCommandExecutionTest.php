@@ -163,7 +163,11 @@ class DomesticCommandExecutionTest extends TestCase
             parameters: ['target_nation_id' => $target->id],
         );
         $moneyBefore = (int) $nation->money;
-        $target->update(['state' => 'dormant_frozen']);
+        $target->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
 
         $result = app(DomesticCommandExecutor::class)->execute($this->context(
             $world,

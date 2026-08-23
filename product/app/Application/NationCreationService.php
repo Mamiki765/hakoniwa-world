@@ -159,13 +159,18 @@ final class NationCreationService
                         'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
                     ]);
 
+                    $initialIdleCounter = $rules['nation_lifecycle']['initial_idle_counter'] ?? null;
+                    if (! is_int($initialIdleCounter) || $initialIdleCounter < 0) {
+                        throw new \DomainException('The current Ruleset has an invalid initial Nation idle counter.');
+                    }
+
                     $nation = Nation::query()->create([
                         'world_id' => $world->id, 'nation_number' => $nationNumber,
                         'registered_turn' => $world->current_turn, 'name' => $name,
                         'owner_name' => $ownerName, 'profile_comment' => $profileComment,
                         'money' => $rules['initial_money'],
                         'state' => 'active',
-                        'idle_counter' => 100,
+                        'idle_counter' => $initialIdleCounter,
                     ]);
                     $this->resources->initialize($nation);
                     $islandPlan = $this->islands->plan($mapSpace, $nation, $center, $seed);

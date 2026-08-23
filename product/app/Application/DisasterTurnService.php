@@ -6,6 +6,7 @@ use App\Domain\Disaster\LandSubsidenceThresholdResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -26,6 +27,7 @@ final class DisasterTurnService
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly MonsterSpawnService $monsterSpawn,
         private readonly MonsterWorldSpawnService $monsterWorldSpawn,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     /** @return array<string, int> */
@@ -191,7 +193,7 @@ final class DisasterTurnService
 
         $nations = Nation::query()
             ->where('world_id', $context->world->id)
-            ->where('state', 'active')
+            ->whereIn('state', ['active', 'dormant'])
             ->orderBy('id')
             ->get();
         $landByNation = $this->landArea->forNationIds(
@@ -300,6 +302,17 @@ final class DisasterTurnService
         }
 
         $changedToSea = 0;
+        $changedToShallow = 0;
+        $protectedMountains = 0;
+        $capitalsDamaged = 0;
+        /** @var array<int, int> $changedToSeaByNation */
+        $changedToSeaByNation = [];
+        /** @var array<int, int> $changedToShallowByNation */
+        $changedToShallowByNation = [];
+        /** @var array<int, array<int, true>> $affectedChunkIdsByNation */
+        $affectedChunkIdsByNation = [];
+        /** @var array<int, true> $affectedChunks */
+        $affectedChunks = [];
         $seaCellIds = array_keys($seaAffectedNations);
         sort($seaCellIds, SORT_NUMERIC);
         foreach ($seaCellIds as $cellId) {
@@ -316,14 +329,15 @@ final class DisasterTurnService
                 $cellIndex,
             )) {
                 $changedToSea++;
+                $chunkId = (int) $cellsById[$cellId]->map_chunk_id;
+                $affectedChunks[$chunkId] = true;
+                foreach ($affectedNationIds as $affectedNationId) {
+                    $changedToSeaByNation[$affectedNationId] = ($changedToSeaByNation[$affectedNationId] ?? 0) + 1;
+                    $affectedChunkIdsByNation[$affectedNationId][$chunkId] = true;
+                }
             }
         }
 
-        $changedToShallow = 0;
-        $protectedMountains = 0;
-        $capitalsDamaged = 0;
-        /** @var array<int, true> $affectedChunks */
-        $affectedChunks = [];
         /** @var array<int, list<array{before_population: int, after_population: int, damage_percent: int}>> $capitalDamageByNation */
         $capitalDamageByNation = [];
         foreach ($plans as $nationId => $plan) {
@@ -342,41 +356,44 @@ final class DisasterTurnService
                     $cellIndex,
                 )) {
                     $changedToShallow++;
+                    $changedToShallowByNation[$nationId] = ($changedToShallowByNation[$nationId] ?? 0) + 1;
+                    $chunkId = (int) $cellsById[$cellId]->map_chunk_id;
+                    $affectedChunks[$chunkId] = true;
+                    $affectedChunkIdsByNation[$nationId][$chunkId] = true;
                 }
             }
             $capitalCellIds = array_keys($plan['capitals']);
             sort($capitalCellIds, SORT_NUMERIC);
             foreach ($capitalCellIds as $cellId) {
-                $capitalDamageByNation[$nationId][] = $this->damageCapitalByPercentage(
+                $capitalDamage = $this->damageCapitalByPercentage(
                     $context,
                     $cellsById[$cellId],
                     'land_subsidence',
                     $settings['capital_damage_percentage'],
                     ['source' => 'land_subsidence'],
                 );
-                $capitalsDamaged++;
-            }
-            foreach ([...array_keys($plan['to_sea']), ...$landCellIds, ...$capitalCellIds] as $cellId) {
-                $affectedChunks[$snapshot[$cellsById[$cellId]->x.':'.$cellsById[$cellId]->y]['map_chunk_id']] = true;
+                if ($capitalDamage['damage_percent'] > 0) {
+                    $capitalDamageByNation[$nationId][] = $capitalDamage;
+                    $capitalsDamaged++;
+                    $chunkId = (int) $cellsById[$cellId]->map_chunk_id;
+                    $affectedChunks[$chunkId] = true;
+                    $affectedChunkIdsByNation[$nationId][$chunkId] = true;
+                }
             }
         }
 
         foreach ($plans as $nationId => $plan) {
-            $nationChunkIds = [];
-            foreach ([...array_keys($plan['to_sea']), ...array_keys($plan['to_shallow']), ...array_keys($plan['capitals'])] as $cellId) {
-                $nationChunkIds[$cellsById[$cellId]->map_chunk_id] = true;
-            }
             $this->events->record($context, 'land_subsidence.triggered', $plan['nation'], [
                 'disaster_key' => 'land_subsidence',
                 'nation_id' => $nationId,
                 'nation_number' => $plan['nation']->nation_number,
                 'owned_land_cells_before' => $plan['owned_land_cells'],
                 'effective_safe_land_cells' => $plan['threshold'],
-                'changed_to_sea_count' => count($plan['to_sea']),
-                'changed_to_shallow_count' => count($plan['to_shallow']),
+                'changed_to_sea_count' => $changedToSeaByNation[$nationId] ?? 0,
+                'changed_to_shallow_count' => $changedToShallowByNation[$nationId] ?? 0,
                 'protected_mountain_count' => count($plan['protected_mountains']),
                 'capital_damage' => $capitalDamageByNation[$nationId] ?? [],
-                'affected_chunk_count' => count($nationChunkIds),
+                'affected_chunk_count' => count($affectedChunkIdsByNation[$nationId] ?? []),
                 'draw' => $plan['draw'],
                 'numerator' => $settings['probability']['numerator'],
                 'denominator' => $settings['probability']['denominator'],
@@ -473,6 +490,9 @@ final class DisasterTurnService
         if (! $trigger['success']) {
             return false;
         }
+        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            return false;
+        }
         if ($this->isCapital($cell)) {
             $this->damageCapital($context, $cell, 'fire', 'facility_or_wasteland', [
                 'draw' => $trigger['draw'],
@@ -520,6 +540,9 @@ final class DisasterTurnService
             if (! $draw['success']) {
                 continue;
             }
+            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+                continue;
+            }
             if ($this->isCapital($cell)) {
                 $this->damageCapital($context, $cell, 'earthquake', 'facility_or_wasteland', [
                     'source' => $source,
@@ -564,6 +587,9 @@ final class DisasterTurnService
             if ($draw >= max(0, $water - $settings['adjacent_water_offset'])) {
                 continue;
             }
+            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+                continue;
+            }
             if ($this->isCapital($cell)) {
                 $this->damageCapital($context, $cell, 'tsunami', 'facility_or_wasteland', [
                     'center_x' => $center->x, 'center_y' => $center->y,
@@ -605,6 +631,9 @@ final class DisasterTurnService
             if ($draw >= max(0, $settings['base_damage_threshold'] - $protection)) {
                 continue;
             }
+            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+                continue;
+            }
             $this->changeCell($context, $cell, 'typhoon', 'plain', false, 'disaster.cell_damaged', [
                 'center_x' => $center->x, 'center_y' => $center->y,
                 'protection_count' => $protection, 'draw' => $draw,
@@ -630,7 +659,9 @@ final class DisasterTurnService
             $coordinate = $coordinates[$stream->integer(0, count($coordinates) - 1)];
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
             if ($cell !== null && $this->isMutable($cell, $cellIndex)) {
-                if ($this->isCapital($cell)) {
+                if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+                    // Keep the selected impact and continuation RNG opportunity, but apply no effect.
+                } elseif ($this->isCapital($cell)) {
                     $this->damageCapital($context, $cell, 'meteor_shower', 'deep_sea', [
                         'center_x' => $center->x, 'center_y' => $center->y,
                     ]);
@@ -690,6 +721,9 @@ final class DisasterTurnService
                 continue;
             }
             $distance = $center->distanceTo($coordinate);
+            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+                continue;
+            }
             $monsterRemoved = false;
             if ($this->isCapital($cell)) {
                 if ($distance === 0) {
@@ -762,7 +796,8 @@ final class DisasterTurnService
     ): int {
         $damaged = 0;
         $centerCell = $this->cellAt($space, $center, $cellIndex);
-        if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)) {
+        if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)
+            && ! $this->nationProtection->protects($context, $centerCell->x, $centerCell->y)) {
             if ($this->isCapital($centerCell)) {
                 $this->damageCapital($context, $centerCell, 'eruption', 'eruption_center');
                 $damaged++;
@@ -782,6 +817,9 @@ final class DisasterTurnService
         foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
             $cell = $this->cellAt($space, $center->neighbor($direction), $cellIndex);
             if ($cell === null || ! $this->isMutable($cell, $cellIndex) || $cell->terrain->key === 'mountain') {
+                continue;
+            }
+            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
                 continue;
             }
             if ($this->isCapital($cell)) {
@@ -915,6 +953,13 @@ final class DisasterTurnService
         int $percentage,
         array $extra = [],
     ): array {
+        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            return [
+                'before_population' => (int) $cell->population,
+                'after_population' => (int) $cell->population,
+                'damage_percent' => 0,
+            ];
+        }
         $minimum = $context->ruleset->settings['capital_minimum_population'] ?? null;
         if (! is_int($minimum) || $minimum < 1 || $percentage < 0 || $percentage > 100) {
             throw new DomainException('The active ruleset has invalid Capital damage settings.');
@@ -957,6 +1002,9 @@ final class DisasterTurnService
         array $extra = [],
         ?DisasterMutableCellIndex $cellIndex = null,
     ): bool {
+        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            return false;
+        }
         $beforeTerrain = $cell->terrain->key;
         $beforeFacility = $cell->facility?->key;
         $beforeOwner = $cell->owner_nation_id;
@@ -999,6 +1047,10 @@ final class DisasterTurnService
         MapCell $cell,
         string $disasterKey,
     ): bool {
+        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            return false;
+        }
+
         return $this->monsterRemoval->removeAtCell(
             $context,
             $cell,
@@ -1026,14 +1078,15 @@ final class DisasterTurnService
         }
 
         return $cell->owner_nation_id === null
-            || Nation::query()->whereKey($cell->owner_nation_id)->where('state', 'active')->exists();
+            || Nation::query()->whereKey($cell->owner_nation_id)
+                ->whereIn('state', ['active', 'dormant'])->exists();
     }
 
     private function newMutableCellIndex(TurnContext $context): DisasterMutableCellIndex
     {
         $activeNationIds = Nation::query()
             ->where('world_id', $context->world->id)
-            ->where('state', 'active')
+            ->whereIn('state', ['active', 'dormant'])
             ->orderBy('id')
             ->pluck('id')
             ->map(static fn ($id): int => (int) $id)

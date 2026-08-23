@@ -6,7 +6,7 @@ use App\Application\CommandQueueService;
 use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
-use App\Application\Ver240InstallUpgradeRebaseline;
+use App\Application\Ver240DormancyRulesetUpgrade;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\MapCell;
 use App\Models\NationCommandQueueItem;
@@ -28,34 +28,44 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    private const MIGRATION = '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade';
+    private const MIGRATION = '2026_08_23_000000_add_nation_dormancy_and_publish_v12';
 
-    public function test_supported_v11_source_upgrade_preserves_every_business_table_and_fingerprint_byte(): void
+    public function test_supported_v11_source_upgrade_preserves_provenance_and_remains_runnable(): void
     {
-        [$world, $item] = $this->supportedSourceWithCompletedTurn();
+        [$world, $item, $target] = $this->supportedSourceWithQueuedCommand();
         app(RulesetPublisher::class)->publish(
             app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
         );
         DB::table('migrations')->where('migration', self::MIGRATION)->delete();
         $fingerprint = $item->fresh()->request_fingerprint;
-        $before = $this->businessSnapshot();
+        $idleCounter = (int) $world->nations()->sole()->idle_counter;
+        $this->assertSame(100, $idleCounter);
+        $secretaryDigest = $this->secretaryDigest();
 
         $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
 
-        $this->assertSame($before, $this->businessSnapshot());
         $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
-        $this->assertSame(2, $world->fresh()->current_turn);
+        $this->assertSame(100, (int) $world->nations()->sole()->idle_counter);
+        $this->assertSame($secretaryDigest, $this->secretaryDigest());
+        $this->assertSame(Ver240DormancyRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertSame(
+            Ver240DormancyRulesetUpgrade::TARGET_KEY,
+            $item->fresh()->definition()->firstOrFail()->rulesetVersion()->value('key'),
+        );
+        $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v12_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('migrations', ['migration' => self::MIGRATION]);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
-        $this->assertSame(3, $world->fresh()->current_turn);
+        $this->assertSame(2, $world->fresh()->current_turn);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame('plain', $target->fresh()->terrain()->value('key'));
     }
 
     #[DataProvider('unresolvedStatuses')]
     public function test_every_global_unresolved_non_dry_status_rejects_without_partial_mutation(string $status): void
     {
-        $world = $this->lightweightWorld();
+        $world = $this->exactV11World();
         TurnRun::query()->create($this->turnRunState($world->id, $world->ruleset_version_id, $status, false));
         DB::table('migrations')->where('migration', self::MIGRATION)->delete();
         $before = $this->businessSnapshot();
@@ -79,7 +89,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
     public function test_dry_run_status_is_excluded_from_upgrade_cutoff(): void
     {
-        $world = $this->lightweightWorld();
+        $world = $this->exactV11World();
         TurnRun::query()->create($this->turnRunState(
             $world->id,
             $world->ruleset_version_id,
@@ -93,14 +103,14 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
     public function test_missing_exact_source_migration_is_rejected_without_partial_mutation(): void
     {
-        $this->lightweightWorld();
+        $this->exactV11World();
         DB::table('migrations')->whereIn('migration', [
-            Ver240InstallUpgradeRebaseline::SOURCE_MIGRATION,
+            Ver240DormancyRulesetUpgrade::SOURCE_MIGRATION,
             self::MIGRATION,
         ])->delete();
         $before = $this->businessSnapshot();
 
-        $this->assertMigrationBlocked('exact ver 2.3.1/v11 source migration is missing');
+        $this->assertMigrationBlocked('requires the exact supported ver 2.4.0/v11 source');
 
         $this->assertSame($before, $this->businessSnapshot());
         $this->assertDatabaseMissing('migrations', ['migration' => self::MIGRATION]);
@@ -109,6 +119,9 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
     public function test_non_v11_world_is_rejected_without_ruleset_rebind_or_data_mutation(): void
     {
         $world = $this->lightweightWorld();
+        app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v11'),
+        );
         $v10 = app(RulesetPublisher::class)->publish(
             app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
         );
@@ -116,7 +129,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         DB::table('migrations')->where('migration', self::MIGRATION)->delete();
         $before = $this->businessSnapshot();
 
-        $this->assertMigrationBlocked('shared-world is not attached to exact current v11');
+        $this->assertMigrationBlocked('requires the exact supported ver 2.4.0/v11 source');
 
         $this->assertSame($before, $this->businessSnapshot());
         $this->assertSame($v10->id, $world->fresh()->ruleset_version_id);
@@ -125,8 +138,8 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
     public function test_conflicting_v11_payload_is_rejected_without_repair(): void
     {
-        $world = $this->lightweightWorld();
-        $v11 = RulesetVersion::query()->where('key', Ver240InstallUpgradeRebaseline::CURRENT_KEY)->sole();
+        $world = $this->exactV11World();
+        $v11 = RulesetVersion::query()->where('key', Ver240DormancyRulesetUpgrade::SOURCE_KEY)->sole();
         $settings = $v11->settings;
         $settings['initial_money']++;
         $v11->update(['settings' => $settings]);
@@ -141,12 +154,13 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertDatabaseMissing('migrations', ['migration' => self::MIGRATION]);
     }
 
-    /** @return array{World, NationCommandQueueItem} */
-    private function supportedSourceWithCompletedTurn(): array
+    /** @return array{World, NationCommandQueueItem, MapCell} */
+    private function supportedSourceWithQueuedCommand(): array
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '保持国', '保持島主');
+        $nation->update(['idle_counter' => 100]);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
@@ -161,9 +175,52 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             requestKey: (string) Str::uuid(),
             expectedVersion: 1,
         )['item'];
-        app(TurnRunner::class)->run($world);
+        $this->attachExactV11($world);
 
-        return [$world, $item];
+        return [$world, $item, $target];
+    }
+
+    private function exactV11World(): World
+    {
+        $world = $this->lightweightWorld();
+        $this->attachExactV11($world);
+
+        return $world;
+    }
+
+    private function attachExactV11(World $world): void
+    {
+        $v11 = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get(Ver240DormancyRulesetUpgrade::SOURCE_KEY),
+        );
+        DB::transaction(function () use ($world, $v11): void {
+            DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
+            DB::update(<<<'SQL'
+UPDATE nation_command_queue_items AS item
+SET command_definition_id = target.id
+FROM command_definitions AS source,
+     command_definitions AS target,
+     nation_command_queues AS queue,
+     nations AS nation
+WHERE source.id = item.command_definition_id
+  AND target.key = source.key
+  AND target.ruleset_version_id = ?
+  AND queue.id = item.nation_command_queue_id
+  AND nation.id = queue.nation_id
+  AND nation.world_id = ?
+SQL, [$v11->id, $world->id]);
+            $world->update(['ruleset_version_id' => $v11->id]);
+            DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match IMMEDIATE');
+        });
+    }
+
+    private function secretaryDigest(): string
+    {
+        return hash('sha256', json_encode([
+            'secretaries' => DB::table('secretaries')->orderBy('id')->get()->all(),
+            'skills' => DB::table('secretary_skills')->orderBy('id')->get()->all(),
+            'items' => DB::table('secretary_item_instances')->orderBy('id')->get()->all(),
+        ], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
     }
 
     /** @return array<string, string> */
