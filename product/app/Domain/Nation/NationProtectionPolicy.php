@@ -8,10 +8,14 @@ use DomainException;
 
 final class NationProtectionPolicy
 {
-    public function protectedNationId(TurnContext $context, int $x, int $y): ?int
-    {
+    public function protectedNationId(
+        TurnContext $context,
+        int $x,
+        int $y,
+        ?int $excludedRecoveryNationId = null,
+    ): ?int {
         $recoveryNationId = $context->state->recoveryTerritoryNationId($x, $y);
-        if ($recoveryNationId !== null) {
+        if ($recoveryNationId !== null && $recoveryNationId !== $excludedRecoveryNationId) {
             return $recoveryNationId;
         }
 

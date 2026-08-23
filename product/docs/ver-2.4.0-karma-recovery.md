@@ -81,10 +81,12 @@ refugees, or recovery qualification in the same Turn.
 
 ## Recovery contract
 
-A Nation qualifies only when a hostile player-missile sequence starts above
-100 total population and reduces it to exactly the Capital minimum of 100.
-The current volley completes. At target-Turn finalization the Nation enters
-`recovery`, receives a `resume_at_turn` of `T + 85`, and gets the entry KARMA
+A Nation qualifies when a hostile player-missile sequence starts above 100
+total population and a canonical impact first reduces it to exactly the
+Capital minimum of 100. Qualification is latched at that impact; later
+population growth in the same Turn does not revoke it. The current volley
+completes, and only the lifecycle boundary changes the Nation state to
+`recovery`, assigns `resume_at_turn = T + 85`, and applies the entry KARMA
 reduction.
 
 `T+1` through `T+84` are complete recovery Turns. At the start of `T+85`, a
@@ -94,10 +96,20 @@ returns to `active`. Recovery never becomes dormant before this exit boundary.
 
 Registration and execution both reject, before costs:
 
-- hostile incoming or outgoing player missiles;
+- foreign player missiles selected against a recovery Nation or its protected
+  territory, and recovery-Nation missiles selected against foreign territory;
 - monster dispatch and monument flight involving a recovery Nation;
 - hostile territory expansion into recovery territory and territory influence
   from or into recovery territory.
+
+Missile launches selected against self-owned or neutral coordinates remain
+legal during recovery. If an established impact from such a launch produces
+canonical `crime_points > 0`, that impact is not rolled back and recovery ends
+immediately afterward; the remaining shots are processed as an ordinary active
+Nation. A crime-zero anti-monster impact does not end recovery. If a Nation
+that exited recovery for crime later qualifies again from a different hostile
+player missile in the same Turn, the latched recovery ledger takes priority at
+the lifecycle boundary and the Nation re-enters recovery.
 
 Money/food aid, domestic commands, neutral territory expansion, production,
 resource sales, disasters, and the normal owner UI remain active. Recovery is
@@ -119,8 +131,10 @@ is not met.
 The transaction preserves World/Nation lifecycle and idle data, live monsters,
 command queues and positions, Secretary/equipment/Item state, request keys and
 fingerprints, terminal Turn history, audit events, and historical provenance.
-It changes only the current World Ruleset reference to the published v13 row;
-there is no reset or backfill reinterpretation.
+Its preservation digests stream ordered rows into incremental hashes so that
+production history is not retained in one in-memory JSON array. It changes only
+the current World Ruleset reference to the published v13 row; there is no reset
+or backfill reinterpretation.
 
 ## API, UI, and audit
 

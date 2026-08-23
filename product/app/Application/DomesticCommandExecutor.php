@@ -785,7 +785,7 @@ final class DomesticCommandExecutor
         );
         $monument = null;
         if ($definition->key === 'build_seabed_base') {
-            $cell->owner_nation_id = $nation->id;
+            $this->assignNationOwnership($context, $nation, $cell);
         }
         if ($definition->key === 'build_monument') {
             $monument = MonumentDefinition::query()->findOrFail($item->quantity);
@@ -1080,13 +1080,10 @@ final class DomesticCommandExecutor
         $cell->loadMissing('ownerNation');
         $oldOwnerNationId = $cell->owner_nation_id;
         $oldOwnerNationName = $oldOwnerNationId === null ? '中立' : $cell->ownerNation->name;
-        $cell->owner_nation_id = $nation->id;
+        $this->assignNationOwnership($context, $nation, $cell);
         $cell->version++;
         $cell->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
-        if (in_array($nation->id, $context->state->recoveryNationIds(), true)) {
-            $context->state->recordRecoveryTerritoryAcquired($nation->id, $cell->x, $cell->y);
-        }
         $this->events->record($context, 'command.territory_expanded', $cell, [
             'nation_id' => $nation->id,
             'x' => $cell->x,
@@ -1422,7 +1419,12 @@ final class DomesticCommandExecutor
         $this->cells->setFacility($cell, null);
         $terrain = TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail();
         $this->cells->transitionTerrain($cell, $terrain);
-        $cell->owner_nation_id = $ownerNationId;
+        if ($ownerNationId === $nation->id) {
+            $this->assignNationOwnership($context, $nation, $cell);
+        } else {
+            $cell->owner_nation_id = $ownerNationId;
+            $cell->setRelation('ownerNation', null);
+        }
         $cell->population = 0;
         $cell->version++;
         $cell->save();
@@ -1514,7 +1516,7 @@ final class DomesticCommandExecutor
                 throw new DomainException('Seabed oil field facility is not buildable on sea terrain.');
             }
             $this->cells->setFacility($cell, $facility);
-            $cell->owner_nation_id = $nation->id;
+            $this->assignNationOwnership($context, $nation, $cell);
             $cell->population = 0;
             $cell->version++;
             $cell->save();
@@ -1535,6 +1537,15 @@ final class DomesticCommandExecutor
             'found' => $found,
             'facility_key' => $found ? $facilityKey : null,
         ]);
+    }
+
+    private function assignNationOwnership(TurnContext $context, Nation $nation, MapCell $cell): void
+    {
+        $cell->owner_nation_id = $nation->id;
+        $cell->setRelation('ownerNation', $nation);
+        if (in_array($nation->id, $context->state->recoveryNationIds(), true)) {
+            $context->state->recordRecoveryTerritoryAcquired($nation->id, $cell->x, $cell->y);
+        }
     }
 
     private function buriedTreasure(

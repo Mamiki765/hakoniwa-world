@@ -50,25 +50,11 @@ final class NationLifecycleService
                 $nextState = ! $hasMeaningfulQueue && $nation->idle_counter >= $settings['dormant_idle_threshold']
                     ? 'dormant'
                     : 'active';
-                $beforeStartedTurn = $nation->state_started_turn;
-                $beforeResumeTurn = $nation->resume_at_turn;
-                $nation->state = $nextState;
-                $nation->state_reason = $nextState === 'dormant' ? 'idle' : null;
-                $nation->state_started_turn = $nextState === 'dormant' ? $context->targetTurn : null;
-                $nation->resume_at_turn = null;
-                $nation->save();
-                $context->state->markRecoveryExited($nation->id);
-                $recoveryResumed++;
-                $this->events->record($context, 'nation.recovery_ended', $nation, [
-                    'nation_id' => $nation->id,
-                    'nation_name' => $nation->name,
-                    'before_state' => 'recovery',
-                    'after_state' => $nextState,
-                    'state_started_turn' => $beforeStartedTurn,
-                    'resume_at_turn' => $beforeResumeTurn,
+                $this->exitRecovery($context, $nation, $nextState, [
                     'meaningful_non_finance_queue' => $hasMeaningfulQueue,
                     'idle_counter' => (int) $nation->idle_counter,
-                ], 'public', message: "{$nation->name}の休戦期間が終了しました。");
+                ]);
+                $recoveryResumed++;
 
                 continue;
             }
@@ -140,6 +126,22 @@ final class NationLifecycleService
         ];
     }
 
+    public function exitRecoveryForCrime(
+        TurnContext $context,
+        Nation $nation,
+        int $crimePoints,
+        int $queueItemId,
+    ): void {
+        if ($nation->state !== 'recovery' || $crimePoints < 1) {
+            throw new DomainException('Only a recovery Nation with canonical crime may exit recovery immediately.');
+        }
+        $this->exitRecovery($context, $nation, 'active', [
+            'exit_trigger' => 'karma_crime',
+            'crime_points' => $crimePoints,
+            'queue_item_id' => $queueItemId,
+        ]);
+    }
+
     /** @return array{dormant_heartbeats: int, money_applied: int, idle_counter_increments: int, emergency_farms: int} */
     public function heartbeat(TurnContext $context): array
     {
@@ -186,15 +188,23 @@ final class NationLifecycleService
             if ($nation->state === 'abandoned') {
                 continue;
             }
-            if ($snapshot['state'] !== 'recovery'
-                && array_key_exists($nationId, $context->state->karmaStartSnapshots())
-                && $context->state->karmaLedgerForNation($nationId)['recovery_entry']) {
+            if (array_key_exists($nationId, $context->state->karmaStartSnapshots())
+                && $context->state->karmaLedgerForNation($nationId)['recovery_entry']
+                && ($snapshot['state'] !== 'recovery'
+                    || $context->state->recoveryExitedThisTurn($nationId))) {
                 $metrics['recovery_monsters_removed'] += $this->enterRecovery($context, $nation, $settings);
                 $metrics['entered_recovery']++;
 
                 continue;
             }
             if ($snapshot['state'] === 'recovery') {
+                if ($context->state->recoveryExitedThisTurn($nationId)) {
+                    if ($nation->state !== 'active') {
+                        throw new DomainException('Crime-triggered recovery exit did not retain active Nation state.');
+                    }
+
+                    continue;
+                }
                 if ($nation->state !== 'recovery') {
                     throw new DomainException('Recovery Nation state changed inside a frozen target Turn.');
                 }
@@ -248,6 +258,35 @@ final class NationLifecycleService
         }
 
         return $metrics;
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function exitRecovery(
+        TurnContext $context,
+        Nation $nation,
+        string $nextState,
+        array $metadata,
+    ): void {
+        if ($nation->state !== 'recovery' || ! in_array($nextState, ['active', 'dormant'], true)) {
+            throw new DomainException('Nation cannot exit recovery without a supported lifecycle transition.');
+        }
+        $beforeStartedTurn = $nation->state_started_turn;
+        $beforeResumeTurn = $nation->resume_at_turn;
+        $nation->state = $nextState;
+        $nation->state_reason = $nextState === 'dormant' ? 'idle' : null;
+        $nation->state_started_turn = $nextState === 'dormant' ? $context->targetTurn : null;
+        $nation->resume_at_turn = null;
+        $nation->save();
+        $context->state->markRecoveryExited($nation->id);
+        $this->events->record($context, 'nation.recovery_ended', $nation, [
+            'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
+            'before_state' => 'recovery',
+            'after_state' => $nextState,
+            'state_started_turn' => $beforeStartedTurn,
+            'resume_at_turn' => $beforeResumeTurn,
+            ...$metadata,
+        ], 'public', message: "{$nation->name}の休戦期間が終了しました。");
     }
 
     /** @param array<string, mixed> $settings */
