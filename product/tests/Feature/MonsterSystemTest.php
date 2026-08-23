@@ -203,6 +203,96 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, $batch->metrics()['monster_moves']);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.stayed')
             ->whereRaw("metadata->>'reason' = 'dormant_capital_protected'")->count());
+
+        $capitalCoordinate = new GridCoordinate($capital->x, $capital->y);
+        $outsideOrigin = null;
+        $protectedDestination = null;
+        $fallbackDestination = null;
+        $protectedDirection = null;
+        $fallbackDirection = null;
+        foreach ($capitalCoordinate->ring(3) as $originCoordinate) {
+            $originCandidate = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $originCoordinate->x)->where('y', $originCoordinate->y)->first();
+            if (! $originCandidate instanceof MapCell || $originCandidate->id === $origin->id) {
+                continue;
+            }
+            foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
+                $destinationCoordinate = $originCoordinate->neighbor($direction);
+                if ($capitalCoordinate->distanceTo($destinationCoordinate) !== 2) {
+                    continue;
+                }
+                $destinationCandidate = MapCell::query()->where('map_space_id', $space->id)
+                    ->where('x', $destinationCoordinate->x)->where('y', $destinationCoordinate->y)->first();
+                if (! $destinationCandidate instanceof MapCell || $destinationCandidate->id === $origin->id) {
+                    continue;
+                }
+                foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $nextDirection) {
+                    if ($nextDirection === $direction) {
+                        continue;
+                    }
+                    $fallbackCoordinate = $originCoordinate->neighbor($nextDirection);
+                    if ($capitalCoordinate->distanceTo($fallbackCoordinate) <= 2) {
+                        continue;
+                    }
+                    $fallbackCandidate = MapCell::query()->where('map_space_id', $space->id)
+                        ->where('x', $fallbackCoordinate->x)->where('y', $fallbackCoordinate->y)->first();
+                    if ($fallbackCandidate instanceof MapCell
+                        && ! in_array($fallbackCandidate->id, [$origin->id, $destinationCandidate->id], true)) {
+                        $outsideOrigin = $originCandidate;
+                        $protectedDestination = $destinationCandidate;
+                        $fallbackDestination = $fallbackCandidate;
+                        $protectedDirection = $direction;
+                        $fallbackDirection = $nextDirection;
+                        break 3;
+                    }
+                }
+            }
+        }
+        $this->assertInstanceOf(MapCell::class, $outsideOrigin);
+        $this->assertInstanceOf(MapCell::class, $protectedDestination);
+        $this->assertInstanceOf(MapCell::class, $fallbackDestination);
+        $this->assertNotNull($protectedDirection);
+        $this->assertNotNull($fallbackDirection);
+        $this->setCell($outsideOrigin, 'wasteland', null, $nation->id, 0);
+        $this->setCell($protectedDestination, 'plain', null, $nation->id, 4_321);
+        $this->setCell($fallbackDestination, 'plain', null, $nation->id, 1_234);
+        $outsideMonster = $this->createMonster($world, $ruleset, $outsideOrigin, 'inora', 1);
+        $seedLabel = $this->movementSeedForDirections(
+            $outsideMonster,
+            [$protectedDirection, $fallbackDirection],
+        );
+        [$destinationContext] = $this->context($world, $ruleset, 3, $seedLabel, [$nation->id]);
+        $destinationContext->state->setNationLifecycleSnapshot($nation->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
+        $destinationBatch = $turn->load($destinationContext);
+        $destinationCells = MapCell::query()->where('map_space_id', $space->id)
+            ->with(['terrain', 'facility'])->get();
+        $destinationIndex = $destinationCells->keyBy(
+            static fn (MapCell $cell): string => $cell->x.':'.$cell->y,
+        )->all();
+
+        $this->assertTrue($turn->processCell(
+            $destinationContext,
+            $space,
+            $outsideOrigin->fresh(['terrain', 'facility']),
+            $destinationIndex,
+            $destinationBatch,
+        ));
+
+        $this->assertSame($outsideOrigin->id, (int) MonsterOccupancy::query()
+            ->where('monster_instance_id', $outsideMonster->id)->value('map_cell_id'));
+        $this->assertSame(0, $destinationBatch->metrics()['monster_moves']);
+        $this->assertSame(4_321, $protectedDestination->fresh()->population);
+        $this->assertSame(1_234, $fallbackDestination->fresh()->population);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.stayed')
+            ->whereRaw("metadata->>'monster_id' = ?", [(string) $outsideMonster->id])
+            ->whereRaw("metadata->>'reason' = 'dormant_destination_protected'")->count());
     }
 
     public function test_triggered_spawn_without_an_eligible_settlement_is_a_safe_audited_noop(): void
@@ -1377,6 +1467,29 @@ class MonsterSystemTest extends TestCase
         }
 
         throw new RuntimeException('No deterministic two-move monster seed was available.');
+    }
+
+    /** @param non-empty-list<int> $directions */
+    private function movementSeedForDirections(MonsterInstance $monster, array $directions): string
+    {
+        foreach (range(0, 99_999) as $candidate) {
+            $label = "protected-destination-{$candidate}";
+            $stream = (new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
+                TurnRandomStreamFactory::monsterMovement($monster->id, 1),
+            );
+            $matches = true;
+            foreach ($directions as $direction) {
+                if ($stream->integer(0, 5) !== $direction) {
+                    $matches = false;
+                    break;
+                }
+            }
+            if ($matches) {
+                return $label;
+            }
+        }
+
+        throw new RuntimeException('No deterministic protected-destination monster seed was available.');
     }
 
     private function setCell(

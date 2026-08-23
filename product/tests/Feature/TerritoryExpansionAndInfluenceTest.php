@@ -425,6 +425,85 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $this->assertSame(2, $retryResult['mutations']);
         $this->assertSame($second->id, $left->fresh()->owner_nation_id);
         $this->assertSame($second->id, $middle->fresh()->owner_nation_id);
+
+        $dormant = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '領土休止保護国',
+            '休止島主',
+        );
+        $dormant->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
+        $this->resetSurface($space, [$first, $second, $dormant]);
+        [$outsideTarget, $outsideSource] = $this->remotePair($space, [$first, $second, $dormant]);
+        $this->setCell($outsideTarget, 'forest', $first->id);
+        $this->setCell($outsideSource, 'plain', $second->id);
+        $outsideDirection = $this->directionFrom($outsideTarget, $outsideSource);
+        $dormantCapital = $dormant->capital()->firstOrFail();
+        $capitalCellIds = array_map(
+            static fn (Nation $nation): int => (int) $nation->capital()->value('map_cell_id'),
+            [$first, $second, $dormant],
+        );
+        $protectedTarget = null;
+        $protectedSource = null;
+        $protectedDirection = null;
+        foreach ((new GridCoordinate($dormantCapital->x, $dormantCapital->y))->ring(2) as $coordinate) {
+            $targetCandidate = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $coordinate->x)->where('y', $coordinate->y)->first();
+            if (! $targetCandidate instanceof MapCell
+                || in_array($targetCandidate->id, $capitalCellIds, true)
+                || ! $this->outsideCapitalCores($targetCandidate, [$first, $second])) {
+                continue;
+            }
+            foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $direction) {
+                if ($direction === $outsideDirection) {
+                    continue;
+                }
+                $sourceCoordinate = $coordinate->neighbor($direction);
+                $sourceCandidate = MapCell::query()->where('map_space_id', $space->id)
+                    ->where('x', $sourceCoordinate->x)->where('y', $sourceCoordinate->y)->first();
+                if ($sourceCandidate instanceof MapCell
+                    && ! in_array($sourceCandidate->id, $capitalCellIds, true)
+                    && ! in_array($sourceCandidate->id, [$outsideTarget->id, $outsideSource->id], true)) {
+                    $protectedTarget = $targetCandidate;
+                    $protectedSource = $sourceCandidate;
+                    $protectedDirection = $direction;
+                    break 2;
+                }
+            }
+        }
+        $this->assertInstanceOf(MapCell::class, $protectedTarget);
+        $this->assertInstanceOf(MapCell::class, $protectedSource);
+        $this->assertNotNull($protectedDirection);
+        $this->setCell($protectedTarget, 'forest', $first->id);
+        $this->setCell($protectedSource, 'plain', $second->id);
+
+        $protectedContext = $this->context(
+            $world,
+            [$first->id, $second->id, $dormant->id],
+            $this->seedForDirections([$protectedDirection, $outsideDirection]),
+        );
+        $protectedContext->state->setNationLifecycleSnapshot($dormant->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $dormantCapital->x,
+            'capital_y' => $dormantCapital->y,
+        ]);
+        $protectedContext->state->setSurfaceCellIds(
+            $this->surfaceOrder($space, [$protectedTarget->id, $outsideTarget->id]),
+        );
+        $protectedResult = app(TerritoryInfluenceService::class)->execute($protectedContext);
+
+        $this->assertSame(2, $protectedResult['eligible_targets']);
+        $this->assertSame(2, $protectedResult['direction_draws']);
+        $this->assertSame(1, $protectedResult['mutations']);
+        $this->assertSame($first->id, $protectedTarget->fresh()->owner_nation_id);
+        $this->assertSame($second->id, $outsideTarget->fresh()->owner_nation_id);
     }
 
     /** @return array{World, MapSpace, User, Nation, Nation} */

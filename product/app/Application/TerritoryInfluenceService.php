@@ -148,9 +148,6 @@ final class TerritoryInfluenceService
                 throw new DomainException("Surface cell order references missing cell {$cellId}.");
             }
             $metrics['processed']++;
-            if ($this->nationProtection->protects($context, $target->x, $target->y)) {
-                continue;
-            }
             $targetOwnerNationId = $target->owner_nation_id;
             $targetCoreProtected = $targetOwnerNationId !== null
                 && $this->capitalCores->protectsCurrentOwnerTerritory(
@@ -195,6 +192,9 @@ final class TerritoryInfluenceService
                 $capitalFacts,
                 $coreRadius,
             )) {
+                continue;
+            }
+            if ($this->nationProtection->protects($context, $target->x, $target->y)) {
                 continue;
             }
 
