@@ -33,6 +33,26 @@ docker compose exec hakoniwa-web php artisan hakoniwa:world:init
 
 新しいDB volumeではinit scriptが`hakoniwa_test`を作る。
 
+PHP sourceとtestを編集しながら検証する場合は、production相当の`hakoniwa-web`とは別の`hakoniwa-dev` serviceを使う。最初に一度だけdevelopment imageをbuildして起動する。
+
+```powershell
+docker compose -f compose.yml -f compose.development.yml build hakoniwa-dev
+docker compose -f compose.yml -f compose.development.yml up -d hakoniwa-dev
+```
+
+`hakoniwa-dev`はHTTP portを公開せず、`APP_ENV=testing`、`DB_DATABASE=hakoniwa_test`を明示したtooling専用containerである。checkoutの`app`、`config`、`database`、`routes`、PHP view、`tests`とPHPUnit/PHPStan設定をread-only bind mountする。image内の`vendor`、`storage`、`bootstrap/cache`、`public/build`はbind mountで隠さず、rootまたはproductの`.env`もmountしない。
+
+通常のPHP/test編集後はimageをbuildまたはcontainerを再作成せず、そのままfocused testとstatic analysisを再実行する。
+
+```powershell
+docker compose -f compose.yml -f compose.development.yml exec -T hakoniwa-dev composer test -- --filter HakoniwaCalendarTest
+docker compose -f compose.yml -f compose.development.yml exec -T hakoniwa-dev composer analyse
+```
+
+`composer test`は既存の512 MiB PHPUnit contract、`composer analyse`は既存の1 GiB PHPStan contractを使用する。`composer.json`、`composer.lock`、Dockerfile、PHP extension、またはbaked frontend assetを変更した場合はdevelopment imageを再buildする。通常のPHP source/test/config/migration/viewだけの変更では再buildしない。Composer downloadはBuildKit cacheを使用するため、同じbuilderで失敗したbuildをretryすると取得済みpackageを再利用できる。
+
+production相当imageと通常のlocal applicationは従来どおりbase Composeだけを使用する。
+
 ```powershell
 docker compose exec -T -e APP_ENV=testing -e DB_DATABASE=hakoniwa_test hakoniwa-web php -d memory_limit=512M vendor/bin/phpunit --colors=never
 docker compose exec hakoniwa-web ./vendor/bin/pint --test
@@ -47,7 +67,7 @@ canonicalなserial full suiteは従来どおり`composer test`で実行できる
 .\product\tests\scripts\run_parallel_tests.cmd 4
 ```
 
-既定・推奨値は4 shardsである。この開発機での同一suiteの実測はserial 15分41秒、2 shards 9分12秒、4 shards 5分46秒、8 shards 5分09秒だった。8 shardsは最速だが4 shardsとの差は約37秒で、container群の推定ピークメモリは約723 MiBから約1.13 GiBへ増えたため、通常は4、CPU・メモリに余裕があり最短時間を優先するときだけ8を使う。PowerShell wrapperはcached Docker buildと`hakoniwa-web`再作成を先に行い、現在checkoutのsource/testを持つimageで`tests/scripts/run_parallel_tests.sh`を呼ぶ。Windows hostへComposerやGNU `xargs -P`を追加する必要はない。source checkoutでComposerとBashを直接利用する環境では`composer test:parallel -- 4`も同じrunnerを起動する。parallel runnerはcanonical `phpunit.xml`からtest fileを自動検出し、CIと共通のdeterministic plannerで各fileを1回だけ割り当てる。各processには`hakoniwa_parallel_<run>_<shard>_test`という固定test-only prefix/suffixの独立DBを作成し、そのDB名だけを強制する一時PHPUnit configを使用する。全process終了時、失敗時、またはinterrupt時にはchild processを停止してtest DBと一時configを可能な限りcleanupする。cleanupに失敗した場合はproduction DBへfallbackせず、manifestを残して安全なretry commandを表示する。
+既定・推奨値は4 shardsである。この開発機での同一suiteの実測はserial 15分41秒、2 shards 9分12秒、4 shards 5分46秒、8 shards 5分09秒だった。8 shardsは最速だが4 shardsとの差は約37秒で、container群の推定ピークメモリは約723 MiBから約1.13 GiBへ増えたため、通常は4、CPU・メモリに余裕があり最短時間を優先するときだけ8を使う。PowerShell wrapperは`hakoniwa-dev`を起動し、bind mountされた現在checkoutのsource/testで既存の`tests/scripts/run_parallel_tests.sh`を呼ぶ。通常の編集ごとのDocker buildや`hakoniwa-web`再作成は行わない。Windows hostへComposerやGNU `xargs -P`を追加する必要はない。source checkoutでComposerとBashを直接利用する環境では`composer test:parallel -- 4`も同じrunnerを起動する。parallel runnerはcanonical `phpunit.xml`からtest fileを自動検出し、CIと共通のdeterministic plannerで各fileを1回だけ割り当てる。各processには`hakoniwa_parallel_<run>_<shard>_test`という固定test-only prefix/suffixの独立DBを作成し、そのDB名だけを強制する一時PHPUnit configを使用する。全process終了時、失敗時、またはinterrupt時にはchild processを停止してtest DBと一時configを可能な限りcleanupする。cleanupに失敗した場合はproduction DBへfallbackせず、manifestを残して安全なretry commandを表示する。
 
 GitHub Actionsも同じplannerを使用し、独立runner・独立PostgreSQL service上のPHPUnit matrixへ自動検出したfileを分配する。workflow YAMLへtest file一覧は保持しない。各runはdiscoveryのunion、duplicate、missingを検証し、`backend-static`と全PHPUnit shardsを最終`backend` gateへ集約する。
 

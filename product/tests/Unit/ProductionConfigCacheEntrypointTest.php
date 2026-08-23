@@ -21,5 +21,16 @@ final class ProductionConfigCacheEntrypointTest extends TestCase
         );
         $this->assertIsString($dockerfile);
         $this->assertStringNotContainsString('config:cache', $dockerfile);
+        $this->assertStringContainsString(
+            'RUN --mount=type=cache,id=hakoniwa-composer-cache,target=/tmp/composer-cache,sharing=locked',
+            $dockerfile,
+        );
+        $this->assertStringContainsString('COMPOSER_CACHE_DIR=/tmp/composer-cache', $dockerfile);
+        $this->assertStringContainsString('FROM runtime AS development', $dockerfile);
+        $this->assertStringContainsString(
+            'COPY --from=vendor /usr/bin/composer /usr/local/bin/composer',
+            $dockerfile,
+        );
+        $this->assertStringEndsWith("FROM runtime AS production\n", str_replace("\r\n", "\n", $dockerfile));
     }
 }

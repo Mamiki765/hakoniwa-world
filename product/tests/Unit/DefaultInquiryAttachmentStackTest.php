@@ -59,4 +59,29 @@ final class DefaultInquiryAttachmentStackTest extends TestCase
         $this->assertStringContainsString('Header always set Cache-Control "private, no-store, max-age=0"', $directives);
         $this->assertStringContainsString('Header always set X-Content-Type-Options "nosniff"', $directives);
     }
+
+    public function test_development_compose_uses_test_only_environment_and_safe_source_mounts(): void
+    {
+        $productRoot = dirname(__DIR__, 2);
+        $repositoryRoot = dirname($productRoot);
+        $developmentComposePath = $repositoryRoot.'/compose.development.yml';
+        if (! is_file($developmentComposePath)) {
+            $this->markTestSkipped('The repository-level development Compose file is outside this product-only runtime image.');
+        }
+
+        $compose = file_get_contents($developmentComposePath);
+
+        $this->assertIsString($compose);
+        $this->assertStringContainsString('hakoniwa-dev:', $compose);
+        $this->assertStringContainsString('target: development', $compose);
+        $this->assertStringContainsString('APP_ENV: testing', $compose);
+        $this->assertStringContainsString('DB_DATABASE: hakoniwa_test', $compose);
+        $this->assertStringContainsString('./product/app:/var/www/html/app:ro', $compose);
+        $this->assertStringContainsString('./product/tests:/var/www/html/tests:ro', $compose);
+        $this->assertStringNotContainsString('./product:/var/www/html', $compose);
+        $this->assertStringNotContainsString(':/var/www/html/vendor', $compose);
+        $this->assertStringNotContainsString(':/var/www/html/storage', $compose);
+        $this->assertStringNotContainsString(':/var/www/html/bootstrap/cache', $compose);
+        $this->assertStringNotContainsString(':/var/www/html/public/build', $compose);
+    }
 }
