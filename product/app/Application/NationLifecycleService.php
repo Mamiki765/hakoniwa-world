@@ -57,6 +57,7 @@ final class NationLifecycleService
                 $nation->state_started_turn = $nextState === 'dormant' ? $context->targetTurn : null;
                 $nation->resume_at_turn = null;
                 $nation->save();
+                $context->state->markRecoveryExited($nation->id);
                 $recoveryResumed++;
                 $this->events->record($context, 'nation.recovery_ended', $nation, [
                     'nation_id' => $nation->id,
@@ -185,9 +186,24 @@ final class NationLifecycleService
             if ($nation->state === 'abandoned') {
                 continue;
             }
+            if ($snapshot['state'] !== 'recovery'
+                && array_key_exists($nationId, $context->state->karmaStartSnapshots())
+                && $context->state->karmaLedgerForNation($nationId)['recovery_entry']) {
+                $metrics['recovery_monsters_removed'] += $this->enterRecovery($context, $nation, $settings);
+                $metrics['entered_recovery']++;
+
+                continue;
+            }
             if ($snapshot['state'] === 'recovery') {
                 if ($nation->state !== 'recovery') {
                     throw new DomainException('Recovery Nation state changed inside a frozen target Turn.');
+                }
+
+                continue;
+            }
+            if ($context->state->recoveryExitedThisTurn($nationId)) {
+                if ($nation->state !== $snapshot['state']) {
+                    throw new DomainException('Recovery-exit Nation state changed inside a frozen target Turn.');
                 }
 
                 continue;
@@ -205,13 +221,6 @@ final class NationLifecycleService
             }
             if ($nation->state !== 'active') {
                 throw new DomainException('Active Nation state changed inside a frozen target Turn.');
-            }
-            if (array_key_exists($nationId, $context->state->karmaStartSnapshots())
-                && $context->state->karmaLedgerForNation($nationId)['recovery_entry']) {
-                $metrics['recovery_monsters_removed'] += $this->enterRecovery($context, $nation, $settings);
-                $metrics['entered_recovery']++;
-
-                continue;
             }
             if ($nation->idle_counter >= $settings['abandonment_idle_threshold']) {
                 $this->enterDormant($context->world, $context->ruleset, $nation, 'idle', $context->targetTurn, null, null, $context);
@@ -245,9 +254,11 @@ final class NationLifecycleService
     private function enterRecovery(TurnContext $context, Nation $nation, array $settings): int
     {
         $duration = $settings['recovery_duration_turns'] ?? null;
-        if ($nation->state !== 'active' || ! is_int($duration) || $duration !== 84) {
+        if (! in_array($nation->state, ['active', 'dormant'], true)
+            || ! is_int($duration) || $duration !== 84) {
             throw new DomainException('Nation cannot enter recovery without the exact v13 lifecycle contract.');
         }
+        $beforeState = $nation->state;
         $nation->state = 'recovery';
         $nation->state_reason = null;
         $nation->state_started_turn = $context->targetTurn;
@@ -279,7 +290,7 @@ final class NationLifecycleService
         $this->events->record($context, 'nation.recovery_started', $nation, [
             'nation_id' => $nation->id,
             'nation_name' => $nation->name,
-            'before_state' => 'active',
+            'before_state' => $beforeState,
             'after_state' => 'recovery',
             'state_started_turn' => $context->targetTurn,
             'resume_at_turn' => $nation->resume_at_turn,

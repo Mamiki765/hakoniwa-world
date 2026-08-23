@@ -172,7 +172,7 @@ final class NationDormancyTest extends TestCase
             ]);
         }
         $activeNation->update(['karma' => 4, 'idle_counter' => 0]);
-        $idleNation->update(['idle_counter' => 360]);
+        $idleNation->update(['idle_counter' => 2160]);
         $world->update(['current_turn' => 10]);
 
         $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")
@@ -231,10 +231,27 @@ final class NationDormancyTest extends TestCase
         $this->assertSame('dormant', $idleNation->fresh()->state);
         $this->assertSame('idle', $idleNation->fresh()->state_reason);
         $this->assertNull($idleNation->fresh()->resume_at_turn);
+        $this->assertDatabaseMissing('audit_events', [
+            'event_type' => 'nation.abandoned',
+            'nation_id' => $idleNation->id,
+            'turn' => 95,
+        ]);
+        $this->assertDatabaseHas('nation_capitals', ['nation_id' => $idleNation->id]);
         $this->assertSame(2, DB::table('audit_events')
             ->where('event_type', 'nation.recovery_ended')
             ->where('turn', 95)
             ->count());
+
+        $followingTurn = app(TurnRunner::class)->run($world->fresh());
+
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $followingTurn->status);
+        $this->assertSame(96, (int) $world->fresh()->current_turn);
+        $this->assertSame('abandoned', $idleNation->fresh()->state);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'nation.abandoned',
+            'nation_id' => $idleNation->id,
+            'turn' => 96,
+        ]);
     }
 
     public function test_turn_end_enters_dormancy_and_2160_heartbeat_reuses_canonical_abandonment(): void

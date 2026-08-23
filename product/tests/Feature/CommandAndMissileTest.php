@@ -682,6 +682,19 @@ class CommandAndMissileTest extends TestCase
             ->whereKeyNot($capital->id)->whereNull('facility_definition_id')
             ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
         $monster = $this->monster($world, $monsterCell);
+        $dormantOwner = User::factory()->create();
+        $dormant = app(NationCreationService::class)->create(
+            $dormantOwner,
+            $world,
+            '休眠壊滅島',
+            '休眠壊滅島主',
+        );
+        $dormant->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+        ]);
         $item = $this->queue(
             app(CommandQueueService::class),
             $firingUser,
@@ -695,12 +708,13 @@ class CommandAndMissileTest extends TestCase
             $world,
             2,
             hash('sha256', 'v13 exact recovery entry'),
-            [$firing->id, $target->id],
+            [$firing->id, $target->id, $dormant->id],
         );
         $lifecycle = app(NationLifecycleService::class);
         $prepare = $lifecycle->prepare($context);
         $karma = app(KarmaTurnService::class);
         $karma->prepare($context);
+        $context->state->markRecoveryEntry($dormant->id);
         app(SecretaryTurnService::class)->loadAttemptSnapshots(
             $context,
             $context->state->lifecycleNationIds(),
@@ -730,11 +744,13 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('completed', $item->fresh()->status);
         $this->assertSame(100, (int) $capital->fresh()->population);
         $this->assertTrue($context->state->karmaLedgerForNation($target->id)['recovery_entry']);
-        $this->assertSame(1, $finalizedLifecycle['entered_recovery']);
+        $this->assertSame(2, $finalizedLifecycle['entered_recovery']);
         $this->assertSame(1, $finalizedLifecycle['recovery_monsters_removed']);
         $this->assertSame('recovery', $target->fresh()->state);
         $this->assertSame(2, (int) $target->fresh()->state_started_turn);
         $this->assertSame(87, (int) $target->fresh()->resume_at_turn);
+        $this->assertSame('recovery', $dormant->fresh()->state);
+        $this->assertSame(87, (int) $dormant->fresh()->resume_at_turn);
         $this->assertSame(36, (int) $target->fresh()->karma);
         $this->assertSame(1, $finalizedKarma['victim_reductions']);
         $this->assertSame(3, $finalizedKarma['recovery_reductions']);
@@ -750,6 +766,17 @@ class CommandAndMissileTest extends TestCase
             'nation_id' => $target->id,
             'visibility' => 'public',
         ]);
+        $dormantRecoveryEvent = DB::table('audit_events')
+            ->where('event_type', 'nation.recovery_started')
+            ->where('nation_id', $dormant->id)
+            ->sole();
+        $dormantRecoveryMetadata = json_decode(
+            (string) $dormantRecoveryEvent->metadata,
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame('dormant', $dormantRecoveryMetadata['before_state']);
     }
 
     public function test_v13_recovery_blocks_hostile_registration_and_revalidates_execution_without_blocking_aid_or_domestic_work(): void

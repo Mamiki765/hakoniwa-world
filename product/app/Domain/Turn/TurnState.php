@@ -55,6 +55,9 @@ final class TurnState
     /** @var array<string, int> */
     private array $recoveryTerritoryNationIds = [];
 
+    /** @var array<int, true> */
+    private array $recoveryExitedNationIds = [];
+
     /**
      * @var array<int, array{
      *     crime_points: int,
@@ -236,6 +239,16 @@ final class TurnState
             throw new InvalidArgumentException('Recovery territory cannot change between frozen recovery Nations.');
         }
         $this->recoveryTerritoryNationIds[$key] = $this->validatedNationId($nationId);
+    }
+
+    public function markRecoveryExited(int $nationId): void
+    {
+        $this->recoveryExitedNationIds[$this->validatedNationId($nationId)] = true;
+    }
+
+    public function recoveryExitedThisTurn(int $nationId): bool
+    {
+        return isset($this->recoveryExitedNationIds[$this->validatedNationId($nationId)]);
     }
 
     /** @param array<array-key, mixed> $nationIds */

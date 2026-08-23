@@ -162,7 +162,7 @@ Recorded before implementation:
 | New test files | 0 | 0 | Existing representative feature, unit, and UI files own every new contract. |
 | New identifiers | about 20 | 21 | One focused regression was added after review found that a meaningful zero-point monster impact skipped victim reduction and alliance money. |
 | Production World constructions | about 8 | 17 lightweight Worlds | Missile categories share one World per broad scenario, but recovery also required distinct disaster, monster, dispatch, lifecycle, equipment, install, and migration ownership checks. No production-size World is constructed. |
-| Official Turn executions | about 12 | 3 | Most ordering contracts are proven at the canonical service boundary; only the two recovery-exit boundaries and the post-migration runnable check need a complete Turn. |
+| Official Turn executions | about 12 | 4 | Most ordering contracts are proven at the canonical service boundary; the recovery-exit boundary now proves that first-Turn dormancy cannot immediately abandon before the following Turn, while the post-migration runnable check remains separate. |
 | Migration/fresh-install executions | 3 | 4 contract paths | Two current-install assertions, one exact v12-to-v13 migration, and one fail-closed wrong-source migration keep install and upgrade evidence separate. |
 | World expansions | 0 | 0 | No expansion fixture is used. |
 | Concurrency/lock orchestrations | 0 | 0 | Existing transaction and World-lock owners remain unchanged. |
