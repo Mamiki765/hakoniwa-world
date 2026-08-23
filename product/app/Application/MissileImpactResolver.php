@@ -42,6 +42,7 @@ final class MissileImpactResolver
      *     population_start: array<int, int>,
      *     population_remaining: array<int, int>,
      *     population_sync_base_id: int|null,
+     *     recovery_candidate_nation_ids: array<int, true>,
      *     spp_candidates: array<int, array{start_hp: int, host_nation_id: int}>,
      *     spp_qualified_monster_ids: array<int, true>,
      *     spp_evaluated: bool
@@ -170,6 +171,7 @@ final class MissileImpactResolver
         $metrics = ['launches' => 0, 'shots_fired' => 0, 'ineffective_impacts' => 0, 'idle_counter_resets' => 0];
         /** @var array<int, int> $shotsFiredByNation */
         $shotsFiredByNation = [];
+        $surfaceSpace = null;
         foreach ($context->state->launchIntents() as $intent) {
             if (! in_array($intent->definitionKey, self::MISSILE_KEYS, true) || $intent->queueItemId === null) {
                 continue;
@@ -182,8 +184,14 @@ final class MissileImpactResolver
                 'turn_start_monster' => false, 'missile_boundary_monster' => false,
                 'population_start' => [], 'population_remaining' => [],
                 'population_sync_base_id' => null,
+                'recovery_candidate_nation_ids' => [],
                 'spp_candidates' => [], 'spp_qualified_monster_ids' => [], 'spp_evaluated' => false,
             ];
+            if ($launch['recovery_candidate_nation_ids'] !== []) {
+                $surfaceSpace ??= MapSpace::query()->where('world_id', $context->world->id)
+                    ->where('key', 'surface')->firstOrFail();
+                $this->finalizeRecoveryEntries($context, $surfaceSpace, $launch);
+            }
             $this->evaluateSppSelfDestructSetup($context, $launch);
             $shotsFiredByNation[$nation->id] = ($shotsFiredByNation[$nation->id] ?? 0) + $launch['fired'];
             if ($launch['fired'] === 0) {
@@ -474,16 +482,8 @@ final class MissileImpactResolver
                 $launch['population_remaining'][$targetNationId] - ($beforePopulation - $afterPopulation),
             );
             if (($launch['population_start'][$targetNationId] ?? 0) > 100
-                && $launch['population_remaining'][$targetNationId] === 100
-                && ! $context->state->karmaLedgerForNation($targetNationId)['recovery_entry']) {
-                $context->state->markRecoveryEntry($targetNationId);
-                $this->events->record($context, 'recovery.entry_qualified', null, [
-                    'nation_id' => $targetNationId,
-                    'firing_nation_id' => $intent->nationId,
-                    'queue_item_id' => $intent->queueItemId,
-                    'sequence_start_population' => $launch['population_start'][$targetNationId],
-                    'population_after_impact' => 100,
-                ], 'admin');
+                && $launch['population_remaining'][$targetNationId] === 100) {
+                $launch['recovery_candidate_nation_ids'][$targetNationId] = true;
             }
         }
         $this->events->record($context, 'karma.missile_impact', null, [
@@ -502,6 +502,33 @@ final class MissileImpactResolver
             'anti_monster_exempt' => $antiMonsterExempt,
             'alliance_money' => $allianceMoney,
         ], 'admin');
+    }
+
+    /** @param array<string, mixed> $launch */
+    private function finalizeRecoveryEntries(TurnContext $context, MapSpace $space, array $launch): void
+    {
+        $nationIds = array_map('intval', array_keys($launch['recovery_candidate_nation_ids']));
+        $rows = MapCell::query()->where('map_space_id', $space->id)
+            ->whereIn('owner_nation_id', $nationIds)
+            ->groupBy('owner_nation_id')
+            ->selectRaw('owner_nation_id, SUM(population) AS aggregate')
+            ->pluck('aggregate', 'owner_nation_id');
+        foreach ($nationIds as $nationId) {
+            if ((int) ($rows[$nationId] ?? 0) !== 100
+                || ($launch['population_start'][$nationId] ?? 0) <= 100
+                || $context->state->karmaLedgerForNation($nationId)['recovery_entry']) {
+                continue;
+            }
+            $context->state->markRecoveryEntry($nationId);
+            $this->events->record($context, 'recovery.entry_qualified', null, [
+                'nation_id' => $nationId,
+                'firing_nation_id' => $launch['intent']->nationId,
+                'queue_item_id' => $launch['intent']->queueItemId,
+                'sequence_start_population' => $launch['population_start'][$nationId],
+                'population_after_impact' => 100,
+                'population_at_resolution_finalization' => 100,
+            ], 'admin');
+        }
     }
 
     /** @param array<string, mixed> $impact */
@@ -1331,6 +1358,7 @@ final class MissileImpactResolver
      *     population_start: array<int, int>,
      *     population_remaining: array<int, int>,
      *     population_sync_base_id: int|null,
+     *     recovery_candidate_nation_ids: array<int, true>,
      *     spp_candidates: array<int, array{start_hp: int, host_nation_id: int}>,
      *     spp_qualified_monster_ids: array<int, true>,
      *     spp_evaluated: bool
@@ -1350,6 +1378,7 @@ final class MissileImpactResolver
                 'turn_start_monster' => false, 'missile_boundary_monster' => false,
                 'population_start' => [], 'population_remaining' => [],
                 'population_sync_base_id' => null,
+                'recovery_candidate_nation_ids' => [],
                 'spp_candidates' => [], 'spp_qualified_monster_ids' => [], 'spp_evaluated' => false,
             ];
         }

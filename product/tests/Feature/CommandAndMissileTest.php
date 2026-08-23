@@ -781,6 +781,61 @@ class CommandAndMissileTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
         $this->assertSame('dormant', $dormantRecoveryMetadata['before_state']);
+
+        [$staleOwner, $staleCandidate] = $this->nation($world, '休戦候補取消島');
+        $staleSecretaryId = DB::table('secretaries')->where('user_id', $staleOwner->id)->value('id');
+        DB::table('secretary_skills')->where('secretary_id', $staleSecretaryId)
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $firing->update(['money' => 9_999]);
+        $firstBase->update(['facility_experience' => 0]);
+        MapCell::query()->where('owner_nation_id', $staleCandidate->id)->update(['population' => 0]);
+        $staleCapital = MapCell::query()->whereKey($staleCandidate->capital()->value('map_cell_id'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $staleCapital->update(['population' => 105]);
+        $staleCellIndex = $this->missileCellIndex($world);
+        $staleItem = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing->fresh(),
+            $this->surfaceMapSpace($world),
+            'spp_missile',
+            $staleCapital,
+        );
+        $staleContext = $this->context(
+            $world,
+            3,
+            hash('sha256', 'v13 stale recovery candidate'),
+            [$firing->id, $staleCandidate->id],
+        );
+        $lifecycle->prepare($staleContext);
+        $staleKarma = app(KarmaTurnService::class);
+        $staleKarma->prepare($staleContext);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots(
+            $staleContext,
+            $staleContext->state->lifecycleNationIds(),
+        );
+        app(DomesticCommandExecutor::class)->execute($staleContext);
+        $staleKarma->snapshotMissileBoundary($staleContext);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($staleCellIndex);
+        $staleShots = $resolver->processBase(
+            $staleContext,
+            $this->surfaceMapSpace($world),
+            $firstBase->fresh(['terrain', 'facility', 'ownerNation']),
+        )['shots_fired'];
+        $this->assertSame(100, (int) $staleCapital->fresh()->population);
+        $this->assertFalse($staleContext->state->karmaLedgerForNation($staleCandidate->id)['recovery_entry'],
+            'Recovery qualification must wait until the complete player missile resolution finishes.');
+        $staleCapitalInTurn = $staleCellIndex[$staleCapital->x.':'.$staleCapital->y];
+        $staleCapitalInTurn->update(['population' => 105]);
+        $resolver->finalize($staleContext);
+
+        $this->assertSame(1, $staleShots);
+        $this->assertSame(105, (int) $staleCapital->fresh()->population);
+        $this->assertFalse($staleContext->state->karmaLedgerForNation($staleCandidate->id)['recovery_entry']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'recovery.entry_qualified')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $staleItem->id])->count());
     }
 
     public function test_v13_recovery_blocks_hostile_registration_and_revalidates_execution_without_blocking_aid_or_domestic_work(): void
