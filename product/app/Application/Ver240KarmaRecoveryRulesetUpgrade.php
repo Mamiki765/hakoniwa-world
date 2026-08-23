@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -32,6 +33,8 @@ final readonly class Ver240KarmaRecoveryRulesetUpgrade
     private const MONSTER_TRIGGER = 'monster_instance_world_ruleset_guard';
 
     private const KILL_STAT_TRIGGER = 'nation_monster_kill_stat_guard';
+
+    private const DIGEST_PAGE_SIZE = 250;
 
     /** @var list<string> */
     private const INFRASTRUCTURE_TABLES = ['cache', 'cache_locks', 'migrations', 'sessions'];
@@ -100,22 +103,22 @@ final readonly class Ver240KarmaRecoveryRulesetUpgrade
                 throw new RuntimeException('Existing Nations must enter the v13 upgrade with initial KARMA 0.');
             }
 
-            $fingerprints = $this->rowsDigest(DB::table('nation_command_queue_items')
-                ->select(['id', 'request_fingerprint'])->orderBy('id')->cursor());
-            $idleCounters = $this->rowsDigest(DB::table('nations')
-                ->select(['id', 'idle_counter'])->orderBy('id')->cursor());
-            $lifecycleState = $this->rowsDigest(DB::table('nations')->select([
+            $fingerprints = $this->queryDigest(DB::table('nation_command_queue_items')
+                ->select(['id', 'request_fingerprint']));
+            $idleCounters = $this->queryDigest(DB::table('nations')
+                ->select(['id', 'idle_counter']));
+            $lifecycleState = $this->queryDigest(DB::table('nations')->select([
                 'id', 'state', 'state_reason', 'state_started_turn', 'resume_at_turn', 'idle_counter', 'karma',
-            ])->orderBy('id')->cursor());
-            $requestIdentity = $this->rowsDigest(DB::table('nation_command_queue_items')->select([
+            ]));
+            $requestIdentity = $this->queryDigest(DB::table('nation_command_queue_items')->select([
                 'id', 'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
-            ])->orderBy('id')->cursor());
-            $terminalHistory = $this->rowsDigest(DB::table('nation_command_queue_items')
-                ->where('status', '<>', 'queued')->orderBy('id')->cursor());
-            $monsterState = $this->rowsDigest(DB::table('monster_instances')->select([
+            ]));
+            $terminalHistory = $this->queryDigest(DB::table('nation_command_queue_items')
+                ->where('status', '<>', 'queued'));
+            $monsterState = $this->queryDigest(DB::table('monster_instances')->select([
                 'id', 'current_hp', 'spawned_max_hp', 'state', 'spawned_target_turn',
                 'removal_reason', 'removed_at', 'version',
-            ])->orderBy('id')->cursor());
+            ]));
             $occupancyState = $this->tableDigest('monster_occupancies');
             $auditHistory = $this->tableDigest('audit_events');
             $secretaryState = $this->tableDigest('secretaries').':'.$this->tableDigest('secretary_skills')
@@ -182,28 +185,27 @@ SQL, [$target->id, $world->id, $source->id]);
 
             $this->assertPostconditions((int) $world->id, (int) $target->id);
             $changedProtectedData = array_keys(array_filter([
-                'request_fingerprints' => $fingerprints !== $this->rowsDigest(
-                    DB::table('nation_command_queue_items')->select(['id', 'request_fingerprint'])
-                        ->orderBy('id')->cursor(),
+                'request_fingerprints' => $fingerprints !== $this->queryDigest(
+                    DB::table('nation_command_queue_items')->select(['id', 'request_fingerprint']),
                 ),
-                'nation_idle_counters' => $idleCounters !== $this->rowsDigest(
-                    DB::table('nations')->select(['id', 'idle_counter'])->orderBy('id')->cursor(),
+                'nation_idle_counters' => $idleCounters !== $this->queryDigest(
+                    DB::table('nations')->select(['id', 'idle_counter']),
                 ),
-                'nation_lifecycle' => $lifecycleState !== $this->rowsDigest(DB::table('nations')->select([
+                'nation_lifecycle' => $lifecycleState !== $this->queryDigest(DB::table('nations')->select([
                     'id', 'state', 'state_reason', 'state_started_turn', 'resume_at_turn', 'idle_counter', 'karma',
-                ])->orderBy('id')->cursor()),
-                'request_identity' => $requestIdentity !== $this->rowsDigest(
+                ])),
+                'request_identity' => $requestIdentity !== $this->queryDigest(
                     DB::table('nation_command_queue_items')->select([
                         'id', 'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
-                    ])->orderBy('id')->cursor(),
+                    ]),
                 ),
-                'terminal_command_history' => $terminalHistory !== $this->rowsDigest(
-                    DB::table('nation_command_queue_items')->where('status', '<>', 'queued')->orderBy('id')->cursor(),
+                'terminal_command_history' => $terminalHistory !== $this->queryDigest(
+                    DB::table('nation_command_queue_items')->where('status', '<>', 'queued'),
                 ),
-                'live_monster_state' => $monsterState !== $this->rowsDigest(DB::table('monster_instances')->select([
+                'live_monster_state' => $monsterState !== $this->queryDigest(DB::table('monster_instances')->select([
                     'id', 'current_hp', 'spawned_max_hp', 'state', 'spawned_target_turn',
                     'removal_reason', 'removed_at', 'version',
-                ])->orderBy('id')->cursor()),
+                ])),
                 'monster_occupancies' => $occupancyState !== $this->tableDigest('monster_occupancies'),
                 'audit_events' => $auditHistory !== $this->tableDigest('audit_events'),
                 'secretary_state' => $secretaryState !== $this->tableDigest('secretaries')
@@ -315,7 +317,12 @@ SQL, [$table, $trigger]);
 
     private function tableDigest(string $table): string
     {
-        return $this->rowsDigest(DB::table($table)->orderBy('id')->cursor());
+        return $this->queryDigest(DB::table($table));
+    }
+
+    private function queryDigest(Builder $query): string
+    {
+        return $this->rowsDigest($query->lazyById(self::DIGEST_PAGE_SIZE, 'id', 'id'));
     }
 
     /** @param iterable<int, object> $rows */
