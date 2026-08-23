@@ -41,6 +41,7 @@ final class MissileImpactResolver
      *     missile_boundary_monster: bool,
      *     population_start: array<int, int>,
      *     population_remaining: array<int, int>,
+     *     population_sync_base_id: int|null,
      *     spp_candidates: array<int, array{start_hp: int, host_nation_id: int}>,
      *     spp_qualified_monster_ids: array<int, true>,
      *     spp_evaluated: bool
@@ -124,6 +125,10 @@ final class MissileImpactResolver
                 }
                 if (! $launch['prepared']) {
                     $this->prepareLaunchContext($context, $space, $nation, $intent, $settings, $launch);
+                    $launch['population_sync_base_id'] = $base->id;
+                } elseif ($launch['population_sync_base_id'] !== $base->id) {
+                    $this->synchronizeLaunchPopulation($space, $launch);
+                    $launch['population_sync_base_id'] = $base->id;
                 }
                 $nation->decrement('money', $cost);
                 $nation->refresh();
@@ -176,6 +181,7 @@ final class MissileImpactResolver
                 'prepared' => false, 'footprint' => [],
                 'turn_start_monster' => false, 'missile_boundary_monster' => false,
                 'population_start' => [], 'population_remaining' => [],
+                'population_sync_base_id' => null,
                 'spp_candidates' => [], 'spp_qualified_monster_ids' => [], 'spp_evaluated' => false,
             ];
             $this->evaluateSppSelfDestructSetup($context, $launch);
@@ -397,6 +403,23 @@ final class MissileImpactResolver
             'missile_boundary_monster' => $missileBoundaryMonster,
             'anti_monster_context' => $intent->antiMonsterContext(),
         ], 'admin');
+    }
+
+    /** @param array<string, mixed> $launch */
+    private function synchronizeLaunchPopulation(MapSpace $space, array &$launch): void
+    {
+        $nationIds = array_map('intval', array_keys($launch['population_remaining']));
+        if ($nationIds === []) {
+            return;
+        }
+        $rows = MapCell::query()->where('map_space_id', $space->id)
+            ->whereIn('owner_nation_id', $nationIds)
+            ->groupBy('owner_nation_id')
+            ->selectRaw('owner_nation_id, SUM(population) AS aggregate')
+            ->pluck('aggregate', 'owner_nation_id');
+        foreach ($nationIds as $nationId) {
+            $launch['population_remaining'][$nationId] = (int) ($rows[$nationId] ?? 0);
+        }
     }
 
     /** @param array<string, mixed> $launch
@@ -1300,6 +1323,7 @@ final class MissileImpactResolver
      *     missile_boundary_monster: bool,
      *     population_start: array<int, int>,
      *     population_remaining: array<int, int>,
+     *     population_sync_base_id: int|null,
      *     spp_candidates: array<int, array{start_hp: int, host_nation_id: int}>,
      *     spp_qualified_monster_ids: array<int, true>,
      *     spp_evaluated: bool
@@ -1318,6 +1342,7 @@ final class MissileImpactResolver
                 'prepared' => false, 'footprint' => [],
                 'turn_start_monster' => false, 'missile_boundary_monster' => false,
                 'population_start' => [], 'population_remaining' => [],
+                'population_sync_base_id' => null,
                 'spp_candidates' => [], 'spp_qualified_monster_ids' => [], 'spp_evaluated' => false,
             ];
         }

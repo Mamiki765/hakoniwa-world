@@ -677,7 +677,7 @@ class CommandAndMissileTest extends TestCase
         MapCell::query()->where('owner_nation_id', $target->id)->update(['population' => 0]);
         $capital = MapCell::query()->whereKey($target->capital()->value('map_cell_id'))
             ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
-        $capital->update(['population' => 110]);
+        $capital->update(['population' => 120]);
         $monsterCell = MapCell::query()->where('owner_nation_id', $target->id)
             ->whereKeyNot($capital->id)->whereNull('facility_definition_id')
             ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
@@ -722,12 +722,16 @@ class CommandAndMissileTest extends TestCase
         app(DomesticCommandExecutor::class)->execute($context);
         $karma->snapshotMissileBoundary($context);
         $resolver = app(MissileImpactResolver::class);
-        $resolver->begin($this->missileCellIndex($world));
+        $cellIndex = $this->missileCellIndex($world);
+        $resolver->begin($cellIndex);
         $shots = $resolver->processBase(
             $context,
             $this->surfaceMapSpace($world),
             $firstBase->fresh(['terrain', 'facility', 'ownerNation']),
         )['shots_fired'];
+        $this->assertGreaterThan(100, (int) $capital->fresh()->population);
+        $capitalInTurn = $cellIndex[$capital->x.':'.$capital->y];
+        $capitalInTurn->update(['population' => 105]);
         $shots += $resolver->processBase(
             $context,
             $this->surfaceMapSpace($world),
@@ -751,10 +755,10 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(87, (int) $target->fresh()->resume_at_turn);
         $this->assertSame('recovery', $dormant->fresh()->state);
         $this->assertSame(87, (int) $dormant->fresh()->resume_at_turn);
-        $this->assertSame(36, (int) $target->fresh()->karma);
-        $this->assertSame(1, $finalizedKarma['victim_reductions']);
+        $this->assertSame(35, (int) $target->fresh()->karma);
+        $this->assertSame(2, $finalizedKarma['victim_reductions']);
         $this->assertSame(3, $finalizedKarma['recovery_reductions']);
-        $this->assertSame(40, $alliance['requested']);
+        $this->assertSame(80, $alliance['requested']);
         $this->assertSame(0, $sanctions['karma_sanction_shots']);
         $this->assertSame('removed', $monster->fresh()->state);
         $this->assertSame('recovery_alliance_removal', $monster->fresh()->removal_reason);
