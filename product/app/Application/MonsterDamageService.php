@@ -186,6 +186,13 @@ final class MonsterDamageService
                 );
                 $monsterCycle = $this->monsterCycles->increment($context, $killerNation);
             }
+            $foreignMonsterKill = $killerNation !== null
+                && $hostNation !== null
+                && $hostNation->id !== $killerNation->id;
+            if ($foreignMonsterKill
+                && array_key_exists($killerNation->id, $context->state->karmaStartSnapshots())) {
+                $context->state->markForeignMonsterKill($killerNation->id);
+            }
 
             $eventMetadata = [
                 'monster_instance_id' => $locked->id,
@@ -214,6 +221,7 @@ final class MonsterDamageService
                 'new_kill_count' => $newKillCount,
                 'previous_monster_cycle_kill_count' => $monsterCycle['previous'] ?? null,
                 'new_monster_cycle_kill_count' => $monsterCycle['current'] ?? null,
+                'karma_foreign_monster_kill_qualified' => $foreignMonsterKill,
             ];
             if ($rewardShares['explicitly_authored']) {
                 $eventMetadata['monster_reward_policy'] = $rewardShares['policy'];

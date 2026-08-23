@@ -7,12 +7,19 @@ use App\Application\NationCreationService;
 use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
 use App\Application\Ver240DormancyRulesetUpgrade;
+use App\Application\Ver240KarmaRecoveryRulesetUpgrade;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
+use App\Models\MonsterDefinition;
+use App\Models\MonsterInstance;
+use App\Models\MonsterOccupancy;
 use App\Models\NationCommandQueueItem;
+use App\Models\NationMonsterKillStat;
 use App\Models\RulesetVersion;
+use App\Models\Secretary;
+use App\Models\SecretaryItemInstance;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -35,13 +42,15 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
     private const MIGRATION = '2026_08_23_000000_add_nation_dormancy_and_publish_v12';
 
+    private const KARMA_MIGRATION = '2026_08_23_010000_add_nation_karma_and_publish_v13';
+
     public function test_supported_v11_source_upgrade_preserves_provenance_and_remains_runnable(): void
     {
         [$world, $item, $target] = $this->supportedSourceWithQueuedCommand();
         app(RulesetPublisher::class)->publish(
             app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
         );
-        DB::table('migrations')->where('migration', self::MIGRATION)->delete();
+        DB::table('migrations')->whereIn('migration', [self::MIGRATION, self::KARMA_MIGRATION])->delete();
         $fingerprint = $item->fresh()->request_fingerprint;
         $idleCounter = (int) $world->nations()->sole()->idle_counter;
         $this->assertSame(100, $idleCounter);
@@ -52,13 +61,15 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
         $this->assertSame(100, (int) $world->nations()->sole()->idle_counter);
         $this->assertSame($secretaryDigest, $this->secretaryDigest());
-        $this->assertSame(Ver240DormancyRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
         $this->assertSame(
-            Ver240DormancyRulesetUpgrade::TARGET_KEY,
+            Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY,
             $item->fresh()->definition()->firstOrFail()->rulesetVersion()->value('key'),
         );
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v12_activated', 'visibility' => 'admin']);
+        $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v13_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('migrations', ['migration' => self::MIGRATION]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::KARMA_MIGRATION]);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
@@ -91,7 +102,11 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             'queue_position' => 10,
         ]);
         $world->nations()->sole()->update(['money' => 1_000]);
-        DB::table('migrations')->whereIn('migration', [self::REBASELINE_MIGRATION, self::MIGRATION])->delete();
+        DB::table('migrations')->whereIn('migration', [
+            self::REBASELINE_MIGRATION,
+            self::MIGRATION,
+            self::KARMA_MIGRATION,
+        ])->delete();
         $requestKey = $item->fresh()->request_key;
 
         $this->assertSame(Ver240DormancyRulesetUpgrade::SOURCE_KEY, $item->fresh()->definition->rulesetVersion->key);
@@ -104,12 +119,168 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame($requestKey, $item->fresh()->request_key);
         $this->assertSame($v10->id, $item->fresh()->request_ruleset_version_id);
         $this->assertSame(10, $item->fresh()->queue_position);
-        $this->assertSame(Ver240DormancyRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
+        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
         $this->assertSame('completed', $item->fresh()->status);
         $this->assertSame('mine', $target->fresh()->facility()->value('key'));
+    }
+
+    public function test_exact_v12_to_v13_preserves_live_state_and_historical_provenance_then_runs_a_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        $active = app(NationCreationService::class)->create($owner, $world, 'v13移行国', '移行島主');
+        $active->update(['idle_counter' => 137]);
+        $dormantOwner = User::factory()->create();
+        $dormant = app(NationCreationService::class)->create($dormantOwner, $world, '保存休眠国', '保存島主');
+        $dormant->update([
+            'state' => 'dormant',
+            'state_reason' => 'manual',
+            'state_started_turn' => 1,
+            'resume_at_turn' => 86,
+            'idle_counter' => 777,
+        ]);
+        $secretary = Secretary::query()->where('user_id', $owner->id)->sole();
+        $secretary->update(['name' => '移行秘書', 'named_at' => now()]);
+        SecretaryItemInstance::query()->create([
+            'secretary_id' => $secretary->id,
+            'item_key' => 'migration_fixture',
+            'level' => 3,
+            'equipped_slot' => null,
+            'grant_key' => 'migration:v12-v13',
+            'obtained_at' => now(),
+        ]);
+
+        $targets = MapCell::query()->where('owner_nation_id', $active->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
+            ->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $targets);
+        $queue = app(CommandQueueService::class);
+        $queued = $queue->add(
+            user: $owner,
+            nation: $active,
+            mapSpace: $this->surfaceMapSpace($world),
+            commandKey: 'land_clear',
+            targetX: $targets[0]->x,
+            targetY: $targets[0]->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        )['item'];
+        $terminal = $queue->add(
+            user: $owner,
+            nation: $active,
+            mapSpace: $this->surfaceMapSpace($world),
+            commandKey: 'land_clear',
+            targetX: $targets[1]->x,
+            targetY: $targets[1]->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 2,
+        )['item'];
+        $historicalRequestRuleset = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
+        );
+        $terminal->update([
+            'status' => 'completed',
+            'queue_position' => null,
+            'request_ruleset_version_id' => $historicalRequestRuleset->id,
+            'request_fingerprint' => null,
+            'execution_completed_at' => now(),
+        ]);
+
+        $monsterCell = MapCell::query()->where('owner_nation_id', $active->id)
+            ->whereNull('facility_definition_id')->whereNotIn('id', $targets->modelKeys())
+            ->orderBy('id')->firstOrFail();
+        $monsterDefinition = MonsterDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)->where('key', 'inora')->sole();
+        $monster = MonsterInstance::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $monsterDefinition->id,
+            'current_hp' => 2,
+            'spawned_max_hp' => 2,
+            'state' => 'alive',
+            'spawned_target_turn' => 1,
+            'version' => 4,
+        ]);
+        MonsterOccupancy::query()->create([
+            'monster_instance_id' => $monster->id,
+            'map_cell_id' => $monsterCell->id,
+        ]);
+        $killStat = NationMonsterKillStat::query()->create([
+            'world_id' => $world->id,
+            'nation_id' => $active->id,
+            'monster_definition_id' => $monsterDefinition->id,
+            'kill_count' => 1,
+            'first_killed_turn' => 1,
+            'last_killed_turn' => 1,
+            'version' => 1,
+        ]);
+
+        $v12 = $this->attachExactV12($world);
+        DB::table('migrations')->where('migration', self::KARMA_MIGRATION)->delete();
+        $queuedIdentity = $queued->fresh()->only([
+            'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
+        ]);
+        $terminalHistory = (array) DB::table('nation_command_queue_items')->where('id', $terminal->id)->sole();
+        $nationState = DB::table('nations')->orderBy('id')->get([
+            'id', 'state', 'state_reason', 'state_started_turn', 'resume_at_turn', 'idle_counter', 'karma',
+        ])->map(static fn (object $row): array => (array) $row)->all();
+        $secretaryDigest = $this->secretaryDigest();
+        $monsterState = $monster->fresh()->only([
+            'current_hp', 'spawned_max_hp', 'state', 'spawned_target_turn', 'removal_reason', 'removed_at', 'version',
+        ]);
+        $occupancy = (array) DB::table('monster_occupancies')->where('monster_instance_id', $monster->id)->sole();
+        $killState = $killStat->fresh()->only([
+            'world_id', 'nation_id', 'kill_count', 'first_killed_turn', 'last_killed_turn', 'version',
+        ]);
+
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::KARMA_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $queued->fresh()->definition->rulesetVersion->key);
+        $this->assertSame($v12->id, $terminal->fresh()->command_definition_id === null
+            ? null
+            : $terminal->fresh()->definition->ruleset_version_id);
+        $this->assertSame($queuedIdentity, $queued->fresh()->only(array_keys($queuedIdentity)));
+        $this->assertSame($terminalHistory, (array) DB::table('nation_command_queue_items')->where('id', $terminal->id)->sole());
+        $this->assertSame($nationState, DB::table('nations')->orderBy('id')->get([
+            'id', 'state', 'state_reason', 'state_started_turn', 'resume_at_turn', 'idle_counter', 'karma',
+        ])->map(static fn (object $row): array => (array) $row)->all());
+        $this->assertSame($secretaryDigest, $this->secretaryDigest());
+        $this->assertSame($monsterState, $monster->fresh()->only(array_keys($monsterState)));
+        $this->assertSame($occupancy, (array) DB::table('monster_occupancies')->where('monster_instance_id', $monster->id)->sole());
+        $this->assertSame($killState, $killStat->fresh()->only(array_keys($killState)));
+        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $monster->fresh()->definition->rulesetVersion->key);
+        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $killStat->fresh()->definition->rulesetVersion->key);
+        $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v13_activated', 'visibility' => 'admin']);
+
+        $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
+        $this->assertSame('completed', $queued->fresh()->status);
+    }
+
+    public function test_v13_migration_rejects_a_non_v12_world_before_business_mutation(): void
+    {
+        $world = $this->lightweightWorld();
+        $this->attachExactV12($world);
+        $v11 = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get(Ver240DormancyRulesetUpgrade::SOURCE_KEY),
+        );
+        $world->update(['ruleset_version_id' => $v11->id]);
+        DB::table('migrations')->where('migration', self::KARMA_MIGRATION)->delete();
+        $before = $this->businessSnapshot();
+
+        $this->assertKarmaMigrationBlocked('requires the exact supported ver 2.4.0/v12 source');
+
+        $this->assertSame($before, $this->businessSnapshot());
+        $this->assertSame($v11->id, $world->fresh()->ruleset_version_id);
+        $this->assertDatabaseMissing('migrations', ['migration' => self::KARMA_MIGRATION]);
     }
 
     #[DataProvider('unresolvedStatuses')]
@@ -264,6 +435,58 @@ SQL, [$v11->id, $world->id]);
         });
     }
 
+    private function attachExactV12(World $world): RulesetVersion
+    {
+        $v12 = app(RulesetPublisher::class)->publish(
+            require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v12.php'),
+        );
+        DB::transaction(function () use ($world, $v12): void {
+            DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
+            DB::statement('ALTER TABLE monster_instances DISABLE TRIGGER monster_instance_world_ruleset_guard');
+            DB::statement('ALTER TABLE nation_monster_kill_stats DISABLE TRIGGER nation_monster_kill_stat_guard');
+            DB::update(<<<'SQL'
+UPDATE nation_command_queue_items AS item
+SET command_definition_id = target.id
+FROM command_definitions AS source,
+     command_definitions AS target,
+     nation_command_queues AS queue,
+     nations AS nation
+WHERE source.id = item.command_definition_id
+  AND target.key = source.key
+  AND target.ruleset_version_id = ?
+  AND queue.id = item.nation_command_queue_id
+  AND nation.id = queue.nation_id
+  AND nation.world_id = ?
+SQL, [$v12->id, $world->id]);
+            DB::update(<<<'SQL'
+UPDATE monster_instances AS instance
+SET monster_definition_id = target.id
+FROM monster_definitions AS source,
+     monster_definitions AS target
+WHERE source.id = instance.monster_definition_id
+  AND target.key = source.key
+  AND target.ruleset_version_id = ?
+  AND instance.world_id = ?
+SQL, [$v12->id, $world->id]);
+            DB::update(<<<'SQL'
+UPDATE nation_monster_kill_stats AS stat
+SET monster_definition_id = target.id
+FROM monster_definitions AS source,
+     monster_definitions AS target
+WHERE source.id = stat.monster_definition_id
+  AND target.key = source.key
+  AND target.ruleset_version_id = ?
+  AND stat.world_id = ?
+SQL, [$v12->id, $world->id]);
+            $world->update(['ruleset_version_id' => $v12->id]);
+            DB::statement('ALTER TABLE monster_instances ENABLE TRIGGER monster_instance_world_ruleset_guard');
+            DB::statement('ALTER TABLE nation_monster_kill_stats ENABLE TRIGGER nation_monster_kill_stat_guard');
+            DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match IMMEDIATE');
+        });
+
+        return $v12;
+    }
+
     private function secretaryDigest(): string
     {
         return hash('sha256', json_encode([
@@ -301,6 +524,20 @@ SQL, [$v11->id, $world->id]);
                 '--no-interaction' => true,
             ])->execute();
             $this->fail('Expected the ver 2.4.0 migration preflight to block the upgrade.');
+        } catch (Throwable $exception) {
+            $this->assertStringContainsString($expectedMessage, $exception->getMessage());
+        }
+    }
+
+    private function assertKarmaMigrationBlocked(string $expectedMessage): void
+    {
+        try {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/'.self::KARMA_MIGRATION.'.php',
+                '--force' => true,
+                '--no-interaction' => true,
+            ])->execute();
+            $this->fail('Expected the exact v12 to v13 migration preflight to block the upgrade.');
         } catch (Throwable $exception) {
             $this->assertStringContainsString($expectedMessage, $exception->getMessage());
         }

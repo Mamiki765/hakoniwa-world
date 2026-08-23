@@ -36,7 +36,7 @@ final class PublicWorldService
             'name' => $world->name,
             'current_turn' => $world->current_turn,
             'hakoniwa_calendar' => $this->calendar->forTurn((int) $world->current_turn),
-            'nation_count' => $world->nations()->whereIn('state', ['active', 'dormant'])->count(),
+            'nation_count' => $world->nations()->whereIn('state', ['active', 'dormant', 'recovery'])->count(),
             'contact_url' => $this->contactUrl(),
             'turn_status' => $turnSchedule['status'],
             'last_successful_turn_at' => $turnSchedule['last_successful_turn_at'],
@@ -145,7 +145,7 @@ final class PublicWorldService
     {
         $nations = Nation::query()
             ->where('world_id', $world->id)
-            ->whereIn('state', ['active', 'dormant'])
+            ->whereIn('state', ['active', 'dormant', 'recovery'])
             ->with('capital')
             ->orderBy('id')
             ->get();
@@ -191,9 +191,19 @@ final class PublicWorldService
     {
         $estimate = $this->money->publicEstimate((int) $nation->money);
         $financeOnlyTurns = (int) $nation->idle_counter;
-        $activityStatus = $nation->state === 'dormant'
-            ? 'dormant'
-            : ($financeOnlyTurns > 0 ? 'finance_only' : 'active');
+        $activityStatus = match ($nation->state) {
+            'dormant' => 'dormant',
+            'recovery' => 'recovery',
+            default => $financeOnlyTurns > 0 ? 'finance_only' : 'active',
+        };
+        $recoveryRemainingTurns = $nation->state === 'recovery' && $nation->resume_at_turn !== null
+            ? max(0, (int) $nation->resume_at_turn - (int) $world->current_turn - 1)
+            : null;
+        $stateLabel = match ($nation->state) {
+            'dormant' => '休眠',
+            'recovery' => '休戦中：残り'.$recoveryRemainingTurns.'ターン',
+            default => '',
+        };
 
         return [
             'id' => $nation->id,
@@ -203,7 +213,10 @@ final class PublicWorldService
             'owner_name' => $nation->owner_name,
             'comment' => $nation->profile_comment,
             'state' => $nation->state,
-            'state_label' => $nation->state === 'dormant' ? '放置' : '通常',
+            'state_label' => $stateLabel,
+            'recovery_remaining_turns' => $recoveryRemainingTurns,
+            'karma' => (int) $nation->karma,
+            'karma_badge' => $nation->karma > 0 ? 'KARMA:'.(int) $nation->karma : null,
             'total_population' => (int) ($nation->getAttribute('total_population') ?? 0),
             'territory_cell_count' => (int) ($nation->getAttribute('territory_cell_count') ?? 0),
             'owned_land_cells' => (int) ($nation->getAttribute('owned_land_cells') ?? 0),

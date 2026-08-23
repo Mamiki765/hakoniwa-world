@@ -13,8 +13,8 @@
 | Milestone | Blocking Open IDs | 実装境界 |
 |---|---|---|
 | monster | — | MONSTER-01〜04はPR21、AWARD-01はver 1.3.0のowner decisionで決定・実装済み。 |
-| missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2保護を変更する将来combatを実装する前に停止する。ver 2.4.0の範囲はADR-0014で決定済み。 |
-| lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014により専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
+| missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
+| lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-01、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
@@ -381,7 +381,7 @@
 - Required before: official Turn統合を専用lifecycle schedulerまたはbatch処理へ変更する前
 - Implemented minimum: ver 2.4.0では専用Lifecycle Jobや実時間判定を作らない。official TurnのWorld transaction内で開始stateをfreezeし、counter確定後の終端で`active ↔ dormant`と`dormant → abandoned`を確定する。manual requestはWorld lockとunresolved TurnRun guardで直列化し、大規模batch/checkpoint engineは追加しない。
 - Open decision: 将来official Turnから分離する必要が生じた場合にscheduler、World lock、turnとの直列化、batch checkpointを決める。ver 2.4.0のowner決定を再度の実装gateにはしない。
-- Decision record: `docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`、`docs/architecture/nation-lifecycle.md`
+- Decision record: `docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`、`docs/decisions/ADR-0015-ver-2.4.0-karma-recovery.md`、`docs/architecture/nation-lifecycle.md`
 
 ### D-02 turn失敗時の再試行
 

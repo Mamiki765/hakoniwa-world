@@ -30,6 +30,9 @@ final class NationCommandTargetService
      */
     public function monsterDispatchOptions(Nation $sender): array
     {
+        if ($sender->state === 'recovery') {
+            return [];
+        }
         $targets = $this->selectableQuery($sender, ['active', 'dormant'])
             ->orderBy('nation_number')
             ->orderBy('id')
@@ -43,7 +46,10 @@ final class NationCommandTargetService
      */
     public function monumentFlightOptions(Nation $sender): array
     {
-        $targets = $this->selectableQuery($sender)
+        if ($sender->state === 'recovery') {
+            return [];
+        }
+        $targets = $this->selectableQuery($sender, ['active'])
             ->orderBy('nation_number')
             ->orderBy('id')
             ->get(['id', 'world_id', 'name', 'nation_number'])
@@ -54,7 +60,10 @@ final class NationCommandTargetService
 
     public function validateMonumentFlightRegistration(Nation $sender, int $targetNationId): void
     {
-        $target = $this->selectableQuery($sender)->whereKey($targetNationId)->first();
+        $target = $this->selectableQuery($sender, ['active', 'recovery'])->whereKey($targetNationId)->first();
+        if ($sender->state === 'recovery' || $target?->state === 'recovery') {
+            throw new PlayerFacingCommandException('休戦中の島から、または休戦中の島へ記念碑を発射できません。');
+        }
         if ($target === null) {
             throw new PlayerFacingCommandException('対象島は同じWorldの選択可能なactive島から選んでください。');
         }
@@ -159,9 +168,19 @@ final class NationCommandTargetService
         if ($targetNationId === null && ($schema['required'] ?? false) !== true) {
             return;
         }
-        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant'] : ['active'];
-        if (! is_int($targetNationId)
-            || ! $this->selectableQuery($sender, $targetStates)->whereKey($targetNationId)->exists()) {
+        $targetStates = match ($definition->key) {
+            'monster_dispatch' => ['active', 'dormant', 'recovery'],
+            'money_aid', 'food_aid' => ['active', 'recovery'],
+            default => ['active'],
+        };
+        $target = is_int($targetNationId)
+            ? $this->selectableQuery($sender, $targetStates)->whereKey($targetNationId)->first()
+            : null;
+        if ($definition->key === 'monster_dispatch'
+            && ($sender->state === 'recovery' || $target?->state === 'recovery')) {
+            throw new PlayerFacingCommandException('休戦中の島から、または休戦中の島へ怪獣を派遣できません。');
+        }
+        if (! is_int($targetNationId) || $target === null) {
             throw new PlayerFacingCommandException($definition->key === 'monster_dispatch'
                 ? '怪獣派遣の対象島は同じWorldの選択可能な島から選んでください。'
                 : '対象島は同じWorldの選択可能なactive島から選んでください。');
@@ -172,7 +191,7 @@ final class NationCommandTargetService
      * @param  non-empty-list<string>  $states
      * @return Builder<Nation>
      */
-    private function selectableQuery(Nation $sender, array $states = ['active']): Builder
+    private function selectableQuery(Nation $sender, array $states = ['active', 'recovery']): Builder
     {
         return Nation::query()
             ->where('world_id', $sender->world_id)

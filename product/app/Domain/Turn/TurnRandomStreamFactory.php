@@ -84,6 +84,8 @@ final class TurnRandomStreamFactory
 
     private const MISSILE_IMPACT_PREFIX = 'development_commands:missile:item:';
 
+    private const KARMA_SANCTION_PREFIX = 'settle_deferred_effects:karma_sanction:nation:';
+
     private const MONUMENT_FLIGHT_PREFIX = 'development_commands:monument:item:';
 
     private const SECRETARY_OLD_BOW_PREFIX = 'secretary_item:old_bow:nation:';
@@ -190,6 +192,15 @@ final class TurnRandomStreamFactory
         }
 
         return self::MISSILE_IMPACT_PREFIX.$queueItemId.':deviation:v1';
+    }
+
+    public static function karmaSanction(int $nationId, int $streamVersion): string
+    {
+        if ($nationId < 1 || $streamVersion < 1) {
+            throw new InvalidArgumentException('KARMA-sanction stream identity must use positive integers.');
+        }
+
+        return self::KARMA_SANCTION_PREFIX.$nationId.':target:v'.$streamVersion;
     }
 
     public static function monumentFlight(int $queueItemId): string

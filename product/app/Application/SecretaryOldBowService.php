@@ -61,13 +61,13 @@ final class SecretaryOldBowService
         $nationIds = array_keys($nationEffects);
         $nations = Nation::query()
             ->where('world_id', $context->world->id)
-            ->where('state', 'active')
+            ->whereIn('state', ['active', 'recovery'])
             ->whereIn('id', $nationIds)
             ->orderBy('id')
             ->get()
             ->keyBy('id');
         if ($nations->count() !== count($nationIds)) {
-            throw new DomainException('Secretary Old Bow snapshot references a missing active Nation.');
+            throw new DomainException('Secretary Old Bow snapshot references a missing current Nation.');
         }
         $occupancies = MonsterOccupancy::query()
             ->whereHas('monster', fn ($query) => $query

@@ -25,7 +25,8 @@ const emptyChunk: MapChunk = {
 };
 
 const publicDetail: PublicNationDetail = {
-    id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', state_label: '通常', total_population: 1000,
+    id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', state_label: '', recovery_remaining_turns: null,
+    karma: 0, karma_badge: null, total_population: 1000,
     owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
     farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
     registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
@@ -44,7 +45,8 @@ const ownerNationFixture: Nation = {
     money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
     food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
     farm_capacity_people: 10000, factory_capacity_people: 0, mine_capacity_people: 0,
-    food_resources: [], resources: [], state: 'active', state_label: '通常', state_reason: null,
+    food_resources: [], resources: [], state: 'active', state_label: '', karma: 0, karma_positive: false,
+    recovery_remaining_turns: null, state_reason: null,
     state_started_turn: null, resume_at_turn: null, manual_dormancy_days: null,
     dormancy_remaining_turns: null, dormancy_remaining_days: null, abandonment_remaining_turns: 2060,
     can_request_dormancy: true, winter_theme_active: false, current_turn: 1, registered_turn: 1,
@@ -115,7 +117,8 @@ function publicResponse(path: string): Response | null {
         next_scheduled_turn_at: '2099-08-09T15:00:00Z', turn_schedule_timezone: 'Asia/Tokyo',
     });
     if (path.endsWith('/rankings')) return response([{
-        rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', state_label: '通常', total_population: 1000,
+        rank: 1, id: 7, world_id: 1, nation_number: 1, name: '公開島', state: 'active', state_label: '',
+        recovery_remaining_turns: null, karma: 0, karma_badge: null, total_population: 1000,
         owner_name: '公開島主', territory_cell_count: 19, owned_land_cells: 17, money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
         farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
         registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
@@ -145,7 +148,7 @@ function publicResponse(path: string): Response | null {
 beforeEach(() => {
     const meta = document.createElement('meta');
     meta.name = 'hakoniwa-application-version';
-    meta.content = '2.3.0';
+    meta.content = '2.4.0';
     document.head.append(meta);
 });
 
@@ -179,11 +182,11 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
         expect(wrapper.find('.ranking-owner-row').text()).toBe('公開島主：公開コメント');
-        expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 通常 (100)');
+        expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 2.3.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 2.4.0');
         expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');
@@ -223,7 +226,8 @@ describe('application lobby and island entry', () => {
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             if (path.endsWith('/rankings')) return response([{
-                rank: 1, id: 7, world_id: 1, nation_number: 1, name: '休止島', state: 'dormant', state_label: '放置',
+                rank: 1, id: 7, world_id: 1, nation_number: 1, name: '休止島', state: 'dormant', state_label: '休眠',
+                recovery_remaining_turns: null, karma: 0, karma_badge: null,
                 total_population: 1000, owner_name: '休止島主', territory_cell_count: 19, owned_land_cells: 17,
                 money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
                 farm_capacity_people: 0, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
@@ -236,12 +240,87 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         const name = wrapper.find('.ranking-card tbody button');
-        expect(name.text()).toBe('休止島 放置');
-        expect(name.find('.state-badge').text()).toBe('放置');
+        expect(name.text()).toBe('休止島');
+        expect(wrapper.find('.ranking-island .state-badge').text()).toBe('休眠');
         expect(name.classes()).toContain('is-dormant');
         expect(wrapper.find('.ranking-owner-row').text()).toBe('休止島主');
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('保有せず');
+    });
+
+    it('renders recovery and KARMA in the authored badge order while keeping zero and negative values unaccented', async () => {
+        const baseRanking = {
+            world_id: 1, total_population: 1000, territory_cell_count: 19, owned_land_cells: 17,
+            money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+            farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
+            registered_turn: 1, survival_turns: 10, finance_only_turns: 0, last_updated_turn: 11, comment: '',
+            achievements: { awards: [], monster_kills: null },
+        };
+        const negativeDetail: PublicNationDetail = {
+            ...publicDetail,
+            id: 9,
+            nation_number: 3,
+            name: '更生島',
+            owner_name: '更生島主',
+            karma: -10,
+            karma_badge: null,
+        };
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/rankings')) return response([{
+                ...baseRanking,
+                rank: 1, id: 7, nation_number: 1, name: '休戦島', owner_name: '休戦島主',
+                state: 'recovery', state_label: '休戦中：残り42ターン', recovery_remaining_turns: 42,
+                karma: 84, karma_badge: 'KARMA:84', activity_status: 'recovery',
+                achievements: {
+                    awards: [{
+                        key: 'recovery-order', name: '表示順賞', recurring: false, count: 1,
+                        asset: { key: 'test.award', url: null, available: false, fallback_label: '賞', fallback_style: 'text' },
+                    }],
+                    monster_kills: null,
+                },
+            }, {
+                ...baseRanking,
+                rank: 2, id: 8, nation_number: 2, name: '通常島', owner_name: '通常島主',
+                state: 'active', state_label: '', recovery_remaining_turns: null,
+                karma: 0, karma_badge: null, activity_status: 'active',
+            }, {
+                ...baseRanking,
+                rank: 3, id: 9, nation_number: 3, name: '更生島', owner_name: '更生島主',
+                state: 'active', state_label: '', recovery_remaining_turns: null,
+                karma: -10, karma_badge: null, activity_status: 'active',
+            }]);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/nations/9') return response(negativeDetail);
+            if (path.includes('/api/v1/public/nations/9/map-spaces/2/chunks/')) return response(emptyChunk);
+            return response(null, 404);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const islands = wrapper.findAll('.ranking-island');
+        expect(islands).toHaveLength(3);
+        expect(islands[0]!.find('button').classes()).toContain('is-karma-positive');
+        expect(islands[0]!.find('.state-badge').text()).toBe('休戦中：残り42ターン');
+        expect(islands[0]!.find('.karma-badge').text()).toBe('KARMA:84');
+        expect(islands[0]!.findAll(':scope > *').map((child) => (
+            child.element.tagName === 'BUTTON' ? 'button' : child.classes()[0]
+        ))).toEqual(['button', 'ranking-achievements', 'state-badge', 'karma-badge']);
+        expect(islands[1]!.findAll('.state-badge, .karma-badge')).toHaveLength(0);
+        expect(islands[1]!.find('button').classes()).not.toContain('is-karma-positive');
+        expect(islands[2]!.findAll('.state-badge, .karma-badge')).toHaveLength(0);
+        expect(islands[2]!.find('button').classes()).not.toContain('is-karma-positive');
+
+        await islands[2]!.find('button').trigger('click');
+        await flushPromises();
+        const karmaRow = wrapper.findAll('.preview-heading dl > div')
+            .find((row) => row.find('dt').text() === 'KARMA');
+        expect(karmaRow?.find('dd').text()).toBe('-10');
+        expect(karmaRow?.find('dd').classes()).not.toContain('karma-text');
+        expect(wrapper.find('.preview-heading h1').classes()).not.toContain('karma-name');
+        expect(wrapper.find('.preview-heading .karma-emphasis').exists()).toBe(false);
     });
 
     it('suppresses the normal countdown for a failed turn', async () => {
@@ -418,7 +497,8 @@ describe('application lobby and island entry', () => {
             money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
             food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
             farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
-            food_resources: [], resources: [], state: 'active', state_label: '通常', state_reason: null,
+            food_resources: [], resources: [], state: 'active', state_label: '', karma: 0, karma_positive: false,
+            recovery_remaining_turns: null, state_reason: null,
             state_started_turn: null, resume_at_turn: null, manual_dormancy_days: null,
             dormancy_remaining_turns: null, dormancy_remaining_days: null,
             abandonment_remaining_turns: 2160, can_request_dormancy: true,
@@ -762,7 +842,8 @@ describe('application lobby and island entry', () => {
                 { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },
                 { key: 'monster_meat', name: '怪獣肉', balance: 0, unit: 'ton', unit_label: 'トン' },
             ],
-            state: 'active', state_label: '通常', state_reason: null, state_started_turn: null,
+            state: 'active', state_label: '', karma: 0, karma_positive: false, recovery_remaining_turns: null,
+            state_reason: null, state_started_turn: null,
             resume_at_turn: null, manual_dormancy_days: null, dormancy_remaining_turns: null,
             dormancy_remaining_days: null, abandonment_remaining_turns: 2160,
             can_request_dormancy: true, winter_theme_active: false,

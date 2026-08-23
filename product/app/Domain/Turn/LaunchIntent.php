@@ -20,6 +20,8 @@ final class LaunchIntent
 
     private int $remainingShots;
 
+    private ?bool $antiMonsterContext = null;
+
     public function __construct(
         mixed $nationId,
         mixed $definitionKey,
@@ -56,6 +58,23 @@ final class LaunchIntent
     public function remainingShots(): int
     {
         return $this->remainingShots;
+    }
+
+    public function classifyAntiMonsterContext(bool $antiMonsterContext): void
+    {
+        if ($this->antiMonsterContext !== null) {
+            throw new InvalidArgumentException('Launch intent anti-monster context is already frozen.');
+        }
+        $this->antiMonsterContext = $antiMonsterContext;
+    }
+
+    public function antiMonsterContext(): bool
+    {
+        if ($this->antiMonsterContext === null) {
+            throw new InvalidArgumentException('Launch intent anti-monster context is not classified.');
+        }
+
+        return $this->antiMonsterContext;
     }
 
     public function consumeShots(mixed $shots): void

@@ -78,7 +78,10 @@ final class MonsterTurnService
         $monster = $occupancy->monster;
         $definition = $monster->definition;
         if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
-            $this->recordStayed($context, $monster->id, $definition->key, $cell, 'dormant_capital_protected');
+            $reason = $context->state->recoveryTerritoryNationId($cell->x, $cell->y) === null
+                ? 'dormant_capital_protected'
+                : 'recovery_territory_protected';
+            $this->recordStayed($context, $monster->id, $definition->key, $cell, $reason);
 
             return true;
         }

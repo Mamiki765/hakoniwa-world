@@ -29,6 +29,8 @@ final class RulesetAuthoringValidator
 
     private const FORMAL_V12_KEY = 'hakoniwa-2s-plus-v12';
 
+    private const FORMAL_V13_KEY = 'hakoniwa-2s-plus-v13';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -339,6 +341,7 @@ final class RulesetAuthoringValidator
             $facilityKeys,
             $commandKeys,
         );
+        $this->validateKarma($settings, $authoredKey, $version);
         $monsterCount = $this->validateMonsterSystem(
             $settings,
             $resourceKeys,
@@ -469,24 +472,39 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if ($version !== 12 || $authoredKey !== self::FORMAL_V12_KEY || ! $hasLifecycle) {
-            throw new DomainException('The v12 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+        $expectedKey = match ($version) {
+            12 => self::FORMAL_V12_KEY,
+            13 => self::FORMAL_V13_KEY,
+            default => null,
+        };
+        if ($expectedKey === null || $authoredKey !== $expectedKey || ! $hasLifecycle) {
+            throw new DomainException('The v12/v13 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
         }
 
         $path = 'ruleset.nation_lifecycle';
         $lifecycle = $this->map($settings['nation_lifecycle'], $path);
-        $this->requireKeys($lifecycle, [
+        $requiredKeys = [
             'states', 'runtime_entry_states', 'recovery_entry_enabled', 'dormant_reasons',
             'initial_idle_counter', 'dormant_idle_threshold', 'abandonment_idle_threshold',
             'turns_per_day', 'manual_dormancy_min_days', 'manual_dormancy_max_days',
             'dormant_finance_money', 'dormant_protection_radius', 'dormant_visual_theme',
             'territory_influence_target_states', 'territory_influence_source_states',
             'initial_food_resource_key', 'finance_command_key', 'emergency_farm',
-        ], $path);
+        ];
+        if ($version === 13) {
+            $requiredKeys[] = 'recovery_duration_turns';
+        }
+        $this->requireKeys($lifecycle, $requiredKeys, $path);
+        $expectedRuntimeStates = $version === 13
+            ? ['active', 'dormant', 'recovery', 'abandoned']
+            : ['active', 'dormant', 'abandoned'];
+        $recoveryEnabled = $version === 13;
         if ($this->list($lifecycle['states'], "{$path}.states") !== ['active', 'dormant', 'recovery', 'abandoned']
             || $this->list($lifecycle['runtime_entry_states'], "{$path}.runtime_entry_states")
-                !== ['active', 'dormant', 'abandoned']
-            || $this->boolean($lifecycle['recovery_entry_enabled'], "{$path}.recovery_entry_enabled")
+                !== $expectedRuntimeStates
+            || $this->boolean($lifecycle['recovery_entry_enabled'], "{$path}.recovery_entry_enabled") !== $recoveryEnabled
+            || ($version === 13
+                && $this->integer($lifecycle['recovery_duration_turns'], "{$path}.recovery_duration_turns", 1) !== 84)
             || $this->list($lifecycle['dormant_reasons'], "{$path}.dormant_reasons")
                 !== ['idle', 'collapse', 'manual']
             || $this->integer($lifecycle['initial_idle_counter'], "{$path}.initial_idle_counter", 0) !== 2000
@@ -534,6 +552,55 @@ final class RulesetAuthoringValidator
             'selection' => ['distance', 'y', 'x'],
         ]) {
             throw new DomainException("{$farmPath} differs from the deterministic emergency farm contract.");
+        }
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function validateKarma(array $settings, string $authoredKey, int $version): void
+    {
+        $authored = $settings['karma'] ?? null;
+        if ($version < 13) {
+            if ($authored !== null) {
+                throw new DomainException('Rulesets before v13 cannot author KARMA.');
+            }
+
+            return;
+        }
+        if ($version !== 13 || $authoredKey !== self::FORMAL_V13_KEY || ! is_array($authored)) {
+            throw new DomainException('The v13 Ruleset identity requires the KARMA contract.');
+        }
+        $expected = [
+            'minimum' => -10,
+            'ordinary' => 0,
+            'maximum' => 100,
+            'impact_points' => [
+                'terrain' => 1,
+                'settlement_or_facility' => 2,
+                'capital_above_minimum' => 2,
+                'capital_at_minimum' => 0,
+                'seabed_oil_field_destroyed' => 10,
+                'land_destroyed' => 10,
+                'seabed_base_destroyed' => 3,
+            ],
+            'anti_monster_missile_keys' => ['missile', 'pp_missile', 'spp_missile'],
+            'spp_self_destruct_setup_points' => 20,
+            'hostile_monument_points' => 15,
+            'foreign_monster_kill_reduction' => 1,
+            'victim_reduction_per_impact' => 1,
+            'decay_interval_turns' => 6,
+            'decay_amount' => 1,
+            'recovery_entry_reduction' => 3,
+            'alliance_reward_money_per_karma_per_impact' => 1,
+            'sanction' => [
+                'overflow_points_per_shot' => 1,
+                'target_selection' => 'owned_surface_territory_with_replacement',
+                'interception' => ['defense', 'secretary'],
+                'impact' => 'canonical_scorch_or_destruction',
+                'random_stream_version' => 1,
+            ],
+        ];
+        if ($authored !== $expected) {
+            throw new DomainException('ruleset.karma differs from the v13 Owner decision.');
         }
     }
 
@@ -1131,11 +1198,12 @@ final class RulesetAuthoringValidator
         $expectedKey = match ($version) {
             11 => self::FORMAL_V11_KEY,
             12 => self::FORMAL_V12_KEY,
+            13 => self::FORMAL_V13_KEY,
             default => null,
         };
         if (($expectedKey !== null && $key !== $expectedKey)
-            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY], true))) {
-            throw new DomainException('The v11/v12 ruleset identity and version must be authored together.');
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY], true))) {
+            throw new DomainException('The v11/v12/v13 ruleset identity and version must be authored together.');
         }
 
         return $version >= 11;
@@ -1152,7 +1220,8 @@ final class RulesetAuthoringValidator
         ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
-        if ($version === 12 && $key === self::FORMAL_V12_KEY) {
+        if (in_array($version, [12, 13], true)
+            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 
@@ -1799,12 +1868,13 @@ final class RulesetAuthoringValidator
             }
         }
         $hasDormancy = array_key_exists('nation_lifecycle', $settings);
+        $recoveryEnabled = ($settings['nation_lifecycle']['recovery_entry_enabled'] ?? false) === true;
         $expectedMetadata = [
             'consumes_turn' => true,
             'parameters' => [],
             'legacy_command' => 'Widen',
             'policy_version' => 3,
-            'actor_states' => ['active'],
+            'actor_states' => $recoveryEnabled ? ['active', 'recovery'] : ['active'],
             'adjacency' => ['source_owner' => 'actor', 'directions' => 6],
             'neutral_target' => [
                 'allowed' => true,

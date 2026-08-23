@@ -15,7 +15,7 @@ final class TurnState
     private array $lifecycleNationIds = [];
 
     /**
-     * @var array<int, array{state: 'active'|'dormant', reason: string|null, state_started_turn: int|null, resume_at_turn: int|null, capital_x: int, capital_y: int}>
+     * @var array<int, array{state: 'active'|'dormant'|'recovery', reason: string|null, state_started_turn: int|null, resume_at_turn: int|null, capital_x: int, capital_y: int}>
      */
     private array $nationLifecycleSnapshots = [];
 
@@ -42,6 +42,33 @@ final class TurnState
 
     /** @var array<int, int> */
     private array $refugeesReceivedByNation = [];
+
+    /** @var array<int, int> */
+    private array $karmaStartSnapshots = [];
+
+    /** @var array<string, true> */
+    private array $turnStartMonsterCoordinates = [];
+
+    /** @var array<string, true> */
+    private array $missileBoundaryMonsterCoordinates = [];
+
+    /** @var array<string, int> */
+    private array $recoveryTerritoryNationIds = [];
+
+    /** @var array<int, true> */
+    private array $recoveryExitedNationIds = [];
+
+    /**
+     * @var array<int, array{
+     *     crime_points: int,
+     *     hostile_impacts_received: int,
+     *     foreign_monster_kill: bool,
+     *     recovery_entry: bool,
+     *     sanction_count: int,
+     *     alliance_money: int
+     * }>
+     */
+    private array $karmaLedgers = [];
 
     /** @var list<LaunchIntent> */
     private array $launchIntents = [];
@@ -139,7 +166,7 @@ final class TurnState
         $resumeAtTurn = $snapshot['resume_at_turn'] ?? null;
         $capitalX = $snapshot['capital_x'] ?? null;
         $capitalY = $snapshot['capital_y'] ?? null;
-        if (! in_array($state, ['active', 'dormant'], true)
+        if (! in_array($state, ['active', 'dormant', 'recovery'], true)
             || (! is_string($reason) && $reason !== null)
             || (! is_int($stateStartedTurn) && $stateStartedTurn !== null)
             || (! is_int($resumeAtTurn) && $resumeAtTurn !== null)
@@ -157,7 +184,7 @@ final class TurnState
     }
 
     /**
-     * @return array<int, array{state: 'active'|'dormant', reason: string|null, state_started_turn: int|null, resume_at_turn: int|null, capital_x: int, capital_y: int}>
+     * @return array<int, array{state: 'active'|'dormant'|'recovery', reason: string|null, state_started_turn: int|null, resume_at_turn: int|null, capital_x: int, capital_y: int}>
      */
     public function nationLifecycleSnapshots(): array
     {
@@ -171,6 +198,57 @@ final class TurnState
             $this->nationLifecycleSnapshots,
             static fn (array $snapshot): bool => $snapshot['state'] === 'dormant',
         )));
+    }
+
+    /** @return list<int> */
+    public function recoveryNationIds(): array
+    {
+        return array_map('intval', array_keys(array_filter(
+            $this->nationLifecycleSnapshots,
+            static fn (array $snapshot): bool => $snapshot['state'] === 'recovery',
+        )));
+    }
+
+    /** @param array<string, int> $coordinates */
+    public function setRecoveryTerritoryNationIds(array $coordinates): void
+    {
+        $validated = [];
+        foreach ($coordinates as $coordinate => $nationId) {
+            if (preg_match('/\A-?\d+:-?\d+\z/D', $coordinate) !== 1) {
+                throw new InvalidArgumentException('Recovery territory coordinates must use canonical x:y keys.');
+            }
+            $validated[$coordinate] = $this->validatedNationId($nationId);
+        }
+        $this->recoveryTerritoryNationIds = $validated;
+    }
+
+    public function recoveryTerritoryNationId(int $x, int $y): ?int
+    {
+        return $this->recoveryTerritoryNationIds[$x.':'.$y] ?? null;
+    }
+
+    public function recordRecoveryTerritoryAcquired(int $nationId, int $x, int $y): void
+    {
+        $snapshot = $this->nationLifecycleSnapshots[$nationId] ?? null;
+        if (($snapshot['state'] ?? null) !== 'recovery') {
+            throw new InvalidArgumentException('Only a frozen recovery Nation may acquire protected territory.');
+        }
+        $key = $x.':'.$y;
+        $existingNationId = $this->recoveryTerritoryNationIds[$key] ?? null;
+        if ($existingNationId !== null && $existingNationId !== $nationId) {
+            throw new InvalidArgumentException('Recovery territory cannot change between frozen recovery Nations.');
+        }
+        $this->recoveryTerritoryNationIds[$key] = $this->validatedNationId($nationId);
+    }
+
+    public function markRecoveryExited(int $nationId): void
+    {
+        $this->recoveryExitedNationIds[$this->validatedNationId($nationId)] = true;
+    }
+
+    public function recoveryExitedThisTurn(int $nationId): bool
+    {
+        return isset($this->recoveryExitedNationIds[$this->validatedNationId($nationId)]);
     }
 
     /** @param array<array-key, mixed> $nationIds */
@@ -297,6 +375,155 @@ final class TurnState
         }
 
         return $this->refugeesReceivedByNation[$nationId] ?? 0;
+    }
+
+    public function setKarmaStartSnapshot(mixed $nationId, mixed $karma): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! is_int($karma) || $karma < -10 || $karma > 100) {
+            throw new InvalidArgumentException('KARMA snapshot must be an integer from -10 through 100.');
+        }
+        if (array_key_exists($nationId, $this->karmaStartSnapshots)) {
+            throw new InvalidArgumentException("Nation {$nationId} already has a KARMA snapshot.");
+        }
+        $this->karmaStartSnapshots[$nationId] = $karma;
+        $this->karmaLedgers[$nationId] = $this->emptyKarmaLedger();
+    }
+
+    public function karmaStartSnapshot(mixed $nationId): int
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! array_key_exists($nationId, $this->karmaStartSnapshots)) {
+            throw new InvalidArgumentException("Nation {$nationId} has no KARMA snapshot.");
+        }
+
+        return $this->karmaStartSnapshots[$nationId];
+    }
+
+    /** @return array<int, int> */
+    public function karmaStartSnapshots(): array
+    {
+        return $this->karmaStartSnapshots;
+    }
+
+    /** @param array<array-key, mixed> $coordinates */
+    public function setMonsterCoordinateSnapshot(string $boundary, array $coordinates): void
+    {
+        if (! in_array($boundary, ['turn_start', 'missile_boundary'], true)) {
+            throw new InvalidArgumentException('Monster snapshot boundary is invalid.');
+        }
+        $set = [];
+        foreach ($coordinates as $coordinate) {
+            if (! is_string($coordinate) || preg_match('/\A-?\d+:-?\d+\z/D', $coordinate) !== 1) {
+                throw new InvalidArgumentException('Monster snapshot coordinates must use canonical x:y keys.');
+            }
+            $set[$coordinate] = true;
+        }
+        if ($boundary === 'turn_start') {
+            $this->turnStartMonsterCoordinates = $set;
+        } else {
+            $this->missileBoundaryMonsterCoordinates = $set;
+        }
+    }
+
+    /** @param array<array-key, mixed> $coordinates */
+    public function monsterSnapshotIntersects(string $boundary, array $coordinates): bool
+    {
+        $snapshot = match ($boundary) {
+            'turn_start' => $this->turnStartMonsterCoordinates,
+            'missile_boundary' => $this->missileBoundaryMonsterCoordinates,
+            default => throw new InvalidArgumentException('Monster snapshot boundary is invalid.'),
+        };
+        foreach ($coordinates as $coordinate) {
+            if (is_string($coordinate) && isset($snapshot[$coordinate])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function addKarmaCrime(mixed $nationId, mixed $points): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! is_int($points) || $points < 0) {
+            throw new InvalidArgumentException('KARMA crime points must be a non-negative integer.');
+        }
+        $ledger = $this->karmaLedgerForNation($nationId);
+        $ledger['crime_points'] += $points;
+        $this->karmaLedgers[$nationId] = $ledger;
+    }
+
+    public function recordHostileImpactReceived(mixed $nationId): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $ledger = $this->karmaLedgerForNation($nationId);
+        $ledger['hostile_impacts_received']++;
+        $this->karmaLedgers[$nationId] = $ledger;
+    }
+
+    public function markForeignMonsterKill(mixed $nationId): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $ledger = $this->karmaLedgerForNation($nationId);
+        $ledger['foreign_monster_kill'] = true;
+        $this->karmaLedgers[$nationId] = $ledger;
+    }
+
+    public function markRecoveryEntry(mixed $nationId): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $ledger = $this->karmaLedgerForNation($nationId);
+        $ledger['recovery_entry'] = true;
+        $this->karmaLedgers[$nationId] = $ledger;
+    }
+
+    public function recordKarmaSanctions(mixed $nationId, mixed $shots): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! is_int($shots) || $shots < 0) {
+            throw new InvalidArgumentException('KARMA sanction shots must be a non-negative integer.');
+        }
+        $ledger = $this->karmaLedgerForNation($nationId);
+        $ledger['sanction_count'] = $shots;
+        $this->karmaLedgers[$nationId] = $ledger;
+    }
+
+    public function addAllianceMoney(mixed $nationId, mixed $money): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! is_int($money) || $money < 0) {
+            throw new InvalidArgumentException('Alliance money must be a non-negative integer.');
+        }
+        $ledger = $this->karmaLedgerForNation($nationId);
+        $ledger['alliance_money'] += $money;
+        $this->karmaLedgers[$nationId] = $ledger;
+    }
+
+    /**
+     * @return array{
+     *     crime_points: int,
+     *     hostile_impacts_received: int,
+     *     foreign_monster_kill: bool,
+     *     recovery_entry: bool,
+     *     sanction_count: int,
+     *     alliance_money: int
+     * }
+     */
+    public function karmaLedgerForNation(mixed $nationId): array
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! isset($this->karmaLedgers[$nationId])) {
+            throw new InvalidArgumentException("Nation {$nationId} has no KARMA ledger.");
+        }
+
+        return $this->karmaLedgers[$nationId];
+    }
+
+    /** @return array<int, array{crime_points: int, hostile_impacts_received: int, foreign_monster_kill: bool, recovery_entry: bool, sanction_count: int, alliance_money: int}> */
+    public function karmaLedgers(): array
+    {
+        return $this->karmaLedgers;
     }
 
     public function registerLaunchIntent(
@@ -711,6 +938,19 @@ final class TurnState
             throw new InvalidArgumentException('Secretary experience was already flushed for this attempt.');
         }
         $this->secretaryExperienceFlushed = true;
+    }
+
+    /** @return array{crime_points: int, hostile_impacts_received: int, foreign_monster_kill: bool, recovery_entry: bool, sanction_count: int, alliance_money: int} */
+    private function emptyKarmaLedger(): array
+    {
+        return [
+            'crime_points' => 0,
+            'hostile_impacts_received' => 0,
+            'foreign_monster_kill' => false,
+            'recovery_entry' => false,
+            'sanction_count' => 0,
+            'alliance_money' => 0,
+        ];
     }
 
     /** @param array<array-key, mixed> $values

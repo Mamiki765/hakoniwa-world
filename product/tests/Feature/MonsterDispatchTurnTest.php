@@ -132,6 +132,39 @@ final class MonsterDispatchTurnTest extends TestCase
         $this->assertNotSame($spawnedCell->id, $monster->fresh()->occupancy()->value('map_cell_id'));
     }
 
+    public function test_prequeued_dispatch_revalidates_recovery_before_cost_or_spawn(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $sender] = $this->nation($world, '休戦再検証派遣国');
+        [, $target] = $this->nation($world, '休戦再検証対象国');
+        $space = $this->surfaceMapSpace($world);
+        $sender->update(['money' => 3_000]);
+        $this->singleDispatchCandidate($target);
+        $item = $this->queueDispatch($user, $sender, $target, $space);
+        $target->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 2,
+            'resume_at_turn' => 87,
+        ]);
+        $context = $this->context($world, 2, 'dispatch recovery revalidation', [$sender->id]);
+        $moneyBefore = (int) $sender->fresh()->money;
+
+        $metrics = app(DomesticCommandExecutor::class)->execute($context);
+
+        $this->assertSame(1, $metrics['failures']);
+        $this->assertSame(1, $metrics['automatic_finance']);
+        $this->assertSame('failed', $item->fresh()->status);
+        $this->assertSame('ceasefire_prohibited', $item->fresh()->failure_code);
+        $this->assertSame($moneyBefore + 10, (int) $sender->fresh()->money);
+        $this->assertSame(0, MonsterInstance::query()->count());
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'command.ceasefire_blocked',
+            'nation_id' => $sender->id,
+            'turn' => 2,
+        ]);
+    }
+
     public function test_spawn_turn_deferred_dispatch_occupancy_blocks_existing_monster_movement_without_acting(): void
     {
         $world = $this->lightweightWorld();

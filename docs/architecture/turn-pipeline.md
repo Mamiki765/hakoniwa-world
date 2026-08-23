@@ -81,11 +81,17 @@ Discord webhook、メール、分析基盤はturn transaction内で呼ばない�
 
 ## 国家休眠とターン対象
 
-正式なstateはADR-0014の`active`、`dormant`、`recovery`、`abandoned`である。`recovery`はver 2.4.0ではentry pathを持たず、official Turnでfail closedする。
+正式なstateはADR-0014/ADR-0015の`active`、`dormant`、`recovery`、
+`abandoned`である。recoveryはRuleset v13でhostile player missile volley完了後に
+entryし、84 full Turnを経てT+85開始時にexitする。
 
-専用Lifecycle Jobや実時間判定は使わない。`prepare_turn`で期限到達manualと復帰意思のあるnon-manual dormantを先にactiveへ戻し、今回のstateとCapitalをfreezeする。activeだけが通常economy、command、生産・人口処理、自然monster spawnを実行する。dormantはqueueを保持し、canonical finance + Ring + capacityで10億円を処理してidle counterを1だけ増やす。
+専用Lifecycle Jobや実時間判定は使わない。`prepare_turn`で期限到達manual、復帰意思の
+あるnon-manual dormant、T+85 recovery exitを先に解決し、今回のstate、Capital、
+KARMA、alive monster位置をfreezeする。activeとrecoveryは通常economy、生産・人口を
+実行し、recoveryはceasefire actionとmonster侵入だけを除外する。dormantはqueueを保持し、
+canonical finance + Ring + capacityで10億円を処理してidle counterを1だけ増やす。
 
-開始snapshotでdormantのCapitalからdistance 2以内はmissile、disaster、territory mutationをno-opとする。monsterは開始cellが範囲内なら即`stayed`、移動先が範囲内なら既存の進入不可candidateと同じくattemptを消費して最大3回の候補抽選を続ける。範囲外は通常処理する。counter確定後の`finalize_turn`でidle 360またはcollapseをdormant、dormantの2160をabandonedへ遷移する。自動破棄はmanual abandonmentと同じ単一transaction cleanupを使い、user、nation、Secretary、event、統計を物理deleteしない。
+開始snapshotでdormantのCapitalからdistance 2以内はmissile、disaster、territory mutationをno-opとする。monsterは開始cellが範囲内なら即`stayed`、移動先が範囲内なら既存の進入不可candidateと同じくattemptを消費して最大3回の候補抽選を続ける。recoveryは冬保護ではなく通常災害を受ける一方、敵対行動と全領土へのmonster侵入を登録・実行境界で拒否する。counter確定後の`finalize_turn`でidle 360またはcollapseをdormant、dormantの2160をabandoned、missile条件成立Nationをrecoveryへ遷移し、KARMA ledgerを指定順で確定する。自動破棄はmanual abandonmentと同じ単一transaction cleanupを使い、user、nation、Secretary、event、統計を物理deleteしない。
 
 ## 観測性
 
@@ -108,5 +114,7 @@ PR21では`process_cells`の各cellでmonster actorを人口・facility処理よ
 - dormant heartbeatのqueue保持、finance/counter、通常economy停止。
 - dormant Capital distance 2以内の全mutation保護と範囲外通常処理。
 - idle 360の休止開始と2160のcanonical automatic abandonment。
+- KARMA開始snapshot、impact内最高1category、monster A/B LaunchIntent分類、ledger確定順。
+- hostile missileだけのrecovery entry、84 full Turn、T+85 exit、ceasefire行動表。
 - 国境、首都、災害、ミサイルの順序を固定するシナリオ。
 - 大量チャンクでの実行時間、lock時間、メモリ上限。

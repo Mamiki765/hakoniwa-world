@@ -48,7 +48,7 @@ final class NationDormancyTest extends TestCase
         $response = $this->actingAs($owner)->postJson($endpoint, ['days' => 1])
             ->assertOk()
             ->assertJsonPath('data.state', 'dormant')
-            ->assertJsonPath('data.state_label', '放置')
+            ->assertJsonPath('data.state_label', '休眠')
             ->assertJsonPath('data.state_reason', 'manual')
             ->assertJsonPath('data.state_started_turn', 1)
             ->assertJsonPath('data.resume_at_turn', 14)
@@ -144,6 +144,114 @@ final class NationDormancyTest extends TestCase
         $this->assertContains($resumeMessage, $this->messages($publicLog->json('data.groups')));
         $ownerLog = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
         $this->assertContains($resumeMessage, $this->messages($ownerLog->json('data.groups')));
+    }
+
+    public function test_recovery_exposes_exact_remaining_turns_and_exits_only_on_t_plus_85(): void
+    {
+        $world = $this->lightweightWorld();
+        $activeOwner = User::factory()->create();
+        $activeNation = app(NationCreationService::class)->create(
+            $activeOwner,
+            $world,
+            '復帰活動島',
+            '復帰活動島主',
+        );
+        $idleOwner = User::factory()->create();
+        $idleNation = app(NationCreationService::class)->create(
+            $idleOwner,
+            $world,
+            '復帰休眠島',
+            '復帰休眠島主',
+        );
+        foreach ([$activeNation, $idleNation] as $nation) {
+            $nation->update([
+                'state' => 'recovery',
+                'state_reason' => null,
+                'state_started_turn' => 10,
+                'resume_at_turn' => 95,
+            ]);
+        }
+        $activeNation->update(['karma' => 4, 'idle_counter' => 0]);
+        $idleNation->update(['idle_counter' => 2160]);
+        $world->update(['current_turn' => 10]);
+
+        $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $activeNation->id,
+                'state' => 'recovery',
+                'state_label' => '休戦中：残り84ターン',
+                'recovery_remaining_turns' => 84,
+                'karma' => 4,
+                'karma_badge' => 'KARMA:4',
+            ]);
+        $this->actingAs($activeOwner)->getJson("/api/v1/nations/{$activeNation->id}")
+            ->assertOk()
+            ->assertJsonPath('data.state_label', '休戦中：残り84ターン')
+            ->assertJsonPath('data.recovery_remaining_turns', 84)
+            ->assertJsonPath('data.karma', 4)
+            ->assertJsonPath('data.karma_positive', true);
+
+        $world->update(['current_turn' => 93]);
+        $lastProtectedTurn = app(TurnRunner::class)->run($world->fresh());
+
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $lastProtectedTurn->status);
+        $this->assertSame(94, (int) $world->fresh()->current_turn);
+        $this->assertSame('recovery', $activeNation->fresh()->state);
+        $this->assertSame('recovery', $idleNation->fresh()->state);
+        $this->assertGreaterThanOrEqual(360, (int) $idleNation->fresh()->idle_counter);
+        $this->assertDatabaseMissing('audit_events', [
+            'event_type' => 'nation.recovery_ended',
+            'turn' => 94,
+        ]);
+
+        $target = MapCell::query()->where('owner_nation_id', $activeNation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
+            ->firstOrFail();
+        $item = app(CommandQueueService::class)->add(
+            user: $activeOwner,
+            nation: $activeNation->fresh(),
+            mapSpace: $this->surfaceMapSpace($world),
+            commandKey: 'land_clear',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        )['item'];
+
+        $firstUnprotectedTurn = app(TurnRunner::class)->run($world->fresh());
+
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $firstUnprotectedTurn->status);
+        $this->assertSame(95, (int) $world->fresh()->current_turn);
+        $this->assertSame('active', $activeNation->fresh()->state);
+        $this->assertNull($activeNation->fresh()->state_reason);
+        $this->assertNull($activeNation->fresh()->resume_at_turn);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame('dormant', $idleNation->fresh()->state);
+        $this->assertSame('idle', $idleNation->fresh()->state_reason);
+        $this->assertNull($idleNation->fresh()->resume_at_turn);
+        $this->assertDatabaseMissing('audit_events', [
+            'event_type' => 'nation.abandoned',
+            'nation_id' => $idleNation->id,
+            'turn' => 95,
+        ]);
+        $this->assertDatabaseHas('nation_capitals', ['nation_id' => $idleNation->id]);
+        $this->assertSame(2, DB::table('audit_events')
+            ->where('event_type', 'nation.recovery_ended')
+            ->where('turn', 95)
+            ->count());
+
+        $followingTurn = app(TurnRunner::class)->run($world->fresh());
+
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $followingTurn->status);
+        $this->assertSame(96, (int) $world->fresh()->current_turn);
+        $this->assertSame('abandoned', $idleNation->fresh()->state);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'nation.abandoned',
+            'nation_id' => $idleNation->id,
+            'turn' => 96,
+        ]);
     }
 
     public function test_turn_end_enters_dormancy_and_2160_heartbeat_reuses_canonical_abandonment(): void

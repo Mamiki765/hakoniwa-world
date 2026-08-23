@@ -1168,12 +1168,15 @@ async function abandonNation(): Promise<void> {
                                             :class="{
                                                 'is-finance-only': entry.finance_only_turns > 0,
                                                 'is-dormant': entry.state === 'dormant',
+                                                'is-karma-positive': entry.karma > 0,
                                             }"
                                             @click="openPreview(entry.id)"
                                         >
-                                            {{ entry.name }} <span class="state-badge">{{ entry.state_label }}</span><template v-if="entry.state !== 'dormant' && entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
+                                            {{ entry.name }}<template v-if="entry.state === 'active' && entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
                                         </button>
                                         <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
+                                        <span v-if="entry.state_label" class="state-badge">{{ entry.state_label }}</span>
+                                        <span v-if="entry.karma_badge" class="karma-badge">{{ entry.karma_badge }}</span>
                                     </td>
                                     <td>{{ entry.total_population.toLocaleString() }}人</td>
                                     <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
@@ -1403,8 +1406,9 @@ async function abandonNation(): Promise<void> {
             <header class="nation-hud">
                 <div class="hud-identity">
                     <p class="eyebrow">MY ISLAND</p>
-                    <h1>N{{ nation.nation_number }} {{ nation.name }}</h1>
-                    <p><span class="state-badge">{{ nation.state_label }}</span><template v-if="nation.winter_theme_active"> 冬theme適用中</template></p>
+                    <h1 :class="{ 'karma-name': nation.karma_positive }">N{{ nation.nation_number }} {{ nation.name }}</h1>
+                    <p v-if="nation.state_label"><span class="state-badge">{{ nation.state_label }}</span><template v-if="nation.winter_theme_active"> 冬theme適用中</template></p>
+                    <p v-if="nation.karma_positive" class="karma-emphasis">KARMA:{{ nation.karma }}</p>
                     <p class="turn-indicator">現在ターン {{ nation.current_turn }}</p>
                     <p class="profile-owner">島主：{{ nation.owner_name }}</p>
                     <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
@@ -1427,6 +1431,7 @@ async function abandonNation(): Promise<void> {
                 <details class="hud-more">
                     <summary>詳細情報</summary>
                     <dl class="hud-details">
+                        <div><dt>KARMA</dt><dd :class="{ 'karma-text': nation.karma_positive }">{{ nation.karma }}</dd></div>
                         <div><dt>資金上限</dt><dd>{{ formatExactMoney(nation.money_capacity) }}</dd></div>
                         <div><dt>食料上限</dt><dd>{{ formatResource(nation.food_capacity_tons, 'トン') }}</dd></div>
                         <div v-for="resource in nation.food_resources" :key="`food:${resource.key}`">
@@ -1492,11 +1497,14 @@ async function abandonNation(): Promise<void> {
             <header class="preview-heading">
                 <div>
                     <p class="eyebrow">PUBLIC ISLAND PREVIEW</p>
-                    <h1>N{{ previewNation.nation_number }} {{ previewNation.name }}</h1>
+                    <h1 :class="{ 'karma-name': previewNation.karma > 0 }">N{{ previewNation.nation_number }} {{ previewNation.name }}</h1>
+                    <p v-if="previewNation.state_label"><span class="state-badge">{{ previewNation.state_label }}</span></p>
+                    <p v-if="previewNation.karma > 0" class="karma-emphasis">{{ previewNation.karma_badge }}</p>
                     <p class="profile-owner">島主：{{ previewNation.owner_name }}</p>
                     <p v-if="previewNation.comment" class="profile-comment">「{{ previewNation.comment }}」</p>
                 </div>
                 <dl>
+                    <div><dt>KARMA</dt><dd :class="{ 'karma-text': previewNation.karma > 0 }">{{ previewNation.karma }}</dd></div>
                     <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
                     <div><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
                     <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>

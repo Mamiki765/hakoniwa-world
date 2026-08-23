@@ -37,7 +37,7 @@ final class SalePolicyService
                 ->where('world_id', $world->id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            if ($lockedNation->state !== 'active') {
+            if (! in_array($lockedNation->state, ['active', 'recovery'], true)) {
                 throw new DomainException('現役ではない島のsale policyは変更できません。');
             }
             $this->authorize($user, $lockedNation);

@@ -193,7 +193,7 @@ final class DisasterTurnService
 
         $nations = Nation::query()
             ->where('world_id', $context->world->id)
-            ->whereIn('state', ['active', 'dormant'])
+            ->whereIn('state', ['active', 'dormant', 'recovery'])
             ->orderBy('id')
             ->get();
         $landByNation = $this->landArea->forNationIds(
@@ -490,7 +490,7 @@ final class DisasterTurnService
         if (! $trigger['success']) {
             return false;
         }
-        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+        if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
             return false;
         }
         if ($this->isCapital($cell)) {
@@ -540,7 +540,7 @@ final class DisasterTurnService
             if (! $draw['success']) {
                 continue;
             }
-            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
             if ($this->isCapital($cell)) {
@@ -587,7 +587,7 @@ final class DisasterTurnService
             if ($draw >= max(0, $water - $settings['adjacent_water_offset'])) {
                 continue;
             }
-            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
             if ($this->isCapital($cell)) {
@@ -631,7 +631,7 @@ final class DisasterTurnService
             if ($draw >= max(0, $settings['base_damage_threshold'] - $protection)) {
                 continue;
             }
-            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
             $this->changeCell($context, $cell, 'typhoon', 'plain', false, 'disaster.cell_damaged', [
@@ -659,7 +659,7 @@ final class DisasterTurnService
             $coordinate = $coordinates[$stream->integer(0, count($coordinates) - 1)];
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
             if ($cell !== null && $this->isMutable($cell, $cellIndex)) {
-                if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+                if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                     // Keep the selected impact and continuation RNG opportunity, but apply no effect.
                 } elseif ($this->isCapital($cell)) {
                     $this->damageCapital($context, $cell, 'meteor_shower', 'deep_sea', [
@@ -721,7 +721,7 @@ final class DisasterTurnService
                 continue;
             }
             $distance = $center->distanceTo($coordinate);
-            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
             $monsterRemoved = false;
@@ -797,7 +797,7 @@ final class DisasterTurnService
         $damaged = 0;
         $centerCell = $this->cellAt($space, $center, $cellIndex);
         if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)
-            && ! $this->nationProtection->protects($context, $centerCell->x, $centerCell->y)) {
+            && ! $this->nationProtection->protectsFromDisaster($context, $centerCell->x, $centerCell->y)) {
             if ($this->isCapital($centerCell)) {
                 $this->damageCapital($context, $centerCell, 'eruption', 'eruption_center');
                 $damaged++;
@@ -819,7 +819,7 @@ final class DisasterTurnService
             if ($cell === null || ! $this->isMutable($cell, $cellIndex) || $cell->terrain->key === 'mountain') {
                 continue;
             }
-            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
             if ($this->isCapital($cell)) {
@@ -953,7 +953,7 @@ final class DisasterTurnService
         int $percentage,
         array $extra = [],
     ): array {
-        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+        if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
             return [
                 'before_population' => (int) $cell->population,
                 'after_population' => (int) $cell->population,
@@ -1002,7 +1002,7 @@ final class DisasterTurnService
         array $extra = [],
         ?DisasterMutableCellIndex $cellIndex = null,
     ): bool {
-        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+        if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
             return false;
         }
         $beforeTerrain = $cell->terrain->key;
@@ -1047,7 +1047,7 @@ final class DisasterTurnService
         MapCell $cell,
         string $disasterKey,
     ): bool {
-        if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
+        if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
             return false;
         }
 
@@ -1079,14 +1079,14 @@ final class DisasterTurnService
 
         return $cell->owner_nation_id === null
             || Nation::query()->whereKey($cell->owner_nation_id)
-                ->whereIn('state', ['active', 'dormant'])->exists();
+                ->whereIn('state', ['active', 'dormant', 'recovery'])->exists();
     }
 
     private function newMutableCellIndex(TurnContext $context): DisasterMutableCellIndex
     {
         $activeNationIds = Nation::query()
             ->where('world_id', $context->world->id)
-            ->whereIn('state', ['active', 'dormant'])
+            ->whereIn('state', ['active', 'dormant', 'recovery'])
             ->orderBy('id')
             ->pluck('id')
             ->map(static fn ($id): int => (int) $id)

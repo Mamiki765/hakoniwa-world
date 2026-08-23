@@ -1,7 +1,11 @@
-# ADR-0014 ver 2.4.0-beta Nation休止・冬・自動破棄
+# ADR-0014 ver 2.4.0 Nation休止・冬・自動破棄
 
 - 状態: 採用
 - 日付: 2026-08-23
+
+> `recovery`を語彙だけに留めた判断は、後続のOwner decision
+> `docs/decisions/ADR-0015-ver-2.4.0-karma-recovery.md`により置き換えられた。
+> v12休眠契約とそのprovenanceは本ADRに残す。
 - 対象: Nation lifecycle、official Turn、首都周辺保護、手動休止、冬表示、破棄
 - Supersedes: ADR-0004
 

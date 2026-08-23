@@ -169,6 +169,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ranking-card td button { border: 0; background: none; color: var(--navy); font-weight: 850; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
 .ranking-card td button.is-finance-only { color: var(--muted); }
 .ranking-card td button.is-dormant { color: #9a5a28; }
+.ranking-card td button.is-karma-positive, .karma-name, .karma-text { color: var(--coral-dark); }
+.state-badge, .karma-badge { display: inline-block; margin-left: 6px; font-size: .72rem; font-weight: 850; white-space: nowrap; }
+.karma-badge, .karma-emphasis { color: var(--coral-dark); font-weight: 900; }
+.karma-emphasis { margin: 3px 0 0; }
 .ranking-owner { display: block; margin-top: 3px; color: var(--muted); font-size: .72rem; font-weight: 650; text-decoration: none; }
 .ranking-comment { display: block; max-width: 24rem; margin-top: 3px; color: var(--ink); font-size: .72rem; white-space: normal; }
 .ranking-rank { width: 3.5rem; color: var(--coral-dark); font-size: 1rem; font-weight: 900; vertical-align: top; }

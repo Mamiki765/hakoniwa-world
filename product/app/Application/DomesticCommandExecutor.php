@@ -91,7 +91,7 @@ final class DomesticCommandExecutor
         ];
         foreach ($context->state->developmentNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
-            if ($nation->state !== 'active') {
+            if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             $queue = NationCommandQueue::query()
@@ -319,9 +319,17 @@ final class DomesticCommandExecutor
         $observed = $this->observedState($cell, $occupancy?->monster_instance_id);
         $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell);
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+            if ($this->ceasefireBlocksHostileTarget($nation, $cell->ownerNation)) {
+                return ['reason' => CommandFailureReason::CeasefireProhibited, 'observed' => $observed];
+            }
+
             return $this->missileValidationFailure($context, $nation, $definition, $cell, $observed);
         }
         if ($definition->key === 'territory_expand') {
+            if ($cell->ownerNation !== null && $cell->ownerNation->id !== $nation->id
+                && $this->ceasefireBlocksHostileTarget($nation, $cell->ownerNation)) {
+                return ['reason' => CommandFailureReason::CeasefireProhibited, 'observed' => $observed];
+            }
             if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
                 return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
             }
@@ -404,9 +412,13 @@ final class DomesticCommandExecutor
             }
             $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->first();
             if ($target === null || $target->id === $nation->id
-                || $target->world_id !== $context->world->id || $target->state !== 'active'
+                || $target->world_id !== $context->world->id
+                || ! in_array($target->state, ['active', 'recovery'], true)
                 || ! $this->nationTargets->hasCompleteCapitalChunk($target)) {
                 return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
+            }
+            if ($this->ceasefireBlocksHostileTarget($nation, $target)) {
+                return ['reason' => CommandFailureReason::CeasefireProhibited, 'observed' => $observed];
             }
         }
         if ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true)) {
@@ -461,18 +473,6 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
     ): ?array {
         $observed = $this->emptyObservedState();
-        $requiredMoney = $definition->cost_money;
-        if ($definition->key === 'monster_dispatch'
-            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
-            try {
-                $requiredMoney = $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
-            } catch (DomainException) {
-                return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
-            }
-        }
-        if ((int) $nation->money < $requiredMoney) {
-            return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
-        }
         if ($definition->key === 'attraction') {
             return null;
         }
@@ -487,10 +487,27 @@ final class DomesticCommandExecutor
             return ['reason' => CommandFailureReason::SameNationTarget, 'observed' => $observed];
         }
         $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->first();
-        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant'] : ['active'];
+        $targetStates = $definition->key === 'monster_dispatch'
+            ? ['active', 'dormant', 'recovery']
+            : ['active', 'recovery'];
         if ($target === null || $target->world_id !== $context->world->id
             || ! in_array($target->state, $targetStates, true)) {
             return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
+        }
+        if ($definition->key === 'monster_dispatch' && $this->ceasefireBlocksHostileTarget($nation, $target)) {
+            return ['reason' => CommandFailureReason::CeasefireProhibited, 'observed' => $observed];
+        }
+        $requiredMoney = $definition->cost_money;
+        if ($definition->key === 'monster_dispatch'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            try {
+                $requiredMoney = $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
+            } catch (DomainException) {
+                return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+            }
+        }
+        if ((int) $nation->money < $requiredMoney) {
+            return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
         }
         if ($definition->key === 'money_aid') {
             $requested = $this->moneyAidAmount($item, $definition);
@@ -879,6 +896,22 @@ final class DomesticCommandExecutor
                 'target_nation_id' => $target->id,
             ],
         );
+        if ($target->id !== $nation->id
+            && array_key_exists($target->id, $context->state->karmaStartSnapshots())
+            && $context->state->karmaStartSnapshot($target->id) <= 0) {
+            $points = $context->ruleset->settings['karma']['hostile_monument_points'] ?? null;
+            if ($points !== 15) {
+                throw new DomainException('The active ruleset has an invalid hostile-monument KARMA contract.');
+            }
+            $context->state->addKarmaCrime($nation->id, $points);
+            $this->events->record($context, 'karma.hostile_monument', $nation, [
+                'nation_id' => $nation->id,
+                'target_nation_id' => $target->id,
+                'source_queue_item_id' => $item->id,
+                'target_start_karma' => $context->state->karmaStartSnapshot($target->id),
+                'crime_points' => $points,
+            ], 'admin');
+        }
         $this->events->record($context, 'command.monument_launched', $nation, [
             'nation_id' => $nation->id,
             'source_queue_item_id' => $item->id,
@@ -1051,6 +1084,9 @@ final class DomesticCommandExecutor
         $cell->version++;
         $cell->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
+        if (in_array($nation->id, $context->state->recoveryNationIds(), true)) {
+            $context->state->recordRecoveryTerritoryAcquired($nation->id, $cell->x, $cell->y);
+        }
         $this->events->record($context, 'command.territory_expanded', $cell, [
             'nation_id' => $nation->id,
             'x' => $cell->x,
@@ -1273,7 +1309,11 @@ final class DomesticCommandExecutor
             throw new DomainException('Nation command target changed after validation.');
         }
 
-        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant'] : ['active'];
+        $targetStates = match ($definition->key) {
+            'monster_dispatch' => ['active', 'dormant', 'recovery'],
+            'money_aid', 'food_aid' => ['active', 'recovery'],
+            default => ['active'],
+        };
 
         return Nation::query()->whereKey($targetNationId)
             ->where('world_id', $context->world->id)->whereIn('state', $targetStates)
@@ -1636,6 +1676,9 @@ final class DomesticCommandExecutor
         ]);
         $this->compact($queue);
         $this->events->record($context, 'command.failed', $item, $metadata);
+        if ($reason === CommandFailureReason::CeasefireProhibited) {
+            $this->events->record($context, 'command.ceasefire_blocked', $item, $metadata, 'nation', 'warning');
+        }
         $this->events->record($context, 'command.queue_removed', $item, [
             'nation_id' => $queue->nation_id,
             'command_key' => $item->definition->key,
@@ -1669,6 +1712,13 @@ final class DomesticCommandExecutor
             'owner_nation_name' => null,
             'monster_id' => null,
         ];
+    }
+
+    private function ceasefireBlocksHostileTarget(Nation $actor, ?Nation $target): bool
+    {
+        return $target !== null
+            && $target->id !== $actor->id
+            && ($actor->state === 'recovery' || $target->state === 'recovery');
     }
 
     private function hasForeignAdjacentCell(Nation $nation, MapCell $cell): bool

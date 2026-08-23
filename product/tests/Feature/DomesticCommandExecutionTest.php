@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
+use App\Application\KarmaTurnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Domain\Map\GridCoordinate;
@@ -104,12 +105,17 @@ class DomesticCommandExecutionTest extends TestCase
         );
         $moneyBeforeFlight = (int) $firing->fresh()->money;
         $monumentSeed = hash('sha256', 'v6 monument flight');
-        $second = app(DomesticCommandExecutor::class)->execute($this->context(
+        $monumentContext = $this->context(
             $world,
             [$firing->id, $target->id],
             $monumentSeed,
             targetTurn: 3,
-        ));
+        );
+        $monumentContext->state->setLifecycleNationIds([$firing->id, $target->id]);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($monumentContext);
+        $second = app(DomesticCommandExecutor::class)->execute($monumentContext);
+        $karma->finalize($monumentContext);
         $this->assertSame(1, $second['successes']);
         $this->assertSame($moneyBeforeFlight - 9_999, $firing->fresh()->money);
         $this->assertSame('wasteland', $monumentCell->fresh()->terrain()->value('key'));
@@ -126,12 +132,56 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(16 + intdiv($expectedIndex, 16), $impactMetadata['center_y']);
         $this->assertArrayNotHasKey('source_x', $impactMetadata);
         $this->assertArrayNotHasKey('source_y', $impactMetadata);
+        $this->assertSame(15, (int) $firing->fresh()->karma);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'karma.hostile_monument',
+            'nation_id' => $firing->id,
+            'visibility' => 'admin',
+        ]);
 
         $world->update(['current_turn' => 3]);
         $messages = collect(app(PlayerIslandEventService::class)->publicNationPage($target, 1)['groups'])
             ->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
         $this->assertContains('何かとてつもないものが落ちてきました！', $messages);
         $this->assertNotContains("{$monumentCell->x},{$monumentCell->y}", $messages);
+
+        $secondMonumentCell = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->firstOrFail();
+        $states->transitionTerrain($secondMonumentCell, $plain);
+        $states->setFacility(
+            $secondMonumentCell,
+            FacilityDefinition::query()->where('key', 'monument')->firstOrFail(),
+        );
+        $secondMonumentCell->monument_definition_id = MonumentDefinition::query()
+            ->where('key', 'prosperity')->valueOrFail('id');
+        $secondMonumentCell->save();
+        $target->update(['karma' => 1]);
+        $secondMonumentItem = $this->queue(
+            $firingUser,
+            $firing->fresh(),
+            $space,
+            'build_monument',
+            $secondMonumentCell,
+            (int) $secondMonumentCell->monument_definition_id,
+            parameters: ['target_nation_id' => $target->id],
+        );
+        $positiveTargetContext = $this->context(
+            $world,
+            [$firing->id, $target->id],
+            hash('sha256', 'v13 monument positive target'),
+            targetTurn: 4,
+        );
+        $positiveTargetContext->state->setLifecycleNationIds([$firing->id, $target->id]);
+        $karma->prepare($positiveTargetContext);
+        app(DomesticCommandExecutor::class)->execute($positiveTargetContext);
+        $karma->finalize($positiveTargetContext);
+
+        $this->assertSame('completed', $secondMonumentItem->fresh()->status);
+        $this->assertSame(15, (int) $firing->fresh()->karma);
+        $this->assertSame(0, DB::table('audit_events')
+            ->where('event_type', 'karma.hostile_monument')
+            ->whereRaw("metadata->>'source_queue_item_id' = ?", [(string) $secondMonumentItem->id])
+            ->count());
     }
 
     public function test_monument_flight_revalidates_target_nation_before_charging_or_destroying_source(): void
@@ -180,6 +230,56 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame($moneyBefore, $nation->fresh()->money);
         $this->assertSame('monument', $source->fresh()->facility()->value('key'));
         $this->assertSame('plain', $source->fresh()->terrain()->value('key'));
+
+        $completeCapitalCell = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->where('chunk_x', 1)
+            ->where('chunk_y', 1)
+            ->orderBy('id')
+            ->firstOrFail();
+        $target->capital()->update([
+            'map_cell_id' => $completeCapitalCell->id,
+            'x' => $completeCapitalCell->x,
+            'y' => $completeCapitalCell->y,
+        ]);
+        $target->update([
+            'state' => 'active',
+            'state_reason' => null,
+            'state_started_turn' => null,
+            'resume_at_turn' => null,
+        ]);
+        $recoveryItem = $this->queue(
+            $user,
+            $nation,
+            $space,
+            'build_monument',
+            $source,
+            (int) $source->monument_definition_id,
+            parameters: ['target_nation_id' => $target->id],
+        );
+        $target->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 2,
+            'resume_at_turn' => 87,
+        ]);
+
+        $recoveryResult = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            [$nation->id, $target->id],
+            hash('sha256', 'monument target entered recovery'),
+            targetTurn: 3,
+        ));
+
+        $this->assertSame(1, $recoveryResult['failures']);
+        $this->assertSame('ceasefire_prohibited', $recoveryItem->fresh()->failure_code);
+        $this->assertSame($moneyBefore, $nation->fresh()->money);
+        $this->assertSame('monument', $source->fresh()->facility()->value('key'));
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'command.ceasefire_blocked',
+            'nation_id' => $nation->id,
+            'turn' => 3,
+        ]);
     }
 
     public function test_monument_flight_revalidates_partial_edge_capital_chunk_before_charging(): void

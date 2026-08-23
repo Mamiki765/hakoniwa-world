@@ -31,7 +31,10 @@ class NationResource extends JsonResource
         $turnsPerDay = is_int($lifecycle['turns_per_day'] ?? null) ? $lifecycle['turns_per_day'] : 12;
         $abandonmentThreshold = is_int($lifecycle['abandonment_idle_threshold'] ?? null)
             ? $lifecycle['abandonment_idle_threshold'] : 2160;
-        $remainingTurns = $this->state === 'dormant' && $this->resume_at_turn !== null
+        $dormancyRemainingTurns = $this->state === 'dormant' && $this->resume_at_turn !== null
+            ? max(0, (int) $this->resume_at_turn - $currentTurn - 1)
+            : null;
+        $recoveryRemainingTurns = $this->state === 'recovery' && $this->resume_at_turn !== null
             ? max(0, (int) $this->resume_at_turn - $currentTurn - 1)
             : null;
         $manualDays = $this->state_reason === 'manual'
@@ -60,15 +63,19 @@ class NationResource extends JsonResource
             ),
             'state' => $this->state,
             'state_label' => match ($this->state) {
-                'active' => '通常', 'dormant' => '放置', 'recovery' => '終戦',
+                'active' => '', 'dormant' => '休眠',
+                'recovery' => '休戦中：残り'.$recoveryRemainingTurns.'ターン',
                 'abandoned' => '破棄', default => $this->state,
             },
+            'karma' => (int) $this->karma,
+            'karma_positive' => $this->karma > 0,
+            'recovery_remaining_turns' => $recoveryRemainingTurns,
             'state_reason' => $this->state_reason,
             'state_started_turn' => $this->state_started_turn,
             'resume_at_turn' => $this->resume_at_turn,
             'manual_dormancy_days' => $manualDays,
-            'dormancy_remaining_turns' => $remainingTurns,
-            'dormancy_remaining_days' => $remainingTurns === null ? null : (int) ceil($remainingTurns / $turnsPerDay),
+            'dormancy_remaining_turns' => $dormancyRemainingTurns,
+            'dormancy_remaining_days' => $dormancyRemainingTurns === null ? null : (int) ceil($dormancyRemainingTurns / $turnsPerDay),
             'abandonment_remaining_turns' => max(0, $abandonmentThreshold - (int) $this->idle_counter),
             'can_request_dormancy' => $isOwner && $this->state === 'active',
             'winter_theme_active' => $this->state === 'dormant',
@@ -76,9 +83,11 @@ class NationResource extends JsonResource
             'registered_turn' => (int) $this->registered_turn,
             'survival_turns' => max(0, $currentTurn - (int) $this->registered_turn),
             'finance_only_turns' => (int) $this->idle_counter,
-            'activity_status' => $this->state === 'dormant'
-                ? 'dormant'
-                : ((int) $this->idle_counter > 0 ? 'finance_only' : 'active'),
+            'activity_status' => match ($this->state) {
+                'dormant' => 'dormant',
+                'recovery' => 'recovery',
+                default => (int) $this->idle_counter > 0 ? 'finance_only' : 'active',
+            },
             'total_population' => $basicStatus['total_population'],
             'territory_cell_count' => $basicStatus['territory_cell_count'],
             'owned_land_cells' => $basicStatus['owned_land_cells'],

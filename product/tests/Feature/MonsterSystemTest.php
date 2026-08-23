@@ -163,6 +163,77 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, MonsterInstance::query()->count());
     }
 
+    public function test_recovery_excludes_natural_spawn_and_protects_all_territory_from_monster_movement(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('休戦怪獣除外国');
+        $this->prepareSettlement($nation, 400_000);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        $nation->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 2,
+            'resume_at_turn' => 87,
+        ]);
+        [$spawnContext] = $this->context($world, $ruleset, 2, 'spawn-recovery', [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($spawnContext, $space);
+
+        $this->assertSame(0, $metrics['eligible_spawn_nations']);
+        $this->assertSame(0, $metrics['spawn_draws']);
+        $this->assertSame(0, MonsterInstance::query()->count());
+
+        $origin = $this->safeInteriorCell($space, $world);
+        $originCoordinate = new GridCoordinate($origin->x, $origin->y);
+        $protectedCoordinate = $originCoordinate->neighbor(0);
+        $fallbackCoordinate = $originCoordinate->neighbor(1);
+        $protected = $this->cellAt($space, $protectedCoordinate->x, $protectedCoordinate->y);
+        $fallback = $this->cellAt($space, $fallbackCoordinate->x, $fallbackCoordinate->y);
+        $this->setCell($origin, 'wasteland', null, null, 0);
+        $this->setCell($protected, 'plain', null, $nation->id, 4_321);
+        $this->setCell($fallback, 'plain', null, null, 1_234);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'inora', 1);
+        $seedLabel = $this->movementSeedForDirections($monster, [0, 1]);
+        [$movementContext] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+        $capital = $nation->capital()->firstOrFail();
+        $movementContext->state->setNationLifecycleSnapshot($nation->id, [
+            'state' => 'recovery',
+            'reason' => null,
+            'state_started_turn' => 2,
+            'resume_at_turn' => 87,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
+        $movementContext->state->setRecoveryTerritoryNationIds(
+            MapCell::query()->where('owner_nation_id', $nation->id)->get(['x', 'y'])
+                ->mapWithKeys(static fn (MapCell $cell): array => ["{$cell->x}:{$cell->y}" => $nation->id])
+                ->all(),
+        );
+        $turn = app(MonsterTurnService::class);
+        $batch = $turn->load($movementContext);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $index = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+
+        $this->assertTrue($turn->processCell(
+            $movementContext,
+            $space,
+            $origin->fresh(['terrain', 'facility']),
+            $index,
+            $batch,
+        ));
+
+        $this->assertSame($fallback->id, (int) MonsterOccupancy::query()
+            ->where('monster_instance_id', $monster->id)->value('map_cell_id'));
+        $this->assertSame(1, $batch->metrics()['monster_moves']);
+        $this->assertSame(4_321, $protected->fresh()->population);
+        $this->assertSame(0, $fallback->fresh()->population);
+        $this->assertSame('wasteland', $fallback->fresh()->terrain()->value('key'));
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'monster.trampled',
+            'x' => $fallback->x,
+            'y' => $fallback->y,
+        ]);
+    }
+
     public function test_monster_inside_the_dormant_capital_radius_cannot_move_or_trample(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('休止怪獣保護国');

@@ -1236,13 +1236,19 @@ final class CommandQueueService
 
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             $world = $nation->world()->with('rulesetVersion')->firstOrFail();
+            $targetNation = $cell->owner_nation_id === null
+                ? null
+                : $cell->ownerNation;
+            if ($targetNation !== null && $targetNation->id !== $nation->id
+                && ($nation->state === 'recovery' || $targetNation->state === 'recovery')) {
+                throw new PlayerFacingCommandException(
+                    "{$targetNation->name}へのミサイル攻撃は箱庭協定によって禁じられているため、登録できません。",
+                );
+            }
             $targetPolicy = MissileTargetPolicy::explicitTargetState($world->rulesetVersion->settings);
             if ($targetPolicy === MissileTargetPolicy::ANY_EXISTING_COORDINATE) {
                 return;
             }
-            $targetNation = $cell->owner_nation_id === null
-                ? null
-                : Nation::query()->whereKey($cell->owner_nation_id)->first();
             if ($targetNation === null || $targetNation->world_id !== $world->id || $targetNation->state !== 'active') {
                 throw new PlayerFacingCommandException('active Nation所有のcellだけを対象にできます。');
             }
@@ -1296,6 +1302,10 @@ final class CommandQueueService
         $targetOwner = $state['owner_nation_id'] === null
             ? null
             : Nation::query()->whereKey($state['owner_nation_id'])->first();
+        if ($targetOwner !== null && $targetOwner->id !== $nation->id
+            && ($nation->state === 'recovery' || $targetOwner->state === 'recovery')) {
+            throw new PlayerFacingCommandException('休戦中の島から、または休戦中の島の領土へ hostile な領土拡張はできません。');
+        }
         $monsterOccupied = MonsterOccupancy::query()->where('map_cell_id', $cell->id)->exists();
         $facts = new TerritoryExpansionFacts(
             actorNationId: $nation->id,
@@ -1371,7 +1381,7 @@ final class CommandQueueService
             ->where('world_id', $world->id)
             ->lockForUpdate()
             ->first();
-        if ($lockedNation === null || ! in_array($lockedNation->state, ['active', 'dormant'], true)) {
+        if ($lockedNation === null || ! in_array($lockedNation->state, ['active', 'dormant', 'recovery'], true)) {
             throw new AuthorizationException('現在の島ではないcommand queueは操作できません。');
         }
 

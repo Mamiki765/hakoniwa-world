@@ -1,6 +1,6 @@
 # 怪獣を除く災害・油田稼働 事前監査
 
-> ver 2.4.0-betaのOwner decisionは表示境界だけを更新し、実際に変化した
+> ver 2.4.0のOwner decisionは表示境界だけを更新し、実際に変化した
 > `disaster.cell_damaged`、`capital.disaster_damaged`、`fire.damaged`を公開島ログへ投影する。
 > 本文表の「被害は該当Nationのみ」はPR15当時のhistorical contractである。
 

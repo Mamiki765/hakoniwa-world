@@ -158,6 +158,9 @@ export interface Nation {
     resources: NationResource[];
     state: 'active' | 'dormant' | 'recovery' | 'abandoned';
     state_label: string;
+    karma: number;
+    karma_positive: boolean;
+    recovery_remaining_turns: number | null;
     state_reason: 'idle' | 'collapse' | 'manual' | null;
     state_started_turn: number | null;
     resume_at_turn: number | null;
@@ -171,7 +174,7 @@ export interface Nation {
     registered_turn: number;
     survival_turns: number;
     finance_only_turns: number;
-    activity_status: 'active' | 'finance_only' | 'dormant';
+    activity_status: 'active' | 'finance_only' | 'dormant' | 'recovery';
     total_population: number;
     territory_cell_count: number;
     owned_land_cells: number;
@@ -199,8 +202,11 @@ export interface PublicNationSummary {
     nation_number: number;
     name: string;
     owner_name: string;
-    state: string;
+    state: 'active' | 'dormant' | 'recovery';
     state_label: string;
+    recovery_remaining_turns: number | null;
+    karma: number;
+    karma_badge: string | null;
     total_population: number;
     territory_cell_count: number;
     owned_land_cells: number;
@@ -213,7 +219,7 @@ export interface PublicNationSummary {
     registered_turn: number;
     survival_turns: number;
     finance_only_turns: number;
-    activity_status: 'active' | 'finance_only' | 'dormant';
+    activity_status: 'active' | 'finance_only' | 'dormant' | 'recovery';
     last_updated_turn: number;
     comment: string;
 }
