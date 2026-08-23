@@ -21,7 +21,7 @@ introduced.
 | Activity counter | `NationIdleCounterFinalizer` | Preserve one increment maximum and meaningful-command reset; new Nations start at 2000. |
 | Finance | `DomesticCommandExecutor` finance path, `CapacityBoundedAssetService`, Secretary Ring effect | Reuse the same credit operation for a dormant heartbeat without consuming the queue. |
 | Manual abandonment | `NationAbandonmentService` | Extract one locked internal cleanup operation for manual and automatic callers. |
-| Damage and map effects | current missile, disaster, monster, and territory services | Call one shared Capital-radius protection policy immediately before mutation/candidate acceptance. |
+| Damage and map effects | current missile, disaster, monster, and territory services | Call one shared Capital-radius protection policy immediately before missile/disaster/territory mutation; treat protected monster destinations as ordinary blocked candidates within the existing three-attempt loop. |
 | Map presentation | `MapChunkService`, `MapCellPresenter`, `AssetManifestResolver` | Preload dormant Capitals once, select allowlisted `snow`, and fall back to the base asset. |
 | Ruleset and upgrade | standalone immutable v11, `RulesetPublisher`, current-specific ver 2.4 installer/upgrader | Publish standalone v12 and support exact v11 to exact v12 only, preserving existing rows and provenance. |
 | UI/API | owner profile and public Nation presenters | Extend the existing profile danger section with a neutral 1-7-day dormancy block immediately above the unchanged red abandonment block; add lifecycle fields/badges without a broad redesign. |

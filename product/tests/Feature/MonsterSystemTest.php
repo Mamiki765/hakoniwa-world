@@ -285,14 +285,17 @@ class MonsterSystemTest extends TestCase
             $destinationBatch,
         ));
 
-        $this->assertSame($outsideOrigin->id, (int) MonsterOccupancy::query()
+        $this->assertSame($fallbackDestination->id, (int) MonsterOccupancy::query()
             ->where('monster_instance_id', $outsideMonster->id)->value('map_cell_id'));
-        $this->assertSame(0, $destinationBatch->metrics()['monster_moves']);
+        $this->assertSame(1, $destinationBatch->metrics()['monster_moves']);
         $this->assertSame(4_321, $protectedDestination->fresh()->population);
-        $this->assertSame(1_234, $fallbackDestination->fresh()->population);
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.stayed')
+        $this->assertSame(0, $fallbackDestination->fresh()->population);
+        $this->assertSame('wasteland', $fallbackDestination->fresh()->terrain()->value('key'));
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.stayed')
             ->whereRaw("metadata->>'monster_id' = ?", [(string) $outsideMonster->id])
             ->whereRaw("metadata->>'reason' = 'dormant_destination_protected'")->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.trampled')
+            ->where('x', $fallbackDestination->x)->where('y', $fallbackDestination->y)->count());
     }
 
     public function test_triggered_spawn_without_an_eligible_settlement_is_a_safe_audited_noop(): void

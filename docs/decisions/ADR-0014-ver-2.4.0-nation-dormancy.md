@@ -21,7 +21,7 @@ Ruleset v12は次を固定する。
 - 非manual休止はqueued non-finance commandがあればTurn開始時にactiveへ戻す。manual休止は期限前に戻さない。
 - dormantはproduction、food/population処理、通常command実行、自然monster spawnを行わない。queueは保持し、canonical finance + Secretary Ring + capacity上限で10億円をcreditし、idle counterを1回だけ増やす。
 - 休止開始時にfood合計を初期値まで一度だけ補い、生産能力0なら首都distance 2以内から`distance, y, x`順・乱数なしで最小の緊急農場を1つ作る。
-- dormant Capitalからhex distance 2以内はmissile、disaster、monster、territory mutationを無効化する。範囲外は通常契約を維持し、判定は最終候補決定後・mutation直前に行う。
+- dormant Capitalからhex distance 2以内はmissile、disaster、monster、territory mutationを無効化する。範囲外は通常契約を維持する。missile、disaster、territoryは最終候補決定後・mutation直前に判定する。monsterは開始cellが範囲内なら即座に`stayed`とし、範囲外から範囲内cellを引いた場合はmonument等と同じ進入不可candidateとして1 attemptを消費して次候補へ進む。3 attemptsがすべて失敗した場合だけ通常の`no_candidate`とする。`monster_dispatch`はdormant Nationもtargetとして選べるが、spawn candidateからこの保護範囲だけを除外する。
 - 2160へ到達したheartbeatの終端で、manual abandonmentと同じ内部cleanup operationをsystem actorで実行する。Secretaryと歴史recordは削除しない。
 
 presentationはgame stateを書き換えず、distance 2以内のallowlist対象だけを`snow`同名assetへ解決し、欠落時は通常assetへfallbackする。画像はGit・containerへ含めず`/srv/hakoniwa-assets/tiles/snow`からread-only配信する。

@@ -88,6 +88,7 @@ final class NationAbandonmentService
                         $lockedNation,
                         (int) $user->id,
                         'manual',
+                        (int) $lockedWorld->current_turn,
                     );
                 }, 3);
             } finally {
@@ -120,6 +121,7 @@ final class NationAbandonmentService
             $lockedNation,
             null,
             'automatic_idle',
+            $context->targetTurn,
         );
     }
 

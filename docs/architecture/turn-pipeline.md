@@ -85,7 +85,7 @@ Discord webhook、メール、分析基盤はturn transaction内で呼ばない�
 
 専用Lifecycle Jobや実時間判定は使わない。`prepare_turn`で期限到達manualと復帰意思のあるnon-manual dormantを先にactiveへ戻し、今回のstateとCapitalをfreezeする。activeだけが通常economy、command、生産・人口処理、自然monster spawnを実行する。dormantはqueueを保持し、canonical finance + Ring + capacityで10億円を処理してidle counterを1だけ増やす。
 
-開始snapshotでdormantのCapitalからdistance 2以内はmissile、disaster、monster、territory mutationをno-opとするが、範囲外は通常処理する。counter確定後の`finalize_turn`でidle 360またはcollapseをdormant、dormantの2160をabandonedへ遷移する。自動破棄はmanual abandonmentと同じ単一transaction cleanupを使い、user、nation、Secretary、event、統計を物理deleteしない。
+開始snapshotでdormantのCapitalからdistance 2以内はmissile、disaster、territory mutationをno-opとする。monsterは開始cellが範囲内なら即`stayed`、移動先が範囲内なら既存の進入不可candidateと同じくattemptを消費して最大3回の候補抽選を続ける。範囲外は通常処理する。counter確定後の`finalize_turn`でidle 360またはcollapseをdormant、dormantの2160をabandonedへ遷移する。自動破棄はmanual abandonmentと同じ単一transaction cleanupを使い、user、nation、Secretary、event、統計を物理deleteしない。
 
 ## 観測性
 

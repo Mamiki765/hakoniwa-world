@@ -1488,6 +1488,30 @@ describe('application lobby and island entry', () => {
         expect(status.text()).toContain('残りturn / 日数84 turn / 約7日');
         expect(status.text()).toContain('指定期間が終わるまで解除できません');
         expect(wrapper.get<HTMLButtonElement>('.abandonment-block button').element.disabled).toBe(true);
+
+        wrapper.unmount();
+        const automaticDormantNation: Nation = {
+            ...dormantNation,
+            state_reason: 'idle', resume_at_turn: null, manual_dormancy_days: null,
+            dormancy_remaining_turns: null, dormancy_remaining_days: null,
+        };
+        const automaticFetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+            if (path === '/api/v1/me/nation') return response(automaticDormantNation);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', automaticFetchMock);
+        const automaticWrapper = mount(App);
+        await flushPromises();
+        const automaticProfileButton = automaticWrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'プロフィール編集')!;
+        await automaticProfileButton.trigger('click');
+        expect(automaticWrapper.get('.dormancy-status').text())
+            .toContain('再開予定turn通常command登録後の次official Turn');
     });
 
     it('requires the danger button, modal, and exact island name before abandonment and returns to registration', async () => {

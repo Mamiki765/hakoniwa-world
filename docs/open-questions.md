@@ -347,7 +347,7 @@
 
 - Status: Open
 - Required before: Ruleset v12のdistance 2保護を変更する将来のdormant combat実装前
-- Implemented minimum: ver 2.4.0ではtarget Turn開始時に`dormant`だったNationのCapitalからhex distance 2以内を、missile、disaster、monster、territoryの全mutationについて最終候補決定後にno-opとする。範囲外は通常のattack・damage契約を適用し、全領土凍結や怪獣討伐専用例外は設けない。旧v1/v2/v8 payloadとhistorical記録は変更しない。
+- Implemented minimum: ver 2.4.0ではtarget Turn開始時に`dormant`だったNationのCapitalからhex distance 2以内を保護する。missile、disaster、territoryは最終候補決定後にno-opとする。monsterは開始cellが範囲内なら即`stayed`、範囲外から範囲内cellを引いた場合はmonument等と同じ進入不可candidateとして1 attemptを消費し、`candidate_attempts_per_action = 3`の残り候補へ進む。範囲外は通常のattack・damage契約を適用し、全領土凍結や怪獣討伐専用例外は設けない。旧v1/v2/v8 payloadとhistorical記録は変更しない。
 - Open decision: v12より後に保護ring、対象mutation、または範囲外のdormant combat契約を変更する場合の互換性とmigrationを決める。v12のowner決定を再度の実装gateにはしない。
 - Decision record: `docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`、`docs/decisions/ADR-0009-ruleset-v2-missile-targeting.md`、`docs/decisions/ADR-0012-ver-2.1.0-defense-and-secretary-rename.md`
 

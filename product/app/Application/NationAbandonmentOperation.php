@@ -39,6 +39,7 @@ final class NationAbandonmentOperation
         Nation $nation,
         ?int $actorUserId,
         string $source,
+        int $eventTurn,
     ): array {
         if (! in_array($source, ['manual', 'automatic_idle'], true)) {
             throw new DomainException('Nation abandonment source is invalid.');
@@ -149,7 +150,7 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
         DB::table('audit_events')->insert([
             'actor_user_id' => $actorUserId,
             'world_id' => $world->id,
-            'turn' => $world->current_turn,
+            'turn' => $eventTurn,
             'nation_id' => $nation->id,
             'x' => $oldCapital['x'],
             'y' => $oldCapital['y'],
@@ -169,8 +170,8 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
                 'actor' => $automatic ? 'system' : 'owner',
                 'reason' => $automatic ? 'idle_threshold' : 'manual_abandonment',
                 'world_id' => $world->id,
-                'target_turn' => $world->current_turn,
-                'current_turn' => $world->current_turn,
+                'target_turn' => $eventTurn,
+                'current_turn' => $eventTurn,
                 'old_capital_map_cell_id' => $oldCapital['map_cell_id'],
                 'old_capital_x' => $oldCapital['x'],
                 'old_capital_y' => $oldCapital['y'],

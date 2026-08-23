@@ -58,6 +58,7 @@ final class CommandQueueController extends Controller
                     ->first();
             }
             $nationTargetOptions = $this->nationTargets->options($nation);
+            $monsterDispatchTargetOptions = $this->nationTargets->monsterDispatchOptions($nation);
             $definitions = CommandDefinition::query()
                 ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
                 ->where('enabled', true)
@@ -75,7 +76,7 @@ final class CommandQueueController extends Controller
                 ->get()
                 ->keyBy('key');
             $definitions = $definitions
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $projected, $resultFacilities): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities): array {
                     $ownerOverbuildEffect = $projected === null
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
@@ -110,7 +111,9 @@ final class CommandQueueController extends Controller
                         || $ownerOverbuildEffect === 'monument_flight';
                     $presentedTargetOptions = $ownerOverbuildEffect === 'monument_flight'
                         ? $this->nationTargets->monumentFlightOptions($nation)
-                        : $nationTargetOptions;
+                        : ($definition->key === 'monster_dispatch'
+                            ? $monsterDispatchTargetOptions
+                            : $nationTargetOptions);
                     $parameters = $this->nationTargets->presentParameters($definition, $presentedTargetOptions);
                     if ($ownerOverbuildEffect === 'monument_flight'
                         && is_array($parameters['target_nation_id'] ?? null)) {

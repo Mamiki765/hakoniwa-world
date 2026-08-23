@@ -219,8 +219,9 @@ final class MonsterSpawnService
         int $queueItemId,
         MonsterDispatchOption $option,
     ): MonsterInstance {
-        if ($target->world_id !== $context->world->id || $target->state !== 'active') {
-            throw new DomainException('A dispatched monster requires an active target Nation in the current World.');
+        if ($target->world_id !== $context->world->id
+            || ! in_array($target->state, ['active', 'dormant'], true)) {
+            throw new DomainException('A dispatched monster requires a current target Nation in the current World.');
         }
         $candidates = $this->dispatchCandidates($context, $target, true);
         if ($candidates->isEmpty()) {

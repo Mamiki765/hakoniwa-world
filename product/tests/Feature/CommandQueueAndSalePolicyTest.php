@@ -2079,9 +2079,16 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ]);
         $catalogWithoutTarget = $this->getJson("{$base}/command-definitions")->assertOk();
         $unavailableAid = collect($catalogWithoutTarget->json('data.commands'))->firstWhere('key', 'money_aid');
+        $availableDispatch = collect($catalogWithoutTarget->json('data.commands'))->firstWhere('key', 'monster_dispatch');
         $this->assertFalse($unavailableAid['applicable']);
         $this->assertFalse($unavailableAid['available']);
         $this->assertSame([], $unavailableAid['parameters']['target_nation_id']['options']);
+        $this->assertTrue($availableDispatch['applicable']);
+        $this->assertSame([[
+            'value' => $target->id,
+            'label' => $target->name,
+            'nation_number' => $target->nation_number,
+        ]], $availableDispatch['parameters']['target_nation_id']['options']);
         $this->postJson("{$base}/command-queue", [
             'command_key' => 'money_aid',
             'request_key' => (string) Str::uuid(),
@@ -2094,6 +2101,13 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 3,
             'parameters' => [],
         ])->assertUnprocessable();
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'monster_dispatch',
+            'quantity' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 3,
+            'parameters' => ['target_nation_id' => $target->id],
+        ])->assertCreated()->assertJsonPath('data.queue.items.2.parameters.target_nation_id', $target->id);
     }
 
     public function test_sale_policy_validation_authorization_audit_and_concurrency(): void

@@ -42,10 +42,24 @@ final class MonsterDispatchTurnTest extends TestCase
         [, $target] = $this->nation($world, '派遣対象国');
         $space = $this->surfaceMapSpace($world);
         $sender->update(['money' => 3_000]);
-        $candidate = $this->singleDispatchCandidate($target);
+        $candidate = $this->singleDispatchCandidateOutsideProtection($target);
         $beforePopulation = $candidate->population;
         $item = $this->queueDispatch($user, $sender, $target, $space);
+        $capital = $target->capital()->firstOrFail();
+        $target->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $context = $this->context($world, 2, 'dispatch spawn turn', [$sender->id]);
+        $context->state->setNationLifecycleSnapshot($target->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
 
         app(DomesticCommandExecutor::class)->execute($context);
 
@@ -274,6 +288,26 @@ final class MonsterDispatchTurnTest extends TestCase
         $this->assertInstanceOf(MapCell::class, $candidate);
         MapCell::query()->whereIn('id', $settlements->pluck('id'))->update(['population' => 0]);
         $candidate->update(['population' => 1_000]);
+
+        return $candidate->fresh(['terrain', 'facility']);
+    }
+
+    private function singleDispatchCandidateOutsideProtection(Nation $target): MapCell
+    {
+        MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', ['village', 'town', 'city']))
+            ->update(['population' => 0]);
+        $capital = $target->capital()->firstOrFail();
+        $capitalCoordinate = new GridCoordinate($capital->x, $capital->y);
+        $mapSpaceId = $capital->cell()->valueOrFail('map_space_id');
+        $candidate = MapCell::query()->where('map_space_id', $mapSpaceId)
+            ->whereNull('owner_nation_id')
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->orderBy('id')->get()
+            ->first(fn (MapCell $cell): bool => $capitalCoordinate->distanceTo(
+                new GridCoordinate($cell->x, $cell->y),
+            ) > 2);
+        $this->assertInstanceOf(MapCell::class, $candidate);
+        $this->setCell($candidate, 'plain', 'village', $target->id, 1_000);
 
         return $candidate->fresh(['terrain', 'facility']);
     }

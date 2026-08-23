@@ -28,6 +28,19 @@ final class NationCommandTargetService
     /**
      * @return list<array{value: int, label: string, nation_number: int}>
      */
+    public function monsterDispatchOptions(Nation $sender): array
+    {
+        $targets = $this->selectableQuery($sender, ['active', 'dormant'])
+            ->orderBy('nation_number')
+            ->orderBy('id')
+            ->get(['id', 'name', 'nation_number']);
+
+        return $this->presentOptions($targets);
+    }
+
+    /**
+     * @return list<array{value: int, label: string, nation_number: int}>
+     */
     public function monumentFlightOptions(Nation $sender): array
     {
         $targets = $this->selectableQuery($sender)
@@ -146,17 +159,24 @@ final class NationCommandTargetService
         if ($targetNationId === null && ($schema['required'] ?? false) !== true) {
             return;
         }
-        if (! is_int($targetNationId) || ! $this->selectableQuery($sender)->whereKey($targetNationId)->exists()) {
-            throw new PlayerFacingCommandException('対象島は同じWorldの選択可能なactive島から選んでください。');
+        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant'] : ['active'];
+        if (! is_int($targetNationId)
+            || ! $this->selectableQuery($sender, $targetStates)->whereKey($targetNationId)->exists()) {
+            throw new PlayerFacingCommandException($definition->key === 'monster_dispatch'
+                ? '怪獣派遣の対象島は同じWorldの選択可能な島から選んでください。'
+                : '対象島は同じWorldの選択可能なactive島から選んでください。');
         }
     }
 
-    /** @return Builder<Nation> */
-    private function selectableQuery(Nation $sender): Builder
+    /**
+     * @param  non-empty-list<string>  $states
+     * @return Builder<Nation>
+     */
+    private function selectableQuery(Nation $sender, array $states = ['active']): Builder
     {
         return Nation::query()
             ->where('world_id', $sender->world_id)
-            ->where('state', 'active')
+            ->whereIn('state', $states)
             ->where('id', '<>', $sender->id);
     }
 }

@@ -101,6 +101,8 @@ final class PlayerIslandEventService
         'missile.dormancy_protected',
         'missile.impact',
         'refugee_generated',
+        'nation.dormant',
+        'nation.dormancy_resumed',
     ];
 
     /** @var list<string> */
@@ -806,8 +808,23 @@ final class PlayerIslandEventService
                 $this->missileEffectLabel($metadata['effect'] ?? null),
             ),
             'refugee_generated' => "{$nation}でミサイル攻撃による難民が発生しました。",
+            'nation.dormant' => $this->publicDormancyMessage($metadata),
+            'nation.dormancy_resumed' => "{$nation}に春が訪れ、活動を再開しました。",
             default => "{$nation}で出来事がありました。",
         };
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function publicDormancyMessage(array $metadata): string
+    {
+        $nation = is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '島';
+        $secretary = is_string($metadata['secretary_name'] ?? null)
+            ? '秘書の'.$metadata['secretary_name']
+            : '秘書';
+
+        return ($metadata['reason'] ?? null) === 'collapse'
+            ? "{$nation}から住民が居なくなった悲しみで{$secretary}が涙を流しました。{$nation}に冬が訪れています……"
+            : "主が帰ってくるまでの間、{$secretary}が禁呪を解き放ちました。{$nation}に冬が訪れています……";
     }
 
     /** @param array<string, mixed> $metadata */
@@ -896,6 +913,8 @@ final class PlayerIslandEventService
                 'nation_name', 'target_nation_name', 'firing_nation_name',
                 'missile_key', 'effect', 'x', 'y',
             ],
+            'nation.dormant' => ['nation_name', 'reason', 'secretary_name'],
+            'nation.dormancy_resumed' => ['nation_name'],
             default => [],
         };
         $safe = array_intersect_key($metadata, array_fill_keys($keys, true));

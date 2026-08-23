@@ -29,7 +29,7 @@ dormant heartbeatはcanonical bounded financeでbase 10億円と装備中Ring bo
 
 ## 距離2 protection
 
-開始snapshotでdormantだったCapitalからhex distance 2以内は、missile impact、disaster mutation、monster移動・破壊・spawn/dispatch、territory influence/expandをmutation直前にno-opとする。missileは費用と既に消費したRNGを戻さず、指定public logを残す。範囲外のdormant territoryは通常の相互作用を受ける。
+開始snapshotでdormantだったCapitalからhex distance 2以内は、missile impact、disaster mutation、monster移動・破壊・spawn/dispatch、territory influence/expandを保護する。missile、disaster、territoryはmutation直前にno-opとし、missileは費用と既に消費したRNGを戻さず指定public logを残す。monsterは開始cellが範囲内なら即座に`stayed`、範囲外から範囲内cellを引いた場合はmonument等と同じ進入不可candidateとして1 attemptを消費し、`candidate_attempts_per_action = 3`の総枠内で残り候補を再抽選する。`monster_dispatch`はdormant Nationもtargetとして選択・再検証できるが、spawn candidateから保護範囲内cellだけを除外する。範囲外のdormant territoryは通常の相互作用を受ける。
 
 themeはpresentationだけに適用する。chunk presentationでdormant Capitalを一括loadし、allowlistのterrain/facility/汎用monumentだけを`snow`へ解決する。sea、shallow、oil、Capital、seabed、custom monument、monster、overlayは通常assetのままである。
 

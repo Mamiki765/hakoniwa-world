@@ -13,6 +13,7 @@ use App\Models\Secretary;
 use App\Models\TurnRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -65,6 +66,12 @@ final class NationDormancyTest extends TestCase
             'nation_id' => $nation->id,
             'visibility' => 'public',
         ]);
+        $dormancyMessage = '主が帰ってくるまでの間、秘書が禁呪を解き放ちました。手動休止島に冬が訪れています……';
+        $publicLog = $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk();
+        $this->assertContains($dormancyMessage, $this->messages($publicLog->json('data.groups')));
+        $this->assertStringNotContainsString('secretary_id', (string) $publicLog->getContent());
+        $ownerLog = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
+        $this->assertContains($dormancyMessage, $this->messages($ownerLog->json('data.groups')));
         $this->actingAs($owner)->postJson($endpoint, ['days' => 1])
             ->assertConflict()->assertJsonPath('code', 'nation_not_active');
 
@@ -132,6 +139,11 @@ final class NationDormancyTest extends TestCase
             'nation_id' => $nation->id,
             'message' => '期限休止島に春が訪れ、活動を再開しました。',
         ]);
+        $resumeMessage = '期限休止島に春が訪れ、活動を再開しました。';
+        $publicLog = $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk();
+        $this->assertContains($resumeMessage, $this->messages($publicLog->json('data.groups')));
+        $ownerLog = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
+        $this->assertContains($resumeMessage, $this->messages($ownerLog->json('data.groups')));
     }
 
     public function test_turn_end_enters_dormancy_and_2160_heartbeat_reuses_canonical_abandonment(): void
@@ -172,10 +184,26 @@ final class NationDormancyTest extends TestCase
             'nation_id' => $abandonedNation->id,
             'message' => '忘却島は放置され、忘れ去られる。',
             'visibility' => 'public',
+            'turn' => 2,
         ]);
+        $abandonmentEvent = DB::table('audit_events')
+            ->where('event_type', 'nation.abandoned')
+            ->where('nation_id', $abandonedNation->id)
+            ->sole();
+        $abandonmentMetadata = json_decode((string) $abandonmentEvent->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(2, $abandonmentMetadata['target_turn']);
+        $this->assertSame(2, $abandonmentMetadata['current_turn']);
         $finalize = collect($run->phase_results)->firstWhere('phase', 'finalize_turn')['metrics'];
         $this->assertSame(1, $finalize['entered_dormant']);
         $this->assertSame(1, $finalize['abandoned']);
         $this->assertSame(0, NationMembership::query()->where('nation_id', $abandonedNation->id)->count());
+    }
+
+    /** @param list<array<string, mixed>> $groups @return list<string> */
+    private function messages(array $groups): array
+    {
+        return collect($groups)->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->pluck('message')->all();
     }
 }

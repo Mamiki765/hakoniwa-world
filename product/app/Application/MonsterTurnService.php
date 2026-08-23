@@ -124,15 +124,7 @@ final class MonsterTurnService
                 continue;
             }
             if ($this->nationProtection->protects($context, $destination->x, $destination->y)) {
-                $this->recordStayed(
-                    $context,
-                    $monster->id,
-                    $definition->key,
-                    $cell,
-                    'dormant_destination_protected',
-                );
-
-                return true;
+                continue;
             }
             $facilityKey = $destination->facility?->key;
             if ($facilityKey === ($movement['defense_facility_key'] ?? null)) {

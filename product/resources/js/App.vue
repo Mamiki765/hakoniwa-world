@@ -1663,7 +1663,7 @@ async function abandonNation(): Promise<void> {
                         <dl class="dormancy-status">
                             <div><dt>理由</dt><dd>{{ nation.state_reason === 'manual' ? '手動休止' : nation.state_reason === 'collapse' ? '人口・食料の枯渇' : '無活動' }}</dd></div>
                             <div><dt>指定期間</dt><dd>{{ nation.manual_dormancy_days === null ? '自動休止' : `${nation.manual_dormancy_days}日` }}</dd></div>
-                            <div><dt>再開予定turn</dt><dd>{{ nation.resume_at_turn === null ? '開発予定の登録時' : `Turn ${nation.resume_at_turn}` }}</dd></div>
+                            <div><dt>再開予定turn</dt><dd>{{ nation.resume_at_turn === null ? '通常command登録後の次official Turn' : `Turn ${nation.resume_at_turn}` }}</dd></div>
                             <div><dt>残りturn / 日数</dt><dd>{{ nation.dormancy_remaining_turns === null ? '期限なし' : `${nation.dormancy_remaining_turns} turn / 約${nation.dormancy_remaining_days}日` }}</dd></div>
                             <div><dt>自動破棄まで</dt><dd>{{ nation.abandonment_remaining_turns }} turn</dd></div>
                             <div><dt>表示</dt><dd>冬theme適用中</dd></div>

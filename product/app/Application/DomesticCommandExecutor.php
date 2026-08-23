@@ -487,7 +487,9 @@ final class DomesticCommandExecutor
             return ['reason' => CommandFailureReason::SameNationTarget, 'observed' => $observed];
         }
         $target = Nation::query()->whereKey($targetNationId)->lockForUpdate()->first();
-        if ($target === null || $target->world_id !== $context->world->id || $target->state !== 'active') {
+        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant'] : ['active'];
+        if ($target === null || $target->world_id !== $context->world->id
+            || ! in_array($target->state, $targetStates, true)) {
             return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
         }
         if ($definition->key === 'money_aid') {
@@ -1162,7 +1164,7 @@ final class DomesticCommandExecutor
 
             return true;
         }
-        $target = $this->targetNation($context, $nation, $item);
+        $target = $this->targetNation($context, $nation, $item, $definition);
         if ($definition->key === 'money_aid') {
             $requested = $this->moneyAidAmount($item, $definition);
             $capacity = $this->capacities->resolve($target, $context->ruleset)->money;
@@ -1260,15 +1262,21 @@ final class DomesticCommandExecutor
         throw new DomainException("Unsupported Nation command {$definition->key}.");
     }
 
-    private function targetNation(TurnContext $context, Nation $sender, NationCommandQueueItem $item): Nation
-    {
+    private function targetNation(
+        TurnContext $context,
+        Nation $sender,
+        NationCommandQueueItem $item,
+        CommandDefinition $definition,
+    ): Nation {
         $targetNationId = $item->parameters['target_nation_id'] ?? null;
         if (! is_int($targetNationId) || $targetNationId === $sender->id) {
             throw new DomainException('Nation command target changed after validation.');
         }
 
+        $targetStates = $definition->key === 'monster_dispatch' ? ['active', 'dormant'] : ['active'];
+
         return Nation::query()->whereKey($targetNationId)
-            ->where('world_id', $context->world->id)->where('state', 'active')
+            ->where('world_id', $context->world->id)->whereIn('state', $targetStates)
             ->lockForUpdate()->firstOrFail();
     }
 
