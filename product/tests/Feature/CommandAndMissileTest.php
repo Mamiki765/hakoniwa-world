@@ -1113,6 +1113,10 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'refugee_generated')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'karma.alliance_money')->count());
         foreach ([$first, $second, $third] as $nation) {
+            $this->assertSame(
+                1,
+                $context->state->pendingSecretaryExperience()[$nation->id][SecretarySkillCatalog::FINAL_DEFENSE_LINE],
+            );
             $this->assertSame(1, $context->state->karmaLedgerForNation($nation->id)['sanction_count']);
             $this->assertSame(0, $context->state->karmaLedgerForNation($nation->id)['hostile_impacts_received']);
             $this->assertFalse($context->state->karmaLedgerForNation($nation->id)['recovery_entry']);

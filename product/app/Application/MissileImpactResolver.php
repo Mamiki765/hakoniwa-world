@@ -294,6 +294,7 @@ final class MissileImpactResolver
                     'meaningful' => false,
                     'effect' => 'ineffective_sea',
                 ];
+                $this->awardFinalDefenseArrivalExperience($context, $cell);
                 $impact = $this->defenseInterception($context, $space, $cell, $base, 'missile')
                     ?? $this->ordinaryImpact($context, null, null, $cell, $base, 'missile', null);
                 if (in_array($impact['effect'], ['defense_intercepted', 'secretary_intercepted'], true)) {
@@ -649,13 +650,7 @@ final class MissileImpactResolver
                 'protected_nation_id' => $protectedNationId,
             ];
         }
-        $targetNationId = $cell->owner_nation_id;
-        if ($targetNationId !== null && $context->state->hasSecretarySnapshot($targetNationId)) {
-            $context->state->awardSecretaryExperience(
-                $targetNationId,
-                SecretarySkillCatalog::FINAL_DEFENSE_LINE,
-            );
-        }
+        $this->awardFinalDefenseArrivalExperience($context, $cell);
         $defense = $this->defenseInterception($context, $space, $cell, $base, $intent->definitionKey);
         if ($defense !== null) {
             return $defense;
@@ -672,6 +667,18 @@ final class MissileImpactResolver
             $base,
             $intent->definitionKey,
             $intent->queueItemId,
+        );
+    }
+
+    private function awardFinalDefenseArrivalExperience(TurnContext $context, MapCell $cell): void
+    {
+        $targetNationId = $cell->owner_nation_id;
+        if ($targetNationId === null || ! $context->state->hasSecretarySnapshot($targetNationId)) {
+            return;
+        }
+        $context->state->awardSecretaryExperience(
+            $targetNationId,
+            SecretarySkillCatalog::FINAL_DEFENSE_LINE,
         );
     }
 
