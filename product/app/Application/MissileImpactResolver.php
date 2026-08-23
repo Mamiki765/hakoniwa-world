@@ -628,8 +628,9 @@ final class MissileImpactResolver
             $context,
             $coordinate->x,
             $coordinate->y,
+            $firingNation->id,
         );
-        if ($protectedNationId !== null && $protectedNationId !== $firingNation->id) {
+        if ($protectedNationId !== null) {
             $protectedNation = Nation::query()->findOrFail($protectedNationId);
             $recoveryProtection = $context->state->recoveryTerritoryNationId(
                 $coordinate->x,

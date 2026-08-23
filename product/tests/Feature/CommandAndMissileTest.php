@@ -3543,7 +3543,7 @@ class CommandAndMissileTest extends TestCase
             $dormantCell,
             FacilityDefinition::query()->where('key', 'city')->firstOrFail(),
         );
-        $dormantCell->owner_nation_id = $dormant->id;
+        $dormantCell->owner_nation_id = $firing->id;
         $dormantCell->population = 777;
         $dormantCell->version++;
         $dormantCell->save();
@@ -3551,17 +3551,27 @@ class CommandAndMissileTest extends TestCase
         $snapshot = $dormantCell->fresh()->only([
             'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population', 'version',
         ]);
-        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $aim);
-        $seed = $this->seedForImpactIndex($item, $aim, 2, $dormantCell);
-        $context = $this->context($world, 2, $seed, [$firing->id, $dormant->id]);
-        $context->state->setNationLifecycleSnapshot($dormant->id, [
-            'state' => 'dormant',
-            'reason' => 'idle',
+        $firing->update([
+            'state' => 'recovery',
             'state_started_turn' => 1,
-            'resume_at_turn' => null,
-            'capital_x' => $capital->x,
-            'capital_y' => $capital->y,
+            'resume_at_turn' => 86,
         ]);
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing->fresh(),
+            $space,
+            'missile',
+            $dormantCell,
+        );
+        $seed = $this->seedForImpactIndex($item, $dormantCell, 2, $dormantCell);
+        $context = $this->context($world, 2, $seed, [$firing->id, $dormant->id]);
+        app(NationLifecycleService::class)->prepare($context);
+
+        $this->assertSame(
+            $firing->id,
+            $context->state->recoveryTerritoryNationId($dormantCell->x, $dormantCell->y),
+        );
 
         $this->resolveMissile($context, $base);
 
@@ -3572,6 +3582,7 @@ class CommandAndMissileTest extends TestCase
         $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('dormant_capital_protected', $detail['impacts'][0]['effect']);
+        $this->assertSame($dormant->id, $detail['impacts'][0]['protected_nation_id']);
         $this->assertSame(
             "{$dormant->name}({$dormantCell->x},{$dormantCell->y})にミサイルが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました",
             DB::table('audit_events')->where('event_type', 'missile.dormancy_protected')->value('message'),
