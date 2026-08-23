@@ -224,6 +224,20 @@ final class TurnState
         return $this->recoveryTerritoryNationIds[$x.':'.$y] ?? null;
     }
 
+    public function recordRecoveryTerritoryAcquired(int $nationId, int $x, int $y): void
+    {
+        $snapshot = $this->nationLifecycleSnapshots[$nationId] ?? null;
+        if (($snapshot['state'] ?? null) !== 'recovery') {
+            throw new InvalidArgumentException('Only a frozen recovery Nation may acquire protected territory.');
+        }
+        $key = $x.':'.$y;
+        $existingNationId = $this->recoveryTerritoryNationIds[$key] ?? null;
+        if ($existingNationId !== null && $existingNationId !== $nationId) {
+            throw new InvalidArgumentException('Recovery territory cannot change between frozen recovery Nations.');
+        }
+        $this->recoveryTerritoryNationIds[$key] = $this->validatedNationId($nationId);
+    }
+
     /** @param array<array-key, mixed> $nationIds */
     public function setDevelopmentNationIds(array $nationIds): void
     {

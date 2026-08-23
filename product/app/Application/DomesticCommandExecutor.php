@@ -1084,6 +1084,9 @@ final class DomesticCommandExecutor
         $cell->version++;
         $cell->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
+        if (in_array($nation->id, $context->state->recoveryNationIds(), true)) {
+            $context->state->recordRecoveryTerritoryAcquired($nation->id, $cell->x, $cell->y);
+        }
         $this->events->record($context, 'command.territory_expanded', $cell, [
             'nation_id' => $nation->id,
             'x' => $cell->x,

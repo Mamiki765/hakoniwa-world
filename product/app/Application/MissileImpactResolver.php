@@ -91,7 +91,7 @@ final class MissileImpactResolver
             return [...$metrics, 'changed_cell_ids' => []];
         }
         $nation = Nation::query()->whereKey($base->owner_nation_id)->lockForUpdate()->first();
-        if ($nation === null || $nation->state !== 'active') {
+        if ($nation === null || ! in_array($nation->state, ['active', 'recovery'], true)) {
             return [...$metrics, 'changed_cell_ids' => []];
         }
         $capacity = $base->facility_experience !== null

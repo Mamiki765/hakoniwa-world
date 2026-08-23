@@ -19,6 +19,7 @@ use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -773,7 +774,7 @@ class CommandAndMissileTest extends TestCase
             ->firstOrFail();
         $targetCell = $target->capital()->firstOrFail()->cell()
             ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
-        $this->missileBase($actor);
+        $actorBase = $this->missileBase($actor);
         $preRecoveryMissile = $this->queue(
             $commands,
             $actorUser,
@@ -944,7 +945,60 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('plain', $forest->fresh()->terrain()->value('key'));
         $this->assertSame('completed', $expansion->fresh()->status);
         $this->assertSame($actor->id, $neutral->fresh()->owner_nation_id);
+        $this->assertSame(
+            $actor->id,
+            $nextAllowed->state->recoveryTerritoryNationId($neutral->x, $neutral->y),
+            'Neutral territory acquired during recovery must be protected in the same Turn.',
+        );
+        $this->assertTrue(app(NationProtectionPolicy::class)->protects(
+            $nextAllowed,
+            $neutral->x,
+            $neutral->y,
+        ));
         $this->assertSame('recovery', $actor->fresh()->state);
+
+        $selfTarget = MapCell::query()->where('owner_nation_id', $actor->id)
+            ->whereKeyNot($actorBase->id)->whereNull('facility_definition_id')
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $selfTarget,
+            TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
+        );
+        $selfTarget->population = 0;
+        $selfTarget->save();
+        $selfMissile = $this->queue(
+            $commands,
+            $actorUser,
+            $actor->fresh(),
+            $space,
+            'missile',
+            $selfTarget,
+        );
+        $selfContext = $this->context(
+            $world,
+            5,
+            $this->seedForImpactIndex($selfMissile, $selfTarget, 2, $selfTarget),
+            [$actor->id, $target->id],
+        );
+        app(NationLifecycleService::class)->prepare($selfContext);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($selfContext);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($selfContext, [$actor->id, $target->id]);
+        app(DomesticCommandExecutor::class)->execute($selfContext);
+        $karma->snapshotMissileBoundary($selfContext);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $selfLaunch = $resolver->processBase(
+            $selfContext,
+            $space,
+            $actorBase->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $resolver->finalize($selfContext);
+
+        $this->assertSame('completed', $selfMissile->fresh()->status);
+        $this->assertSame(1, $selfLaunch['shots_fired']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.launch_failed')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $selfMissile->id])->count());
         $aidMetadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'command.money_aid_transferred')
             ->whereRaw("metadata->>'sender_nation_id' = ?", [(string) $actor->id])
