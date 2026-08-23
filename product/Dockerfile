@@ -15,11 +15,13 @@ FROM composer:2.10.2 AS vendor
 
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-interaction --no-progress --prefer-dist --no-scripts
+RUN --mount=type=cache,id=hakoniwa-composer-cache,target=/tmp/composer-cache,sharing=locked \
+    COMPOSER_CACHE_DIR=/tmp/composer-cache \
+    composer install --no-interaction --no-progress --prefer-dist --no-scripts
 COPY . .
 RUN composer dump-autoload --classmap-authoritative --no-interaction
 
-FROM php:8.5.8-apache-bookworm
+FROM php:8.5.8-apache-bookworm AS runtime
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
@@ -48,3 +50,10 @@ RUN chmod +x /usr/local/bin/hakoniwa-entrypoint \
 WORKDIR /var/www/html
 ENTRYPOINT ["hakoniwa-entrypoint"]
 CMD ["apache2-foreground"]
+
+FROM runtime AS development
+
+COPY --from=vendor /usr/bin/composer /usr/local/bin/composer
+RUN composer dump-autoload --no-interaction --no-scripts
+
+FROM runtime AS production

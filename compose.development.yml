@@ -1,0 +1,48 @@
+services:
+  hakoniwa-dev:
+    profiles:
+      - development
+    build:
+      context: ./product
+      dockerfile: Dockerfile
+      target: development
+    depends_on:
+      hakoniwa-postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_DEBUG: "false"
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: pgsql
+      DB_HOST: hakoniwa-postgres
+      DB_PORT: 5432
+      DB_DATABASE: hakoniwa_test
+      DB_USERNAME: ${HAKONIWA_POSTGRES_USER:-hakoniwa}
+      DB_PASSWORD: ${HAKONIWA_POSTGRES_PASSWORD:?Set HAKONIWA_POSTGRES_PASSWORD in the root .env file}
+      CACHE_STORE: array
+      MAIL_MAILER: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      TZ: ${TZ:-Asia/Tokyo}
+    command:
+      - sleep
+      - infinity
+    volumes:
+      - ./product/app:/var/www/html/app:ro
+      - ./product/bootstrap/app.php:/var/www/html/bootstrap/app.php:ro
+      - ./product/bootstrap/providers.php:/var/www/html/bootstrap/providers.php:ro
+      - ./product/config:/var/www/html/config:ro
+      - ./product/database:/var/www/html/database:ro
+      - ./product/docs:/var/www/html/docs:ro
+      - ./product/resources:/var/www/html/resources:ro
+      - ./product/routes:/var/www/html/routes:ro
+      - ./product/tests:/var/www/html/tests:ro
+      - ./product/artisan:/var/www/html/artisan:ro
+      - ./product/phpunit.xml:/var/www/html/phpunit.xml:ro
+      - ./product/phpstan.neon:/var/www/html/phpstan.neon:ro
+      - ./product/public/index.php:/var/www/html/public/index.php:ro
+      - ./compose.yml:/var/www/compose.yml:ro
+      - ./compose.development.yml:/var/www/compose.development.yml:ro
+    networks:
+      - hakoniwa
