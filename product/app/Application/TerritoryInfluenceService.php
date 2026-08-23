@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\TerritoryInfluencePolicy;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -23,6 +24,7 @@ final class TerritoryInfluenceService
         private readonly TerritoryInfluencePolicy $policy,
         private readonly CapitalCorePolicy $capitalCores,
         private readonly TurnEventRecorder $events,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     /**
@@ -61,25 +63,39 @@ final class TerritoryInfluenceService
             $cell->x.':'.$cell->y => $cell,
         ])->all();
 
-        $activeNations = Nation::query()
+        $lifecycle = $context->ruleset->settings['nation_lifecycle'] ?? [];
+        $targetStates = is_array($lifecycle)
+            ? ($lifecycle['territory_influence_target_states'] ?? $settings['owner_states'] ?? [])
+            : ($settings['owner_states'] ?? []);
+        $sourceStates = is_array($lifecycle)
+            ? ($lifecycle['territory_influence_source_states'] ?? $settings['owner_states'] ?? [])
+            : ($settings['owner_states'] ?? []);
+        if (! is_array($targetStates) || ! is_array($sourceStates)) {
+            throw new DomainException('Territory influence Nation state settings are invalid.');
+        }
+        $targetNations = Nation::query()
             ->where('world_id', $context->world->id)
-            ->whereIn('state', $settings['owner_states'] ?? [])
+            ->whereIn('state', $targetStates)
             ->orderBy('id')
             ->lockForUpdate()
             ->get(['id', 'name', 'state']);
-        $activeNationIds = $activeNations->mapWithKeys(
+        $targetNationIds = $targetNations->mapWithKeys(
             static fn (Nation $nation): array => [(int) $nation->id => true],
         )->all();
-        $activeNationNames = $activeNations->mapWithKeys(
+        $sourceNationIds = $targetNations
+            ->filter(static fn (Nation $nation): bool => in_array($nation->state, $sourceStates, true))
+            ->mapWithKeys(static fn (Nation $nation): array => [(int) $nation->id => true])
+            ->all();
+        $targetNationNames = $targetNations->mapWithKeys(
             static fn (Nation $nation): array => [(int) $nation->id => $nation->name],
         )->all();
         $capitals = NationCapital::query()
-            ->whereIn('nation_id', array_keys($activeNationIds))
+            ->whereIn('nation_id', array_keys($targetNationIds))
             ->orderBy('nation_id')
             ->lockForUpdate()
             ->get(['nation_id', 'map_cell_id', 'x', 'y']);
-        if ($capitals->count() !== count($activeNationIds)) {
-            throw new DomainException('Every active Nation must have exactly one Capital before territory influence.');
+        if ($capitals->count() !== count($targetNationIds)) {
+            throw new DomainException('Every territory-influence Nation must have exactly one Capital.');
         }
         $capitalFacts = $capitals->map(function (NationCapital $capital) use ($cellsById): array {
             $cell = $cellsById->get($capital->map_cell_id);
@@ -132,6 +148,9 @@ final class TerritoryInfluenceService
                 throw new DomainException("Surface cell order references missing cell {$cellId}.");
             }
             $metrics['processed']++;
+            if ($this->nationProtection->protects($context, $target->x, $target->y)) {
+                continue;
+            }
             $targetOwnerNationId = $target->owner_nation_id;
             $targetCoreProtected = $targetOwnerNationId !== null
                 && $this->capitalCores->protectsCurrentOwnerTerritory(
@@ -147,7 +166,7 @@ final class TerritoryInfluenceService
                 $target->facility?->key,
                 isset($occupiedCellIds[$target->id]),
                 $targetCoreProtected,
-                $activeNationIds,
+                $targetNationIds,
             )) {
                 continue;
             }
@@ -165,7 +184,7 @@ final class TerritoryInfluenceService
                     $source->terrain->key,
                     $source->facility?->key,
                     isset($occupiedCellIds[$source->id]),
-                    $activeNationIds,
+                    $sourceNationIds,
                 )) {
                 continue;
             }
@@ -196,9 +215,9 @@ final class TerritoryInfluenceService
                     'x' => $target->x,
                     'y' => $target->y,
                     'old_owner_nation_id' => $oldOwnerNationId,
-                    'old_owner_nation_name' => $activeNationNames[$oldOwnerNationId],
+                    'old_owner_nation_name' => $targetNationNames[$oldOwnerNationId],
                     'new_owner_nation_id' => $newOwnerNationId,
-                    'new_owner_nation_name' => $activeNationNames[$newOwnerNationId],
+                    'new_owner_nation_name' => $targetNationNames[$newOwnerNationId],
                     'ownership_changed' => true,
                 ],
                 'visibility' => 'public',

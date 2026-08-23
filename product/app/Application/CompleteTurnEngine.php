@@ -63,6 +63,7 @@ final class CompleteTurnEngine
         private readonly SecretaryTurnService $secretaries,
         private readonly SecretaryProductionBonus $secretaryProduction,
         private readonly SecretaryOldBowService $secretaryOldBow,
+        private readonly NationLifecycleService $nationLifecycle,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -73,7 +74,7 @@ final class CompleteTurnEngine
             'resolve_territory_influence' => $this->territoryInfluence->execute($context),
             'nation_economy' => $this->nationEconomy($context),
             'resource_sales' => $this->sellResources($context),
-            'development_commands' => $this->commands->execute($context),
+            'development_commands' => $this->developmentCommands($context),
             'process_cells' => $this->processCells($context),
             'settle_deferred_effects' => ['settled_effects' => 0, 'extension_boundary' => true],
             'global_disasters' => $this->disasters->executeGlobal($context),
@@ -92,18 +93,23 @@ final class CompleteTurnEngine
         if (! is_array($context->ruleset->settings['turn_processing'] ?? null)) {
             throw new DomainException('The active ruleset does not implement the complete non-combat turn contract.');
         }
+        $lifecycleMetrics = $this->nationLifecycle->prepare($context);
         $nationIds = $this->orders->stableNationIds($context->world);
         $context->state->setStableNationIds($nationIds);
-        foreach ($this->summaryRecords($nationIds) as $nationId => $record) {
+        foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
             $context->state->setNationStartSummary($nationId, $record['summary']);
         }
 
-        $secretarySnapshots = $this->secretaries->loadAttemptSnapshots($context, $nationIds);
+        $secretarySnapshots = $this->secretaries->loadAttemptSnapshots(
+            $context,
+            $context->state->lifecycleNationIds(),
+        );
 
         $metrics = [
             'nations' => count($nationIds),
             'ruleset_validated' => true,
             'secretary_snapshots' => $secretarySnapshots,
+            ...$lifecycleMetrics,
         ];
         if ($this->secretaries->itemEffectsEnabled($context)) {
             $metrics['secretary_item_effect_snapshots'] = $context->state->secretaryItemEffectSnapshotCount();
@@ -111,6 +117,19 @@ final class CompleteTurnEngine
         }
 
         return $metrics;
+    }
+
+    /** @return array<string, int> */
+    private function developmentCommands(TurnContext $context): array
+    {
+        $commandMetrics = $this->commands->execute($context);
+        $heartbeatMetrics = $this->nationLifecycle->heartbeat($context);
+
+        foreach ($heartbeatMetrics as $key => $value) {
+            $commandMetrics['dormancy_'.$key] = $value;
+        }
+
+        return $commandMetrics;
     }
 
     /** @return array<string, int> */
@@ -282,8 +301,12 @@ final class CompleteTurnEngine
             'missile_ineffective_impacts' => 0,
             'missile_idle_counter_resets' => 0,
         ];
-        $activeNations = Nation::query()->where('world_id', $context->world->id)->where('state', 'active')
+        $activeNations = Nation::query()->where('world_id', $context->world->id)
+            ->where('state', 'active')
             ->pluck('id')->map(static fn ($id): int => (int) $id)->flip();
+        $disasterMutableNationIds = Nation::query()->where('world_id', $context->world->id)
+            ->whereIn('state', ['active', 'dormant'])
+            ->pluck('id')->map(static fn ($id): int => (int) $id)->all();
 
         $space = MapSpace::query()
             ->where('world_id', $context->world->id)
@@ -301,7 +324,7 @@ final class CompleteTurnEngine
         ])->all();
         $disasterCells = DisasterMutableCellIndex::fromCells(
             $cells,
-            activeNationIds: $activeNations->keys()->map(static fn ($id): int => (int) $id)->all(),
+            activeNationIds: $disasterMutableNationIds,
             terrainDefinitions: [
                 'sea' => $this->terrainDefinition($context, 'sea'),
                 'shallow' => $this->terrainDefinition($context, 'shallow'),
@@ -710,7 +733,8 @@ final class CompleteTurnEngine
     {
         $secretaryMetrics = $this->secretaries->flushExperience($context);
         $awardMetrics = $this->awards->finalize($context);
-        foreach ($this->summaryRecords($context->state->stableNationIds()) as $nationId => $record) {
+        $lifecycleMetrics = $this->nationLifecycle->finalize($context);
+        foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
             $nation = $record['nation'];
             $start = $context->state->nationStartSummary($nationId);
             $end = $record['summary'];
@@ -739,6 +763,7 @@ final class CompleteTurnEngine
             'secretary_experience_awarded' => $secretaryMetrics['experience_awarded'],
             'secretary_skills_changed' => $secretaryMetrics['skills_changed'],
             'secretary_levels_gained' => $secretaryMetrics['levels_gained'],
+            ...$lifecycleMetrics,
             ...$awardMetrics,
         ];
     }

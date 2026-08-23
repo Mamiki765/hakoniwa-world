@@ -73,7 +73,7 @@ final class PublicApiController extends Controller
 
     public function nation(Nation $nation, PublicWorldService $service): JsonResponse
     {
-        abort_unless($nation->state === 'active', 404);
+        abort_unless(in_array($nation->state, ['active', 'dormant'], true), 404);
 
         return response()->json(['data' => $service->nation($nation)]);
     }
@@ -85,7 +85,8 @@ final class PublicApiController extends Controller
         int $chunkY,
         MapChunkService $chunks,
     ): JsonResponse {
-        abort_unless($nation->state === 'active' && $nation->world_id === $mapSpace->world_id, 404);
+        abort_unless(in_array($nation->state, ['active', 'dormant'], true)
+            && $nation->world_id === $mapSpace->world_id, 404);
 
         return response()->json(['data' => $chunks->present($mapSpace, $chunkX, $chunkY, null)]);
     }

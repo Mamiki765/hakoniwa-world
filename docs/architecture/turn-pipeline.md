@@ -81,18 +81,11 @@ Discord webhook、メール、分析基盤はturn transaction内で呼ばない�
 
 ## 国家休眠とターン対象
 
-正式なstateはADR-0004のactive、dormant_frozen、dormant_contestable、sunken_archivedである。人口0や敗北を理由に国家を即時削除しない。新規・復帰保護はstateではなく期限付きpolicyとする。
+正式なstateはADR-0014の`active`、`dormant`、`recovery`、`abandoned`である。`recovery`はver 2.4.0ではentry pathを持たず、official Turnでfail closedする。
 
-UTCのlast_active_atに基づく30日、180日、365日の遷移は、Schedulerが投入する専用LifecycleEvaluationJobが所有する。turn途中で時刻判定してstateを変更しない。Lifecycle Jobとturn workerは同じworld lockで直列化し、Freezeで今回のstate snapshotを固定する。
+専用Lifecycle Jobや実時間判定は使わない。`prepare_turn`で期限到達manualと復帰意思のあるnon-manual dormantを先にactiveへ戻し、今回のstateとCapitalをfreezeする。activeだけが通常economy、command、生産・人口処理、自然monster spawnを実行する。dormantはqueueを保持し、canonical finance + Ring + capacityで10億円を処理してidle counterを1だけ増やす。
 
-- activeだけがUpkeep、Production、通常command、災害、人口、消費、自動発展の対象になる。
-- dormant_frozenは資源・人口・地図を完全凍結し、一般攻撃と占領の対象外にする。
-- dormant_contestableも経済・人口・災害を凍結するが、首都以外の領土だけを専用占領処理の対象にできる。
-- sunken_archivedは現在地図上のセルを持たず、ターン対象外にする。
-
-dormant_frozenまたはdormant_contestable内の既存怪獣に対する明示的な討伐ミサイルだけを例外とする。実行時にtarget x、yの怪獣identityを検証し、誤差後に怪獣がいなければ無被害の失敗とする。地形、施設、人口、所有権へdamageを適用しない。
-
-365日沈没または明示的放棄は、領土量が小さければ単一transaction、大きければ冪等なlifecycle transition operationとchunk checkpointで処理する。全地図cleanup完了後にsunken_archivedを確定し、user、nation、event、統計、領土履歴は物理deleteしない。
+開始snapshotでdormantのCapitalからdistance 2以内はmissile、disaster、monster、territory mutationをno-opとするが、範囲外は通常処理する。counter確定後の`finalize_turn`でidle 360またはcollapseをdormant、dormantの2160をabandonedへ遷移する。自動破棄はmanual abandonmentと同じ単一transaction cleanupを使い、user、nation、Secretary、event、統計を物理deleteしない。
 
 ## 観測性
 
@@ -111,8 +104,9 @@ PR21では`process_cells`の各cellでmonster actorを人口・facility処理よ
 - フェーズ途中例外で状態・event・outboxが全て戻ること。
 - 通知失敗でもターンが完了すること。
 - 同時国家登録とターン開始の締切境界。
-- turnとLifecycleEvaluationJobの排他、30日・180日・365日のUTC境界。
-- dormant_frozenの状態不変と怪獣討伐ミサイルの無副被害。
-- dormant_contestableで首都以外だけが占領可能であること。
+- manual 1/7日のexact resume Turnと期限前非解除、non-manual queue復帰。
+- dormant heartbeatのqueue保持、finance/counter、通常economy停止。
+- dormant Capital distance 2以内の全mutation保護と範囲外通常処理。
+- idle 360の休止開始と2160のcanonical automatic abandonment。
 - 国境、首都、災害、ミサイルの順序を固定するシナリオ。
 - 大量チャンクでの実行時間、lock時間、メモリ上限。

@@ -7,6 +7,7 @@ use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Monster\MonsterSpawnSource;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -27,6 +28,7 @@ final class MonsterWorldSpawnService
         private readonly NationLandAreaCalculator $landArea,
         private readonly MapCellStateService $cells,
         private readonly TurnEventRecorder $events,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     /** @return array<string, int> */
@@ -96,12 +98,15 @@ final class MonsterWorldSpawnService
                 ->pluck('map_cell_id')->map(static fn ($id): int => (int) $id)->all(),
             true,
         );
-        $candidates = $surfaceCells->filter(function (MapCell $cell) use ($settings, $blockedByLand, $occupiedCellIds): bool {
+        $candidates = $surfaceCells->filter(function (MapCell $cell) use ($context, $settings, $blockedByLand, $occupiedCellIds): bool {
             if (! in_array($cell->terrain->key, $settings['terrain_keys'], true)
                 || $cell->owner_nation_id !== null
                 || $cell->population !== 0
                 || $cell->facility_definition_id !== null
                 || isset($occupiedCellIds[$cell->id])) {
+                return false;
+            }
+            if ($this->nationProtection->protects($context, $cell->x, $cell->y)) {
                 return false;
             }
 

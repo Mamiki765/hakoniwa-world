@@ -126,7 +126,7 @@ registrationとturnが同じworldを更新するため、ロック階層を統�
 
 ## 再入植との境界
 
-sunken_archivedの国家は旧領土・旧首都を地図へ巻き戻さない。本人が後日復帰する場合は、新規登録と共通の空き領域探索・世界拡張を利用する再入植を基本候補とする。ただし旧国家名、初期資源、ランキング、称号、新規保護期間、同じnation_idを再利用するかは未決定である。
+ADR-0004で`sunken_archived`と呼んでいた旧案はADR-0014で廃止された。現行の`abandoned` Nationも旧領土・旧首都を地図へ巻き戻さず、本人が後日参加する場合は新規Nation登録を使う。旧国家名、初期資源、ランキング、称号、新規保護期間、同じnation_idを再利用する「再入植」機能は実装せず、B-15のDeferred境界に残す。
 
 ## Historical pre-implementation questions
 
@@ -154,4 +154,4 @@ PR19では登録入力に公開用の`owner_name`（必須、1–30文字）と`
 1,024 cellsを追加する。60×60の場合は64×64のpartial chunks補完だけでは成功扱いにせず、同一の
 原子的拡張で最初のLEFT帯まで追加する。rotation専用DB stateは持たず、正規sequenceとして解釈
 できないbounds、または一度の拡張後も候補0件なら推測・追加拡張せず全処理をrollbackする。
-- Status: Deferred / Required before: MVP後 — 放棄Territory再利用、World運用上限と新World作成、sunken_archivedからの再入植。
+- Status: Deferred / Required before: MVP後 — 放棄Territory再利用、World運用上限と新World作成、`abandoned`からの再入植。旧`sunken_archived`語彙はADR-0004のhistorical provenanceだけに残す。

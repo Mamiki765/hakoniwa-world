@@ -2072,7 +2072,11 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'parameters' => ['target_nation_id' => $nation->id],
         ])->assertUnprocessable();
 
-        $target->update(['state' => 'dormant_frozen']);
+        $target->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $catalogWithoutTarget = $this->getJson("{$base}/command-definitions")->assertOk();
         $unavailableAid = collect($catalogWithoutTarget->json('data.commands'))->firstWhere('key', 'money_aid');
         $this->assertFalse($unavailableAid['applicable']);

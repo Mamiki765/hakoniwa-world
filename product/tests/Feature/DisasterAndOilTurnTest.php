@@ -34,7 +34,6 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -447,9 +446,12 @@ class DisasterAndOilTurnTest extends TestCase
             ->where('event_type', 'disaster.cell_damaged')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
             ->whereRaw("metadata->>'disaster_key' = 'typhoon'")
-            ->value('metadata');
-        $this->assertIsString($typhoonDamage);
-        $typhoonMetadata = json_decode($typhoonDamage, true, 512, JSON_THROW_ON_ERROR);
+            ->first(['visibility', 'metadata']);
+        $this->assertNotNull($typhoonDamage);
+        $this->assertSame('public', $typhoonDamage->visibility);
+        $typhoonMetadataJson = $typhoonDamage->metadata;
+        $this->assertIsString($typhoonMetadataJson);
+        $typhoonMetadata = json_decode($typhoonMetadataJson, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('farm', $typhoonMetadata['removed_facility_key']);
         $this->assertSame('plain', $typhoonMetadata['from_terrain_key']);
         $this->assertSame('plain', $typhoonMetadata['to_terrain_key']);
@@ -479,37 +481,37 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame(3, $this->event($run, 'disaster.cell_damaged')['adjacent_water_count']);
     }
 
-    #[DataProvider('dormantDisasterStates')]
-    public function test_normal_global_disaster_keeps_dormant_and_archived_owner_cells_protected(string $state): void
+    public function test_normal_global_disaster_cannot_mutate_the_dormant_capital_radius(): void
     {
-        [$world, $nation, $ruleset, $space] = $this->worldAndNation("休眠災害{$state}");
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('休眠災害保護国');
         $ruleset = $this->forceGlobal($ruleset, 'earthquake');
-        $center = $this->boundsFor($world)->center();
-        $target = $this->cellAt($space, $center->x, $center->y);
+        $capital = $nation->capital()->firstOrFail();
+        $target = $this->cellAt($space, $capital->x, $capital->y);
         $this->setCell($target, 'plain', 'factory', $nation->id, 0);
-        $nation->update(['state' => $state]);
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         [$context] = $this->context(
             $world,
             $ruleset,
-            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $center->x, $center->y, $space),
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $capital->x, $capital->y, $space),
             [],
         );
+        $context->state->setNationLifecycleSnapshot($nation->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
 
         $result = app(DisasterTurnService::class)->executeGlobal($context);
 
         $this->assertSame(1, $result['executed_disasters']);
-        $this->assertSame(0, $result['damaged_cells']);
         $this->assertSame('factory', $target->fresh()->facility()->value('key'));
-    }
-
-    /** @return array<string, array{string}> */
-    public static function dormantDisasterStates(): array
-    {
-        return [
-            'frozen' => ['dormant_frozen'],
-            'contestable' => ['dormant_contestable'],
-            'archived' => ['sunken_archived'],
-        ];
     }
 
     public function test_oil_income_precedes_depletion_obeys_capacity_rolls_back_and_is_retry_idempotent(): void

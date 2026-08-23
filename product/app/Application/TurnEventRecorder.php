@@ -118,7 +118,8 @@ final class TurnEventRecorder
             'monster.trampled', 'monster.stayed', 'monster.damage_blocked', 'monster.damaged',
             'monster.killed', 'monster.defense_self_destructed',
             'monster.nuclear_self_destructed',
-            'monster.removed_by_terrain_event' => 'public',
+            'monster.removed_by_terrain_event',
+            'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged' => 'public',
             default => $nationId === null ? 'public' : 'nation',
         };
     }

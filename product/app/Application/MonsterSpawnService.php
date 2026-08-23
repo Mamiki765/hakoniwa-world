@@ -7,6 +7,7 @@ use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterDispatchOption;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
 use App\Domain\Monster\MonsterSpawnSource;
+use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -28,6 +29,7 @@ final class MonsterSpawnService
         private readonly MonsterNaturalSpawnPolicy $policy,
         private readonly MapCellStateService $cells,
         private readonly TurnEventRecorder $events,
+        private readonly NationProtectionPolicy $nationProtection,
     ) {}
 
     /** @return array<string, int> */
@@ -110,7 +112,8 @@ final class MonsterSpawnService
             if ($cell->owner_nation_id === null) {
                 continue;
             }
-            if (! $occupied->has($cell->id)) {
+            if (! $occupied->has($cell->id)
+                && ! $this->nationProtection->protects($context, $cell->x, $cell->y)) {
                 $candidatesByNation[$cell->owner_nation_id][] = $cell;
             }
         }
@@ -294,7 +297,9 @@ final class MonsterSpawnService
             $query->lockForUpdate();
         }
 
-        return $query->get();
+        return $query->get()->reject(
+            fn (MapCell $cell): bool => $this->nationProtection->protects($context, $cell->x, $cell->y),
+        )->values();
     }
 
     private function wasteland(): TerrainDefinition

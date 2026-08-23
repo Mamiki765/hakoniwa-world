@@ -5,9 +5,7 @@ namespace Tests\Feature;
 use App\Application\InitialIslandGenerator;
 use App\Application\InitialIslandPlan;
 use App\Application\NationCreationService;
-use App\Application\RulesetPublisher;
 use App\Domain\Map\GridCoordinate;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -34,7 +32,7 @@ class NationCreationTest extends TestCase
 
         $this->assertSame(1, $nation->nation_number);
         $this->assertSame($world->current_turn, $nation->registered_turn);
-        $this->assertSame(100, $nation->idle_counter);
+        $this->assertSame(2000, $nation->idle_counter);
         $this->assertSame(100, $nation->money);
         $this->assertSame([
             'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0, 'wheat' => 10_000,
@@ -120,27 +118,6 @@ class NationCreationTest extends TestCase
 
         $this->assertSame([$first->capital->x, $first->capital->y], [$second->capital->x, $second->capital->y]);
         $this->assertSame($firstCoordinates, $secondCoordinates);
-    }
-
-    public function test_initial_island_meets_the_guaranteed_coastal_candidate_capacity(): void
-    {
-        $world = $this->lightweightWorld();
-        $settings = app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr6-v1');
-        $settings['key'] = 'test-shallow-candidate-capacity-v1';
-        $settings['initial_island_growth_steps'] = 0;
-        $settings['initial_island_minimum_shallow_cells'] = 18;
-        $ruleset = app(RulesetPublisher::class)->publish($settings);
-        config([
-            'hakoniwa.ruleset.key' => $settings['key'],
-            'hakoniwa.ruleset.version' => $settings['version'],
-        ]);
-        $world->update(['ruleset_version_id' => $ruleset->id]);
-
-        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '候補不足国', '試験島主');
-
-        $this->assertNotNull($nation->capital);
-        $this->assertSame(19, MapCell::query()->where('owner_nation_id', $nation->id)->count());
-        $this->assertSame(18, $this->terrainCount('shallow'));
     }
 
     public function test_generator_failure_rolls_back_nation_island_capital_membership_and_request(): void

@@ -17,7 +17,7 @@ class RulesetValidationCommandTest extends TestCase
     public function test_validation_command_loads_historical_authoring_while_normal_config_stays_current_only(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
-        $currentKeys = ['hakoniwa-2s-plus-v11'];
+        $currentKeys = ['hakoniwa-2s-plus-v12'];
 
         $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
 

@@ -36,7 +36,7 @@ final class PublicWorldService
             'name' => $world->name,
             'current_turn' => $world->current_turn,
             'hakoniwa_calendar' => $this->calendar->forTurn((int) $world->current_turn),
-            'nation_count' => $world->nations()->where('state', 'active')->count(),
+            'nation_count' => $world->nations()->whereIn('state', ['active', 'dormant'])->count(),
             'contact_url' => $this->contactUrl(),
             'turn_status' => $turnSchedule['status'],
             'last_successful_turn_at' => $turnSchedule['last_successful_turn_at'],
@@ -145,7 +145,7 @@ final class PublicWorldService
     {
         $nations = Nation::query()
             ->where('world_id', $world->id)
-            ->where('state', 'active')
+            ->whereIn('state', ['active', 'dormant'])
             ->with('capital')
             ->orderBy('id')
             ->get();
@@ -191,7 +191,9 @@ final class PublicWorldService
     {
         $estimate = $this->money->publicEstimate((int) $nation->money);
         $financeOnlyTurns = (int) $nation->idle_counter;
-        $activityStatus = $financeOnlyTurns > 0 ? 'finance_only' : 'active';
+        $activityStatus = $nation->state === 'dormant'
+            ? 'dormant'
+            : ($financeOnlyTurns > 0 ? 'finance_only' : 'active');
 
         return [
             'id' => $nation->id,
@@ -201,6 +203,7 @@ final class PublicWorldService
             'owner_name' => $nation->owner_name,
             'comment' => $nation->profile_comment,
             'state' => $nation->state,
+            'state_label' => $nation->state === 'dormant' ? '放置' : '通常',
             'total_population' => (int) ($nation->getAttribute('total_population') ?? 0),
             'territory_cell_count' => (int) ($nation->getAttribute('territory_cell_count') ?? 0),
             'owned_land_cells' => (int) ($nation->getAttribute('owned_land_cells') ?? 0),

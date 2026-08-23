@@ -34,7 +34,6 @@ use App\Models\World;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Support\V11SecretaryItemRulesetFixture;
@@ -145,14 +144,17 @@ class MonsterSystemTest extends TestCase
             ->where('ruleset_version_id', $ruleset->id)->count());
     }
 
-    #[DataProvider('inactiveStateProvider')]
-    public function test_natural_spawn_excludes_each_inactive_nation_state(string $state): void
+    public function test_natural_spawn_excludes_a_dormant_nation(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('除外国');
-        $nation->update(['state' => $state]);
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $this->prepareSettlement($nation, 400_000);
         $ruleset = $this->guaranteeNaturalSpawn($ruleset);
-        [$context] = $this->context($world, $ruleset, 2, 'spawn-'.$state, [$nation->id]);
+        [$context] = $this->context($world, $ruleset, 2, 'spawn-dormant', [$nation->id]);
 
         $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
 
@@ -161,13 +163,46 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, MonsterInstance::query()->count());
     }
 
-    /** @return array<string, array{string}> */
-    public static function inactiveStateProvider(): array
+    public function test_monster_inside_the_dormant_capital_radius_cannot_move_or_trample(): void
     {
-        return [
-            'frozen' => ['dormant_frozen'],
-            'contestable' => ['dormant_contestable'],
-        ];
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('休止怪獣保護国');
+        $capital = $nation->capital()->firstOrFail();
+        $coordinate = (new GridCoordinate($capital->x, $capital->y))->ring(2)[0];
+        $origin = $this->cellAt($space, $coordinate->x, $coordinate->y);
+        $this->setCell($origin, 'wasteland', null, $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'inora', 1);
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
+        [$context] = $this->context($world, $ruleset, 2, 'dormant-monster-protection', [$nation->id]);
+        $context->state->setNationLifecycleSnapshot($nation->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
+        $turn = app(MonsterTurnService::class);
+        $batch = $turn->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $index = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+
+        $this->assertTrue($turn->processCell(
+            $context,
+            $space,
+            $origin->fresh(['terrain', 'facility']),
+            $index,
+            $batch,
+        ));
+
+        $this->assertSame($origin->id, (int) MonsterOccupancy::query()
+            ->where('monster_instance_id', $monster->id)->value('map_cell_id'));
+        $this->assertSame(0, $batch->metrics()['monster_moves']);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.stayed')
+            ->whereRaw("metadata->>'reason' = 'dormant_capital_protected'")->count());
     }
 
     public function test_triggered_spawn_without_an_eligible_settlement_is_a_safe_audited_noop(): void
@@ -1178,6 +1213,7 @@ class MonsterSystemTest extends TestCase
             'profile_comment' => '',
             'money' => 100,
             'state' => 'active',
+            'idle_counter' => 0,
         ]);
         $definition = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
             ->where('key', 'inora')->firstOrFail();

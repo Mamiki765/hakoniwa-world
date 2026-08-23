@@ -27,7 +27,7 @@ final class V11SecretaryItemRulesetFixture
     /** @return array<string, mixed> */
     public static function settings(): array
     {
-        $settings = config('hakoniwa.published_rulesets.hakoniwa-2s-plus-v11');
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php');
         $settings['key'] = 'test-hakoniwa-2s-plus-v11-secretary-items';
 
         return $settings;

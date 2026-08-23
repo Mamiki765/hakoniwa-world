@@ -27,6 +27,8 @@ final class RulesetAuthoringValidator
 
     private const FORMAL_V11_KEY = 'hakoniwa-2s-plus-v11';
 
+    private const FORMAL_V12_KEY = 'hakoniwa-2s-plus-v12';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -329,6 +331,14 @@ final class RulesetAuthoringValidator
             $reservationRadius,
             $landRadius,
         );
+        $this->validateNationLifecycle(
+            $settings,
+            $authoredKey,
+            $version,
+            $resourceKeys,
+            $facilityKeys,
+            $commandKeys,
+        );
         $monsterCount = $this->validateMonsterSystem(
             $settings,
             $resourceKeys,
@@ -336,7 +346,7 @@ final class RulesetAuthoringValidator
             $authoredKey,
             $version,
         );
-        $this->validateMilitary($settings, $facilityKeys);
+        $this->validateMilitary($settings, $facilityKeys, $version);
         $this->validateSecretary($settings, $resourceKeys, $commandKeys);
 
         return [
@@ -439,9 +449,99 @@ final class RulesetAuthoringValidator
 
     /**
      * @param  array<string, mixed>  $settings
+     * @param  list<string>  $resourceKeys
+     * @param  list<string>  $facilityKeys
+     * @param  list<string>  $commandKeys
+     */
+    private function validateNationLifecycle(
+        array $settings,
+        string $authoredKey,
+        int $version,
+        array $resourceKeys,
+        array $facilityKeys,
+        array $commandKeys,
+    ): void {
+        $hasLifecycle = array_key_exists('nation_lifecycle', $settings);
+        if ($version < 12) {
+            if ($hasLifecycle) {
+                throw new DomainException('Rulesets before v12 cannot author the ver 2.4.0 Nation lifecycle contract.');
+            }
+
+            return;
+        }
+        if ($version !== 12 || $authoredKey !== self::FORMAL_V12_KEY || ! $hasLifecycle) {
+            throw new DomainException('The v12 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+        }
+
+        $path = 'ruleset.nation_lifecycle';
+        $lifecycle = $this->map($settings['nation_lifecycle'], $path);
+        $this->requireKeys($lifecycle, [
+            'states', 'runtime_entry_states', 'recovery_entry_enabled', 'dormant_reasons',
+            'initial_idle_counter', 'dormant_idle_threshold', 'abandonment_idle_threshold',
+            'turns_per_day', 'manual_dormancy_min_days', 'manual_dormancy_max_days',
+            'dormant_finance_money', 'dormant_protection_radius', 'dormant_visual_theme',
+            'territory_influence_target_states', 'territory_influence_source_states',
+            'initial_food_resource_key', 'finance_command_key', 'emergency_farm',
+        ], $path);
+        if ($this->list($lifecycle['states'], "{$path}.states") !== ['active', 'dormant', 'recovery', 'abandoned']
+            || $this->list($lifecycle['runtime_entry_states'], "{$path}.runtime_entry_states")
+                !== ['active', 'dormant', 'abandoned']
+            || $this->boolean($lifecycle['recovery_entry_enabled'], "{$path}.recovery_entry_enabled")
+            || $this->list($lifecycle['dormant_reasons'], "{$path}.dormant_reasons")
+                !== ['idle', 'collapse', 'manual']
+            || $this->integer($lifecycle['initial_idle_counter'], "{$path}.initial_idle_counter", 0) !== 2000
+            || $this->integer($lifecycle['dormant_idle_threshold'], "{$path}.dormant_idle_threshold", 1) !== 360
+            || $this->integer($lifecycle['abandonment_idle_threshold'], "{$path}.abandonment_idle_threshold", 1) !== 2160
+            || $this->integer($lifecycle['turns_per_day'], "{$path}.turns_per_day", 1) !== 12
+            || $this->integer($lifecycle['manual_dormancy_min_days'], "{$path}.manual_dormancy_min_days", 1) !== 1
+            || $this->integer($lifecycle['manual_dormancy_max_days'], "{$path}.manual_dormancy_max_days", 1) !== 7
+            || $this->integer($lifecycle['dormant_finance_money'], "{$path}.dormant_finance_money", 0) !== 10
+            || $this->integer($lifecycle['dormant_protection_radius'], "{$path}.dormant_protection_radius", 0) !== 2
+            || $this->persistedString($lifecycle['dormant_visual_theme'], "{$path}.dormant_visual_theme") !== 'snow'
+            || $this->list($lifecycle['territory_influence_target_states'], "{$path}.territory_influence_target_states")
+                !== ['active', 'dormant']
+            || $this->list($lifecycle['territory_influence_source_states'], "{$path}.territory_influence_source_states")
+                !== ['active']) {
+            throw new DomainException("{$path} differs from the ver 2.4.0 Owner decision.");
+        }
+        if (($settings['turn_processing']['automatic_finance_money'] ?? null)
+            !== $lifecycle['dormant_finance_money']) {
+            throw new DomainException("{$path}.dormant_finance_money must reuse the canonical finance amount.");
+        }
+
+        $foodKey = $this->persistedString($lifecycle['initial_food_resource_key'], "{$path}.initial_food_resource_key");
+        $financeKey = $this->persistedString($lifecycle['finance_command_key'], "{$path}.finance_command_key");
+        $this->reference($foodKey, $resourceKeys, "{$path}.initial_food_resource_key");
+        $this->reference($financeKey, $commandKeys, "{$path}.finance_command_key");
+        if (! is_int($settings['initial_resources'][$foodKey] ?? null)) {
+            throw new DomainException("{$path}.initial_food_resource_key must reference the canonical initial food value.");
+        }
+
+        $farmPath = "{$path}.emergency_farm";
+        $farm = $this->map($lifecycle['emergency_farm'], $farmPath);
+        $this->requireKeys($farm, [
+            'facility_key', 'result_terrain_key', 'candidate_terrain_keys', 'selection',
+        ], $farmPath);
+        $this->reference($farm['facility_key'], $facilityKeys, "{$farmPath}.facility_key");
+        $this->reference($farm['result_terrain_key'], self::TERRAIN_KEYS, "{$farmPath}.result_terrain_key");
+        foreach ($this->list($farm['candidate_terrain_keys'], "{$farmPath}.candidate_terrain_keys") as $terrainKey) {
+            $this->reference($terrainKey, self::TERRAIN_KEYS, "{$farmPath}.candidate_terrain_keys");
+        }
+        if ($farm !== [
+            'facility_key' => 'farm',
+            'result_terrain_key' => 'plain',
+            'candidate_terrain_keys' => ['plain', 'wasteland', 'scorched', 'shallow', 'sea'],
+            'selection' => ['distance', 'y', 'x'],
+        ]) {
+            throw new DomainException("{$farmPath} differs from the deterministic emergency farm contract.");
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
      * @param  list<string>  $facilityKeys
      */
-    private function validateMilitary(array $settings, array $facilityKeys): void
+    private function validateMilitary(array $settings, array $facilityKeys, int $rulesetVersion): void
     {
         if (! array_key_exists('military', $settings)) {
             return;
@@ -512,9 +612,12 @@ final class RulesetAuthoringValidator
         )
             ? MissileTargetPolicy::ANY_EXISTING_COORDINATE
             : MissileTargetPolicy::ACTIVE_NATION;
+        $noEffectOwnerStates = $rulesetVersion >= 12
+            ? []
+            : ['dormant_frozen', 'dormant_contestable', 'sunken_archived'];
         if ($dormant !== [
             'explicit_target_state' => $explicitTargetState,
-            'no_effect_owner_states' => ['dormant_frozen', 'dormant_contestable', 'sunken_archived'],
+            'no_effect_owner_states' => $noEffectOwnerStates,
             'preserve' => ['cell', 'facility', 'population', 'monster_occupancy'],
             'monster_exception' => false,
         ]) {
@@ -643,7 +746,7 @@ final class RulesetAuthoringValidator
         string $rulesetKey,
         int $rulesetVersion,
     ): int {
-        $extended = $this->usesV11MonsterContract($rulesetKey, $rulesetVersion);
+        $extended = $this->usesExtendedMonsterContract($rulesetKey, $rulesetVersion);
         $hasDefinitions = array_key_exists('monster_definitions', $settings);
         $hasSystem = array_key_exists('monster_system', $settings);
         if ($hasDefinitions !== $hasSystem) {
@@ -1020,14 +1123,22 @@ final class RulesetAuthoringValidator
         }
     }
 
-    private function usesV11MonsterContract(string $key, int $version): bool
+    private function usesExtendedMonsterContract(string $key, int $version): bool
     {
-        $hasV11Identity = preg_match('/(?:^|-)v11(?:-|$)/', $key) === 1;
-        if ($hasV11Identity !== ($version === 11)) {
-            throw new DomainException('The v11 ruleset identity and version must be authored together.');
+        if ($version === 11 && $key === self::UNPUBLISHED_V11_FIXTURE_KEY) {
+            return true;
+        }
+        $expectedKey = match ($version) {
+            11 => self::FORMAL_V11_KEY,
+            12 => self::FORMAL_V12_KEY,
+            default => null,
+        };
+        if (($expectedKey !== null && $key !== $expectedKey)
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY], true))) {
+            throw new DomainException('The v11/v12 ruleset identity and version must be authored together.');
         }
 
-        return $version === 11;
+        return $version >= 11;
     }
 
     private function nonMonsterValidationKey(string $key, int $version): string
@@ -1039,6 +1150,9 @@ final class RulesetAuthoringValidator
             self::UNPUBLISHED_V11_FIXTURE_KEY,
             self::FORMAL_V11_KEY,
         ], true)) {
+            return self::CURRENT_PUBLISHED_BASELINE_KEY;
+        }
+        if ($version === 12 && $key === self::FORMAL_V12_KEY) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 
@@ -1373,7 +1487,7 @@ final class RulesetAuthoringValidator
             $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
             $metadata = $this->map($definition['metadata'], "{$path}.metadata");
             if ($commandKey === 'monster_dispatch'
-                && $this->usesV11MonsterContract($authoredRulesetKey, $authoredRulesetVersion)) {
+                && $this->usesExtendedMonsterContract($authoredRulesetKey, $authoredRulesetVersion)) {
                 if ($definition['cost_money'] !== 3_000) {
                     throw new DomainException("{$path}.cost_money must remain 3000 for the default dispatch option.");
                 }
@@ -1684,6 +1798,7 @@ final class RulesetAuthoringValidator
                 break;
             }
         }
+        $hasDormancy = array_key_exists('nation_lifecycle', $settings);
         $expectedMetadata = [
             'consumes_turn' => true,
             'parameters' => [],
@@ -1697,7 +1812,7 @@ final class RulesetAuthoringValidator
                 'requires_empty_facility' => true,
             ],
             'foreign_target' => [
-                'owner_states' => ['active'],
+                'owner_states' => $hasDormancy ? ['active', 'dormant'] : ['active'],
                 'terrain_keys' => ['wasteland', 'scorched'],
                 'requires_empty_facility' => true,
             ],
@@ -1715,7 +1830,9 @@ final class RulesetAuthoringValidator
         $expectedTerritoryCommand = [
             'key' => 'territory_expand',
             'name' => '領土拡張',
-            'description' => '自国領に隣接する中立陸地、またはactiveな他国の荒地・焼け野原を領有します。',
+            'description' => $hasDormancy
+                ? '自国領に隣接する中立陸地、または他国の荒地・焼け野原を領有します。休止中の首都周辺は保護されます。'
+                : '自国領に隣接する中立陸地、またはactiveな他国の荒地・焼け野原を領有します。',
             'target_type' => 'cell',
             'target_terrain_keys' => ['wasteland', 'scorched', 'plain', 'forest', 'mountain'],
             'target_facility_keys' => [],

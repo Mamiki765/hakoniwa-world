@@ -181,11 +181,15 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('defense_intercepted', $selfDetail['impacts'][0]['effect']);
     }
 
-    public function test_dormant_owned_defense_covers_active_target_while_dormant_target_protection_stays_first(): void
+    public function test_dormant_owned_defense_covers_an_active_target_outside_the_protected_radius(): void
     {
         [$world, $firingUser, $firing, $activeTarget] = $this->combatants();
         [, $dormantDefenseOwner] = $this->nation($world, '休眠防衛施設国');
-        $dormantDefenseOwner->update(['state' => 'dormant_frozen']);
+        $dormantDefenseOwner->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -214,28 +218,6 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('defense_intercepted', $coveredDetail['impacts'][0]['effect']);
         $this->assertNotNull($defense->fresh()->facility_definition_id);
         $this->assertSame(0, $coveredContext->state->finalDefenseInterceptionsUsed($activeTarget->id));
-
-        $protectedItem = $this->queue(
-            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile',
-            $defense->fresh(['terrain', 'facility', 'ownerNation']),
-        );
-        $protectedContext = $this->context(
-            $world, 3, hash('sha256', 'dormant target protection before defense'),
-            [$firing->id, $activeTarget->id, $dormantDefenseOwner->id],
-        );
-        app(SecretaryTurnService::class)->loadAttemptSnapshots(
-            $protectedContext,
-            [$firing->id, $activeTarget->id, $dormantDefenseOwner->id],
-        );
-
-        $this->resolveMissile($protectedContext, $base->fresh(['terrain', 'facility']));
-
-        $protectedDetail = json_decode((string) DB::table('audit_events')
-            ->where('event_type', 'missile.launch_detail')
-            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $protectedItem->id])
-            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame('dormant_owner_protected', $protectedDetail['impacts'][0]['effect']);
-        $this->assertNotNull($defense->fresh()->facility_definition_id);
     }
 
     public function test_later_shot_observes_defense_destroyed_earlier_in_the_same_base_processing(): void
@@ -606,13 +588,13 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, $first['finance_commands']);
         $this->assertSame(1, $first['idle_counter_increments']);
         $this->assertSame('invalid_terrain', $failed->fresh()->failure_code);
-        $this->assertSame(101, $nation->fresh()->idle_counter);
+        $this->assertSame(2001, $nation->fresh()->idle_counter);
         $this->assertSame('queued', $logging->fresh()->status);
 
         $second = app(DomesticCommandExecutor::class)->execute($this->context($world, 3, str_repeat('2', 64), [$nation->id]));
         $this->assertSame(1, $second['finance_commands']);
         $this->assertSame(1, $second['idle_counter_increments']);
-        $this->assertSame(102, $nation->fresh()->idle_counter);
+        $this->assertSame(2002, $nation->fresh()->idle_counter);
 
         $third = app(DomesticCommandExecutor::class)->execute($this->context($world, 4, str_repeat('3', 64), [$nation->id]));
         $this->assertSame(1, $third['successes']);
@@ -790,7 +772,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v11', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v12', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -2084,18 +2066,24 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.reward_distributed')->count());
     }
 
-    public function test_deviation_to_dormant_owned_cell_preserves_every_state_and_is_aggregated_as_ineffective(): void
+    public function test_missile_impact_at_the_dormant_capital_radius_is_a_logged_complete_noop(): void
     {
-        [$world, $firingUser, $firing, $activeTarget] = $this->combatants();
+        [$world, $firingUser, $firing] = $this->combatants();
         [, $dormant] = $this->nation($world, '休眠標的国');
-        $dormant->update(['state' => 'dormant_frozen']);
+        $dormant->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+        ]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
-        $aim = $activeTarget->capital()->firstOrFail()->cell()->firstOrFail();
+        $capital = $dormant->capital()->firstOrFail();
+        $aim = $capital->cell()->firstOrFail();
+        $capitalCoordinate = new GridCoordinate($aim->x, $aim->y);
         $coordinate = collect((new GridCoordinate($aim->x, $aim->y))->radius(2))
             ->first(fn (GridCoordinate $candidate): bool => $candidate->x >= $space->min_x
                 && $candidate->x <= $space->max_x && $candidate->y >= $space->min_y
-                && $candidate->y <= $space->max_y && ($candidate->x !== $aim->x || $candidate->y !== $aim->y));
+                && $candidate->y <= $space->max_y && $capitalCoordinate->distanceTo($candidate) === 2);
         if (! $coordinate instanceof GridCoordinate) {
             $this->fail('No in-bounds deviation coordinate was available for the dormant target test.');
         }
@@ -2119,8 +2107,17 @@ class CommandAndMissileTest extends TestCase
         ]);
         $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $aim);
         $seed = $this->seedForImpactIndex($item, $aim, 2, $dormantCell);
+        $context = $this->context($world, 2, $seed, [$firing->id, $dormant->id]);
+        $context->state->setNationLifecycleSnapshot($dormant->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
 
-        $this->resolveMissile($this->context($world, 2, $seed, [$firing->id, $activeTarget->id]), $base);
+        $this->resolveMissile($context, $base);
 
         $this->assertSame($snapshot, $dormantCell->fresh()->only(array_keys($snapshot)));
         $this->assertTrue(MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
@@ -2128,63 +2125,11 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.ineffective_aggregated')->count());
         $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame('dormant_owner_protected', $detail['impacts'][0]['effect']);
-    }
-
-    public function test_v2_direct_dormant_and_sunken_targets_are_selectable_but_complete_no_ops(): void
-    {
-        $world = $this->lightweightWorld();
-        [$user, $firing] = $this->nation($world, '休眠直接発射国');
-        $firing->update(['money' => 10_000]);
-        $space = $this->surfaceMapSpace($world);
-        $base = $this->missileBase($firing);
-
-        foreach (['dormant_frozen', 'dormant_contestable', 'sunken_archived'] as $index => $state) {
-            [, $targetNation] = $this->nation($world, "休眠直接標的{$index}");
-            $target = MapCell::query()->where('owner_nation_id', $targetNation->id)
-                ->whereKeyNot($targetNation->capital()->value('map_cell_id'))->firstOrFail();
-            app(MapCellStateService::class)->transitionTerrain(
-                $target,
-                TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
-            );
-            app(MapCellStateService::class)->setFacility(
-                $target,
-                FacilityDefinition::query()->where('key', 'city')->firstOrFail(),
-            );
-            $target->population = 777;
-            $target->version++;
-            $target->save();
-            $targetNation->update(['state' => $state]);
-            $monster = $this->monster($world, $target);
-            $snapshot = $target->fresh()->only([
-                'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population',
-                'facility_scale', 'facility_experience', 'facility_operational_state', 'version',
-            ]);
-            $item = $this->queue(
-                app(CommandQueueService::class),
-                $user,
-                $firing,
-                $space,
-                'spp_missile',
-                $target,
-            );
-
-            $this->resolveMissile($this->context(
-                $world,
-                $index + 2,
-                hash('sha256', "v2-direct-protected:{$state}"),
-                [$firing->id, $targetNation->id],
-            ), $base);
-
-            $this->assertSame('completed', $item->fresh()->status);
-            $this->assertSame($snapshot, $target->fresh()->only(array_keys($snapshot)));
-            $this->assertTrue(MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
-                ->where('map_cell_id', $target->id)->exists());
-            $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
-                ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-            $this->assertSame('dormant_owner_protected', $detail['impacts'][0]['effect']);
-            $this->assertSame($state, $detail['impacts'][0]['owner_state']);
-        }
+        $this->assertSame('dormant_capital_protected', $detail['impacts'][0]['effect']);
+        $this->assertSame(
+            "{$dormant->name}({$dormantCell->x},{$dormantCell->y})にミサイルが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました",
+            DB::table('audit_events')->where('event_type', 'missile.dormancy_protected')->value('message'),
+        );
     }
 
     public function test_pp_deviation_stays_within_one_hex_and_out_of_bounds_is_treated_as_sea(): void

@@ -164,10 +164,10 @@ class MessageBoardSecretTest extends TestCase
         $this->actingAs($owner)->postJson("/api/v1/nations/{$crossWorldTarget->id}/message-board/secret", ['body' => 'cross'])
             ->assertForbidden();
 
-        $target->update(['state' => 'sunken_archived']);
+        $target->update(['state' => 'abandoned']);
         Carbon::setTestNow(now()->addSeconds(10));
         $this->actingAs($owner)->postJson("/api/v1/nations/{$target->id}/message-board/secret", ['body' => 'archive'])
-            ->assertUnprocessable();
+            ->assertNotFound();
     }
 
     public function test_historical_world_rejects_public_and_secret_posts_without_any_mutation(): void

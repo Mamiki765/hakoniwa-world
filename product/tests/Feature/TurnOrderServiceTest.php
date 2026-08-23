@@ -25,6 +25,7 @@ class TurnOrderServiceTest extends TestCase
         foreach (range(1, 10) as $index) {
             Nation::query()->create([
                 'world_id' => $world->id, 'nation_number' => $index, 'name' => "Inserted {$index}",
+                'state' => 'active', 'idle_counter' => 0,
             ]);
         }
 
