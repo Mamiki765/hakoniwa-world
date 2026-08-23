@@ -203,10 +203,14 @@ final class TurnState
     /** @return list<int> */
     public function recoveryNationIds(): array
     {
-        return array_map('intval', array_keys(array_filter(
-            $this->nationLifecycleSnapshots,
-            static fn (array $snapshot): bool => $snapshot['state'] === 'recovery',
-        )));
+        $nationIds = [];
+        foreach ($this->nationLifecycleSnapshots as $nationId => $snapshot) {
+            if ($snapshot['state'] === 'recovery' && ! isset($this->recoveryExitedNationIds[$nationId])) {
+                $nationIds[] = (int) $nationId;
+            }
+        }
+
+        return $nationIds;
     }
 
     /** @param array<string, int> $coordinates */
@@ -230,7 +234,7 @@ final class TurnState
     public function recordRecoveryTerritoryAcquired(int $nationId, int $x, int $y): void
     {
         $snapshot = $this->nationLifecycleSnapshots[$nationId] ?? null;
-        if (($snapshot['state'] ?? null) !== 'recovery') {
+        if (($snapshot['state'] ?? null) !== 'recovery' || isset($this->recoveryExitedNationIds[$nationId])) {
             throw new InvalidArgumentException('Only a frozen recovery Nation may acquire protected territory.');
         }
         $key = $x.':'.$y;
@@ -243,7 +247,13 @@ final class TurnState
 
     public function markRecoveryExited(int $nationId): void
     {
-        $this->recoveryExitedNationIds[$this->validatedNationId($nationId)] = true;
+        $nationId = $this->validatedNationId($nationId);
+        $this->recoveryExitedNationIds[$nationId] = true;
+        foreach ($this->recoveryTerritoryNationIds as $coordinate => $territoryNationId) {
+            if ($territoryNationId === $nationId) {
+                unset($this->recoveryTerritoryNationIds[$coordinate]);
+            }
+        }
     }
 
     public function recoveryExitedThisTurn(int $nationId): bool

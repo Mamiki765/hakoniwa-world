@@ -47,6 +47,12 @@ final class InquiryApiTest extends TestCase
         $world->update(['current_turn' => 42]);
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world->fresh(), '問い合わせ島', '問い合わせ島主');
+        $nation->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 40,
+            'resume_at_turn' => 125,
+        ]);
 
         $response = $this->actingAs($user)->post('/api/v1/inquiries', [
             'submission_key' => (string) Str::uuid(),
