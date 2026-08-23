@@ -47,12 +47,6 @@ final class InquiryApiTest extends TestCase
         $world->update(['current_turn' => 42]);
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world->fresh(), '問い合わせ島', '問い合わせ島主');
-        $nation->update([
-            'state' => 'recovery',
-            'state_reason' => null,
-            'state_started_turn' => 40,
-            'resume_at_turn' => 125,
-        ]);
 
         $response = $this->actingAs($user)->post('/api/v1/inquiries', [
             'submission_key' => (string) Str::uuid(),
@@ -78,6 +72,40 @@ final class InquiryApiTest extends TestCase
             'attachment_token' => null,
             'attachment_path' => null,
         ]);
+
+        $nation->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 40,
+            'resume_at_turn' => 125,
+        ]);
+        $this->post('/api/v1/inquiries', [
+            'submission_key' => (string) Str::uuid(),
+            'category' => 'bug',
+            'subject' => '休戦中問い合わせ',
+            'body' => '休戦中も現在島を保持します。',
+        ], ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->assertJsonPath('data.management_id', 'INQ-000002');
+
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'manual',
+            'state_started_turn' => 41,
+            'resume_at_turn' => 126,
+        ]);
+        $this->post('/api/v1/inquiries', [
+            'submission_key' => (string) Str::uuid(),
+            'category' => 'bug',
+            'subject' => '休眠中問い合わせ',
+            'body' => '休眠中も現在島を保持します。',
+        ], ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->assertJsonPath('data.management_id', 'INQ-000003');
+        $this->assertSame(
+            [$nation->id, $nation->id, $nation->id],
+            Inquiry::query()->orderBy('id')->pluck('nation_id')->all(),
+        );
     }
 
     public function test_valid_image_uses_a_random_256_bit_token_and_never_exposes_original_filename(): void

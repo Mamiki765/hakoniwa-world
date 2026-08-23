@@ -188,9 +188,10 @@ final class NationLifecycleService
             if ($nation->state === 'abandoned') {
                 continue;
             }
-            if ($snapshot['state'] !== 'recovery'
-                && array_key_exists($nationId, $context->state->karmaStartSnapshots())
-                && $context->state->karmaLedgerForNation($nationId)['recovery_entry']) {
+            if (array_key_exists($nationId, $context->state->karmaStartSnapshots())
+                && $context->state->karmaLedgerForNation($nationId)['recovery_entry']
+                && ($snapshot['state'] !== 'recovery'
+                    || $context->state->recoveryExitedThisTurn($nationId))) {
                 $metrics['recovery_monsters_removed'] += $this->enterRecovery($context, $nation, $settings);
                 $metrics['entered_recovery']++;
 

@@ -100,21 +100,22 @@ final readonly class Ver240KarmaRecoveryRulesetUpgrade
                 throw new RuntimeException('Existing Nations must enter the v13 upgrade with initial KARMA 0.');
             }
 
-            $fingerprints = DB::table('nation_command_queue_items')->orderBy('id')
-                ->pluck('request_fingerprint', 'id')->all();
-            $idleCounters = DB::table('nations')->orderBy('id')->pluck('idle_counter', 'id')->all();
-            $lifecycleState = $this->rowsDigest(DB::table('nations')->orderBy('id')->get([
+            $fingerprints = $this->rowsDigest(DB::table('nation_command_queue_items')
+                ->select(['id', 'request_fingerprint'])->orderBy('id')->cursor());
+            $idleCounters = $this->rowsDigest(DB::table('nations')
+                ->select(['id', 'idle_counter'])->orderBy('id')->cursor());
+            $lifecycleState = $this->rowsDigest(DB::table('nations')->select([
                 'id', 'state', 'state_reason', 'state_started_turn', 'resume_at_turn', 'idle_counter', 'karma',
-            ]));
-            $requestIdentity = $this->rowsDigest(DB::table('nation_command_queue_items')->orderBy('id')->get([
+            ])->orderBy('id')->cursor());
+            $requestIdentity = $this->rowsDigest(DB::table('nation_command_queue_items')->select([
                 'id', 'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
-            ]));
+            ])->orderBy('id')->cursor());
             $terminalHistory = $this->rowsDigest(DB::table('nation_command_queue_items')
-                ->where('status', '<>', 'queued')->orderBy('id')->get());
-            $monsterState = $this->rowsDigest(DB::table('monster_instances')->orderBy('id')->get([
+                ->where('status', '<>', 'queued')->orderBy('id')->cursor());
+            $monsterState = $this->rowsDigest(DB::table('monster_instances')->select([
                 'id', 'current_hp', 'spawned_max_hp', 'state', 'spawned_target_turn',
                 'removal_reason', 'removed_at', 'version',
-            ]));
+            ])->orderBy('id')->cursor());
             $occupancyState = $this->tableDigest('monster_occupancies');
             $auditHistory = $this->tableDigest('audit_events');
             $secretaryState = $this->tableDigest('secretaries').':'.$this->tableDigest('secretary_skills')
@@ -180,26 +181,38 @@ SQL, [$target->id, $world->id, $source->id]);
             }
 
             $this->assertPostconditions((int) $world->id, (int) $target->id);
-            if ($fingerprints !== DB::table('nation_command_queue_items')->orderBy('id')
-                ->pluck('request_fingerprint', 'id')->all()
-                || $idleCounters !== DB::table('nations')->orderBy('id')->pluck('idle_counter', 'id')->all()
-                || $lifecycleState !== $this->rowsDigest(DB::table('nations')->orderBy('id')->get([
+            $changedProtectedData = array_keys(array_filter([
+                'request_fingerprints' => $fingerprints !== $this->rowsDigest(
+                    DB::table('nation_command_queue_items')->select(['id', 'request_fingerprint'])
+                        ->orderBy('id')->cursor(),
+                ),
+                'nation_idle_counters' => $idleCounters !== $this->rowsDigest(
+                    DB::table('nations')->select(['id', 'idle_counter'])->orderBy('id')->cursor(),
+                ),
+                'nation_lifecycle' => $lifecycleState !== $this->rowsDigest(DB::table('nations')->select([
                     'id', 'state', 'state_reason', 'state_started_turn', 'resume_at_turn', 'idle_counter', 'karma',
-                ]))
-                || $requestIdentity !== $this->rowsDigest(DB::table('nation_command_queue_items')->orderBy('id')->get([
-                    'id', 'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
-                ]))
-                || $terminalHistory !== $this->rowsDigest(DB::table('nation_command_queue_items')
-                    ->where('status', '<>', 'queued')->orderBy('id')->get())
-                || $monsterState !== $this->rowsDigest(DB::table('monster_instances')->orderBy('id')->get([
+                ])->orderBy('id')->cursor()),
+                'request_identity' => $requestIdentity !== $this->rowsDigest(
+                    DB::table('nation_command_queue_items')->select([
+                        'id', 'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
+                    ])->orderBy('id')->cursor(),
+                ),
+                'terminal_command_history' => $terminalHistory !== $this->rowsDigest(
+                    DB::table('nation_command_queue_items')->where('status', '<>', 'queued')->orderBy('id')->cursor(),
+                ),
+                'live_monster_state' => $monsterState !== $this->rowsDigest(DB::table('monster_instances')->select([
                     'id', 'current_hp', 'spawned_max_hp', 'state', 'spawned_target_turn',
                     'removal_reason', 'removed_at', 'version',
-                ]))
-                || $occupancyState !== $this->tableDigest('monster_occupancies')
-                || $auditHistory !== $this->tableDigest('audit_events')
-                || $secretaryState !== $this->tableDigest('secretaries').':'.$this->tableDigest('secretary_skills')
-                    .':'.$this->tableDigest('secretary_item_instances')) {
-                throw new RuntimeException('KARMA/recovery upgrade changed protected request, Nation counter, or Secretary data.');
+                ])->orderBy('id')->cursor()),
+                'monster_occupancies' => $occupancyState !== $this->tableDigest('monster_occupancies'),
+                'audit_events' => $auditHistory !== $this->tableDigest('audit_events'),
+                'secretary_state' => $secretaryState !== $this->tableDigest('secretaries')
+                    .':'.$this->tableDigest('secretary_skills').':'.$this->tableDigest('secretary_item_instances'),
+            ]));
+            if ($changedProtectedData !== []) {
+                throw new RuntimeException(
+                    'KARMA/recovery upgrade changed protected data: '.implode(', ', $changedProtectedData).'.',
+                );
             }
 
             $now = now();
@@ -302,24 +315,28 @@ SQL, [$table, $trigger]);
 
     private function tableDigest(string $table): string
     {
-        return hash('sha256', json_encode(
-            DB::table($table)->orderBy('id')->get()->map(static fn (object $row): array => (array) $row)->all(),
-            JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
-        ));
+        return $this->rowsDigest(DB::table($table)->orderBy('id')->cursor());
     }
 
     /** @param iterable<int, object> $rows */
     private function rowsDigest(iterable $rows): string
     {
-        $normalized = [];
+        $hash = hash_init('sha256');
+        hash_update($hash, '[');
+        $first = true;
         foreach ($rows as $row) {
-            $normalized[] = (array) $row;
+            if (! $first) {
+                hash_update($hash, ',');
+            }
+            hash_update($hash, json_encode(
+                (array) $row,
+                JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
+            ));
+            $first = false;
         }
+        hash_update($hash, ']');
 
-        return hash('sha256', json_encode(
-            $normalized,
-            JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
-        ));
+        return hash_final($hash);
     }
 
     /** @param array<string, mixed> $settings */

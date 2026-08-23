@@ -31,13 +31,21 @@ lifecycle、territory、economy、event、UIの既存transaction/RNG/orderを維
    decay、休戦開始減少、外国領怪獣kill減少の順で一度だけ確定する。制裁は専用
    RNG streamを使い、canonical迎撃/impactを再利用し、同TurnのKARMA・援助・難民・
    休戦判定へfeedbackしない。
-5. hostile player missile volleyが対象総人口を100超からCapital minimum 100へ
-   減らした場合だけ、そのvolley完了後に`recovery`へ入る。entry TurnをTとして
-   `T+1..T+84`を完全な休戦、`T+85`開始時をexitとする。
-6. 休戦中は敵対player missileの入出力、monster dispatch、monument、敵対territory
-   influence/expansionを登録時と実行時に費用前拒否する。援助、内政、中立地拡張、
-   生産、売却、災害、owner UIは継続する。entry時の自領monsterは報酬なしで除去し、
-   spawn/movement/dispatchの対象から全休戦領を除外する。
+5. hostile player missile sequence開始時の対象総人口が100超で、canonical impactにより
+   初めてCapital minimum 100へ到達した時点で`recovery`資格をラッチする。同Turnの
+   後続人口増加では取り消さず、現在のvolleyは完了させ、state遷移は既存lifecycle
+   boundaryまで遅延する。entry TurnをTとして`T+1..T+84`を完全な休戦、`T+85`開始時を
+   exitとする。
+6. foreign Nationから休戦中Nationまたはその保護領域を明示対象とするplayer missile、
+   休戦中Nationからforeign領土を明示対象とするplayer missile、monster dispatch、monument、
+   敵対territory influence/expansionを登録時と実行時に費用前拒否する。self-ownedまたは
+   neutral座標へのmissile launch、援助、内政、中立地拡張、生産、売却、災害、owner UIは
+   継続する。
+   許可されたmissileのcanonical impactで`crime_points > 0`が成立した場合はimpact後ただちに
+   `active`へexitし、crime 0のanti-monster impactでは継続する。同Turn中に別のhostile
+   player missileで再び資格を得た場合はlifecycle boundaryでの再entryを優先する。
+   entry時の自領monsterは報酬なしで除去し、spawn/movement/dispatchの対象から全休戦領を
+   除外する。
 7. `T+85`はmeaningful non-finance queueがあれば`active`、なければidle 360以上で
    `dormant`、それ以外は`active`とする。休戦中は途中でdormantにせず、開始/終了
    だけではidle counterをresetしない。

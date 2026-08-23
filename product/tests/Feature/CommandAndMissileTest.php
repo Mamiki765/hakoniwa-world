@@ -1076,6 +1076,18 @@ class CommandAndMissileTest extends TestCase
         app(NationLifecycleService::class)->prepare($reclaimContext);
         app(SecretaryTurnService::class)->loadAttemptSnapshots($reclaimContext, [$actor->id, $target->id]);
         app(DomesticCommandExecutor::class)->execute($reclaimContext);
+        $seabedTarget->refresh();
+        $oilTarget->refresh();
+        foreach ([$seabedTarget, $oilTarget] as $waterTarget) {
+            app(MapCellStateService::class)->setFacility($waterTarget, null);
+            app(MapCellStateService::class)->transitionTerrain(
+                $waterTarget,
+                TerrainDefinition::query()->where('key', 'sea')->firstOrFail(),
+            );
+            $waterTarget->owner_nation_id = null;
+            $waterTarget->population = 0;
+            $waterTarget->save();
+        }
 
         $seabed = $this->queue(
             $commands,
@@ -1242,6 +1254,37 @@ class CommandAndMissileTest extends TestCase
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $antiMonsterMissile->id])->count());
 
         $actor->update(['money' => 9_999]);
+        $target->update(['money' => 9_999]);
+        $targetBase = $this->missileBase($target);
+        $actorCapital = $actor->capital()->firstOrFail()->cell()
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        MapCell::query()->where('owner_nation_id', $actor->id)->update(['population' => 0]);
+        $actorCapital->update(['population' => 105]);
+        $followupAim = null;
+        foreach ((new GridCoordinate($actorCapital->x, $actorCapital->y))->radius(2) as $coordinate) {
+            $candidate = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $coordinate->x)->where('y', $coordinate->y)
+                ->with(['terrain', 'facility', 'ownerNation'])->first();
+            if ($candidate === null || in_array($candidate->id, [
+                $actorCapital->id,
+                $actorBase->id,
+                $targetBase->id,
+                $selfTarget->id,
+            ], true)) {
+                continue;
+            }
+            app(MapCellStateService::class)->setFacility($candidate, null);
+            app(MapCellStateService::class)->transitionTerrain(
+                $candidate,
+                TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
+            );
+            $candidate->owner_nation_id = $target->id;
+            $candidate->population = 0;
+            $candidate->save();
+            $followupAim = $candidate->fresh(['terrain', 'facility', 'ownerNation']);
+            break;
+        }
+        $this->assertInstanceOf(MapCell::class, $followupAim);
         $crimeMissile = $this->queue(
             $commands,
             $actorUser,
@@ -1251,10 +1294,33 @@ class CommandAndMissileTest extends TestCase
             $selfTarget,
             2,
         );
+        $targetUser = User::query()->findOrFail((int) DB::table('nation_memberships')
+            ->where('nation_id', $target->id)->value('user_id'));
+        $followupMissile = $this->queue(
+            $commands,
+            $targetUser,
+            $target->fresh(),
+            $space,
+            'missile',
+            $followupAim,
+        );
         $crimeContext = $this->context(
             $world,
             9,
-            $this->seedForImpactSequence($crimeMissile, $selfTarget, 2, $crimeTargets),
+            $this->seedForImpactSequences([
+                [
+                    'item' => $crimeMissile,
+                    'aim' => $selfTarget,
+                    'radius' => 2,
+                    'desired' => $crimeTargets,
+                ],
+                [
+                    'item' => $followupMissile,
+                    'aim' => $followupAim,
+                    'radius' => 2,
+                    'desired' => [$actorCapital],
+                ],
+            ]),
             [$actor->id, $target->id],
         );
         $lifecycle->prepare($crimeContext);
@@ -1270,17 +1336,26 @@ class CommandAndMissileTest extends TestCase
             $space,
             $actorBase->fresh(['terrain', 'facility', 'ownerNation']),
         );
+        $followupLaunch = $resolver->processBase(
+            $crimeContext,
+            $space,
+            $targetBase->fresh(['terrain', 'facility', 'ownerNation']),
+        );
         $resolver->finalize($crimeContext);
-        $lifecycle->finalize($crimeContext);
+        $lifecycleMetrics = $lifecycle->finalize($crimeContext);
         $crimeKarma->finalize($crimeContext);
 
         $this->assertSame('completed', $crimeMissile->fresh()->status);
         $this->assertSame(2, $crimeLaunch['shots_fired'],
             'The remaining LaunchIntent shot must continue after the first criminal impact ends recovery.');
-        $this->assertSame('active', $actor->fresh()->state);
-        $this->assertNull($actor->fresh()->resume_at_turn);
+        $this->assertSame('completed', $followupMissile->fresh()->status);
+        $this->assertSame(1, $followupLaunch['shots_fired']);
+        $this->assertTrue($crimeContext->state->karmaLedgerForNation($actor->id)['recovery_entry']);
+        $this->assertSame(1, $lifecycleMetrics['entered_recovery']);
+        $this->assertSame('recovery', $actor->fresh()->state);
+        $this->assertSame(94, $actor->fresh()->resume_at_turn);
         $this->assertSame(20, $crimeContext->state->karmaLedgerForNation($actor->id)['crime_points']);
-        $this->assertSame(20, (int) $actor->fresh()->karma);
+        $this->assertSame(17, (int) $actor->fresh()->karma);
         $crimeImpacts = DB::table('audit_events')->where('event_type', 'karma.missile_impact')
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $crimeMissile->id])
             ->orderBy('id')->get()->map(static fn (object $event): array => json_decode(
@@ -1303,6 +1378,8 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('public', $recoveryEnded->visibility);
         $this->assertSame('karma_crime', $recoveryEndedMetadata['exit_trigger']);
         $this->assertSame(10, $recoveryEndedMetadata['crime_points']);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'nation.recovery_started')
+            ->where('nation_id', $actor->id)->where('turn', 9)->count());
         $this->assertNull($crimeContext->state->recoveryTerritoryNationId($selfTarget->x, $selfTarget->y));
         $this->assertFalse(app(NationProtectionPolicy::class)->protects(
             $crimeContext,
@@ -4482,6 +4559,55 @@ class CommandAndMissileTest extends TestCase
         }
 
         $this->fail("Unable to find deterministic missile sequence for {$label}.");
+    }
+
+    /**
+     * @param  list<array{item: NationCommandQueueItem, aim: MapCell, radius: int, desired: list<MapCell>}>  $sequences
+     */
+    private function seedForImpactSequences(array $sequences): string
+    {
+        $plans = array_map(function (array $sequence): array {
+            $candidates = (new GridCoordinate($sequence['aim']->x, $sequence['aim']->y))
+                ->radius($sequence['radius']);
+            $coordinates = array_map(
+                static fn (GridCoordinate $candidate): string => $candidate->x.':'.$candidate->y,
+                $candidates,
+            );
+            $indices = array_map(function (MapCell $cell) use ($coordinates): int {
+                $index = array_search($cell->x.':'.$cell->y, $coordinates, true);
+                $this->assertIsInt($index);
+
+                return $index;
+            }, $sequence['desired']);
+
+            return [
+                'label' => TurnRandomStreamFactory::missileImpact($sequence['item']->id),
+                'candidate_count' => count($candidates),
+                'indices' => $indices,
+            ];
+        }, $sequences);
+
+        for ($candidate = 0; $candidate < 100_000; $candidate++) {
+            $seed = hash('sha256', "combined-missile-sequences:{$candidate}");
+            $factory = new TurnRandomStreamFactory($seed);
+            $matched = true;
+            foreach ($plans as $plan) {
+                $stream = $factory->stream($plan['label']);
+                $draws = array_map(
+                    static fn (): int => $stream->integer(0, $plan['candidate_count'] - 1),
+                    $plan['indices'],
+                );
+                if ($draws !== $plan['indices']) {
+                    $matched = false;
+                    break;
+                }
+            }
+            if ($matched) {
+                return $seed;
+            }
+        }
+
+        $this->fail('Unable to find deterministic combined missile sequences.');
     }
 
     private function seedForDrawIndex(NationCommandQueueItem $item, int $count, int $index): string

@@ -87,7 +87,7 @@ final class InquirySubmissionService
     {
         $membership = NationMembership::query()
             ->where('user_id', $user->id)
-            ->whereHas('nation', fn ($query) => $query->whereIn('state', ['active', 'recovery']))
+            ->whereHas('nation', fn ($query) => $query->whereIn('state', ['active', 'dormant', 'recovery']))
             ->with('nation.world')
             ->orderBy('id')
             ->first();

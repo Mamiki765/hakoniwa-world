@@ -235,6 +235,9 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $killState = $killStat->fresh()->only([
             'world_id', 'nation_id', 'kill_count', 'first_killed_turn', 'last_killed_turn', 'version',
         ]);
+        $auditCutoff = (int) DB::table('audit_events')->max('id');
+        $auditHistory = DB::table('audit_events')->where('id', '<=', $auditCutoff)->orderBy('id')->get()
+            ->map(static fn (object $row): array => (array) $row)->all();
 
         $this->artisan('migrate', [
             '--path' => 'database/migrations/'.self::KARMA_MIGRATION.'.php',
@@ -256,6 +259,8 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame($monsterState, $monster->fresh()->only(array_keys($monsterState)));
         $this->assertSame($occupancy, (array) DB::table('monster_occupancies')->where('monster_instance_id', $monster->id)->sole());
         $this->assertSame($killState, $killStat->fresh()->only(array_keys($killState)));
+        $this->assertSame($auditHistory, DB::table('audit_events')->where('id', '<=', $auditCutoff)->orderBy('id')->get()
+            ->map(static fn (object $row): array => (array) $row)->all());
         $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $monster->fresh()->definition->rulesetVersion->key);
         $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $killStat->fresh()->definition->rulesetVersion->key);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v13_activated', 'visibility' => 'admin']);
