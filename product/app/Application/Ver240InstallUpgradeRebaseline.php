@@ -148,7 +148,6 @@ SQL, [$worldId, $rulesetId, $worldId, $rulesetId, $worldId, $rulesetId]);
             if ($item->status === 'queued'
                 && ($definition->ruleset_version_id !== $currentRulesetId
                     || $item->request_ruleset_version_id === null
-                    || $item->request_fingerprint === null
                     || ! is_int($item->queue_position)
                     || $item->queue_position < 1)) {
                 throw new RuntimeException(
