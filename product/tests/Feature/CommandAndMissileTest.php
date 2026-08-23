@@ -8,10 +8,13 @@ use App\Application\DomesticCommandExecutor;
 use App\Application\KarmaTurnService;
 use App\Application\MissileImpactResolver;
 use App\Application\MonsterRemovalService;
+use App\Application\NationCommandTargetService;
 use App\Application\NationCreationService;
+use App\Application\NationLifecycleService;
 use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryNamingService;
 use App\Application\SecretaryTurnService;
+use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
@@ -20,6 +23,7 @@ use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
+use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -160,7 +164,13 @@ class CommandAndMissileTest extends TestCase
         );
         $this->assertSame(23, (int) $firing->fresh()->karma);
 
-        $land = $this->monsterArena($world, $target);
+        $cell->refresh()->load(['terrain', 'facility', 'ownerNation']);
+        $cells->transitionTerrain($cell, $plain);
+        $cells->setFacility($cell, null);
+        $cell->owner_nation_id = $target->id;
+        $cell->population = 0;
+        $cell->save();
+        $land = $cell->fresh(['terrain', 'facility', 'ownerNation']);
         $landItem = $this->queue(
             app(CommandQueueService::class), $firingUser, $firing->fresh(), $space,
             'land_destruction_missile', $land,
@@ -176,6 +186,7 @@ class CommandAndMissileTest extends TestCase
         );
         $this->assertSame(33, (int) $firing->fresh()->karma);
 
+        $turn = 13; // Keep the category contract independent from the every-six-turn decay.
         $seabedBase = $this->ownedWaterFacility($target, 'seabed_base');
         $seabedItem = $this->queue(
             app(CommandQueueService::class), $firingUser, $firing->fresh(), $space,
@@ -205,6 +216,823 @@ class CommandAndMissileTest extends TestCase
             $world, $firingUser, $firing, $target, $base, 'spp_missile', $capital, $turn,
         );
         $this->assertSame(38, (int) $firing->fresh()->karma);
+    }
+
+    public function test_v13_turn_start_snapshot_freezes_twenty_one_hit_rewards_reductions_and_refugee_bonus(): void
+    {
+        [$world, $firstUser, $firstAttacker, $target] = $this->combatants('karma-snapshot');
+        [$badUser, $badAttacker] = $this->nation($world, 'snapshot-positive-attacker');
+        $firstAttacker->update(['money' => 9_999, 'karma' => 0]);
+        $badAttacker->update(['money' => 9_999, 'karma' => 1]);
+        $target->update(['karma' => 20]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $capital = $target->capital()->firstOrFail()->cell()
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $capital->update(['population' => 100_000]);
+        $space = $this->surfaceMapSpace($world);
+        $commands = app(CommandQueueService::class);
+        $bases = [];
+        foreach (range(1, 4) as $_index) {
+            $base = $this->missileBase($firstAttacker);
+            $base->update(['facility_experience' => 200]);
+            $bases[] = $base;
+        }
+        $goodItem = $this->queue(
+            $commands,
+            $firstUser,
+            $firstAttacker,
+            $space,
+            'spp_missile',
+            $capital,
+            19,
+        );
+        $badBase = $this->missileBase($badAttacker);
+        $badBase->update(['facility_experience' => 20]);
+        $bases[] = $badBase;
+        $badItem = $this->queue(
+            $commands,
+            $badUser,
+            $badAttacker,
+            $space,
+            'spp_missile',
+            $capital,
+            2,
+        );
+        $queueItems = [$goodItem, $badItem];
+        $nationIds = [$firstAttacker->id, $badAttacker->id, $target->id];
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'v13 frozen twenty one impact snapshot'),
+            $nationIds,
+        );
+        $lifecycle = app(NationLifecycleService::class);
+        $lifecycle->prepare($context);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
+        app(DomesticCommandExecutor::class)->execute($context);
+        $karma->snapshotMissileBoundary($context);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $shots = 0;
+        foreach ($bases as $base) {
+            $shots += $resolver->processBase(
+                $context,
+                $space,
+                $base->fresh(['terrain', 'facility', 'ownerNation']),
+            )['shots_fired'];
+        }
+        $resolver->finalize($context);
+
+        $this->assertSame(21, $shots);
+        $this->assertSame(20, (int) $target->fresh()->karma,
+            'Persistent KARMA must remain unchanged until the canonical finalization boundary.');
+        $this->assertSame(21, $context->state->karmaLedgerForNation($target->id)['hostile_impacts_received']);
+        $this->assertSame(380, $context->state->karmaLedgerForNation($firstAttacker->id)['alliance_money']);
+        $this->assertSame(0, $context->state->karmaLedgerForNation($firstAttacker->id)['crime_points']);
+        $this->assertSame(0, $context->state->karmaLedgerForNation($badAttacker->id)['alliance_money']);
+        $this->assertSame(0, $context->state->karmaLedgerForNation($badAttacker->id)['crime_points']);
+
+        $alliance = $karma->settleAllianceMoney($context);
+        $resolver->resolveSanctions($context);
+        $karma->finalize($context);
+
+        $this->assertSame(['nations' => 1, 'requested' => 380, 'applied' => 380, 'overflow' => 0], $alliance);
+        $this->assertSame(0, (int) $target->fresh()->karma);
+        $this->assertSame(1, (int) $badAttacker->fresh()->karma);
+        $this->assertSame(879, (int) $firstAttacker->fresh()->money);
+        $this->assertSame(8_999, (int) $badAttacker->fresh()->money);
+
+        $queueItemIds = array_map(static fn (NationCommandQueueItem $item): int => $item->id, $queueItems);
+        $impacts = DB::table('audit_events')->where('event_type', 'karma.missile_impact')
+            ->whereIn(DB::raw("(metadata->>'queue_item_id')::bigint"), $queueItemIds)
+            ->orderBy('id')->get()->map(static fn (object $event): array => json_decode(
+                (string) $event->metadata,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            ));
+        $this->assertCount(21, $impacts);
+        $this->assertTrue($impacts->every(static fn (array $impact): bool => $impact['target_start_karma'] === 20));
+        $this->assertTrue($impacts->take(19)->every(static fn (array $impact): bool => $impact['alliance_money'] === 20
+            && $impact['attacker_start_karma'] === 0 && $impact['crime_points'] === 0));
+        $this->assertSame(20, $impacts[19]['target_start_karma'],
+            'The impact that exhausts the victim reduction must still use the Turn-start snapshot.');
+        $this->assertSame(1, $impacts[19]['attacker_start_karma']);
+        $this->assertSame(0, $impacts[19]['alliance_money']);
+        $this->assertSame(20, $impacts->last()['target_start_karma']);
+        $this->assertSame(1, $impacts->last()['attacker_start_karma']);
+        $this->assertSame(0, $impacts->last()['alliance_money']);
+        $this->assertSame($badItem->id, $impacts->last()['queue_item_id']);
+
+        $bonuses = DB::table('audit_events')->where('event_type', 'karma.refugee_bonus')
+            ->whereIn(DB::raw("(metadata->>'queue_item_id')::bigint"), $queueItemIds)
+            ->get()->map(static fn (object $event): array => json_decode(
+                (string) $event->metadata,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            ));
+        $this->assertCount(19, $bonuses);
+        $this->assertTrue($bonuses->every(static fn (array $bonus): bool => $bonus['target_start_karma'] === 20
+            && $bonus['bonus_refugees'] === intdiv($bonus['base_refugees'] * 20, 100)
+            && $bonus['total_refugees'] === $bonus['base_refugees'] + $bonus['bonus_refugees']));
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'karma.refugee_bonus')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $badItem->id])->count());
+    }
+
+    public function test_v13_anti_monster_launch_classification_uses_both_snapshots_and_stays_frozen(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('anti-monster');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $firstBase = $this->missileBase($firing);
+        $secondBase = $this->missileBase($firing);
+        $cells = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])
+            ->orderBy('id')->limit(3)->get();
+        $this->assertCount(3, $cells);
+        $wasteland = TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+        foreach ($cells as $cell) {
+            app(MapCellStateService::class)->setFacility($cell, null);
+            app(MapCellStateService::class)->transitionTerrain($cell, $wasteland);
+            $cell->owner_nation_id = $target->id;
+            $cell->population = 0;
+            $cell->save();
+        }
+        $monster = $this->monster($world, $cells[0], 'mecha_inora_zero');
+        $occupancy = $monster->occupancy()->firstOrFail();
+
+        $startOnlyItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $cells[0],
+        );
+        $startOnly = $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $startOnlyItem,
+            [$firstBase],
+            2,
+            function () use ($occupancy, $cells): void {
+                $occupancy->update(['map_cell_id' => $cells[2]->id]);
+            },
+        );
+        $this->assertSame(1, $startOnly['shots_fired']);
+        $this->assertTrue($startOnly['classification']['turn_start_monster']);
+        $this->assertFalse($startOnly['classification']['missile_boundary_monster']);
+        $this->assertTrue($startOnly['classification']['anti_monster_context']);
+        $this->assertSame(0, $startOnly['crime_points']);
+        $this->assertSame(0, (int) $firing->fresh()->karma);
+
+        $boundaryOnlyItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space, 'spp_missile', $cells[1],
+        );
+        $boundaryOnly = $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $boundaryOnlyItem,
+            [$firstBase],
+            3,
+            function () use ($occupancy, $cells): void {
+                $occupancy->update(['map_cell_id' => $cells[1]->id]);
+            },
+        );
+        $this->assertSame(1, $boundaryOnly['shots_fired']);
+        $this->assertFalse($boundaryOnly['classification']['turn_start_monster']);
+        $this->assertTrue($boundaryOnly['classification']['missile_boundary_monster']);
+        $this->assertTrue($boundaryOnly['classification']['anti_monster_context']);
+        $this->assertSame(0, $boundaryOnly['crime_points']);
+        $this->assertSame(3, (int) $monster->fresh()->current_hp);
+
+        $cells[0]->refresh()->load(['terrain', 'facility', 'ownerNation']);
+        app(MapCellStateService::class)->transitionTerrain($cells[0], $wasteland);
+        $cells[0]->owner_nation_id = $target->id;
+        $cells[0]->population = 0;
+        $cells[0]->save();
+        $monster->update(['current_hp' => 1]);
+        $occupancy->update(['map_cell_id' => $cells[0]->id]);
+        $frozenItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space,
+            'spp_missile', $cells[0], 2,
+        );
+        $frozen = $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $frozenItem,
+            [$firstBase, $secondBase],
+            4,
+            static function (): void {},
+        );
+        $this->assertSame(2, $frozen['shots_fired']);
+        $this->assertTrue($frozen['classification']['turn_start_monster']);
+        $this->assertTrue($frozen['classification']['missile_boundary_monster']);
+        $this->assertTrue($frozen['classification']['anti_monster_context']);
+        $this->assertSame(0, $frozen['crime_points'], 'The meaningful post-kill shot must retain the frozen exemption.');
+        $this->assertSame('killed', $monster->fresh()->state);
+        $this->assertSame(-1, (int) $firing->fresh()->karma,
+            'Only the once-per-Turn foreign monster kill reduction may cross zero.');
+
+        $oil = $this->ownedWaterFacility($target, 'seabed_oil_field');
+        $oilCoordinate = new GridCoordinate($oil->x, $oil->y);
+        $oilFootprint = $this->missileCellIndex($world);
+        $oilMonsterCell = null;
+        foreach ($oilCoordinate->radius(2) as $coordinate) {
+            $candidate = $oilFootprint[$coordinate->x.':'.$coordinate->y] ?? null;
+            if ($candidate instanceof MapCell && $candidate->id !== $oil->id) {
+                $oilMonsterCell = $candidate;
+                break;
+            }
+        }
+        $this->assertInstanceOf(MapCell::class, $oilMonsterCell);
+        app(MapCellStateService::class)->setFacility($oilMonsterCell, null);
+        app(MapCellStateService::class)->transitionTerrain($oilMonsterCell, $wasteland);
+        $oilMonsterCell->owner_nation_id = $target->id;
+        $oilMonsterCell->population = 0;
+        $oilMonsterCell->save();
+        $oilMonster = $this->monster($world, $oilMonsterCell);
+        $oilItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space, 'missile', $oil,
+        );
+        $oilCollateral = $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $oilItem,
+            [$firstBase],
+            5,
+            static function (): void {},
+            $this->seedForImpactIndex($oilItem, $oil, 2, $oil),
+        );
+        $this->assertTrue($oilCollateral['classification']['anti_monster_context']);
+        $this->assertSame(0, $oilCollateral['crime_points']);
+        $this->assertNull($oil->fresh()->facility_definition_id,
+            'Destroyed oil remains exempt when the LaunchIntent was classified as anti-monster.');
+        $this->assertSame(-1, (int) $firing->fresh()->karma);
+        MonsterOccupancy::query()->where('monster_instance_id', $oilMonster->id)->delete();
+
+        $cells[1]->refresh()->load(['terrain', 'facility', 'ownerNation']);
+        app(MapCellStateService::class)->transitionTerrain($cells[1], $wasteland);
+        $cells[1]->owner_nation_id = $target->id;
+        $cells[1]->population = 0;
+        $cells[1]->save();
+        $landMonster = $this->monster($world, $cells[1]);
+        $landItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space,
+            'land_destruction_missile', $cells[1],
+        );
+        $land = $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $landItem,
+            [$firstBase],
+            7,
+            static function (): void {},
+            $this->seedForImpactIndex($landItem, $cells[1], 2, $cells[1]),
+        );
+        $this->assertFalse($land['classification']['anti_monster_context']);
+        $this->assertSame(10, $land['crime_points']);
+        $this->assertSame('removed', $landMonster->fresh()->state);
+        $this->assertSame(9, (int) $firing->fresh()->karma,
+            'Land destruction remains criminal and its terrain removal is not a player monster kill.');
+        $this->assertSame(5, DB::table('audit_events')->where('event_type', 'karma.anti_monster_classified')->count());
+    }
+
+    public function test_v13_hundred_shot_intent_uses_only_two_full_monster_snapshots_and_one_classification(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('anti-monster-query-bound');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $targetCell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'missile',
+            $targetCell,
+        );
+        $nationIds = [$firing->id, $target->id];
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'v13 hundred shot anti monster query bound'),
+            $nationIds,
+        );
+        $context->state->setLifecycleNationIds($nationIds);
+        $karma = app(KarmaTurnService::class);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $karma->prepare($context);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
+        $context->state->registerLaunchIntent(
+            $firing->id,
+            'missile',
+            $targetCell->x,
+            $targetCell->y,
+            100,
+            $item->id,
+        );
+        $karma->snapshotMissileBoundary($context);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $shotsFired = 0;
+        foreach (range(1, 100) as $_shot) {
+            $shotsFired += $resolver->processBase(
+                $context,
+                $space,
+                $base->fresh(['terrain', 'facility', 'ownerNation']),
+            )['shots_fired'];
+        }
+        $resolver->finalize($context);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $fullMonsterSnapshots = collect($queries)->filter(static function (array $query): bool {
+            $sql = strtolower((string) ($query['query'] ?? ''));
+
+            return str_contains($sql, 'monster_occupancies')
+                && str_contains($sql, 'monster_instances')
+                && str_contains($sql, 'map_spaces');
+        })->count();
+        $this->assertSame(100, $shotsFired);
+        $this->assertSame(2, $fullMonsterSnapshots,
+            'A 100-shot LaunchIntent must use only the Turn-start and missile-boundary monster snapshots.');
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'karma.anti_monster_classified')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->count());
+        $this->assertSame(0, $context->state->launchIntents()[0]->remainingShots());
+    }
+
+    public function test_v13_spp_self_destruct_setup_adds_twenty_once_and_rejects_nonqualifying_end_states(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('spp-hidden-crime');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $firstBase = $this->missileBase($firing);
+        $secondBase = $this->missileBase($firing);
+        $foreignCells = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])
+            ->orderBy('id')->limit(4)->get();
+        $this->assertCount(4, $foreignCells);
+        $ownCell = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereNotIn('id', [$firstBase->id, $secondBase->id])
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])
+            ->orderBy('id')->firstOrFail();
+
+        $qualifying = $this->monster($world, $foreignCells[0], 'mecha_inora_zero');
+        $qualifying->update(['current_hp' => 3]);
+        $qualifiedItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing, $space,
+            'spp_missile', $foreignCells[0], 2,
+        );
+        $qualified = $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world, $firing, $target, $qualifiedItem, [$firstBase, $secondBase], 2, static function (): void {},
+        );
+        $this->assertSame(2, $qualified['shots_fired']);
+        $this->assertSame(1, (int) $qualifying->fresh()->current_hp);
+        $this->assertSame(20, $qualified['crime_points']);
+        $this->assertSame(20, (int) $firing->fresh()->karma);
+        $special = DB::table('audit_events')->where('event_type', 'karma.spp_self_destruct_setup')->sole();
+        $this->assertSame('private', $special->visibility);
+        $this->assertSame(
+            '秘書「試験島主様……先ほどのSPPミサイルの本数ですが……」（カルマ +20）',
+            $special->message,
+        );
+
+        $own = $this->monster($world, $ownCell, 'mecha_inora_zero');
+        $own->update(['current_hp' => 2]);
+        $ownItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space, 'spp_missile', $ownCell,
+        );
+        $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world, $firing, $target, $ownItem, [$firstBase], 3, static function (): void {},
+        );
+
+        $alreadyOne = $this->monster($world, $foreignCells[1], 'mecha_inora_zero');
+        $alreadyOne->update(['current_hp' => 1]);
+        $alreadyOneItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space, 'spp_missile', $foreignCells[1],
+        );
+        $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world, $firing, $target, $alreadyOneItem, [$firstBase], 4, static function (): void {},
+        );
+
+        $killed = $this->monster($world, $foreignCells[2], 'mecha_inora_zero');
+        $killed->update(['current_hp' => 2]);
+        $killedItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space,
+            'spp_missile', $foreignCells[2], 2,
+        );
+        $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world, $firing, $target, $killedItem, [$firstBase, $secondBase], 5, static function (): void {},
+        );
+
+        $aboveOne = $this->monster($world, $foreignCells[3], 'mecha_inora_zero');
+        $aboveOneItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space, 'spp_missile', $foreignCells[3],
+        );
+        $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world, $firing, $target, $aboveOneItem, [$firstBase], 7, static function (): void {},
+        );
+
+        $this->assertSame(1, (int) $own->fresh()->current_hp);
+        $this->assertSame('killed', $alreadyOne->fresh()->state);
+        $this->assertSame('killed', $killed->fresh()->state);
+        $this->assertSame(3, (int) $aboveOne->fresh()->current_hp);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'karma.spp_self_destruct_setup')->count(),
+            'Own territory, start-at-one, killed, and final-above-one commands must not add the hidden crime.');
+    }
+
+    public function test_v13_hostile_player_volley_enters_recovery_after_finishing_and_removes_monsters_without_rewards(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('recovery-entry');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 40]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $firstBase = $this->missileBase($firing);
+        $secondBase = $this->missileBase($firing);
+        MapCell::query()->where('owner_nation_id', $target->id)->update(['population' => 0]);
+        $capital = MapCell::query()->whereKey($target->capital()->value('map_cell_id'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $capital->update(['population' => 110]);
+        $monsterCell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($capital->id)->whereNull('facility_definition_id')
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $monster = $this->monster($world, $monsterCell);
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $this->surfaceMapSpace($world),
+            'spp_missile',
+            $capital,
+            2,
+        );
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'v13 exact recovery entry'),
+            [$firing->id, $target->id],
+        );
+        $lifecycle = app(NationLifecycleService::class);
+        $prepare = $lifecycle->prepare($context);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots(
+            $context,
+            $context->state->lifecycleNationIds(),
+        );
+        app(DomesticCommandExecutor::class)->execute($context);
+        $karma->snapshotMissileBoundary($context);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $shots = $resolver->processBase(
+            $context,
+            $this->surfaceMapSpace($world),
+            $firstBase->fresh(['terrain', 'facility', 'ownerNation']),
+        )['shots_fired'];
+        $shots += $resolver->processBase(
+            $context,
+            $this->surfaceMapSpace($world),
+            $secondBase->fresh(['terrain', 'facility', 'ownerNation']),
+        )['shots_fired'];
+        $resolver->finalize($context);
+        $alliance = $karma->settleAllianceMoney($context);
+        $sanctions = $resolver->resolveSanctions($context);
+        $finalizedLifecycle = $lifecycle->finalize($context);
+        $finalizedKarma = $karma->finalize($context);
+
+        $this->assertSame(0, $prepare['recovery']);
+        $this->assertSame(2, $shots, 'The current hostile volley must finish after recovery entry qualifies.');
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame(100, (int) $capital->fresh()->population);
+        $this->assertTrue($context->state->karmaLedgerForNation($target->id)['recovery_entry']);
+        $this->assertSame(1, $finalizedLifecycle['entered_recovery']);
+        $this->assertSame(1, $finalizedLifecycle['recovery_monsters_removed']);
+        $this->assertSame('recovery', $target->fresh()->state);
+        $this->assertSame(2, (int) $target->fresh()->state_started_turn);
+        $this->assertSame(87, (int) $target->fresh()->resume_at_turn);
+        $this->assertSame(36, (int) $target->fresh()->karma);
+        $this->assertSame(1, $finalizedKarma['victim_reductions']);
+        $this->assertSame(3, $finalizedKarma['recovery_reductions']);
+        $this->assertSame(40, $alliance['requested']);
+        $this->assertSame(0, $sanctions['karma_sanction_shots']);
+        $this->assertSame('removed', $monster->fresh()->state);
+        $this->assertSame('recovery_alliance_removal', $monster->fresh()->removal_reason);
+        $this->assertSame(0, DB::table('nation_monster_kill_stats')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.reward_distributed')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.killed')->count());
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'nation.recovery_started',
+            'nation_id' => $target->id,
+            'visibility' => 'public',
+        ]);
+    }
+
+    public function test_v13_recovery_blocks_hostile_registration_and_revalidates_execution_without_blocking_aid_or_domestic_work(): void
+    {
+        [$world, $actorUser, $actor, $target] = $this->combatants('recovery-actions');
+        $actor->update(['money' => 9_999]);
+        $target->update(['money' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $commands = app(CommandQueueService::class);
+        $targets = app(NationCommandTargetService::class);
+        $missileDefinition = CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'missile')
+            ->firstOrFail();
+        $monsterDispatchDefinition = CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'monster_dispatch')
+            ->firstOrFail();
+        $territoryDefinition = CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'territory_expand')
+            ->firstOrFail();
+        $targetCell = $target->capital()->firstOrFail()->cell()
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $this->missileBase($actor);
+        $preRecoveryMissile = $this->queue(
+            $commands,
+            $actorUser,
+            $actor,
+            $space,
+            'missile',
+            $targetCell,
+        );
+        $target->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 1,
+            'resume_at_turn' => 86,
+        ]);
+
+        $incoming = $this->context(
+            $world,
+            2,
+            hash('sha256', 'recovery incoming execution revalidation'),
+            [$actor->id, $target->id],
+        );
+        app(NationLifecycleService::class)->prepare($incoming);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($incoming, [$actor->id, $target->id]);
+        $moneyBeforeBlockedMissile = (int) $actor->fresh()->money;
+        $blocked = app(DomesticCommandExecutor::class)->execute($incoming);
+
+        $this->assertSame(1, $blocked['failures']);
+        $this->assertSame('failed', $preRecoveryMissile->fresh()->status);
+        $this->assertSame('ceasefire_prohibited', $preRecoveryMissile->fresh()->failure_code);
+        $this->assertSame([], $incoming->state->launchIntents());
+        $this->assertGreaterThanOrEqual($moneyBeforeBlockedMissile, (int) $actor->fresh()->money);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'command.ceasefire_blocked',
+            'nation_id' => $actor->id,
+            'turn' => 2,
+        ]);
+
+        $this->assertPlayerFacing(
+            fn () => $commands->validateTarget(
+                $actor->fresh(),
+                $space,
+                $missileDefinition,
+                $targetCell->fresh(['terrain', 'facility', 'ownerNation']),
+            ),
+            "{$target->name}へのミサイル攻撃は箱庭協定によって禁じられているため、登録できません。",
+        );
+        $this->assertPlayerFacing(
+            fn () => $targets->validateRegistration(
+                $actor->fresh(),
+                $monsterDispatchDefinition,
+                ['target_nation_id' => $target->id],
+            ),
+            '休戦中の島から、または休戦中の島へ怪獣を派遣できません。',
+        );
+        $this->assertPlayerFacing(
+            fn () => $targets->validateMonumentFlightRegistration($actor->fresh(), $target->id),
+            '休戦中の島から、または休戦中の島へ記念碑を発射できません。',
+        );
+
+        $target->update([
+            'state' => 'active',
+            'state_reason' => null,
+            'state_started_turn' => null,
+            'resume_at_turn' => null,
+        ]);
+        $actor->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 1,
+            'resume_at_turn' => 86,
+        ]);
+        $this->assertPlayerFacing(
+            fn () => $commands->validateTarget(
+                $actor->fresh(),
+                $space,
+                $missileDefinition,
+                $targetCell->fresh(['terrain', 'facility', 'ownerNation']),
+            ),
+            "{$target->name}へのミサイル攻撃は箱庭協定によって禁じられているため、登録できません。",
+        );
+        $this->assertPlayerFacing(
+            fn () => $targets->validateRegistration(
+                $actor->fresh(),
+                $monsterDispatchDefinition,
+                ['target_nation_id' => $target->id],
+            ),
+            '休戦中の島から、または休戦中の島へ怪獣を派遣できません。',
+        );
+        $this->assertPlayerFacing(
+            fn () => $targets->validateMonumentFlightRegistration($actor->fresh(), $target->id),
+            '休戦中の島から、または休戦中の島へ記念碑を発射できません。',
+        );
+
+        $anchor = $actor->capital()->firstOrFail()->cell()->firstOrFail();
+        $neutralCoordinate = (new GridCoordinate($anchor->x, $anchor->y))->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        )[0];
+        $neutral = MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $neutralCoordinate->x)->where('y', $neutralCoordinate->y)
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility($neutral, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $neutral,
+            TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail(),
+        );
+        $neutral->owner_nation_id = null;
+        $neutral->population = 0;
+        $neutral->save();
+        $commands->validateTarget(
+            $actor->fresh(),
+            $space,
+            $territoryDefinition,
+            $neutral->fresh(['terrain', 'facility']),
+        );
+        $neutral->update(['owner_nation_id' => $target->id]);
+        $this->assertPlayerFacing(
+            fn () => $commands->validateTarget(
+                $actor->fresh(),
+                $space,
+                $territoryDefinition,
+                $neutral->fresh(['terrain', 'facility', 'ownerNation']),
+            ),
+            '休戦中の島から、または休戦中の島の領土へ hostile な領土拡張はできません。',
+        );
+        $neutral->update(['owner_nation_id' => null]);
+
+        $forest = MapCell::query()->where('owner_nation_id', $actor->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
+            ->firstOrFail();
+        $aid = $this->queue(
+            $commands,
+            $actorUser,
+            $actor->fresh(),
+            $space,
+            'money_aid',
+            null,
+            parameters: ['target_nation_id' => $target->id],
+        );
+        $development = $this->queue($commands, $actorUser, $actor->fresh(), $space, 'land_clear', $forest);
+        $expansion = $this->queue($commands, $actorUser, $actor->fresh(), $space, 'territory_expand', $neutral);
+        $targetMoneyBeforeAid = (int) $target->fresh()->money;
+        $allowed = $this->context(
+            $world,
+            3,
+            hash('sha256', 'recovery allowed work'),
+            [$actor->id, $target->id],
+        );
+        app(NationLifecycleService::class)->prepare($allowed);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($allowed, [$actor->id, $target->id]);
+        app(DomesticCommandExecutor::class)->execute($allowed);
+        $nextAllowed = $this->context(
+            $world,
+            4,
+            hash('sha256', 'recovery allowed neutral expansion'),
+            [$actor->id, $target->id],
+        );
+        app(NationLifecycleService::class)->prepare($nextAllowed);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($nextAllowed, [$actor->id, $target->id]);
+        app(DomesticCommandExecutor::class)->execute($nextAllowed);
+
+        $this->assertSame('completed', $aid->fresh()->status);
+        $this->assertGreaterThanOrEqual($targetMoneyBeforeAid + 100, (int) $target->fresh()->money);
+        $this->assertSame('completed', $development->fresh()->status);
+        $this->assertSame('plain', $forest->fresh()->terrain()->value('key'));
+        $this->assertSame('completed', $expansion->fresh()->status);
+        $this->assertSame($actor->id, $neutral->fresh()->owner_nation_id);
+        $this->assertSame('recovery', $actor->fresh()->state);
+        $aidMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.money_aid_transferred')
+            ->whereRaw("metadata->>'sender_nation_id' = ?", [(string) $actor->id])
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(100, $aidMetadata['transferred_money']);
+    }
+
+    public function test_v13_sanction_overflow_reuses_defense_secretary_and_canonical_impact_without_feedback(): void
+    {
+        [$world, $_firstUser, $first, $second] = $this->combatants('sanctions');
+        [, $third] = $this->nation($world, '制裁第三国');
+        foreach ([$first, $second, $third] as $nation) {
+            $nation->update(['karma' => 100]);
+        }
+        $space = $this->surfaceMapSpace($world);
+        $firstCapital = MapCell::query()->whereKey($first->capital()->value('map_cell_id'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $secondCapital = MapCell::query()->whereKey($second->capital()->value('map_cell_id'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $thirdImpact = MapCell::query()->where('owner_nation_id', $third->id)
+            ->whereKeyNot($third->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])
+            ->firstOrFail();
+        MapCell::query()->whereIn('owner_nation_id', [$first->id, $second->id, $third->id])
+            ->update(['owner_nation_id' => null]);
+        app(MapCellStateService::class)->setFacility(
+            $thirdImpact,
+            FacilityDefinition::query()->where('key', 'defense')->firstOrFail(),
+        );
+        $thirdImpact->save();
+        MapCell::query()->whereKey($firstCapital->id)->update(['owner_nation_id' => $first->id]);
+        MapCell::query()->whereKey($secondCapital->id)->update(['owner_nation_id' => $second->id]);
+        MapCell::query()->whereKey($thirdImpact->id)->update([
+            'owner_nation_id' => $third->id,
+            'population' => 0,
+        ]);
+        $externalDefense = $this->placeFacilityAtDistance($space, $firstCapital, $second, 1, 'defense');
+        $externalDefense->update(['owner_nation_id' => null]);
+
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $secondSecretaryId = DB::table('secretaries')->where('user_id', DB::table('nation_memberships')
+            ->where('nation_id', $second->id)->where('role', 'owner')->value('user_id'))->value('id');
+        DB::table('secretary_skills')->where('secretary_id', $secondSecretaryId)
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)->update(['level' => 1]);
+
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'v13 sanction canonical reuse'),
+            [$first->id, $second->id, $third->id],
+        );
+        app(NationLifecycleService::class)->prepare($context);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots(
+            $context,
+            $context->state->lifecycleNationIds(),
+        );
+        foreach ([$first, $second, $third] as $nation) {
+            $context->state->addKarmaCrime($nation->id, 1);
+        }
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $metrics = $resolver->resolveSanctions($context);
+        $karma->finalize($context);
+
+        $this->assertSame([
+            'karma_sanction_nations' => 3,
+            'karma_sanction_shots' => 3,
+            'karma_sanction_intercepted' => 2,
+            'karma_sanction_impacts' => 1,
+        ], $metrics);
+        $this->assertNotNull($externalDefense->fresh()->facility_definition_id);
+        $this->assertSame(1000, (int) $firstCapital->fresh()->population);
+        $this->assertSame(1000, (int) $secondCapital->fresh()->population);
+        $this->assertNull($thirdImpact->fresh()->facility_definition_id,
+            'A defense facility on the impact cell cannot protect itself from a sanction.');
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'refugee_generated')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'karma.alliance_money')->count());
+        foreach ([$first, $second, $third] as $nation) {
+            $this->assertSame(1, $context->state->karmaLedgerForNation($nation->id)['sanction_count']);
+            $this->assertSame(0, $context->state->karmaLedgerForNation($nation->id)['hostile_impacts_received']);
+            $this->assertFalse($context->state->karmaLedgerForNation($nation->id)['recovery_entry']);
+            $this->assertSame(100, (int) $nation->fresh()->karma);
+        }
     }
 
     #[DataProvider('v8DefenseMissileProvider')]
@@ -1715,6 +2543,8 @@ class CommandAndMissileTest extends TestCase
     public function test_multiple_minimum_capital_impacts_are_aggregated_once_per_launch(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
+        $firing->update(['karma' => 0]);
+        $target->update(['karma' => 20]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
         $base->update(['facility_experience' => 60]);
@@ -1733,15 +2563,21 @@ class CommandAndMissileTest extends TestCase
             3,
         );
 
-        $metrics = $this->resolveMissile(
-            $this->context($world, 2, hash('sha256', 'three minimum Capital no-op impacts'), [$firing->id, $target->id]),
-            $base,
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'three minimum Capital no-op impacts'),
+            [$firing->id, $target->id],
         );
+        $context->state->setKarmaStartSnapshot($firing->id, 0);
+        $context->state->setKarmaStartSnapshot($target->id, 20);
+        $metrics = $this->resolveMissile($context, $base);
 
         $this->assertSame(0, $metrics['meaningful_impacts']);
         $this->assertSame(3, $metrics['ineffective_impacts']);
         $this->assertSame([], $metrics['changed_cell_ids']);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'karma.refugee_bonus')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.ineffective_aggregated')->count());
         $aggregate = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.ineffective_aggregated')
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
@@ -2810,10 +3646,10 @@ class CommandAndMissileTest extends TestCase
         return $nearby->all();
     }
 
-    private function monster(World $world, MapCell $cell): MonsterInstance
+    private function monster(World $world, MapCell $cell, string $monsterKey = 'inora'): MonsterInstance
     {
         $definition = MonsterDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)
-            ->where('key', 'inora')->firstOrFail();
+            ->where('key', $monsterKey)->firstOrFail();
         $monster = MonsterInstance::query()->create([
             'world_id' => $world->id,
             'monster_definition_id' => $definition->id,
@@ -3001,6 +3837,72 @@ class CommandAndMissileTest extends TestCase
         $karma->finalize($context);
     }
 
+    /**
+     * @param  list<MapCell>  $bases
+     * @return array{
+     *     shots_fired: int,
+     *     crime_points: int,
+     *     classification: array{
+     *         turn_start_monster: bool,
+     *         missile_boundary_monster: bool,
+     *         anti_monster_context: bool
+     *     }
+     * }
+     */
+    private function resolveKarmaLaunchWithBoundaryMutation(
+        World $world,
+        Nation $firing,
+        Nation $target,
+        NationCommandQueueItem $item,
+        array $bases,
+        int $targetTurn,
+        callable $boundaryMutation,
+        ?string $seed = null,
+    ): array {
+        $nationIds = [$firing->id, $target->id];
+        $context = $this->context(
+            $world,
+            $targetTurn,
+            $seed ?? hash('sha256', "v13 anti monster {$targetTurn} {$item->id}"),
+            $nationIds,
+        );
+        $context->state->setLifecycleNationIds($nationIds);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
+        app(DomesticCommandExecutor::class)->execute($context);
+        $boundaryMutation();
+        $karma->snapshotMissileBoundary($context);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $shotsFired = 0;
+        foreach ($bases as $base) {
+            $shotsFired += $resolver->processBase(
+                $context,
+                $this->surfaceMapSpace($world),
+                $base->fresh(['terrain', 'facility', 'ownerNation']),
+            )['shots_fired'];
+        }
+        $resolver->finalize($context);
+        $karma->settleAllianceMoney($context);
+        $resolver->resolveSanctions($context);
+        $karma->finalize($context);
+        $classification = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'karma.anti_monster_classified')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+
+        return [
+            'shots_fired' => $shotsFired,
+            'crime_points' => $context->state->karmaLedgerForNation($firing->id)['crime_points'],
+            'classification' => [
+                'turn_start_monster' => $classification['turn_start_monster'],
+                'missile_boundary_monster' => $classification['missile_boundary_monster'],
+                'anti_monster_context' => $classification['anti_monster_context'],
+            ],
+        ];
+    }
+
     /** @return array<string, MapCell> */
     private function missileCellIndex(World $world): array
     {
@@ -3040,6 +3942,17 @@ class CommandAndMissileTest extends TestCase
             position: $position,
             quantityProvided: true,
         )['item'];
+    }
+
+    /** @param callable(): mixed $action */
+    private function assertPlayerFacing(callable $action, string $message): void
+    {
+        try {
+            $action();
+            $this->fail('Expected a player-facing command rejection.');
+        } catch (PlayerFacingCommandException $exception) {
+            $this->assertSame($message, $exception->getMessage());
+        }
     }
 
     /** @param list<int> $nationIds */

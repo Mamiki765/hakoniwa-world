@@ -1868,12 +1868,13 @@ final class RulesetAuthoringValidator
             }
         }
         $hasDormancy = array_key_exists('nation_lifecycle', $settings);
+        $recoveryEnabled = ($settings['nation_lifecycle']['recovery_entry_enabled'] ?? false) === true;
         $expectedMetadata = [
             'consumes_turn' => true,
             'parameters' => [],
             'legacy_command' => 'Widen',
             'policy_version' => 3,
-            'actor_states' => ['active'],
+            'actor_states' => $recoveryEnabled ? ['active', 'recovery'] : ['active'],
             'adjacency' => ['source_owner' => 'actor', 'directions' => 6],
             'neutral_target' => [
                 'allowed' => true,

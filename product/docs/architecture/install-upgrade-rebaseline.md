@@ -1,8 +1,14 @@
 # ver 2.4.0 install and upgrade rebaseline
 
-## Immutable current identity
+> This document records the first ver 2.4.0 exact-v11 rebaseline and historical-retirement
+> boundary. The completed application subsequently publishes immutable v12 for dormancy and
+> immutable v13 for KARMA/recovery. Fresh install now publishes only v13; the immediate
+> supported gameplay transition is exact v12 to v13. See
+> `product/docs/ver-2.4.0-karma-recovery.md`.
 
-ver 2.4.0 keeps the existing Ruleset identity unchanged:
+## Historical v11 rebaseline identity
+
+The first ver 2.4.0 rebaseline kept the existing Ruleset identity unchanged:
 
 ```text
 key: hakoniwa-2s-plus-v11
@@ -10,13 +16,13 @@ version: 11
 checksum: 5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8
 ```
 
-The rebaseline changes installation and upgrade routing only. It does not create v12,
+That rebaseline changed installation and upgrade routing only. It did not create v12,
 change gameplay or balance, rewrite a published payload, or regenerate request fingerprints.
 
-## Two supported paths
+## Historical two-path rebaseline
 
-Fresh installation and production upgrade no longer share an obligation to execute the
-complete historical migration chain.
+At that boundary, fresh installation and production upgrade stopped sharing an obligation to
+execute the complete historical migration chain.
 
 ### Fresh installation
 

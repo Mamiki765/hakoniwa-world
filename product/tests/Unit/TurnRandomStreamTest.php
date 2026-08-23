@@ -62,6 +62,21 @@ class TurnRandomStreamTest extends TestCase
         $this->assertNotSame($label, TurnRandomStreamFactory::monumentFlight(43));
     }
 
+    public function test_karma_sanction_uses_a_dedicated_stream_without_shifting_player_missiles(): void
+    {
+        $playerMissile = TurnRandomStreamFactory::missileImpact(73);
+        $expected = $this->draws(new TurnRandomStreamFactory(self::MASTER_SEED), $playerMissile);
+        $withSanctions = new TurnRandomStreamFactory(self::MASTER_SEED);
+        $sanction = TurnRandomStreamFactory::karmaSanction(9, 1);
+        for ($shot = 0; $shot < 100; $shot++) {
+            $withSanctions->stream($sanction)->integer(0, 59);
+        }
+
+        $this->assertSame('settle_deferred_effects:karma_sanction:nation:9:target:v1', $sanction);
+        $this->assertSame($expected, $this->draws($withSanctions, $playerMissile));
+        $this->assertNotSame($sanction, TurnRandomStreamFactory::karmaSanction(10, 1));
+    }
+
     public function test_fixed_seed_and_label_vector_is_stable(): void
     {
         $factory = new TurnRandomStreamFactory(self::MASTER_SEED);

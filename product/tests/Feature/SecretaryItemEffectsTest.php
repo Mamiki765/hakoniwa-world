@@ -735,7 +735,7 @@ final class SecretaryItemEffectsTest extends TestCase
 
     private function switchToItemRuleset(World $world): RulesetVersion
     {
-        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v12')->sole();
+        $ruleset = RulesetVersion::query()->where('key', config('hakoniwa.ruleset.key'))->sole();
         config(['hakoniwa.ruleset' => $ruleset->settings]);
         if ($world->ruleset_version_id !== $ruleset->id) {
             $world->update(['ruleset_version_id' => $ruleset->id]);

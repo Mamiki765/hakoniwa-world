@@ -14,8 +14,8 @@ use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
-use App\Models\MonsterOccupancy;
 use App\Models\MonsterInstance;
+use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\TerrainDefinition;
 use DomainException;
@@ -400,7 +400,7 @@ final class MissileImpactResolver
     }
 
     /** @param array<string, mixed> $launch
-     * @param array<string, mixed> $impact
+     * @param  array<string, mixed>  $impact
      */
     private function recordKarmaForImpact(
         TurnContext $context,
@@ -612,13 +612,13 @@ final class MissileImpactResolver
             $this->events->record($context, $recoveryProtection
                 ? 'missile.recovery_protected'
                 : 'missile.dormancy_protected', $cell, [
-                'nation_id' => $protectedNationId,
-                'nation_name' => $protectedNation->name,
-                'x' => $coordinate->x,
-                'y' => $coordinate->y,
-                'missile_key' => $intent->definitionKey,
-                'missile_name' => $missileName,
-            ], 'public', 'info', $recoveryProtection
+                    'nation_id' => $protectedNationId,
+                    'nation_name' => $protectedNation->name,
+                    'x' => $coordinate->x,
+                    'y' => $coordinate->y,
+                    'missile_key' => $intent->definitionKey,
+                    'missile_name' => $missileName,
+                ], 'public', 'info', $recoveryProtection
                 ? "{$protectedNation->name}({$coordinate->x},{$coordinate->y})への{$missileName}攻撃は箱庭協定によって禁じられ、空中で自爆しました"
                 : "{$protectedNation->name}({$coordinate->x},{$coordinate->y})に{$missileName}が落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました",
             );
@@ -1254,7 +1254,7 @@ final class MissileImpactResolver
     ): void {
         $this->events->record($context, 'missile.impact', $cell, [
             'nation_id' => $targetNationId ?? $cell->owner_nation_id,
-            'target_nation_name' => $targetNationName ?? $cell->ownerNation->name,
+            'target_nation_name' => $targetNationName ?? $cell->ownerNation?->name,
             'firing_nation_id' => $firingNation?->id,
             'firing_nation_name' => $firingNation === null ? '箱庭連合' : $firingNation->name,
             'firing_source' => $firingNation === null ? 'hakoniwa_alliance' : 'player_nation',

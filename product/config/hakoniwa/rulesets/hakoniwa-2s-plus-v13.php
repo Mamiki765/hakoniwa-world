@@ -644,6 +644,7 @@ return [
                 'policy_version' => 3,
                 'actor_states' => [
                     0 => 'active',
+                    1 => 'recovery',
                 ],
                 'adjacency' => [
                     'source_owner' => 'actor',

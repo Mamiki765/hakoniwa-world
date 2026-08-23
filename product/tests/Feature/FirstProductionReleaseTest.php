@@ -213,7 +213,7 @@ final class FirstProductionReleaseTest extends TestCase
             $manual = file_get_contents($path);
             $this->assertIsString($manual);
             $this->assertDoesNotMatchRegularExpression('/\b(?:source|legacy|ruleset)\b/i', $manual);
-            $this->assertDoesNotMatchRegularExpression('/自爆|飛翔|とてつもない|Karma/i', $manual);
+            $this->assertDoesNotMatchRegularExpression('/自爆|飛翔|とてつもない/i', $manual);
         }
         $css = file_get_contents(resource_path('css/hakoniwa.css'));
         $this->assertIsString($css);

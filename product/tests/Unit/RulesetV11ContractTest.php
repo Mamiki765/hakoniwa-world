@@ -13,7 +13,7 @@ final class RulesetV11ContractTest extends TestCase
 
     public const V12_CHECKSUM = 'cf55370616b56822fe6807f29cdaec6cb0fd3d9bcc12849d3e61df015bdf656e';
 
-    public const V13_CHECKSUM = '26b0e5549e3e6f40b7fd2822a0df53d9dd5cd9a1482cc4cd42dede3c9f14c614';
+    public const V13_CHECKSUM = '27c5d58d80e55bf2807cecd147b99b80e57ea0e1afd836eea150982445723b1f';
 
     public function test_normal_config_loads_only_the_standalone_current_payload(): void
     {

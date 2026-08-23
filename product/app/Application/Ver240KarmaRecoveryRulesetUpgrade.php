@@ -21,7 +21,7 @@ final readonly class Ver240KarmaRecoveryRulesetUpgrade
 
     public const TARGET_VERSION = 13;
 
-    public const TARGET_CHECKSUM = '26b0e5549e3e6f40b7fd2822a0df53d9dd5cd9a1482cc4cd42dede3c9f14c614';
+    public const TARGET_CHECKSUM = '27c5d58d80e55bf2807cecd147b99b80e57ea0e1afd836eea150982445723b1f';
 
     public const SOURCE_MIGRATION = '2026_08_23_000000_add_nation_dormancy_and_publish_v12';
 

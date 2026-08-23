@@ -14,6 +14,17 @@ final class NationProtectionPolicy
         if ($recoveryNationId !== null) {
             return $recoveryNationId;
         }
+
+        return $this->dormantProtectedNationId($context, $x, $y);
+    }
+
+    public function protectsFromDisaster(TurnContext $context, int $x, int $y): bool
+    {
+        return $this->dormantProtectedNationId($context, $x, $y) !== null;
+    }
+
+    private function dormantProtectedNationId(TurnContext $context, int $x, int $y): ?int
+    {
         $radius = $context->ruleset->settings['nation_lifecycle']['dormant_protection_radius'] ?? null;
         if (! is_int($radius) || $radius < 0) {
             throw new DomainException('The current Ruleset has an invalid dormant protection radius.');

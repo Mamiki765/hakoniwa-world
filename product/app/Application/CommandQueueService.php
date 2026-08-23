@@ -1238,7 +1238,7 @@ final class CommandQueueService
             $world = $nation->world()->with('rulesetVersion')->firstOrFail();
             $targetNation = $cell->owner_nation_id === null
                 ? null
-                : Nation::query()->whereKey($cell->owner_nation_id)->first();
+                : $cell->ownerNation;
             if ($targetNation !== null && $targetNation->id !== $nation->id
                 && ($nation->state === 'recovery' || $targetNation->state === 'recovery')) {
                 throw new PlayerFacingCommandException(

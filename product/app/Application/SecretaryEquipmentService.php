@@ -107,7 +107,7 @@ class SecretaryEquipmentService
         $acquiredWorlds = [];
 
         try {
-            $frozenMemberships = $this->activeOwnerMembershipSnapshot($user->id);
+            $frozenMemberships = $this->currentOwnerMembershipSnapshot($user->id);
             $worldIds = array_values(array_unique(array_column($frozenMemberships, 'world_id')));
             sort($worldIds, SORT_NUMERIC);
             $worlds = $worldIds === []
@@ -152,7 +152,7 @@ class SecretaryEquipmentService
                     );
                 }
 
-                $currentMemberships = $this->lockedActiveOwnerMembershipSnapshot($user->id);
+                $currentMemberships = $this->lockedCurrentOwnerMembershipSnapshot($user->id);
                 if ($currentMemberships !== $frozenMemberships) {
                     throw new SecretaryEquipmentConflictException(
                         'secretary_equipment_membership_changed',
@@ -240,13 +240,13 @@ class SecretaryEquipmentService
     }
 
     /** @return list<array{membership_id: int, world_id: int, nation_id: int}> */
-    private function activeOwnerMembershipSnapshot(int $userId): array
+    private function currentOwnerMembershipSnapshot(int $userId): array
     {
         return NationMembership::query()
             ->join('nations', 'nations.id', '=', 'nation_memberships.nation_id')
             ->where('nation_memberships.user_id', $userId)
             ->where('nation_memberships.role', 'owner')
-            ->where('nations.state', 'active')
+            ->whereIn('nations.state', ['active', 'recovery'])
             ->whereColumn('nations.world_id', 'nation_memberships.world_id')
             ->orderBy('nation_memberships.world_id')
             ->orderBy('nation_memberships.nation_id')
@@ -264,7 +264,7 @@ class SecretaryEquipmentService
     }
 
     /** @return list<array{membership_id: int, world_id: int, nation_id: int}> */
-    private function lockedActiveOwnerMembershipSnapshot(int $userId): array
+    private function lockedCurrentOwnerMembershipSnapshot(int $userId): array
     {
         /** @var Collection<int, NationMembership> $memberships */
         $memberships = NationMembership::query()

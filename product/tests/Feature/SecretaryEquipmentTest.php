@@ -57,7 +57,7 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertJsonPath('data.effect_context.source', 'owned_world')
             ->assertJsonPath('data.effect_context.world_id', $world->id)
             ->assertJsonPath('data.effect_context.ruleset_version_id', $world->ruleset_version_id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 12)
+            ->assertJsonPath('data.effect_context.ruleset_version', 13)
             ->assertJsonPath('data.items.0.effect_text', '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。');
 
         $unownedWorld = World::query()->create([
@@ -103,6 +103,41 @@ final class SecretaryEquipmentTest extends TestCase
 
         $this->assertSame(1, $bow->fresh()->equipped_slot);
         $this->assertSame(2, $this->equipmentAuditCount($secretary));
+    }
+
+    public function test_recovery_owner_can_view_item_effects_and_change_equipment(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '休戦装備島', '休戦装備島主');
+        $nation->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 2,
+            'resume_at_turn' => 87,
+        ]);
+        $secretary = $user->secretary()->firstOrFail();
+        $bow = $secretary->itemInstances()->sole();
+
+        $this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$world->id}")
+            ->assertOk()
+            ->assertJsonPath('data.effect_context.world_id', $world->id)
+            ->assertJsonPath('data.effect_context.ruleset_version', 13);
+        $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
+            ->assertOk()
+            ->assertJsonPath('data.current_item.id', $bow->id)
+            ->assertJsonPath('data.effect_context.world_id', $world->id)
+            ->assertJsonPath('data.effect_context.ruleset_version', 13);
+
+        $this->actingAs($user)->putJson('/api/v1/me/secretary/equipment/1', [
+            'item_id' => null,
+            'expected_version' => 1,
+        ])->assertOk()
+            ->assertJsonPath('data.equipment_version', 2)
+            ->assertJsonPath('data.equipment.slots.0.item', null);
+
+        $this->assertSame('recovery', $nation->fresh()->state);
+        $this->assertSame(1, $this->equipmentAuditCount($secretary));
     }
 
     public function test_invalid_slots_wrong_user_missing_items_and_cross_slot_move_are_rejected_without_mutation(): void

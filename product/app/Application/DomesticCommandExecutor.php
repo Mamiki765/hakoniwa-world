@@ -322,6 +322,7 @@ final class DomesticCommandExecutor
             if ($this->ceasefireBlocksHostileTarget($nation, $cell->ownerNation)) {
                 return ['reason' => CommandFailureReason::CeasefireProhibited, 'observed' => $observed];
             }
+
             return $this->missileValidationFailure($context, $nation, $definition, $cell, $observed);
         }
         if ($definition->key === 'territory_expand') {
@@ -472,18 +473,6 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
     ): ?array {
         $observed = $this->emptyObservedState();
-        $requiredMoney = $definition->cost_money;
-        if ($definition->key === 'monster_dispatch'
-            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
-            try {
-                $requiredMoney = $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
-            } catch (DomainException) {
-                return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
-            }
-        }
-        if ((int) $nation->money < $requiredMoney) {
-            return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
-        }
         if ($definition->key === 'attraction') {
             return null;
         }
@@ -505,6 +494,21 @@ final class DomesticCommandExecutor
             || ! in_array($target->state, $targetStates, true)) {
             return ['reason' => CommandFailureReason::InvalidTargetNation, 'observed' => $observed];
         }
+        if ($definition->key === 'monster_dispatch' && $this->ceasefireBlocksHostileTarget($nation, $target)) {
+            return ['reason' => CommandFailureReason::CeasefireProhibited, 'observed' => $observed];
+        }
+        $requiredMoney = $definition->cost_money;
+        if ($definition->key === 'monster_dispatch'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            try {
+                $requiredMoney = $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
+            } catch (DomainException) {
+                return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+            }
+        }
+        if ((int) $nation->money < $requiredMoney) {
+            return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
+        }
         if ($definition->key === 'money_aid') {
             $requested = $this->moneyAidAmount($item, $definition);
             if ((int) $nation->money < $requested) {
@@ -525,9 +529,6 @@ final class DomesticCommandExecutor
         }
         if ($definition->key === 'monster_dispatch' && ! $this->monsterSpawn->hasDispatchCandidate($context, $target)) {
             return ['reason' => CommandFailureReason::NoTarget, 'observed' => $observed];
-        }
-        if ($definition->key === 'monster_dispatch' && $this->ceasefireBlocksHostileTarget($nation, $target)) {
-            return ['reason' => CommandFailureReason::CeasefireProhibited, 'observed' => $observed];
         }
 
         return null;

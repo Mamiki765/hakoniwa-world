@@ -1,4 +1,4 @@
-# ver 2.4.0-beta Nation dormancy, winter protection, and abandonment
+# ver 2.4.0 Nation dormancy, winter protection, and abandonment
 
 ## Scope and authority
 
@@ -6,7 +6,9 @@ This slice implements the Owner decision supplied for ver 2.4.0. The current
 `release/2.4.0` head at the start of work is
 `9c9fee470789584f35bed21b9a2fdbea5df07594`. It replaces the old 30/180/365-day
 proposal in ADR-0004; the old document remains as provenance and is marked
-superseded. Karma and the `recovery` behavior remain outside this slice.
+superseded. KARMA and `recovery` were outside this original v12 slice and are
+now the formal ver 2.4.0 v13 extension documented in
+`product/docs/ver-2.4.0-karma-recovery.md`.
 
 The implementation rule is the existing canonical Turn, finance, damage,
 monster, territory, abandonment, and asset paths plus a small explicit
@@ -101,13 +103,14 @@ and red styling remain unchanged below it.
 
 Final verification is recorded in the Ready PR against its exact head SHA.
 
-## Owner addendum: beta label and event presentation
+## Owner addendum: formal label and event presentation
 
 Before implementation, the Owner extended this slice with three presentation
 contracts:
 
-- the application release label is `2.4.0-beta`; Ruleset identity remains the
-  immutable `hakoniwa-2s-plus-v12`;
+- the application release label is `2.4.0`; the published
+  `hakoniwa-2s-plus-v12` payload remains immutable historical provenance, while
+  the supported ver 2.4.0 World uses the forward-only v13 extension;
 - each actual disaster cell/Capital mutation is projected into the public
   island log with the affected Nation, coordinate, and public-safe result, so a
   global disaster announcement can be followed by its concrete damage trail;

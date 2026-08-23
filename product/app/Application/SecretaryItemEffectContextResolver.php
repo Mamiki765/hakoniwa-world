@@ -22,7 +22,7 @@ final class SecretaryItemEffectContextResolver
             ->where('membership.user_id', $user->id)
             ->where('membership.world_id', $worldId)
             ->where('membership.role', 'owner')
-            ->where('nation.state', 'active')
+            ->whereIn('nation.state', ['active', 'recovery'])
             ->whereColumn('nation.world_id', 'membership.world_id')
             ->select([
                 'world.id as world_id',

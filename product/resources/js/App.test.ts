@@ -248,6 +248,81 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('保有せず');
     });
 
+    it('renders recovery and KARMA in the authored badge order while keeping zero and negative values unaccented', async () => {
+        const baseRanking = {
+            world_id: 1, total_population: 1000, territory_cell_count: 19, owned_land_cells: 17,
+            money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+            farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
+            registered_turn: 1, survival_turns: 10, finance_only_turns: 0, last_updated_turn: 11, comment: '',
+            achievements: { awards: [], monster_kills: null },
+        };
+        const negativeDetail: PublicNationDetail = {
+            ...publicDetail,
+            id: 9,
+            nation_number: 3,
+            name: '更生島',
+            owner_name: '更生島主',
+            karma: -10,
+            karma_badge: null,
+        };
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/rankings')) return response([{
+                ...baseRanking,
+                rank: 1, id: 7, nation_number: 1, name: '休戦島', owner_name: '休戦島主',
+                state: 'recovery', state_label: '休戦中：残り42ターン', recovery_remaining_turns: 42,
+                karma: 84, karma_badge: 'KARMA:84', activity_status: 'recovery',
+                achievements: {
+                    awards: [{
+                        key: 'recovery-order', name: '表示順賞', recurring: false, count: 1,
+                        asset: { key: 'test.award', url: null, available: false, fallback_label: '賞', fallback_style: 'text' },
+                    }],
+                    monster_kills: null,
+                },
+            }, {
+                ...baseRanking,
+                rank: 2, id: 8, nation_number: 2, name: '通常島', owner_name: '通常島主',
+                state: 'active', state_label: '', recovery_remaining_turns: null,
+                karma: 0, karma_badge: null, activity_status: 'active',
+            }, {
+                ...baseRanking,
+                rank: 3, id: 9, nation_number: 3, name: '更生島', owner_name: '更生島主',
+                state: 'active', state_label: '', recovery_remaining_turns: null,
+                karma: -10, karma_badge: null, activity_status: 'active',
+            }]);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/nations/9') return response(negativeDetail);
+            if (path.includes('/api/v1/public/nations/9/map-spaces/2/chunks/')) return response(emptyChunk);
+            return response(null, 404);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const islands = wrapper.findAll('.ranking-island');
+        expect(islands).toHaveLength(3);
+        expect(islands[0]!.find('button').classes()).toContain('is-karma-positive');
+        expect(islands[0]!.find('.state-badge').text()).toBe('休戦中：残り42ターン');
+        expect(islands[0]!.find('.karma-badge').text()).toBe('KARMA:84');
+        expect(islands[0]!.findAll(':scope > *').map((child) => (
+            child.element.tagName === 'BUTTON' ? 'button' : child.classes()[0]
+        ))).toEqual(['button', 'ranking-achievements', 'state-badge', 'karma-badge']);
+        expect(islands[1]!.findAll('.state-badge, .karma-badge')).toHaveLength(0);
+        expect(islands[1]!.find('button').classes()).not.toContain('is-karma-positive');
+        expect(islands[2]!.findAll('.state-badge, .karma-badge')).toHaveLength(0);
+        expect(islands[2]!.find('button').classes()).not.toContain('is-karma-positive');
+
+        await islands[2]!.find('button').trigger('click');
+        await flushPromises();
+        const karmaRow = wrapper.findAll('.preview-heading dl > div')
+            .find((row) => row.find('dt').text() === 'KARMA');
+        expect(karmaRow?.find('dd').text()).toBe('-10');
+        expect(karmaRow?.find('dd').classes()).not.toContain('karma-text');
+        expect(wrapper.find('.preview-heading h1').classes()).not.toContain('karma-name');
+        expect(wrapper.find('.preview-heading .karma-emphasis').exists()).toBe(false);
+    });
+
     it('suppresses the normal countdown for a failed turn', async () => {
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);

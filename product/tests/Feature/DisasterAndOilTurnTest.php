@@ -514,6 +514,44 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame('factory', $target->fresh()->facility()->value('key'));
     }
 
+    public function test_normal_global_disaster_still_mutates_recovery_territory(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('休戦災害継続国');
+        $ruleset = $this->forceGlobal($ruleset, 'earthquake');
+        $capital = $nation->capital()->firstOrFail();
+        $target = $this->cellAt($space, $capital->x, $capital->y);
+        $this->setCell($target, 'plain', 'factory', $nation->id, 0);
+        $nation->update([
+            'state' => 'recovery',
+            'state_reason' => null,
+            'state_started_turn' => 1,
+            'resume_at_turn' => 86,
+        ]);
+        [$context] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $capital->x, $capital->y, $space),
+            [$nation->id],
+        );
+        $context->state->setNationLifecycleSnapshot($nation->id, [
+            'state' => 'recovery',
+            'reason' => null,
+            'state_started_turn' => 1,
+            'resume_at_turn' => 86,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
+        $context->state->setRecoveryTerritoryNationIds([
+            $target->x.':'.$target->y => $nation->id,
+        ]);
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $this->assertSame(1, $result['executed_disasters']);
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        $this->assertNull($target->fresh()->facility_definition_id);
+    }
+
     public function test_oil_income_precedes_depletion_obeys_capacity_rolls_back_and_is_retry_idempotent(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('油田稼働国');
