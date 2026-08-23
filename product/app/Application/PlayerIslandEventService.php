@@ -98,6 +98,7 @@ final class PlayerIslandEventService
         'monster.removed_by_terrain_event',
         'missile.launched',
         'missile.ineffective_aggregated',
+        'missile.dormancy_protected',
         'missile.impact',
         'refugee_generated',
     ];
@@ -788,6 +789,13 @@ final class PlayerIslandEventService
                 $this->missileLabel($metadata['command_key'] ?? null),
                 number_format($this->integer($metadata, 'ineffective_impacts')),
             ),
+            'missile.dormancy_protected' => sprintf(
+                '%s(%s,%s)に%sが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました',
+                $nation,
+                $x,
+                $y,
+                $this->missileLabel($metadata['missile_key'] ?? null),
+            ),
             'missile.impact' => sprintf(
                 '%s(%s,%s)に%sの%sが着弾し、%s。',
                 $metadata['target_nation_name'] ?? $nation,
@@ -883,6 +891,7 @@ final class PlayerIslandEventService
             'missile.ineffective_aggregated' => [
                 'nation_name', 'command_key', 'ineffective_impacts',
             ],
+            'missile.dormancy_protected' => ['nation_name', 'x', 'y', 'missile_key'],
             'missile.impact' => [
                 'nation_name', 'target_nation_name', 'firing_nation_name',
                 'missile_key', 'effect', 'x', 'y',

@@ -606,7 +606,7 @@ class PlayerIslandEventApiTest extends TestCase
     public function test_missile_public_projection_exposes_b10_summary_but_not_private_launch_detail(): void
     {
         [$world, $owner, $firing] = $this->nation('発射島');
-        [, , $target] = $this->nation('被弾島', $world);
+        [, $targetOwner, $target] = $this->nation('被弾島', $world);
         $world->update(['current_turn' => 2]);
         DB::table('audit_events')->delete();
 
@@ -632,6 +632,11 @@ class PlayerIslandEventApiTest extends TestCase
         $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 2, [
             'nation_name' => $firing->name, 'command_key' => 'pp_missile',
             'queue_item_id' => 99, 'ineffective_impacts' => 2,
+        ]);
+        $this->audit('missile.dormancy_protected', $target, $target, 'public', 2, [
+            'nation_id' => $target->id, 'nation_name' => $target->name,
+            'x' => 14, 'y' => 10, 'missile_key' => 'pp_missile',
+            'missile_name' => 'PPミサイル', 'protected_nation_secret' => 'hidden',
         ]);
         $this->audit('missile.launch_detail', $firing, $firing, 'private', 2, [
             'command_key' => 'pp_missile', 'queue_item_id' => 88, 'target_x' => 50, 'target_y' => 51,
@@ -662,10 +667,12 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertTrue(collect($publicMessages)->contains(
             static fn (string $message): bool => str_contains($message, 'PPミサイルのうち2発は効果がありませんでした。'),
         ));
+        $protectedMessage = '被弾島(14,10)にPPミサイルが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました';
+        $this->assertContains($protectedMessage, $publicMessages);
         foreach ([
             '(50,51)', '(44,45)', '費用900', 'all_impacts', 'cost_money', 'target_x',
             'firing_bases', 'impacts', 'from_terrain_key', 'to_terrain_key', 'terrain_only',
-            'terrain_scorched', 'wasteland', 'scorched',
+            'terrain_scorched', 'wasteland', 'scorched', 'missile_name', 'protected_nation_secret', 'hidden',
         ] as $hidden) {
             $this->assertStringNotContainsString($hidden, $publicBody);
         }
@@ -696,6 +703,12 @@ class PlayerIslandEventApiTest extends TestCase
         )->count());
         $this->assertStringNotContainsString('PPミサイルのうち8発は効果がありませんでした。', $ownerMessages);
         $this->assertStringContainsString('PPミサイルのうち2発は効果がありませんでした。', $ownerMessages);
+
+        $targetOwnerResponse = $this->actingAs($targetOwner)
+            ->getJson("/api/v1/nations/{$target->id}/events")
+            ->assertOk();
+        $this->assertContains($protectedMessage, $this->messages($targetOwnerResponse->json('data.groups')));
+        $this->assertStringNotContainsString('protected_nation_secret', (string) $targetOwnerResponse->getContent());
     }
 
     public function test_target_owner_gets_three_separate_aggregated_missile_outcome_classes(): void
