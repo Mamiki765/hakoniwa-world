@@ -2210,7 +2210,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v14', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v15', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -3322,11 +3322,12 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, $base->fresh()->facility_experience);
     }
 
-    public function test_seabed_base_monster_experience_is_final_blow_only(): void
+    public function test_two_seabed_bases_receive_only_their_actual_monster_damage_experience(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
         $space = $this->surfaceMapSpace($world);
-        $base = $this->ownedWaterFacility($firing, 'seabed_base', 0);
+        $baseA = $this->ownedWaterFacility($firing, 'seabed_base', 0);
+        $baseB = $this->ownedWaterFacility($firing, 'seabed_base', 0);
         $host = MapCell::query()->where('owner_nation_id', $target->id)
             ->whereKeyNot($target->capital()->value('map_cell_id'))->firstOrFail();
         $monster = $this->monster($world, $host);
@@ -3335,19 +3336,26 @@ class CommandAndMissileTest extends TestCase
 
         $this->resolveMissile(
             $this->context($world, 2, hash('sha256', 'seabed monster damage'), [$firing->id, $target->id]),
-            $base,
+            $baseA,
         );
-        $this->assertSame(0, $base->fresh()->facility_experience);
+        $experiencePerDamage = (int) $monster->definition()->value('experience_per_damage');
+        $this->assertSame($experiencePerDamage, $baseA->fresh()->facility_experience);
+        $this->assertSame(0, $baseB->fresh()->facility_experience);
+        $this->assertSame('alive', $monster->fresh()->state);
 
         $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $host);
         $this->resolveMissile(
             $this->context($world, 3, hash('sha256', 'seabed monster final blow'), [$firing->id, $target->id]),
-            $base->fresh(['terrain', 'facility']),
+            $baseB->fresh(['terrain', 'facility']),
         );
-        $this->assertSame(
-            $monster->definition()->value('missile_base_experience'),
-            $base->fresh()->facility_experience,
-        );
+        $this->assertSame($experiencePerDamage, $baseA->fresh()->facility_experience);
+        $this->assertSame($experiencePerDamage, $baseB->fresh()->facility_experience);
+        $this->assertSame('killed', $monster->fresh()->state);
+        $kill = json_decode((string) DB::table('audit_events')->where('event_type', 'monster.killed')
+            ->where('subject_id', $monster->id)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $kill['actual_damage']);
+        $this->assertSame($experiencePerDamage, $kill['firing_base_experience_requested']);
+        $this->assertSame($experiencePerDamage, $kill['firing_base_experience_applied']);
     }
 
     public function test_water_ownership_cleanup_does_not_affect_land_facilities_or_empty_owned_water(): void

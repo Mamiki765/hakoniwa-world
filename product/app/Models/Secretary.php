@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $user_id
  * @property int $equipment_version
+ * @property int $monster_experience
  * @property string|null $name
  * @property Carbon|null $named_at
  * @property string $profile_biography
@@ -29,13 +30,14 @@ final class Secretary extends Model
     protected $fillable = [
         'user_id', 'name', 'named_at', 'profile_biography', 'main_image_path',
         'main_image_mime_type', 'main_image_creation_method', 'main_image_credit',
-        'main_image_updated_at',
+        'main_image_updated_at', 'monster_experience',
     ];
 
     protected function casts(): array
     {
         return [
             'equipment_version' => 'integer',
+            'monster_experience' => 'integer',
             'named_at' => 'immutable_datetime',
             'main_image_updated_at' => 'immutable_datetime',
         ];

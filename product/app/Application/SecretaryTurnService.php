@@ -82,6 +82,7 @@ final class SecretaryTurnService
                 $nationId,
                 (int) $secretary->id,
                 $secretary->name,
+                (int) $secretary->monster_experience,
                 $skills,
             );
             if ($itemEffectsEnabled) {
@@ -146,33 +147,49 @@ final class SecretaryTurnService
         return $snapshots;
     }
 
-    /** @return array{experience_awarded: int, skills_changed: int, levels_gained: int} */
+    /** @return array{experience_awarded: int, skills_changed: int, levels_gained: int, monster_experience_awarded: int, monster_experience_secretaries_changed: int} */
     public function flushExperience(TurnContext $context): array
     {
-        $awards = $context->state->pendingSecretaryExperience();
-        if ($awards === []) {
+        $skillAwards = $context->state->pendingSecretaryExperience();
+        $monsterAwards = $context->state->pendingSecretaryMonsterExperience();
+        if ($skillAwards === [] && $monsterAwards === []) {
             $context->state->markSecretaryExperienceFlushed();
 
-            return ['experience_awarded' => 0, 'skills_changed' => 0, 'levels_gained' => 0];
+            return [
+                'experience_awarded' => 0,
+                'skills_changed' => 0,
+                'levels_gained' => 0,
+                'monster_experience_awarded' => 0,
+                'monster_experience_secretaries_changed' => 0,
+            ];
         }
         $secretaryIds = [];
-        foreach (array_keys($awards) as $nationId) {
+        foreach (array_unique([...array_keys($skillAwards), ...array_keys($monsterAwards)]) as $nationId) {
             $secretaryIds[] = $context->state->secretarySnapshot($nationId)['secretary_id'];
         }
-        $rows = SecretarySkill::query()
-            ->whereIn('secretary_id', array_values(array_unique($secretaryIds)))
-            ->orderBy('secretary_id')
-            ->orderBy('skill_key')
-            ->lockForUpdate()
-            ->get()
-            ->keyBy(fn (SecretarySkill $skill): string => "{$skill->secretary_id}:{$skill->skill_key}");
+        $secretaryIds = array_values(array_unique($secretaryIds));
+        $secretaries = Secretary::query()->whereIn('id', $secretaryIds)
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        if ($secretaries->count() !== count($secretaryIds)) {
+            throw new DomainException('A snapshotted Secretary disappeared before the final experience flush.');
+        }
+        $rows = collect();
+        if ($skillAwards !== []) {
+            $rows = SecretarySkill::query()
+                ->whereIn('secretary_id', $secretaryIds)
+                ->orderBy('secretary_id')
+                ->orderBy('skill_key')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy(fn (SecretarySkill $skill): string => "{$skill->secretary_id}:{$skill->skill_key}");
+        }
         $updates = [];
         $awarded = 0;
         $levelsGained = 0;
         $now = now();
-        foreach ($awards as $nationId => $skillAwards) {
+        foreach ($skillAwards as $nationId => $nationSkillAwards) {
             $secretaryId = $context->state->secretarySnapshot($nationId)['secretary_id'];
-            foreach ($skillAwards as $skillKey => $amount) {
+            foreach ($nationSkillAwards as $skillKey => $amount) {
                 $row = $rows->get("{$secretaryId}:{$skillKey}");
                 if (! $row instanceof SecretarySkill) {
                     throw new DomainException("Secretary {$secretaryId} is missing awarded skill {$skillKey}.");
@@ -195,17 +212,36 @@ final class SecretaryTurnService
                 $levelsGained += $result['levels_gained'];
             }
         }
-        SecretarySkill::query()->upsert(
-            $updates,
-            ['secretary_id', 'skill_key'],
-            ['level', 'experience', 'updated_at'],
-        );
+        if ($updates !== []) {
+            SecretarySkill::query()->upsert(
+                $updates,
+                ['secretary_id', 'skill_key'],
+                ['level', 'experience', 'updated_at'],
+            );
+        }
+        $monsterAwarded = 0;
+        foreach ($monsterAwards as $nationId => $amount) {
+            $secretaryId = $context->state->secretarySnapshot($nationId)['secretary_id'];
+            $secretary = $secretaries->get($secretaryId);
+            if (! $secretary instanceof Secretary) {
+                throw new DomainException("Secretary {$secretaryId} is missing its monster experience row.");
+            }
+            $before = (int) $secretary->monster_experience;
+            if ($before > PHP_INT_MAX - $amount) {
+                throw new DomainException('Secretary monster experience exceeds the supported integer range.');
+            }
+            $secretary->monster_experience = $before + $amount;
+            $secretary->save();
+            $monsterAwarded += $amount;
+        }
         $context->state->markSecretaryExperienceFlushed();
 
         return [
             'experience_awarded' => $awarded,
             'skills_changed' => count($updates),
             'levels_gained' => $levelsGained,
+            'monster_experience_awarded' => $monsterAwarded,
+            'monster_experience_secretaries_changed' => count($monsterAwards),
         ];
     }
 }

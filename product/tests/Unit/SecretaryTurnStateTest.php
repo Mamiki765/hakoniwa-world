@@ -11,10 +11,12 @@ final class SecretaryTurnStateTest extends TestCase
     public function test_same_turn_xp_does_not_mutate_loaded_levels_or_final_defense_budget(): void
     {
         $state = new TurnState;
-        $state->setSecretarySnapshot(10, 20, null, $this->skills(0, 1));
+        $state->setSecretarySnapshot(10, 20, null, 0, $this->skills(0, 1));
 
         $state->awardSecretaryExperience(10, SecretarySkillCatalog::AGRICULTURAL_POLICY);
         $state->awardSecretaryExperience(10, SecretarySkillCatalog::FINAL_DEFENSE_LINE, 100);
+        $state->awardSecretaryMonsterExperience(10, 4);
+        $state->awardSecretaryMonsterExperience(10, 6);
 
         $this->assertSame(0, $state->secretarySkillLevel(10, SecretarySkillCatalog::AGRICULTURAL_POLICY));
         $this->assertSame(1, $state->secretarySkillLevel(10, SecretarySkillCatalog::FINAL_DEFENSE_LINE));
@@ -26,9 +28,11 @@ final class SecretaryTurnStateTest extends TestCase
                 SecretarySkillCatalog::FINAL_DEFENSE_LINE => 100,
             ],
         ], $state->pendingSecretaryExperience());
+        $this->assertSame(0, $state->secretarySnapshot(10)['monster_experience']);
+        $this->assertSame([10 => 10], $state->pendingSecretaryMonsterExperience());
 
         $nextAttempt = new TurnState;
-        $nextAttempt->setSecretarySnapshot(10, 20, null, $this->skills(1, 2));
+        $nextAttempt->setSecretarySnapshot(10, 20, null, 0, $this->skills(1, 2));
         $this->assertSame(1, $nextAttempt->secretarySkillLevel(10, SecretarySkillCatalog::AGRICULTURAL_POLICY));
         $this->assertTrue($nextAttempt->consumeFinalDefenseInterception(10));
         $this->assertTrue($nextAttempt->consumeFinalDefenseInterception(10));

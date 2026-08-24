@@ -6,6 +6,7 @@ use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Monster\MonsterDamageResult;
 use App\Domain\Monster\MonsterHardening;
 use App\Domain\Monster\MonsterRewardPolicyResolver;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Models\MapCell;
 use App\Models\MonsterInstance;
@@ -39,6 +40,13 @@ final class MonsterDamageService
     ): MonsterDamageResult {
         if ($amount < 1 || $damageType === '') {
             throw new DomainException('Monster damage requires a positive amount and explicit damage type.');
+        }
+        if ($firingBase !== null && $killerNation === null) {
+            throw new DomainException('Monster damage cannot credit a firing base without its owning Nation.');
+        }
+        if ($damageType === SecretaryItemGameplayContract::OLD_BOW_DAMAGE_TYPE
+            && ($killerNation === null || $firingBase !== null)) {
+            throw new DomainException('Secretary Old Bow damage requires one attacking Nation and no firing base.');
         }
 
         return DB::transaction(function () use (
@@ -78,6 +86,7 @@ final class MonsterDamageService
             $hostNationSnapshot = $hostCell->owner_nation_id === null
                 ? null
                 : Nation::query()->whereKey($hostCell->owner_nation_id)->first(['id', 'name']);
+            $experiencePerDamage = $this->experiencePerDamage($locked);
             if ($this->hardening->isHardened($locked->definition, $context->targetTurn)) {
                 $this->events->record($context, 'monster.damage_blocked', $locked, [
                     'monster_key' => $locked->definition->key,
@@ -90,6 +99,11 @@ final class MonsterDamageService
                     'y' => $hostCell->y,
                     'damage_type' => $damageType,
                     'requested_damage' => $amount,
+                    'actual_damage' => 0,
+                    'experience_per_damage' => $experiencePerDamage,
+                    'firing_base_experience_requested' => 0,
+                    'firing_base_experience_applied' => 0,
+                    'secretary_monster_experience_awarded' => 0,
                     'hardening' => true,
                 ]);
 
@@ -99,11 +113,21 @@ final class MonsterDamageService
                     afterHp: $locked->current_hp,
                     blocked: true,
                     killed: false,
+                    experiencePerDamage: $experiencePerDamage,
                 );
             }
 
             $beforeHp = $locked->current_hp;
             $afterHp = max(0, $beforeHp - $amount);
+            $actualDamage = $beforeHp - $afterHp;
+            $damageExperience = $this->creditDamageExperience(
+                $actualDamage,
+                $experiencePerDamage,
+                $damageType,
+                $killerNation,
+                $firingBase,
+                $context,
+            );
             if ($afterHp > 0) {
                 $locked->current_hp = $afterHp;
                 $locked->version++;
@@ -123,6 +147,12 @@ final class MonsterDamageService
                     'requested_damage' => $amount,
                     'before_hp' => $beforeHp,
                     'after_hp' => $afterHp,
+                    'actual_damage' => $actualDamage,
+                    'experience_per_damage' => $experiencePerDamage,
+                    'firing_base_experience_requested' => $damageExperience['base_requested'],
+                    'firing_base_experience_applied' => $damageExperience['base_applied'],
+                    'firing_base_id' => $firingBase?->id,
+                    'secretary_monster_experience_awarded' => $damageExperience['secretary_awarded'],
                 ]);
 
                 return new MonsterDamageResult(
@@ -131,6 +161,11 @@ final class MonsterDamageService
                     afterHp: $afterHp,
                     blocked: false,
                     killed: false,
+                    actualDamage: $actualDamage,
+                    experiencePerDamage: $experiencePerDamage,
+                    firingBaseExperienceRequested: $damageExperience['base_requested'],
+                    firingBaseExperienceApplied: $damageExperience['base_applied'],
+                    secretaryMonsterExperienceAwarded: $damageExperience['secretary_awarded'],
                 );
             }
 
@@ -163,9 +198,6 @@ final class MonsterDamageService
                 }
             }
 
-            $baseExperienceApplied = $killerNation === null || $firingBase === null
-                ? 0
-                : $this->creditFiringBaseExperience($firingBase, $killerNation, $locked, $context);
             $this->removal->detachForKill($context, $occupancy, $hostCell);
             $locked->current_hp = 0;
             $locked->state = 'killed';
@@ -210,12 +242,16 @@ final class MonsterDamageService
                 'damage_type' => $damageType,
                 'before_hp' => $beforeHp,
                 'after_hp' => 0,
+                'actual_damage' => $actualDamage,
+                'experience_per_damage' => $experiencePerDamage,
                 'wreckage_value_money' => $value,
                 'killer_money' => $killerMoney,
                 'host_meat_food' => $hostMeat,
                 'unclaimed_host_value_money' => $killerNation === null ? 0 : $rewardShares['unclaimed_share'],
-                'firing_base_experience_applied' => $baseExperienceApplied,
+                'firing_base_experience_requested' => $damageExperience['base_requested'],
+                'firing_base_experience_applied' => $damageExperience['base_applied'],
                 'firing_base_id' => $firingBase?->id,
+                'secretary_monster_experience_awarded' => $damageExperience['secretary_awarded'],
                 'kill_stat_id' => $killStat?->id,
                 'previous_kill_count' => $previousKillCount,
                 'new_kill_count' => $newKillCount,
@@ -240,9 +276,13 @@ final class MonsterDamageService
                 afterHp: 0,
                 blocked: false,
                 killed: true,
+                actualDamage: $actualDamage,
+                experiencePerDamage: $experiencePerDamage,
+                firingBaseExperienceRequested: $damageExperience['base_requested'],
                 killerMoney: $killerMoney,
                 hostMeat: $hostMeat,
-                firingBaseExperienceApplied: $baseExperienceApplied,
+                firingBaseExperienceApplied: $damageExperience['base_applied'],
+                secretaryMonsterExperienceAwarded: $damageExperience['secretary_awarded'],
                 killStatId: $killStat?->id,
                 previousKillCount: $previousKillCount,
                 newKillCount: $newKillCount,
@@ -283,17 +323,52 @@ SQL, [
         return [$stat, $newCount - 1, $newCount];
     }
 
-    private function creditFiringBaseExperience(
-        MapCell $firingBase,
-        Nation $killerNation,
-        MonsterInstance $monster,
+    /** @return array{base_requested: int, base_applied: int, secretary_awarded: int} */
+    private function creditDamageExperience(
+        int $actualDamage,
+        int $experiencePerDamage,
+        string $damageType,
+        ?Nation $killerNation,
+        ?MapCell $firingBase,
         TurnContext $context,
-    ): int {
-        return $this->baseExperience->credit(
-            $firingBase,
-            $killerNation,
-            $monster->definition->missile_base_experience,
-            $context,
-        );
+    ): array {
+        if ($actualDamage < 0 || $experiencePerDamage < 0
+            || ($experiencePerDamage > 0 && $actualDamage > intdiv(PHP_INT_MAX, $experiencePerDamage))) {
+            throw new DomainException('Monster damage experience exceeds the supported integer range.');
+        }
+        $requested = $actualDamage * $experiencePerDamage;
+        if ($firingBase !== null) {
+            if (! $killerNation instanceof Nation) {
+                throw new DomainException('Firing-base monster experience requires its owning Nation.');
+            }
+
+            return [
+                'base_requested' => $requested,
+                'base_applied' => $this->baseExperience->credit($firingBase, $killerNation, $requested, $context),
+                'secretary_awarded' => 0,
+            ];
+        }
+        if ($damageType === SecretaryItemGameplayContract::OLD_BOW_DAMAGE_TYPE) {
+            if (! $killerNation instanceof Nation) {
+                throw new DomainException('Secretary Old Bow experience requires its attacking Nation.');
+            }
+            if ($requested > 0) {
+                $context->state->awardSecretaryMonsterExperience((int) $killerNation->id, $requested);
+            }
+
+            return ['base_requested' => 0, 'base_applied' => 0, 'secretary_awarded' => $requested];
+        }
+
+        return ['base_requested' => 0, 'base_applied' => 0, 'secretary_awarded' => 0];
+    }
+
+    private function experiencePerDamage(MonsterInstance $monster): int
+    {
+        $experience = $monster->definition->experience_per_damage;
+        if (! is_int($experience) || $experience < 0) {
+            throw new DomainException('Current monster definition is missing non-negative experience_per_damage.');
+        }
+
+        return $experience;
     }
 }

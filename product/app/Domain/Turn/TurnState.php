@@ -91,6 +91,7 @@ final class TurnState
      * @var array<int, array{
      *     secretary_id: int,
      *     name: string|null,
+     *     monster_experience: int,
      *     skills: array<string, array{level: int, experience: int}>
      * }>
      */
@@ -126,6 +127,9 @@ final class TurnState
 
     /** @var array<int, array<string, int>> */
     private array $pendingSecretaryExperience = [];
+
+    /** @var array<int, int> */
+    private array $pendingSecretaryMonsterExperience = [];
 
     /** @var array<int, int> */
     private array $finalDefenseInterceptionsUsed = [];
@@ -693,6 +697,7 @@ final class TurnState
         mixed $nationId,
         mixed $secretaryId,
         mixed $name,
+        mixed $monsterExperience,
         array $skills,
     ): void {
         $nationId = $this->validatedNationId($nationId);
@@ -701,6 +706,9 @@ final class TurnState
         }
         if ($name !== null && (! is_string($name) || $name === '')) {
             throw new InvalidArgumentException('Secretary snapshot name must be null or a non-empty string.');
+        }
+        if (! is_int($monsterExperience) || $monsterExperience < 0) {
+            throw new InvalidArgumentException('Secretary monster experience snapshot must be a non-negative integer.');
         }
         if (array_keys($skills) !== SecretarySkillCatalog::KEYS) {
             throw new InvalidArgumentException('Secretary snapshot must contain the exact Secretary v1 skill catalog.');
@@ -723,6 +731,7 @@ final class TurnState
         $this->secretarySnapshots[$nationId] = [
             'secretary_id' => $secretaryId,
             'name' => $name,
+            'monster_experience' => $monsterExperience,
             'skills' => $validatedSkills,
         ];
     }
@@ -731,6 +740,7 @@ final class TurnState
      * @return array{
      *     secretary_id: int,
      *     name: string|null,
+     *     monster_experience: int,
      *     skills: array<string, array{level: int, experience: int}>
      * }
      */
@@ -919,6 +929,29 @@ final class TurnState
     public function pendingSecretaryExperience(): array
     {
         return $this->pendingSecretaryExperience;
+    }
+
+    public function awardSecretaryMonsterExperience(mixed $nationId, int $amount): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        $this->secretarySnapshot($nationId);
+        if ($amount < 1) {
+            throw new InvalidArgumentException('Secretary monster experience award must be positive.');
+        }
+        if ($this->secretaryExperienceFlushed) {
+            throw new InvalidArgumentException('Secretary monster experience cannot be awarded after the attempt flush.');
+        }
+        $current = $this->pendingSecretaryMonsterExperience[$nationId] ?? 0;
+        if ($current > PHP_INT_MAX - $amount) {
+            throw new InvalidArgumentException('Secretary monster experience award exceeds the supported integer range.');
+        }
+        $this->pendingSecretaryMonsterExperience[$nationId] = $current + $amount;
+    }
+
+    /** @return array<int, int> */
+    public function pendingSecretaryMonsterExperience(): array
+    {
+        return $this->pendingSecretaryMonsterExperience;
     }
 
     public function consumeFinalDefenseInterception(mixed $nationId): bool

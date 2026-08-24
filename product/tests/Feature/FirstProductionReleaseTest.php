@@ -18,7 +18,7 @@ final class FirstProductionReleaseTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_current_schema_and_v14_are_the_fresh_install_baseline(): void
+    public function test_current_schema_and_v15_are_the_fresh_install_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
 
@@ -27,10 +27,10 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertFalse(Schema::hasColumn('users', 'moderation_suspended_at'));
         $this->assertFalse(Schema::hasColumn('nations', 'moderation_suspended_at'));
 
-        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v14')->firstOrFail();
-        $this->assertSame('hakoniwa-2s-plus-v14', config('hakoniwa.ruleset.key'));
-        $this->assertSame(['hakoniwa-2s-plus-v14'], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(['hakoniwa-2s-plus-v14'], RulesetVersion::query()->pluck('key')->all());
+        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v15')->firstOrFail();
+        $this->assertSame('hakoniwa-2s-plus-v15', config('hakoniwa.ruleset.key'));
+        $this->assertSame(['hakoniwa-2s-plus-v15'], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(['hakoniwa-2s-plus-v15'], RulesetVersion::query()->pluck('key')->all());
         $this->assertSame($published->id, $this->lightweightWorld()->ruleset_version_id);
     }
 
@@ -219,6 +219,10 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertIsString($css);
         $this->assertStringContainsString(
             '.secretary-equipment { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));',
+            $css,
+        );
+        $this->assertStringContainsString(
+            '.secretary-profile-hero { grid-template-columns: minmax(0, 38%) minmax(0, 1fr); grid-template-areas: "portrait summary" "biography biography";',
             $css,
         );
         $this->assertStringContainsString(

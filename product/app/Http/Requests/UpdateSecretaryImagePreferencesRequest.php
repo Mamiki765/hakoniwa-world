@@ -13,7 +13,14 @@ final class UpdateSecretaryImagePreferencesRequest extends FormRequest
     {
         return [
             'show_ai_generated_images' => ['required', 'boolean'],
-            'fallback' => ['required', 'string', Rule::in(array_keys(SecretaryProfileContract::FALLBACKS))],
+            'own_secretary_fallback' => [
+                'sometimes', 'required_without:fallback', 'string',
+                Rule::in(array_keys(SecretaryProfileContract::FALLBACKS)),
+            ],
+            'fallback' => [
+                'sometimes', 'required_without:own_secretary_fallback',
+                'string', Rule::in(array_keys(SecretaryProfileContract::FALLBACKS)),
+            ],
         ];
     }
 }

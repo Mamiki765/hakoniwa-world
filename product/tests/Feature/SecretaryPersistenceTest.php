@@ -120,10 +120,16 @@ final class SecretaryPersistenceTest extends TestCase
             ->where('secretary_id', $secretary->id)
             ->where('skill_key', SecretarySkillCatalog::AGRICULTURAL_POLICY)
             ->update(['level' => 4, 'experience' => 7]);
+        $secretary->update(['monster_experience' => 42]);
         $item = $secretary->itemInstances()->sole();
 
         app(NationAbandonmentService::class)->abandon($user, $first, $first->name);
-        $this->assertDatabaseHas('secretaries', ['id' => $secretary->id, 'user_id' => $user->id, 'name' => '継承名']);
+        $this->assertDatabaseHas('secretaries', [
+            'id' => $secretary->id,
+            'user_id' => $user->id,
+            'name' => '継承名',
+            'monster_experience' => 42,
+        ]);
         $this->assertDatabaseHas('secretary_item_instances', [
             'id' => $item->id,
             'secretary_id' => $secretary->id,
@@ -141,6 +147,7 @@ final class SecretaryPersistenceTest extends TestCase
             'experience' => 7,
         ]);
         $this->assertSame($item->id, $user->secretary()->firstOrFail()->itemInstances()->sole()->id);
+        $this->assertSame(42, (int) $user->secretary()->value('monster_experience'));
     }
 
     public function test_named_secretary_can_be_renamed_repeatedly_without_creation_or_skill_changes(): void
@@ -217,9 +224,9 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertNull($user->secretary()->value('name'));
     }
 
-    public function test_public_profile_uses_canonical_level_equipment_and_viewer_fallback_preferences(): void
+    public function test_public_profile_uses_canonical_level_equipment_and_owner_fallback_preferences(): void
     {
-        $this->installSecretaryFallbackAsset('peridot.png');
+        $this->installSecretaryFallbackAssets('peridot.png', 'silhouette.png');
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
         $nation = app(NationCreationService::class)->create($owner, $world, '公開秘書島', '公開島主');
@@ -233,14 +240,17 @@ final class SecretaryPersistenceTest extends TestCase
         ] as $skillKey => $level) {
             $secretary->skills()->where('skill_key', $skillKey)->update(['level' => $level]);
         }
+        $secretary->update(['monster_experience' => 120]);
 
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
             'biography' => "海辺で出会った秘書。\n**この記号はMarkdownとして解釈しない。**",
         ])->assertOk()
             ->assertJsonPath('data.is_owner', true)
+            ->assertJsonPath('data.domestic_level', 18)
             ->assertJsonPath('data.secretary_level', 18)
             ->assertJsonPath('data.passive_level_total', 18)
             ->assertJsonPath('data.capacity_bonus_percent', 18)
+            ->assertJsonPath('data.monster_experience', 120)
             ->assertJsonCount(5, 'data.equipment.slots');
 
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
@@ -258,7 +268,9 @@ final class SecretaryPersistenceTest extends TestCase
         $publicResponse = $this->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}");
         $publicResponse->assertOk()
             ->assertJsonPath('data.is_owner', false)
+            ->assertJsonPath('data.domestic_level', 18)
             ->assertJsonPath('data.secretary_level', 18)
+            ->assertJsonPath('data.monster_experience', 120)
             ->assertJsonPath('data.biography', "海辺で出会った秘書。\n**この記号はMarkdownとして解釈しない。**")
             ->assertJsonPath('data.main_image.display', 'none')
             ->assertJsonPath('data.viewer_preferences.configured', false)
@@ -280,6 +292,12 @@ final class SecretaryPersistenceTest extends TestCase
                 '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
             );
 
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/image-preferences', [
+            'show_ai_generated_images' => true,
+            'own_secretary_fallback' => 'silhouette',
+        ])->assertOk()
+            ->assertJsonPath('data.own_secretary_fallback', 'silhouette');
+
         $viewer = User::factory()->create();
         $this->actingAs($viewer)->patchJson('/api/v1/me/secretary/image-preferences', [
             'show_ai_generated_images' => true,
@@ -289,10 +307,12 @@ final class SecretaryPersistenceTest extends TestCase
             ->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}");
         $fallbackResponse
             ->assertOk()
-            ->assertJsonPath('data.main_image.display', 'peridot')
-            ->assertJsonPath('data.viewer_preferences.configured', true);
+            ->assertJsonPath('data.main_image.display', 'silhouette')
+            ->assertJsonPath('data.viewer_preferences.configured', true)
+            ->assertJsonPath('data.viewer_preferences.own_secretary_fallback', 'peridot')
+            ->assertJsonPath('data.viewer_preferences.fallback', 'peridot');
         $this->assertStringContainsString(
-            '/assets/hakoniwa-tiles/peridot/peridot.png?v=',
+            '/assets/hakoniwa-tiles/peridot/silhouette.png?v=',
             (string) $fallbackResponse->json('data.main_image.url'),
         );
 
@@ -404,6 +424,15 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.main_image.display', 'uploaded')
             ->assertJsonPath('data.main_image.creation_method_label', 'AI生成')
             ->assertJsonPath('data.main_image.credit', 'Generated for this profile');
+
+        $this->actingAs($viewer)->patchJson('/api/v1/me/secretary/image-preferences', [
+            'show_ai_generated_images' => false,
+            'fallback' => 'peridot',
+        ])->assertOk();
+        $this->actingAs($viewer->refresh())->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}")
+            ->assertOk()
+            ->assertJsonPath('data.main_image.display', 'none')
+            ->assertJsonPath('data.main_image.url', null);
     }
 
     private function png(): string
@@ -411,20 +440,24 @@ final class SecretaryPersistenceTest extends TestCase
         return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true) ?: '';
     }
 
-    private function installSecretaryFallbackAsset(string $filename): void
+    private function installSecretaryFallbackAssets(string ...$filenames): void
     {
         $assetDirectory = storage_path('framework/testing/assets-'.Str::uuid());
         $peridotDirectory = $assetDirectory.DIRECTORY_SEPARATOR.'peridot';
         mkdir($peridotDirectory, 0777, true);
-        file_put_contents($peridotDirectory.DIRECTORY_SEPARATOR.$filename, $this->png());
+        foreach ($filenames as $filename) {
+            file_put_contents($peridotDirectory.DIRECTORY_SEPARATOR.$filename, $this->png());
+        }
         config([
             'hakoniwa.assets.path' => $assetDirectory,
             'hakoniwa.assets.base_url' => '/assets/hakoniwa-tiles',
             'hakoniwa.assets.themes.peridot' => 'peridot',
         ]);
 
-        $this->beforeApplicationDestroyed(function () use ($assetDirectory, $peridotDirectory, $filename): void {
-            @unlink($peridotDirectory.DIRECTORY_SEPARATOR.$filename);
+        $this->beforeApplicationDestroyed(function () use ($assetDirectory, $peridotDirectory, $filenames): void {
+            foreach ($filenames as $filename) {
+                @unlink($peridotDirectory.DIRECTORY_SEPARATOR.$filename);
+            }
             @rmdir($peridotDirectory);
             @rmdir($assetDirectory);
         });

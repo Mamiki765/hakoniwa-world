@@ -235,12 +235,15 @@ final class SecretaryController extends Controller
         $user = $service->updateImagePreferences(
             $request->user(),
             $request->boolean('show_ai_generated_images'),
-            $request->string('fallback')->value(),
+            $request->filled('own_secretary_fallback')
+                ? $request->string('own_secretary_fallback')->value()
+                : $request->string('fallback')->value(),
         );
 
         return response()->json(['data' => [
             'configured' => true,
             'show_ai_generated_images' => $user->show_ai_generated_secretary_images,
+            'own_secretary_fallback' => $user->secretary_image_fallback,
             'fallback' => $user->secretary_image_fallback,
         ]]);
     }

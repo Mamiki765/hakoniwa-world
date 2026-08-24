@@ -569,6 +569,18 @@ final class SecretaryItemEffectsTest extends TestCase
             ->where('subject_id', $monster->id)
             ->selectRaw("(metadata->>'firing_base_experience_applied')::integer AS experience")
             ->value('experience'));
+        $experiencePerDamage = (int) $monster->definition()->value('experience_per_damage');
+        $this->assertSame(
+            [$nation->id => $experiencePerDamage],
+            $context->state->pendingSecretaryMonsterExperience(),
+        );
+        $this->assertSame(0, (int) DB::table('secretaries')
+            ->where('id', $context->state->secretarySnapshot($nation->id)['secretary_id'])
+            ->value('monster_experience'));
+        $this->assertSame($experiencePerDamage, (int) DB::table('audit_events')
+            ->where('event_type', 'monster.killed')->where('subject_id', $monster->id)
+            ->selectRaw("(metadata->>'secretary_monster_experience_awarded')::integer AS experience")
+            ->value('experience'));
         $this->assertEquals(
             $skillState,
             DB::table('secretary_skills')
@@ -595,6 +607,10 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->assertSame(0, $result->metrics['secretary_old_bow_kills']);
         $this->assertSame('alive', $monster->fresh()->state);
         $this->assertSame(1, $monster->fresh()->current_hp);
+        $this->assertSame(
+            [$nation->id => (int) $monster->definition()->value('experience_per_damage')],
+            $context->state->pendingSecretaryMonsterExperience(),
+        );
         $damageEventId = DB::table('audit_events')->where('event_type', 'monster.damaged')
             ->where('subject_id', $monster->id)->value('id');
         $actionEventId = DB::table('audit_events')
@@ -684,10 +700,12 @@ final class SecretaryItemEffectsTest extends TestCase
         $seed = $this->oldBowHitSeed($nation->id);
         $firstContext = $this->context($world, $seed, [$nation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $firstContext);
+        $secretaryId = $firstContext->state->secretarySnapshot($nation->id)['secretary_id'];
+        $experiencePerDamage = (int) $monster->definition()->value('experience_per_damage');
         $rolledBack = [];
 
         try {
-            DB::transaction(function () use ($firstContext, $world, $monster, &$rolledBack): void {
+            DB::transaction(function () use ($firstContext, $world, $monster, $secretaryId, $experiencePerDamage, &$rolledBack): void {
                 $metrics = app(SecretaryOldBowService::class)->execute(
                     $firstContext,
                     $this->surfaceMapSpace($world),
@@ -697,6 +715,10 @@ final class SecretaryItemEffectsTest extends TestCase
                 unset($metadata['turn_run_id'], $metadata['kill_stat_id']);
                 $rolledBack = ['metrics' => $metrics, 'metadata' => $metadata];
                 $this->assertSame('killed', $monster->fresh()->state);
+                $flush = app(SecretaryTurnService::class)->flushExperience($firstContext);
+                $this->assertSame($experiencePerDamage, $flush['monster_experience_awarded']);
+                $this->assertSame($experiencePerDamage, (int) DB::table('secretaries')
+                    ->where('id', $secretaryId)->value('monster_experience'));
                 throw new RuntimeException('old bow rollback probe');
             });
             $this->fail('Expected Old Bow rollback probe failure.');
@@ -706,6 +728,8 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->assertSame('alive', $monster->fresh()->state);
         $this->assertDatabaseHas('monster_occupancies', ['monster_instance_id' => $monster->id]);
         $this->assertSame(0, DB::table('nation_monster_kill_stats')->where('nation_id', $nation->id)->count());
+        $this->assertSame(0, (int) DB::table('secretaries')
+            ->where('id', $secretaryId)->value('monster_experience'));
 
         $retry = $this->context($world, $seed, [$nation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $retry);
@@ -716,6 +740,7 @@ final class SecretaryItemEffectsTest extends TestCase
         );
         $retryMetadata = $this->event($retry, 'monster.killed');
         unset($retryMetadata['turn_run_id'], $retryMetadata['kill_stat_id']);
+        $retryFlush = app(SecretaryTurnService::class)->flushExperience($retry);
         $this->assertSame($rolledBack['metrics'], $retryMetrics);
         $this->assertSame($rolledBack['metadata'], $retryMetadata);
         $this->assertSame('killed', $monster->fresh()->state);
@@ -723,6 +748,9 @@ final class SecretaryItemEffectsTest extends TestCase
             ->where('nation_id', $nation->id)->value('kill_count'));
         $this->assertSame(1, DB::table('nation_monster_cycle_stats')
             ->where('nation_id', $nation->id)->value('kill_count'));
+        $this->assertSame($experiencePerDamage, $retryFlush['monster_experience_awarded']);
+        $this->assertSame($experiencePerDamage, (int) DB::table('secretaries')
+            ->where('id', $secretaryId)->value('monster_experience'));
     }
 
     /** @return array{User, Nation} */

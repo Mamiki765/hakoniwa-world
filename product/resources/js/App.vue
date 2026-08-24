@@ -851,7 +851,7 @@ async function submitSecretaryImage(): Promise<void> {
 function openSecretaryPreferencesModal(): void {
     const preferences = viewedSecretaryProfile.value?.viewer_preferences;
     secretaryShowAiImages.value = preferences?.show_ai_generated_images ?? true;
-    secretaryImageFallback.value = preferences?.fallback ?? 'silhouette';
+    secretaryImageFallback.value = preferences?.own_secretary_fallback ?? preferences?.fallback ?? 'silhouette';
     secretaryPreferenceErrors.value = {};
     secretaryPreferencesModalOpen.value = true;
 }
@@ -869,7 +869,7 @@ async function saveSecretaryImagePreferences(): Promise<void> {
             method: 'PATCH',
             body: JSON.stringify({
                 show_ai_generated_images: secretaryShowAiImages.value,
-                fallback: secretaryImageFallback.value,
+                own_secretary_fallback: secretaryImageFallback.value,
             }),
         });
         await reloadViewedSecretaryProfile();
@@ -1783,7 +1783,7 @@ async function abandonNation(): Promise<void> {
                 </nav>
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
                     <div v-if="!viewedSecretaryProfile.viewer_preferences.configured" class="secretary-image-preference-notice">
-                        <span>秘書画像の表示設定が未設定です</span>
+                        <span>秘書画像設定が未設定です</span>
                         <button v-if="viewedSecretaryProfile.viewer_preferences.can_update" type="button" @click="openSecretaryPreferencesModal">設定する</button>
                         <span v-else>（ログインすると設定できます）</span>
                     </div>
@@ -1808,12 +1808,10 @@ async function abandonNation(): Promise<void> {
                             <button v-if="viewedSecretaryProfile.is_owner" class="button secondary" type="button" @click="openSecretaryImageModal">画像を変更</button>
                         </div>
                         <section class="secretary-profile-summary" aria-label="秘書基本情報">
-                            <h3>{{ viewedSecretaryProfile.name }}</h3>
                             <dl>
-                                <div><dt>秘書Lv</dt><dd>{{ viewedSecretaryProfile.secretary_level }}</dd></div>
-                                <div><dt>パッシブLv合計</dt><dd>{{ viewedSecretaryProfile.passive_level_total }}</dd></div>
-                                <div><dt>資金capacity</dt><dd>+{{ viewedSecretaryProfile.capacity_bonus_percent }}%</dd></div>
-                                <div><dt>食料capacity</dt><dd>+{{ viewedSecretaryProfile.capacity_bonus_percent }}%</dd></div>
+                                <div><dt>内政Lv</dt><dd>{{ viewedSecretaryProfile.domestic_level }}</dd></div>
+                                <div><dt>資金・食糧最大</dt><dd>+{{ viewedSecretaryProfile.capacity_bonus_percent }}%</dd></div>
+                                <div><dt>討伐経験値</dt><dd>{{ viewedSecretaryProfile.monster_experience }}</dd></div>
                             </dl>
                             <button
                                 v-if="viewedSecretaryProfile.viewer_preferences.can_update && viewedSecretaryProfile.viewer_preferences.configured"
@@ -1821,7 +1819,7 @@ async function abandonNation(): Promise<void> {
                                 type="button"
                                 @click="openSecretaryPreferencesModal"
                             >
-                                画像表示設定
+                                画像設定
                             </button>
                         </section>
                         <section class="secretary-biography" aria-labelledby="secretary-biography-title">
@@ -2039,22 +2037,22 @@ async function abandonNation(): Promise<void> {
     <div v-if="secretaryPreferencesModalOpen" class="modal-backdrop" @click.self="closeSecretaryPreferencesModal">
         <section class="secretary-profile-modal" role="dialog" aria-modal="true" aria-labelledby="secretary-preferences-modal-title">
             <header>
-                <h2 id="secretary-preferences-modal-title">秘書画像の表示設定</h2>
+                <h2 id="secretary-preferences-modal-title">秘書画像設定</h2>
                 <button type="button" aria-label="閉じる" :disabled="busy" @click="closeSecretaryPreferencesModal">×</button>
             </header>
             <form @submit.prevent="saveSecretaryImagePreferences">
                 <fieldset>
-                    <legend>AI生成画像</legend>
+                    <legend>閲覧するAI生成画像</legend>
                     <label><input v-model="secretaryShowAiImages" type="radio" :value="true"> 表示する</label>
                     <label><input v-model="secretaryShowAiImages" type="radio" :value="false"> 表示しない</label>
                 </fieldset>
                 <fieldset>
-                    <legend>画像未設定時のfallback</legend>
+                    <legend>自分の秘書が画像未設定のとき</legend>
                     <label><input v-model="secretaryImageFallback" type="radio" value="silhouette"> silhouette版</label>
                     <label><input v-model="secretaryImageFallback" type="radio" value="peridot"> Peridot詳細版</label>
                 </fieldset>
-                <p v-if="secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images" class="field-error" role="alert">
-                    {{ secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images }}
+                <p v-if="secretaryPreferenceErrors.own_secretary_fallback || secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images" class="field-error" role="alert">
+                    {{ secretaryPreferenceErrors.own_secretary_fallback || secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images }}
                 </p>
                 <div class="modal-actions">
                     <button type="button" :disabled="busy" @click="closeSecretaryPreferencesModal">キャンセル</button>

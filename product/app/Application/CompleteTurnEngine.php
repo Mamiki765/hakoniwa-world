@@ -787,6 +787,8 @@ final class CompleteTurnEngine
             'secretary_experience_awarded' => $secretaryMetrics['experience_awarded'],
             'secretary_skills_changed' => $secretaryMetrics['skills_changed'],
             'secretary_levels_gained' => $secretaryMetrics['levels_gained'],
+            'secretary_monster_experience_awarded' => $secretaryMetrics['monster_experience_awarded'],
+            'secretary_monster_experience_changed' => $secretaryMetrics['monster_experience_secretaries_changed'],
             ...$lifecycleMetrics,
             ...$karmaResultMetrics,
             ...$awardMetrics,

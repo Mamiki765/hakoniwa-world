@@ -6,8 +6,9 @@ This is the first ver 2.5.0 profile slice approved by the Owner. The two externa
 inform only the public status-sheet composition: portrait, basic facts, biography, and
 equipment on one screen. No external design, text, image, or code is copied.
 
-The player- and inquiry-facing application version is `2.5.0-beta` for this rollout. The
-immutable gameplay payload remains ruleset v14; the beta label does not rename that audit key.
+The player- and inquiry-facing application version is `2.5.0-beta` for this rollout. This
+document records the immutable v14 profile/capacity slice; current v15 supersedes it without
+rewriting its payload or checksum.
 
 ## Existing-code audit
 
@@ -41,8 +42,11 @@ plain-text biography; the Owner may replace it or clear it to an empty string.
 time must be all null or a valid complete group. Credit is plain text up to 160 characters.
 
 `users.show_ai_generated_secretary_images` and `users.secretary_image_fallback` are both null
-for an unset preference, or both set to a boolean and `silhouette|peridot`. Preferences apply
-to every Secretary, including the viewer's own.
+for an unset preference, or both set to a boolean and `silhouette|peridot`. Their subjects are
+different: `show_ai_generated_secretary_images` is the viewer's permission to see AI-generated
+Secretary images, while `secretary_image_fallback` is the owning User's choice for how that
+User's own Secretary appears when no image was uploaded. The existing `Secretary::user()`
+ownership relation supplies the target fallback; v15 adds no generic preference schema.
 
 | Endpoint | Audience | Contract |
 |---|---|---|
@@ -51,7 +55,7 @@ to every Secretary, including the viewer's own.
 | `PATCH /api/v1/me/secretary/profile` | owner | Replace biography only. |
 | `POST /api/v1/me/secretary/main-image` | owner | Validate and replace image plus required metadata. |
 | `PATCH /api/v1/me/secretary/main-image` | owner | Edit metadata for the existing image only. |
-| `PATCH /api/v1/me/secretary/image-preferences` | authenticated User | Atomically set AI visibility and missing-image fallback. |
+| `PATCH /api/v1/me/secretary/image-preferences` | authenticated User | Atomically set viewer-side AI visibility and the fallback for that User's own Secretary. |
 
 The public profile response is `private, no-store`, because the same Secretary can resolve to
 uploaded image, fallback, or No image depending on the session viewer. Owner mutations use
@@ -77,11 +81,18 @@ separate from private/no-store inquiry attachments.
 | Secretary image state | Viewer preference | Display |
 |---|---|---|
 | any state | unset | No image and the one-line setup notice |
-| no image | configured; AI images shown | chosen silhouette or Peridot fallback |
+| no image | configured viewer; AI images shown | silhouette or Peridot chosen by the target Secretary's owning User |
 | no image | configured; AI images hidden | No image |
-| AI-generated image | configured; AI images hidden | No image; stored file remains intact |
+| AI-generated uploaded image | configured; AI images hidden | No image; stored file remains intact and is never replaced by a fallback |
 | non-AI image | configured | uploaded image even when AI images are hidden |
 | any uploaded image | configured; viewer permits its method | uploaded image and the public method/credit info |
+
+`viewer_preferences.show_ai_generated_images` remains viewer-side. The response also exposes
+`viewer_preferences.own_secretary_fallback` for the viewer's own target appearance setting;
+the older `viewer_preferences.fallback` name remains a compatibility alias. Neither field is
+used as the fallback for another User's Secretary. Preference mutations use
+`own_secretary_fallback`; the older request field `fallback` remains a compatibility alias,
+with the canonical field taking precedence if both are sent.
 
 Fallback binaries are not generated or committed. The Owner supplies the two PNG files below
 the existing `HAKONIWA_TILE_ASSET_PATH`; the existing allowlisted, versioned Hakoniwa asset
@@ -116,7 +127,8 @@ contract; this slice does not decide E-04 ordering for a general modifier system
 The forward-only migration accepts only exact published v13, refuses any globally unresolved
 non-dry TurnRun, publishes v14, preserves protected User/Secretary and historical digests,
 remaps queued commands and current monster references by stable keys, and changes only the
-current World Ruleset reference. Fresh installation publishes only v14. Failure recovery is
+current World Ruleset reference. At the time of this slice, fresh installation published only
+v14; current installation now publishes v15 through the documented forward chain. Failure recovery is
 restore-exact-v13-and-re-upgrade; migration `down()` is intentionally unavailable.
 
 The PostgreSQL backup does not contain `/srv/bot-assets/hakoniwa-secretaries`. Production

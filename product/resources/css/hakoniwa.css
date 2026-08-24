@@ -728,9 +728,12 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .secretary-tabs button { flex: 1 0 auto; min-height: 44px; padding-inline: 14px; }
     .secretary-equipment { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .secretary-equipment li, .secretary-equipment button { min-height: 72px; }
-    .secretary-profile-hero { grid-template-columns: 1fr; grid-template-areas: "portrait" "summary" "biography"; }
-    .secretary-portrait-column { width: min(100%, 360px); justify-self: center; }
+    .secretary-profile-hero { grid-template-columns: minmax(0, 38%) minmax(0, 1fr); grid-template-areas: "portrait summary" "biography biography"; gap: 18px 12px; }
+    .secretary-portrait-column { width: 100%; justify-self: stretch; gap: 6px; }
+    .secretary-portrait-column > .button { min-height: 34px; justify-self: start; padding: 6px 10px; font-size: .72rem; }
+    .secretary-profile-summary { padding: 10px; }
     .secretary-profile-summary dl { grid-template-columns: 1fr; }
+    .secretary-profile-summary dl div { padding: 7px 8px; }
     .secretary-biography textarea, .secretary-biography-text { min-height: 160px; }
     .secretary-profile-equipment li { grid-template-columns: 54px 38px minmax(0, 1fr); padding-inline: 10px; }
     .secretary-profile-modal { max-height: calc(100dvh - 20px); padding: 18px; }
