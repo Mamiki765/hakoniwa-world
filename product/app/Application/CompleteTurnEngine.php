@@ -1137,33 +1137,35 @@ final class CompleteTurnEngine
     {
         $rules = $context->ruleset->settings['turn_processing']['oil_field'];
         $nation = Nation::query()->whereKey($cell->owner_nation_id)->lockForUpdate()->firstOrFail();
-        $income = $this->boundedAssets->creditMoney($nation, $rules['income_money'], $context->ruleset);
+        $resourceKey = $rules['output_resource_key'] ?? null;
+        $productionUnits = $rules['production_units'] ?? null;
+        if (! is_string($resourceKey) || $resourceKey === ''
+            || ! is_int($productionUnits) || $productionUnits < 1) {
+            throw new DomainException('Seabed oil field production rules are invalid.');
+        }
+        $resource = $this->resourceDefinition($this->resourceDefinitions($context), $resourceKey);
+        $before = (int) NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $resource->id)
+            ->lockForUpdate()
+            ->value('amount');
+        $this->creditInventory($nation, $resource, $productionUnits);
         $this->events->record($context, 'oil.income', $cell, [
             'nation_id' => $nation->id,
             'x' => $cell->x,
             'y' => $cell->y,
-            'requested_money' => $income->requested,
-            'applied_money' => $income->applied,
-            'overflow_money' => $income->overflow,
-            'money_capacity' => $income->capacity,
+            'resource_key' => $resource->key,
+            'requested_units' => $productionUnits,
+            'applied_units' => $productionUnits,
+            'before_units' => $before,
+            'after_units' => $before + $productionUnits,
         ]);
-        if ($income->overflow > 0) {
-            $this->events->record($context, 'capacity.overflow', $nation, [
-                'nation_id' => $nation->id,
-                'asset' => 'money',
-                'requested' => $income->requested,
-                'applied' => $income->applied,
-                'overflow' => $income->overflow,
-                'capacity' => $income->capacity,
-                'source' => 'seabed_oil_field',
-            ]);
-        }
 
         $probability = $rules['depletion_probability'];
         $draw = $context->random->stream(TurnRandomStreamFactory::OIL_DEPLETION)
             ->integer(0, $probability['denominator'] - 1);
         if ($draw >= $probability['numerator']) {
-            return ['income' => $income->applied, 'depleted' => 0];
+            return ['income' => $productionUnits, 'depleted' => 0];
         }
 
         $beforeFacility = $cell->facility?->key;
@@ -1184,10 +1186,10 @@ final class CompleteTurnEngine
             'draw' => $draw,
             'numerator' => $probability['numerator'],
             'denominator' => $probability['denominator'],
-            'income_applied_first' => true,
+            'production_applied_first' => true,
         ]);
 
-        return ['income' => $income->applied, 'depleted' => 1];
+        return ['income' => $productionUnits, 'depleted' => 1];
     }
 
     private function growForest(TurnContext $context, MapCell $cell): bool

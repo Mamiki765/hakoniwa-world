@@ -110,7 +110,7 @@ SQL);
     public function run(): string
     {
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v14.php');
-        $targetSettings = config('hakoniwa.ruleset');
+        $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v15.php');
         if (! is_array($targetSettings)
             || ($sourceSettings['key'] ?? null) !== self::SOURCE_KEY
             || ($sourceSettings['version'] ?? null) !== self::SOURCE_VERSION
@@ -128,6 +128,9 @@ SQL);
             $worlds = World::query()->orderBy('id')->lockForUpdate()
                 ->get(['id', 'key', 'current_turn', 'ruleset_version_id']);
             if ($worlds->isEmpty()) {
+                if (RulesetVersion::query()->where('version', '>', self::TARGET_VERSION)->exists()) {
+                    return 'fresh_install_future_current';
+                }
                 $this->catalogs->assertInstalled($targetSettings);
                 $this->publisher->publish($targetSettings);
 

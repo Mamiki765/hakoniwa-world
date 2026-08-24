@@ -27,7 +27,7 @@ Ruleset version and publication.
 The configured current identity is in `config/hakoniwa.php`. Verify its source with:
 
 ```text
-php artisan hakoniwa:ruleset:validate --key=hakoniwa-2s-plus-v13
+php artisan hakoniwa:ruleset:validate --key=hakoniwa-2s-plus-v16
 ```
 
 Validation does not publish, migrate, or update a World. A future gameplay/balance change

@@ -910,6 +910,7 @@ describe('application lobby and island entry', () => {
                 { key: 'monster_meat', name: '怪獣肉', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 2, storable: true, tradable: true, amount: 0, capacity: 999900, remaining_capacity: 989900, is_at_capacity: false },
                 { key: 'industrial_goods', name: '工業品', category: 'industry', unit: 'unit', unit_label: 'ユニット', nutrition_per_unit: null, storable: true, tradable: true, amount: 1200, capacity: 9999000, remaining_capacity: 9997800, is_at_capacity: false },
                 { key: 'minerals', name: '鉱物', category: 'material', unit: 'ton', unit_label: 'トン', nutrition_per_unit: null, storable: true, tradable: true, amount: 0, capacity: 9999000, remaining_capacity: 9999000, is_at_capacity: false },
+                { key: 'oil', name: '石油', category: 'energy', unit: 'ten_thousand_barrels', unit_label: '万バレル', nutrition_per_unit: null, storable: true, tradable: true, amount: 123, capacity: 5000, remaining_capacity: 4877, is_at_capacity: false },
             ],
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1004,6 +1005,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000ユニット');
         expect(wrapper.find('.hud-details').text()).toContain('鉱物0トン');
         expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000トン');
+        expect(wrapper.find('.hud-details').text()).toContain('石油123万バレル');
+        expect(wrapper.find('.hud-details').text()).toContain('上限 5,000万バレル');
         expect(wrapper.find('.island-grid').exists()).toBe(true);
         const workspaceScroll = wrapper.get('.island-workspace-scroll');
         expect(workspaceScroll.attributes('role')).toBe('region');

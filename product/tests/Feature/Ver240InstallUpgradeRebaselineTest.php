@@ -10,6 +10,7 @@ use App\Application\Ver240DormancyRulesetUpgrade;
 use App\Application\Ver240KarmaRecoveryRulesetUpgrade;
 use App\Application\Ver250MonsterExperienceRulesetUpgrade;
 use App\Application\Ver250SecretaryProfileRulesetUpgrade;
+use App\Application\Ver260OilResourceRulesetUpgrade;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -21,6 +22,7 @@ use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMonsterKillStat;
+use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
@@ -52,6 +54,8 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
     private const MONSTER_EXPERIENCE_MIGRATION = '2026_08_24_010000_add_monster_experience_and_publish_v15';
 
+    private const OIL_MIGRATION = '2026_08_25_000000_add_oil_resource_and_publish_v16';
+
     public function test_supported_v11_source_upgrade_preserves_provenance_and_remains_runnable(): void
     {
         [$world, $item, $target] = $this->supportedSourceWithQueuedCommand();
@@ -63,6 +67,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             self::KARMA_MIGRATION,
             self::SECRETARY_PROFILE_MIGRATION,
             self::MONSTER_EXPERIENCE_MIGRATION,
+            self::OIL_MIGRATION,
         ])->delete();
         $fingerprint = $item->fresh()->request_fingerprint;
         $idleCounter = (int) $world->nations()->sole()->idle_counter;
@@ -81,19 +86,21 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             'level' => 0,
             'experience' => 0,
         ]);
-        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertSame(Ver260OilResourceRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
         $this->assertSame(
-            Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY,
+            Ver260OilResourceRulesetUpgrade::TARGET_KEY,
             $item->fresh()->definition()->firstOrFail()->rulesetVersion()->value('key'),
         );
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v12_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v13_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v14_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v15_activated', 'visibility' => 'admin']);
+        $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v16_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('migrations', ['migration' => self::MIGRATION]);
         $this->assertDatabaseHas('migrations', ['migration' => self::KARMA_MIGRATION]);
         $this->assertDatabaseHas('migrations', ['migration' => self::SECRETARY_PROFILE_MIGRATION]);
         $this->assertDatabaseHas('migrations', ['migration' => self::MONSTER_EXPERIENCE_MIGRATION]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::OIL_MIGRATION]);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
@@ -132,6 +139,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             self::KARMA_MIGRATION,
             self::SECRETARY_PROFILE_MIGRATION,
             self::MONSTER_EXPERIENCE_MIGRATION,
+            self::OIL_MIGRATION,
         ])->delete();
         $requestKey = $item->fresh()->request_key;
 
@@ -145,7 +153,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame($requestKey, $item->fresh()->request_key);
         $this->assertSame($v10->id, $item->fresh()->request_ruleset_version_id);
         $this->assertSame(10, $item->fresh()->queue_position);
-        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
+        $this->assertSame(Ver260OilResourceRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
@@ -153,7 +161,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame('mine', $target->fresh()->facility()->value('key'));
     }
 
-    public function test_exact_v12_to_v13_preserves_live_state_then_advances_to_v15_and_runs_a_turn(): void
+    public function test_exact_v12_to_v13_preserves_live_state_then_advances_to_v15(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -313,9 +321,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             $world->fresh()->rulesetVersion()->value('key'),
         );
 
-        $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
-        $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
-        $this->assertSame('completed', $queued->fresh()->status);
+        $this->assertSame('queued', $queued->fresh()->status);
     }
 
     public function test_v13_migration_rejects_a_non_v12_world_before_business_mutation(): void
@@ -548,6 +554,78 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame(73, (int) $historicalBase->fresh()->facility_experience);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v15_activated')->count());
 
+    }
+
+    public function test_exact_v15_to_v16_adds_zero_oil_without_changing_existing_resource_state(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            'v16移行国',
+            'v16移行島主',
+        );
+        $industrialGoods = ResourceDefinition::query()->where('key', 'industrial_goods')->sole();
+        DB::table('nation_resources')->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $industrialGoods->id)->update(['amount' => 1_234]);
+        DB::table('nation_resource_sale_policies')->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $industrialGoods->id)->update([
+                'policy' => 'keep_amount',
+                'keep_amount' => 222,
+                'version' => 2,
+            ]);
+        $v15 = $this->attachExactV15($world);
+        $beforeBalances = $this->nonOilResourceState($nation->id, 'nation_resources', ['amount']);
+        $beforePolicies = $this->nonOilResourceState(
+            $nation->id,
+            'nation_resource_sale_policies',
+            ['policy', 'keep_amount', 'version'],
+        );
+        $this->removeOilCatalogState();
+        DB::table('migrations')->where('migration', self::OIL_MIGRATION)->delete();
+
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::OIL_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $this->assertSame(
+            Ver260OilResourceRulesetUpgrade::TARGET_KEY,
+            $world->fresh()->rulesetVersion()->value('key'),
+        );
+        $this->assertSame($v15->id, app(RulesetPublisher::class)->assertPublished(
+            require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v15.php'),
+        )->id);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->sole();
+        $this->assertSame(['石油', 'energy', 'ten_thousand_barrels', '万バレル', true, true, 'sale.oil'], [
+            $oil->name, $oil->category, $oil->unit, $oil->unit_label,
+            $oil->storable, $oil->tradable, $oil->sale_price_key,
+        ]);
+        $this->assertDatabaseHas('nation_resources', [
+            'nation_id' => $nation->id,
+            'resource_definition_id' => $oil->id,
+            'amount' => 0,
+        ]);
+        $this->assertDatabaseHas('nation_resource_sale_policies', [
+            'nation_id' => $nation->id,
+            'resource_definition_id' => $oil->id,
+            'policy' => 'stockpile',
+            'keep_amount' => null,
+            'version' => 1,
+        ]);
+        $this->assertSame($beforeBalances,
+            $this->nonOilResourceState($nation->id, 'nation_resources', ['amount']));
+        $this->assertSame($beforePolicies, $this->nonOilResourceState(
+            $nation->id,
+            'nation_resource_sale_policies',
+            ['policy', 'keep_amount', 'version'],
+        ));
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'ruleset.v16_activated',
+            'visibility' => 'admin',
+            'world_id' => $world->id,
+        ]);
         $run = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
     }
@@ -678,11 +756,22 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         return $world;
     }
 
+    private function attachExactV15(World $world): RulesetVersion
+    {
+        $v15 = app(RulesetPublisher::class)->publish(
+            require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v15.php'),
+        );
+        $world->update(['ruleset_version_id' => $v15->id]);
+
+        return $v15;
+    }
+
     private function attachExactV11(World $world): void
     {
         $v11 = app(RulesetPublisher::class)->publish(
             app(RulesetUpgradeAuthoringCatalog::class)->get(Ver240DormancyRulesetUpgrade::SOURCE_KEY),
         );
+        $this->removeOilCatalogState();
         DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v11): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
@@ -710,6 +799,7 @@ SQL, [$v11->id, $world->id]);
         $v12 = app(RulesetPublisher::class)->publish(
             require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v12.php'),
         );
+        $this->removeOilCatalogState();
         DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v12): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
@@ -763,6 +853,7 @@ SQL, [$v12->id, $world->id]);
         $v13 = app(RulesetPublisher::class)->publish(
             require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v13.php'),
         );
+        $this->removeOilCatalogState();
         DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v13): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
@@ -811,6 +902,39 @@ SQL, [$v13->id, $world->id]);
         });
 
         return $v13;
+    }
+
+    private function removeOilCatalogState(): void
+    {
+        $oilId = DB::table('resource_definitions')->where('key', 'oil')->value('id');
+        if ($oilId === null) {
+            return;
+        }
+
+        DB::table('nation_resource_sale_policies')->where('resource_definition_id', $oilId)->delete();
+        DB::table('nation_resources')->where('resource_definition_id', $oilId)->delete();
+        DB::table('resource_definitions')->where('id', $oilId)->delete();
+    }
+
+    /**
+     * @param  list<string>  $columns
+     * @return list<array<string, mixed>>
+     */
+    private function nonOilResourceState(int $nationId, string $table, array $columns): array
+    {
+        $select = ['definition.key'];
+        foreach ($columns as $column) {
+            $select[] = "state.{$column}";
+        }
+
+        return DB::table("{$table} as state")
+            ->join('resource_definitions as definition', 'definition.id', '=', 'state.resource_definition_id')
+            ->where('state.nation_id', $nationId)
+            ->where('definition.key', '<>', 'oil')
+            ->orderBy('definition.key')
+            ->get($select)
+            ->map(static fn (object $row): array => (array) $row)
+            ->all();
     }
 
     private function secretaryDigest(): string

@@ -552,7 +552,7 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertNull($target->fresh()->facility_definition_id);
     }
 
-    public function test_oil_income_precedes_depletion_obeys_capacity_rolls_back_and_is_retry_idempotent(): void
+    public function test_oil_production_precedes_depletion_obeys_capacity_rolls_back_and_is_retry_idempotent(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('油田稼働国');
         $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
@@ -561,7 +561,10 @@ class DisasterAndOilTurnTest extends TestCase
         $center = $this->boundsFor($world)->center();
         $oil = $this->cellAt($space, $center->x, $center->y);
         $this->setCell($oil, 'sea', 'seabed_oil_field', $nation->id, 0);
-        $nation->update(['money' => 9_500]);
+        $oilDefinitionId = (int) DB::table('resource_definitions')->where('key', 'oil')->value('id');
+        DB::table('nation_resources')->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oilDefinitionId)->update(['amount' => 4_900]);
+        $nation->update(['money' => 0]);
         $seed = hash('sha256', 'oil-rollback-replay');
         [$rollbackContext] = $this->context($world, $ruleset, $seed, [$nation->id], [$oil->id]);
 
@@ -574,7 +577,9 @@ class DisasterAndOilTurnTest extends TestCase
         } catch (RuntimeException $exception) {
             $this->assertSame('rollback probe', $exception->getMessage());
         }
-        $this->assertSame(9_500, (int) $nation->fresh()->money);
+        $this->assertSame(4_900, (int) DB::table('nation_resources')->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oilDefinitionId)->value('amount'));
+        $this->assertSame(0, (int) $nation->fresh()->money);
         $this->assertSame('seabed_oil_field', $oil->fresh()->facility()->value('key'));
         $this->assertSame($nation->id, $oil->fresh()->owner_nation_id);
 
@@ -584,14 +589,17 @@ class DisasterAndOilTurnTest extends TestCase
         $depleted = $this->event($run, 'oil.depleted');
         $oil = $oil->fresh(['terrain', 'facility']);
 
-        $this->assertSame(598, $result->metrics['oil_income']);
+        $this->assertSame(500, $result->metrics['oil_income']);
         $this->assertSame(1, $result->metrics['oil_depleted']);
-        $this->assertSame(1_000, $income['requested_money']);
-        $this->assertSame(598, $income['applied_money']);
-        $this->assertSame(402, $income['overflow_money']);
-        $this->assertSame(10_098, $income['money_capacity']);
-        $this->assertTrue($depleted['income_applied_first']);
-        $this->assertSame(10_098, (int) $nation->fresh()->money);
+        $this->assertSame('oil', $income['resource_key']);
+        $this->assertSame(500, $income['requested_units']);
+        $this->assertSame(500, $income['applied_units']);
+        $this->assertSame(4_900, $income['before_units']);
+        $this->assertSame(5_400, $income['after_units']);
+        $this->assertTrue($depleted['production_applied_first']);
+        $this->assertSame(5_400, (int) DB::table('nation_resources')->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oilDefinitionId)->value('amount'));
+        $this->assertSame(0, (int) $nation->fresh()->money);
         $this->assertNull($oil->facility_definition_id);
         $this->assertNull($oil->owner_nation_id);
         $this->assertSame('sea', $oil->terrain->key);
@@ -602,11 +610,22 @@ class DisasterAndOilTurnTest extends TestCase
                 ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->value('id'),
         );
 
+        $capacity = app(CompleteTurnEngine::class)->execute('enforce_capacities', $context);
+        $overflow = $this->event($run, 'capacity.overflow');
+        $this->assertSame(1, $capacity->metrics['overflow_reports']);
+        $this->assertSame('oil', $overflow['resource_key']);
+        $this->assertSame(400, $overflow['overflow']);
+        $this->assertSame(5_000, $overflow['after']);
+        $this->assertSame(5_000, (int) DB::table('nation_resources')->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oilDefinitionId)->value('amount'));
+
         [$retryContext] = $this->context($world, $ruleset, $seed, [$nation->id], [$oil->id]);
         $retry = app(CompleteTurnEngine::class)->execute('process_cells', $retryContext);
         $this->assertSame(0, $retry->metrics['oil_income']);
         $this->assertSame(0, $retry->metrics['oil_depleted']);
-        $this->assertSame(10_098, (int) $nation->fresh()->money);
+        $this->assertSame(5_000, (int) DB::table('nation_resources')->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oilDefinitionId)->value('amount'));
+        $this->assertSame(0, (int) $nation->fresh()->money);
     }
 
     public function test_land_level_draws_only_after_success_and_applies_the_immediate_event(): void

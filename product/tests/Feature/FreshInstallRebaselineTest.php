@@ -7,7 +7,7 @@ use App\Application\CurrentCatalogInstaller;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
-use App\Application\Ver250MonsterExperienceRulesetUpgrade;
+use App\Application\Ver260OilResourceRulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\CommandDefinition;
@@ -15,6 +15,7 @@ use App\Models\MapCell;
 use App\Models\MonsterDefinition;
 use App\Models\NationCommandQueueItem;
 use App\Models\ProductionDefinition;
+use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
@@ -33,19 +34,19 @@ final class FreshInstallRebaselineTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_empty_postgresql_uses_direct_current_schema_and_v15_catalog_baseline(): void
+    public function test_empty_postgresql_uses_direct_current_schema_and_v16_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
-        $ruleset = RulesetVersion::query()->where('key', Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY)->sole();
+        $ruleset = RulesetVersion::query()->where('key', Ver260OilResourceRulesetUpgrade::TARGET_KEY)->sole();
 
-        $this->assertSame('2.5.0-beta', config('hakoniwa.application_version'));
-        $this->assertSame([Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY, $ruleset->key);
-        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_VERSION, $ruleset->version);
+        $this->assertSame('2.6.0', config('hakoniwa.application_version'));
+        $this->assertSame([Ver260OilResourceRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(Ver260OilResourceRulesetUpgrade::TARGET_KEY, $ruleset->key);
+        $this->assertSame(Ver260OilResourceRulesetUpgrade::TARGET_VERSION, $ruleset->version);
         $this->assertSame(25, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(51, DB::table('migrations')->count());
+        $this->assertSame(52, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -61,6 +62,20 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_24_010000_add_monster_experience_and_publish_v15',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_25_000000_add_oil_resource_and_publish_v16',
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->sole();
+        $this->assertSame(['石油', 'energy', 'ten_thousand_barrels', '万バレル', true, true, 'sale.oil', 60], [
+            $oil->name, $oil->category, $oil->unit, $oil->unit_label,
+            $oil->storable, $oil->tradable, $oil->sale_price_key, $oil->sort_order,
+        ]);
+        $this->assertSame(5_000, $ruleset->settings['resource_capacities']['oil']);
+        $this->assertSame([1, 2], [
+            $ruleset->settings['inventory_sale_rates']['oil']['inventory_units'],
+            $ruleset->settings['inventory_sale_rates']['oil']['money_units'],
+        ]);
+        $this->assertSame(500, $ruleset->settings['turn_processing']['oil_field']['production_units']);
         $this->assertTrue(Schema::hasColumn('nations', 'karma'));
         $this->assertTrue(Schema::hasColumn('secretaries', 'profile_biography'));
         $this->assertTrue(Schema::hasColumn('users', 'show_ai_generated_secretary_images'));

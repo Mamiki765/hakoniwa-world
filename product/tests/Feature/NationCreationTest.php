@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\InitialIslandGenerator;
 use App\Application\InitialIslandPlan;
 use App\Application\NationCreationService;
+use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -35,7 +36,8 @@ class NationCreationTest extends TestCase
         $this->assertSame(2000, $nation->idle_counter);
         $this->assertSame(100, $nation->money);
         $this->assertSame([
-            'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0, 'wheat' => 10_000,
+            'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0,
+            'oil' => 0, 'wheat' => 10_000,
         ], NationResource::query()
             ->where('nation_id', $nation->id)
             ->join('resource_definitions', 'resource_definitions.id', '=', 'nation_resources.resource_definition_id')
@@ -43,7 +45,20 @@ class NationCreationTest extends TestCase
         $this->assertSame(3, ResourceDefinition::query()->where('category', 'food')->count());
         $this->assertSame(3, ResourceDefinition::query()
             ->where('category', 'food')->where('unit', 'ton')->where('unit_label', 'トン')->count());
-        $this->assertSame(5, $nation->salePolicies()->count());
+        $oil = ResourceDefinition::query()->where('key', 'oil')->sole();
+        $this->assertSame(['石油', 'energy', 'ten_thousand_barrels', '万バレル', true, true, 'sale.oil'], [
+            $oil->name, $oil->category, $oil->unit, $oil->unit_label,
+            $oil->storable, $oil->tradable, $oil->sale_price_key,
+        ]);
+        $this->assertSame(6, $nation->salePolicies()->count());
+        $this->assertDatabaseHas('nation_resource_sale_policies', [
+            'nation_id' => $nation->id,
+            'resource_definition_id' => $oil->id,
+            'policy' => 'stockpile',
+            'keep_amount' => null,
+            'version' => 1,
+        ]);
+        $this->assertSame(5_000, app(NationCapacityResolver::class)->resolve($nation)->resource('oil'));
         $this->assertSame(1000, $nation->capital->cell()->value('population'));
         $this->assertSame(3, $this->terrainCount('forest'));
         $this->assertSame(3, MapCell::query()->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->where('terrain_quantity', 500)->count());

@@ -35,6 +35,8 @@ final class RulesetAuthoringValidator
 
     private const FORMAL_V15_KEY = 'hakoniwa-2s-plus-v15';
 
+    private const FORMAL_V16_KEY = 'hakoniwa-2s-plus-v16';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -523,10 +525,11 @@ final class RulesetAuthoringValidator
             13 => self::FORMAL_V13_KEY,
             14 => self::FORMAL_V14_KEY,
             15 => self::FORMAL_V15_KEY,
+            16 => self::FORMAL_V16_KEY,
             default => null,
         };
         if ($expectedKey === null || $authoredKey !== $expectedKey || ! $hasLifecycle) {
-            throw new DomainException('The v12-v15 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+            throw new DomainException('The v12-v16 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
         }
 
         $path = 'ruleset.nation_lifecycle';
@@ -614,10 +617,10 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($version, [13, 14, 15], true)
-            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY], true)
+        if (! in_array($version, [13, 14, 15, 16], true)
+            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY], true)
             || ! is_array($authored)) {
-            throw new DomainException('The v13-v15 Ruleset identity requires the KARMA contract.');
+            throw new DomainException('The v13-v16 Ruleset identity requires the KARMA contract.');
         }
         $expected = [
             'minimum' => -10,
@@ -1280,11 +1283,12 @@ final class RulesetAuthoringValidator
             13 => self::FORMAL_V13_KEY,
             14 => self::FORMAL_V14_KEY,
             15 => self::FORMAL_V15_KEY,
+            16 => self::FORMAL_V16_KEY,
             default => null,
         };
         if (($expectedKey !== null && $key !== $expectedKey)
-            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY], true))) {
-            throw new DomainException('The v11-v15 ruleset identity and version must be authored together.');
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY], true))) {
+            throw new DomainException('The v11-v16 ruleset identity and version must be authored together.');
         }
 
         return $version >= 11;
@@ -1301,8 +1305,8 @@ final class RulesetAuthoringValidator
         ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
-        if (in_array($version, [12, 13, 14, 15], true)
-            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY], true)) {
+        if (in_array($version, [12, 13, 14, 15, 16], true)
+            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 
@@ -2532,11 +2536,21 @@ final class RulesetAuthoringValidator
 
         $oilPath = "{$path}.oil_field";
         $oil = $this->map($turn['oil_field'], $oilPath);
-        $this->requireKeys($oil, [
-            'facility_key', 'income_money', 'depletion_probability', 'depleted_terrain_key',
-        ], $oilPath);
+        if (array_key_exists('income_money', $oil)) {
+            $this->requireKeys($oil, [
+                'facility_key', 'income_money', 'depletion_probability', 'depleted_terrain_key',
+            ], $oilPath);
+            $this->integer($oil['income_money'], "{$oilPath}.income_money", 0);
+        } else {
+            $this->requireKeys($oil, [
+                'facility_key', 'output_resource_key', 'production_units',
+                'depletion_probability', 'depleted_terrain_key',
+            ], $oilPath);
+            $resourceKeys = array_column($settings['resource_definitions'], 'key');
+            $this->reference($oil['output_resource_key'], $resourceKeys, "{$oilPath}.output_resource_key");
+            $this->integer($oil['production_units'], "{$oilPath}.production_units", 1);
+        }
         $this->reference($oil['facility_key'], $facilityKeys, "{$oilPath}.facility_key");
-        $this->integer($oil['income_money'], "{$oilPath}.income_money", 0);
         $this->probability($oil['depletion_probability'], "{$oilPath}.depletion_probability");
         $this->reference($oil['depleted_terrain_key'], self::TERRAIN_KEYS, "{$oilPath}.depleted_terrain_key");
     }
