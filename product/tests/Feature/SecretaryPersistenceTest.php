@@ -12,8 +12,11 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Mockery;
+use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -347,16 +350,43 @@ final class SecretaryPersistenceTest extends TestCase
 
         $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
             'image' => UploadedFile::fake()->createWithContent('second.png', $this->png()),
-            'creation_method' => 'ai_generated',
-            'credit' => 'Generated for this profile',
+            'creation_method' => 'self_made',
+            'credit' => 'Second owner image',
         ], ['Accept' => 'application/json'])->assertOk()
-            ->assertJsonPath('data.main_image.display', 'none')
-            ->assertJsonPath('data.editable_image_metadata.creation_method', 'ai_generated');
+            ->assertJsonPath('data.main_image.display', 'uploaded')
+            ->assertJsonPath('data.editable_image_metadata.creation_method', 'self_made');
         $secondPath = (string) $secretary->fresh()->main_image_path;
         $this->assertNotSame($firstPath, $secondPath);
         Storage::disk('secretary_images')->assertMissing($firstPath);
         Storage::disk('secretary_images')->assertExists($secondPath);
         $this->assertCount(1, Storage::disk('secretary_images')->allFiles('/'));
+
+        $disk = Storage::disk('secretary_images');
+        $failingDisk = Mockery::mock($disk)->makePartial();
+        $failingDisk->shouldReceive('delete')->once()->with($secondPath)
+            ->andThrow(new RuntimeException('forced cleanup failure'));
+        Storage::shouldReceive('disk')->with('secretary_images')->andReturn($failingDisk);
+        Log::spy();
+
+        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
+            'image' => UploadedFile::fake()->createWithContent('third.png', $this->png()),
+            'creation_method' => 'ai_generated',
+            'credit' => 'Generated for this profile',
+        ], ['Accept' => 'application/json'])->assertOk()
+            ->assertJsonPath('data.main_image.display', 'none')
+            ->assertJsonPath('data.editable_image_metadata.creation_method', 'ai_generated');
+        $thirdPath = (string) $secretary->fresh()->main_image_path;
+        $this->assertNotSame($secondPath, $thirdPath);
+        $this->assertTrue($disk->exists($secondPath));
+        $this->assertTrue($disk->exists($thirdPath));
+        $this->assertCount(2, $disk->allFiles('/'));
+        Log::shouldHaveReceived('error')->once()->with(
+            'Secretary main image replacement left an orphaned previous file.',
+            Mockery::on(fn (array $context): bool => $context['secretary_id'] === $secretary->id
+                && $context['old_path'] === $secondPath
+                && $context['current_path'] === $thirdPath
+                && $context['exception_class'] === RuntimeException::class),
+        );
 
         $this->actingAs($owner)->getJson("/api/v1/me/secretary?world_id={$world->id}")
             ->assertOk()

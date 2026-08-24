@@ -8,6 +8,7 @@ use App\Models\Secretary;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -78,7 +79,7 @@ final readonly class SecretaryProfileService
         }
 
         if (is_string($oldPath)) {
-            Storage::disk(self::IMAGE_DISK)->delete($oldPath);
+            $this->deleteReplacedImage($secretary, $oldPath);
         }
 
         return $secretary;
@@ -149,6 +150,31 @@ final readonly class SecretaryProfileService
         }
 
         return $secretary;
+    }
+
+    private function deleteReplacedImage(Secretary $secretary, string $oldPath): void
+    {
+        try {
+            if (Storage::disk(self::IMAGE_DISK)->delete($oldPath)) {
+                return;
+            }
+        } catch (Throwable $exception) {
+            Log::error('Secretary main image replacement left an orphaned previous file.', [
+                'secretary_id' => $secretary->id,
+                'old_path' => $oldPath,
+                'current_path' => $secretary->main_image_path,
+                'exception_class' => $exception::class,
+            ]);
+
+            return;
+        }
+
+        Log::error('Secretary main image replacement left an orphaned previous file.', [
+            'secretary_id' => $secretary->id,
+            'old_path' => $oldPath,
+            'current_path' => $secretary->main_image_path,
+            'exception_class' => null,
+        ]);
     }
 
     /** @param array<string, mixed> $metadata */

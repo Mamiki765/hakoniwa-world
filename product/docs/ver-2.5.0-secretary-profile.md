@@ -65,6 +65,9 @@ trusted: `finfo`, decoded dimensions, decoded MIME agreement, 12000-pixel side, 
 pixel limits are enforced. A 64-hex-character random basename plus MIME-derived extension is
 stored on the `secretary_images` disk. A failed DB transaction deletes the new file; a
 successful replacement deletes the previous file. There is no gallery or history row.
+If the post-commit old-file deletion itself fails, the committed replacement still returns
+success and an operator error is logged with the current and orphan paths; a retry cannot
+misrepresent the already-committed mutation as failed or select the orphan for display.
 
 The default local path is `/srv/bot-assets/hakoniwa-secretaries`, published at
 `/hakoniwa-secretaries/`. Static delivery disables indexing, `.htaccess`, CGI, and includes,
