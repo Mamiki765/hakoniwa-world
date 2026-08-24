@@ -11,7 +11,7 @@ final class UpdateSecretaryProfileRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'biography' => ['required', 'string', 'max:1000', new PlainText],
+            'biography' => ['present', 'nullable', 'string', 'max:1000', new PlainText],
         ];
     }
 }

@@ -63,7 +63,10 @@ final class SecretaryController extends Controller
         }
         $secretary->load(['user', 'skills', 'itemInstances']);
         try {
-            $projection = $effectContexts->resolve($secretary->user, $this->equipmentWorldId($request));
+            $projection = $effectContexts->resolveForPublicProfile(
+                $secretary->user,
+                $this->equipmentWorldId($request),
+            );
         } catch (SecretaryEquipmentValidationException $exception) {
             return response()->json([
                 'code' => SecretaryEquipmentValidationException::ERROR_CODE,

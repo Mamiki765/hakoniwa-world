@@ -212,7 +212,7 @@ final class SecretaryPersistenceTest extends TestCase
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
-        app(NationCreationService::class)->create($owner, $world, '公開秘書島', '公開島主');
+        $nation = app(NationCreationService::class)->create($owner, $world, '公開秘書島', '公開島主');
         $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => 'ペリドット'])->assertOk();
         $secretary = $owner->secretary()->firstOrFail();
         foreach ([
@@ -237,6 +237,13 @@ final class SecretaryPersistenceTest extends TestCase
             'biography' => '<b>HTMLは不可</b>',
         ])->assertUnprocessable()->assertJsonValidationErrors('biography');
 
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
+            'biography' => '',
+        ])->assertOk()->assertJsonPath('data.biography', '');
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
+            'biography' => "海辺で出会った秘書。\n**この記号はMarkdownとして解釈しない。**",
+        ])->assertOk();
+
         auth()->logout();
         $publicResponse = $this->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}");
         $publicResponse->assertOk()
@@ -250,6 +257,18 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonCount(5, 'data.equipment.slots');
         $this->assertStringContainsString('private', (string) $publicResponse->headers->get('Cache-Control'));
         $this->assertStringContainsString('no-store', (string) $publicResponse->headers->get('Cache-Control'));
+
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => $world->current_turn,
+        ]);
+        $this->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}")
+            ->assertOk()
+            ->assertJsonPath(
+                'data.equipment.slots.0.item.effect_text',
+                '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
+            );
 
         $viewer = User::factory()->create();
         $this->actingAs($viewer)->patchJson('/api/v1/me/secretary/image-preferences', [
