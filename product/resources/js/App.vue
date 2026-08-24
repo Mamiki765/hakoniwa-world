@@ -755,7 +755,7 @@ async function openPublicSecretary(secretaryId: number, worldId: number): Promis
 async function reloadViewedSecretaryProfile(): Promise<void> {
     const current = viewedSecretaryProfile.value;
     if (current === null) return;
-    if (current.is_owner) {
+    if (current.is_owner && viewedSecretaryWorldId.value === null) {
         await loadSecretary();
         return;
     }

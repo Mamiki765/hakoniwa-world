@@ -1096,6 +1096,18 @@ describe('application lobby and island entry', () => {
 
                 return response(secretary);
             }
+            if (path === '/api/v1/me/secretary/profile' && init?.method === 'PATCH') {
+                const body = JSON.parse(String(init.body)) as { biography: string };
+                secretary = {
+                    ...secretary,
+                    profile: { ...secretary.profile, biography: body.biography },
+                };
+
+                return response({ ...secretary.profile, name: secretary.name, is_owner: true });
+            }
+            if (path === '/api/v1/secretaries/11?world_id=1') {
+                return response({ ...secretary.profile, name: secretary.name, is_owner: true });
+            }
             if (path === '/api/v1/me/secretary?world_id=1') return response(secretary);
 
             return response(null, 404);
@@ -1128,6 +1140,11 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.secretary-main-profile').text()).toContain('資金capacity+1%');
         expect(wrapper.get('.secretary-no-image').text()).toBe('No image');
         expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('秘書画像の表示設定が未設定です');
+        await wrapper.get('.secretary-biography textarea').setValue('更新した経歴');
+        await wrapper.get('.secretary-biography form').trigger('submit');
+        await flushPromises();
+        expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/secretaries/11?world_id=1')).toBe(true);
+        expect(wrapper.get<HTMLTextAreaElement>('.secretary-biography textarea').element.value).toBe('更新した経歴');
         const initialTabs = wrapper.findAll('[role="tab"]');
         expect(initialTabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫']);
         await initialTabs[1]!.trigger('click');
