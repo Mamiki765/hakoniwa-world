@@ -7,7 +7,6 @@ use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\User;
 use App\Models\World;
-use DomainException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -15,6 +14,8 @@ use Throwable;
 
 final class InquirySubmissionService
 {
+    public function __construct(private readonly WebImageUploadService $images) {}
+
     /** @return array{inquiry: Inquiry, created: bool} */
     public function submit(
         User $user,
@@ -48,12 +49,9 @@ final class InquirySubmissionService
                 [$world, $nation] = $this->currentContext($lockedUser);
                 $token = null;
                 if ($attachment instanceof UploadedFile) {
-                    $token = bin2hex(random_bytes(32));
-                    $storedPath = $token.'.'.$this->extension($attachment);
-                    $written = Storage::disk('inquiry_attachments')->putFileAs('', $attachment, $storedPath);
-                    if ($written !== $storedPath) {
-                        throw new DomainException('問い合わせ画像を保存できませんでした。');
-                    }
+                    $stored = $this->images->store($attachment, 'inquiry_attachments');
+                    $storedPath = $stored['path'];
+                    $token = pathinfo($storedPath, PATHINFO_FILENAME);
                 }
 
                 $inquiry = Inquiry::query()->create([
@@ -98,16 +96,5 @@ final class InquirySubmissionService
         $world = World::query()->where('key', config('hakoniwa.world.key'))->firstOrFail();
 
         return [$world, null];
-    }
-
-    private function extension(UploadedFile $attachment): string
-    {
-        return match ($attachment->getMimeType()) {
-            'image/png' => 'png',
-            'image/jpeg' => 'jpg',
-            'image/webp' => 'webp',
-            'image/gif' => 'gif',
-            default => throw new DomainException('問い合わせ画像のMIME typeが許可されていません。'),
-        };
     }
 }

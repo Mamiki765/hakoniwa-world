@@ -148,7 +148,7 @@ final class C4NewMonstersTest extends TestCase
         $this->assertSame(2, $item->failure_metadata['dispatch_selector']);
         $this->assertSame('mecha_inora_zero', $item->failure_metadata['monster_key']);
         $this->assertSame(9_999, $item->failure_metadata['cost_money']);
-        $this->assertSame(9_999, $sender->fresh()->money);
+        $this->assertSame(10_008, $sender->fresh()->money);
         $this->assertDatabaseCount('monster_instances', 0);
     }
 

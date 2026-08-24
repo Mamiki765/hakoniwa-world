@@ -418,6 +418,13 @@
 - Decision: ADR-0011のver 2.0.0一度だけ命名contractは歴史として維持する。ver 2.1.0ではUser所有・1 User = 1 Secretaryを変えず、plain text 1〜30文字、duplicate可、skill/XP不変、abandon/re-register後も保持する。rename APIはrowを作成せず、private auditへold/new nameとSecretary/User ID、時刻を残す。過去logと実行中attemptは保存済みname snapshotを維持し、次attemptから最新名をloadする。
 - Decision record: `docs/decisions/ADR-0012-ver-2.1.0-defense-and-secretary-rename.md`、`docs/roadmap/2.x.md`
 
+### SECRETARY-03 公開プロフィールと秘書Lvcapacity bonus
+
+- Status: Decided
+- Implemented: ver 2.5.0で公開「メイン」プロフィール、3:4メイン画像、画像制作metadata、viewer単位のAI画像表示設定、1000文字の経歴、現在装備5slot表示、秘書Lvcapacity bonus、ruleset v14、exact v13→v14 forward migrationを実装する。
+- Decision: 秘書Lvは既存4 passive skill levelの合計であり、独立XP/level systemを作らない。v14では資金capacityと食料capacityへ秘書Lvと同じpercentを乗算し、既存の非負整数切捨てとcanonical capacity/credit経路を維持する。E-04のgeneric ModifierはDeferredのままとし、この確定済み1種類だけを局所的に解決する。画像はUser永続Secretaryへ最新1枚だけ保持し、既存問い合わせ画像のvalidation/storage boundaryを共有するが、公開disk/URL/cache policyは分離する。AI画像の非表示はviewer presentationであり、保存fileを削除しない。
+- Decision record: `docs/decisions/ADR-0016-ver-2.5.0-secretary-profile.md`、`product/docs/ver-2.5.0-secretary-profile.md`、`docs/roadmap/2.x.md`
+
 ### D-01 scheduler・queue基盤
 
 - Status: Decided

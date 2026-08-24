@@ -887,18 +887,18 @@ class MonsterSystemTest extends TestCase
         $this->assertSame('killed', $result->status);
         $this->assertSame(9_500, $result->killerMoney['before']);
         $this->assertSame(500, $result->killerMoney['requested']);
-        $this->assertSame(499, $result->killerMoney['applied']);
-        $this->assertSame(1, $result->killerMoney['overflow']);
-        $this->assertSame(9_999, $result->killerMoney['after']);
-        $this->assertSame(9_999, $result->killerMoney['capacity']);
+        $this->assertSame(500, $result->killerMoney['applied']);
+        $this->assertSame(0, $result->killerMoney['overflow']);
+        $this->assertSame(10_000, $result->killerMoney['after']);
+        $this->assertSame(10_098, $result->killerMoney['capacity']);
         $this->assertSame(250_000, $result->hostMeat['requested']);
-        $this->assertSame(100, $result->hostMeat['applied']);
-        $this->assertSame(249_900, $result->hostMeat['overflow']);
+        $this->assertSame(10_099, $result->hostMeat['applied']);
+        $this->assertSame(239_901, $result->hostMeat['overflow']);
         $this->assertSame(5, $result->firingBaseExperienceApplied);
-        $this->assertSame(9_999, (int) $killer->fresh()->money);
-        $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
+        $this->assertSame(10_000, (int) $killer->fresh()->money);
+        $this->assertSame(10_099, NationResource::query()->where('nation_id', $host->id)
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
-        $this->assertSame($hostMoneyBefore + 498, (int) $host->fresh()->money);
+        $this->assertSame($hostMoneyBefore + 478, (int) $host->fresh()->money);
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'monster.reward_distributed',
             'visibility' => 'private',
@@ -918,12 +918,12 @@ class MonsterSystemTest extends TestCase
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
         $this->assertIsArray($killerReward);
-        $this->assertSame('レッドいのらを撃破し、賞金499億円を受け取りました。', $killerReward['message']);
+        $this->assertSame('レッドいのらを撃破し、賞金500億円を受け取りました。', $killerReward['message']);
         $this->assertIsArray($hostReward);
-        $this->assertSame('レッドいのらが倒され、怪獣肉100トンを受け取りました。', $hostReward['message']);
+        $this->assertSame('レッドいのらが倒され、怪獣肉10,099トンを受け取りました。', $hostReward['message']);
         $this->assertIsArray($hostOverflow);
         $this->assertSame(
-            '食料上限を超えた怪獣肉249,900トンのうち249,000トンを売却して498億円を得て、900トンを破棄しました。',
+            '食料上限を超えた怪獣肉239,901トンのうち239,000トンを売却して478億円を得て、901トンを破棄しました。',
             $hostOverflow['message'],
         );
         $this->assertNull($spectatorReward);
@@ -958,14 +958,14 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(1, $metadata['new_monster_cycle_kill_count']);
         $this->assertSame(500, $metadata['killer_money']['requested']);
         $this->assertSame(250_000, $metadata['host_meat_food']['requested']);
-        $this->assertSame(249_900, $metadata['host_meat_food']['overflow']);
+        $this->assertSame(239_901, $metadata['host_meat_food']['overflow']);
         $overflowMetadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'resource.food_overflow_resolved')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('monster_meat', $overflowMetadata['resource_key']);
-        $this->assertSame(249_900, $overflowMetadata['requested_overflow_tons']);
-        $this->assertSame(249_000, $overflowMetadata['sold_tons']);
-        $this->assertSame(498, $overflowMetadata['revenue']);
-        $this->assertSame(900, $overflowMetadata['discarded_tons']);
+        $this->assertSame(239_901, $overflowMetadata['requested_overflow_tons']);
+        $this->assertSame(239_000, $overflowMetadata['sold_tons']);
+        $this->assertSame(478, $overflowMetadata['revenue']);
+        $this->assertSame(901, $overflowMetadata['discarded_tons']);
         $this->assertSame(1_000, $overflowMetadata['inventory_units_per_batch']);
         $this->assertSame(2, $overflowMetadata['money_units_per_batch']);
         $this->assertSame($base->id, $metadata['firing_base_id']);
@@ -978,7 +978,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, $publicEvents->where('type', 'monster.reward_distributed')->count());
         $this->assertSame(0, $publicEvents->where('type', 'resource.food_overflow_resolved')->count());
         $publicJson = json_encode($publicEvents->all(), JSON_THROW_ON_ERROR);
-        foreach (['killer_money', 'host_meat_food', '499', '100トン', '249,900', '498億円'] as $privateValue) {
+        foreach (['killer_money', 'host_meat_food', '500億円', '10,099トン', '239,901', '478億円'] as $privateValue) {
             $this->assertStringNotContainsString($privateValue, $publicJson);
         }
 
@@ -997,8 +997,8 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(1, $stat->fresh()->kill_count);
         $this->assertSame(1, $cycleStat->fresh()->kill_count);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.kill_stat_incremented')->count());
-        $this->assertSame(9_999, (int) $killer->fresh()->money);
-        $this->assertSame(100, NationResource::query()->where('nation_id', $host->id)
+        $this->assertSame(10_000, (int) $killer->fresh()->money);
+        $this->assertSame(10_099, NationResource::query()->where('nation_id', $host->id)
             ->where('resource_definition_id', $monsterMeat->id)->value('amount'));
     }
 
@@ -1160,9 +1160,9 @@ class MonsterSystemTest extends TestCase
 
         $this->assertSame('killed', $result->status);
         $this->assertSame(1_200, $result->killerMoney['requested']);
-        $this->assertSame(499, $result->killerMoney['applied']);
-        $this->assertSame(701, $result->killerMoney['overflow']);
-        $this->assertSame(9_999, $killer->fresh()->money);
+        $this->assertSame(598, $result->killerMoney['applied']);
+        $this->assertSame(602, $result->killerMoney['overflow']);
+        $this->assertSame(10_098, $killer->fresh()->money);
         $this->assertNull($result->hostMeat);
         $this->assertSame(1, $result->newKillCount);
         $metadata = json_decode((string) DB::table('audit_events')

@@ -33,6 +33,22 @@ final class DefaultInquiryAttachmentStackTest extends TestCase
             'HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL: ${HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL:-/hakoniwa-inquiries}',
             $compose,
         );
+        $this->assertStringContainsString(
+            '- hakoniwa_secretary_images:/srv/bot-assets/hakoniwa-secretaries',
+            $compose,
+        );
+        $this->assertStringContainsString(
+            "hakoniwa_secretary_images:\n    name: hakoniwa_secretary_images",
+            str_replace("\r\n", "\n", $compose),
+        );
+        $this->assertStringContainsString(
+            'HAKONIWA_SECRETARY_IMAGE_PATH: ${HAKONIWA_SECRETARY_IMAGE_PATH:-/srv/bot-assets/hakoniwa-secretaries}',
+            $compose,
+        );
+        $this->assertStringContainsString(
+            'HAKONIWA_SECRETARY_IMAGE_BASE_URL: ${HAKONIWA_SECRETARY_IMAGE_BASE_URL:-/hakoniwa-secretaries}',
+            $compose,
+        );
     }
 
     public function test_apache_serves_public_attachment_paths_without_indexing(): void
@@ -58,6 +74,24 @@ final class DefaultInquiryAttachmentStackTest extends TestCase
         $this->assertStringContainsString('Require all granted', $directives);
         $this->assertStringContainsString('Header always set Cache-Control "private, no-store, max-age=0"', $directives);
         $this->assertStringContainsString('Header always set X-Content-Type-Options "nosniff"', $directives);
+
+        $this->assertStringContainsString(
+            'Alias "/hakoniwa-secretaries/" "/srv/bot-assets/hakoniwa-secretaries/"',
+            $apache,
+        );
+        $matched = preg_match(
+            '/<Directory "\/srv\/bot-assets\/hakoniwa-secretaries">(?<directives>.*?)<\/Directory>/s',
+            $apache,
+            $matches,
+        );
+        $this->assertSame(1, $matched);
+        $directives = $matches['directives'];
+        $this->assertStringContainsString('AllowOverride None', $directives);
+        $this->assertStringContainsString('Options -Indexes -ExecCGI -Includes', $directives);
+        $this->assertStringContainsString('SetHandler none', $directives);
+        $this->assertStringContainsString('Require all granted', $directives);
+        $this->assertStringContainsString('Header always set Cache-Control "public, max-age=31536000, immutable"', $directives);
+        $this->assertStringContainsString('Header always set X-Content-Type-Options "nosniff"', $directives);
     }
 
     public function test_development_compose_uses_test_only_environment_and_safe_source_mounts(): void
@@ -78,6 +112,7 @@ final class DefaultInquiryAttachmentStackTest extends TestCase
         $this->assertStringContainsString('DB_DATABASE: hakoniwa_test', $compose);
         $this->assertStringContainsString('./product/app:/var/www/html/app:ro', $compose);
         $this->assertStringContainsString('./product/docs:/var/www/html/docs:ro', $compose);
+        $this->assertStringContainsString('./product/docker:/var/www/html/docker:ro', $compose);
         $this->assertStringContainsString('./product/tests:/var/www/html/tests:ro', $compose);
         $this->assertStringNotContainsString('./product:/var/www/html', $compose);
         $this->assertStringNotContainsString(':/var/www/html/vendor', $compose);

@@ -200,10 +200,10 @@ final class TurnRuntimePerformanceTest extends TestCase
 
         $this->report("32x32-{$nationCount}-nations", $measurement);
         $this->assertSame($nationCount, $measurement['phases']['prepare_turn']['metrics']['nations']);
-        $this->assertLessThanOrEqual(19 * $nationCount, $measurement['phases']['nation_economy']['queries']);
-        $this->assertLessThanOrEqual(9 * $nationCount, $measurement['phases']['resource_sales']['queries']);
+        $this->assertLessThanOrEqual(20 * $nationCount, $measurement['phases']['nation_economy']['queries']);
+        $this->assertLessThanOrEqual(10 * $nationCount, $measurement['phases']['resource_sales']['queries']);
         $this->assertLessThanOrEqual(5 + $nationCount, $measurement['phases']['aggregate_nations']['queries']);
-        $this->assertLessThanOrEqual(4 * $nationCount, $measurement['phases']['enforce_capacities']['queries']);
+        $this->assertLessThanOrEqual(5 * $nationCount, $measurement['phases']['enforce_capacities']['queries']);
     }
 
     public function test_population_eligible_natural_spawn_does_not_rehydrate_the_full_world(): void
@@ -278,7 +278,7 @@ final class TurnRuntimePerformanceTest extends TestCase
 
         $this->report('32x32-multi-resource-sales', $measurement);
         $this->assertGreaterThanOrEqual(3, $sales['metrics']['sales']);
-        $this->assertLessThanOrEqual(4, $sales['query_types']['select'] ?? 0);
+        $this->assertLessThanOrEqual(5, $sales['query_types']['select'] ?? 0);
     }
 
     #[DataProvider('missileShotProfiles')]

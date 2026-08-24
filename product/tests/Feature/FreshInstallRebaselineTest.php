@@ -7,7 +7,7 @@ use App\Application\CurrentCatalogInstaller;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
-use App\Application\Ver240KarmaRecoveryRulesetUpgrade;
+use App\Application\Ver250SecretaryProfileRulesetUpgrade;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
@@ -32,19 +32,19 @@ final class FreshInstallRebaselineTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_empty_postgresql_uses_direct_current_schema_and_v13_catalog_baseline(): void
+    public function test_empty_postgresql_uses_direct_current_schema_and_v14_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
-        $ruleset = RulesetVersion::query()->sole();
+        $ruleset = RulesetVersion::query()->where('key', Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY)->sole();
 
-        $this->assertSame('2.4.0', config('hakoniwa.application_version'));
-        $this->assertSame([Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $ruleset->key);
-        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_VERSION, $ruleset->version);
+        $this->assertSame('2.5.0', config('hakoniwa.application_version'));
+        $this->assertSame([Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY, $ruleset->key);
+        $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_VERSION, $ruleset->version);
         $this->assertSame(25, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(49, DB::table('migrations')->count());
+        $this->assertSame(50, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -54,7 +54,12 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_23_010000_add_nation_karma_and_publish_v13',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_24_000000_add_secretary_profiles_and_publish_v14',
+        ]);
         $this->assertTrue(Schema::hasColumn('nations', 'karma'));
+        $this->assertTrue(Schema::hasColumn('secretaries', 'profile_biography'));
+        $this->assertTrue(Schema::hasColumn('users', 'show_ai_generated_secretary_images'));
         app(CurrentCatalogInstaller::class)->assertInstalled(config('hakoniwa.ruleset'));
     }
 

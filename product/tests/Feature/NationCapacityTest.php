@@ -6,6 +6,7 @@ use App\Application\NationCreationService;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\CapacityModifier;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
@@ -22,11 +23,20 @@ class NationCapacityTest extends TestCase
 
     public function test_current_capacity_resolution_modifier_boundary_and_bounded_credits(): void
     {
-        [, $nation] = $this->nation('容量国');
+        [$user, $nation] = $this->nation('容量国');
+        $levels = [
+            SecretarySkillCatalog::AGRICULTURAL_POLICY => 5,
+            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => 4,
+            SecretarySkillCatalog::GOLD_VEIN_SURVEY => 3,
+            SecretarySkillCatalog::FINAL_DEFENSE_LINE => 6,
+        ];
+        foreach ($levels as $key => $level) {
+            $user->secretary()->firstOrFail()->skills()->where('skill_key', $key)->update(['level' => $level]);
+        }
         $base = app(NationCapacityResolver::class)->resolve($nation);
 
-        $this->assertSame(9_999, $base->money);
-        $this->assertSame(999_900, $base->foodTons);
+        $this->assertSame(11_798, $base->money);
+        $this->assertSame(1_179_882, $base->foodTons);
         $this->assertSame([
             'industrial_goods' => 9_999_000,
             'minerals' => 9_999_000,
@@ -45,17 +55,17 @@ class NationCapacityTest extends TestCase
 
         $service = app(CapacityBoundedAssetService::class);
 
-        $nation->update(['money' => 9_998]);
+        $nation->update(['money' => 11_797]);
         $result = $service->creditMoney($nation, 10);
         $this->assertSame(1, $result->applied);
         $this->assertSame(9, $result->overflow);
-        $this->assertSame(9_999, $result->after);
-        $this->assertSame(9_999, $nation->fresh()->money);
+        $this->assertSame(11_798, $result->after);
+        $this->assertSame(11_798, $nation->fresh()->money);
 
         $full = $service->creditMoney($nation, 1);
         $this->assertSame(0, $full->applied);
         $this->assertSame(1, $full->overflow);
-        $this->assertSame(9_999, $nation->fresh()->money);
+        $this->assertSame(11_798, $nation->fresh()->money);
 
         $balances = NationResource::query()->where('nation_id', $nation->id)->get()
             ->keyBy('resource_definition_id');
@@ -64,7 +74,7 @@ class NationCapacityTest extends TestCase
         foreach (['wheat', 'fish', 'monster_meat'] as $key) {
             $balances[$definitions[$key]->id]->update(['amount' => 0]);
         }
-        $balances[$definitions['wheat']->id]->update(['amount' => 700_000]);
+        $balances[$definitions['wheat']->id]->update(['amount' => 879_982]);
         $balances[$definitions['fish']->id]->update(['amount' => 150_000]);
         $balances[$definitions['monster_meat']->id]->update(['amount' => 149_800]);
         $balances[$definitions['industrial_goods']->id]->update(['amount' => 500_000]);
@@ -90,12 +100,12 @@ class NationCapacityTest extends TestCase
 
         $result = app(CapacityBoundedAssetService::class)->creditFood($nation, $newFood, 500);
 
-        $this->assertSame(999_800, $result->before);
+        $this->assertSame(1_179_782, $result->before);
         $this->assertSame(100, $result->applied);
         $this->assertSame(400, $result->overflow);
-        $this->assertSame(999_900, $result->after);
+        $this->assertSame(1_179_882, $result->after);
         $this->assertSame(
-            999_900,
+            1_179_882,
             (int) NationResource::query()
                 ->where('nation_id', $nation->id)
                 ->whereHas('definition', fn ($query) => $query->where('category', 'food'))

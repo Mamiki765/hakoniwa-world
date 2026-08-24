@@ -18,6 +18,8 @@ use Illuminate\Support\Carbon;
  * @property string $display_name
  * @property string|null $visitor_code
  * @property Carbon|null $message_board_last_posted_at
+ * @property bool|null $show_ai_generated_secretary_images
+ * @property string|null $secretary_image_fallback
  * @property Carbon|null $created_at
  * @property-read Collection<int, AuthIdentity> $authIdentities
  * @property-read Secretary|null $secretary
@@ -39,6 +41,7 @@ class User extends Authenticatable
         return [
             'created_at' => 'immutable_datetime',
             'message_board_last_posted_at' => 'datetime',
+            'show_ai_generated_secretary_images' => 'boolean',
         ];
     }
 

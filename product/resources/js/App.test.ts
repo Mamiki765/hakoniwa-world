@@ -31,7 +31,7 @@ const publicDetail: PublicNationDetail = {
     farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
     registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
     last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '箱庭諸島２S＋', current_turn: 1 },
-    capital: { x: 12, y: 8 },
+    capital: { x: 12, y: 8 }, secretary_id: 11,
     monster_final_blow_count: 1,
     monster_kill_stats: [{
         key: 'inora', name: 'いのら', kill_count: 1, first_killed_turn: 12, last_killed_turn: 12,
@@ -59,6 +59,36 @@ const unnamedSecretaryFixture: Secretary = {
     name: null,
     named_at: null,
     header_label: '？？？',
+    profile: {
+        id: 11,
+        name: null,
+        is_owner: true,
+        secretary_level: 1,
+        passive_level_total: 1,
+        capacity_bonus_percent: 1,
+        biography: '',
+        main_image: {
+            display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null,
+        },
+        editable_image_metadata: null,
+        viewer_preferences: {
+            configured: false, show_ai_generated_images: null, fallback: null, can_update: true,
+        },
+        equipment: {
+            slot_count: 5,
+            category_limits: [
+                { category: 'bow', label: '弓', maximum_equipped: 1 },
+                { category: 'ring', label: '指輪', maximum_equipped: 5 },
+            ],
+            slots: [
+                { slot: 1, item: null },
+                { slot: 2, item: null },
+                { slot: 3, item: null },
+                { slot: 4, item: null },
+                { slot: 5, item: null },
+            ],
+        },
+    },
     effect_context: {
         source: 'owned_world', world_id: 1, ruleset_version_id: 11,
         ruleset_key: 'test-hakoniwa-2s-plus-v11-secretary-items', ruleset_version: 11,
@@ -103,6 +133,7 @@ const unnamedSecretaryFixture: Secretary = {
     },
 };
 unnamedSecretaryFixture.equipment.slots[0]!.item = unnamedSecretaryFixture.inventory.items[0]!;
+unnamedSecretaryFixture.profile.equipment = unnamedSecretaryFixture.equipment;
 
 function publicResponse(path: string): Response | null {
     if (path === '/api/v1/public/announcements/latest') return response([
@@ -756,6 +787,15 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me') return response(null, 401);
             if (path === '/api/v1/public/nations/7') return response(detailWithManySpecies);
             if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
+            if (path === '/api/v1/secretaries/11?world_id=1') return response({
+                ...unnamedSecretaryFixture.profile,
+                name: '公開秘書',
+                is_owner: false,
+                biography: "公開経歴1行目\n公開経歴2行目",
+                viewer_preferences: {
+                    configured: false, show_ai_generated_images: null, fallback: null, can_update: false,
+                },
+            });
             return response(null, 404);
         });
         vi.stubGlobal('fetch', fetchMock);
@@ -783,6 +823,15 @@ describe('application lobby and island entry', () => {
         const previewLog = wrapper.get('.preview-page > .island-events-panel').element;
         expect(previewBoard.compareDocumentPosition(previewLog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toBe(true);
+
+        await wrapper.get('.preview-secretary-link').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.secretary-name').text()).toBe('公開秘書');
+        expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['メイン']);
+        expect(wrapper.get('.secretary-biography-text').text()).toContain('公開経歴2行目');
+        expect(wrapper.findAll('.secretary-profile-equipment li')).toHaveLength(5);
+        expect(wrapper.find('.secretary-portrait-column > button').exists()).toBe(false);
+        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('ログインすると設定できます');
     });
 
     it('refreshes an open public preview when bounds change without a turn advance', async () => {
@@ -1075,6 +1124,13 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.secretary-story').exists()).toBe(false);
         expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
         expect(wrapper.get('.secretary-name').text()).toBe('ペリドット');
+        expect(wrapper.get('.secretary-main-profile').text()).toContain('秘書Lv1');
+        expect(wrapper.get('.secretary-main-profile').text()).toContain('資金capacity+1%');
+        expect(wrapper.get('.secretary-no-image').text()).toBe('No image');
+        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('秘書画像の表示設定が未設定です');
+        const initialTabs = wrapper.findAll('[role="tab"]');
+        expect(initialTabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫']);
+        await initialTabs[1]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
         const skillRows = wrapper.findAll('.secretary-skill');
         expect(skillRows).toHaveLength(4);
@@ -1092,17 +1148,17 @@ describe('application lobby and island entry', () => {
         const secretaryGetCount = () => fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/secretary?world_id=1').length;
         const beforeTabSwitch = secretaryGetCount();
         const tabs = wrapper.findAll('[role="tab"]');
-        expect(tabs.map((tab) => tab.text())).toEqual(['熟練度', '装備', '倉庫']);
-        expect(tabs[0]!.attributes('aria-selected')).toBe('true');
-        await tabs[0]!.trigger('keydown', { key: 'ArrowRight' });
+        expect(tabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫']);
+        expect(tabs[1]!.attributes('aria-selected')).toBe('true');
+        await tabs[1]!.trigger('keydown', { key: 'ArrowRight' });
+        expect(wrapper.findAll('[role="tab"]')[2]!.attributes('aria-selected')).toBe('true');
+        await wrapper.findAll('[role="tab"]')[2]!.trigger('keydown', { key: 'ArrowLeft' });
         expect(wrapper.findAll('[role="tab"]')[1]!.attributes('aria-selected')).toBe('true');
-        await wrapper.findAll('[role="tab"]')[1]!.trigger('keydown', { key: 'ArrowLeft' });
-        expect(wrapper.findAll('[role="tab"]')[0]!.attributes('aria-selected')).toBe('true');
-        await tabs[1]!.trigger('click');
+        await tabs[2]!.trigger('click');
         expect(wrapper.findAll('.secretary-equipment li')).toHaveLength(5);
         expect(wrapper.findAll('.secretary-equipment li')[0]!.text()).toContain('古びた弓');
         expect(wrapper.findAll('.secretary-equipment li').slice(1).every((slot) => slot.text().includes('空き'))).toBe(true);
-        await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
+        await wrapper.findAll('[role="tab"]')[3]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('倉庫 2 / 50');
         expect(wrapper.findAll('.item-effect').map((effect) => effect.text())).toEqual([
             '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
@@ -1173,7 +1229,7 @@ describe('application lobby and island entry', () => {
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
         await flushPromises();
-        await wrapper.findAll('[role="tab"]')[1]!.trigger('click');
+        await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
         await wrapper.findAll('.secretary-equipment button')[0]!.trigger('click');
         await flushPromises();
         await wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[0]!.setValue(true);
@@ -1277,7 +1333,7 @@ describe('application lobby and island entry', () => {
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
         await flushPromises();
-        await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
+        await wrapper.findAll('[role="tab"]')[3]!.trigger('click');
 
         expect(wrapper.findAll('.item-effect')).toHaveLength(0);
         expect(wrapper.get('.secretary-warehouse').text()).toContain('弓');
@@ -1359,7 +1415,7 @@ describe('application lobby and island entry', () => {
         const scopedSecretaryGets = () => fetchMock.mock.calls.filter(([path]) => (
             String(path) === '/api/v1/me/secretary?world_id=1'
         )).length;
-        await wrapper.findAll('[role="tab"]')[1]!.trigger('click');
+        await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
         expect(wrapper.findAll('.secretary-equipment button')).toHaveLength(5);
         expect(wrapper.get('.equipment-category-limits').text()).toContain('弓・1個まで');
         await wrapper.findAll('.secretary-equipment button')[0]!.trigger('click');

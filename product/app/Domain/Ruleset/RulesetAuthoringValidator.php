@@ -31,6 +31,8 @@ final class RulesetAuthoringValidator
 
     private const FORMAL_V13_KEY = 'hakoniwa-2s-plus-v13';
 
+    private const FORMAL_V14_KEY = 'hakoniwa-2s-plus-v14';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -448,6 +450,24 @@ final class RulesetAuthoringValidator
         }
 
         (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($settings);
+
+        $capacityBonus = $settings['secretary']['capacity_bonus'] ?? null;
+        if ($settings['version'] < 14) {
+            if ($capacityBonus !== null) {
+                throw new DomainException('Rulesets before v14 cannot author the Secretary capacity bonus.');
+            }
+
+            return;
+        }
+        if ($settings['version'] !== 14 || $capacityBonus !== [
+            'level_source' => 'sum_passive_skill_levels',
+            'money_percent_per_level' => 1,
+            'food_percent_per_level' => 1,
+            'rounding' => 'floor_after_multiplier',
+            'cap' => null,
+        ]) {
+            throw new DomainException('The v14 Ruleset Secretary capacity bonus differs from the Owner decision.');
+        }
     }
 
     /**
@@ -475,10 +495,11 @@ final class RulesetAuthoringValidator
         $expectedKey = match ($version) {
             12 => self::FORMAL_V12_KEY,
             13 => self::FORMAL_V13_KEY,
+            14 => self::FORMAL_V14_KEY,
             default => null,
         };
         if ($expectedKey === null || $authoredKey !== $expectedKey || ! $hasLifecycle) {
-            throw new DomainException('The v12/v13 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+            throw new DomainException('The v12-v14 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
         }
 
         $path = 'ruleset.nation_lifecycle';
@@ -491,19 +512,19 @@ final class RulesetAuthoringValidator
             'territory_influence_target_states', 'territory_influence_source_states',
             'initial_food_resource_key', 'finance_command_key', 'emergency_farm',
         ];
-        if ($version === 13) {
+        if ($version >= 13) {
             $requiredKeys[] = 'recovery_duration_turns';
         }
         $this->requireKeys($lifecycle, $requiredKeys, $path);
-        $expectedRuntimeStates = $version === 13
+        $expectedRuntimeStates = $version >= 13
             ? ['active', 'dormant', 'recovery', 'abandoned']
             : ['active', 'dormant', 'abandoned'];
-        $recoveryEnabled = $version === 13;
+        $recoveryEnabled = $version >= 13;
         if ($this->list($lifecycle['states'], "{$path}.states") !== ['active', 'dormant', 'recovery', 'abandoned']
             || $this->list($lifecycle['runtime_entry_states'], "{$path}.runtime_entry_states")
                 !== $expectedRuntimeStates
             || $this->boolean($lifecycle['recovery_entry_enabled'], "{$path}.recovery_entry_enabled") !== $recoveryEnabled
-            || ($version === 13
+            || ($version >= 13
                 && $this->integer($lifecycle['recovery_duration_turns'], "{$path}.recovery_duration_turns", 1) !== 84)
             || $this->list($lifecycle['dormant_reasons'], "{$path}.dormant_reasons")
                 !== ['idle', 'collapse', 'manual']
@@ -566,8 +587,10 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if ($version !== 13 || $authoredKey !== self::FORMAL_V13_KEY || ! is_array($authored)) {
-            throw new DomainException('The v13 Ruleset identity requires the KARMA contract.');
+        if (! in_array($version, [13, 14], true)
+            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY], true)
+            || ! is_array($authored)) {
+            throw new DomainException('The v13-v14 Ruleset identity requires the KARMA contract.');
         }
         $expected = [
             'minimum' => -10,
@@ -1199,11 +1222,12 @@ final class RulesetAuthoringValidator
             11 => self::FORMAL_V11_KEY,
             12 => self::FORMAL_V12_KEY,
             13 => self::FORMAL_V13_KEY,
+            14 => self::FORMAL_V14_KEY,
             default => null,
         };
         if (($expectedKey !== null && $key !== $expectedKey)
-            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY], true))) {
-            throw new DomainException('The v11/v12/v13 ruleset identity and version must be authored together.');
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY], true))) {
+            throw new DomainException('The v11-v14 ruleset identity and version must be authored together.');
         }
 
         return $version >= 11;
@@ -1220,8 +1244,8 @@ final class RulesetAuthoringValidator
         ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
-        if (in_array($version, [12, 13], true)
-            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY], true)) {
+        if (in_array($version, [12, 13, 14], true)
+            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 

@@ -13,6 +13,7 @@ use App\Models\World;
 use App\Support\MoneyFormatter;
 use DomainException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 final class PublicWorldService
 {
@@ -83,6 +84,12 @@ final class PublicWorldService
             ->where('key', config('hakoniwa.world.map_space_key'))
             ->firstOrFail();
         $capital = $nation->capital()->first();
+        $secretaryId = DB::table('nation_memberships as membership')
+            ->join('secretaries as secretary', 'secretary.user_id', '=', 'membership.user_id')
+            ->where('membership.nation_id', $nation->id)
+            ->where('membership.role', 'owner')
+            ->whereNotNull('secretary.name')
+            ->value('secretary.id');
         $monsterKillRows = NationMonsterKillStat::query()
             ->where('world_id', $nation->world_id)
             ->where('nation_id', $nation->id)
@@ -122,6 +129,7 @@ final class PublicWorldService
                 'current_turn' => $world->current_turn,
             ],
             'capital' => $capital === null ? null : ['x' => $capital->x, 'y' => $capital->y],
+            'secretary_id' => $secretaryId === null ? null : (int) $secretaryId,
             'monster_final_blow_count' => $monsterKillStats->sum('kill_count'),
             'monster_kill_stats' => $monsterKillStats,
             'map_space' => [

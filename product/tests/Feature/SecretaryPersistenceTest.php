@@ -10,7 +10,9 @@ use App\Models\SecretarySkill;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -204,5 +206,132 @@ final class SecretaryPersistenceTest extends TestCase
         $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => '<b>秘書</b>'])
             ->assertUnprocessable();
         $this->assertNull($user->secretary()->value('name'));
+    }
+
+    public function test_public_profile_uses_canonical_level_equipment_and_viewer_fallback_preferences(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '公開秘書島', '公開島主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => 'ペリドット'])->assertOk();
+        $secretary = $owner->secretary()->firstOrFail();
+        foreach ([
+            SecretarySkillCatalog::AGRICULTURAL_POLICY => 5,
+            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => 4,
+            SecretarySkillCatalog::GOLD_VEIN_SURVEY => 3,
+            SecretarySkillCatalog::FINAL_DEFENSE_LINE => 6,
+        ] as $skillKey => $level) {
+            $secretary->skills()->where('skill_key', $skillKey)->update(['level' => $level]);
+        }
+
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
+            'biography' => "海辺で出会った秘書。\n**この記号はMarkdownとして解釈しない。**",
+        ])->assertOk()
+            ->assertJsonPath('data.is_owner', true)
+            ->assertJsonPath('data.secretary_level', 18)
+            ->assertJsonPath('data.passive_level_total', 18)
+            ->assertJsonPath('data.capacity_bonus_percent', 18)
+            ->assertJsonCount(5, 'data.equipment.slots');
+
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
+            'biography' => '<b>HTMLは不可</b>',
+        ])->assertUnprocessable()->assertJsonValidationErrors('biography');
+
+        auth()->logout();
+        $publicResponse = $this->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}");
+        $publicResponse->assertOk()
+            ->assertJsonPath('data.is_owner', false)
+            ->assertJsonPath('data.secretary_level', 18)
+            ->assertJsonPath('data.biography', "海辺で出会った秘書。\n**この記号はMarkdownとして解釈しない。**")
+            ->assertJsonPath('data.main_image.display', 'none')
+            ->assertJsonPath('data.viewer_preferences.configured', false)
+            ->assertJsonPath('data.viewer_preferences.can_update', false)
+            ->assertJsonPath('data.equipment.slots.0.item.name', '古びた弓')
+            ->assertJsonCount(5, 'data.equipment.slots');
+        $this->assertStringContainsString('private', (string) $publicResponse->headers->get('Cache-Control'));
+        $this->assertStringContainsString('no-store', (string) $publicResponse->headers->get('Cache-Control'));
+
+        $viewer = User::factory()->create();
+        $this->actingAs($viewer)->patchJson('/api/v1/me/secretary/image-preferences', [
+            'show_ai_generated_images' => true,
+            'fallback' => 'peridot',
+        ])->assertOk();
+        $this->actingAs($viewer->refresh())->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}")
+            ->assertOk()
+            ->assertJsonPath('data.main_image.display', 'peridot')
+            ->assertJsonPath('data.main_image.url', '/assets/secretary/peridot.svg')
+            ->assertJsonPath('data.viewer_preferences.configured', true);
+    }
+
+    public function test_main_image_reuses_safe_upload_boundary_replaces_the_old_file_and_honors_ai_suppression(): void
+    {
+        Storage::fake('secretary_images');
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '画像秘書島', '画像島主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像秘書'])->assertOk();
+        $secretary = $owner->secretary()->firstOrFail();
+
+        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
+            'image' => UploadedFile::fake()->createWithContent(
+                'dangerous.svg',
+                '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+            ),
+            'creation_method' => 'self_made',
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()->assertJsonValidationErrors('image');
+        Storage::disk('secretary_images')->assertDirectoryEmpty('/');
+
+        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
+            'image' => UploadedFile::fake()->createWithContent('first-original-name.png', $this->png()),
+            'creation_method' => 'self_made',
+            'credit' => 'Owner / all rights reserved',
+        ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('data.main_image.display', 'uploaded')
+            ->assertJsonPath('data.main_image.creation_method_label', '自作');
+        $firstPath = (string) $secretary->fresh()->main_image_path;
+        $this->assertMatchesRegularExpression('/\A[0-9a-f]{64}\.png\z/', $firstPath);
+        $this->assertStringNotContainsString('first-original-name', $firstPath);
+        Storage::disk('secretary_images')->assertExists($firstPath);
+
+        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
+            'image' => UploadedFile::fake()->createWithContent('second.png', $this->png()),
+            'creation_method' => 'ai_generated',
+            'credit' => 'Generated for this profile',
+        ], ['Accept' => 'application/json'])->assertOk()
+            ->assertJsonPath('data.main_image.display', 'none')
+            ->assertJsonPath('data.editable_image_metadata.creation_method', 'ai_generated');
+        $secondPath = (string) $secretary->fresh()->main_image_path;
+        $this->assertNotSame($firstPath, $secondPath);
+        Storage::disk('secretary_images')->assertMissing($firstPath);
+        Storage::disk('secretary_images')->assertExists($secondPath);
+        $this->assertCount(1, Storage::disk('secretary_images')->allFiles('/'));
+
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/image-preferences', [
+            'show_ai_generated_images' => false,
+            'fallback' => 'silhouette',
+        ])->assertOk();
+        $this->actingAs($owner)->getJson("/api/v1/me/secretary?world_id={$world->id}")
+            ->assertOk()
+            ->assertJsonPath('data.profile.main_image.display', 'none')
+            ->assertJsonPath('data.profile.main_image.url', null)
+            ->assertJsonPath('data.profile.editable_image_metadata.creation_method', 'ai_generated');
+
+        $viewer = User::factory()->create();
+        $this->actingAs($viewer)->patchJson('/api/v1/me/secretary/image-preferences', [
+            'show_ai_generated_images' => true,
+            'fallback' => 'silhouette',
+        ])->assertOk();
+        $this->actingAs($viewer->refresh())->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}")
+            ->assertOk()
+            ->assertJsonPath('data.main_image.display', 'uploaded')
+            ->assertJsonPath('data.main_image.creation_method_label', 'AI生成')
+            ->assertJsonPath('data.main_image.credit', 'Generated for this profile');
+    }
+
+    private function png(): string
+    {
+        return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true) ?: '';
     }
 }

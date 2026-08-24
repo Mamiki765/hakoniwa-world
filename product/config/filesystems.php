@@ -55,6 +55,14 @@ return [
             'report' => true,
         ],
 
+        'secretary_images' => [
+            'driver' => 'local',
+            'root' => env('HAKONIWA_SECRETARY_IMAGE_PATH', '/srv/bot-assets/hakoniwa-secretaries'),
+            'visibility' => 'public',
+            'throw' => true,
+            'report' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

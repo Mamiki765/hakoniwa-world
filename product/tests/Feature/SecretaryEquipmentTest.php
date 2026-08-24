@@ -57,7 +57,7 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertJsonPath('data.effect_context.source', 'owned_world')
             ->assertJsonPath('data.effect_context.world_id', $world->id)
             ->assertJsonPath('data.effect_context.ruleset_version_id', $world->ruleset_version_id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 13)
+            ->assertJsonPath('data.effect_context.ruleset_version', 14)
             ->assertJsonPath('data.items.0.effect_text', '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。');
 
         $unownedWorld = World::query()->create([
@@ -122,12 +122,12 @@ final class SecretaryEquipmentTest extends TestCase
         $this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$world->id}")
             ->assertOk()
             ->assertJsonPath('data.effect_context.world_id', $world->id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 13);
+            ->assertJsonPath('data.effect_context.ruleset_version', 14);
         $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
             ->assertOk()
             ->assertJsonPath('data.current_item.id', $bow->id)
             ->assertJsonPath('data.effect_context.world_id', $world->id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 13);
+            ->assertJsonPath('data.effect_context.ruleset_version', 14);
 
         $this->actingAs($user)->putJson('/api/v1/me/secretary/equipment/1', [
             'item_id' => null,

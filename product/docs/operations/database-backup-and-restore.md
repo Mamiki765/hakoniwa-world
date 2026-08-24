@@ -1,5 +1,19 @@
 # PostgreSQL backup and restore
 
+## ver 2.5.0 upgrade recovery boundary
+
+The supported direct ver 2.5.0 source is an exact application 2.4.0/v13 database. Before the
+forward-only v13-to-v14 migration, obtain and verify the PostgreSQL backup below, confirm zero
+unresolved non-dry `pending`, `running`, `failed`, or `blocked` TurnRuns, and separately back
+up `/srv/bot-assets/hakoniwa-secretaries` if it contains files. The database records the
+current filename and image metadata, but this PostgreSQL wrapper does not include image bytes.
+
+If the migration fails, do not run either application against a partially migrated database
+and do not use migration `down()`. Restore the exact v13 database and matching Secretary-image
+directory snapshot, resolve the cause, re-run preflight, and perform a forward re-upgrade.
+This section is a recovery design; it does not authorize a production backup, restore,
+migration, deploy, image deletion, or Turn execution.
+
 ## ver 2.4.0 upgrade recovery boundary
 
 The supported direct ver 2.4.0 source is an operator-declared application 2.3.1 database in
@@ -37,7 +51,7 @@ VMのInstance Principalには`OBJECT_CREATE`、`OBJECT_INSPECT`、`OBJECT_READ`�
 
 continuous WAL archive、point-in-time recovery、RPO 15分以内は別の公開後改善とする。backup retentionを理由にapplication data、event、audit recordを削除しない。
 
-ver 2.2.0の問い合わせ添付はPostgreSQL外の`/srv/bot-assets/hakoniwa-inquiries`にある。このwrapperはそのdirectoryを取得せず、DB rowだけが復旧してattachmentが復旧しない境界を維持する。添付の別backupを導入・検証するまでは、このdatabase backupを問い合わせ画像のbackupと説明しない。詳細は`product/docs/ver-2.2.0-secretary-inventory-and-inquiries.md`を参照する。
+ver 2.2.0の問い合わせ添付はPostgreSQL外の`/srv/bot-assets/hakoniwa-inquiries`、ver 2.5.0の秘書メイン画像は`/srv/bot-assets/hakoniwa-secretaries`にある。このwrapperはどちらのdirectoryも取得せず、DB rowだけが復旧してfileが復旧しない境界を維持する。別backupを導入・検証するまでは、このdatabase backupを問い合わせ画像または秘書画像のbackupと説明しない。詳細は`product/docs/ver-2.2.0-secretary-inventory-and-inquiries.md`と`product/docs/ver-2.5.0-secretary-profile.md`を参照する。
 
 ## Production wrapper
 

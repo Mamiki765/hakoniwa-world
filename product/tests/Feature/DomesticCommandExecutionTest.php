@@ -1160,9 +1160,9 @@ class DomesticCommandExecutionTest extends TestCase
         $executor->execute($this->context($world, [$nation->id], str_repeat('b', 64), $maximumRuleset));
         $capacity = $this->eventMetadataForSubject('command.buried_treasure', $capacityItem->id);
         $this->assertSame(1_000, $capacity['reward_money']);
-        $this->assertSame(54, $capacity['applied_money']);
-        $this->assertSame(946, $capacity['overflow_money']);
-        $this->assertSame(9_999, $nation->fresh()->money);
+        $this->assertSame(153, $capacity['applied_money']);
+        $this->assertSame(847, $capacity['overflow_money']);
+        $this->assertSame(10_098, $nation->fresh()->money);
 
         Nation::query()->whereKey($nation->id)->update(['money' => 100]);
         $executor->execute($this->context($world, [$nation->id], $successSeed, $fixedMinimumRuleset));
