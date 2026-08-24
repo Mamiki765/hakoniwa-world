@@ -6,6 +6,9 @@ This is the first ver 2.5.0 profile slice approved by the Owner. The two externa
 inform only the public status-sheet composition: portrait, basic facts, biography, and
 equipment on one screen. No external design, text, image, or code is copied.
 
+The player- and inquiry-facing application version is `2.5.0-beta` for this rollout. The
+immutable gameplay payload remains ruleset v14; the beta label does not rename that audit key.
+
 ## Existing-code audit
 
 | Requested audit | Existing canonical boundary | v2.5 local delta |
@@ -16,7 +19,7 @@ equipment on one screen. No external design, text, image, or code is copied.
 | Passive level total | the four canonical `SecretarySkill` rows | Validate the exact key set and sum `level`; do not add XP or a second level table. |
 | Capacity | `NationCapacityResolver` and `CapacityBoundedAssetService` | Add the exact v14 Secretary multiplier before all bounded credits. |
 | Inquiry upload | request size/type rule, server `finfo` plus `getimagesize`, random path, disk write verification, orphan cleanup | Share `WebImageMime` and `WebImageUploadService`; keep purpose-specific requests/services. |
-| Static image delivery | bot-assets writable mount and hardened static aliases | Use a separate public Secretary directory and immutable-by-URL cache policy. |
+| Static image delivery | external Hakoniwa asset path plus bot-assets writable mount and hardened static aliases | Reuse the allowlisted external path for fallback PNGs; keep uploaded Secretary images in their separate public directory. |
 
 No related `Open` gate in `docs/open-questions.md` has been reached. E-04 remains Deferred:
 v14 contains one explicit Secretary capacity delta, not a generic modifier framework.
@@ -25,7 +28,16 @@ v14 contains one explicit Secretary capacity delta, not a generic modifier frame
 
 `secretaries.profile_biography` is UTF-8 plain text, at most 1000 characters, with CRLF/CR
 normalized to LF. HTML-like tags and unsafe control characters are rejected. Markdown syntax
-has no special meaning. `main_image_path`, MIME, creation method, optional credit, and updated
+has no special meaning. New and migrated Secretary rows start with the following editable
+plain-text biography; the Owner may replace it or clear it to an empty string.
+
+```text
+全てが謎に包まれた、長耳の秘書。
+かつては囚われの身になっていたが島主に救われ、後に才能を買われて秘書となった。
+その身に不思議な力を宿している。
+```
+
+`main_image_path`, MIME, creation method, optional credit, and updated
 time must be all null or a valid complete group. Credit is plain text up to 160 characters.
 
 `users.show_ai_generated_secretary_images` and `users.secretary_image_fallback` are both null
@@ -61,10 +73,21 @@ separate from private/no-store inquiry attachments.
 
 | Secretary image state | Viewer preference | Display |
 |---|---|---|
-| no image | configured | chosen silhouette or Peridot fallback |
-| no image | unset | No image and the one-line setup notice |
-| AI-generated image | unset or AI hidden | No image; stored file remains intact |
-| any allowed image | viewer permits it | uploaded image and the public method/credit info |
+| any state | unset | No image and the one-line setup notice |
+| no image | configured; AI images shown | chosen silhouette or Peridot fallback |
+| no image | configured; AI images hidden | No image |
+| AI-generated image | configured; AI images hidden | No image; stored file remains intact |
+| non-AI image | configured | uploaded image even when AI images are hidden |
+| any uploaded image | configured; viewer permits its method | uploaded image and the public method/credit info |
+
+Fallback binaries are not generated or committed. The Owner supplies the two PNG files below
+the existing `HAKONIWA_TILE_ASSET_PATH`; the existing allowlisted, versioned Hakoniwa asset
+route serves them and returns no fallback URL while a file is absent or invalid.
+
+```text
+peridot/peridot.png
+peridot/silhouette.png
+```
 
 ## Secretary level and capacity
 

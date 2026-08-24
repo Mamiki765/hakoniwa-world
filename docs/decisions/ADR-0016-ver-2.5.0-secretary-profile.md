@@ -21,15 +21,19 @@ ver 2.5.0の第一段階として、既存のUser永続Secretaryを他playerも�
    経歴、装備の順へ縦配置する。他userへ編集controlは返さない。
 2. `secretaries`へ1000文字plain-text経歴と、最新1枚だけの画像path/MIME/制作方法/
    160文字以内の任意credit/更新時刻を持たせる。HTMLは拒否し、Markdown syntaxは
-   解釈せずplain textとして表示する。gallery、履歴、generic profile/media tableは作らない。
+   解釈せずplain textとして表示する。初期経歴はOwner指定の長耳の秘書に関する3行を
+   設定し、Ownerは空文字を含む任意の有効な経歴へ変更できる。gallery、履歴、generic
+   profile/media tableは作らない。
 3. 画像はPNG/JPEG/WebP/GIF、10MiB以下とし、問い合わせ実装から共有したserver MIME、
    readable-image、dimension/pixel、256-bit filename、disk-write確認を使う。保存diskと
    public URL/cache policyは問い合わせから分離し、DB更新失敗時は新fileを消し、成功後は
    旧fileを消す。
 4. 制作方法は`self_made`、`ai_generated`、`commissioned_or_permitted`、`other`の4値とする。
    `users`へnullableなAI表示boolと`silhouette|peridot` fallbackを一組で持たせ、両方nullを
-   未設定とする。AI非表示はowner自身を含むviewer presentationでNo imageを返し、保存画像を
-   削除しない。画像未設定で設定済みなら選択fallback、未設定ならNo imageを返す。
+   未設定とする。未設定viewerは画像種別にかかわらずNo imageを返す。設定済みviewerでは
+   AI非表示時も自作・依頼/許諾済み・その他を表示し、AI生成画像だけをNo imageにする。
+   AI表示を許可したviewerが画像未設定のSecretaryを見る場合だけ選択fallbackを返す。
+   いずれの表示抑止も保存画像を削除しない。
 5. 秘書Lvは既存4 passive skill levelの合計とする。immutable ruleset v14は資金capacityと
    食料capacityへ`floor(base * (100 + level) / 100)`を適用し、上限を置かない。canonical
    `NationCapacityResolver`とbounded credit経路を使う。E-04のgeneric Modifierは実装せず、
@@ -46,7 +50,8 @@ ver 2.5.0の第一段階として、既存のUser永続Secretaryを他playerも�
 ## 結果
 
 - public profile応答はviewer preferenceで変わるためprivate/no-store API responseとする。
-- fallback SVGは本projectの単純なoriginal assetであり、第三者素材を含めない。
+- fallback本体はrepositoryやcontainer imageへ含めない。既存Hakoniwa asset pathの
+  `peridot/peridot.png`と`peridot/silhouette.png`をallowlist配信し、Ownerが配置する。
 - public image bytesは長期cache可能だが、DBとfile directoryを別々に復旧すると参照が
   一致しないため、production backupでは同一復旧点として扱う。
 - 詳細なAPI、storage、migration、test契約は

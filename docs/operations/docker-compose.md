@@ -40,6 +40,10 @@ services:
 
 `HAKONIWA_TILE_ASSET_PATH`と`HAKONIWA_TILE_ASSET_BASE_URL`をroot `.env`で環境に合わせる。`compose.yml`は両方を`hakoniwa-web`へ明示転送する。mountがなくてもCSS fallbackで起動する。同名画像の置換は`mtime-size`付きURLへ反映され、image rebuildを必要としない。
 
+ver 2.5.0の秘書画像未設定fallbackは同じread-only asset pathの
+`peridot/peridot.png`（Peridot詳細版）と`peridot/silhouette.png`（silhouette版）を使う。
+これらはOwnerが配置し、Gitやcontainer imageには含めない。未配置時は`No image`となる。
+
 ## 問い合わせ添付のwritable mount
 
 ver 2.2.0の問い合わせ画像は既定で`/srv/bot-assets/hakoniwa-inquiries`へ書き込む。base Composeはwritableな`hakoniwa_inquiry_attachments` named volumeを同pathへmountし、container再作成後もfileを残す。Web containerのApacheは`/hakoniwa-inquiries/`をこのdirectoryへ直接対応させ、directory listing、`.htaccess`、CGI/include実行を無効にしたstatic routeとして配信する。

@@ -79,6 +79,12 @@ final class AssetManifestResolver
         'tile.monument' => 'monument0.gif',
     ];
 
+    /** @var array<string, string> */
+    private const SECRETARY_FALLBACKS = [
+        'peridot' => 'peridot.png',
+        'silhouette' => 'silhouette.png',
+    ];
+
     /** @var array<string, true> */
     private array $loggedFailures = [];
 
@@ -131,17 +137,40 @@ final class AssetManifestResolver
     {
         if ($theme !== null) {
             $directory = config("hakoniwa.assets.themes.{$theme}");
-            if (! is_string($directory) || ! in_array($filename, self::SNOW_OVERRIDES, true)) {
+            $allowedFilenames = match ($theme) {
+                'snow' => self::SNOW_OVERRIDES,
+                'peridot' => self::SECRETARY_FALLBACKS,
+                default => [],
+            };
+            if (! is_string($directory) || ! in_array($filename, $allowedFilenames, true)) {
                 return null;
             }
 
-            return $this->validatedPath($filename, $directory);
+            return $theme === 'peridot'
+                ? $this->validatedSecretaryFallbackPath($filename, $directory)
+                : $this->validatedPath($filename, $directory);
         }
         if (! in_array($filename, self::MANIFEST, true)) {
             return null;
         }
 
         return $this->validatedPath($filename);
+    }
+
+    public function secretaryFallbackUrl(string $fallback): ?string
+    {
+        $filename = self::SECRETARY_FALLBACKS[$fallback] ?? null;
+        $directory = config('hakoniwa.assets.themes.peridot');
+        if ($filename === null || ! is_string($directory)) {
+            return null;
+        }
+
+        $path = $this->validatedSecretaryFallbackPath($filename, $directory);
+        if ($path === null) {
+            return null;
+        }
+
+        return $this->versionedUrl($directory.'/'.$filename, $path);
     }
 
     public function filenameForAssetKey(string $assetKey): ?string
@@ -158,8 +187,11 @@ final class AssetManifestResolver
         };
     }
 
-    private function validatedPath(string $filename, ?string $directory = null): ?string
-    {
+    private function validatedPath(
+        string $filename,
+        ?string $directory = null,
+        bool $requiresSquareDimensions = true,
+    ): ?string {
         if (basename($filename) !== $filename || str_contains($filename, '..')) {
             return null;
         }
@@ -184,7 +216,7 @@ final class AssetManifestResolver
         }
 
         $image = @getimagesize($path);
-        if ($image === false || $image[0] !== $image[1]) {
+        if ($image === false || ($requiresSquareDimensions && $image[0] !== $image[1])) {
             return null;
         }
 
@@ -194,6 +226,17 @@ final class AssetManifestResolver
         }
 
         return $path;
+    }
+
+    private function validatedSecretaryFallbackPath(string $filename, string $directory): ?string
+    {
+        $path = $this->validatedPath($filename, $directory, false);
+        if ($path === null) {
+            return null;
+        }
+        $image = @getimagesize($path);
+
+        return $image !== false && $image['mime'] === 'image/png' ? $path : null;
     }
 
     private function versionedUrl(string $filename, string $path): string

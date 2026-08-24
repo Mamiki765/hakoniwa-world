@@ -30,7 +30,7 @@ Route::post('/logout', [OAuthController::class, 'logout'])->middleware('auth')->
 Route::get('/assets/hakoniwa-tiles/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 Route::get('/assets/hakoniwa-tiles/{theme}/{filename}', AssetController::class)
-    ->where(['theme' => 'snow', 'filename' => '[A-Za-z0-9_-]+\.(?:gif|png|webp)']);
+    ->where(['theme' => 'snow|peridot', 'filename' => '[A-Za-z0-9_-]+\.(?:gif|png|webp)']);
 Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 

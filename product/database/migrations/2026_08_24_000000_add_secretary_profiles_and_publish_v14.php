@@ -14,7 +14,11 @@ return new class extends Migration
     {
         if (! Schema::hasColumn('secretaries', 'profile_biography')) {
             Schema::table('secretaries', function (Blueprint $table): void {
-                $table->text('profile_biography')->default('');
+                $table->text('profile_biography')->default(
+                    "全てが謎に包まれた、長耳の秘書。\n"
+                    ."かつては囚われの身になっていたが島主に救われ、後に才能を買われて秘書となった。\n"
+                    .'その身に不思議な力を宿している。',
+                );
                 $table->string('main_image_path', 80)->nullable()->unique();
                 $table->string('main_image_mime_type', 32)->nullable();
                 $table->string('main_image_creation_method', 32)->nullable();

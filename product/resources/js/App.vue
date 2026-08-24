@@ -2050,8 +2050,8 @@ async function abandonNation(): Promise<void> {
                 </fieldset>
                 <fieldset>
                     <legend>画像未設定時のfallback</legend>
-                    <label><input v-model="secretaryImageFallback" type="radio" value="silhouette"> シルエット</label>
-                    <label><input v-model="secretaryImageFallback" type="radio" value="peridot"> デフォルト秘書「ペリドット」</label>
+                    <label><input v-model="secretaryImageFallback" type="radio" value="silhouette"> silhouette版</label>
+                    <label><input v-model="secretaryImageFallback" type="radio" value="peridot"> Peridot詳細版</label>
                 </fieldset>
                 <p v-if="secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images" class="field-error" role="alert">
                     {{ secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images }}

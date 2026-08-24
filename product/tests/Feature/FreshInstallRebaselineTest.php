@@ -37,7 +37,7 @@ final class FreshInstallRebaselineTest extends TestCase
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $ruleset = RulesetVersion::query()->where('key', Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY)->sole();
 
-        $this->assertSame('2.5.0', config('hakoniwa.application_version'));
+        $this->assertSame('2.5.0-beta', config('hakoniwa.application_version'));
         $this->assertSame([Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY, $ruleset->key);
         $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_VERSION, $ruleset->version);

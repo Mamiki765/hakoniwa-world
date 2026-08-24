@@ -6,11 +6,15 @@ use App\Domain\Secretary\SecretaryProfileContract;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Secretary;
 use App\Models\User;
+use App\Services\AssetManifestResolver;
 use DomainException;
 
 final readonly class SecretaryProfilePresenter
 {
-    public function __construct(private SecretaryItemPresenter $items) {}
+    public function __construct(
+        private SecretaryItemPresenter $items,
+        private AssetManifestResolver $assets,
+    ) {}
 
     /** @return array<string, mixed> */
     public function present(
@@ -61,13 +65,16 @@ final readonly class SecretaryProfilePresenter
     /** @return array<string, mixed> */
     private function image(Secretary $secretary, ?User $viewer, bool $preferencesConfigured): array
     {
+        if (! $preferencesConfigured) {
+            return $this->noImage();
+        }
         if ($secretary->main_image_path === null) {
-            return $preferencesConfigured
-                ? $this->fallbackImage((string) $viewer?->secretary_image_fallback)
+            return $viewer?->show_ai_generated_secretary_images === true
+                ? $this->fallbackImage((string) $viewer->secretary_image_fallback)
                 : $this->noImage();
         }
         if ($secretary->main_image_creation_method === 'ai_generated'
-            && (! $preferencesConfigured || $viewer?->show_ai_generated_secretary_images !== true)) {
+            && $viewer?->show_ai_generated_secretary_images !== true) {
             return $this->noImage();
         }
 
@@ -85,17 +92,22 @@ final readonly class SecretaryProfilePresenter
     /** @return array<string, mixed> */
     private function fallbackImage(string $fallback): array
     {
+        $url = $this->assets->secretaryFallbackUrl($fallback);
+        if ($url === null) {
+            return $this->noImage();
+        }
+
         return match ($fallback) {
             'silhouette' => [
                 'display' => 'silhouette',
-                'url' => '/assets/secretary/silhouette.svg',
+                'url' => $url,
                 'creation_method' => null,
                 'creation_method_label' => null,
                 'credit' => null,
             ],
             'peridot' => [
                 'display' => 'peridot',
-                'url' => '/assets/secretary/peridot.svg',
+                'url' => $url,
                 'creation_method' => null,
                 'creation_method_label' => null,
                 'credit' => null,

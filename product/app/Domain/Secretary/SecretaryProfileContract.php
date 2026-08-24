@@ -20,8 +20,8 @@ final class SecretaryProfileContract
 
     /** @var array<string, string> */
     public const FALLBACKS = [
-        'silhouette' => 'シルエット',
-        'peridot' => 'デフォルト秘書「ペリドット」',
+        'silhouette' => 'silhouette版',
+        'peridot' => 'Peridot詳細版',
     ];
 
     public function biography(string $value): string
