@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\MonsterInstance;
 use App\Models\Nation;
 use App\Models\RulesetVersion;
@@ -25,7 +26,7 @@ final readonly class Ver250MonsterExperienceRulesetUpgrade
 
     public const TARGET_VERSION = 15;
 
-    public const TARGET_CHECKSUM = 'b31c097c89d7f9105c2219aea52a0c65e76d2f8bb5e61cef9c4902375ce2ab0d';
+    public const TARGET_CHECKSUM = 'd361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70';
 
     public const SOURCE_MIGRATION = '2026_08_24_000000_add_secretary_profiles_and_publish_v14';
 
@@ -78,6 +79,30 @@ SQL);
 ALTER TABLE monster_definitions
   ADD CONSTRAINT monster_definitions_experience_per_damage_non_negative
     CHECK (experience_per_damage IS NULL OR experience_per_damage >= 0)
+SQL);
+        }
+
+        $skillConstraint = DB::selectOne(<<<'SQL'
+SELECT pg_get_constraintdef(oid, true) AS definition
+  FROM pg_constraint
+ WHERE conname = 'secretary_skills_key_check'
+   AND conrelid = 'secretary_skills'::regclass
+SQL);
+        if ($skillConstraint === null
+            || ! str_contains((string) $skillConstraint->definition, SecretarySkillCatalog::FOREST_MANAGEMENT)) {
+            if ($skillConstraint !== null) {
+                DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
+            }
+            DB::statement(<<<'SQL'
+ALTER TABLE secretary_skills
+  ADD CONSTRAINT secretary_skills_key_check
+    CHECK (skill_key IN (
+      'agricultural_policy',
+      'specialty_development',
+      'gold_vein_survey',
+      'forest_management',
+      'final_defense_line'
+    ))
 SQL);
         }
     }
@@ -139,6 +164,7 @@ SQL);
                     'Monster experience upgrade requires every source-v14 Secretary to have zero monster experience.',
                 );
             }
+            $this->assertSourceSecretarySkillCatalog();
 
             $backfill = $this->prepareHistoricalBackfill((int) $world->id);
             $requestIdentity = $this->queryDigest(DB::table('nation_command_queue_items')->select([
@@ -159,6 +185,7 @@ SQL);
             $target = $this->publisher->publish($targetSettings);
             $this->catalogs->assertInstalled($targetSettings);
             $this->assertStableDefinitionKeys((int) $source->id, (int) $target->id);
+            $forestManagementRowsAdded = $this->addForestManagementSkillRows();
 
             DB::statement('SET CONSTRAINTS '.self::QUEUE_CONSTRAINT.' DEFERRED');
             $monsterTrigger = $this->captureTrigger('monster_instances', self::MONSTER_TRIGGER);
@@ -240,6 +267,9 @@ SQL);
                     'historical_monster_state_preserved' => true,
                     'source_monster_definitions_preserved' => true,
                     'historical_facility_experience_preserved' => true,
+                    'forest_management_skill_rows_added' => $forestManagementRowsAdded,
+                    'existing_secretary_skills_preserved' => true,
+                    'historical_forest_management_backfill' => false,
                 ], JSON_THROW_ON_ERROR),
                 'occurred_at' => $now,
                 'created_at' => $now,
@@ -579,6 +609,60 @@ SQL, [
             || (int) $mismatches->target_experience !== 0) {
             throw new RuntimeException('Exact v15 activation postconditions failed.');
         }
+        $this->assertTargetSecretarySkillCatalog();
+    }
+
+    private function assertSourceSecretarySkillCatalog(): void
+    {
+        $secretaryCount = (int) DB::table('secretaries')->count();
+        $legacyRows = (int) DB::table('secretary_skills')
+            ->whereIn('skill_key', SecretarySkillCatalog::V14_KEYS)
+            ->count();
+        $allRows = (int) DB::table('secretary_skills')->count();
+        if ($legacyRows !== $secretaryCount * count(SecretarySkillCatalog::V14_KEYS)
+            || $allRows !== $legacyRows) {
+            throw new RuntimeException('Monster experience upgrade requires the exact source-v14 Secretary skill catalog.');
+        }
+    }
+
+    private function addForestManagementSkillRows(): int
+    {
+        $now = now();
+        $rows = [];
+        $added = 0;
+        foreach (DB::table('secretaries')->orderBy('id')->lazyById(self::DIGEST_PAGE_SIZE) as $secretary) {
+            $rows[] = [
+                'secretary_id' => $secretary->id,
+                'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+                'level' => 0,
+                'experience' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+            if (count($rows) === self::DIGEST_PAGE_SIZE) {
+                DB::table('secretary_skills')->insert($rows);
+                $added += count($rows);
+                $rows = [];
+            }
+        }
+        if ($rows !== []) {
+            DB::table('secretary_skills')->insert($rows);
+            $added += count($rows);
+        }
+
+        return $added;
+    }
+
+    private function assertTargetSecretarySkillCatalog(): void
+    {
+        $secretaryCount = (int) DB::table('secretaries')->count();
+        $targetRows = (int) DB::table('secretary_skills')
+            ->whereIn('skill_key', SecretarySkillCatalog::KEYS)
+            ->count();
+        if ($targetRows !== $secretaryCount * count(SecretarySkillCatalog::KEYS)
+            || (int) DB::table('secretary_skills')->count() !== $targetRows) {
+            throw new RuntimeException('Exact v15 Secretary skill catalog postcondition failed.');
+        }
     }
 
     /** @return array{definition: string, function: string} */
@@ -603,7 +687,8 @@ SQL, [$table, $trigger]);
             'id', 'user_id', 'name', 'named_at', 'created_at', 'updated_at', 'equipment_version',
             'profile_biography', 'main_image_path', 'main_image_mime_type',
             'main_image_creation_method', 'main_image_credit', 'main_image_updated_at',
-        ])).':'.$this->tableDigest('secretary_skills')
+        ])).':'.$this->queryDigest(DB::table('secretary_skills')
+            ->whereIn('skill_key', SecretarySkillCatalog::V14_KEYS))
             .':'.$this->tableDigest('secretary_item_instances').':'.$this->tableDigest('users');
     }
 

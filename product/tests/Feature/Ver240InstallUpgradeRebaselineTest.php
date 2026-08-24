@@ -12,6 +12,7 @@ use App\Application\Ver250MonsterExperienceRulesetUpgrade;
 use App\Application\Ver250SecretaryProfileRulesetUpgrade;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -66,13 +67,20 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $fingerprint = $item->fresh()->request_fingerprint;
         $idleCounter = (int) $world->nations()->sole()->idle_counter;
         $this->assertSame(100, $idleCounter);
-        $secretaryDigest = $this->secretaryDigest();
+        $secretaryDigest = $this->legacySecretaryDigest();
 
         $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
 
         $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
         $this->assertSame(100, (int) $world->nations()->sole()->idle_counter);
-        $this->assertSame($secretaryDigest, $this->secretaryDigest());
+        $this->assertSame($secretaryDigest, $this->legacySecretaryDigest());
+        $secretaryId = (int) DB::table('secretaries')->sole()->id;
+        $this->assertDatabaseHas('secretary_skills', [
+            'secretary_id' => $secretaryId,
+            'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+            'level' => 0,
+            'experience' => 0,
+        ]);
         $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
         $this->assertSame(
             Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY,
@@ -371,6 +379,15 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             'event_type' => 'ruleset.v14_activated',
             'visibility' => 'admin',
         ]);
+        $legacySkillValues = [
+            SecretarySkillCatalog::AGRICULTURAL_POLICY => ['level' => 2, 'experience' => 3],
+            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => ['level' => 4, 'experience' => 5],
+            SecretarySkillCatalog::GOLD_VEIN_SURVEY => ['level' => 6, 'experience' => 7],
+            SecretarySkillCatalog::FINAL_DEFENSE_LINE => ['level' => 8, 'experience' => 9],
+        ];
+        foreach ($legacySkillValues as $skillKey => $values) {
+            $secretary->skills()->where('skill_key', $skillKey)->update($values);
+        }
 
         $historicalBase = MapCell::query()
             ->where('owner_nation_id', $nation->id)
@@ -399,6 +416,10 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             $world->fresh()->rulesetVersion()->value('key'),
         );
         $this->assertSame(73, (int) $historicalBase->fresh()->facility_experience);
+        $this->assertDatabaseMissing('secretary_skills', [
+            'secretary_id' => $secretary->id,
+            'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+        ]);
         $unresolved->delete();
 
         $v14Definition = MonsterDefinition::query()
@@ -470,6 +491,10 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
         $this->assertMonsterExperienceMigrationBlocked('cannot be attributed to exactly one historical Secretary');
         $this->assertSame(0, (int) $secretary->fresh()->monster_experience);
+        $this->assertDatabaseMissing('secretary_skills', [
+            'secretary_id' => $secretary->id,
+            'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+        ]);
         $this->assertSame(
             Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY,
             $world->fresh()->rulesetVersion()->value('key'),
@@ -491,12 +516,26 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             $world->fresh()->rulesetVersion()->value('key'));
         $this->assertSame($expectedBackfill, (int) $secretary->fresh()->monster_experience);
         $this->assertSame(73, (int) $historicalBase->fresh()->facility_experience);
+        $skills = $secretary->skills()->get()->keyBy('skill_key');
+        $this->assertSame(
+            collect(SecretarySkillCatalog::KEYS)->sort()->values()->all(),
+            $skills->keys()->sort()->values()->all(),
+        );
+        foreach ($legacySkillValues as $skillKey => $values) {
+            $this->assertSame($values['level'], (int) $skills[$skillKey]->level);
+            $this->assertSame($values['experience'], (int) $skills[$skillKey]->experience);
+        }
+        $this->assertSame(0, (int) $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]->level);
+        $this->assertSame(0, (int) $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]->experience);
         $activation = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'ruleset.v15_activated')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame(1, $activation['old_bow_kill_count']);
         $this->assertSame(1, $activation['old_bow_secretary_count']);
         $this->assertSame($expectedBackfill, $activation['old_bow_monster_experience_total']);
         $this->assertTrue($activation['historical_facility_experience_preserved']);
+        $this->assertSame(1, $activation['forest_management_skill_rows_added']);
+        $this->assertTrue($activation['existing_secretary_skills_preserved']);
+        $this->assertFalse($activation['historical_forest_management_backfill']);
         $this->assertNull($v14Definition->fresh()->experience_per_damage);
 
         DB::table('migrations')->where('migration', self::MONSTER_EXPERIENCE_MIGRATION)->delete();
@@ -644,6 +683,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $v11 = app(RulesetPublisher::class)->publish(
             app(RulesetUpgradeAuthoringCatalog::class)->get(Ver240DormancyRulesetUpgrade::SOURCE_KEY),
         );
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v11): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
             DB::update(<<<'SQL'
@@ -670,6 +710,7 @@ SQL, [$v11->id, $world->id]);
         $v12 = app(RulesetPublisher::class)->publish(
             require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v12.php'),
         );
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v12): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
             DB::statement('ALTER TABLE monster_instances DISABLE TRIGGER monster_instance_world_ruleset_guard');
@@ -722,6 +763,7 @@ SQL, [$v12->id, $world->id]);
         $v13 = app(RulesetPublisher::class)->publish(
             require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v13.php'),
         );
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v13): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
             DB::statement('ALTER TABLE monster_instances DISABLE TRIGGER monster_instance_world_ruleset_guard');
@@ -776,6 +818,17 @@ SQL, [$v13->id, $world->id]);
         return hash('sha256', json_encode([
             'secretaries' => DB::table('secretaries')->orderBy('id')->get()->all(),
             'skills' => DB::table('secretary_skills')->orderBy('id')->get()->all(),
+            'items' => DB::table('secretary_item_instances')->orderBy('id')->get()->all(),
+        ], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+    }
+
+    private function legacySecretaryDigest(): string
+    {
+        return hash('sha256', json_encode([
+            'secretaries' => DB::table('secretaries')->orderBy('id')->get()->all(),
+            'skills' => DB::table('secretary_skills')
+                ->whereIn('skill_key', SecretarySkillCatalog::V14_KEYS)
+                ->orderBy('id')->get()->all(),
             'items' => DB::table('secretary_item_instances')->orderBy('id')->get()->all(),
         ], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
     }

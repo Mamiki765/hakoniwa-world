@@ -711,7 +711,7 @@ final class TurnState
             throw new InvalidArgumentException('Secretary monster experience snapshot must be a non-negative integer.');
         }
         if (array_keys($skills) !== SecretarySkillCatalog::KEYS) {
-            throw new InvalidArgumentException('Secretary snapshot must contain the exact Secretary v1 skill catalog.');
+            throw new InvalidArgumentException('Secretary snapshot must contain the exact current skill catalog.');
         }
         $validatedSkills = [];
         foreach ($skills as $skillKey => $skill) {

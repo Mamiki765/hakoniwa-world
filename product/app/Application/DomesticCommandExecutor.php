@@ -17,6 +17,7 @@ use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
+use App\Domain\Secretary\SecretaryProductionBonus;
 use App\Domain\Secretary\SecretaryRingFinanceBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
@@ -60,6 +61,7 @@ final class DomesticCommandExecutor
         private readonly ChunkCoordinateService $chunks,
         private readonly NationCommandTargetService $nationTargets,
         private readonly SecretaryItemGameplayContract $secretaryItems,
+        private readonly SecretaryProductionBonus $secretaryProduction,
         private readonly SecretaryRingFinanceBonus $ringFinance,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
         private readonly NationProtectionPolicy $nationProtection,
@@ -267,6 +269,7 @@ final class DomesticCommandExecutor
             'build_farm' => SecretarySkillCatalog::AGRICULTURAL_POLICY,
             'build_factory' => SecretarySkillCatalog::SPECIALTY_DEVELOPMENT,
             'build_mine' => SecretarySkillCatalog::GOLD_VEIN_SURVEY,
+            'logging', 'plant_forest' => SecretarySkillCatalog::FOREST_MANAGEMENT,
             default => null,
         };
         if ($skillKey !== null) {
@@ -1051,7 +1054,14 @@ final class DomesticCommandExecutor
         if (! is_int($moneyPerUnit) || $moneyPerUnit < 0) {
             throw new DomainException('Logging income settings are invalid.');
         }
-        $requested = intdiv($treeUnits, 100) * $moneyPerUnit;
+        $baseRequested = intdiv($treeUnits, 100) * $moneyPerUnit;
+        $requested = $context->state->hasSecretarySnapshot($nation->id)
+            ? $this->secretaryProduction->applyForestManagement(
+                $context->ruleset->settings,
+                $context->state->secretarySkillLevel($nation->id, SecretarySkillCatalog::FOREST_MANAGEMENT),
+                $baseRequested,
+            )
+            : $baseRequested;
         $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
         $income = $this->addition->calculate((int) $nation->money, $requested, $capacity);
         if ($income->applied > 0) {
@@ -1066,7 +1076,8 @@ final class DomesticCommandExecutor
         $metadata = [
             'nation_id' => $nation->id, 'nation_name' => $nation->name,
             'x' => $cell->x, 'y' => $cell->y,
-            'tree_units' => $treeUnits, 'requested_money' => $requested,
+            'tree_units' => $treeUnits, 'base_requested_money' => $baseRequested,
+            'requested_money' => $requested,
             'applied_money' => $income->applied, 'overflow_money' => $income->overflow,
         ];
         $this->events->record($context, 'command.logging_public', $nation, [

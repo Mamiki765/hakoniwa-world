@@ -221,7 +221,7 @@ SQL, [$worldId, $rulesetId, $worldId, $rulesetId, $worldId, $rulesetId]);
     {
         foreach (Secretary::query()->with(['skills', 'itemInstances'])->orderBy('id')->get() as $secretary) {
             $skillKeys = $secretary->skills->pluck('skill_key')->sort()->values()->all();
-            $expectedKeys = collect(SecretarySkillCatalog::KEYS)->sort()->values()->all();
+            $expectedKeys = collect(SecretarySkillCatalog::V14_KEYS)->sort()->values()->all();
             if ($skillKeys !== $expectedKeys) {
                 throw new RuntimeException("Upgrade blocked: Secretary {$secretary->id} has an incomplete skill catalog.");
             }

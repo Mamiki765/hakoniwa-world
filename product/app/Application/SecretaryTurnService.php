@@ -76,7 +76,7 @@ final class SecretaryTurnService
                 ];
             }
             if ($rows->count() !== count($skills)) {
-                throw new DomainException("Secretary {$secretary->id} has an unexpected skill outside Secretary v1.");
+                throw new DomainException("Secretary {$secretary->id} has an unexpected skill outside the active catalog.");
             }
             $context->state->setSecretarySnapshot(
                 $nationId,

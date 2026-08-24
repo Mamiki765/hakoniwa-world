@@ -8,6 +8,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
 use App\Application\Ver250MonsterExperienceRulesetUpgrade;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
@@ -103,7 +104,13 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame('completed', NationCommandQueueItem::query()->findOrFail($item->id)->status);
         $this->assertSame('plain', $target->fresh()->terrain()->value('key'));
-        $this->assertSame(4, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(5, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertDatabaseHas('secretary_skills', [
+            'secretary_id' => $secretary->id,
+            'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+            'level' => 0,
+            'experience' => 0,
+        ]);
         $this->assertSame(1, $secretary->equipment_version);
         $starter = SecretaryItemInstance::query()->where('secretary_id', $secretary->id)->sole();
         $this->assertSame('old_bow', $starter->item_key);

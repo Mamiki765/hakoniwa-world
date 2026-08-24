@@ -46,6 +46,7 @@ final class SecretaryTurnStateTest extends TestCase
             SecretarySkillCatalog::AGRICULTURAL_POLICY => ['level' => $productionLevel, 'experience' => 0],
             SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => ['level' => 0, 'experience' => 0],
             SecretarySkillCatalog::GOLD_VEIN_SURVEY => ['level' => 0, 'experience' => 0],
+            SecretarySkillCatalog::FOREST_MANAGEMENT => ['level' => 0, 'experience' => 0],
             SecretarySkillCatalog::FINAL_DEFENSE_LINE => ['level' => $defenseLevel, 'experience' => 0],
         ];
     }

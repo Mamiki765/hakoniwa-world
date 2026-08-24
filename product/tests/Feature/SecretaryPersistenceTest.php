@@ -36,6 +36,7 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame(0, $skills[SecretarySkillCatalog::AGRICULTURAL_POLICY]);
         $this->assertSame(0, $skills[SecretarySkillCatalog::SPECIALTY_DEVELOPMENT]);
         $this->assertSame(0, $skills[SecretarySkillCatalog::GOLD_VEIN_SURVEY]);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]);
         $this->assertSame(1, $skills[SecretarySkillCatalog::FINAL_DEFENSE_LINE]);
     }
 
@@ -66,13 +67,14 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame(0, $skills[SecretarySkillCatalog::AGRICULTURAL_POLICY]->level);
         $this->assertSame(0, $skills[SecretarySkillCatalog::SPECIALTY_DEVELOPMENT]->level);
         $this->assertSame(0, $skills[SecretarySkillCatalog::GOLD_VEIN_SURVEY]->level);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]->level);
         $this->assertSame(1, $skills[SecretarySkillCatalog::FINAL_DEFENSE_LINE]->level);
         $this->assertSame([0], $skills->pluck('experience')->unique()->values()->all());
 
         $replayed = $service->create($user, $world->fresh(), '別入力', '別入力', '', $requestKey);
         $this->assertSame($nation->id, $replayed->id);
         $this->assertSame(1, Secretary::query()->where('user_id', $user->id)->count());
-        $this->assertSame(4, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(5, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
     }
 
     public function test_user_id_is_unique_and_different_users_may_choose_the_same_name_once(): void
@@ -90,8 +92,9 @@ final class SecretaryPersistenceTest extends TestCase
                 ->assertJsonPath('data.name', 'ペリドット')
                 ->assertJsonPath('data.header_label', 'ペリドット')
                 ->assertJsonPath('data.skills.0.effect', '小麦生産＋0.0%')
-                ->assertJsonPath('data.skills.3.effect', '防衛されなかったミサイルを1ターンにつき1発まで迎撃')
-                ->assertJsonCount(4, 'data.skills');
+                ->assertJsonPath('data.skills.3.effect', '伐採資金・森林増加＋0%')
+                ->assertJsonPath('data.skills.4.effect', '防衛されなかったミサイルを1ターンにつき1発まで迎撃')
+                ->assertJsonCount(5, 'data.skills');
         }
         $this->assertSame(2, Secretary::query()->where('name', 'ペリドット')->count());
 
@@ -236,6 +239,7 @@ final class SecretaryPersistenceTest extends TestCase
             SecretarySkillCatalog::AGRICULTURAL_POLICY => 5,
             SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => 4,
             SecretarySkillCatalog::GOLD_VEIN_SURVEY => 3,
+            SecretarySkillCatalog::FOREST_MANAGEMENT => 2,
             SecretarySkillCatalog::FINAL_DEFENSE_LINE => 6,
         ] as $skillKey => $level) {
             $secretary->skills()->where('skill_key', $skillKey)->update(['level' => $level]);
@@ -246,10 +250,10 @@ final class SecretaryPersistenceTest extends TestCase
             'biography' => "海辺で出会った秘書。\n**この記号はMarkdownとして解釈しない。**",
         ])->assertOk()
             ->assertJsonPath('data.is_owner', true)
-            ->assertJsonPath('data.domestic_level', 18)
-            ->assertJsonPath('data.secretary_level', 18)
-            ->assertJsonPath('data.passive_level_total', 18)
-            ->assertJsonPath('data.capacity_bonus_percent', 18)
+            ->assertJsonPath('data.domestic_level', 20)
+            ->assertJsonPath('data.secretary_level', 20)
+            ->assertJsonPath('data.passive_level_total', 20)
+            ->assertJsonPath('data.capacity_bonus_percent', 20)
             ->assertJsonPath('data.monster_experience', 120)
             ->assertJsonCount(5, 'data.equipment.slots');
 
@@ -268,8 +272,8 @@ final class SecretaryPersistenceTest extends TestCase
         $publicResponse = $this->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}");
         $publicResponse->assertOk()
             ->assertJsonPath('data.is_owner', false)
-            ->assertJsonPath('data.domestic_level', 18)
-            ->assertJsonPath('data.secretary_level', 18)
+            ->assertJsonPath('data.domestic_level', 20)
+            ->assertJsonPath('data.secretary_level', 20)
             ->assertJsonPath('data.monster_experience', 120)
             ->assertJsonPath('data.biography', "海辺で出会った秘書。\n**この記号はMarkdownとして解釈しない。**")
             ->assertJsonPath('data.main_image.display', 'none')

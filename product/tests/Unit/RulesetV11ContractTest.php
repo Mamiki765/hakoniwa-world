@@ -17,7 +17,7 @@ final class RulesetV11ContractTest extends TestCase
 
     public const V14_CHECKSUM = 'af9afe5bf055f4d2ecc4349de058f6dfc6281194dd3d52238167ced07c9d8274';
 
-    public const V15_CHECKSUM = 'b31c097c89d7f9105c2219aea52a0c65e76d2f8bb5e61cef9c4902375ce2ab0d';
+    public const V15_CHECKSUM = 'd361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70';
 
     public function test_normal_config_loads_only_the_standalone_current_payload(): void
     {
@@ -174,5 +174,15 @@ final class RulesetV11ContractTest extends TestCase
             $v15['military']['launch_base_experience']['monster_damage_experience'],
         );
         $this->assertSame(0, $v15['military']['launch_base_experience']['monster_final_blow_experience']);
+        $forestManagement = $v15['secretary']['skills']['forest_management'];
+        $this->assertSame([
+            'type' => 'forest_management',
+            'percent_per_level' => 1,
+            'rounding' => 'floor_after_multiplier',
+            'logging_base' => 'canonical_logging_income',
+            'forest_growth_base' => 'terrain_quantities.forest.growth_increment',
+        ], $forestManagement['effect']);
+        $this->assertSame(['logging', 'plant_forest'], $forestManagement['experience_source']['command_keys']);
+        $this->assertFalse($forestManagement['experience_source']['historical_backfill']);
     }
 }

@@ -428,6 +428,30 @@ final class RulesetAuthoringValidator
                 continue;
             }
 
+            if ($key === SecretarySkillCatalog::FOREST_MANAGEMENT) {
+                if ($initialLevel !== 0 || $basis !== 'next_level_squared' || $multiplier !== 1
+                    || $effect !== [
+                        'type' => 'forest_management',
+                        'percent_per_level' => 1,
+                        'rounding' => 'floor_after_multiplier',
+                        'logging_base' => 'canonical_logging_income',
+                        'forest_growth_base' => 'terrain_quantities.forest.growth_increment',
+                    ]
+                    || $source !== [
+                        'type' => 'successful_command_execution',
+                        'command_keys' => ['logging', 'plant_forest'],
+                        'points_per_execution' => 1,
+                        'quantity_multiplier' => false,
+                        'historical_backfill' => false,
+                    ]
+                    || ! in_array('logging', $commandKeys, true)
+                    || ! in_array('plant_forest', $commandKeys, true)) {
+                    throw new DomainException("{$path} does not match the Secretary forest-management contract.");
+                }
+
+                continue;
+            }
+
             if ($key !== SecretarySkillCatalog::FINAL_DEFENSE_LINE
                 || $initialLevel !== 1
                 || $basis !== 'current_level_squared'

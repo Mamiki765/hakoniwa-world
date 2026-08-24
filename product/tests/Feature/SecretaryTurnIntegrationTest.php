@@ -181,6 +181,74 @@ final class SecretaryTurnIntegrationTest extends TestCase
         $this->assertSame('failed', $invalidMine->fresh()->status);
         $this->assertSame([], $failureContext->state->pendingSecretaryExperience());
         $this->assertSame(0, $this->skill($nation, SecretarySkillCatalog::GOLD_VEIN_SURVEY)->experience);
+
+        $invalidLogging = $this->queue(
+            $service,
+            $user,
+            $nation,
+            $space,
+            'logging',
+            $this->ownedTerrainWithoutFacility($nation, 'plain'),
+        );
+        $loggingFailureContext = $this->context($world, 4, hash('sha256', 'invalid logging'), [$nation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($loggingFailureContext, [$nation->id]);
+        $loggingFailure = app(DomesticCommandExecutor::class)->execute($loggingFailureContext);
+        $this->assertSame(1, $loggingFailure['failures']);
+        $this->assertSame('failed', $invalidLogging->fresh()->status);
+        $this->assertSame([], $loggingFailureContext->state->pendingSecretaryExperience());
+
+        $cancelledPlant = $this->queue(
+            $service,
+            $user,
+            $nation,
+            $space,
+            'plant_forest',
+            $this->ownedTerrainWithoutFacility($nation, 'plain'),
+        );
+        $service->cancel(
+            $user,
+            $nation,
+            $cancelledPlant,
+            (int) $nation->commandQueue()->value('version'),
+        );
+        $this->assertSame('cancelled', $cancelledPlant->fresh()->status);
+        $this->assertSame(0, $this->skill($nation, SecretarySkillCatalog::FOREST_MANAGEMENT)->experience);
+
+        $forestSkill = $this->skill($nation, SecretarySkillCatalog::FOREST_MANAGEMENT);
+        $forestSkill->update(['level' => 10, 'experience' => 0]);
+        $forest = $this->ownedTerrainWithoutFacility($nation, 'forest');
+        $logging = $this->queue($service, $user, $nation, $space, 'logging', $forest);
+        $moneyBeforeLogging = (int) $nation->fresh()->money;
+        $loggingContext = $this->context($world, 5, hash('sha256', 'forest management logging'), [$nation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($loggingContext, [$nation->id]);
+        app(DomesticCommandExecutor::class)->execute($loggingContext);
+
+        $this->assertSame('completed', $logging->fresh()->status);
+        $this->assertSame($moneyBeforeLogging + 27, (int) $nation->fresh()->money);
+        $this->assertSame([
+            $nation->id => [SecretarySkillCatalog::FOREST_MANAGEMENT => 1],
+        ], $loggingContext->state->pendingSecretaryExperience());
+        app(SecretaryTurnService::class)->flushExperience($loggingContext);
+        $this->assertSame(1, $this->skill($nation, SecretarySkillCatalog::FOREST_MANAGEMENT)->experience);
+
+        $plant = $this->queue(
+            $service,
+            $user,
+            $nation,
+            $space,
+            'plant_forest',
+            $this->ownedTerrainWithoutFacility($nation, 'plain'),
+        );
+        $plantContext = $this->context($world, 6, hash('sha256', 'forest management planting'), [$nation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($plantContext, [$nation->id]);
+        app(DomesticCommandExecutor::class)->execute($plantContext);
+
+        $this->assertSame('completed', $plant->fresh()->status);
+        $this->assertSame([
+            $nation->id => [SecretarySkillCatalog::FOREST_MANAGEMENT => 1],
+        ], $plantContext->state->pendingSecretaryExperience());
+        app(SecretaryTurnService::class)->flushExperience($plantContext);
+        $this->assertSame(2, $this->skill($nation, SecretarySkillCatalog::FOREST_MANAGEMENT)->experience);
     }
 
     public function test_failed_attempt_rolls_back_development_xp_and_retry_commits_it_once(): void

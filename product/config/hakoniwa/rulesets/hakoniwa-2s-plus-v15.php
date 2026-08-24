@@ -2556,6 +2556,29 @@ return [
                     'quantity_multiplier' => false,
                 ],
             ],
+            'forest_management' => [
+                'key' => 'forest_management',
+                'name' => '森林管理',
+                'initial_level' => 0,
+                'level_requirement' => [
+                    'basis' => 'next_level_squared',
+                    'multiplier' => 1,
+                ],
+                'effect' => [
+                    'type' => 'forest_management',
+                    'percent_per_level' => 1,
+                    'rounding' => 'floor_after_multiplier',
+                    'logging_base' => 'canonical_logging_income',
+                    'forest_growth_base' => 'terrain_quantities.forest.growth_increment',
+                ],
+                'experience_source' => [
+                    'type' => 'successful_command_execution',
+                    'command_keys' => ['logging', 'plant_forest'],
+                    'points_per_execution' => 1,
+                    'quantity_multiplier' => false,
+                    'historical_backfill' => false,
+                ],
+            ],
             'final_defense_line' => [
                 'key' => 'final_defense_line',
                 'name' => '最終防衛ライン',

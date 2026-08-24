@@ -44,7 +44,7 @@ final class SecretaryPresenter
             ];
         }
         if ($rows->count() !== count($skills)) {
-            throw new DomainException("Secretary {$secretary->id} has an unexpected skill outside Secretary v1.");
+            throw new DomainException("Secretary {$secretary->id} has an unexpected skill outside the current catalog.");
         }
 
         return [
@@ -64,6 +64,7 @@ final class SecretaryPresenter
             SecretarySkillCatalog::AGRICULTURAL_POLICY => sprintf('小麦生産＋%.1f%%', $level / 10),
             SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => sprintf('工場生産＋%.1f%%', $level / 10),
             SecretarySkillCatalog::GOLD_VEIN_SURVEY => sprintf('採掘場生産＋%.1f%%', $level / 10),
+            SecretarySkillCatalog::FOREST_MANAGEMENT => "伐採資金・森林増加＋{$level}%",
             SecretarySkillCatalog::FINAL_DEFENSE_LINE => "防衛されなかったミサイルを1ターンにつき{$level}発まで迎撃",
             default => throw new DomainException("Unknown Secretary skill {$skillKey}."),
         };

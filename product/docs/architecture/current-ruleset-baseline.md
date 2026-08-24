@@ -9,12 +9,12 @@ not execute any historical Ruleset source. Its identity and formal checksum rema
 ```text
 key: hakoniwa-2s-plus-v15
 version: 15
-checksum: b31c097c89d7f9105c2219aea52a0c65e76d2f8bb5e61cef9c4902375ce2ab0d
+checksum: d361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70
 ```
 
-v15 is the ver 2.5.0-beta monster-damage experience payload. It fixes each monster's
+v15 is the ver 2.5.0-beta monster-damage experience and Secretary forest-management payload. It fixes each monster's
 `experience_per_damage`, awards launch-base and Old Bow Secretary experience from actual
-damage, and is published without rewriting v14. Historical v14 remains the immutable
+damage, adds the fifth passive skill `forest_management`, and is published without rewriting v14. Historical v14 remains the immutable
 Secretary profile/capacity payload with checksum
 `af9afe5bf055f4d2ecc4349de058f6dfc6281194dd3d52238167ced07c9d8274`.
 
@@ -49,9 +49,8 @@ Historical authored Ruleset sources continue to be treated as byte-for-byte immu
 ## Dependency boundary
 
 `config/hakoniwa.php` loads only the standalone v15 file. Current services obtain gameplay
-from `hakoniwa.ruleset`; Secretary initialization uses the current v15-derived
-`hakoniwa.current_catalogs.secretary` snapshot so historical test execution cannot reintroduce
-an authored v7 runtime dependency.
+from `hakoniwa.ruleset`; Secretary initialization uses that current v15 payload directly so
+historical test execution cannot reintroduce an authored v7 runtime dependency.
 
 Historical authored files remain available through `RulesetUpgradeAuthoringCatalog` for three
 explicit consumers:
@@ -80,6 +79,11 @@ monster experience and monster-definition `experience_per_damage`, backfills onl
 attributable historical Old Bow final blows with their historical
 `missile_base_experience`, remaps only current queued-command, alive-monster, and kill-stat
 references, and changes the World Ruleset reference without resetting other gameplay data.
+The same v14-to-v15 transaction adds only the missing `forest_management` row at Lv0/EXP0
+for every existing Secretary, preserves all four legacy skill rows, and performs no historical
+logging or planting EXP backfill. Fresh Secretaries start with all five skills. Successful
+logging and planting each award one forest-management EXP; logging income and the Ruleset
+forest `growth_increment` use `floor(base * (100 + Lv) / 100)` before their existing caps.
 It does not rescan historical nonlethal Old Bow damage or reconstruct historical launch-base
 damage. Every existing `map_cells.facility_experience` value is digested before and after the
 upgrade and remains unchanged; actual-damage launch-base experience begins only under v15.
