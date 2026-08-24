@@ -42,8 +42,9 @@ final class SecretaryService
         }
         SecretarySkill::query()->insertOrIgnore($rows);
         $skills = SecretarySkill::query()->where('secretary_id', $secretary->id)->get()->keyBy('skill_key');
-        if ($skills->keys()->sort()->values()->all() !== collect(SecretarySkillCatalog::KEYS)->sort()->values()->all()) {
-            throw new DomainException('Secretary skill initialization did not produce the exact current catalog.');
+        $expectedKeys = collect(array_keys($initialStates))->sort()->values()->all();
+        if ($skills->keys()->sort()->values()->all() !== $expectedKeys) {
+            throw new DomainException('Secretary skill initialization did not produce the exact active ruleset catalog.');
         }
 
         if (Schema::hasTable('secretary_item_instances')) {

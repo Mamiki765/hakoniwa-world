@@ -14,6 +14,7 @@ final readonly class SecretaryProfilePresenter
     public function __construct(
         private SecretaryItemPresenter $items,
         private AssetManifestResolver $assets,
+        private SecretarySkillCatalog $catalog,
     ) {}
 
     /** @return array<string, mixed> */
@@ -25,7 +26,11 @@ final readonly class SecretaryProfilePresenter
         $secretary->loadMissing(['skills', 'itemInstances', 'user']);
         $skillRows = $secretary->skills->keyBy('skill_key');
         $actualKeys = $skillRows->keys()->sort()->values()->all();
-        $expectedKeys = collect(SecretarySkillCatalog::KEYS)->sort()->values()->all();
+        $ruleset = config('hakoniwa.ruleset');
+        if (! is_array($ruleset)) {
+            throw new DomainException('The current immutable Secretary ruleset contract is missing.');
+        }
+        $expectedKeys = collect(array_keys($this->catalog->definitions($ruleset)))->sort()->values()->all();
         if ($actualKeys !== $expectedKeys) {
             throw new DomainException("Secretary {$secretary->id} has an invalid passive skill catalog.");
         }

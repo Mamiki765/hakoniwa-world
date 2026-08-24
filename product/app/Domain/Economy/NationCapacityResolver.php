@@ -2,7 +2,6 @@
 
 namespace App\Domain\Economy;
 
-use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Nation;
 use App\Models\RulesetVersion;
 use DomainException;
@@ -70,7 +69,11 @@ final class NationCapacityResolver
                 || $secretaryBonus['cap'] !== null) {
                 throw new DomainException('Published Secretary capacity bonus settings are invalid.');
             }
-            $level = $this->secretaryLevel($nation);
+            $skillDefinitions = $ruleset->settings['secretary']['skills'] ?? null;
+            if (! is_array($skillDefinitions) || $skillDefinitions === []) {
+                throw new DomainException('Published Secretary skill settings are invalid.');
+            }
+            $level = $this->secretaryLevel($nation, count($skillDefinitions));
             $baseMoney = intdiv($baseMoney * (100 + $level), 100);
             $baseFood = intdiv($baseFood * (100 + $level), 100);
         }
@@ -78,7 +81,7 @@ final class NationCapacityResolver
         return new NationCapacities($baseMoney, $baseFood, $resourceCapacities);
     }
 
-    private function secretaryLevel(Nation $nation): int
+    private function secretaryLevel(Nation $nation, int $expectedSkillCount): int
     {
         $row = DB::table('nation_memberships as membership')
             ->join('secretaries as secretary', 'secretary.user_id', '=', 'membership.user_id')
@@ -91,7 +94,7 @@ final class NationCapacityResolver
         if ($skillCount === 0) {
             return 0;
         }
-        if ($skillCount !== count(SecretarySkillCatalog::KEYS)) {
+        if ($skillCount !== $expectedSkillCount) {
             throw new DomainException('Nation owner Secretary passive skills are incomplete.');
         }
 

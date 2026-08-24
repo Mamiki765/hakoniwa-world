@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Application\RulesetPublisher;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\CapacityModifier;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Nation;
 use App\Models\NationResource;
@@ -41,6 +43,23 @@ class NationCapacityTest extends TestCase
             'industrial_goods' => 9_999_000,
             'minerals' => 9_999_000,
         ], $base->resources);
+
+        $world = $nation->world()->firstOrFail();
+        $currentRulesetId = $world->ruleset_version_id;
+        $v14 = app(RulesetPublisher::class)->publish(
+            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v14'),
+        );
+        $forestSkill = $user->secretary()->firstOrFail()->skills()
+            ->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)
+            ->firstOrFail();
+        $forestSkill->delete();
+        $world->update(['ruleset_version_id' => $v14->id]);
+        $v14Capacity = app(NationCapacityResolver::class)->resolve($nation, $v14);
+        $this->assertSame($base->money, $v14Capacity->money);
+        $this->assertSame($base->foodTons, $v14Capacity->foodTons);
+        $world->update(['ruleset_version_id' => $currentRulesetId]);
+        $forestSkill->save();
+
         $modifier = new class implements CapacityModifier {};
 
         try {
