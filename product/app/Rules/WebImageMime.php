@@ -7,7 +7,7 @@ use finfo;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Http\UploadedFile;
 
-final class InquiryImageMime implements ValidationRule
+final class WebImageMime implements ValidationRule
 {
     private const MAX_DIMENSION = 12_000;
 

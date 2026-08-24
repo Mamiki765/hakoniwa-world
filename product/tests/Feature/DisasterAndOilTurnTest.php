@@ -584,14 +584,14 @@ class DisasterAndOilTurnTest extends TestCase
         $depleted = $this->event($run, 'oil.depleted');
         $oil = $oil->fresh(['terrain', 'facility']);
 
-        $this->assertSame(499, $result->metrics['oil_income']);
+        $this->assertSame(598, $result->metrics['oil_income']);
         $this->assertSame(1, $result->metrics['oil_depleted']);
         $this->assertSame(1_000, $income['requested_money']);
-        $this->assertSame(499, $income['applied_money']);
-        $this->assertSame(501, $income['overflow_money']);
-        $this->assertSame(9_999, $income['money_capacity']);
+        $this->assertSame(598, $income['applied_money']);
+        $this->assertSame(402, $income['overflow_money']);
+        $this->assertSame(10_098, $income['money_capacity']);
         $this->assertTrue($depleted['income_applied_first']);
-        $this->assertSame(9_999, (int) $nation->fresh()->money);
+        $this->assertSame(10_098, (int) $nation->fresh()->money);
         $this->assertNull($oil->facility_definition_id);
         $this->assertNull($oil->owner_nation_id);
         $this->assertSame('sea', $oil->terrain->key);
@@ -606,7 +606,7 @@ class DisasterAndOilTurnTest extends TestCase
         $retry = app(CompleteTurnEngine::class)->execute('process_cells', $retryContext);
         $this->assertSame(0, $retry->metrics['oil_income']);
         $this->assertSame(0, $retry->metrics['oil_depleted']);
-        $this->assertSame(9_999, (int) $nation->fresh()->money);
+        $this->assertSame(10_098, (int) $nation->fresh()->money);
     }
 
     public function test_land_level_draws_only_after_success_and_applies_the_immediate_event(): void

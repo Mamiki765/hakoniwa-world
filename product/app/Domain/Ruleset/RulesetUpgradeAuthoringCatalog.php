@@ -31,6 +31,7 @@ final class RulesetUpgradeAuthoringCatalog
         'hakoniwa-2s-plus-v11.php',
         'hakoniwa-2s-plus-v12.php',
         'hakoniwa-2s-plus-v13.php',
+        'hakoniwa-2s-plus-v14.php',
     ];
 
     /** @var array<string, array<string, mixed>>|null */

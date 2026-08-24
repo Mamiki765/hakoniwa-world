@@ -8,6 +8,7 @@ use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
 use App\Application\Ver240DormancyRulesetUpgrade;
 use App\Application\Ver240KarmaRecoveryRulesetUpgrade;
+use App\Application\Ver250SecretaryProfileRulesetUpgrade;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\CommandDefinition;
@@ -44,13 +45,19 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
     private const KARMA_MIGRATION = '2026_08_23_010000_add_nation_karma_and_publish_v13';
 
+    private const SECRETARY_PROFILE_MIGRATION = '2026_08_24_000000_add_secretary_profiles_and_publish_v14';
+
     public function test_supported_v11_source_upgrade_preserves_provenance_and_remains_runnable(): void
     {
         [$world, $item, $target] = $this->supportedSourceWithQueuedCommand();
         app(RulesetPublisher::class)->publish(
             app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
         );
-        DB::table('migrations')->whereIn('migration', [self::MIGRATION, self::KARMA_MIGRATION])->delete();
+        DB::table('migrations')->whereIn('migration', [
+            self::MIGRATION,
+            self::KARMA_MIGRATION,
+            self::SECRETARY_PROFILE_MIGRATION,
+        ])->delete();
         $fingerprint = $item->fresh()->request_fingerprint;
         $idleCounter = (int) $world->nations()->sole()->idle_counter;
         $this->assertSame(100, $idleCounter);
@@ -61,15 +68,17 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
         $this->assertSame(100, (int) $world->nations()->sole()->idle_counter);
         $this->assertSame($secretaryDigest, $this->secretaryDigest());
-        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
         $this->assertSame(
-            Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY,
+            Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY,
             $item->fresh()->definition()->firstOrFail()->rulesetVersion()->value('key'),
         );
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v12_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v13_activated', 'visibility' => 'admin']);
+        $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v14_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('migrations', ['migration' => self::MIGRATION]);
         $this->assertDatabaseHas('migrations', ['migration' => self::KARMA_MIGRATION]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::SECRETARY_PROFILE_MIGRATION]);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
@@ -106,6 +115,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             self::REBASELINE_MIGRATION,
             self::MIGRATION,
             self::KARMA_MIGRATION,
+            self::SECRETARY_PROFILE_MIGRATION,
         ])->delete();
         $requestKey = $item->fresh()->request_key;
 
@@ -119,7 +129,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame($requestKey, $item->fresh()->request_key);
         $this->assertSame($v10->id, $item->fresh()->request_ruleset_version_id);
         $this->assertSame(10, $item->fresh()->queue_position);
-        $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
+        $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
@@ -127,7 +137,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame('mine', $target->fresh()->facility()->value('key'));
     }
 
-    public function test_exact_v12_to_v13_preserves_live_state_and_historical_provenance_then_runs_a_turn(): void
+    public function test_exact_v12_to_v13_preserves_live_state_then_advances_to_v14_and_runs_a_turn(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -265,6 +275,17 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame(Ver240KarmaRecoveryRulesetUpgrade::TARGET_KEY, $killStat->fresh()->definition->rulesetVersion->key);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v13_activated', 'visibility' => 'admin']);
 
+        DB::table('migrations')->where('migration', self::SECRETARY_PROFILE_MIGRATION)->delete();
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::SECRETARY_PROFILE_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+        $this->assertSame(
+            Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY,
+            $world->fresh()->rulesetVersion()->value('key'),
+        );
+
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
         $this->assertSame('completed', $queued->fresh()->status);
@@ -286,6 +307,53 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame($before, $this->businessSnapshot());
         $this->assertSame($v11->id, $world->fresh()->ruleset_version_id);
         $this->assertDatabaseMissing('migrations', ['migration' => self::KARMA_MIGRATION]);
+    }
+
+    public function test_exact_v13_to_v14_preserves_secretary_and_user_state_then_runs_a_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, 'v14移行国', 'v14移行島主');
+        $secretary = $owner->secretary()->firstOrFail();
+        $secretary->update([
+            'name' => 'v14移行秘書',
+            'named_at' => now(),
+            'profile_biography' => "移行前の経歴\n2行目",
+            'main_image_path' => str_repeat('a', 64).'.png',
+            'main_image_mime_type' => 'image/png',
+            'main_image_creation_method' => 'commissioned_or_permitted',
+            'main_image_credit' => '移行前作者',
+            'main_image_updated_at' => now(),
+        ]);
+        $owner->forceFill([
+            'show_ai_generated_secretary_images' => false,
+            'secretary_image_fallback' => 'peridot',
+        ])->save();
+        $this->attachExactV13($world);
+        DB::table('migrations')->where('migration', self::SECRETARY_PROFILE_MIGRATION)->delete();
+        $secretaryState = $this->secretaryDigest();
+        $userState = $owner->fresh()->only([
+            'show_ai_generated_secretary_images', 'secretary_image_fallback',
+        ]);
+
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::SECRETARY_PROFILE_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $this->assertSame(
+            Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY,
+            $world->fresh()->rulesetVersion()->value('key'),
+        );
+        $this->assertSame($secretaryState, $this->secretaryDigest());
+        $this->assertSame($userState, $owner->fresh()->only(array_keys($userState)));
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'ruleset.v14_activated',
+            'visibility' => 'admin',
+        ]);
+        $run = app(TurnRunner::class)->run($world->fresh());
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
     }
 
     #[DataProvider('unresolvedStatuses')]
@@ -490,6 +558,60 @@ SQL, [$v12->id, $world->id]);
         });
 
         return $v12;
+    }
+
+    private function attachExactV13(World $world): RulesetVersion
+    {
+        $v13 = app(RulesetPublisher::class)->publish(
+            require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v13.php'),
+        );
+        DB::transaction(function () use ($world, $v13): void {
+            DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
+            DB::statement('ALTER TABLE monster_instances DISABLE TRIGGER monster_instance_world_ruleset_guard');
+            DB::statement('ALTER TABLE nation_monster_kill_stats DISABLE TRIGGER nation_monster_kill_stat_guard');
+            DB::update(<<<'SQL'
+UPDATE nation_command_queue_items AS item
+SET command_definition_id = target.id
+FROM command_definitions AS source,
+     command_definitions AS target,
+     nation_command_queues AS queue,
+     nations AS nation
+WHERE source.id = item.command_definition_id
+  AND target.key = source.key
+  AND target.ruleset_version_id = ?
+  AND queue.id = item.nation_command_queue_id
+  AND nation.id = queue.nation_id
+  AND nation.world_id = ?
+  AND item.status = 'queued'
+SQL, [$v13->id, $world->id]);
+            DB::update(<<<'SQL'
+UPDATE monster_instances AS instance
+SET monster_definition_id = target.id
+FROM monster_definitions AS source,
+     monster_definitions AS target
+WHERE source.id = instance.monster_definition_id
+  AND target.key = source.key
+  AND target.ruleset_version_id = ?
+  AND instance.world_id = ?
+  AND instance.state = 'alive'
+SQL, [$v13->id, $world->id]);
+            DB::update(<<<'SQL'
+UPDATE nation_monster_kill_stats AS stat
+SET monster_definition_id = target.id
+FROM monster_definitions AS source,
+     monster_definitions AS target
+WHERE source.id = stat.monster_definition_id
+  AND target.key = source.key
+  AND target.ruleset_version_id = ?
+  AND stat.world_id = ?
+SQL, [$v13->id, $world->id]);
+            $world->update(['ruleset_version_id' => $v13->id]);
+            DB::statement('ALTER TABLE monster_instances ENABLE TRIGGER monster_instance_world_ruleset_guard');
+            DB::statement('ALTER TABLE nation_monster_kill_stats ENABLE TRIGGER nation_monster_kill_stat_guard');
+            DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match IMMEDIATE');
+        });
+
+        return $v13;
     }
 
     private function secretaryDigest(): string

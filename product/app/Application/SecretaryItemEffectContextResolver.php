@@ -12,6 +12,20 @@ final class SecretaryItemEffectContextResolver
 {
     public function resolve(User $user, ?int $worldId): ?SecretaryItemEffectProjection
     {
+        return $this->resolveForNationStates($user, $worldId, ['active', 'recovery']);
+    }
+
+    public function resolveForPublicProfile(User $user, ?int $worldId): ?SecretaryItemEffectProjection
+    {
+        return $this->resolveForNationStates($user, $worldId, ['active', 'dormant', 'recovery']);
+    }
+
+    /** @param list<string> $nationStates */
+    private function resolveForNationStates(
+        User $user,
+        ?int $worldId,
+        array $nationStates,
+    ): ?SecretaryItemEffectProjection {
         if ($worldId === null) {
             return null;
         }
@@ -22,7 +36,7 @@ final class SecretaryItemEffectContextResolver
             ->where('membership.user_id', $user->id)
             ->where('membership.world_id', $worldId)
             ->where('membership.role', 'owner')
-            ->whereIn('nation.state', ['active', 'recovery'])
+            ->whereIn('nation.state', $nationStates)
             ->whereColumn('nation.world_id', 'membership.world_id')
             ->select([
                 'world.id as world_id',

@@ -26,6 +26,7 @@ import type {
     PublicWorldSummary,
     Secretary,
     SecretaryEquipmentOptions,
+    SecretaryProfile,
     World,
 } from './types';
 
@@ -50,7 +51,22 @@ const announcementBody = ref('');
 const announcementErrors = ref<Record<string, string>>({});
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
-const secretarySection = ref<'skills' | 'equipment' | 'warehouse'>('skills');
+type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse';
+const secretarySection = ref<SecretarySection>('main');
+const viewedSecretaryProfile = ref<SecretaryProfile | null>(null);
+const viewedSecretaryWorldId = ref<number | null>(null);
+const secretaryBiography = ref('');
+const secretaryProfileErrors = ref<Record<string, string>>({});
+const secretaryImageModalOpen = ref(false);
+const secretaryImageFile = ref<File | null>(null);
+const secretaryImageInput = ref<HTMLInputElement | null>(null);
+const secretaryImageCreationMethod = ref<'self_made' | 'ai_generated' | 'commissioned_or_permitted' | 'other'>('self_made');
+const secretaryImageCredit = ref('');
+const secretaryImageErrors = ref<Record<string, string>>({});
+const secretaryPreferencesModalOpen = ref(false);
+const secretaryShowAiImages = ref(true);
+const secretaryImageFallback = ref<'silhouette' | 'peridot'>('silhouette');
+const secretaryPreferenceErrors = ref<Record<string, string>>({});
 const equipmentModalSlot = ref<number | null>(null);
 const equipmentOptions = ref<SecretaryEquipmentOptions | null>(null);
 const equipmentOptionsLoading = ref(false);
@@ -76,24 +92,28 @@ const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'isl
     window.location.pathname === '/credits' ? 'credits' : 'home',
 );
 
-const secretaryTabOrder = ['skills', 'equipment', 'warehouse'] as const;
+const secretaryTabOrder = computed<SecretarySection[]>(() => viewedSecretaryProfile.value?.is_owner
+    ? ['main', 'skills', 'equipment', 'warehouse']
+    : ['main']);
 const secretaryTabIds = {
+    main: 'secretary-tab-main',
     skills: 'secretary-tab-skills',
     equipment: 'secretary-tab-equipment',
     warehouse: 'secretary-tab-warehouse',
 } as const;
 
 async function handleSecretaryTabKeydown(event: KeyboardEvent): Promise<void> {
-    const currentIndex = secretaryTabOrder.indexOf(secretarySection.value);
+    const tabs = secretaryTabOrder.value;
+    const currentIndex = tabs.indexOf(secretarySection.value);
     let nextIndex: number | null = null;
-    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % secretaryTabOrder.length;
-    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + secretaryTabOrder.length) % secretaryTabOrder.length;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
     if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = secretaryTabOrder.length - 1;
+    if (event.key === 'End') nextIndex = tabs.length - 1;
     if (nextIndex === null) return;
 
     event.preventDefault();
-    secretarySection.value = secretaryTabOrder[nextIndex]!;
+    secretarySection.value = tabs[nextIndex]!;
     await nextTick();
     document.getElementById(secretaryTabIds[secretarySection.value])?.focus();
 }
@@ -699,6 +719,170 @@ async function loadSecretary(): Promise<void> {
     if (user.value === null) return;
     const worldQuery = nation.value === null ? '' : `?world_id=${nation.value.world_id}`;
     secretary.value = await api<Secretary | null>(`/api/v1/me/secretary${worldQuery}`);
+    if (secretary.value !== null) setOwnedSecretaryProfile(secretary.value);
+}
+
+function setViewedSecretaryProfile(profile: SecretaryProfile, worldId: number | null): void {
+    viewedSecretaryProfile.value = profile;
+    viewedSecretaryWorldId.value = worldId;
+    secretaryBiography.value = profile.biography;
+}
+
+function setOwnedSecretaryProfile(value: Secretary): void {
+    setViewedSecretaryProfile({
+        ...value.profile,
+        name: value.name,
+        equipment: value.equipment,
+        is_owner: true,
+    }, nation.value?.world_id ?? null);
+}
+
+async function openPublicSecretary(secretaryId: number, worldId: number): Promise<void> {
+    busy.value = true;
+    message.value = '';
+    try {
+        const profile = await api<SecretaryProfile>(`/api/v1/secretaries/${secretaryId}?world_id=${worldId}`);
+        setViewedSecretaryProfile(profile, worldId);
+        secretarySection.value = 'main';
+        page.value = 'secretary';
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : '秘書プロフィールを読み込めませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function reloadViewedSecretaryProfile(): Promise<void> {
+    const current = viewedSecretaryProfile.value;
+    if (current === null) return;
+    if (current.is_owner && viewedSecretaryWorldId.value === null) {
+        await loadSecretary();
+        return;
+    }
+    const worldQuery = viewedSecretaryWorldId.value === null ? '' : `?world_id=${viewedSecretaryWorldId.value}`;
+    const profile = await api<SecretaryProfile>(`/api/v1/secretaries/${current.id}${worldQuery}`);
+    setViewedSecretaryProfile(profile, viewedSecretaryWorldId.value);
+}
+
+async function updateSecretaryBiography(): Promise<void> {
+    if (viewedSecretaryProfile.value?.is_owner !== true) return;
+    busy.value = true;
+    secretaryProfileErrors.value = {};
+    try {
+        const profile = await api<SecretaryProfile>('/api/v1/me/secretary/profile', {
+            method: 'PATCH',
+            body: JSON.stringify({ biography: secretaryBiography.value }),
+        });
+        setViewedSecretaryProfile(profile, viewedSecretaryWorldId.value);
+        await reloadViewedSecretaryProfile();
+    } catch (error) {
+        secretaryProfileErrors.value = validationErrors(error);
+        if (Object.keys(secretaryProfileErrors.value).length === 0) {
+            message.value = error instanceof Error ? error.message : '経歴を保存できませんでした。';
+        }
+    } finally {
+        busy.value = false;
+    }
+}
+
+function openSecretaryImageModal(): void {
+    const metadata = viewedSecretaryProfile.value?.editable_image_metadata;
+    secretaryImageFile.value = null;
+    if (secretaryImageInput.value !== null) secretaryImageInput.value.value = '';
+    secretaryImageCreationMethod.value = metadata?.creation_method ?? 'self_made';
+    secretaryImageCredit.value = metadata?.credit ?? '';
+    secretaryImageErrors.value = {};
+    secretaryImageModalOpen.value = true;
+}
+
+function closeSecretaryImageModal(): void {
+    if (busy.value) return;
+    secretaryImageModalOpen.value = false;
+    secretaryImageFile.value = null;
+}
+
+function selectSecretaryImage(event: Event): void {
+    secretaryImageFile.value = (event.target as HTMLInputElement).files?.[0] ?? null;
+}
+
+async function submitSecretaryImage(): Promise<void> {
+    const profile = viewedSecretaryProfile.value;
+    if (profile?.is_owner !== true) return;
+    if (secretaryImageFile.value === null && profile.editable_image_metadata === null) {
+        secretaryImageErrors.value = { image: '画像を選択してください。' };
+        return;
+    }
+    busy.value = true;
+    secretaryImageErrors.value = {};
+    try {
+        let committed: SecretaryProfile;
+        if (secretaryImageFile.value !== null) {
+            const formData = new FormData();
+            formData.append('image', secretaryImageFile.value);
+            formData.append('creation_method', secretaryImageCreationMethod.value);
+            formData.append('credit', secretaryImageCredit.value);
+            committed = await api<SecretaryProfile>('/api/v1/me/secretary/main-image', {
+                method: 'POST',
+                body: formData,
+            });
+        } else {
+            committed = await api<SecretaryProfile>('/api/v1/me/secretary/main-image', {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    creation_method: secretaryImageCreationMethod.value,
+                    credit: secretaryImageCredit.value,
+                }),
+            });
+        }
+        setViewedSecretaryProfile(committed, viewedSecretaryWorldId.value);
+        await reloadViewedSecretaryProfile();
+        busy.value = false;
+        closeSecretaryImageModal();
+    } catch (error) {
+        secretaryImageErrors.value = validationErrors(error);
+        if (Object.keys(secretaryImageErrors.value).length === 0) {
+            message.value = error instanceof Error ? error.message : 'メイン画像を保存できませんでした。';
+        }
+    } finally {
+        busy.value = false;
+    }
+}
+
+function openSecretaryPreferencesModal(): void {
+    const preferences = viewedSecretaryProfile.value?.viewer_preferences;
+    secretaryShowAiImages.value = preferences?.show_ai_generated_images ?? true;
+    secretaryImageFallback.value = preferences?.fallback ?? 'silhouette';
+    secretaryPreferenceErrors.value = {};
+    secretaryPreferencesModalOpen.value = true;
+}
+
+function closeSecretaryPreferencesModal(): void {
+    if (!busy.value) secretaryPreferencesModalOpen.value = false;
+}
+
+async function saveSecretaryImagePreferences(): Promise<void> {
+    if (user.value === null) return;
+    busy.value = true;
+    secretaryPreferenceErrors.value = {};
+    try {
+        await api('/api/v1/me/secretary/image-preferences', {
+            method: 'PATCH',
+            body: JSON.stringify({
+                show_ai_generated_images: secretaryShowAiImages.value,
+                fallback: secretaryImageFallback.value,
+            }),
+        });
+        await reloadViewedSecretaryProfile();
+        busy.value = false;
+        closeSecretaryPreferencesModal();
+    } catch (error) {
+        secretaryPreferenceErrors.value = validationErrors(error);
+        if (Object.keys(secretaryPreferenceErrors.value).length === 0) {
+            message.value = error instanceof Error ? error.message : '画像表示設定を保存できませんでした。';
+        }
+    } finally {
+        busy.value = false;
+    }
 }
 
 async function loadEquipmentOptions(slot: number, preserveFreshChoice = false): Promise<void> {
@@ -755,6 +939,7 @@ async function submitEquipment(itemId: number | null): Promise<void> {
             body: JSON.stringify({ item_id: itemId, expected_version: options.equipment_version }),
         });
         secretary.value = committedSecretary;
+        setOwnedSecretaryProfile(committedSecretary);
         try {
             await loadSecretary();
         } catch {
@@ -788,7 +973,7 @@ async function openSecretary(): Promise<void> {
         await loadSecretary();
         if (secretary.value === null) throw new Error('Secretaryの状態を取得できませんでした。');
         secretaryName.value = 'ペリドット';
-        secretarySection.value = 'skills';
+        secretarySection.value = 'main';
         page.value = 'secretary';
     } catch (error) {
         message.value = error instanceof Error ? error.message : 'Secretaryを読み込めませんでした。';
@@ -808,6 +993,7 @@ async function nameSecretary(): Promise<void> {
             body: JSON.stringify({ name: secretaryName.value }),
         });
         secretary.value = committedSecretary;
+        setOwnedSecretaryProfile(committedSecretary);
         try {
             await loadSecretary();
         } catch {
@@ -883,6 +1069,7 @@ async function renameProfileSecretary(): Promise<void> {
             body: JSON.stringify({ name: profileSecretaryName.value }),
         });
         secretary.value = committedSecretary;
+        setOwnedSecretaryProfile(committedSecretary);
         profileSecretaryName.value = committedSecretary.name ?? profileSecretaryName.value;
         try {
             await loadSecretary();
@@ -1502,6 +1689,14 @@ async function abandonNation(): Promise<void> {
                     <p v-if="previewNation.karma > 0" class="karma-emphasis">{{ previewNation.karma_badge }}</p>
                     <p class="profile-owner">島主：{{ previewNation.owner_name }}</p>
                     <p v-if="previewNation.comment" class="profile-comment">「{{ previewNation.comment }}」</p>
+                    <button
+                        v-if="previewNation.secretary_id !== null"
+                        class="button secondary preview-secretary-link"
+                        type="button"
+                        @click="openPublicSecretary(previewNation.secretary_id, previewNation.world.id)"
+                    >
+                        秘書プロフィール
+                    </button>
                 </div>
                 <dl>
                     <div><dt>KARMA</dt><dd :class="{ 'karma-text': previewNation.karma > 0 }">{{ previewNation.karma }}</dd></div>
@@ -1551,9 +1746,9 @@ async function abandonNation(): Promise<void> {
 
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
 
-        <section v-else-if="user && nation && secretary && page === 'secretary'" class="panel secretary-panel">
+        <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
             <h1 class="secretary-page-title">秘書</h1>
-            <template v-if="secretary.name === null">
+            <template v-if="viewedSecretaryProfile?.is_owner && secretary?.name === null">
                 <h2 class="secretary-name">？？？</h2>
                 <div class="secretary-story">
                     <p>
@@ -1578,14 +1773,90 @@ async function abandonNation(): Promise<void> {
                     <button class="button primary" type="submit" :disabled="busy">OK</button>
                 </form>
             </template>
-            <template v-else>
-                <h2 class="secretary-name">{{ secretary.name }}</h2>
+            <template v-else-if="viewedSecretaryProfile">
+                <h2 class="secretary-name">{{ viewedSecretaryProfile.name }}</h2>
                 <nav class="secretary-tabs" role="tablist" aria-label="秘書メニュー">
-                    <button id="secretary-tab-skills" type="button" role="tab" aria-controls="secretary-panel-skills" :aria-selected="secretarySection === 'skills'" :tabindex="secretarySection === 'skills' ? 0 : -1" @click="secretarySection = 'skills'" @keydown="handleSecretaryTabKeydown">熟練度</button>
-                    <button id="secretary-tab-equipment" type="button" role="tab" aria-controls="secretary-panel-equipment" :aria-selected="secretarySection === 'equipment'" :tabindex="secretarySection === 'equipment' ? 0 : -1" @click="secretarySection = 'equipment'" @keydown="handleSecretaryTabKeydown">装備</button>
-                    <button id="secretary-tab-warehouse" type="button" role="tab" aria-controls="secretary-panel-warehouse" :aria-selected="secretarySection === 'warehouse'" :tabindex="secretarySection === 'warehouse' ? 0 : -1" @click="secretarySection = 'warehouse'" @keydown="handleSecretaryTabKeydown">倉庫</button>
+                    <button id="secretary-tab-main" type="button" role="tab" aria-controls="secretary-panel-main" :aria-selected="secretarySection === 'main'" :tabindex="secretarySection === 'main' ? 0 : -1" @click="secretarySection = 'main'" @keydown="handleSecretaryTabKeydown">メイン</button>
+                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-skills" type="button" role="tab" aria-controls="secretary-panel-skills" :aria-selected="secretarySection === 'skills'" :tabindex="secretarySection === 'skills' ? 0 : -1" @click="secretarySection = 'skills'" @keydown="handleSecretaryTabKeydown">熟練度</button>
+                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-equipment" type="button" role="tab" aria-controls="secretary-panel-equipment" :aria-selected="secretarySection === 'equipment'" :tabindex="secretarySection === 'equipment' ? 0 : -1" @click="secretarySection = 'equipment'" @keydown="handleSecretaryTabKeydown">装備</button>
+                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-warehouse" type="button" role="tab" aria-controls="secretary-panel-warehouse" :aria-selected="secretarySection === 'warehouse'" :tabindex="secretarySection === 'warehouse' ? 0 : -1" @click="secretarySection = 'warehouse'" @keydown="handleSecretaryTabKeydown">倉庫</button>
                 </nav>
-                <section v-if="secretarySection === 'skills'" id="secretary-panel-skills" role="tabpanel" aria-labelledby="secretary-tab-skills">
+                <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
+                    <div v-if="!viewedSecretaryProfile.viewer_preferences.configured" class="secretary-image-preference-notice">
+                        <span>秘書画像の表示設定が未設定です</span>
+                        <button v-if="viewedSecretaryProfile.viewer_preferences.can_update" type="button" @click="openSecretaryPreferencesModal">設定する</button>
+                        <span v-else>（ログインすると設定できます）</span>
+                    </div>
+                    <div class="secretary-profile-hero">
+                        <div class="secretary-portrait-column">
+                            <div class="secretary-portrait-frame">
+                                <img
+                                    v-if="viewedSecretaryProfile.main_image.url"
+                                    :src="viewedSecretaryProfile.main_image.url"
+                                    :alt="`${viewedSecretaryProfile.name}のメイン画像`"
+                                >
+                                <span v-else class="secretary-no-image">No image</span>
+                                <details v-if="viewedSecretaryProfile.main_image.display === 'uploaded'" class="secretary-image-info">
+                                    <summary aria-label="画像について">ⓘ</summary>
+                                    <div>
+                                        <strong>画像について</strong>
+                                        <p>制作方法：{{ viewedSecretaryProfile.main_image.creation_method_label }}</p>
+                                        <p>作者・権利表記：{{ viewedSecretaryProfile.main_image.credit || '記載なし' }}</p>
+                                    </div>
+                                </details>
+                            </div>
+                            <button v-if="viewedSecretaryProfile.is_owner" class="button secondary" type="button" @click="openSecretaryImageModal">画像を変更</button>
+                        </div>
+                        <section class="secretary-profile-summary" aria-label="秘書基本情報">
+                            <h3>{{ viewedSecretaryProfile.name }}</h3>
+                            <dl>
+                                <div><dt>秘書Lv</dt><dd>{{ viewedSecretaryProfile.secretary_level }}</dd></div>
+                                <div><dt>パッシブLv合計</dt><dd>{{ viewedSecretaryProfile.passive_level_total }}</dd></div>
+                                <div><dt>資金capacity</dt><dd>+{{ viewedSecretaryProfile.capacity_bonus_percent }}%</dd></div>
+                                <div><dt>食料capacity</dt><dd>+{{ viewedSecretaryProfile.capacity_bonus_percent }}%</dd></div>
+                            </dl>
+                            <button
+                                v-if="viewedSecretaryProfile.viewer_preferences.can_update && viewedSecretaryProfile.viewer_preferences.configured"
+                                class="secretary-preferences-link"
+                                type="button"
+                                @click="openSecretaryPreferencesModal"
+                            >
+                                画像表示設定
+                            </button>
+                        </section>
+                        <section class="secretary-biography" aria-labelledby="secretary-biography-title">
+                            <h3 id="secretary-biography-title">経歴</h3>
+                            <form v-if="viewedSecretaryProfile.is_owner" @submit.prevent="updateSecretaryBiography">
+                                <textarea v-model="secretaryBiography" maxlength="1000" rows="10" aria-describedby="secretary-biography-count secretary-biography-error"></textarea>
+                                <small id="secretary-biography-count">{{ secretaryBiography.length }} / 1000文字。改行のみ表示へ反映します。</small>
+                                <span v-if="secretaryProfileErrors.biography" id="secretary-biography-error" class="field-error" role="alert">{{ secretaryProfileErrors.biography }}</span>
+                                <button class="button primary" type="submit" :disabled="busy">経歴を保存</button>
+                            </form>
+                            <p v-else-if="viewedSecretaryProfile.biography" class="secretary-biography-text">{{ viewedSecretaryProfile.biography }}</p>
+                            <p v-else class="empty-state">経歴はまだ公開されていません。</p>
+                        </section>
+                    </div>
+                    <section class="secretary-profile-equipment" aria-labelledby="secretary-profile-equipment-title">
+                        <div class="secretary-profile-section-heading">
+                            <h3 id="secretary-profile-equipment-title">装備</h3>
+                            <button v-if="viewedSecretaryProfile.is_owner" type="button" @click="secretarySection = 'equipment'">装備を変更</button>
+                        </div>
+                        <ol>
+                            <li v-for="slot in viewedSecretaryProfile.equipment.slots" :key="slot.slot">
+                                <span class="secretary-profile-slot">slot {{ slot.slot }}</span>
+                                <template v-if="slot.item">
+                                    <span class="secretary-profile-item-icon" aria-hidden="true">{{ slot.item.category_label.slice(0, 1) }}</span>
+                                    <div>
+                                        <strong>{{ slot.item.name }} <small>Lv.{{ slot.item.level }}</small></strong>
+                                        <p>{{ slot.item.effect_text || slot.item.category_label }}</p>
+                                    </div>
+                                </template>
+                                <span v-else class="empty-state">空きslot</span>
+                            </li>
+                        </ol>
+                    </section>
+                </section>
+                <section v-else-if="secretarySection === 'skills' && secretary" id="secretary-panel-skills" role="tabpanel" aria-labelledby="secretary-tab-skills">
                     <h3 class="secretary-section-title">パッシブスキル</h3>
                     <dl class="secretary-skills">
                         <div v-for="skill in secretary.skills" :key="skill.key" class="secretary-skill">
@@ -1598,7 +1869,7 @@ async function abandonNation(): Promise<void> {
                         </div>
                     </dl>
                 </section>
-                <section v-else-if="secretarySection === 'equipment'" id="secretary-panel-equipment" role="tabpanel" aria-labelledby="secretary-tab-equipment">
+                <section v-else-if="secretarySection === 'equipment' && secretary" id="secretary-panel-equipment" role="tabpanel" aria-labelledby="secretary-tab-equipment">
                     <h3 class="secretary-section-title">装備</h3>
                     <ol class="secretary-equipment">
                         <li v-for="slot in secretary.equipment.slots" :key="slot.slot">
@@ -1613,7 +1884,7 @@ async function abandonNation(): Promise<void> {
                         <li v-for="limit in secretary.equipment.category_limits" :key="limit.category">{{ limit.label }}・{{ limit.maximum_equipped }}個まで</li>
                     </ul>
                 </section>
-                <section v-else id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
+                <section v-else-if="secretary" id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
                     <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
                     <ul class="secretary-warehouse">
                         <li v-for="item in secretary.inventory.items" :key="item.id">
@@ -1727,6 +1998,71 @@ async function abandonNation(): Promise<void> {
             <p>原作GIFは本リポジトリとDocker imageに含まれません。未配置時はCSS fallbackを表示します。</p>
         </section>
     </main>
+
+    <div v-if="secretaryImageModalOpen" class="modal-backdrop" @click.self="closeSecretaryImageModal">
+        <section class="secretary-profile-modal" role="dialog" aria-modal="true" aria-labelledby="secretary-image-modal-title">
+            <header>
+                <h2 id="secretary-image-modal-title">メイン画像</h2>
+                <button type="button" aria-label="閉じる" :disabled="busy" @click="closeSecretaryImageModal">×</button>
+            </header>
+            <form @submit.prevent="submitSecretaryImage">
+                <label>
+                    新しい画像
+                    <input ref="secretaryImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" :required="viewedSecretaryProfile?.editable_image_metadata === null" :disabled="busy" @change="selectSecretaryImage">
+                    <small>PNG / JPEG / WebP / GIF、最大10MB。公開枠では3:4で表示します。</small>
+                    <span v-if="secretaryImageErrors.image" class="field-error" role="alert">{{ secretaryImageErrors.image }}</span>
+                </label>
+                <label>
+                    制作方法
+                    <select v-model="secretaryImageCreationMethod" :disabled="busy">
+                        <option value="self_made">自作</option>
+                        <option value="ai_generated">AI生成</option>
+                        <option value="commissioned_or_permitted">依頼・使用許諾済み</option>
+                        <option value="other">その他</option>
+                    </select>
+                    <span v-if="secretaryImageErrors.creation_method" class="field-error" role="alert">{{ secretaryImageErrors.creation_method }}</span>
+                </label>
+                <label>
+                    作者・権利表記（任意）
+                    <input v-model="secretaryImageCredit" maxlength="160" :disabled="busy">
+                    <span v-if="secretaryImageErrors.credit" class="field-error" role="alert">{{ secretaryImageErrors.credit }}</span>
+                </label>
+                <p v-if="secretaryImageFile && viewedSecretaryProfile?.editable_image_metadata" class="field-hint">保存すると旧メイン画像は削除され、最新の1枚だけが残ります。</p>
+                <div class="modal-actions">
+                    <button type="button" :disabled="busy" @click="closeSecretaryImageModal">キャンセル</button>
+                    <button class="button primary" type="submit" :disabled="busy">{{ secretaryImageFile ? '画像を保存' : 'metadataを保存' }}</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <div v-if="secretaryPreferencesModalOpen" class="modal-backdrop" @click.self="closeSecretaryPreferencesModal">
+        <section class="secretary-profile-modal" role="dialog" aria-modal="true" aria-labelledby="secretary-preferences-modal-title">
+            <header>
+                <h2 id="secretary-preferences-modal-title">秘書画像の表示設定</h2>
+                <button type="button" aria-label="閉じる" :disabled="busy" @click="closeSecretaryPreferencesModal">×</button>
+            </header>
+            <form @submit.prevent="saveSecretaryImagePreferences">
+                <fieldset>
+                    <legend>AI生成画像</legend>
+                    <label><input v-model="secretaryShowAiImages" type="radio" :value="true"> 表示する</label>
+                    <label><input v-model="secretaryShowAiImages" type="radio" :value="false"> 表示しない</label>
+                </fieldset>
+                <fieldset>
+                    <legend>画像未設定時のfallback</legend>
+                    <label><input v-model="secretaryImageFallback" type="radio" value="silhouette"> silhouette版</label>
+                    <label><input v-model="secretaryImageFallback" type="radio" value="peridot"> Peridot詳細版</label>
+                </fieldset>
+                <p v-if="secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images" class="field-error" role="alert">
+                    {{ secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images }}
+                </p>
+                <div class="modal-actions">
+                    <button type="button" :disabled="busy" @click="closeSecretaryPreferencesModal">キャンセル</button>
+                    <button class="button primary" type="submit" :disabled="busy">保存</button>
+                </div>
+            </form>
+        </section>
+    </div>
 
     <SecretaryEquipmentModal
         v-if="equipmentModalSlot !== null"

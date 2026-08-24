@@ -154,14 +154,14 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->ring($user, 2, 3, 'automatic-ring-2');
         $this->switchToItemRuleset($world);
         $world = $world->fresh();
-        $nation->update(['money' => 9_987]);
+        $nation->update(['money' => 10_086]);
         $idleBefore = $nation->idle_counter;
         $context = $this->context($world, hash('sha256', 'automatic ring finance'), [$nation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
 
         $metrics = app(DomesticCommandExecutor::class)->execute($context);
 
-        $this->assertSame(9_999, $nation->fresh()->money);
+        $this->assertSame(10_098, $nation->fresh()->money);
         $this->assertSame(1, $metrics['automatic_finance']);
         $this->assertSame(1, $metrics['idle_counter_increments']);
         $this->assertSame($idleBefore + 1, $nation->fresh()->idle_counter);
@@ -188,14 +188,14 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->ring($user, 4, 2, 'full-overflow-ring');
         $this->switchToItemRuleset($world);
         $world = $world->fresh();
-        $nation->update(['money' => 9_999]);
+        $nation->update(['money' => 10_098]);
         $context = $this->context($world, hash('sha256', 'ring full overflow'), [$nation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
 
         $metrics = app(DomesticCommandExecutor::class)->execute($context);
         $metadata = $this->event($context, 'command.automatic_finance');
 
-        $this->assertSame(9_999, $nation->fresh()->money);
+        $this->assertSame(10_098, $nation->fresh()->money);
         $this->assertSame(4, $metrics['secretary_ring_bonus_requested']);
         $this->assertSame(0, $metrics['secretary_ring_bonus_applied']);
         $this->assertSame(4, $metrics['secretary_ring_bonus_overflow']);

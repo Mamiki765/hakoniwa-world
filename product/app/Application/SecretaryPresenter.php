@@ -6,6 +6,7 @@ use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
 use App\Models\Secretary;
 use App\Models\SecretarySkill;
+use App\Models\User;
 use DomainException;
 
 final class SecretaryPresenter
@@ -14,11 +15,15 @@ final class SecretaryPresenter
         private readonly SecretarySkillCatalog $catalog,
         private readonly SecretarySkillProgression $progression,
         private readonly SecretaryItemPresenter $items,
+        private readonly SecretaryProfilePresenter $profiles,
     ) {}
 
     /** @return array<string, mixed> */
-    public function present(Secretary $secretary, ?SecretaryItemEffectProjection $projection = null): array
-    {
+    public function present(
+        Secretary $secretary,
+        ?SecretaryItemEffectProjection $projection = null,
+        ?User $viewer = null,
+    ): array {
         $definitions = $this->catalog->definitions(config('hakoniwa.ruleset'));
         $rows = $secretary->skills->keyBy('skill_key');
         $skills = [];
@@ -47,6 +52,7 @@ final class SecretaryPresenter
             'name' => $secretary->name,
             'named_at' => $secretary->named_at?->toIso8601String(),
             'header_label' => $secretary->name ?? '？？？',
+            'profile' => $this->profiles->present($secretary, $viewer, $projection),
             'skills' => $skills,
             ...$this->items->present($secretary, $projection),
         ];

@@ -27,6 +27,7 @@ export interface Secretary {
     name: string | null;
     named_at: string | null;
     header_label: string;
+    profile: SecretaryProfile;
     effect_context: SecretaryEquipmentEffectContext | null;
     equipment_version: number;
     skills: SecretarySkill[];
@@ -34,6 +35,38 @@ export interface Secretary {
         capacity: 50;
         used: number;
         items: SecretaryItem[];
+    };
+    equipment: {
+        slot_count: 5;
+        slots: Array<{ slot: number; item: SecretaryItem | null }>;
+        category_limits: SecretaryEquipmentCategoryLimit[];
+    };
+}
+
+export interface SecretaryProfile {
+    id: number;
+    name: string | null;
+    is_owner: boolean;
+    secretary_level: number;
+    passive_level_total: number;
+    capacity_bonus_percent: number;
+    biography: string;
+    main_image: {
+        display: 'uploaded' | 'silhouette' | 'peridot' | 'none';
+        url: string | null;
+        creation_method: 'self_made' | 'ai_generated' | 'commissioned_or_permitted' | 'other' | null;
+        creation_method_label: string | null;
+        credit: string | null;
+    };
+    editable_image_metadata: {
+        creation_method: 'self_made' | 'ai_generated' | 'commissioned_or_permitted' | 'other';
+        credit: string | null;
+    } | null;
+    viewer_preferences: {
+        configured: boolean;
+        show_ai_generated_images: boolean | null;
+        fallback: 'silhouette' | 'peridot' | null;
+        can_update: boolean;
     };
     equipment: {
         slot_count: 5;
@@ -281,6 +314,7 @@ export interface MajorNewsFeed {
 export interface PublicNationDetail extends PublicNationSummary {
     world: { id: number; name: string; current_turn: number };
     capital: { x: number; y: number } | null;
+    secretary_id: number | null;
     monster_final_blow_count: number;
     monster_kill_stats: Array<{
         key: string;

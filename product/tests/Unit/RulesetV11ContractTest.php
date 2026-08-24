@@ -15,25 +15,27 @@ final class RulesetV11ContractTest extends TestCase
 
     public const V13_CHECKSUM = '27c5d58d80e55bf2807cecd147b99b80e57ea0e1afd836eea150982445723b1f';
 
+    public const V14_CHECKSUM = 'af9afe5bf055f4d2ecc4349de058f6dfc6281194dd3d52238167ced07c9d8274';
+
     public function test_normal_config_loads_only_the_standalone_current_payload(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
-        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v13.php'));
+        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v14.php'));
 
         $this->assertIsString($source);
         $this->assertDoesNotMatchRegularExpression('/\brequire\b/', $source);
-        $this->assertSame(['hakoniwa-2s-plus-v13'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v13']);
+        $this->assertSame(['hakoniwa-2s-plus-v14'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v14']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
         $this->assertSame(
-            self::V13_CHECKSUM,
+            self::V14_CHECKSUM,
             hash('sha256', json_encode($current, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
 
         $upgradeRulesets = app(RulesetUpgradeAuthoringCatalog::class)->all();
-        $this->assertCount(23, $upgradeRulesets);
-        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v13']);
+        $this->assertCount(24, $upgradeRulesets);
+        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v14']);
         $this->assertSame(
             self::V12_CHECKSUM,
             hash('sha256', json_encode(
@@ -49,14 +51,15 @@ final class RulesetV11ContractTest extends TestCase
         $this->assertIsArray($settings);
         $this->assertSame('hakoniwa-2s-plus-v11', $settings['key']);
         $this->assertSame(11, $settings['version']);
-        $this->assertSame('hakoniwa-2s-plus-v13', config('hakoniwa.ruleset.key'));
-        $this->assertSame(13, config('hakoniwa.ruleset.version'));
+        $this->assertSame('hakoniwa-2s-plus-v14', config('hakoniwa.ruleset.key'));
+        $this->assertSame(14, config('hakoniwa.ruleset.version'));
         $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
         $this->assertSame(
             [
                 '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade.php',
                 '2026_08_23_000000_add_nation_dormancy_and_publish_v12.php',
                 '2026_08_23_010000_add_nation_karma_and_publish_v13.php',
+                '2026_08_24_000000_add_secretary_profiles_and_publish_v14.php',
             ],
             array_map('basename', glob(database_path('migrations/*.php')) ?: []),
         );

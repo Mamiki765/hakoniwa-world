@@ -2,9 +2,11 @@
 
 namespace App\Domain\Economy;
 
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Nation;
 use App\Models\RulesetVersion;
 use DomainException;
+use Illuminate\Support\Facades\DB;
 
 final class NationCapacityResolver
 {
@@ -56,6 +58,43 @@ final class NationCapacityResolver
             throw new DomainException('Capacity modifier semantics are deferred until E-04 is decided.');
         }
 
+        $secretaryBonus = $ruleset->settings['secretary']['capacity_bonus'] ?? null;
+        if ($secretaryBonus !== null) {
+            if (! is_array($secretaryBonus)
+                || count($secretaryBonus) !== 5
+                || ($secretaryBonus['level_source'] ?? null) !== 'sum_passive_skill_levels'
+                || ($secretaryBonus['money_percent_per_level'] ?? null) !== 1
+                || ($secretaryBonus['food_percent_per_level'] ?? null) !== 1
+                || ($secretaryBonus['rounding'] ?? null) !== 'floor_after_multiplier'
+                || ! array_key_exists('cap', $secretaryBonus)
+                || $secretaryBonus['cap'] !== null) {
+                throw new DomainException('Published Secretary capacity bonus settings are invalid.');
+            }
+            $level = $this->secretaryLevel($nation);
+            $baseMoney = intdiv($baseMoney * (100 + $level), 100);
+            $baseFood = intdiv($baseFood * (100 + $level), 100);
+        }
+
         return new NationCapacities($baseMoney, $baseFood, $resourceCapacities);
+    }
+
+    private function secretaryLevel(Nation $nation): int
+    {
+        $row = DB::table('nation_memberships as membership')
+            ->join('secretaries as secretary', 'secretary.user_id', '=', 'membership.user_id')
+            ->join('secretary_skills as skill', 'skill.secretary_id', '=', 'secretary.id')
+            ->where('membership.nation_id', $nation->id)
+            ->where('membership.role', 'owner')
+            ->selectRaw('count(skill.id) as skill_count, coalesce(sum(skill.level), 0) as level_total')
+            ->first();
+        $skillCount = (int) $row->skill_count;
+        if ($skillCount === 0) {
+            return 0;
+        }
+        if ($skillCount !== count(SecretarySkillCatalog::KEYS)) {
+            throw new DomainException('Nation owner Secretary passive skills are incomplete.');
+        }
+
+        return (int) $row->level_total;
     }
 }

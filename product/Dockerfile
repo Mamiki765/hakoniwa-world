@@ -44,8 +44,9 @@ RUN chmod +x /usr/local/bin/hakoniwa-entrypoint \
         /var/www/html/storage/logs \
         /var/www/html/bootstrap/cache \
         /srv/bot-assets/hakoniwa-inquiries \
+        /srv/bot-assets/hakoniwa-secretaries \
     && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
-        /srv/bot-assets/hakoniwa-inquiries
+        /srv/bot-assets/hakoniwa-inquiries /srv/bot-assets/hakoniwa-secretaries
 
 WORKDIR /var/www/html
 ENTRYPOINT ["hakoniwa-entrypoint"]

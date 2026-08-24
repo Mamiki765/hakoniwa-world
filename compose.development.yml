@@ -35,6 +35,7 @@ services:
       - ./product/config:/var/www/html/config:ro
       - ./product/database:/var/www/html/database:ro
       - ./product/docs:/var/www/html/docs:ro
+      - ./product/docker:/var/www/html/docker:ro
       - ./product/resources:/var/www/html/resources:ro
       - ./product/routes:/var/www/html/routes:ro
       - ./product/tests:/var/www/html/tests:ro

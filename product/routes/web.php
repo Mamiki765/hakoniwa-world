@@ -30,7 +30,7 @@ Route::post('/logout', [OAuthController::class, 'logout'])->middleware('auth')->
 Route::get('/assets/hakoniwa-tiles/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 Route::get('/assets/hakoniwa-tiles/{theme}/{filename}', AssetController::class)
-    ->where(['theme' => 'snow', 'filename' => '[A-Za-z0-9_-]+\.(?:gif|png|webp)']);
+    ->where(['theme' => 'snow|peridot', 'filename' => '[A-Za-z0-9_-]+\.(?:gif|png|webp)']);
 Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 
@@ -70,12 +70,18 @@ Route::prefix('api/v1/admin')
 
 Route::get('/api/v1/nations/{nation}/message-board', [MessageBoardController::class, 'show'])
     ->middleware(['throttle:60,1', PrivateApiResponse::class]);
+Route::get('/api/v1/secretaries/{secretary}', [SecretaryController::class, 'publicShow'])
+    ->middleware(['throttle:60,1', PrivateApiResponse::class]);
 
 Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(function (): void {
     Route::get('/me', [ApiController::class, 'me']);
     Route::get('/me/secretary', [SecretaryController::class, 'show']);
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
+    Route::patch('/me/secretary/profile', [SecretaryController::class, 'updateProfile']);
+    Route::post('/me/secretary/main-image', [SecretaryController::class, 'storeMainImage']);
+    Route::patch('/me/secretary/main-image', [SecretaryController::class, 'updateMainImageMetadata']);
+    Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
     Route::get('/me/secretary/equipment/{slot}/options', [SecretaryController::class, 'equipmentOptions'])
         ->where('slot', '-?\d+');
     Route::put('/me/secretary/equipment/{slot}', [SecretaryController::class, 'updateEquipment'])

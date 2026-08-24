@@ -19,13 +19,13 @@ docker compose restart hakoniwa-web
 docker compose down
 ```
 
-`docker compose down`はcontainerとnetworkを削除するが、named volume、DBデータ、問い合わせ添付を残す。再度`up -d`すれば同じデータを使用する。
+`docker compose down`はcontainerとnetworkを削除するが、named volume、DBデータ、問い合わせ添付、秘書メイン画像を残す。再度`up -d`すれば同じデータを使用する。
 
 ```console
 docker compose down -v
 ```
 
-`down -v`は`hakoniwa_postgres_data`と`hakoniwa_inquiry_attachments`を削除し、ゲームデータと問い合わせ添付を復元不能にする。初期開発DBの意図的な再作成または復元演習以外では実行しない。DB backupは問い合わせ添付を含まないため、添付消失を許容できない環境では別のbackupが必要である。
+`down -v`は`hakoniwa_postgres_data`、`hakoniwa_inquiry_attachments`、`hakoniwa_secretary_images`を削除し、ゲームデータ、問い合わせ添付、秘書メイン画像を復元不能にする。初期開発DBの意図的な再作成または復元演習以外では実行しない。DB backupは外部画像fileを含まないため、消失を許容できない環境では別のbackupが必要である。
 
 ## 外部tile assetの任意mount
 
@@ -40,11 +40,21 @@ services:
 
 `HAKONIWA_TILE_ASSET_PATH`と`HAKONIWA_TILE_ASSET_BASE_URL`をroot `.env`で環境に合わせる。`compose.yml`は両方を`hakoniwa-web`へ明示転送する。mountがなくてもCSS fallbackで起動する。同名画像の置換は`mtime-size`付きURLへ反映され、image rebuildを必要としない。
 
+ver 2.5.0の秘書画像未設定fallbackは同じread-only asset pathの
+`peridot/peridot.png`（Peridot詳細版）と`peridot/silhouette.png`（silhouette版）を使う。
+これらはOwnerが配置し、Gitやcontainer imageには含めない。未配置時は`No image`となる。
+
 ## 問い合わせ添付のwritable mount
 
 ver 2.2.0の問い合わせ画像は既定で`/srv/bot-assets/hakoniwa-inquiries`へ書き込む。base Composeはwritableな`hakoniwa_inquiry_attachments` named volumeを同pathへmountし、container再作成後もfileを残す。Web containerのApacheは`/hakoniwa-inquiries/`をこのdirectoryへ直接対応させ、directory listing、`.htaccess`、CGI/include実行を無効にしたstatic routeとして配信する。
 
 この既定値はlocal/default stack用であり、productionの外部assets基盤を置き換えない。productionはoperator管理のhost bind mountを採用し、`HAKONIWA_INQUIRY_ATTACHMENT_PATH`と`HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL`を実mountとassets originへ合わせ、Git外のCompose overrideで指定する。assets nginxを使う場合は`product/docker/nginx/hakoniwa-inquiries.conf`のlocation、`autoindex off`、`private, no-store, max-age=0`を維持する。Apacheの既定routeも同じcache禁止と`nosniff`を返す。security/backup/upload-limit/operator手順は`product/docs/ver-2.2.1-correctness-hardening.md`を正本とする。このhost bind mountは永続化先であってbackup保証ではない。
+
+## 秘書メイン画像のwritable public mount
+
+ver 2.5.0の秘書メイン画像は既定で`/srv/bot-assets/hakoniwa-secretaries`へ書き込む。base Composeは`hakoniwa_secretary_images` named volumeを同pathへmountし、Apacheは`/hakoniwa-secretaries/`をdirectory listing、`.htaccess`、CGI/include実行なしのstatic routeとして配信する。各置換で新しい256-bit filenameを発行し旧fileを削除するため、個々のURLは`public, max-age=31536000, immutable`と`nosniff`で配信する。
+
+productionではoperator管理のhost bind mountを使い、`HAKONIWA_SECRETARY_IMAGE_PATH`と`HAKONIWA_SECRETARY_IMAGE_BASE_URL`を実mountとpublic assets originへ合わせる。nginxでは`product/docker/nginx/hakoniwa-secretaries.conf`のalias、`autoindex off`、immutable cache、`nosniff`を維持する。このdirectoryは公開画像だけに限定し、問い合わせ添付と同じpathやcache policyへ統合しない。永続mountはbackup保証ではなく、DB rowと対応する画像fileを同じ復旧点として別途保護する。
 
 首都画像を表示する環境は同じdirectoryへ`capital.gif`を配置する。旧名`capital.png`はmanifestで参照しない。GIFがない場合は首都のCSS fallbackを使い、API・map・healthcheckを失敗させない。
 

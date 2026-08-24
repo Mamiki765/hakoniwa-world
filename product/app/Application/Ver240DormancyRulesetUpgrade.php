@@ -59,7 +59,7 @@ final readonly class Ver240DormancyRulesetUpgrade
             $this->lockBusinessTables();
             $worlds = World::query()->orderBy('id')->lockForUpdate()->get(['id', 'key', 'current_turn', 'ruleset_version_id']);
             if ($worlds->isEmpty()) {
-                if (RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v13')->exists()) {
+                if (RulesetVersion::query()->where('version', '>', self::TARGET_VERSION)->exists()) {
                     return 'fresh_install_future_current';
                 }
                 $this->catalogs->assertInstalled($targetSettings);

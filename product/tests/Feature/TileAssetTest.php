@@ -24,12 +24,14 @@ class TileAssetTest extends TestCase
 
     protected function tearDown(): void
     {
-        $snowDirectory = $this->assetDirectory.DIRECTORY_SEPARATOR.'snow';
-        foreach (glob($snowDirectory.DIRECTORY_SEPARATOR.'*') ?: [] as $file) {
-            unlink($file);
-        }
-        if (is_dir($snowDirectory)) {
-            rmdir($snowDirectory);
+        foreach (['snow', 'peridot'] as $directory) {
+            $assetSubdirectory = $this->assetDirectory.DIRECTORY_SEPARATOR.$directory;
+            foreach (glob($assetSubdirectory.DIRECTORY_SEPARATOR.'*') ?: [] as $file) {
+                unlink($file);
+            }
+            if (is_dir($assetSubdirectory)) {
+                rmdir($assetSubdirectory);
+            }
         }
         foreach (glob($this->assetDirectory.DIRECTORY_SEPARATOR.'*') ?: [] as $file) {
             unlink($file);
@@ -94,12 +96,19 @@ class TileAssetTest extends TestCase
     public function test_snow_theme_uses_only_same_basename_allowlisted_overrides_and_falls_back_to_normal(): void
     {
         mkdir($this->assetDirectory.DIRECTORY_SEPARATOR.'snow', 0777, true);
-        config(['hakoniwa.assets.themes.snow' => 'snow']);
+        mkdir($this->assetDirectory.DIRECTORY_SEPARATOR.'peridot', 0777, true);
+        config([
+            'hakoniwa.assets.themes.snow' => 'snow',
+            'hakoniwa.assets.themes.peridot' => 'peridot',
+        ]);
         foreach (['land0.gif', 'land1.gif', 'capital.gif', 'monument.png'] as $filename) {
             $this->writeGif($filename);
         }
         foreach (['snow/land1.gif', 'snow/monument0.gif'] as $filename) {
             $this->writeGif($filename);
+        }
+        foreach (['peridot/peridot.png', 'peridot/silhouette.png'] as $filename) {
+            $this->writePng($filename);
         }
         $resolver = app(AssetManifestResolver::class);
 
@@ -116,6 +125,18 @@ class TileAssetTest extends TestCase
         $this->get('/assets/hakoniwa-tiles/snow/land1.gif')->assertOk()
             ->assertHeader('Content-Type', 'image/gif');
         $this->get('/assets/hakoniwa-tiles/snow/land0.gif')->assertNotFound();
+        $this->assertStringContainsString(
+            '/peridot/peridot.png?v=',
+            (string) $resolver->secretaryFallbackUrl('peridot'),
+        );
+        $this->assertStringContainsString(
+            '/peridot/silhouette.png?v=',
+            (string) $resolver->secretaryFallbackUrl('silhouette'),
+        );
+        $this->assertNull($resolver->secretaryFallbackUrl('unknown'));
+        $this->assertNull($resolver->pathForFilename('unknown.png', 'peridot'));
+        $this->get('/assets/hakoniwa-tiles/peridot/peridot.png')->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
     }
 
     public function test_awards_use_only_the_allowlisted_original_prize_zero_through_ten_assets(): void
@@ -174,6 +195,19 @@ class TileAssetTest extends TestCase
         $this->assertIsString($gif);
         $path = $this->assetDirectory.DIRECTORY_SEPARATOR.$filename;
         file_put_contents($path, $gif);
+
+        return $path;
+    }
+
+    private function writePng(string $filename): string
+    {
+        $png = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            true,
+        );
+        $this->assertIsString($png);
+        $path = $this->assetDirectory.DIRECTORY_SEPARATOR.$filename;
+        file_put_contents($path, $png);
 
         return $path;
     }
