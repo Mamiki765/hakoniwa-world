@@ -63,16 +63,19 @@ const unnamedSecretaryFixture: Secretary = {
         id: 11,
         name: null,
         is_owner: true,
+        domestic_level: 1,
         secretary_level: 1,
         passive_level_total: 1,
         capacity_bonus_percent: 1,
+        monster_experience: 0,
         biography: '',
         main_image: {
             display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null,
         },
         editable_image_metadata: null,
         viewer_preferences: {
-            configured: false, show_ai_generated_images: null, fallback: null, can_update: true,
+            configured: false, show_ai_generated_images: null,
+            own_secretary_fallback: null, fallback: null, can_update: true,
         },
         equipment: {
             slot_count: 5,
@@ -793,7 +796,8 @@ describe('application lobby and island entry', () => {
                 is_owner: false,
                 biography: "公開経歴1行目\n公開経歴2行目",
                 viewer_preferences: {
-                    configured: false, show_ai_generated_images: null, fallback: null, can_update: false,
+                    configured: false, show_ai_generated_images: null,
+                    own_secretary_fallback: null, fallback: null, can_update: false,
                 },
             });
             return response(null, 404);
@@ -1105,6 +1109,27 @@ describe('application lobby and island entry', () => {
 
                 return response({ ...secretary.profile, name: secretary.name, is_owner: true });
             }
+            if (path === '/api/v1/me/secretary/image-preferences' && init?.method === 'PATCH') {
+                const body = JSON.parse(String(init.body)) as {
+                    show_ai_generated_images: boolean;
+                    own_secretary_fallback: 'silhouette' | 'peridot';
+                };
+                secretary = {
+                    ...secretary,
+                    profile: {
+                        ...secretary.profile,
+                        viewer_preferences: {
+                            configured: true,
+                            show_ai_generated_images: body.show_ai_generated_images,
+                            own_secretary_fallback: body.own_secretary_fallback,
+                            fallback: body.own_secretary_fallback,
+                            can_update: true,
+                        },
+                    },
+                };
+
+                return response(secretary.profile.viewer_preferences);
+            }
             if (path === '/api/v1/secretaries/11?world_id=1') {
                 return response({ ...secretary.profile, name: secretary.name, is_owner: true });
             }
@@ -1136,10 +1161,23 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.secretary-story').exists()).toBe(false);
         expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
         expect(wrapper.get('.secretary-name').text()).toBe('ペリドット');
-        expect(wrapper.get('.secretary-main-profile').text()).toContain('秘書Lv1');
-        expect(wrapper.get('.secretary-main-profile').text()).toContain('資金capacity+1%');
+        expect(wrapper.get('.secretary-main-profile').text()).toContain('内政Lv1');
+        expect(wrapper.get('.secretary-main-profile').text()).toContain('資金・食糧最大+1%');
+        expect(wrapper.get('.secretary-main-profile').text()).toContain('討伐経験値0');
         expect(wrapper.get('.secretary-no-image').text()).toBe('No image');
-        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('秘書画像の表示設定が未設定です');
+        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('秘書画像設定が未設定です');
+        await wrapper.get('.secretary-image-preference-notice button').trigger('click');
+        expect(wrapper.get('.secretary-profile-modal').text()).toContain('閲覧するAI生成画像');
+        expect(wrapper.get('.secretary-profile-modal').text()).toContain('自分の秘書が画像未設定のとき');
+        await wrapper.get('.secretary-profile-modal form').trigger('submit');
+        await flushPromises();
+        const imagePreferenceRequest = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/secretary/image-preferences' && init?.method === 'PATCH'
+        ));
+        expect(JSON.parse(String(imagePreferenceRequest?.[1]?.body))).toEqual({
+            show_ai_generated_images: true,
+            own_secretary_fallback: 'silhouette',
+        });
         await wrapper.get('.secretary-biography textarea').setValue('更新した経歴');
         await wrapper.get('.secretary-biography form').trigger('submit');
         await flushPromises();

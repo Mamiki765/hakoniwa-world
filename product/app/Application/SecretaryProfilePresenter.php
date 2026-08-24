@@ -14,6 +14,7 @@ final readonly class SecretaryProfilePresenter
     public function __construct(
         private SecretaryItemPresenter $items,
         private AssetManifestResolver $assets,
+        private SecretarySkillCatalog $catalog,
     ) {}
 
     /** @return array<string, mixed> */
@@ -22,28 +23,40 @@ final readonly class SecretaryProfilePresenter
         ?User $viewer,
         ?SecretaryItemEffectProjection $projection = null,
     ): array {
-        $secretary->loadMissing(['skills', 'itemInstances']);
+        $secretary->loadMissing(['skills', 'itemInstances', 'user']);
         $skillRows = $secretary->skills->keyBy('skill_key');
         $actualKeys = $skillRows->keys()->sort()->values()->all();
-        $expectedKeys = collect(SecretarySkillCatalog::KEYS)->sort()->values()->all();
+        $ruleset = config('hakoniwa.ruleset');
+        if (! is_array($ruleset)) {
+            throw new DomainException('The current immutable Secretary ruleset contract is missing.');
+        }
+        $expectedKeys = collect(array_keys($this->catalog->definitions($ruleset)))->sort()->values()->all();
         if ($actualKeys !== $expectedKeys) {
             throw new DomainException("Secretary {$secretary->id} has an invalid passive skill catalog.");
         }
         $level = (int) $skillRows->sum('level');
         $isOwner = $viewer instanceof User && (int) $viewer->id === (int) $secretary->user_id;
-        $preferencesConfigured = $viewer instanceof User
+        $targetOwner = $secretary->user;
+        $viewerPreferencesConfigured = $viewer instanceof User
             && $viewer->show_ai_generated_secretary_images !== null
             && $viewer->secretary_image_fallback !== null;
-        $image = $this->image($secretary, $viewer, $preferencesConfigured);
+        $image = $this->image(
+            $secretary,
+            $viewer,
+            $viewerPreferencesConfigured,
+            $targetOwner->secretary_image_fallback,
+        );
         $equipment = $this->items->present($secretary, $projection)['equipment'];
 
         return [
             'id' => $secretary->id,
             'name' => $secretary->name,
             'is_owner' => $isOwner,
+            'domestic_level' => $level,
             'secretary_level' => $level,
             'passive_level_total' => $level,
             'capacity_bonus_percent' => $level,
+            'monster_experience' => (int) $secretary->monster_experience,
             'biography' => $secretary->profile_biography,
             'main_image' => $image,
             'editable_image_metadata' => $isOwner && $secretary->main_image_path !== null ? [
@@ -51,11 +64,14 @@ final readonly class SecretaryProfilePresenter
                 'credit' => $secretary->main_image_credit,
             ] : null,
             'viewer_preferences' => [
-                'configured' => $preferencesConfigured,
-                'show_ai_generated_images' => $preferencesConfigured
+                'configured' => $viewerPreferencesConfigured,
+                'show_ai_generated_images' => $viewerPreferencesConfigured
                     ? $viewer->show_ai_generated_secretary_images
                     : null,
-                'fallback' => $preferencesConfigured ? $viewer->secretary_image_fallback : null,
+                'own_secretary_fallback' => $viewerPreferencesConfigured
+                    ? $viewer->secretary_image_fallback
+                    : null,
+                'fallback' => $viewerPreferencesConfigured ? $viewer->secretary_image_fallback : null,
                 'can_update' => $viewer instanceof User,
             ],
             'equipment' => $equipment,
@@ -63,14 +79,18 @@ final readonly class SecretaryProfilePresenter
     }
 
     /** @return array<string, mixed> */
-    private function image(Secretary $secretary, ?User $viewer, bool $preferencesConfigured): array
-    {
-        if (! $preferencesConfigured) {
+    private function image(
+        Secretary $secretary,
+        ?User $viewer,
+        bool $viewerPreferencesConfigured,
+        ?string $targetOwnerFallback,
+    ): array {
+        if (! $viewerPreferencesConfigured) {
             return $this->noImage();
         }
         if ($secretary->main_image_path === null) {
             return $viewer?->show_ai_generated_secretary_images === true
-                ? $this->fallbackImage((string) $viewer->secretary_image_fallback)
+                ? $this->fallbackImage((string) $targetOwnerFallback)
                 : $this->noImage();
         }
         if ($secretary->main_image_creation_method === 'ai_generated'

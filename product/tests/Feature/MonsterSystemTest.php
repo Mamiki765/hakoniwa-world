@@ -584,6 +584,8 @@ class MonsterSystemTest extends TestCase
         $cell = $this->ownedNonCapitalCell($nation);
         $this->setCell($cell, 'wasteland', null, $nation->id, 0);
         $monster = $this->createMonster($world, $ruleset, $cell, 'sanjira', 2);
+        $base = $this->ownedNonCapitalCell($nation);
+        $this->setCell($base, 'plain', 'missile_base', $nation->id, 0);
         [$context] = $this->context($world, $ruleset, 3, 'hardened-odd', [$nation->id]);
         $turn = app(MonsterTurnService::class);
         $batch = $turn->load($context);
@@ -596,13 +598,16 @@ class MonsterSystemTest extends TestCase
             1,
             'monster_missile',
             $nation,
-            null,
+            $base,
             $cell,
             $context,
         );
 
         $this->assertSame(0, $batch->metrics()['monster_moves']);
         $this->assertSame('blocked_hardened', $damage->status);
+        $this->assertSame(0, $damage->actualDamage);
+        $this->assertSame(0, $damage->firingBaseExperienceApplied);
+        $this->assertSame(0, $base->fresh()->facility_experience);
         $this->assertSame(2, $monster->fresh()->current_hp);
         $this->assertSame($cell->id, $monster->fresh()->occupancy()->value('map_cell_id'));
         $this->assertSame(0, NationMonsterKillStat::query()->count());
@@ -876,7 +881,7 @@ class MonsterSystemTest extends TestCase
 
         $result = app(MonsterDamageService::class)->applyDamage(
             $monster,
-            3,
+            30,
             'monster_missile',
             $killer,
             $base,
@@ -894,6 +899,9 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(250_000, $result->hostMeat['requested']);
         $this->assertSame(10_099, $result->hostMeat['applied']);
         $this->assertSame(239_901, $result->hostMeat['overflow']);
+        $this->assertSame(3, $result->actualDamage);
+        $this->assertSame(4, $result->experiencePerDamage);
+        $this->assertSame(12, $result->firingBaseExperienceRequested);
         $this->assertSame(5, $result->firingBaseExperienceApplied);
         $this->assertSame(10_000, (int) $killer->fresh()->money);
         $this->assertSame(10_099, NationResource::query()->where('nation_id', $host->id)

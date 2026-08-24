@@ -12,13 +12,24 @@ final class SecretarySkillCatalog
 
     public const GOLD_VEIN_SURVEY = 'gold_vein_survey';
 
+    public const FOREST_MANAGEMENT = 'forest_management';
+
     public const FINAL_DEFENSE_LINE = 'final_defense_line';
+
+    /** @var list<string> */
+    public const V14_KEYS = [
+        self::AGRICULTURAL_POLICY,
+        self::SPECIALTY_DEVELOPMENT,
+        self::GOLD_VEIN_SURVEY,
+        self::FINAL_DEFENSE_LINE,
+    ];
 
     /** @var list<string> */
     public const KEYS = [
         self::AGRICULTURAL_POLICY,
         self::SPECIALTY_DEVELOPMENT,
         self::GOLD_VEIN_SURVEY,
+        self::FOREST_MANAGEMENT,
         self::FINAL_DEFENSE_LINE,
     ];
 
@@ -30,17 +41,17 @@ final class SecretarySkillCatalog
     {
         $definitions = $ruleset['secretary']['skills'] ?? null;
         if (! is_array($definitions)) {
-            throw new DomainException('The active ruleset must define the exact Secretary v1 skill catalog.');
+            throw new DomainException('The active ruleset must define its exact Secretary skill catalog.');
         }
         $actualKeys = array_keys($definitions);
-        $expectedKeys = self::KEYS;
+        $expectedKeys = $this->keysForRuleset($ruleset);
         sort($actualKeys);
         sort($expectedKeys);
         if ($actualKeys !== $expectedKeys) {
-            throw new DomainException('The active ruleset must define the exact Secretary v1 skill catalog.');
+            throw new DomainException('The active ruleset must define its exact Secretary skill catalog.');
         }
         $ordered = [];
-        foreach (self::KEYS as $key) {
+        foreach ($this->keysForRuleset($ruleset) as $key) {
             $definition = $definitions[$key] ?? null;
             if (! is_array($definition) || ($definition['key'] ?? null) !== $key) {
                 throw new DomainException("Secretary skill {$key} has an invalid definition.");
@@ -57,7 +68,7 @@ final class SecretarySkillCatalog
      */
     public function definition(array $ruleset, string $skillKey): array
     {
-        if (! in_array($skillKey, self::KEYS, true)) {
+        if (! in_array($skillKey, $this->keysForRuleset($ruleset), true)) {
             throw new DomainException("Unknown Secretary skill {$skillKey}.");
         }
 
@@ -80,5 +91,18 @@ final class SecretarySkillCatalog
         }
 
         return $states;
+    }
+
+    /** @param array<string, mixed> $ruleset
+     * @return list<string>
+     */
+    private function keysForRuleset(array $ruleset): array
+    {
+        $version = $ruleset['version'] ?? null;
+        if (! is_int($version) || $version < 1) {
+            throw new DomainException('The active ruleset has an invalid Secretary catalog version.');
+        }
+
+        return $version >= 15 ? self::KEYS : self::V14_KEYS;
     }
 }

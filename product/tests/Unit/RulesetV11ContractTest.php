@@ -17,25 +17,34 @@ final class RulesetV11ContractTest extends TestCase
 
     public const V14_CHECKSUM = 'af9afe5bf055f4d2ecc4349de058f6dfc6281194dd3d52238167ced07c9d8274';
 
+    public const V15_CHECKSUM = 'd361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70';
+
     public function test_normal_config_loads_only_the_standalone_current_payload(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
-        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v14.php'));
+        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v15.php'));
 
         $this->assertIsString($source);
         $this->assertDoesNotMatchRegularExpression('/\brequire\b/', $source);
-        $this->assertSame(['hakoniwa-2s-plus-v14'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v14']);
+        $this->assertSame(['hakoniwa-2s-plus-v15'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v15']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
         $this->assertSame(
-            self::V14_CHECKSUM,
+            self::V15_CHECKSUM,
             hash('sha256', json_encode($current, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
 
         $upgradeRulesets = app(RulesetUpgradeAuthoringCatalog::class)->all();
-        $this->assertCount(24, $upgradeRulesets);
-        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v14']);
+        $this->assertCount(25, $upgradeRulesets);
+        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v15']);
+        $this->assertSame(
+            self::V14_CHECKSUM,
+            hash('sha256', json_encode(
+                $upgradeRulesets['hakoniwa-2s-plus-v14'],
+                JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
+            )),
+        );
         $this->assertSame(
             self::V12_CHECKSUM,
             hash('sha256', json_encode(
@@ -51,8 +60,8 @@ final class RulesetV11ContractTest extends TestCase
         $this->assertIsArray($settings);
         $this->assertSame('hakoniwa-2s-plus-v11', $settings['key']);
         $this->assertSame(11, $settings['version']);
-        $this->assertSame('hakoniwa-2s-plus-v14', config('hakoniwa.ruleset.key'));
-        $this->assertSame(14, config('hakoniwa.ruleset.version'));
+        $this->assertSame('hakoniwa-2s-plus-v15', config('hakoniwa.ruleset.key'));
+        $this->assertSame(15, config('hakoniwa.ruleset.version'));
         $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
         $this->assertSame(
             [
@@ -60,6 +69,7 @@ final class RulesetV11ContractTest extends TestCase
                 '2026_08_23_000000_add_nation_dormancy_and_publish_v12.php',
                 '2026_08_23_010000_add_nation_karma_and_publish_v13.php',
                 '2026_08_24_000000_add_secretary_profiles_and_publish_v14.php',
+                '2026_08_24_010000_add_monster_experience_and_publish_v15.php',
             ],
             array_map('basename', glob(database_path('migrations/*.php')) ?: []),
         );
@@ -143,5 +153,36 @@ final class RulesetV11ContractTest extends TestCase
         $this->assertSame(1, $settings['secretary']['items']['ring']['effects'][0]['bonus_money_per_level']);
         $this->assertSame('after_ordinary_surface_cell_events',
             $settings['turn_resolution']['normal_monster_stage']);
+
+        $v15 = app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v15');
+        $this->assertSame([
+            'mecha_inora' => 3,
+            'mecha_inora_zero' => 9,
+            'inora' => 4,
+            'sanjira' => 5,
+            'red_inora' => 4,
+            'dark_inora' => 6,
+            'aoi_inora' => 8,
+            'inora_ghost' => 10,
+            'whale' => 5,
+            'king_inora' => 6,
+        ], collect($v15['monster_definitions'])->mapWithKeys(
+            static fn (array $monster): array => [$monster['key'] => $monster['experience_per_damage']],
+        )->all());
+        $this->assertSame(
+            'actual_damage_times_monster_definition.experience_per_damage',
+            $v15['military']['launch_base_experience']['monster_damage_experience'],
+        );
+        $this->assertSame(0, $v15['military']['launch_base_experience']['monster_final_blow_experience']);
+        $forestManagement = $v15['secretary']['skills']['forest_management'];
+        $this->assertSame([
+            'type' => 'forest_management',
+            'percent_per_level' => 1,
+            'rounding' => 'floor_after_multiplier',
+            'logging_base' => 'canonical_logging_income',
+            'forest_growth_base' => 'terrain_quantities.forest.growth_increment',
+        ], $forestManagement['effect']);
+        $this->assertSame(['logging', 'plant_forest'], $forestManagement['experience_source']['command_keys']);
+        $this->assertFalse($forestManagement['experience_source']['historical_backfill']);
     }
 }

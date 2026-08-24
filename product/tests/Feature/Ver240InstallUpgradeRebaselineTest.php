@@ -8,10 +8,13 @@ use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
 use App\Application\Ver240DormancyRulesetUpgrade;
 use App\Application\Ver240KarmaRecoveryRulesetUpgrade;
+use App\Application\Ver250MonsterExperienceRulesetUpgrade;
 use App\Application\Ver250SecretaryProfileRulesetUpgrade;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\CommandDefinition;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
@@ -47,6 +50,8 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
     private const SECRETARY_PROFILE_MIGRATION = '2026_08_24_000000_add_secretary_profiles_and_publish_v14';
 
+    private const MONSTER_EXPERIENCE_MIGRATION = '2026_08_24_010000_add_monster_experience_and_publish_v15';
+
     public function test_supported_v11_source_upgrade_preserves_provenance_and_remains_runnable(): void
     {
         [$world, $item, $target] = $this->supportedSourceWithQueuedCommand();
@@ -57,28 +62,38 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             self::MIGRATION,
             self::KARMA_MIGRATION,
             self::SECRETARY_PROFILE_MIGRATION,
+            self::MONSTER_EXPERIENCE_MIGRATION,
         ])->delete();
         $fingerprint = $item->fresh()->request_fingerprint;
         $idleCounter = (int) $world->nations()->sole()->idle_counter;
         $this->assertSame(100, $idleCounter);
-        $secretaryDigest = $this->secretaryDigest();
+        $secretaryDigest = $this->legacySecretaryDigest();
 
         $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
 
         $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
         $this->assertSame(100, (int) $world->nations()->sole()->idle_counter);
-        $this->assertSame($secretaryDigest, $this->secretaryDigest());
-        $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertSame($secretaryDigest, $this->legacySecretaryDigest());
+        $secretaryId = (int) DB::table('secretaries')->sole()->id;
+        $this->assertDatabaseHas('secretary_skills', [
+            'secretary_id' => $secretaryId,
+            'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+            'level' => 0,
+            'experience' => 0,
+        ]);
+        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY, $world->fresh()->rulesetVersion()->value('key'));
         $this->assertSame(
-            Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY,
+            Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY,
             $item->fresh()->definition()->firstOrFail()->rulesetVersion()->value('key'),
         );
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v12_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v13_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v14_activated', 'visibility' => 'admin']);
+        $this->assertDatabaseHas('audit_events', ['event_type' => 'ruleset.v15_activated', 'visibility' => 'admin']);
         $this->assertDatabaseHas('migrations', ['migration' => self::MIGRATION]);
         $this->assertDatabaseHas('migrations', ['migration' => self::KARMA_MIGRATION]);
         $this->assertDatabaseHas('migrations', ['migration' => self::SECRETARY_PROFILE_MIGRATION]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::MONSTER_EXPERIENCE_MIGRATION]);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
@@ -116,6 +131,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             self::MIGRATION,
             self::KARMA_MIGRATION,
             self::SECRETARY_PROFILE_MIGRATION,
+            self::MONSTER_EXPERIENCE_MIGRATION,
         ])->delete();
         $requestKey = $item->fresh()->request_key;
 
@@ -129,7 +145,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame($requestKey, $item->fresh()->request_key);
         $this->assertSame($v10->id, $item->fresh()->request_ruleset_version_id);
         $this->assertSame(10, $item->fresh()->queue_position);
-        $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
+        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY, $item->fresh()->definition->rulesetVersion->key);
 
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
@@ -137,7 +153,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame('mine', $target->fresh()->facility()->value('key'));
     }
 
-    public function test_exact_v12_to_v13_preserves_live_state_then_advances_to_v14_and_runs_a_turn(): void
+    public function test_exact_v12_to_v13_preserves_live_state_then_advances_to_v15_and_runs_a_turn(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -286,6 +302,17 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             $world->fresh()->rulesetVersion()->value('key'),
         );
 
+        DB::table('migrations')->where('migration', self::MONSTER_EXPERIENCE_MIGRATION)->delete();
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::MONSTER_EXPERIENCE_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+        $this->assertSame(
+            Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY,
+            $world->fresh()->rulesetVersion()->value('key'),
+        );
+
         $postUpgradeRun = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $postUpgradeRun->status);
         $this->assertSame('completed', $queued->fresh()->status);
@@ -309,11 +336,11 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertDatabaseMissing('migrations', ['migration' => self::KARMA_MIGRATION]);
     }
 
-    public function test_exact_v13_to_v14_preserves_secretary_and_user_state_then_runs_a_turn(): void
+    public function test_exact_v13_through_v15_preserves_profile_backfills_one_historical_old_bow_kill_and_reruns_once(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
-        app(NationCreationService::class)->create($owner, $world, 'v14移行国', 'v14移行島主');
+        $nation = app(NationCreationService::class)->create($owner, $world, 'v14移行国', 'v14移行島主');
         $secretary = $owner->secretary()->firstOrFail();
         $secretary->update([
             'name' => 'v14移行秘書',
@@ -352,6 +379,175 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             'event_type' => 'ruleset.v14_activated',
             'visibility' => 'admin',
         ]);
+        $legacySkillValues = [
+            SecretarySkillCatalog::AGRICULTURAL_POLICY => ['level' => 2, 'experience' => 3],
+            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => ['level' => 4, 'experience' => 5],
+            SecretarySkillCatalog::GOLD_VEIN_SURVEY => ['level' => 6, 'experience' => 7],
+            SecretarySkillCatalog::FINAL_DEFENSE_LINE => ['level' => 8, 'experience' => 9],
+        ];
+        foreach ($legacySkillValues as $skillKey => $values) {
+            $secretary->skills()->where('skill_key', $skillKey)->update($values);
+        }
+
+        $historicalBase = MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->whereIn('key', ['plain', 'wasteland']))
+            ->with(['terrain', 'facility'])
+            ->orderBy('id')
+            ->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $historicalBase,
+            FacilityDefinition::query()->where('key', 'missile_base')->firstOrFail(),
+            experience: 73,
+        );
+        $historicalBase->save();
+
+        DB::table('migrations')->where('migration', self::MONSTER_EXPERIENCE_MIGRATION)->delete();
+        $unresolved = TurnRun::query()->create($this->turnRunState(
+            $world->id,
+            $world->fresh()->ruleset_version_id,
+            TurnRun::STATUS_PENDING,
+            false,
+        ));
+        $this->assertMonsterExperienceMigrationBlocked('status pending');
+        $this->assertSame(
+            Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY,
+            $world->fresh()->rulesetVersion()->value('key'),
+        );
+        $this->assertSame(73, (int) $historicalBase->fresh()->facility_experience);
+        $this->assertDatabaseMissing('secretary_skills', [
+            'secretary_id' => $secretary->id,
+            'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+        ]);
+        $unresolved->delete();
+
+        $v14Definition = MonsterDefinition::query()
+            ->where('ruleset_version_id', $world->fresh()->ruleset_version_id)
+            ->where('key', 'king_inora')->sole();
+        $historicalMonster = MonsterInstance::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $v14Definition->id,
+            'current_hp' => 0,
+            'spawned_max_hp' => (int) $v14Definition->base_hp,
+            'state' => 'killed',
+            'spawned_target_turn' => 1,
+            'version' => 2,
+            'removal_reason' => 'secretary_old_bow',
+            'removed_at' => now(),
+        ]);
+        $validMetadata = [
+            'monster_instance_id' => $historicalMonster->id,
+            'monster_definition_key' => $v14Definition->key,
+            'killer_nation_id' => $nation->id,
+            'damage_type' => 'secretary_old_bow',
+            'before_hp' => 1,
+            'after_hp' => 0,
+        ];
+        $malformedMetadata = $validMetadata;
+        $malformedMetadata['monster_definition_key'] = 'ambiguous-history';
+        $now = now();
+        $killEventId = DB::table('audit_events')->insertGetId([
+            'actor_user_id' => null,
+            'world_id' => $world->id,
+            'turn' => 1,
+            'nation_id' => $nation->id,
+            'x' => null,
+            'y' => null,
+            'message' => null,
+            'visibility' => 'private',
+            'event_type' => 'monster.killed',
+            'severity' => 'info',
+            'subject_type' => MonsterInstance::class,
+            'subject_id' => $historicalMonster->id,
+            'metadata' => json_encode($malformedMetadata, JSON_THROW_ON_ERROR),
+            'occurred_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        DB::table('audit_events')->insert([
+            'actor_user_id' => null,
+            'world_id' => $world->id,
+            'turn' => 1,
+            'nation_id' => $nation->id,
+            'x' => null,
+            'y' => null,
+            'message' => null,
+            'visibility' => 'private',
+            'event_type' => 'monster.damaged',
+            'severity' => 'info',
+            'subject_type' => MonsterInstance::class,
+            'subject_id' => $historicalMonster->id,
+            'metadata' => json_encode([
+                ...$validMetadata,
+                'before_hp' => 2,
+                'after_hp' => 1,
+            ], JSON_THROW_ON_ERROR),
+            'occurred_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        DB::table('migrations')->where('migration', self::MONSTER_EXPERIENCE_MIGRATION)->delete();
+
+        $this->assertMonsterExperienceMigrationBlocked('cannot be attributed to exactly one historical Secretary');
+        $this->assertSame(0, (int) $secretary->fresh()->monster_experience);
+        $this->assertDatabaseMissing('secretary_skills', [
+            'secretary_id' => $secretary->id,
+            'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+        ]);
+        $this->assertSame(
+            Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY,
+            $world->fresh()->rulesetVersion()->value('key'),
+        );
+        $this->assertDatabaseMissing('migrations', ['migration' => self::MONSTER_EXPERIENCE_MIGRATION]);
+
+        DB::table('audit_events')->where('id', $killEventId)->update([
+            'metadata' => json_encode($validMetadata, JSON_THROW_ON_ERROR),
+            'updated_at' => now(),
+        ]);
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::MONSTER_EXPERIENCE_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $expectedBackfill = (int) $v14Definition->missile_base_experience;
+        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY,
+            $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertSame($expectedBackfill, (int) $secretary->fresh()->monster_experience);
+        $this->assertSame(73, (int) $historicalBase->fresh()->facility_experience);
+        $skills = $secretary->skills()->get()->keyBy('skill_key');
+        $this->assertSame(
+            collect(SecretarySkillCatalog::KEYS)->sort()->values()->all(),
+            $skills->keys()->sort()->values()->all(),
+        );
+        foreach ($legacySkillValues as $skillKey => $values) {
+            $this->assertSame($values['level'], (int) $skills[$skillKey]->level);
+            $this->assertSame($values['experience'], (int) $skills[$skillKey]->experience);
+        }
+        $this->assertSame(0, (int) $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]->level);
+        $this->assertSame(0, (int) $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]->experience);
+        $activation = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'ruleset.v15_activated')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $activation['old_bow_kill_count']);
+        $this->assertSame(1, $activation['old_bow_secretary_count']);
+        $this->assertSame($expectedBackfill, $activation['old_bow_monster_experience_total']);
+        $this->assertTrue($activation['historical_facility_experience_preserved']);
+        $this->assertSame(1, $activation['forest_management_skill_rows_added']);
+        $this->assertTrue($activation['existing_secretary_skills_preserved']);
+        $this->assertFalse($activation['historical_forest_management_backfill']);
+        $this->assertNull($v14Definition->fresh()->experience_per_damage);
+
+        DB::table('migrations')->where('migration', self::MONSTER_EXPERIENCE_MIGRATION)->delete();
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::MONSTER_EXPERIENCE_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+        $this->assertSame($expectedBackfill, (int) $secretary->fresh()->monster_experience);
+        $this->assertSame(73, (int) $historicalBase->fresh()->facility_experience);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v15_activated')->count());
+
         $run = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
     }
@@ -487,6 +683,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $v11 = app(RulesetPublisher::class)->publish(
             app(RulesetUpgradeAuthoringCatalog::class)->get(Ver240DormancyRulesetUpgrade::SOURCE_KEY),
         );
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v11): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
             DB::update(<<<'SQL'
@@ -513,6 +710,7 @@ SQL, [$v11->id, $world->id]);
         $v12 = app(RulesetPublisher::class)->publish(
             require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v12.php'),
         );
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v12): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
             DB::statement('ALTER TABLE monster_instances DISABLE TRIGGER monster_instance_world_ruleset_guard');
@@ -565,6 +763,7 @@ SQL, [$v12->id, $world->id]);
         $v13 = app(RulesetPublisher::class)->publish(
             require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v13.php'),
         );
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)->delete();
         DB::transaction(function () use ($world, $v13): void {
             DB::statement('SET CONSTRAINTS nation_command_queue_items_world_ruleset_match DEFERRED');
             DB::statement('ALTER TABLE monster_instances DISABLE TRIGGER monster_instance_world_ruleset_guard');
@@ -623,6 +822,17 @@ SQL, [$v13->id, $world->id]);
         ], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
     }
 
+    private function legacySecretaryDigest(): string
+    {
+        return hash('sha256', json_encode([
+            'secretaries' => DB::table('secretaries')->orderBy('id')->get()->all(),
+            'skills' => DB::table('secretary_skills')
+                ->whereIn('skill_key', SecretarySkillCatalog::V14_KEYS)
+                ->orderBy('id')->get()->all(),
+            'items' => DB::table('secretary_item_instances')->orderBy('id')->get()->all(),
+        ], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+    }
+
     /** @return array<string, string> */
     private function businessSnapshot(): array
     {
@@ -665,6 +875,20 @@ SQL, [$v13->id, $world->id]);
                 '--no-interaction' => true,
             ])->execute();
             $this->fail('Expected the exact v12 to v13 migration preflight to block the upgrade.');
+        } catch (Throwable $exception) {
+            $this->assertStringContainsString($expectedMessage, $exception->getMessage());
+        }
+    }
+
+    private function assertMonsterExperienceMigrationBlocked(string $expectedMessage): void
+    {
+        try {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/'.self::MONSTER_EXPERIENCE_MIGRATION.'.php',
+                '--force' => true,
+                '--no-interaction' => true,
+            ])->execute();
+            $this->fail('Expected the exact v14 to v15 migration preflight to block the upgrade.');
         } catch (Throwable $exception) {
             $this->assertStringContainsString($expectedMessage, $exception->getMessage());
         }

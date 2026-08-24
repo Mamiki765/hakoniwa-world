@@ -16,7 +16,7 @@ class RulesetAuthoringValidatorTest extends TestCase
         $validator = app(RulesetAuthoringValidator::class);
         $rulesets = app(RulesetUpgradeAuthoringCatalog::class)->all();
 
-        $this->assertCount(24, $rulesets);
+        $this->assertCount(25, $rulesets);
         foreach ($rulesets as $key => $settings) {
             $summary = $validator->validate($settings);
             $this->assertSame($key, $summary['key']);

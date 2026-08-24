@@ -56,6 +56,17 @@ final readonly class Ver240InstallUpgradeRebaseline
         return DB::transaction(function () use ($sourceSettings, $currentSettings): string {
             $this->lockBusinessTables();
             if ($this->isFreshDatabase()) {
+                $monsterDefinitions = $currentSettings['monster_definitions'] ?? [];
+                $authorsMonsterDamageExperience = false;
+                foreach (is_array($monsterDefinitions) ? $monsterDefinitions : [] as $definition) {
+                    if (is_array($definition) && array_key_exists('experience_per_damage', $definition)) {
+                        $authorsMonsterDamageExperience = true;
+                        break;
+                    }
+                }
+                if ($authorsMonsterDamageExperience) {
+                    Ver250MonsterExperienceRulesetUpgrade::installSchema();
+                }
                 $this->catalogs->install($currentSettings);
                 $this->publisher->publish($currentSettings);
                 $this->catalogs->assertInstalled($currentSettings);
@@ -210,7 +221,7 @@ SQL, [$worldId, $rulesetId, $worldId, $rulesetId, $worldId, $rulesetId]);
     {
         foreach (Secretary::query()->with(['skills', 'itemInstances'])->orderBy('id')->get() as $secretary) {
             $skillKeys = $secretary->skills->pluck('skill_key')->sort()->values()->all();
-            $expectedKeys = collect(SecretarySkillCatalog::KEYS)->sort()->values()->all();
+            $expectedKeys = collect(SecretarySkillCatalog::V14_KEYS)->sort()->values()->all();
             if ($skillKeys !== $expectedKeys) {
                 throw new RuntimeException("Upgrade blocked: Secretary {$secretary->id} has an incomplete skill catalog.");
             }

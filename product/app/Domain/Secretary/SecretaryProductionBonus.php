@@ -35,4 +35,33 @@ final class SecretaryProductionBonus
 
         return ($whole * $multiplier) + intdiv($remainder * $multiplier, 1000);
     }
+
+    /** @param array<string, mixed> $ruleset */
+    public function applyForestManagement(array $ruleset, int $level, int $base): int
+    {
+        if ($base < 0 || $level < 0) {
+            throw new DomainException('Secretary forest-management inputs must be non-negative integers.');
+        }
+        $effect = $ruleset['secretary']['skills'][SecretarySkillCatalog::FOREST_MANAGEMENT]['effect'] ?? null;
+        if (! is_array($effect)
+            || ($effect['type'] ?? null) !== 'forest_management'
+            || ($effect['percent_per_level'] ?? null) !== 1
+            || ($effect['rounding'] ?? null) !== 'floor_after_multiplier') {
+            throw new DomainException('The active ruleset has an invalid Secretary forest-management effect.');
+        }
+        if ($level > PHP_INT_MAX - 100) {
+            throw new DomainException('Secretary forest-management multiplier exceeds the supported integer range.');
+        }
+        $multiplier = 100 + $level;
+        $whole = intdiv($base, 100);
+        $remainder = $base % 100;
+        if ($whole !== 0 && $multiplier > intdiv(PHP_INT_MAX, $whole)) {
+            throw new DomainException('Secretary forest-management result exceeds the supported integer range.');
+        }
+        if ($remainder !== 0 && $multiplier > intdiv(PHP_INT_MAX, $remainder)) {
+            throw new DomainException('Secretary forest-management result exceeds the supported integer range.');
+        }
+
+        return ($whole * $multiplier) + intdiv($remainder * $multiplier, 100);
+    }
 }

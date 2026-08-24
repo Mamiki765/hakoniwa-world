@@ -10,6 +10,7 @@ use App\Application\SecretaryTurnService;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -283,12 +284,21 @@ class TurnCellProcessingTest extends TestCase
         $this->forest($forest, 500);
         $forest = $forest->fresh(['terrain', 'facility']);
         $forestBefore = $forest->terrain_quantity;
+        $user->secretary()->firstOrFail()->skills()
+            ->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)
+            ->update(['level' => 10, 'experience' => 0]);
         [$forestContext, $forestRun] = $this->context($world, $nation, [$forest->id], str_repeat('e', 64));
         $forestGrowth = $engine->execute('process_cells', $forestContext);
         $this->assertSame(1, $forestGrowth->metrics['forest_growth']);
-        $this->assertSame($forestBefore + 100, $forest->fresh()->terrain_quantity);
+        $this->assertSame($forestBefore + 110, $forest->fresh()->terrain_quantity);
+        $this->assertSame([], $forestContext->state->pendingSecretaryExperience());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'forest.grown')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $forestRun->id])->count());
+        $forestEvent = json_decode((string) DB::table('audit_events')->where('event_type', 'forest.grown')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $forestRun->id])->value('metadata'),
+            true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(100, $forestEvent['base_increment']);
+        $this->assertSame(110, $forestEvent['increment']);
 
         $maximumTrees = $world->rulesetVersion()->firstOrFail()->settings['terrain_quantities']['forest']['maximum_quantity'];
         $forest->fresh()->update(['terrain_quantity' => $maximumTrees - 50]);

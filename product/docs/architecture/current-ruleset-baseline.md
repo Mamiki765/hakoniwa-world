@@ -3,20 +3,33 @@
 ## Scope
 
 The normal application configuration resolves only the current immutable Ruleset,
-`hakoniwa-2s-plus-v14`. Its standalone authored file contains the complete payload and does
+`hakoniwa-2s-plus-v15`. Its standalone authored file contains the complete payload and does
 not execute any historical Ruleset source. Its identity and formal checksum remain:
 
 ```text
-key: hakoniwa-2s-plus-v14
-version: 14
-checksum: af9afe5bf055f4d2ecc4349de058f6dfc6281194dd3d52238167ced07c9d8274
+key: hakoniwa-2s-plus-v15
+version: 15
+checksum: d361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70
 ```
 
-v14 is the formal ver 2.5.0 Secretary-level capacity payload. It is published without
-rewriting v13. Exact v13-to-v14 conversion preserves TurnRun, RNG, request-key, fingerprint,
-terminal-history, User/Secretary/profile/Item, and live-monster provenance. Historical v13
-remains the immutable ver 2.4.0 KARMA/recovery payload with checksum
-`27c5d58d80e55bf2807cecd147b99b80e57ea0e1afd836eea150982445723b1f`.
+v15 is the ver 2.5.0-beta monster-damage experience and Secretary forest-management payload. It fixes each monster's
+`experience_per_damage`, awards launch-base and Old Bow Secretary experience from actual
+damage, adds the fifth passive skill `forest_management`, and is published without rewriting v14. Historical v14 remains the immutable
+Secretary profile/capacity payload with checksum
+`af9afe5bf055f4d2ecc4349de058f6dfc6281194dd3d52238167ced07c9d8274`.
+
+| Monster key | EXP per actual damage |
+|---|---:|
+| `mecha_inora` | 3 |
+| `mecha_inora_zero` | 9 |
+| `inora` | 4 |
+| `sanjira` | 5 |
+| `red_inora` | 4 |
+| `dark_inora` | 6 |
+| `aoi_inora` | 8 |
+| `inora_ghost` | 10 |
+| `whale` | 5 |
+| `king_inora` | 6 |
 
 ## One-time source representation rebaseline
 
@@ -35,10 +48,9 @@ Historical authored Ruleset sources continue to be treated as byte-for-byte immu
 
 ## Dependency boundary
 
-`config/hakoniwa.php` loads only the standalone v14 file. Current services obtain gameplay
-from `hakoniwa.ruleset`; Secretary initialization uses the current v14-derived
-`hakoniwa.current_catalogs.secretary` snapshot so historical test execution cannot reintroduce
-an authored v7 runtime dependency.
+`config/hakoniwa.php` loads only the standalone v15 file. Current services obtain gameplay
+from `hakoniwa.ruleset`; Secretary initialization uses that current v15 payload directly so
+historical test execution cannot reintroduce an authored v7 runtime dependency.
 
 Historical authored files remain available through `RulesetUpgradeAuthoringCatalog` for three
 explicit consumers:
@@ -60,11 +72,22 @@ Secretaries, Items, equipment, command/audit/event history, request identity and
 and TurnRun/RNG history remain unchanged. Historical Worlds remain readable and fail closed
 for mutation under the existing current-Ruleset guard.
 
-Fresh install loads the canonical schema dump and publishes only current v14. The immediate
-gameplay upgrade boundary accepts only exact v13 after a fail-closed payload, reference,
-integrity, and global unresolved-TurnRun preflight. It adds the Secretary profile/User
-preference schema, remaps current queued-command and live-monster references, and changes the
-World Ruleset reference without resetting gameplay data. The preceding exact-v11 rebaseline,
-v11-to-v12 dormancy, and v12-to-v13 KARMA conversions remain historical upgrade provenance;
-see `install-upgrade-rebaseline.md`, `../ver-2.4.0-karma-recovery.md`, and
+Fresh install loads the canonical schema dump and publishes only current v15. The immediate
+gameplay upgrade boundary accepts only exact v14 after a fail-closed payload, reference,
+history, integrity, and global unresolved-TurnRun preflight. It adds persistent Secretary
+monster experience and monster-definition `experience_per_damage`, backfills only uniquely
+attributable historical Old Bow final blows with their historical
+`missile_base_experience`, remaps only current queued-command, alive-monster, and kill-stat
+references, and changes the World Ruleset reference without resetting other gameplay data.
+The same v14-to-v15 transaction adds only the missing `forest_management` row at Lv0/EXP0
+for every existing Secretary, preserves all four legacy skill rows, and performs no historical
+logging or planting EXP backfill. Fresh Secretaries start with all five skills. Successful
+logging and planting each award one forest-management EXP; logging income and the Ruleset
+forest `growth_increment` use `floor(base * (100 + Lv) / 100)` before their existing caps.
+It does not rescan historical nonlethal Old Bow damage or reconstruct historical launch-base
+damage. Every existing `map_cells.facility_experience` value is digested before and after the
+upgrade and remains unchanged; actual-damage launch-base experience begins only under v15.
+The preceding exact-v11 rebaseline, v11-to-v12 dormancy, v12-to-v13 KARMA, and v13-to-v14
+Secretary profile conversions remain historical upgrade provenance; see
+`install-upgrade-rebaseline.md`, `../ver-2.4.0-karma-recovery.md`, and
 `../ver-2.5.0-secretary-profile.md`.

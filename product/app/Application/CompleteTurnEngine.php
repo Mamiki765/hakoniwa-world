@@ -787,6 +787,8 @@ final class CompleteTurnEngine
             'secretary_experience_awarded' => $secretaryMetrics['experience_awarded'],
             'secretary_skills_changed' => $secretaryMetrics['skills_changed'],
             'secretary_levels_gained' => $secretaryMetrics['levels_gained'],
+            'secretary_monster_experience_awarded' => $secretaryMetrics['monster_experience_awarded'],
+            'secretary_monster_experience_changed' => $secretaryMetrics['monster_experience_secretaries_changed'],
             ...$lifecycleMetrics,
             ...$karmaResultMetrics,
             ...$awardMetrics,
@@ -1195,7 +1197,18 @@ final class CompleteTurnEngine
             || $cell->terrain_quantity > $forest['maximum_quantity']) {
             throw new DomainException("Forest cell {$cell->id} has an invalid tree quantity.");
         }
-        $after = min($forest['maximum_quantity'], $cell->terrain_quantity + $forest['growth_increment']);
+        $growthIncrement = $forest['growth_increment'];
+        if ($cell->owner_nation_id !== null && $context->state->hasSecretarySnapshot($cell->owner_nation_id)) {
+            $growthIncrement = $this->secretaryProduction->applyForestManagement(
+                $context->ruleset->settings,
+                $context->state->secretarySkillLevel(
+                    $cell->owner_nation_id,
+                    SecretarySkillCatalog::FOREST_MANAGEMENT,
+                ),
+                $growthIncrement,
+            );
+        }
+        $after = min($forest['maximum_quantity'], $cell->terrain_quantity + $growthIncrement);
         if ($after === $cell->terrain_quantity) {
             return false;
         }
@@ -1204,7 +1217,8 @@ final class CompleteTurnEngine
         $cell->version++;
         $this->saveChangedCell($context, $cell);
         $this->events->record($context, 'forest.grown', $cell, [
-            'before' => $before, 'increment' => $after - $before, 'after' => $after,
+            'before' => $before, 'base_increment' => $forest['growth_increment'],
+            'increment' => $after - $before, 'after' => $after,
             'maximum' => $forest['maximum_quantity'],
         ]);
 

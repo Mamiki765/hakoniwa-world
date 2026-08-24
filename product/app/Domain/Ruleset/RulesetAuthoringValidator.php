@@ -33,6 +33,8 @@ final class RulesetAuthoringValidator
 
     private const FORMAL_V14_KEY = 'hakoniwa-2s-plus-v14';
 
+    private const FORMAL_V15_KEY = 'hakoniwa-2s-plus-v15';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -426,6 +428,30 @@ final class RulesetAuthoringValidator
                 continue;
             }
 
+            if ($key === SecretarySkillCatalog::FOREST_MANAGEMENT) {
+                if ($initialLevel !== 0 || $basis !== 'next_level_squared' || $multiplier !== 1
+                    || $effect !== [
+                        'type' => 'forest_management',
+                        'percent_per_level' => 1,
+                        'rounding' => 'floor_after_multiplier',
+                        'logging_base' => 'canonical_logging_income',
+                        'forest_growth_base' => 'terrain_quantities.forest.growth_increment',
+                    ]
+                    || $source !== [
+                        'type' => 'successful_command_execution',
+                        'command_keys' => ['logging', 'plant_forest'],
+                        'points_per_execution' => 1,
+                        'quantity_multiplier' => false,
+                        'historical_backfill' => false,
+                    ]
+                    || ! in_array('logging', $commandKeys, true)
+                    || ! in_array('plant_forest', $commandKeys, true)) {
+                    throw new DomainException("{$path} does not match the Secretary forest-management contract.");
+                }
+
+                continue;
+            }
+
             if ($key !== SecretarySkillCatalog::FINAL_DEFENSE_LINE
                 || $initialLevel !== 1
                 || $basis !== 'current_level_squared'
@@ -459,14 +485,14 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if ($settings['version'] !== 14 || $capacityBonus !== [
+        if ($settings['version'] < 14 || $capacityBonus !== [
             'level_source' => 'sum_passive_skill_levels',
             'money_percent_per_level' => 1,
             'food_percent_per_level' => 1,
             'rounding' => 'floor_after_multiplier',
             'cap' => null,
         ]) {
-            throw new DomainException('The v14 Ruleset Secretary capacity bonus differs from the Owner decision.');
+            throw new DomainException('The v14+ Ruleset Secretary capacity bonus differs from the Owner decision.');
         }
     }
 
@@ -496,10 +522,11 @@ final class RulesetAuthoringValidator
             12 => self::FORMAL_V12_KEY,
             13 => self::FORMAL_V13_KEY,
             14 => self::FORMAL_V14_KEY,
+            15 => self::FORMAL_V15_KEY,
             default => null,
         };
         if ($expectedKey === null || $authoredKey !== $expectedKey || ! $hasLifecycle) {
-            throw new DomainException('The v12-v14 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+            throw new DomainException('The v12-v15 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
         }
 
         $path = 'ruleset.nation_lifecycle';
@@ -587,10 +614,10 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($version, [13, 14], true)
-            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY], true)
+        if (! in_array($version, [13, 14, 15], true)
+            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY], true)
             || ! is_array($authored)) {
-            throw new DomainException('The v13-v14 Ruleset identity requires the KARMA contract.');
+            throw new DomainException('The v13-v15 Ruleset identity requires the KARMA contract.');
         }
         $expected = [
             'minimum' => -10,
@@ -795,8 +822,12 @@ final class RulesetAuthoringValidator
                 'population_divisor' => 2_000,
                 'capital_population_loss_multiplier' => 2,
             ],
-            'monster_damage_experience' => 0,
-            'monster_final_blow_experience' => 'monster_definition.missile_base_experience',
+            'monster_damage_experience' => $settings['version'] >= 15
+                ? 'actual_damage_times_monster_definition.experience_per_damage'
+                : 0,
+            'monster_final_blow_experience' => $settings['version'] >= 15
+                ? 0
+                : 'monster_definition.missile_base_experience',
         ];
         $expectedResistance = [
             'facility_key' => 'seabed_base',
@@ -854,6 +885,18 @@ final class RulesetAuthoringValidator
 
         $definitions = $this->list($settings['monster_definitions'], 'ruleset.monster_definitions');
         $keys = $this->definitionKeys($definitions, 'ruleset.monster_definitions');
+        $experiencePerDamage = [
+            'mecha_inora' => 3,
+            'mecha_inora_zero' => 9,
+            'inora' => 4,
+            'sanjira' => 5,
+            'red_inora' => 4,
+            'dark_inora' => 6,
+            'aoi_inora' => 8,
+            'inora_ghost' => 10,
+            'whale' => 5,
+            'king_inora' => 6,
+        ];
         $expected = [
             'mecha_inora' => [2, 0, 'none', 1, null, 0, 5, 'hakoniwa_original.monster.mecha_inora', null, 0, 0, 'monster7.gif'],
             'inora' => [1, 1, 'none', 1, 1, 400, 5, 'hakoniwa_original.monster.inora', null, 1, 0, 'monster0.gif'],
@@ -898,6 +941,11 @@ final class RulesetAuthoringValidator
             } elseif (array_key_exists('display_order', $definition)) {
                 throw new DomainException("{$path}.display_order is not authored in historical rulesets.");
             }
+            if ($rulesetVersion >= 15) {
+                $this->requireKeys($definition, ['experience_per_damage'], $path);
+            } elseif (array_key_exists('experience_per_damage', $definition)) {
+                throw new DomainException("{$path}.experience_per_damage is not authored before v15.");
+            }
             $key = $this->persistedString($definition['key'], "{$path}.key");
             $this->persistedString($definition['name'], "{$path}.name");
             $assetKey = $this->persistedString($definition['asset_key'], "{$path}.asset_key");
@@ -936,6 +984,14 @@ final class RulesetAuthoringValidator
             }
             $value = $this->integer($definition['wreckage_value_money'], "{$path}.wreckage_value_money", 0);
             $experience = $this->integer($definition['missile_base_experience'], "{$path}.missile_base_experience", 0);
+            if ($rulesetVersion >= 15
+                && $this->integer(
+                    $definition['experience_per_damage'],
+                    "{$path}.experience_per_damage",
+                    0,
+                ) !== ($experiencePerDamage[$key] ?? null)) {
+                throw new DomainException("{$path}.experience_per_damage differs from the v15 Owner decision.");
+            }
             $this->persistedString($definition['skill_description'], "{$path}.skill_description");
             if ($this->persistedString($definition['visibility'], "{$path}.visibility") !== 'public') {
                 throw new DomainException("{$path}.visibility must be public.");
@@ -1223,11 +1279,12 @@ final class RulesetAuthoringValidator
             12 => self::FORMAL_V12_KEY,
             13 => self::FORMAL_V13_KEY,
             14 => self::FORMAL_V14_KEY,
+            15 => self::FORMAL_V15_KEY,
             default => null,
         };
         if (($expectedKey !== null && $key !== $expectedKey)
-            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY], true))) {
-            throw new DomainException('The v11-v14 ruleset identity and version must be authored together.');
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY], true))) {
+            throw new DomainException('The v11-v15 ruleset identity and version must be authored together.');
         }
 
         return $version >= 11;
@@ -1244,8 +1301,8 @@ final class RulesetAuthoringValidator
         ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
-        if (in_array($version, [12, 13, 14], true)
-            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY], true)) {
+        if (in_array($version, [12, 13, 14, 15], true)
+            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 

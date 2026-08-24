@@ -19,11 +19,11 @@ final class SecretaryService
     public function ensureForUser(User $user): Secretary
     {
         $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-        $secretaryCatalog = config('hakoniwa.current_catalogs.secretary');
-        if (! is_array($secretaryCatalog)) {
+        $ruleset = config('hakoniwa.ruleset');
+        if (! is_array($ruleset)) {
             throw new DomainException('The current immutable Secretary ruleset contract is missing.');
         }
-        $initialStates = $this->catalog->initialStates(['secretary' => $secretaryCatalog]);
+        $initialStates = $this->catalog->initialStates($ruleset);
         $secretary = Secretary::query()->firstOrCreate(
             ['user_id' => $lockedUser->id],
             ['name' => null, 'named_at' => null],
@@ -42,8 +42,9 @@ final class SecretaryService
         }
         SecretarySkill::query()->insertOrIgnore($rows);
         $skills = SecretarySkill::query()->where('secretary_id', $secretary->id)->get()->keyBy('skill_key');
-        if ($skills->keys()->sort()->values()->all() !== collect(SecretarySkillCatalog::KEYS)->sort()->values()->all()) {
-            throw new DomainException('Secretary skill initialization did not produce the exact Secretary v1 catalog.');
+        $expectedKeys = collect(array_keys($initialStates))->sort()->values()->all();
+        if ($skills->keys()->sort()->values()->all() !== $expectedKeys) {
+            throw new DomainException('Secretary skill initialization did not produce the exact active ruleset catalog.');
         }
 
         if (Schema::hasTable('secretary_item_instances')) {

@@ -131,6 +131,7 @@ final readonly class SecretaryProfileService
                 'subject_id' => $locked->id,
                 'metadata' => json_encode([
                     'show_ai_generated_images' => $showAiImages,
+                    'own_secretary_fallback' => $fallback,
                     'fallback' => $fallback,
                 ], JSON_THROW_ON_ERROR),
                 'occurred_at' => $occurredAt,

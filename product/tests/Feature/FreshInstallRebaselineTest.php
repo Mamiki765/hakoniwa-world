@@ -7,7 +7,8 @@ use App\Application\CurrentCatalogInstaller;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
-use App\Application\Ver250SecretaryProfileRulesetUpgrade;
+use App\Application\Ver250MonsterExperienceRulesetUpgrade;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
@@ -32,19 +33,19 @@ final class FreshInstallRebaselineTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_empty_postgresql_uses_direct_current_schema_and_v14_catalog_baseline(): void
+    public function test_empty_postgresql_uses_direct_current_schema_and_v15_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
-        $ruleset = RulesetVersion::query()->where('key', Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY)->sole();
+        $ruleset = RulesetVersion::query()->where('key', Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY)->sole();
 
         $this->assertSame('2.5.0-beta', config('hakoniwa.application_version'));
-        $this->assertSame([Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_KEY, $ruleset->key);
-        $this->assertSame(Ver250SecretaryProfileRulesetUpgrade::TARGET_VERSION, $ruleset->version);
+        $this->assertSame([Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY, $ruleset->key);
+        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_VERSION, $ruleset->version);
         $this->assertSame(25, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(50, DB::table('migrations')->count());
+        $this->assertSame(51, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -57,9 +58,20 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_24_000000_add_secretary_profiles_and_publish_v14',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_24_010000_add_monster_experience_and_publish_v15',
+        ]);
         $this->assertTrue(Schema::hasColumn('nations', 'karma'));
         $this->assertTrue(Schema::hasColumn('secretaries', 'profile_biography'));
         $this->assertTrue(Schema::hasColumn('users', 'show_ai_generated_secretary_images'));
+        $this->assertTrue(Schema::hasColumn('secretaries', 'monster_experience'));
+        $this->assertTrue(Schema::hasColumn('monster_definitions', 'experience_per_damage'));
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'secretaries_monster_experience_non_negative')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'monster_definitions_experience_per_damage_non_negative')->count());
+        $this->assertSame(0, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->whereNull('experience_per_damage')->count());
         app(CurrentCatalogInstaller::class)->assertInstalled(config('hakoniwa.ruleset'));
     }
 
@@ -92,7 +104,13 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame('completed', NationCommandQueueItem::query()->findOrFail($item->id)->status);
         $this->assertSame('plain', $target->fresh()->terrain()->value('key'));
-        $this->assertSame(4, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(5, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertDatabaseHas('secretary_skills', [
+            'secretary_id' => $secretary->id,
+            'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
+            'level' => 0,
+            'experience' => 0,
+        ]);
         $this->assertSame(1, $secretary->equipment_version);
         $starter = SecretaryItemInstance::query()->where('secretary_id', $secretary->id)->sole();
         $this->assertSame('old_bow', $starter->item_key);

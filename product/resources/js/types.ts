@@ -47,9 +47,11 @@ export interface SecretaryProfile {
     id: number;
     name: string | null;
     is_owner: boolean;
+    domestic_level: number;
     secretary_level: number;
     passive_level_total: number;
     capacity_bonus_percent: number;
+    monster_experience: number;
     biography: string;
     main_image: {
         display: 'uploaded' | 'silhouette' | 'peridot' | 'none';
@@ -65,6 +67,7 @@ export interface SecretaryProfile {
     viewer_preferences: {
         configured: boolean;
         show_ai_generated_images: boolean | null;
+        own_secretary_fallback: 'silhouette' | 'peridot' | null;
         fallback: 'silhouette' | 'peridot' | null;
         can_update: boolean;
     };
