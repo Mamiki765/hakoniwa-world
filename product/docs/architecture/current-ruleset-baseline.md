@@ -3,13 +3,14 @@
 ## Scope
 
 The normal application configuration resolves only the current immutable Ruleset,
-`hakoniwa-2s-plus-v16`. Its standalone authored file contains the complete payload and does
-not execute any historical Ruleset source. Its identity and formal checksum remain:
+`hakoniwa-2s-plus-v16`. Its thin entrypoint explicitly composes the complete payload from
+domain-first current authoring and does not execute any historical Ruleset source. Its
+identity and formal checksum remain:
 
 ```text
 key: hakoniwa-2s-plus-v16
 version: 16
-checksum: 9b063ebb9d9b4c1a32c0b723089da7f4830159d9af43df1106d6a42feb6f28e5
+checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
 ```
 
 v16 is the final ver 2.6.0 oil-resource and trading-post payload. It adds `oil` as a normal tradable Nation
@@ -20,7 +21,7 @@ canonical Nation inventory path instead of directly crediting 1,000 money units.
 depletion probability, depletion result, and drilling contract are unchanged. If cell-phase
 production leaves oil above its individual capacity, the capacity phase offers the `stockpile`
 overflow to the canonical inventory sale planner before discarding only the unsold remainder.
-The same unpublished v16 payload authors the player trading-post escrow, 90% seller proceeds
+The same v16 payload authors the player trading-post escrow, 90% seller proceeds
 with floor rounding, the `箱庭連合` NPC listing limits and prices, and the Secretary Item
 `novice` rarity contract. There is no v17 payload or v16-to-v17 migration in ver 2.6.0.
 
@@ -59,13 +60,17 @@ formal checksum, published RulesetVersion row and definitions, gameplay, and bal
 immutable. The former v11 source representation remains recoverable from Git history. This
 one-time exception does not permit future semantic changes under the v11 identity; any future
 gameplay or balance change requires a new unique Ruleset version and immutable publication.
-Historical authored Ruleset sources continue to be treated as byte-for-byte immutable.
+Historical v1-v15 authored Ruleset sources continue to be treated as byte-for-byte
+immutable. The current v16 source may be reorganized only when its resolved payload and
+formal checksum remain exact; the domain and classification contract is documented in
+`ruleset-authoring.md`.
 
 ## Dependency boundary
 
-`config/hakoniwa.php` loads only the standalone v16 file. Current services obtain gameplay
-from `hakoniwa.ruleset`; Secretary initialization uses that current v16 payload directly so
-historical test execution cannot reintroduce an authored v7 runtime dependency.
+`config/hakoniwa.php` loads only the thin v16 entrypoint and its `current/` domain files.
+Current services obtain gameplay from `hakoniwa.ruleset`; Secretary initialization uses that
+current v16 payload directly so historical test execution cannot reintroduce an authored v7
+runtime dependency.
 
 Historical authored files remain available through `RulesetUpgradeAuthoringCatalog` for three
 explicit consumers:

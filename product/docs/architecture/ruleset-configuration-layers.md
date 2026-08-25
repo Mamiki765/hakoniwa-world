@@ -1,5 +1,11 @@
 # Ruleset Core, Balance, and Flavor boundaries
 
+> Historical 2.3.1 responsibility map. Current v16 authoring is governed by
+> [`ruleset-authoring.md`](ruleset-authoring.md): Core maps to **behavior**, Versioned Balance
+> maps to **data**, and Flavor / Presentation maps to **flavor**. These historical labels do
+> not create a fourth current classification, and the deferred physical-split decision below
+> was superseded by the checksum-preserving v16 domain-first composition.
+
 この文書はcurrent v11 payloadのfield responsibility mapである。2.3.1では物理splitを実装せず、historical authored payloadとchecksumを一切変更しない。分類は将来変更時のreview境界であり、別fileや別tableがすでに存在するという意味ではない。
 
 ## Layer definitions

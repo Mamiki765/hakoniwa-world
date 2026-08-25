@@ -128,6 +128,9 @@ In Code Mode, within each bounded stage, run independent, functions.exec-availab
 
 ## Implementation reuse policy
 
+Current Ruleset authoring uses the behavior/data/flavor classification documented in
+`product/docs/architecture/ruleset-authoring.md`.
+
 Before introducing a new service, resolver, policy, handler, or execution path for a
 feature variant, identify:
 

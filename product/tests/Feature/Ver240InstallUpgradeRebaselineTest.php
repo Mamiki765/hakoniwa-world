@@ -670,6 +670,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         $this->assertSame(1, $activation['ring_secretaries_normalized']);
         $this->assertSame(1, $activation['ring_items_unequipped']);
         $this->assertTrue($activation['trading_post_schema_initialized_empty']);
+        $this->assertSame('already_current_v16', app(Ver260OilResourceRulesetUpgrade::class)->run());
         $run = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
     }
