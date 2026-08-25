@@ -340,7 +340,7 @@ final class TradingPostService
             ]);
 
             return $lockedListing->fresh(['sellerNation', 'highestBidderNation', 'resourceDefinition']);
-        }, $listing->world_id);
+        }, expectedWorldId: $listing->world_id, allowDormant: true);
     }
 
     /**
@@ -349,8 +349,13 @@ final class TradingPostService
      * @param  callable(World, Nation, TradingPostRules): T  $operation
      * @return T
      */
-    private function mutate(User $user, Nation $nation, callable $operation, ?int $expectedWorldId = null): mixed
-    {
+    private function mutate(
+        User $user,
+        Nation $nation,
+        callable $operation,
+        ?int $expectedWorldId = null,
+        bool $allowDormant = false,
+    ): mixed {
         $this->authorizeOwner($user, $nation);
         $world = World::query()->findOrFail($nation->world_id);
         if ($expectedWorldId !== null && $world->id !== $expectedWorldId) {
@@ -358,14 +363,15 @@ final class TradingPostService
         }
         $this->worldMutationLock->acquire($world);
         try {
-            return DB::transaction(function () use ($user, $nation, $world, $operation): mixed {
+            return DB::transaction(function () use ($user, $nation, $world, $operation, $allowDormant): mixed {
                 $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
                 $ruleset = $lockedWorld->rulesetVersion()->firstOrFail();
                 $this->rulesetGuard->assertMutable($lockedWorld, $ruleset);
                 $this->turnRunGuard->assertClear($lockedWorld);
                 $lockedNation = Nation::query()->whereKey($nation->id)
                     ->where('world_id', $lockedWorld->id)->lockForUpdate()->firstOrFail();
-                if (! in_array($lockedNation->state, ['active', 'recovery'], true)) {
+                $allowedStates = $allowDormant ? ['active', 'dormant', 'recovery'] : ['active', 'recovery'];
+                if (! in_array($lockedNation->state, $allowedStates, true)) {
                     throw new DomainException('現役ではない島は交易場を操作できません。');
                 }
                 $this->authorizeOwner($user, $lockedNation, true);
@@ -547,8 +553,7 @@ final class TradingPostService
             'is_mine' => $listing->seller_nation_id === $viewer->id,
             'can_bid' => in_array($viewer->state, ['active', 'recovery'], true)
                 && $listing->seller_nation_id !== $viewer->id,
-            'can_cancel' => in_array($viewer->state, ['active', 'recovery'], true)
-                && $listing->seller_nation_id === $viewer->id
+            'can_cancel' => $listing->seller_nation_id === $viewer->id
                 && $listing->bid_count === 0,
         ];
     }

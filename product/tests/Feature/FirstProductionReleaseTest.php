@@ -187,6 +187,7 @@ final class FirstProductionReleaseTest extends TestCase
             ->assertSee('<title>交易場 | 箱庭諸島２S＋</title>', false)
             ->assertSee('最高入札中の預託資金は、資金上限の使用量に含まれます')
             ->assertSee('出品中の数量も保管容量の使用量に含まれる')
+            ->assertSee('入札がなければ休眠中でもキャンセルでき')
             ->assertSee('売れない超過分は破棄されます');
         $this->get('/manual/secretary')->assertOk()
             ->assertSee('<title>秘書について | 箱庭諸島２S＋</title>', false)

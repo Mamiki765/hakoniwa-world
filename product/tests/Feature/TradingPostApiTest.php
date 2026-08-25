@@ -520,8 +520,28 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(3, $relisted->duration_turns);
         $this->assertSame(1, $relisted->relist_count);
         $this->assertSame(200, $this->resourceAmount($nation, $oil));
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => $world->current_turn,
+            'resume_at_turn' => null,
+        ]);
+        $dormantMarket = $this->actingAs($owner)
+            ->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()
+            ->assertJsonPath('data.permissions.can_mutate', false)
+            ->json('data.my_listings');
+        $dormantListing = collect($dormantMarket)->firstWhere('id', $relistedId);
+        $this->assertIsArray($dormantListing);
+        $this->assertTrue($dormantListing['can_cancel']);
         $this->actingAs($owner)->deleteJson($this->listingUrl($nation).'/'.$relistedId)->assertOk();
         $this->assertSame(300, $this->resourceAmount($nation, $oil));
+        $nation->update([
+            'state' => 'active',
+            'state_reason' => null,
+            'state_started_turn' => null,
+            'resume_at_turn' => null,
+        ]);
 
         foreach (range(5, 80) as $turn) {
             app(TradingPostTurnService::class)->execute($this->context($world, $turn, [$nation->id], 'npc-'.$turn));
