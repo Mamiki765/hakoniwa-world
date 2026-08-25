@@ -1,5 +1,8 @@
 # ver 2.3.0 formal ruleset v11 and conversion contract
 
+> Historical release record. v11 is not the current application contract. Current authoring
+> is v16; see [`architecture/current-ruleset-baseline.md`](architecture/current-ruleset-baseline.md).
+
 ## Publication identity
 
 ver 2.3.0の正式なproduction rulesetは`hakoniwa-2s-plus-v11`、version `11`である。authoring sourceは`config/hakoniwa/rulesets/hakoniwa-2s-plus-v11.php`、payload checksumは次で固定する。

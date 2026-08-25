@@ -1,5 +1,8 @@
 # ver 2.3.1 simplification audit
 
+> Historical audit captured while v11 was current. Current authoring is v16; see
+> [`architecture/current-ruleset-baseline.md`](architecture/current-ruleset-baseline.md).
+
 この文書はver 2.3.1のコード変更前に固定したdocumentation-only監査である。目的は削除量ではなく、ver 2.3.0のcorrectness、replay、production safetyを維持したまま調査箇所、call depth、runtime work、test maintenance costを減らせる境界を特定することである。
 
 ## Baseline and stop-gate result

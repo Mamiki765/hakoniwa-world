@@ -2,9 +2,12 @@
 
 > Historical archive captured at the v11 baseline. The current v16 index is
 > [`rulesets/index.md`](rulesets/index.md), with formal v1-v15 and roadmap artifacts separated.
-> Statements below that call v11 "current" describe that historical baseline only.
+> Statements below that call v11 "current" describe that historical baseline only. They are
+> not current application instructions; use the linked v16 index and architecture.
 
-このarchiveは、人間がRulesetの由来と現在の責務を追うための索引である。gameplayの正本は各immutable authoring fileとpublished database snapshotであり、この文書はpayloadを置き換えない。
+このarchiveは、人間がRulesetの由来と当時の責務を追うための索引である。historical
+payloadのauthorityは記録されたGit sourceとpublished database snapshotであり、この文書は
+payloadを置き換えず、current runtimeでのrestore sourceにもならない。
 
 Formal `hakoniwa-2s-plus-v1`は歴史の始点ではない。現在のrepositoryには、Git history上のPre-MVP prototype、10個のroadmap snapshot、その後のformal v1-v11、test-only fixture、migration固有のchecksum/fingerprint guardがある。
 
@@ -17,9 +20,9 @@ Formal `hakoniwa-2s-plus-v1`は歴史の始点ではない。現在のrepository
 | Class | Meaning | Current handling |
 |---|---|---|
 | Pre-MVP prototype | `mvp-v1`; current config fileになる前の初期shared-world settings | Git historyと最初のroadmap migrationがidentityを保持。current runtime authoring listには入れない |
-| roadmap Ruleset | PR単位でpublishされたMVP開発中の完全payload | operator validationとsource audit用のimmutable authoring。normal configやfresh installではpublishしない |
-| formal Ruleset | first production release以後のv1-v11 | immutable production history。v11だけがconfigured current gameplay |
-| test-only fixture | formal payloadを読み、test identityだけを差し替えるinactive fixture | publishしない。formal sourceとの差分を増やさない |
+| roadmap Ruleset | PR単位でpublishされたMVP開発中の完全payload | 当時はoperator validation/source audit用。現在はGit authorityのみ |
+| formal Ruleset | first production release以後のv1-v11 | immutable production history。当時はv11がconfigured current gameplay |
+| test-only fixture | formal payloadを読み、test identityだけを差し替えるinactive fixture | 当時のfixture。現在のtest treeから退役済み |
 | retired migration snapshot/guard | source/target checksum、definition set、fingerprint expectations | PR Cのexact-source rebaselineで責務を完了。migration codeはver 2.4.0でretire |
 
 ## Pre-MVP and roadmap lineage
@@ -38,9 +41,9 @@ Formal `hakoniwa-2s-plus-v1`は歴史の始点ではない。現在のrepository
 | `roadmap-pr21-v1.php` | published roadmap snapshot | `2097df8cf87469fef8b8ec47f5cffc80569a479a9a50a5b119f513d42b458687` | shared-world monster definitions and monster-system settings | `2026_08_05_000000_create_monster_system_and_publish_roadmap_pr21_ruleset.php` | historical |
 | `roadmap-pr22-v1.php` | published roadmap snapshot | `3c88b8c34b382f9c3fbce96f3d9609c19d1e04599f253b7aae42173b4e351bd0` | command/missile contract, facility definitions, Capital relocation and military settings | `2026_08_05_010000_add_pr22_command_event_state_and_publish_ruleset.php` | final roadmap predecessor of formal v1 |
 
-These files are not abandoned drafts. They remain historical authored snapshots exposed
-only through `RulesetUpgradeAuthoringCatalog`; they are no longer migration inputs or normal
-test bootstrap data.
+These files were not abandoned drafts. They are historical authored snapshots whose complete
+source is now available only through the recorded Git references; the catalog, migration
+inputs, and normal test bootstrap were retired from the current tree.
 
 ## Formal v1-v11 lineage
 
@@ -54,37 +57,39 @@ test bootstrap data.
 | 6 | `hakoniwa-2s-plus-v6.php` | `5f3567fb352379727878f83cd1f66c36885cb4485c9153baaf315bab4140dcb2` | logging becomes plain; defense owner-overbuild self-destruct; monument flight/target; direct SPP defense resistance | `2026_08_16_000000_publish_hakoniwa_2s_plus_v6.php` | immutable history |
 | 7 | `hakoniwa-2s-plus-v7.php` | `6b9def1bb8921d233bd2080e5f89584cccf8a3a09184dcfac475ddb599f2a670` | Secretary v1 skill/snapshot contract | `2026_08_16_030000_publish_hakoniwa_2s_plus_v7.php` | immutable history |
 | 8 | `hakoniwa-2s-plus-v8.php` | `fdceaec1e45bad64ceb177f880e513adeb5c3816c96858b00d8a988ad347990d` | radius-two real-defense interception contract | `2026_08_16_040000_publish_hakoniwa_2s_plus_v8.php` | immutable history |
-| 9 | `hakoniwa-2s-plus-v9.php` | `78b55d34ce3148eb1e4b6dd97939468cee9df508d28f4084947a09cdd10fd883` | `normal_monster_stage = after_ordinary_surface_cell_events`; same cell order, no extra shuffle | `2026_08_17_000000_publish_hakoniwa_2s_plus_v9.php` | immutable authoring/history; v11 is the only mutable World runtime |
+| 9 | `hakoniwa-2s-plus-v9.php` | `78b55d34ce3148eb1e4b6dd97939468cee9df508d28f4084947a09cdd10fd883` | `normal_monster_stage = after_ordinary_surface_cell_events`; same cell order, no extra shuffle | `2026_08_17_000000_publish_hakoniwa_2s_plus_v9.php` | immutable history; at this archived baseline v11 was the mutable World runtime |
 | 10 | `hakoniwa-2s-plus-v10.php` | `6a0f5354f8894081bacdb8eaaba328d3e4ee80a2c4136819b16cfa924f485dc1` | post-nutrition food overflow stage contract | `2026_08_19_010000_publish_hakoniwa_2s_plus_v10.php` | immutable authoring/history; former exact v11 source migration is retired |
-| 11 | `hakoniwa-2s-plus-v11.php` | `5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8` | Secretary Old Bow/Ring effects, explicit monster behavior/reward/display, Aoi/Zero, two-option dispatch selector | historical `2026_08_21_010000_publish_hakoniwa_2s_plus_v11.php`; current rebaseline publishes/asserts it | configured current gameplay and immutable history |
+| 11 | `hakoniwa-2s-plus-v11.php` | `5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8` | Secretary Old Bow/Ring effects, explicit monster behavior/reward/display, Aoi/Zero, two-option dispatch selector | historical `2026_08_21_010000_publish_hakoniwa_2s_plus_v11.php`; later rebaseline provenance is in Git/ledger | configured gameplay at this archived baseline; immutable history now |
 
-## Runtime and retry interpretation
+## Runtime and retry interpretation at the archived v11 baseline
 
-- `config/hakoniwa.php` registers only current v11. Historical source lookup is an explicit operator action through `RulesetUpgradeAuthoringCatalog`.
-- current ordinary World mutation is guarded to the configured current identity, which is v11.
-- current gameplay reads the v11 published row stored on the World and snapshots that exact Ruleset on each TurnRun.
+- `config/hakoniwa.php` registered only v11 at that time; the historical catalog was an explicit operator path.
+- ordinary World mutation was guarded to the then-configured v11 identity.
+- gameplay read the v11 published row stored on the World and snapshotted that exact Ruleset on each TurnRun.
 - historical Worlds remain readable for presentation and audit, while every gameplay mutation fails closed through the current Ruleset guard.
 - a failed/blocked TurnRun may be retried only for the same target, Ruleset and seed. Version migration preflight must resolve such a run first; 2.3.1 does not invent cross-version retry.
-- killed/removed monsters, terminal commands, events and published rows remain linked to historical definitions. They are not rebound merely because v11 is current.
+- killed/removed monsters, terminal commands, events and published rows remained linked to historical definitions rather than being rebound merely because v11 was current.
 
 PR C established the exact 2.3.1/v11 source preflight and forward-only rebaseline. PR D then
 removed migration-only runtime and unreachable historical gameplay branches without changing
 the v11 payload or current data links.
 
-## Test and migration-only sources
+## Test and migration-only sources at that baseline
 
-`tests/Support/V11SecretaryItemRulesetFixture.php` reads formal v11 and changes only the
-inactive test identity. It is not a never-published gameplay proposal. The retired v11
-migration guard is preserved by Git history and the PR C compatibility audit, not current
-runtime PHP.
+`tests/Support/V11SecretaryItemRulesetFixture.php` read formal v11 and changed only the
+inactive test identity. Both are retired from the current tree. The old fixture and migration
+guard remain in Git history and the PR C compatibility audit, not current runtime PHP.
 
 No other never-published Ruleset, obsolete duplicate, or unknown payload was found in the
 repository and file-history audit.
 
-## How to verify the current source
+## Current verification redirect
 
 ```text
-php artisan hakoniwa:ruleset:validate --key=hakoniwa-2s-plus-v11
+php artisan hakoniwa:ruleset:validate --key=hakoniwa-2s-plus-v16
 ```
 
-The expected v11 checksum is `5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8`. Validation reads authoring only; it does not publish, migrate a World, or modify production data.
+The current expected v16 checksum is
+`331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d`.
+The v11 checksum above is historical. Current validation reads v16 authoring only; it does
+not publish, migrate a World, or modify production data.

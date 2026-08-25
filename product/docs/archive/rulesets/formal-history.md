@@ -3,12 +3,12 @@
 This file indexes immutable production Rulesets before the current v16. It does not duplicate
 the PHP payload and cannot be used to reconstruct one. Each source reference names a commit
 and path that can be inspected directly. Migration filenames for v1-v10 and the original v11
-publication are historical Git provenance; the current tree intentionally retains only the
-supported rebaseline/forward chain beginning at v11.
+publication and later rebaseline/forward-chain filenames are historical Git/ledger
+provenance; their PHP is retired from the current tree.
 
-Every version below is a published formal production record. In this stage its PHP remains in
-`config/hakoniwa/rulesets/` and the explicit upgrade catalog, but normal application config
-loads only current v16.
+Every version below is a published formal production record. Its complete PHP is available
+from the recorded Git commit/path, not the current tree or this Markdown summary. Normal
+application config, tests, and the operator validator load only current v16.
 
 ## v1
 
@@ -24,7 +24,7 @@ loads only current v16.
   initial state; there is no earlier formal payload for a delta comparison.
 - Flavor change: reviewed player-facing command and monster names/descriptions over the
   roadmap foundation.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v2
 
@@ -38,7 +38,7 @@ loads only current v16.
 - Behavior change: explicit missile target-state and impact contract from ADR-0009.
 - Data change: no separately documented numeric delta found.
 - Flavor change: no separately documented flavor delta found.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v3
 
@@ -52,7 +52,7 @@ loads only current v16.
   transfer eligibility, target/source state, and capital-core protection contracts.
 - Data change: direction/attempt and radius inputs attached to the territory contracts.
 - Flavor change: no separately documented flavor delta found.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v4
 
@@ -66,7 +66,7 @@ loads only current v16.
   related military/disaster rules.
 - Data change: expansion, launch-level/capacity, experience, and resistance values.
 - Flavor change: player-facing facility/command authoring added with the new contracts.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v5
 
@@ -80,7 +80,7 @@ loads only current v16.
   location-independent settlement path.
 - Data change: ordinary/attraction growth ranges and population caps for the new path.
 - Flavor change: no separately documented flavor delta found.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v6
 
@@ -95,7 +95,7 @@ loads only current v16.
 - Data change: no separate balance-only delta is identified by the retained release summary;
   use the source diff for exact values.
 - Flavor change: no separately documented flavor delta found.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v7
 
@@ -109,7 +109,7 @@ loads only current v16.
   interpretation contracts.
 - Data change: skill level requirements, per-level amounts, and experience points.
 - Flavor change: Secretary skill names.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v8
 
@@ -124,7 +124,7 @@ loads only current v16.
 - Data change: defense radius two is the numeric input to that policy.
 - Flavor change: no Ruleset flavor delta documented; Secretary rename was application
   behavior, not Ruleset flavor.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v9
 
@@ -138,7 +138,7 @@ loads only current v16.
   the existing cell order and consuming no extra shuffle.
 - Data change: no separately documented numeric delta found.
 - Flavor change: no separately documented flavor delta found.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v10
 
@@ -152,7 +152,7 @@ loads only current v16.
   preserving the stockpile sale/discard policy order.
 - Data change: no separately documented balance delta found.
 - Flavor change: no separately documented flavor delta found.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v11
 
@@ -161,14 +161,14 @@ loads only current v16.
 - Publication state: published formal production snapshot; immutable historical record
 - Checksum: `5c65c49ed3fd623375f004815ec6bba0b2f67524f61f0638c6fe528fe9599db8`
 - Source: `459b7a274ae64fd5e72647a188e5ee1308d14f05:product/config/hakoniwa/rulesets/hakoniwa-2s-plus-v11.php`
-- Migration: historical `2026_08_21_010000_publish_hakoniwa_2s_plus_v11.php`; current-tree
+- Migration: historical `2026_08_21_010000_publish_hakoniwa_2s_plus_v11.php`; later ledger/Git
   provenance begins with `2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade.php`.
 - Behavior change: Secretary Old Bow/Ring effects, Aoi Inora/Mecha Inora Zero behavior,
   explicit reward/display-order contracts, and the two-option monster-dispatch selector.
 - Data change: item effect amounts, monster HP/rewards/experience, dispatch costs, and display
   order values.
 - Flavor change: new monster/item names, descriptions, and manual strings.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v12
 
@@ -183,7 +183,7 @@ loads only current v16.
 - Data change: idle/dormancy/abandonment thresholds, manual duration, protection radius, and
   emergency finance amount.
 - Flavor change: dormant snow presentation theme.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v13
 
@@ -198,7 +198,7 @@ loads only current v16.
 - Data change: KARMA bounds, points, decay/recovery amounts, sanction overflow, and alliance
   reward values.
 - Flavor change: no separately documented Ruleset flavor delta found.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v14
 
@@ -213,7 +213,7 @@ loads only current v16.
 - Data change: money and food capacity increase by one percent per Secretary level, uncapped.
 - Flavor change: no separate Ruleset flavor delta; profile text/image presentation is owned
   by application/schema contracts.
-- Current handling: historical only; retained in this PR, not normal runtime.
+- Current handling: historical database/Git only; executable PHP retired from current tree.
 
 ## v15
 
@@ -228,5 +228,5 @@ loads only current v16.
 - Data change: per-monster `experience_per_damage`, final-blow amount, and one-percent-per-level
   logging/forest-growth inputs.
 - Flavor change: forest-management skill name.
-- Current handling: immutable exact source of the supported v15-to-v16 upgrade; retained in
-  this PR and not normal runtime.
+- Current handling: historical database/Git only; former v15-to-v16 executable source is
+  retired from the current tree.

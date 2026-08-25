@@ -165,7 +165,14 @@ final class CurrentRulesetAuthoringInspector
             return false;
         }
         foreach ($selectorSegments as $index => $segment) {
-            if ($segment !== '*' && $segment !== $pathSegments[$index]) {
+            if ($segment === '*') {
+                if (! ctype_digit($pathSegments[$index])) {
+                    return false;
+                }
+
+                continue;
+            }
+            if ($segment !== $pathSegments[$index]) {
                 return false;
             }
         }

@@ -3,11 +3,9 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Application\RulesetPublisher;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\CapacityModifier;
 use App\Domain\Economy\NationCapacityResolver;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -18,6 +16,7 @@ use App\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 class NationCapacityTest extends TestCase
@@ -77,17 +76,23 @@ class NationCapacityTest extends TestCase
 
         $world = $nation->world()->firstOrFail();
         $currentRulesetId = $world->ruleset_version_id;
-        $v14 = app(RulesetPublisher::class)->publish(
-            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v14'),
+        $historicalCapacity = SyntheticHistoricalRulesetSnapshot::create(
+            'historical-capacity-snapshot-v14',
+            14,
+            static function (array $settings): array {
+                unset($settings['secretary']['skills'][SecretarySkillCatalog::FOREST_MANAGEMENT]);
+
+                return SyntheticHistoricalRulesetSnapshot::withLegacySecretaryItems($settings);
+            },
         );
         $forestSkill = $user->secretary()->firstOrFail()->skills()
             ->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)
             ->firstOrFail();
         $forestSkill->delete();
-        $world->update(['ruleset_version_id' => $v14->id]);
-        $v14Capacity = app(NationCapacityResolver::class)->resolve($nation, $v14);
-        $this->assertSame($base->money, $v14Capacity->money);
-        $this->assertSame($base->foodTons, $v14Capacity->foodTons);
+        $world->update(['ruleset_version_id' => $historicalCapacity->id]);
+        $historicalCapacityResult = app(NationCapacityResolver::class)->resolve($nation, $historicalCapacity);
+        $this->assertSame($base->money, $historicalCapacityResult->money);
+        $this->assertSame($base->foodTons, $historicalCapacityResult->foodTons);
         $world->update(['ruleset_version_id' => $currentRulesetId]);
         $forestSkill->save();
 

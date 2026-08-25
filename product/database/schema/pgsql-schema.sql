@@ -390,6 +390,101 @@ ALTER SEQUENCE public.announcements_id_seq OWNED BY public.announcements.id;
 
 
 --
+-- Name: auction_bids; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.auction_bids (
+    id bigint NOT NULL,
+    auction_listing_id bigint NOT NULL,
+    bidder_nation_id bigint NOT NULL,
+    amount bigint NOT NULL,
+    status character varying(16) DEFAULT 'highest'::character varying NOT NULL,
+    placed_turn bigint NOT NULL,
+    refunded_at timestamp(0) with time zone,
+    created_at timestamp(0) with time zone,
+    updated_at timestamp(0) with time zone,
+    CONSTRAINT auction_bids_amount_check CHECK ((amount > 0)),
+    CONSTRAINT auction_bids_status_check CHECK ((((status)::text = ANY ((ARRAY['highest'::character varying, 'refunded'::character varying, 'won'::character varying])::text[])) AND ((((status)::text = 'refunded'::text) AND (refunded_at IS NOT NULL)) OR (((status)::text <> 'refunded'::text) AND (refunded_at IS NULL)))))
+);
+
+
+--
+-- Name: auction_bids_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.auction_bids_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: auction_bids_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.auction_bids_id_seq OWNED BY public.auction_bids.id;
+
+
+--
+-- Name: auction_listings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.auction_listings (
+    id bigint NOT NULL,
+    world_id bigint NOT NULL,
+    seller_type character varying(32) NOT NULL,
+    seller_nation_id bigint,
+    product_type character varying(16) NOT NULL,
+    resource_definition_id bigint,
+    secretary_item_instance_id bigint,
+    item_key character varying(64),
+    item_level integer,
+    quantity bigint,
+    start_price bigint NOT NULL,
+    current_price bigint,
+    highest_bidder_nation_id bigint,
+    bid_count integer DEFAULT 0 NOT NULL,
+    duration_turns smallint NOT NULL,
+    started_turn bigint NOT NULL,
+    ends_turn bigint NOT NULL,
+    auto_relist boolean DEFAULT false NOT NULL,
+    relist_count integer DEFAULT 0 NOT NULL,
+    status character varying(16) DEFAULT 'active'::character varying NOT NULL,
+    completed_turn bigint,
+    created_at timestamp(0) with time zone,
+    updated_at timestamp(0) with time zone,
+    CONSTRAINT auction_listings_bid_state_check CHECK ((((bid_count = 0) AND (current_price IS NULL) AND (highest_bidder_nation_id IS NULL)) OR ((bid_count > 0) AND (current_price IS NOT NULL) AND (highest_bidder_nation_id IS NOT NULL)))),
+    CONSTRAINT auction_listings_npc_relist_check CHECK ((((seller_type)::text = 'nation'::text) OR (auto_relist = false))),
+    CONSTRAINT auction_listings_price_check CHECK (((start_price > 0) AND ((current_price IS NULL) OR (current_price >= start_price)))),
+    CONSTRAINT auction_listings_product_check CHECK (((((product_type)::text = 'resource'::text) AND (resource_definition_id IS NOT NULL) AND (secretary_item_instance_id IS NULL) AND (item_key IS NULL) AND (item_level IS NULL) AND (quantity IS NOT NULL) AND (quantity > 0)) OR (((product_type)::text = 'item'::text) AND (resource_definition_id IS NULL) AND (quantity IS NULL) AND (item_key IS NOT NULL) AND (item_level IS NOT NULL) AND (item_level > 0) AND ((((seller_type)::text = 'nation'::text) AND (secretary_item_instance_id IS NOT NULL)) OR (((seller_type)::text = 'hakoniwa_federation'::text) AND (secretary_item_instance_id IS NULL)))))),
+    CONSTRAINT auction_listings_seller_check CHECK (((((seller_type)::text = 'nation'::text) AND (seller_nation_id IS NOT NULL)) OR (((seller_type)::text = 'hakoniwa_federation'::text) AND (seller_nation_id IS NULL)))),
+    CONSTRAINT auction_listings_status_check CHECK ((((status)::text = ANY ((ARRAY['active'::character varying, 'cancelled'::character varying, 'sold'::character varying, 'expired'::character varying])::text[])) AND ((((status)::text = 'active'::text) AND (completed_turn IS NULL)) OR (((status)::text <> 'active'::text) AND (completed_turn IS NOT NULL))))),
+    CONSTRAINT auction_listings_turn_check CHECK ((((duration_turns >= 3) AND (duration_turns <= 84)) AND (ends_turn = (started_turn + duration_turns))))
+);
+
+
+--
+-- Name: auction_listings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.auction_listings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: auction_listings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.auction_listings_id_seq OWNED BY public.auction_listings.id;
+
+
+--
 -- Name: audit_events; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -411,8 +506,8 @@ CREATE TABLE public.audit_events (
     message text,
     visibility character varying(16) DEFAULT 'admin'::character varying NOT NULL,
     severity character varying(16) DEFAULT 'info'::character varying NOT NULL,
-    CONSTRAINT audit_events_severity_check CHECK (((severity)::text = ANY ((ARRAY['info'::character varying, 'warning'::character varying, 'critical'::character varying])::text[]))),
-    CONSTRAINT audit_events_visibility_check CHECK (((visibility)::text = ANY ((ARRAY['public'::character varying, 'nation'::character varying, 'private'::character varying, 'admin'::character varying])::text[])))
+    CONSTRAINT audit_events_severity_check CHECK (((severity)::text = ANY (ARRAY[('info'::character varying)::text, ('warning'::character varying)::text, ('critical'::character varying)::text]))),
+    CONSTRAINT audit_events_visibility_check CHECK (((visibility)::text = ANY (ARRAY[('public'::character varying)::text, ('nation'::character varying)::text, ('private'::character varying)::text, ('admin'::character varying)::text])))
 );
 
 
@@ -605,7 +700,7 @@ CREATE TABLE public.inquiries (
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
     CONSTRAINT inquiries_attachment_pair_check CHECK ((((attachment_token IS NULL) AND (attachment_path IS NULL)) OR ((attachment_token IS NOT NULL) AND (attachment_path IS NOT NULL)))),
-    CONSTRAINT inquiries_category_check CHECK (((category)::text = ANY ((ARRAY['bug'::character varying, 'request'::character varying, 'idea'::character varying, 'secretary_fan_art'::character varying, 'other'::character varying])::text[])))
+    CONSTRAINT inquiries_category_check CHECK (((category)::text = ANY (ARRAY[('bug'::character varying)::text, ('request'::character varying)::text, ('idea'::character varying)::text, ('secretary_fan_art'::character varying)::text, ('other'::character varying)::text])))
 );
 
 
@@ -840,7 +935,7 @@ CREATE TABLE public.moderation_records (
     occurred_at timestamp(0) with time zone NOT NULL,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    CONSTRAINT moderation_records_target_type_check CHECK (((target_type)::text = ANY ((ARRAY['nation'::character varying, 'user'::character varying])::text[])))
+    CONSTRAINT moderation_records_target_type_check CHECK (((target_type)::text = ANY (ARRAY[('nation'::character varying)::text, ('user'::character varying)::text])))
 );
 
 
@@ -890,9 +985,11 @@ CREATE TABLE public.monster_definitions (
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
     display_order integer,
+    experience_per_damage smallint,
     CONSTRAINT monster_definitions_display_order_non_negative CHECK (((display_order IS NULL) OR (display_order >= 0))),
+    CONSTRAINT monster_definitions_experience_per_damage_non_negative CHECK (((experience_per_damage IS NULL) OR (experience_per_damage >= 0))),
     CONSTRAINT monster_definitions_hp_check CHECK (((base_hp >= 1) AND (hp_variation <= 18) AND ((base_hp + hp_variation) <= 65535))),
-    CONSTRAINT monster_definitions_skill_check CHECK (((skill_key)::text = ANY ((ARRAY['none'::character varying, 'move_2'::character varying, 'move_9999'::character varying, 'harden_odd'::character varying, 'harden_even'::character varying])::text[]))),
+    CONSTRAINT monster_definitions_skill_check CHECK (((skill_key)::text = ANY (ARRAY[('none'::character varying)::text, ('move_2'::character varying)::text, ('move_9999'::character varying)::text, ('harden_odd'::character varying)::text, ('harden_even'::character varying)::text]))),
     CONSTRAINT monster_definitions_spawn_tier_check CHECK (((natural_spawn_tier IS NULL) OR ((natural_spawn_tier >= 1) AND (natural_spawn_tier <= 3)))),
     CONSTRAINT monster_definitions_visibility_check CHECK (((visibility)::text = 'public'::text))
 );
@@ -1490,9 +1587,11 @@ CREATE TABLE public.nations (
     profile_comment character varying(100) DEFAULT ''::character varying NOT NULL,
     idle_counter bigint DEFAULT 2000 NOT NULL,
     registered_turn bigint DEFAULT '1'::bigint NOT NULL,
+    karma integer DEFAULT 0 NOT NULL,
     CONSTRAINT nations_idle_counter_check CHECK ((idle_counter >= 0)),
-    CONSTRAINT nations_lifecycle_context_check CHECK (((((state)::text = 'active'::text) AND (state_reason IS NULL) AND (state_started_turn IS NULL) AND (resume_at_turn IS NULL)) OR (((state)::text = 'dormant'::text) AND ((state_reason)::text = ANY ((ARRAY['idle'::character varying, 'collapse'::character varying, 'manual'::character varying])::text[])) AND (state_started_turn IS NOT NULL) AND ((((state_reason)::text = 'manual'::text) AND (resume_at_turn IS NOT NULL) AND (resume_at_turn > state_started_turn)) OR (((state_reason)::text <> 'manual'::text) AND (resume_at_turn IS NULL)))) OR (((state)::text = 'recovery'::text) AND (state_reason IS NULL) AND (state_started_turn IS NOT NULL) AND (resume_at_turn IS NOT NULL) AND (resume_at_turn > state_started_turn)) OR (((state)::text = 'abandoned'::text) AND (state_reason IS NULL) AND (state_started_turn IS NULL) AND (resume_at_turn IS NULL)))),
-    CONSTRAINT nations_lifecycle_state_check CHECK (((state)::text = ANY ((ARRAY['active'::character varying, 'dormant'::character varying, 'recovery'::character varying, 'abandoned'::character varying])::text[]))),
+    CONSTRAINT nations_karma_range_check CHECK (((karma >= '-30'::integer) AND (karma <= 100))),
+    CONSTRAINT nations_lifecycle_context_check CHECK (((((state)::text = 'active'::text) AND (state_reason IS NULL) AND (state_started_turn IS NULL) AND (resume_at_turn IS NULL)) OR (((state)::text = 'dormant'::text) AND ((state_reason)::text = ANY (ARRAY[('idle'::character varying)::text, ('collapse'::character varying)::text, ('manual'::character varying)::text])) AND (state_started_turn IS NOT NULL) AND ((((state_reason)::text = 'manual'::text) AND (resume_at_turn IS NOT NULL) AND (resume_at_turn > state_started_turn)) OR (((state_reason)::text <> 'manual'::text) AND (resume_at_turn IS NULL)))) OR (((state)::text = 'recovery'::text) AND (state_reason IS NULL) AND (state_started_turn IS NOT NULL) AND (resume_at_turn IS NOT NULL) AND (resume_at_turn > state_started_turn)) OR (((state)::text = 'abandoned'::text) AND (state_reason IS NULL) AND (state_started_turn IS NULL) AND (resume_at_turn IS NULL)))),
+    CONSTRAINT nations_lifecycle_state_check CHECK (((state)::text = ANY (ARRAY[('active'::character varying)::text, ('dormant'::character varying)::text, ('recovery'::character varying)::text, ('abandoned'::character varying)::text]))),
     CONSTRAINT nations_nation_number_positive CHECK ((nation_number > 0)),
     CONSTRAINT nations_registered_turn_check CHECK ((registered_turn >= 1))
 );
@@ -1644,8 +1743,18 @@ CREATE TABLE public.secretaries (
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
     equipment_version bigint DEFAULT '1'::bigint NOT NULL,
+    profile_biography text DEFAULT E'全てが謎に包まれた、長耳の秘書。\nかつては囚われの身になっていたが島主に救われ、後に才能を買われて秘書となった。\nその身に不思議な力を宿している。'::text NOT NULL,
+    main_image_path character varying(80),
+    main_image_mime_type character varying(32),
+    main_image_creation_method character varying(32),
+    main_image_credit character varying(160),
+    main_image_updated_at timestamp(0) with time zone,
+    monster_experience bigint DEFAULT '0'::bigint NOT NULL,
     CONSTRAINT secretaries_equipment_version_check CHECK ((equipment_version >= 1)),
-    CONSTRAINT secretaries_name_state_check CHECK ((((name IS NULL) AND (named_at IS NULL)) OR ((name IS NOT NULL) AND (named_at IS NOT NULL))))
+    CONSTRAINT secretaries_main_image_state_check CHECK ((((main_image_path IS NULL) AND (main_image_mime_type IS NULL) AND (main_image_creation_method IS NULL) AND (main_image_credit IS NULL) AND (main_image_updated_at IS NULL)) OR (((main_image_path)::text ~ '^[0-9a-f]{64}\.(png|jpg|webp|gif)$'::text) AND ((main_image_mime_type)::text = ANY ((ARRAY['image/png'::character varying, 'image/jpeg'::character varying, 'image/webp'::character varying, 'image/gif'::character varying])::text[])) AND ((main_image_creation_method)::text = ANY ((ARRAY['self_made'::character varying, 'ai_generated'::character varying, 'commissioned_or_permitted'::character varying, 'other'::character varying])::text[])) AND ((main_image_credit IS NULL) OR (char_length((main_image_credit)::text) <= 160)) AND (main_image_updated_at IS NOT NULL)))),
+    CONSTRAINT secretaries_monster_experience_non_negative CHECK ((monster_experience >= 0)),
+    CONSTRAINT secretaries_name_state_check CHECK ((((name IS NULL) AND (named_at IS NULL)) OR ((name IS NOT NULL) AND (named_at IS NOT NULL)))),
+    CONSTRAINT secretaries_profile_biography_length_check CHECK ((char_length(profile_biography) <= 1000))
 );
 
 
@@ -1682,7 +1791,9 @@ CREATE TABLE public.secretary_item_instances (
     obtained_at timestamp(0) with time zone NOT NULL,
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
+    is_escrowed boolean DEFAULT false NOT NULL,
     CONSTRAINT secretary_item_instances_equipped_slot_check CHECK (((equipped_slot IS NULL) OR ((equipped_slot >= 1) AND (equipped_slot <= 5)))),
+    CONSTRAINT secretary_item_instances_escrow_equipment_check CHECK (((NOT is_escrowed) OR (equipped_slot IS NULL))),
     CONSTRAINT secretary_item_instances_level_check CHECK ((level >= 1))
 );
 
@@ -1719,7 +1830,7 @@ CREATE TABLE public.secretary_skills (
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
     CONSTRAINT secretary_skills_experience_check CHECK ((experience >= 0)),
-    CONSTRAINT secretary_skills_key_check CHECK (((skill_key)::text = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'final_defense_line'::character varying])::text[]))),
+    CONSTRAINT secretary_skills_key_check CHECK (((skill_key)::text = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying])::text[]))),
     CONSTRAINT secretary_skills_level_check CHECK ((level >= 0))
 );
 
@@ -1857,6 +1968,9 @@ CREATE TABLE public.users (
     updated_at timestamp(0) without time zone,
     visitor_code character varying(8),
     message_board_last_posted_at timestamp(0) with time zone,
+    show_ai_generated_secretary_images boolean,
+    secretary_image_fallback character varying(16),
+    CONSTRAINT users_secretary_image_preferences_check CHECK ((((show_ai_generated_secretary_images IS NULL) AND (secretary_image_fallback IS NULL)) OR ((show_ai_generated_secretary_images IS NOT NULL) AND ((secretary_image_fallback)::text = ANY ((ARRAY['silhouette'::character varying, 'peridot'::character varying])::text[]))))),
     CONSTRAINT users_visitor_code_format_check CHECK (((visitor_code IS NULL) OR ((visitor_code)::text ~ '^[A-Za-z0-9]{8}$'::text)))
 );
 
@@ -1955,6 +2069,20 @@ ALTER SEQUENCE public.worlds_id_seq OWNED BY public.worlds.id;
 --
 
 ALTER TABLE ONLY public.announcements ALTER COLUMN id SET DEFAULT nextval('public.announcements_id_seq'::regclass);
+
+
+--
+-- Name: auction_bids id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_bids ALTER COLUMN id SET DEFAULT nextval('public.auction_bids_id_seq'::regclass);
+
+
+--
+-- Name: auction_listings id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_listings ALTER COLUMN id SET DEFAULT nextval('public.auction_listings_id_seq'::regclass);
 
 
 --
@@ -2236,6 +2364,22 @@ ALTER TABLE ONLY public.worlds ALTER COLUMN id SET DEFAULT nextval('public.world
 
 ALTER TABLE ONLY public.announcements
     ADD CONSTRAINT announcements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: auction_bids auction_bids_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_bids
+    ADD CONSTRAINT auction_bids_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: auction_listings auction_listings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_listings
+    ADD CONSTRAINT auction_listings_pkey PRIMARY KEY (id);
 
 
 --
@@ -2823,6 +2967,14 @@ ALTER TABLE ONLY public.ruleset_versions
 
 
 --
+-- Name: secretaries secretaries_main_image_path_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretaries
+    ADD CONSTRAINT secretaries_main_image_path_unique UNIQUE (main_image_path);
+
+
+--
 -- Name: secretaries secretaries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2963,6 +3115,41 @@ ALTER TABLE ONLY public.worlds
 --
 
 CREATE INDEX announcements_created_at_id_index ON public.announcements USING btree (created_at, id);
+
+
+--
+-- Name: auction_bids_bidder_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX auction_bids_bidder_index ON public.auction_bids USING btree (bidder_nation_id, id);
+
+
+--
+-- Name: auction_bids_one_highest_per_listing; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX auction_bids_one_highest_per_listing ON public.auction_bids USING btree (auction_listing_id) WHERE ((status)::text = 'highest'::text);
+
+
+--
+-- Name: auction_listings_active_item_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX auction_listings_active_item_unique ON public.auction_listings USING btree (secretary_item_instance_id) WHERE (((status)::text = 'active'::text) AND (secretary_item_instance_id IS NOT NULL));
+
+
+--
+-- Name: auction_listings_active_seller_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX auction_listings_active_seller_index ON public.auction_listings USING btree (seller_nation_id, id) WHERE ((status)::text = 'active'::text);
+
+
+--
+-- Name: auction_listings_active_world_end_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX auction_listings_active_world_end_index ON public.auction_listings USING btree (world_id, ends_turn, id) WHERE ((status)::text = 'active'::text);
 
 
 --
@@ -3299,6 +3486,62 @@ CREATE TRIGGER nation_monster_kill_stat_delete_guard BEFORE DELETE ON public.nat
 --
 
 CREATE TRIGGER nation_monster_kill_stat_guard BEFORE INSERT OR UPDATE ON public.nation_monster_kill_stats FOR EACH ROW EXECUTE FUNCTION public.validate_nation_monster_kill_stat();
+
+
+--
+-- Name: auction_bids auction_bids_auction_listing_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_bids
+    ADD CONSTRAINT auction_bids_auction_listing_id_foreign FOREIGN KEY (auction_listing_id) REFERENCES public.auction_listings(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: auction_bids auction_bids_bidder_nation_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_bids
+    ADD CONSTRAINT auction_bids_bidder_nation_id_foreign FOREIGN KEY (bidder_nation_id) REFERENCES public.nations(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: auction_listings auction_listings_highest_bidder_nation_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_listings
+    ADD CONSTRAINT auction_listings_highest_bidder_nation_id_foreign FOREIGN KEY (highest_bidder_nation_id) REFERENCES public.nations(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: auction_listings auction_listings_resource_definition_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_listings
+    ADD CONSTRAINT auction_listings_resource_definition_id_foreign FOREIGN KEY (resource_definition_id) REFERENCES public.resource_definitions(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: auction_listings auction_listings_secretary_item_instance_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_listings
+    ADD CONSTRAINT auction_listings_secretary_item_instance_id_foreign FOREIGN KEY (secretary_item_instance_id) REFERENCES public.secretary_item_instances(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: auction_listings auction_listings_seller_nation_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_listings
+    ADD CONSTRAINT auction_listings_seller_nation_id_foreign FOREIGN KEY (seller_nation_id) REFERENCES public.nations(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: auction_listings auction_listings_world_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auction_listings
+    ADD CONSTRAINT auction_listings_world_id_foreign FOREIGN KEY (world_id) REFERENCES public.worlds(id) ON DELETE RESTRICT;
 
 
 --
@@ -3895,6 +4138,12 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 44	2026_08_20_010000_add_monster_definition_display_order	1
 45	2026_08_21_000000_add_command_request_ruleset_provenance	1
 46	2026_08_21_010000_publish_hakoniwa_2s_plus_v11	1
+47	2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade	1
+48	2026_08_23_000000_add_nation_dormancy_and_publish_v12	1
+49	2026_08_23_010000_add_nation_karma_and_publish_v13	1
+50	2026_08_24_000000_add_secretary_profiles_and_publish_v14	1
+51	2026_08_24_010000_add_monster_experience_and_publish_v15	1
+52	2026_08_25_000000_add_oil_resource_and_publish_v16	1
 \.
 
 
@@ -3902,7 +4151,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 -- Name: migrations_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.migrations_id_seq', 46, true);
+SELECT pg_catalog.setval('public.migrations_id_seq', 52, true);
 
 
 --

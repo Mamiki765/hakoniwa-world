@@ -2,7 +2,7 @@
 
 namespace Tests\Support;
 
-final class V11SecretaryItemRulesetFixture
+final class CurrentRulesetFixture
 {
     public static function displayOrderFor(string $key): int
     {
@@ -27,8 +27,15 @@ final class V11SecretaryItemRulesetFixture
     /** @return array<string, mixed> */
     public static function settings(): array
     {
-        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php');
-        $settings['key'] = 'test-hakoniwa-2s-plus-v11-secretary-items';
+        return require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
+    }
+
+    /** @return array<string, mixed> */
+    public static function withIdentity(string $key, int $version): array
+    {
+        $settings = self::settings();
+        $settings['key'] = $key;
+        $settings['version'] = $version;
 
         return $settings;
     }

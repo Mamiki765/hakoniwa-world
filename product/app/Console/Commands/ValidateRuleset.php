@@ -3,37 +3,35 @@
 namespace App\Console\Commands;
 
 use App\Domain\Ruleset\RulesetAuthoringValidator;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use DomainException;
 use Illuminate\Console\Command;
 
 final class ValidateRuleset extends Command
 {
-    protected $signature = 'hakoniwa:ruleset:validate {--key= : Authoring version key}';
+    protected $signature = 'hakoniwa:ruleset:validate {--key= : Current authoring key}';
 
-    protected $description = 'Validate an authored ruleset without publishing it or changing a World';
+    protected $description = 'Validate the current authored ruleset without publishing it or changing a World';
 
-    public function handle(
-        RulesetAuthoringValidator $validator,
-        RulesetUpgradeAuthoringCatalog $authoredRulesets,
-    ): int {
-        $key = $this->option('key');
-        if (! is_string($key) || $key === '') {
-            $this->error('A non-empty --key is required.');
+    public function handle(RulesetAuthoringValidator $validator): int
+    {
+        $settings = config('hakoniwa.ruleset');
+        if (! is_array($settings)) {
+            $this->error('The current Ruleset authoring is not configured.');
 
             return self::FAILURE;
         }
+        $currentKey = $settings['key'] ?? null;
+        if (! is_string($currentKey) || $currentKey === '') {
+            $this->error('The current Ruleset authoring has no valid key.');
 
-        $rulesets = $authoredRulesets->all();
-        $configuredRulesets = config('hakoniwa.published_rulesets');
-        if (is_array($configuredRulesets)) {
-            $rulesets = array_replace($rulesets, $configuredRulesets);
+            return self::FAILURE;
         }
-        $settings = array_key_exists($key, $rulesets)
-            ? $rulesets[$key]
-            : null;
-        if (! is_array($settings)) {
-            $this->error("Ruleset authoring key {$key} does not exist.");
+        $key = $this->option('key');
+        if ($key === null || $key === '') {
+            $key = $currentKey;
+        }
+        if ($key !== $currentKey) {
+            $this->error("Ruleset authoring key {$key} is not the current key {$currentKey}.");
 
             return self::FAILURE;
         }

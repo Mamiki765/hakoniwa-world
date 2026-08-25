@@ -1,19 +1,15 @@
 # Ruleset authoring
 
-The `roadmap-pr*` files are historical published MVP snapshots;
-`hakoniwa-2s-plus-v1.php` through `v15.php` are standalone formal historical Rulesets. The
-thin `hakoniwa-2s-plus-v16.php` entrypoint explicitly composes the domain-first current
-authoring under `current/`. Pre-MVP prototypes live only in repository history, while test
-fixtures live under `tests/` and must never be registered or published as gameplay Rulesets.
+The thin `hakoniwa-2s-plus-v16.php` entrypoint explicitly composes the domain-first current
+authoring under `current/`. Historical `roadmap-pr*` snapshots and formal
+`hakoniwa-2s-plus-v1.php` through `v15.php` are preserved by Git and retired from the current
+tree. Pre-MVP prototypes also live only in repository history. Test fixtures live under
+`tests/` and must never be registered or published as gameplay Rulesets.
 
-`config/hakoniwa.php` loads only the current v16 entrypoint. Historical authored files
-remain explicit inputs to `RulesetUpgradeAuthoringCatalog`, which is installed only when a
-database migration starts or by the test base class. The operator validation command reads
-that catalog directly without installing it into normal configuration. Do not replace that
-list with a glob: order and provenance must stay deterministic and reviewable. Historical
-authored source bytes, resolved payloads, checksums, and published database snapshots are
-immutable. In particular, normally do not edit, format, comment, rename, or remove an
-existing historical file.
+`config/hakoniwa.php`, tests, and the operator validator load only current v16. There is no
+current historical-authoring catalog or migration bootstrap. Historical source bytes,
+resolved payloads, checksums, and published database snapshots remain immutable in their
+recorded Git/database authority; Markdown summaries do not reproduce them.
 
 The ver 2.4.0 source-dependency rebaseline had one explicit exception: the then-current
 `hakoniwa-2s-plus-v11` authored PHP source was mechanically rewritten from its inherited

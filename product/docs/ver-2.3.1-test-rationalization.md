@@ -1,5 +1,9 @@
 # ver 2.3.1 test rationalization
 
+> Historical test-ownership record. The v11 sources and test owners named below are retired
+> from the current tree. Current v16 contracts are owned by
+> `tests/Unit/CurrentRulesetContractTest.php` and the current baseline suites.
+
 ## Outcome
 
 ver 2.3.1はtest file数やassertion数を削減目標にしない。監査したQuality workflowはfull PHPUnitをserialとshardで二重実行していなかったため、CI execution topologyを変更しない。16 shardsが一度だけ全fileを実行し、`backend-static`のserial/shard equivalenceは`--list-tests`によるidentifier列挙であってtest実行ではない。
