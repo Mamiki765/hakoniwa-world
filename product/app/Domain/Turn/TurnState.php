@@ -46,6 +46,9 @@ final class TurnState
     /** @var array<int, int> */
     private array $karmaStartSnapshots = [];
 
+    /** @var array<int, int> */
+    private array $karmaMinimumSnapshots = [];
+
     /** @var array<string, true> */
     private array $turnStartMonsterCoordinates = [];
 
@@ -394,8 +397,8 @@ final class TurnState
     public function setKarmaStartSnapshot(mixed $nationId, mixed $karma): void
     {
         $nationId = $this->validatedNationId($nationId);
-        if (! is_int($karma) || $karma < -10 || $karma > 100) {
-            throw new InvalidArgumentException('KARMA snapshot must be an integer from -10 through 100.');
+        if (! is_int($karma) || $karma < -30 || $karma > 100) {
+            throw new InvalidArgumentException('KARMA snapshot must be an integer from -30 through 100.');
         }
         if (array_key_exists($nationId, $this->karmaStartSnapshots)) {
             throw new InvalidArgumentException("Nation {$nationId} already has a KARMA snapshot.");
@@ -418,6 +421,29 @@ final class TurnState
     public function karmaStartSnapshots(): array
     {
         return $this->karmaStartSnapshots;
+    }
+
+    public function setKarmaMinimumSnapshot(mixed $nationId, mixed $minimum): void
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! isset($this->karmaStartSnapshots[$nationId])
+            || ! is_int($minimum) || $minimum < -30 || $minimum > -10) {
+            throw new InvalidArgumentException('KARMA minimum snapshot must be an integer from -30 through -10.');
+        }
+        if (array_key_exists($nationId, $this->karmaMinimumSnapshots)) {
+            throw new InvalidArgumentException("Nation {$nationId} already has a KARMA minimum snapshot.");
+        }
+        $this->karmaMinimumSnapshots[$nationId] = $minimum;
+    }
+
+    public function karmaMinimumSnapshot(mixed $nationId): int
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if (! array_key_exists($nationId, $this->karmaMinimumSnapshots)) {
+            throw new InvalidArgumentException("Nation {$nationId} has no KARMA minimum snapshot.");
+        }
+
+        return $this->karmaMinimumSnapshots[$nationId];
     }
 
     /** @param array<array-key, mixed> $coordinates */

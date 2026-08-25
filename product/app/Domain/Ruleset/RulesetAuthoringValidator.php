@@ -357,7 +357,7 @@ final class RulesetAuthoringValidator
             $version,
         );
         $this->validateMilitary($settings, $facilityKeys, $version);
-        $this->validateSecretary($settings, $resourceKeys, $commandKeys);
+        $this->validateSecretary($settings, $resourceKeys, $commandKeys, $authoredKey);
 
         return [
             'key' => $authoredKey,
@@ -375,8 +375,12 @@ final class RulesetAuthoringValidator
      * @param  list<string>  $resourceKeys
      * @param  list<string>  $commandKeys
      */
-    private function validateSecretary(array $settings, array $resourceKeys, array $commandKeys): void
-    {
+    private function validateSecretary(
+        array $settings,
+        array $resourceKeys,
+        array $commandKeys,
+        string $authoredKey,
+    ): void {
         if (! array_key_exists('secretary', $settings)) {
             return;
         }
@@ -478,8 +482,9 @@ final class RulesetAuthoringValidator
             }
         }
 
-        (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($settings);
-        $authoredKey = $settings['key'] ?? null;
+        $itemSettings = $settings;
+        $itemSettings['key'] = $authoredKey;
+        (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($itemSettings);
         if ($authoredKey === self::FORMAL_V16_KEY) {
             TradingPostRules::fromSettings($settings);
         }

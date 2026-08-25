@@ -35,6 +35,13 @@ final class TradingPostApiTest extends TestCase
     {
         $world = $this->lightweightWorld();
         [$owner, $nation] = $this->ownerAndNation($world, '出品島');
+        $owner->secretary()->firstOrFail()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::HOARDER_TALISMAN,
+            'level' => 10,
+            'equipped_slot' => 2,
+            'grant_key' => 'test:trading-post:resource-capacity-item',
+            'obtained_at' => now(),
+        ]);
         $oil = $this->resource('oil');
         $oilCapacity = app(NationCapacityResolver::class)->resolve($nation)->resources['oil'];
         $this->setResource($nation, $oil, $oilCapacity);
@@ -321,6 +328,13 @@ final class TradingPostApiTest extends TestCase
 
         [$capacityBidder, $capacityBidderNation] = $this->ownerAndNation($world, '上限入札島');
         [$capacityOutbidder, $capacityOutbidderNation] = $this->ownerAndNation($world, '上限更新島');
+        $capacityBidder->secretary()->firstOrFail()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::VAULT_KEY,
+            'level' => 10,
+            'equipped_slot' => 2,
+            'grant_key' => 'test:trading-post:money-capacity-item',
+            'obtained_at' => now(),
+        ]);
         $moneyCapacity = app(NationCapacityResolver::class)->resolve($capacityBidderNation)->money;
         $escrowAmount = $moneyCapacity - 999;
         $capacityBidderNation->update(['money' => $escrowAmount]);
@@ -554,11 +568,21 @@ final class TradingPostApiTest extends TestCase
         $this->assertNotEmpty($allNpc);
         $this->assertGreaterThan(0, $allNpc->where('product_type', 'resource')->count());
         $this->assertGreaterThan(0, $allNpc->where('product_type', 'item')->count());
+        $expectedNpcItems = [
+            SecretaryItemCatalog::RING,
+            SecretaryItemCatalog::SECRETARY_SUIT,
+            SecretaryItemCatalog::INORA_BRACELET,
+            SecretaryItemCatalog::HOARDER_TALISMAN,
+            SecretaryItemCatalog::GOOD_PERSON_TREASURE,
+            SecretaryItemCatalog::VAULT_KEY,
+            SecretaryItemCatalog::MONSTER_REPELLENT_INCENSE,
+            SecretaryItemCatalog::FULLNESS_HERB,
+        ];
         foreach ($allNpc as $listing) {
             $this->assertSame(6, $listing->duration_turns);
             $this->assertFalse($listing->auto_relist);
             if ($listing->product_type === 'item') {
-                $this->assertSame(SecretaryItemCatalog::RING, $listing->item_key);
+                $this->assertContains($listing->item_key, $expectedNpcItems);
                 $this->assertNotSame(SecretaryItemCatalog::OLD_BOW, $listing->item_key);
                 $this->assertGreaterThanOrEqual(1, $listing->item_level);
                 $this->assertLessThanOrEqual(5, $listing->item_level);
@@ -574,6 +598,12 @@ final class TradingPostApiTest extends TestCase
             $this->assertGreaterThanOrEqual($baseValue, $listing->start_price);
             $this->assertLessThanOrEqual(intdiv($baseValue * 130, 100), $listing->start_price);
         }
+        $this->assertSame($expectedNpcItems, $allNpc->where('product_type', 'item')
+            ->pluck('item_key')->unique()->sortBy(
+                static fn (string $key): int => array_search($key, $expectedNpcItems, true),
+            )->values()->all());
+        $this->assertLessThanOrEqual(5, (int) $allNpc
+            ->where('item_key', SecretaryItemCatalog::GOOD_PERSON_TREASURE)->max('item_level'));
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.auto_relisted']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.unsold_returned']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.npc_listed']);

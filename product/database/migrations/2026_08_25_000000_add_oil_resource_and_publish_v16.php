@@ -125,6 +125,12 @@ SQL);
             DB::statement('CREATE INDEX auction_bids_bidder_index ON auction_bids (bidder_nation_id, id)');
         }
 
+        DB::statement('ALTER TABLE nations DROP CONSTRAINT IF EXISTS nations_karma_range_check');
+        DB::statement(<<<'SQL'
+ALTER TABLE nations
+  ADD CONSTRAINT nations_karma_range_check CHECK (karma BETWEEN -30 AND 100)
+SQL);
+
         app(Ver260OilResourceRulesetUpgrade::class)->run();
     }
 

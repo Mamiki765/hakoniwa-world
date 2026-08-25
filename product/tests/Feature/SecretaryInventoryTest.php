@@ -170,9 +170,9 @@ final class SecretaryInventoryTest extends TestCase
 
         $this->assertSame([
             'key' => SecretaryItemCatalog::RING,
-            'category' => 'ring',
-            'category_label' => '指輪',
-            'category_max_equipped' => 5,
+            'category' => 'accessory',
+            'category_label' => 'アクセサリー',
+            'category_max_equipped' => 99,
             'rarity' => SecretaryItemCatalog::RARITY_NOVICE,
             'rarity_label' => 'ノービス',
             'tradable' => true,
@@ -181,10 +181,10 @@ final class SecretaryInventoryTest extends TestCase
             'name' => '指輪',
             'flavor_text' => '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
             'unique_per_secretary' => false,
-            'same_item_max_equipped' => 5,
         ], $definition);
-        $this->assertSame(5, $catalog->maximumEquipped('ring'));
-        $this->assertSame(5, $catalog->sameItemMaximum(SecretaryItemCatalog::RING));
+        $this->assertSame(99, $catalog->maximumEquipped('accessory'));
+        $this->assertSame(1, $catalog->sameItemMaximum(SecretaryItemCatalog::RING));
+        $this->assertArrayNotHasKey('same_item_max_equipped', $definition);
         $this->assertArrayNotHasKey('effect', $definition);
 
         $world = $this->lightweightWorld();

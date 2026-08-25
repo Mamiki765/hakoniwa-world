@@ -2,6 +2,8 @@
 
 namespace App\Domain\Economy;
 
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Models\Nation;
 use App\Models\RulesetVersion;
 use DomainException;
@@ -13,8 +15,10 @@ final class NationCapacityResolver
     private array $modifiers;
 
     /** @param iterable<CapacityModifier> $modifiers */
-    public function __construct(iterable $modifiers = [])
-    {
+    public function __construct(
+        private readonly SecretaryItemEffectAggregator $itemEffects,
+        iterable $modifiers = [],
+    ) {
         $this->modifiers = [...$modifiers];
     }
 
@@ -57,6 +61,7 @@ final class NationCapacityResolver
             throw new DomainException('Capacity modifier semantics are deferred until E-04 is decided.');
         }
 
+        $secretaryPercent = 0;
         $secretaryBonus = $ruleset->settings['secretary']['capacity_bonus'] ?? null;
         if ($secretaryBonus !== null) {
             if (! is_array($secretaryBonus)
@@ -74,8 +79,26 @@ final class NationCapacityResolver
                 throw new DomainException('Published Secretary skill settings are invalid.');
             }
             $level = $this->secretaryLevel($nation, count($skillDefinitions));
-            $baseMoney = intdiv($baseMoney * (100 + $level), 100);
-            $baseFood = intdiv($baseFood * (100 + $level), 100);
+            $secretaryPercent = $level;
+        }
+
+        $itemPercentages = $this->itemEffects->currentCapacityPercentages($nation, $ruleset);
+        $baseMoney = $this->applyPercentageGenres(
+            $baseMoney,
+            $itemPercentages[SecretaryItemGameplayContract::CAPACITY_MONEY],
+            $secretaryPercent,
+        );
+        $baseFood = $this->applyPercentageGenres(
+            $baseFood,
+            $itemPercentages[SecretaryItemGameplayContract::CAPACITY_ALL_RESOURCES]
+                + $itemPercentages[SecretaryItemGameplayContract::CAPACITY_FOOD],
+            $secretaryPercent,
+        );
+        $resourceItemPercent = $itemPercentages[SecretaryItemGameplayContract::CAPACITY_ALL_RESOURCES];
+        if ($resourceItemPercent !== 0) {
+            foreach ($resourceCapacities as $resourceKey => $capacity) {
+                $resourceCapacities[$resourceKey] = $this->applyPercentageGenres($capacity, $resourceItemPercent);
+            }
         }
 
         return new NationCapacities($baseMoney, $baseFood, $resourceCapacities);
@@ -99,5 +122,21 @@ final class NationCapacityResolver
         }
 
         return (int) $row->level_total;
+    }
+
+    private function applyPercentageGenres(int $base, int ...$percentages): int
+    {
+        $numerator = $base;
+        $denominator = 1;
+        foreach ($percentages as $percentage) {
+            $factor = 100 + $percentage;
+            if ($factor < 0) {
+                $factor = 0;
+            }
+            $numerator *= $factor;
+            $denominator *= 100;
+        }
+
+        return intdiv($numerator, $denominator);
     }
 }

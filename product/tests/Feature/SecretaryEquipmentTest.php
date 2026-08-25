@@ -48,8 +48,9 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertJsonPath('data.items.0.id', $bow->id)
             ->assertJsonPath('data.items.0.effect_text', null)
             ->assertJsonPath('data.category_limits.0.category', 'bow')
-            ->assertJsonPath('data.category_limits.1.category', 'ring')
-            ->assertJsonPath('data.category_limits.1.maximum_equipped', 5)
+            ->assertJsonPath('data.category_limits.1.category', 'clothing')
+            ->assertJsonPath('data.category_limits.1.maximum_equipped', 1)
+            ->assertJsonMissing(['category' => 'accessory'])
             ->assertJsonMissingPath('data.items.0.flavor_text');
 
         $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
@@ -187,6 +188,8 @@ final class SecretaryEquipmentTest extends TestCase
         $replacementBow = $secretary->itemInstances()->create($this->itemAttributes('test_bow_b', null));
         $firstCharm = $secretary->itemInstances()->create($this->itemAttributes('test_charm', 2));
         $secondCharm = $secretary->itemInstances()->create($this->itemAttributes('test_charm', null));
+        $firstClothing = $secretary->itemInstances()->create($this->itemAttributes('test_clothing_a', 3));
+        $secondClothing = $secretary->itemInstances()->create($this->itemAttributes('test_clothing_b', null));
         $service = $this->service(catalog: $this->equipmentPolicyCatalog());
 
         $slotTwo = $service->options($user, 2);
@@ -197,6 +200,15 @@ final class SecretaryEquipmentTest extends TestCase
         $this->assertSame([$currentBow->id, $replacementBow->id], array_column($slotOne['items'], 'id'));
         $service->mutate($user, 1, $replacementBow->id, 1);
         $this->assertNull($currentBow->fresh()->equipped_slot);
+
+        try {
+            $service->mutate($user, 4, $secondClothing->id, 2);
+            $this->fail('Expected the clothing category maximum to reject different clothing.');
+        } catch (SecretaryEquipmentValidationException) {
+            $this->addToAssertionCount(1);
+        }
+        $this->assertSame(3, $firstClothing->fresh()->equipped_slot);
+        $this->assertNull($secondClothing->fresh()->equipped_slot);
         $this->assertSame(1, $replacementBow->fresh()->equipped_slot);
 
         try {
@@ -217,38 +229,47 @@ final class SecretaryEquipmentTest extends TestCase
         $this->assertNull($currentBow->fresh()->equipped_slot);
     }
 
-    public function test_five_rings_fill_the_shared_slots_and_a_sixth_cannot_be_equipped(): void
+    public function test_different_accessories_share_slots_but_the_same_item_default_is_one_and_limit_99_is_hidden(): void
     {
         $secretary = $this->secretaryFixture();
         $user = $secretary->user()->firstOrFail();
-        $rings = collect(range(1, 6))->map(fn (int $number) => $secretary->itemInstances()->create([
+        $ring = $secretary->itemInstances()->create($this->itemAttributes(SecretaryItemCatalog::RING, null));
+        $secondRing = $secretary->itemInstances()->create([
             ...$this->itemAttributes(SecretaryItemCatalog::RING, null),
-            'level' => $number === 6 ? 10 : $number,
-            'grant_key' => "test:ring:equipment:{$number}",
-        ]));
+            'grant_key' => 'test:ring:equipment:second',
+        ]);
+        $bracelet = $secretary->itemInstances()->create(
+            $this->itemAttributes(SecretaryItemCatalog::INORA_BRACELET, null),
+        );
+        $vaultKey = $secretary->itemInstances()->create(
+            $this->itemAttributes(SecretaryItemCatalog::VAULT_KEY, null),
+        );
         $service = $this->service();
 
-        foreach (range(1, 5) as $slot) {
-            $service->mutate($user, $slot, $rings[$slot - 1]->id, $slot);
-        }
+        $service->mutate($user, 1, $ring->id, 1);
+        $service->mutate($user, 2, $bracelet->id, 2);
+        $service->mutate($user, 3, $vaultKey->id, 3);
 
-        $this->assertSame([1, 2, 3, 4, 5], $secretary->itemInstances()
-            ->where('item_key', SecretaryItemCatalog::RING)
+        $this->assertSame([1, 2, 3], $secretary->itemInstances()
             ->whereNotNull('equipped_slot')
             ->orderBy('equipped_slot')
             ->pluck('equipped_slot')->all());
-        $this->assertSame(6, $secretary->fresh()->equipment_version);
-        $this->assertSame(5, app(SecretaryItemCatalog::class)->sameItemMaximum(SecretaryItemCatalog::RING));
-        $this->assertSame(5, app(SecretaryItemCatalog::class)->maximumEquipped('ring'));
+        $this->assertSame(4, $secretary->fresh()->equipment_version);
+        $this->assertSame(1, app(SecretaryItemCatalog::class)->sameItemMaximum(SecretaryItemCatalog::RING));
+        $this->assertSame(99, app(SecretaryItemCatalog::class)->maximumEquipped('accessory'));
+        $this->assertNotContains('accessory', array_column(
+            app(SecretaryItemCatalog::class)->categoryLimits(),
+            'category',
+        ));
 
         try {
-            $service->mutate($user, 6, $rings[5]->id, 6);
-            $this->fail('Expected the sixth Ring to have no legal equipment slot.');
+            $service->mutate($user, 4, $secondRing->id, 4);
+            $this->fail('Expected the second Ring to be rejected by the same-item default.');
         } catch (SecretaryEquipmentValidationException) {
             $this->addToAssertionCount(1);
         }
-        $this->assertNull($rings[5]->fresh()->equipped_slot);
-        $this->assertSame(6, $secretary->fresh()->equipment_version);
+        $this->assertNull($secondRing->fresh()->equipped_slot);
+        $this->assertSame(4, $secretary->fresh()->equipment_version);
     }
 
     public function test_failed_replacement_rolls_back_both_slots_version_and_audit(): void
@@ -565,6 +586,8 @@ SQL);
                     'test_bow_a' => $this->definitionRow('test_bow_a', '弓A', 'bow', '弓', 1, 1),
                     'test_bow_b' => $this->definitionRow('test_bow_b', '弓B', 'bow', '弓', 1, 1),
                     'test_charm' => $this->definitionRow('test_charm', '護符', 'charm', '護符', 5, 1),
+                    'test_clothing_a' => $this->definitionRow('test_clothing_a', '衣服A', 'clothing', '衣服', 1, 1),
+                    'test_clothing_b' => $this->definitionRow('test_clothing_b', '衣服B', 'clothing', '衣服', 1, 1),
                 ];
             }
 
