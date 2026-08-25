@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\CompleteTurnEngine;
 use App\Application\NationCreationService;
 use App\Application\TradingPostTurnService;
+use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
@@ -276,6 +277,34 @@ final class TradingPostApiTest extends TestCase
 
         $this->actingAs($seller)->deleteJson($this->listingUrl($sellerNation).'/'.$listingId)
             ->assertUnprocessable();
+
+        [$capacityBidder, $capacityBidderNation] = $this->ownerAndNation($world, '上限入札島');
+        [$capacityOutbidder, $capacityOutbidderNation] = $this->ownerAndNation($world, '上限更新島');
+        $moneyCapacity = app(NationCapacityResolver::class)->resolve($capacityBidderNation)->money;
+        $escrowAmount = $moneyCapacity - 999;
+        $capacityBidderNation->update(['money' => $escrowAmount]);
+        $capacityOutbidderNation->update(['money' => $moneyCapacity]);
+        $this->setResource($sellerNation, $oil, 100);
+        $capacityListingId = $this->actingAs($seller)->postJson($this->listingUrl($sellerNation), [
+            'product_type' => 'resource', 'resource_definition_id' => $oil->id, 'quantity' => 100,
+            'start_price' => $escrowAmount, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($capacityBidder)
+            ->postJson($this->bidUrl($capacityBidderNation, $capacityListingId), ['amount' => $escrowAmount])
+            ->assertOk();
+        $credit = app(CapacityBoundedAssetService::class)->creditMoney($capacityBidderNation, 1_000);
+        $this->assertSame(999, $credit->applied);
+        $this->assertSame(1, $credit->overflow);
+        $this->assertSame(999, $capacityBidderNation->fresh()->money);
+        $this->actingAs($capacityBidder)->getJson("/api/v1/nations/{$capacityBidderNation->id}")
+            ->assertOk()
+            ->assertJsonPath('data.money_remaining_capacity', 0)
+            ->assertJsonPath('data.money_is_at_capacity', true);
+        $this->actingAs($capacityOutbidder)->postJson(
+            $this->bidUrl($capacityOutbidderNation, $capacityListingId),
+            ['amount' => $escrowAmount + 1],
+        )->assertOk();
+        $this->assertSame($moneyCapacity, $capacityBidderNation->fresh()->money);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.bid_placed']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.outbid_refunded']);
     }

@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Economy\CapacityAdditionResult;
+use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\InventorySalePlanner;
 use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationCapacityResolver;
@@ -17,6 +18,7 @@ final class FoodOverflowResolver
 {
     public function __construct(
         private readonly NationCapacityResolver $capacities,
+        private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly InventorySalePlanner $sales,
         private readonly TurnEventRecorder $events,
     ) {}
@@ -157,7 +159,7 @@ final class FoodOverflowResolver
         $quote = $this->sales->plan(
             $foodCredit->overflow,
             (int) $lockedNation->money,
-            $capacity->money,
+            $this->boundedAssets->liquidMoneyCapacity($lockedNation, $capacity->money),
             $rate['inventory_units'],
             $rate['money_units'],
         );

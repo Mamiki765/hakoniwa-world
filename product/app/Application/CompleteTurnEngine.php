@@ -575,13 +575,16 @@ final class CompleteTurnEngine
         $tradableResources = $resources->where('tradable', true);
         $tradableResourceIds = $tradableResources->pluck('id')->all();
         $pendingEvents = [];
+        $nationIds = $context->state->stableNationIds();
+        $escrowedMoneyByNation = $this->boundedAssets->escrowedMoneyByNationIds($nationIds);
 
-        foreach ($context->state->stableNationIds() as $nationId) {
+        foreach ($nationIds as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
+            $liquidMoneyCapacity = max(0, $capacity->money - ($escrowedMoneyByNation[$nationId] ?? 0));
             $balances = NationResource::query()
                 ->where('nation_id', $nation->id)
                 ->whereIn('resource_definition_id', $tradableResourceIds)
@@ -619,7 +622,7 @@ final class CompleteTurnEngine
                 $quote = $this->salePlanner->plan(
                     $requested,
                     (int) $nation->money,
-                    $capacity->money,
+                    $liquidMoneyCapacity,
                     $rate['inventory_units'],
                     $rate['money_units'],
                 );
@@ -665,13 +668,17 @@ final class CompleteTurnEngine
         $resources = $this->resourceDefinitions($context);
         $resourcesByKey = $resources->keyBy('key');
         $resourceIds = $resources->pluck('id')->all();
+        $nationIds = $context->state->stableNationIds();
+        $escrowedMoneyByNation = $this->boundedAssets->escrowedMoneyByNationIds($nationIds);
 
-        foreach ($context->state->stableNationIds() as $nationId) {
+        foreach ($nationIds as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
+            $escrowedMoney = $escrowedMoneyByNation[$nationId] ?? 0;
+            $liquidMoneyCapacity = max(0, $capacity->money - $escrowedMoney);
             $balances = NationResource::query()
                 ->where('nation_id', $nation->id)
                 ->whereIn('resource_definition_id', $resourceIds)
@@ -704,7 +711,7 @@ final class CompleteTurnEngine
                         $quote = $this->salePlanner->plan(
                             $overflow,
                             (int) $nation->money,
-                            $capacity->money,
+                            $liquidMoneyCapacity,
                             $rate['inventory_units'],
                             $rate['money_units'],
                         );
@@ -756,8 +763,9 @@ final class CompleteTurnEngine
                     $foodTotal += (int) $balance->amount;
                 }
             }
+            $moneyInUse = (int) $nation->money + $escrowedMoney;
             foreach ([
-                ['asset' => 'money', 'overflow' => max(0, (int) $nation->money - $capacity->money), 'capacity' => $capacity->money],
+                ['asset' => 'money', 'overflow' => max(0, $moneyInUse - $capacity->money), 'capacity' => $capacity->money],
                 ['asset' => 'aggregate_food', 'overflow' => max(0, $foodTotal - $capacity->foodTons), 'capacity' => $capacity->foodTons],
             ] as $report) {
                 if ($report['overflow'] > 0) {
@@ -766,7 +774,9 @@ final class CompleteTurnEngine
                 }
             }
             $this->events->record($context, 'capacity.applied', $nation, [
-                'money' => (int) $nation->money, 'money_capacity' => $capacity->money,
+                'money' => (int) $nation->money, 'money_escrow' => $escrowedMoney,
+                'money_in_use' => $moneyInUse,
+                'money_capacity' => $capacity->money,
                 'food_tons' => $foodTotal, 'food_capacity_tons' => $capacity->foodTons,
                 'resource_amounts' => $resourceAmounts,
                 'resource_capacities' => $capacity->resources,

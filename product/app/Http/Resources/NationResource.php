@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Application\NationBasicStatusProjection;
+use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Models\Nation;
@@ -25,6 +26,9 @@ class NationResource extends JsonResource
         $foodTotal = $basicStatus['food_total_tons'];
         $capacities = $isOwner
             ? app(NationCapacityResolver::class)->resolve($this->resource)
+            : null;
+        $moneyInUse = $isOwner
+            ? app(CapacityBoundedAssetService::class)->moneyInUse($this->resource)
             : null;
         $currentTurn = (int) $this->world()->value('current_turn');
         $lifecycle = config('hakoniwa.ruleset.nation_lifecycle', []);
@@ -55,11 +59,11 @@ class NationResource extends JsonResource
             'money_capacity' => $this->when($isOwner, $capacities?->money),
             'money_remaining_capacity' => $this->when(
                 $isOwner,
-                max(0, ($capacities->money ?? 0) - (int) $this->money),
+                max(0, ($capacities->money ?? 0) - ($moneyInUse ?? 0)),
             ),
             'money_is_at_capacity' => $this->when(
                 $isOwner,
-                (int) $this->money >= ($capacities->money ?? PHP_INT_MAX),
+                ($moneyInUse ?? 0) >= ($capacities->money ?? PHP_INT_MAX),
             ),
             'state' => $this->state,
             'state_label' => match ($this->state) {
