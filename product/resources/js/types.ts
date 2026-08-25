@@ -121,9 +121,72 @@ export interface SecretaryItem {
     category_label: string;
     equipped_slot: number | null;
     is_equipped: boolean;
+    is_escrowed: boolean;
+    rarity: string;
+    rarity_label: string;
     effect_text: string | null;
     flavor_text: string;
     obtained_at: string;
+}
+
+export interface TradingPostListing {
+    id: number;
+    seller: { type: 'nation' | 'hakoniwa_federation'; nation_id: number | null; name: string };
+    product: {
+        type: 'resource' | 'item';
+        name: string;
+        resource_key: string | null;
+        unit_label: string | null;
+        quantity: number | null;
+        item_key: string | null;
+        item_level: number | null;
+        rarity: string | null;
+        rarity_label: string | null;
+    };
+    start_price: number;
+    current_price: number | null;
+    minimum_bid: number;
+    bid_count: number;
+    highest_bidder_nation_id: number | null;
+    started_turn: number;
+    ends_turn: number;
+    remaining_turns: number;
+    duration_turns: number;
+    auto_relist: boolean;
+    relist_count: number;
+    is_mine: boolean;
+    can_bid: boolean;
+    can_cancel: boolean;
+}
+
+export interface TradingPostData {
+    world: { id: number; current_turn: number };
+    nation: { id: number; name: string; money: number };
+    listings: TradingPostListing[];
+    my_listings: TradingPostListing[];
+    sellable_resources: Array<{
+        id: number;
+        key: string;
+        name: string;
+        unit_label: string | null;
+        amount: number;
+    }>;
+    sellable_items: Array<{
+        id: number;
+        key: string;
+        name: string;
+        level: number;
+        rarity: string;
+        rarity_label: string;
+    }>;
+    contract: {
+        active_listing_limit: number;
+        minimum_duration_turns: number;
+        maximum_duration_turns: number;
+        minimum_increment_money: number;
+        money_unit_label: '億円';
+        npc_seller_name: '箱庭連合';
+    };
 }
 
 export interface InquirySummary {

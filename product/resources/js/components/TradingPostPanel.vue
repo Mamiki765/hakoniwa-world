@@ -1,0 +1,201 @@
+<script setup lang="ts">
+import { onMounted, reactive, ref } from 'vue';
+import { api } from '../api/client';
+import type { TradingPostData, TradingPostListing } from '../types';
+
+const props = defineProps<{ nationId: number; worldId: number }>();
+const market = ref<TradingPostData | null>(null);
+const busy = ref(false);
+const error = ref('');
+const bidAmounts = reactive<Record<number, number>>({});
+const form = reactive({
+    product_type: 'resource' as 'resource' | 'item',
+    resource_definition_id: null as number | null,
+    item_instance_id: null as number | null,
+    quantity: 1,
+    start_price: 100,
+    duration_turns: 6,
+    auto_relist: false,
+});
+
+function productLabel(listing: TradingPostListing): string {
+    if (listing.product.type === 'item') {
+        return `${listing.product.name} Lv${listing.product.item_level}（${listing.product.rarity_label}）`;
+    }
+
+    return `${listing.product.name} ${listing.product.quantity?.toLocaleString('ja-JP')}${listing.product.unit_label ?? ''}`;
+}
+
+function errorMessage(cause: unknown, fallback: string): string {
+    return cause instanceof Error ? cause.message : fallback;
+}
+
+async function load(): Promise<void> {
+    busy.value = true;
+    error.value = '';
+    try {
+        market.value = await api<TradingPostData>(`/api/v1/worlds/${props.worldId}/trading-post`);
+        for (const listing of market.value.listings) {
+            bidAmounts[listing.id] = listing.minimum_bid;
+        }
+        form.resource_definition_id ??= market.value.sellable_resources[0]?.id ?? null;
+        form.item_instance_id ??= market.value.sellable_items[0]?.id ?? null;
+    } catch (cause) {
+        error.value = errorMessage(cause, '交易場を読み込めませんでした。');
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function createListing(): Promise<void> {
+    if (market.value === null) return;
+    busy.value = true;
+    error.value = '';
+    try {
+        await api(`/api/v1/nations/${props.nationId}/trading-post/listings`, {
+            method: 'POST',
+            body: JSON.stringify({
+                product_type: form.product_type,
+                resource_definition_id: form.product_type === 'resource' ? form.resource_definition_id : null,
+                item_instance_id: form.product_type === 'item' ? form.item_instance_id : null,
+                quantity: form.product_type === 'resource' ? form.quantity : null,
+                start_price: form.start_price,
+                duration_turns: form.duration_turns,
+                auto_relist: form.auto_relist,
+            }),
+        });
+        await load();
+    } catch (cause) {
+        error.value = errorMessage(cause, '商品を出品できませんでした。');
+        busy.value = false;
+    }
+}
+
+async function placeBid(listing: TradingPostListing): Promise<void> {
+    busy.value = true;
+    error.value = '';
+    try {
+        await api(`/api/v1/nations/${props.nationId}/trading-post/listings/${listing.id}/bids`, {
+            method: 'POST',
+            body: JSON.stringify({ amount: bidAmounts[listing.id] }),
+        });
+        await load();
+    } catch (cause) {
+        error.value = errorMessage(cause, '入札できませんでした。');
+        busy.value = false;
+    }
+}
+
+async function cancelListing(listing: TradingPostListing): Promise<void> {
+    busy.value = true;
+    error.value = '';
+    try {
+        await api(`/api/v1/nations/${props.nationId}/trading-post/listings/${listing.id}`, {
+            method: 'DELETE',
+        });
+        await load();
+    } catch (cause) {
+        error.value = errorMessage(cause, '出品をキャンセルできませんでした。');
+        busy.value = false;
+    }
+}
+
+onMounted(load);
+</script>
+
+<template>
+    <section class="panel trading-post-panel">
+        <header class="trading-post-heading">
+            <div>
+                <p class="eyebrow">TRADING POST</p>
+                <h1>交易場</h1>
+            </div>
+            <p v-if="market" class="trading-post-balance">所持資金 {{ market.nation.money.toLocaleString('ja-JP') }}億円</p>
+        </header>
+        <p v-if="error" class="field-error" role="alert">{{ error }}</p>
+        <p v-if="busy && market === null" role="status">交易場を読み込んでいます…</p>
+
+        <template v-if="market">
+            <section aria-labelledby="trading-post-active-title">
+                <h2 id="trading-post-active-title">現在出品中の商品</h2>
+                <div class="trading-post-table-wrap">
+                    <table class="trading-post-table">
+                        <thead>
+                            <tr><th>商品</th><th>出品者</th><th>開始価格</th><th>現在の最高入札額</th><th>残り／終了</th><th>入札</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="listing in market.listings" :key="listing.id">
+                                <td>{{ productLabel(listing) }}</td>
+                                <td>{{ listing.seller.name }}</td>
+                                <td>{{ listing.start_price.toLocaleString('ja-JP') }}億円</td>
+                                <td>{{ listing.current_price === null ? '入札なし' : `${listing.current_price.toLocaleString('ja-JP')}億円` }}</td>
+                                <td>残り{{ listing.remaining_turns }}ターン<br><small>終了 T{{ listing.ends_turn }}</small></td>
+                                <td>
+                                    <form v-if="listing.can_bid" class="trading-post-bid" @submit.prevent="placeBid(listing)">
+                                        <input v-model.number="bidAmounts[listing.id]" type="number" :min="listing.minimum_bid" required :disabled="busy" :aria-label="`${listing.product.name}の入札額`">
+                                        <span>億円</span>
+                                        <button class="button primary" type="submit" :disabled="busy">入札</button>
+                                    </form>
+                                    <span v-else>自分の出品</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p v-if="market.listings.length === 0" class="empty-state">現在出品中の商品はありません。</p>
+            </section>
+
+            <div class="trading-post-lower-grid">
+                <section aria-labelledby="trading-post-mine-title">
+                    <h2 id="trading-post-mine-title">自分の出品</h2>
+                    <p>{{ market.my_listings.length }} / {{ market.contract.active_listing_limit }}件</p>
+                    <ul v-if="market.my_listings.length" class="trading-post-my-listings">
+                        <li v-for="listing in market.my_listings" :key="listing.id">
+                            <span>{{ productLabel(listing) }}（終了 T{{ listing.ends_turn }}）</span>
+                            <button v-if="listing.can_cancel" class="button secondary" type="button" :disabled="busy" @click="cancelListing(listing)">キャンセル</button>
+                            <small v-else>入札済みのためキャンセル不可</small>
+                        </li>
+                    </ul>
+                    <p v-else class="empty-state">出品中の商品はありません。</p>
+                </section>
+
+                <section aria-labelledby="trading-post-new-title">
+                    <h2 id="trading-post-new-title">新規出品</h2>
+                    <form class="trading-post-listing-form" @submit.prevent="createListing">
+                        <label>商品種別
+                            <select v-model="form.product_type" :disabled="busy">
+                                <option value="resource">国家資源</option>
+                                <option value="item">秘書アイテム</option>
+                            </select>
+                        </label>
+                        <label v-if="form.product_type === 'resource'">商品
+                            <select v-model.number="form.resource_definition_id" required :disabled="busy">
+                                <option v-for="resource in market.sellable_resources" :key="resource.id" :value="resource.id">
+                                    {{ resource.name }}（{{ resource.amount.toLocaleString('ja-JP') }}{{ resource.unit_label ?? '' }}）
+                                </option>
+                            </select>
+                        </label>
+                        <label v-else>商品
+                            <select v-model.number="form.item_instance_id" required :disabled="busy">
+                                <option v-for="item in market.sellable_items" :key="item.id" :value="item.id">
+                                    {{ item.name }} Lv{{ item.level }}（{{ item.rarity_label }}）
+                                </option>
+                            </select>
+                        </label>
+                        <label v-if="form.product_type === 'resource'">数量
+                            <input v-model.number="form.quantity" type="number" min="1" required :disabled="busy">
+                        </label>
+                        <label>開始価格（億円）
+                            <input v-model.number="form.start_price" type="number" min="1" required :disabled="busy">
+                        </label>
+                        <label>出品期間（ターン）
+                            <input v-model.number="form.duration_turns" type="number" :min="market.contract.minimum_duration_turns" :max="market.contract.maximum_duration_turns" required :disabled="busy">
+                        </label>
+                        <label class="trading-post-checkbox"><input v-model="form.auto_relist" type="checkbox" :disabled="busy"> 入札0で期限切れなら自動再出品</label>
+                        <button class="button primary" type="submit" :disabled="busy || market.my_listings.length >= market.contract.active_listing_limit">出品する</button>
+                    </form>
+                </section>
+            </div>
+        </template>
+    </section>
+</template>

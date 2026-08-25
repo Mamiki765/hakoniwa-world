@@ -108,13 +108,13 @@ const unnamedSecretaryFixture: Secretary = {
         used: 2,
         items: [{
             id: 21, key: 'old_bow', name: '古びた弓', level: 1, category: 'bow', category_label: '弓',
-            equipped_slot: 1, is_equipped: true,
+            equipped_slot: 1, is_equipped: true, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
             effect_text: '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
             flavor_text: '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
             obtained_at: '2026-08-17T00:00:00Z',
         }, {
             id: 22, key: 'ring', name: '指輪', level: 3, category: 'ring', category_label: '指輪',
-            equipped_slot: null, is_equipped: false,
+            equipped_slot: null, is_equipped: false, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
             effect_text: '資金繰りの際、追加で3億円を得る。',
             flavor_text: '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
             obtained_at: '2026-08-18T00:00:00Z',
@@ -937,6 +937,31 @@ describe('application lobby and island entry', () => {
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
             if (path === '/api/v1/me/nation') return response(nation);
+            if (path === '/api/v1/worlds/1/trading-post') return response({
+                world: { id: 1, current_turn: 1 },
+                nation: { id: 3, name: '自島', money: 62728 },
+                listings: [{
+                    id: 81,
+                    seller: { type: 'hakoniwa_federation', nation_id: null, name: '箱庭連合' },
+                    product: {
+                        type: 'item', name: '指輪', resource_key: null, unit_label: null, quantity: null,
+                        item_key: 'ring', item_level: 3, rarity: 'novice', rarity_label: 'ノービス',
+                    },
+                    start_price: 300, current_price: null, minimum_bid: 300, bid_count: 0,
+                    highest_bidder_nation_id: null, started_turn: 1, ends_turn: 7, remaining_turns: 6,
+                    duration_turns: 6, auto_relist: false, relist_count: 0, is_mine: false,
+                    can_bid: true, can_cancel: false,
+                }],
+                my_listings: [],
+                sellable_resources: [{ id: 6, key: 'oil', name: '石油', unit_label: '万バレル', amount: 123 }],
+                sellable_items: [{
+                    id: 22, key: 'ring', name: '指輪', level: 3, rarity: 'novice', rarity_label: 'ノービス',
+                }],
+                contract: {
+                    active_listing_limit: 3, minimum_duration_turns: 3, maximum_duration_turns: 84,
+                    minimum_increment_money: 1, money_unit_label: '億円', npc_seller_name: '箱庭連合',
+                },
+            });
             if (path === '/api/v1/public/nations/7') return response(publicDetail);
             if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path === '/api/v1/nations/3/profile' && init?.method === 'PATCH') return response({
@@ -970,6 +995,7 @@ describe('application lobby and island entry', () => {
         expect(headerNavigation).toContain('TOP');
         expect(headerNavigation).toContain('自島へ');
         expect(headerNavigation).toContain('資源売却');
+        expect(headerNavigation).toContain('交易場');
         expect(headerNavigation).toContain('プロフィール編集');
         expect(headerNavigation).toContain('マニュアル');
         expect(headerNavigation).not.toContain('クレジット');
@@ -977,6 +1003,14 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.session-actions').text()).toContain('Owner');
         expect(wrapper.find('.session-actions').text()).toContain('アカウント');
         expect(wrapper.find('.session-actions').text()).not.toContain('自島');
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '交易場')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.trading-post-heading h1').text()).toBe('交易場');
+        expect(wrapper.get('.trading-post-table').text()).toContain('指輪 Lv3（ノービス）');
+        expect(wrapper.get('.trading-post-table').text()).toContain('箱庭連合');
+        expect(wrapper.get('.trading-post-table').text()).toContain('残り6ターン');
+        expect(wrapper.get('.trading-post-panel').text()).not.toContain('オークション');
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();

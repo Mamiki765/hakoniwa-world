@@ -19,7 +19,7 @@ final class RulesetV11ContractTest extends TestCase
 
     public const V15_CHECKSUM = 'd361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70';
 
-    public const V16_CHECKSUM = '46720b62518c0b65f2be2698c4263c2a94e03caa723cc3c3b10aa932fcf39668';
+    public const V16_CHECKSUM = '9b063ebb9d9b4c1a32c0b723089da7f4830159d9af43df1106d6a42feb6f28e5';
 
     public const V15_FILE_SHA256 = '4a033f2f0fd2ff3e241162f18842360f133741de07ceb32f9eb65a0e606b4283';
 
@@ -53,6 +53,15 @@ final class RulesetV11ContractTest extends TestCase
             self::V15_FILE_SHA256,
             hash_file('sha256', config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v15.php')),
         );
+        $this->assertSame('novice', $current['secretary']['items']['ring']['rarity']);
+        $this->assertSame('ノービス', $current['secretary']['item_rarities']['novice']['name']);
+        $this->assertFalse($current['secretary']['items']['old_bow']['npc_tradable']);
+        $this->assertSame(3, $current['trading_post']['player']['active_listing_limit']);
+        $this->assertSame([9, 10, 'floor'], [
+            $current['trading_post']['player']['seller_proceeds_numerator'],
+            $current['trading_post']['player']['seller_proceeds_denominator'],
+            $current['trading_post']['player']['seller_proceeds_rounding'],
+        ]);
         $this->assertSame(
             self::V14_CHECKSUM,
             hash('sha256', json_encode(

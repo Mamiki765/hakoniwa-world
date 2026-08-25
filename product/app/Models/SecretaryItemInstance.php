@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
  * @property string $item_key
  * @property int $level
  * @property int|null $equipped_slot
+ * @property bool $is_escrowed
  * @property string|null $grant_key
  * @property Carbon $obtained_at
  * @property-read Secretary $secretary
@@ -19,7 +20,7 @@ use Illuminate\Support\Carbon;
 final class SecretaryItemInstance extends Model
 {
     protected $fillable = [
-        'secretary_id', 'item_key', 'level', 'equipped_slot', 'grant_key', 'obtained_at',
+        'secretary_id', 'item_key', 'level', 'equipped_slot', 'is_escrowed', 'grant_key', 'obtained_at',
     ];
 
     protected function casts(): array
@@ -27,6 +28,7 @@ final class SecretaryItemInstance extends Model
         return [
             'level' => 'integer',
             'equipped_slot' => 'integer',
+            'is_escrowed' => 'boolean',
             'obtained_at' => 'immutable_datetime',
         ];
     }

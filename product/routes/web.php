@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
+use App\Http\Controllers\Api\TradingPostController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\CommunityGuidelinesController;
@@ -88,6 +89,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->where('slot', '-?\d+');
     Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1');
     Route::get('/worlds', [ApiController::class, 'worlds']);
+    Route::get('/worlds/{world}/trading-post', [TradingPostController::class, 'index']);
     Route::get('/worlds/{world}/map-spaces', [ApiController::class, 'mapSpaces']);
     Route::get('/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}', [ApiController::class, 'chunk'])
         ->where(['chunkX' => '-?\d+', 'chunkY' => '-?\d+']);
@@ -110,6 +112,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::delete('/nations/{nation}/map-spaces/{mapSpace}/command-queue/{item}', [CommandQueueController::class, 'cancel']);
     Route::get('/nations/{nation}/sale-policies', [SalePolicyController::class, 'index']);
     Route::put('/nations/{nation}/resources/{resourceDefinition}/sale-policy', [SalePolicyController::class, 'update']);
+    Route::post('/nations/{nation}/trading-post/listings', [TradingPostController::class, 'store']);
+    Route::post('/nations/{nation}/trading-post/listings/{auctionListing}/bids', [TradingPostController::class, 'bid']);
+    Route::delete('/nations/{nation}/trading-post/listings/{auctionListing}', [TradingPostController::class, 'destroy']);
 });
 
 Route::view('/{path?}', 'app')->where('path', '.*');

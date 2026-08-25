@@ -17,6 +17,7 @@ use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryItemTargetSafetyPolicy;
 use App\Domain\Secretary\SecretarySkillCatalog;
+use App\Domain\TradingPost\TradingPostRules;
 use App\Domain\Turn\DeterministicRandomStream;
 use DomainException;
 use JsonException;
@@ -478,6 +479,10 @@ final class RulesetAuthoringValidator
         }
 
         (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($settings);
+        $authoredKey = $settings['key'] ?? null;
+        if ($authoredKey === self::FORMAL_V16_KEY) {
+            TradingPostRules::fromSettings($settings);
+        }
 
         $capacityBonus = $settings['secretary']['capacity_bonus'] ?? null;
         if ($settings['version'] < 14) {

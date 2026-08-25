@@ -10,12 +10,18 @@ class SecretaryItemCatalog
 
     public const RING = 'ring';
 
+    public const RARITY_NOVICE = 'novice';
+
     /**
      * @return array{
      *   key: string,
      *   category: string,
      *   category_label: string,
      *   category_max_equipped: int,
+     *   rarity: string,
+     *   rarity_label: string,
+     *   tradable: bool,
+     *   npc_tradable: bool,
      *   max_level: int,
      *   name: string,
      *   flavor_text: string,
@@ -39,6 +45,10 @@ class SecretaryItemCatalog
      *   category: string,
      *   category_label: string,
      *   category_max_equipped: int,
+     *   rarity: string,
+     *   rarity_label: string,
+     *   tradable: bool,
+     *   npc_tradable: bool,
      *   max_level: int,
      *   name: string,
      *   flavor_text: string,
@@ -54,6 +64,10 @@ class SecretaryItemCatalog
                 'category' => 'bow',
                 'category_label' => '弓',
                 'category_max_equipped' => 1,
+                'rarity' => self::RARITY_NOVICE,
+                'rarity_label' => 'ノービス',
+                'tradable' => true,
+                'npc_tradable' => false,
                 'max_level' => 1,
                 'name' => '古びた弓',
                 'flavor_text' => '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
@@ -65,6 +79,10 @@ class SecretaryItemCatalog
                 'category' => 'ring',
                 'category_label' => '指輪',
                 'category_max_equipped' => 5,
+                'rarity' => self::RARITY_NOVICE,
+                'rarity_label' => 'ノービス',
+                'tradable' => true,
+                'npc_tradable' => true,
                 'max_level' => 10,
                 'name' => '指輪',
                 'flavor_text' => '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',

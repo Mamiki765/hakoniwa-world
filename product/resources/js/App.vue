@@ -9,6 +9,7 @@ import MessageBoard from './components/MessageBoard.vue';
 import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
+import TradingPostPanel from './components/TradingPostPanel.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import type {
@@ -88,7 +89,7 @@ const inquiryErrors = ref<Record<string, string>>({});
 const inquiryConfirmation = ref<InquirySubmission | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
-const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'secretary' | 'profile' | 'account' | 'credits'>(
+const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'profile' | 'account' | 'credits'>(
     window.location.pathname === '/credits' ? 'credits' : 'home',
 );
 
@@ -1238,6 +1239,7 @@ async function abandonNation(): Promise<void> {
             <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
             <button v-if="nation" type="button" @click="openSecretary">{{ secretary?.header_label ?? '？？？' }}</button>
             <button v-if="nation" type="button" @click="page = 'resources'">資源売却</button>
+            <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
             <button v-if="nation" type="button" @click="openProfile">プロフィール編集</button>
             <a href="/manual">マニュアル</a>
         </nav>
@@ -1745,6 +1747,8 @@ async function abandonNation(): Promise<void> {
         </section>
 
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
+
+        <TradingPostPanel v-else-if="user && nation && page === 'trading-post'" :nation-id="nation.id" :world-id="nation.world_id" />
 
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
             <h1 class="secretary-page-title">秘書</h1>

@@ -81,6 +81,16 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('users', 'show_ai_generated_secretary_images'));
         $this->assertTrue(Schema::hasColumn('secretaries', 'monster_experience'));
         $this->assertTrue(Schema::hasColumn('monster_definitions', 'experience_per_damage'));
+        $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'is_escrowed'));
+        $this->assertTrue(Schema::hasTable('auction_listings'));
+        $this->assertTrue(Schema::hasTable('auction_bids'));
+        $this->assertSame(0, DB::table('auction_listings')->count());
+        $this->assertSame(0, DB::table('auction_bids')->count());
+        $this->assertSame(6, $ruleset->settings['trading_post']['npc']['duration_turns']);
+        $this->assertSame(['resource' => 3, 'item' => 2], [
+            'resource' => $ruleset->settings['trading_post']['npc']['active_resource_limit'],
+            'item' => $ruleset->settings['trading_post']['npc']['active_item_limit'],
+        ]);
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'secretaries_monster_experience_non_negative')->count());
         $this->assertSame(1, DB::table('pg_constraint')
@@ -128,6 +138,7 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertSame(1, $secretary->equipment_version);
         $starter = SecretaryItemInstance::query()->where('secretary_id', $secretary->id)->sole();
+        $this->assertFalse($starter->is_escrowed);
         $this->assertSame('old_bow', $starter->item_key);
         $this->assertSame(1, $starter->equipped_slot);
     }

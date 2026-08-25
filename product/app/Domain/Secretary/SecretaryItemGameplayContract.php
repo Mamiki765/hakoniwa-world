@@ -51,6 +51,23 @@ final class SecretaryItemGameplayContract
         }
 
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
+        $tradingPostEnabled = array_key_exists('trading_post', $settings);
+        if ($tradingPostEnabled) {
+            $rarities = $this->map($secretary['item_rarities'] ?? null, 'ruleset.secretary.item_rarities');
+            $this->exactDefinitionKeys(
+                $rarities,
+                [SecretaryItemCatalog::RARITY_NOVICE],
+                'ruleset.secretary.item_rarities',
+            );
+            $novice = $this->map(
+                $rarities[SecretaryItemCatalog::RARITY_NOVICE],
+                'ruleset.secretary.item_rarities.novice',
+            );
+            $this->exactKeys($novice, ['key', 'name'], 'ruleset.secretary.item_rarities.novice');
+            if ($novice !== ['key' => SecretaryItemCatalog::RARITY_NOVICE, 'name' => 'ノービス']) {
+                throw new DomainException('ruleset.secretary.item_rarities.novice differs from the v16 contract.');
+            }
+        }
         $categories = $this->map($secretary['item_categories'] ?? null, 'ruleset.secretary.item_categories');
         $items = $this->map($secretary['items'] ?? null, 'ruleset.secretary.items');
         $this->exactDefinitionKeys($categories, ['bow', 'ring'], 'ruleset.secretary.item_categories');
@@ -76,11 +93,14 @@ final class SecretaryItemGameplayContract
         foreach ($items as $itemKey => $authored) {
             $path = "ruleset.secretary.items.{$itemKey}";
             $item = $this->map($authored, $path);
-            $this->exactKeys(
-                $item,
-                ['key', 'category', 'max_level', 'same_item_max_equipped', 'effects'],
-                $path,
-            );
+            $expectedKeys = ['key', 'category', 'max_level', 'same_item_max_equipped', 'effects'];
+            if ($tradingPostEnabled) {
+                $expectedKeys = [
+                    'key', 'category', 'rarity', 'tradable', 'npc_tradable',
+                    'max_level', 'same_item_max_equipped', 'effects',
+                ];
+            }
+            $this->exactKeys($item, $expectedKeys, $path);
             $catalog = $this->catalog->definition($itemKey);
             if (($item['key'] ?? null) !== $itemKey
                 || ($item['category'] ?? null) !== $catalog['category']
@@ -91,6 +111,13 @@ final class SecretaryItemGameplayContract
                     1,
                 ) !== $catalog['same_item_max_equipped']) {
                 throw new DomainException("{$path} differs from the global equipment catalog.");
+            }
+            if ($tradingPostEnabled && (
+                ($item['rarity'] ?? null) !== $catalog['rarity']
+                || ($item['tradable'] ?? null) !== $catalog['tradable']
+                || ($item['npc_tradable'] ?? null) !== $catalog['npc_tradable']
+            )) {
+                throw new DomainException("{$path} trading fields differ from the global item catalog.");
             }
             $effects = $this->list($item['effects'] ?? null, "{$path}.effects");
             if (count($effects) !== 1) {

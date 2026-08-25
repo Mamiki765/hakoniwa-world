@@ -65,6 +65,7 @@ final class CompleteTurnEngine
         private readonly SecretaryOldBowService $secretaryOldBow,
         private readonly NationLifecycleService $nationLifecycle,
         private readonly KarmaTurnService $karma,
+        private readonly TradingPostTurnService $tradingPost,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -657,6 +658,7 @@ final class CompleteTurnEngine
     /** @return array<string, int> */
     private function enforceCapacities(TurnContext $context): array
     {
+        $tradingPostMetrics = $this->tradingPost->execute($context);
         $metrics = ['overflow_reports' => 0];
         $settings = $context->ruleset->settings;
         $resourceOverflowEvent = $this->resourceOverflowEvent($settings);
@@ -770,6 +772,10 @@ final class CompleteTurnEngine
                 'resource_capacities' => $capacity->resources,
                 'bounded_credits' => true,
             ]);
+        }
+
+        foreach ($tradingPostMetrics as $key => $value) {
+            $metrics['trading_post_'.$key] = $value;
         }
 
         return $metrics;

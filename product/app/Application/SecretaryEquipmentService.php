@@ -73,6 +73,9 @@ class SecretaryEquipmentService
             if ($item->equipped_slot !== null) {
                 continue;
             }
+            if ($item->is_escrowed) {
+                continue;
+            }
 
             $proposed = $this->proposedState($items, $slot, $item);
             try {
@@ -201,6 +204,9 @@ class SecretaryEquipmentService
                     }
                     if ($selected->equipped_slot !== null && $selected->equipped_slot !== $slot) {
                         throw new SecretaryEquipmentValidationException('別のslotに装備中のアイテムは選択できません。');
+                    }
+                    if ($selected->is_escrowed) {
+                        throw new SecretaryEquipmentValidationException('交易場へ出品中のアイテムは装備できません。');
                     }
                 }
 
@@ -341,6 +347,9 @@ class SecretaryEquipmentService
             if (isset($instanceIds[$item->id])) {
                 throw new SecretaryEquipmentValidationException('同じアイテムを複数のslotへ装備できません。');
             }
+            if ($item->is_escrowed) {
+                throw new SecretaryEquipmentValidationException('交易場へ出品中のアイテムは装備できません。');
+            }
             $instanceIds[$item->id] = true;
             try {
                 $definition = $this->catalog->definition($item->item_key);
@@ -383,6 +392,8 @@ class SecretaryEquipmentService
             'level' => $item->level,
             'category' => $definition['category'],
             'category_label' => $definition['category_label'],
+            'rarity' => $definition['rarity'],
+            'rarity_label' => $definition['rarity_label'],
             'equipped_slot' => $item->equipped_slot,
             'effect_text' => $projection === null
                 ? null
