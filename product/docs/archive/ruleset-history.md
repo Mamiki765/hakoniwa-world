@@ -1,5 +1,9 @@
 # Ruleset history: Pre-MVP through v11
 
+> Historical archive captured at the v11 baseline. The current v16 index is
+> [`rulesets/index.md`](rulesets/index.md), with formal v1-v15 and roadmap artifacts separated.
+> Statements below that call v11 "current" describe that historical baseline only.
+
 このarchiveは、人間がRulesetの由来と現在の責務を追うための索引である。gameplayの正本は各immutable authoring fileとpublished database snapshotであり、この文書はpayloadを置き換えない。
 
 Formal `hakoniwa-2s-plus-v1`は歴史の始点ではない。現在のrepositoryには、Git history上のPre-MVP prototype、10個のroadmap snapshot、その後のformal v1-v11、test-only fixture、migration固有のchecksum/fingerprint guardがある。

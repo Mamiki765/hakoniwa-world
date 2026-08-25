@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Ruleset\CurrentRulesetAuthoringInspector;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use Tests\Support\V11SecretaryItemRulesetFixture;
@@ -30,10 +31,14 @@ final class RulesetV11ContractTest extends TestCase
         $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php'));
 
         $this->assertIsString($source);
-        $this->assertDoesNotMatchRegularExpression('/\brequire\b/', $source);
+        $this->assertSame(10, substr_count($source, "require __DIR__.'/current/"));
+        $this->assertLessThan(100, substr_count($source, "\n"));
         $this->assertSame(['hakoniwa-2s-plus-v16'], array_keys($normalConfig['published_rulesets']));
         $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v16']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
+        $this->assertArrayNotHasKey('behavior', $current);
+        $this->assertArrayNotHasKey('data', $current);
+        $this->assertArrayNotHasKey('flavor', $current);
         $this->assertSame(
             self::V16_CHECKSUM,
             hash('sha256', json_encode($current, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
@@ -79,6 +84,17 @@ final class RulesetV11ContractTest extends TestCase
                 JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
             )),
         );
+    }
+
+    public function test_current_domain_authoring_classifies_every_leaf_exactly_once(): void
+    {
+        $this->assertSame([
+            'domains' => 10,
+            'leaves' => 1841,
+            'behavior' => 1153,
+            'data' => 506,
+            'flavor' => 182,
+        ], app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset')));
     }
 
     public function test_formal_v11_is_the_current_immutable_c1_through_c4_payload(): void
