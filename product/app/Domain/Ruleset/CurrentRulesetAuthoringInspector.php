@@ -58,7 +58,12 @@ final class CurrentRulesetAuthoringInspector
 
                 $matches = [];
                 foreach ($selectors as $selectorKey => $selector) {
-                    if ($this->matches($selector['value'], $path, $leaf['field'])) {
+                    if ($this->matches(
+                        $selector['value'],
+                        $path,
+                        $leaf['field'],
+                        $leaf['list_index_segments'],
+                    )) {
                         $matches[] = $selector;
                         $usedSelectors[$selectorKey] = true;
                     }
@@ -72,7 +77,10 @@ final class CurrentRulesetAuthoringInspector
                 }
 
                 $category = $matches[0]['category'];
-                $authoredLeaves[$path] = $leaf;
+                $authoredLeaves[$path] = [
+                    'field' => $leaf['field'],
+                    'value' => $leaf['value'],
+                ];
                 $classifiedPaths[$path] = $category;
                 $counts[$category]++;
             }
@@ -87,7 +95,13 @@ final class CurrentRulesetAuthoringInspector
             }
         }
 
-        $publishedLeaves = $this->leaves($publishedPayload);
+        $publishedLeaves = array_map(
+            static fn (array $leaf): array => [
+                'field' => $leaf['field'],
+                'value' => $leaf['value'],
+            ],
+            $this->leaves($publishedPayload),
+        );
         ksort($authoredLeaves);
         ksort($publishedLeaves);
         if ($authoredLeaves !== $publishedLeaves) {
@@ -135,26 +149,50 @@ final class CurrentRulesetAuthoringInspector
 
     /**
      * @param  array<mixed>  $value
-     * @return array<string, array{field: string, value: mixed}>
+     * @param  list<int>  $listIndexSegments
+     * @return array<string, array{field: string, value: mixed, list_index_segments: list<int>}>
      */
-    private function leaves(array $value, string $path = ''): array
-    {
+    private function leaves(
+        array $value,
+        string $path = '',
+        int $depth = 0,
+        array $listIndexSegments = [],
+    ): array {
         $leaves = [];
+        $isList = array_is_list($value);
         foreach ($value as $field => $nested) {
             $fieldName = (string) $field;
             $nestedPath = $path.'/'.$this->escapePointerSegment($fieldName);
+            $nestedListIndexSegments = $listIndexSegments;
+            if ($isList) {
+                $nestedListIndexSegments[] = $depth;
+            }
             if (is_array($nested)) {
-                $leaves += $this->leaves($nested, $nestedPath);
+                $leaves += $this->leaves(
+                    $nested,
+                    $nestedPath,
+                    $depth + 1,
+                    $nestedListIndexSegments,
+                );
             } else {
-                $leaves[$nestedPath] = ['field' => $fieldName, 'value' => $nested];
+                $leaves[$nestedPath] = [
+                    'field' => $fieldName,
+                    'value' => $nested,
+                    'list_index_segments' => $nestedListIndexSegments,
+                ];
             }
         }
 
         return $leaves;
     }
 
-    private function matches(string $selector, string $path, string $field): bool
-    {
+    /** @param list<int> $listIndexSegments */
+    private function matches(
+        string $selector,
+        string $path,
+        string $field,
+        array $listIndexSegments,
+    ): bool {
         if (! str_starts_with($selector, '/')) {
             return $selector === $field;
         }
@@ -166,7 +204,8 @@ final class CurrentRulesetAuthoringInspector
         }
         foreach ($selectorSegments as $index => $segment) {
             if ($segment === '*') {
-                if (! ctype_digit($pathSegments[$index])) {
+                if (! ctype_digit($pathSegments[$index])
+                    || ! in_array($index, $listIndexSegments, true)) {
                     return false;
                 }
 

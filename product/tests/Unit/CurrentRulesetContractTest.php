@@ -54,13 +54,35 @@ final class CurrentRulesetContractTest extends TestCase
         );
     }
 
-    public function test_absolute_selector_wildcard_matches_only_a_numeric_list_index(): void
+    public function test_absolute_selector_wildcard_rejects_string_and_numeric_associative_keys(): void
     {
+        $leaves = new ReflectionMethod(CurrentRulesetAuthoringInspector::class, 'leaves');
         $matches = new ReflectionMethod(CurrentRulesetAuthoringInspector::class, 'matches');
         $inspector = app(CurrentRulesetAuthoringInspector::class);
+        $listLeaf = $leaves->invoke($inspector, ['definitions' => [['key' => 'oil']]])['/definitions/0/key'];
+        $numericMapLeaf = $leaves->invoke($inspector, ['definitions' => [1 => ['key' => 'oil']]])['/definitions/1/key'];
 
-        $this->assertTrue($matches->invoke($inspector, '/definitions/*/key', '/definitions/0/key', 'key'));
-        $this->assertFalse($matches->invoke($inspector, '/definitions/*/key', '/definitions/oil/key', 'key'));
+        $this->assertTrue($matches->invoke(
+            $inspector,
+            '/definitions/*/key',
+            '/definitions/0/key',
+            'key',
+            $listLeaf['list_index_segments'],
+        ));
+        $this->assertFalse($matches->invoke(
+            $inspector,
+            '/definitions/*/key',
+            '/definitions/1/key',
+            'key',
+            $numericMapLeaf['list_index_segments'],
+        ));
+        $this->assertFalse($matches->invoke(
+            $inspector,
+            '/definitions/*/key',
+            '/definitions/oil/key',
+            'key',
+            [],
+        ));
     }
 
     public function test_scalar_classification_does_not_replace_the_container_checksum_contract(): void
