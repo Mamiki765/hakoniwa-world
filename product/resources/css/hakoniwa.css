@@ -596,6 +596,28 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .message-board-read-only, .message-board-status { color: var(--muted); }
 
 .resource-panel h1 { font-size: clamp(2rem, 5vw, 4rem); }
+.trading-post-panel { max-width: 1180px; }
+.trading-post-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.trading-post-heading h1 { margin: 0; font-size: clamp(2rem, 5vw, 4rem); }
+.trading-post-balance { font-weight: 850; white-space: nowrap; }
+.trading-post-table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); }
+.trading-post-table { width: 100%; min-width: 900px; border-collapse: collapse; }
+.trading-post-table th, .trading-post-table td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.trading-post-table th { background: #eef4f1; font-size: .78rem; }
+.trading-post-table tbody tr:last-child td { border-bottom: 0; }
+.trading-post-bid { display: grid; grid-template-columns: minmax(90px, 1fr) auto auto; align-items: center; gap: 6px; }
+.trading-post-bid input { min-width: 90px; }
+.trading-post-bid .button { min-height: 38px; padding: 6px 12px; }
+.trading-post-lower-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .8fr); gap: 28px; margin-top: 34px; }
+.trading-post-lower-grid > section { padding: 20px; border: 1px solid var(--line); }
+.trading-post-lower-grid h2, .trading-post-panel > section h2 { margin-top: 0; }
+.trading-post-my-listings { display: grid; gap: 10px; padding: 0; list-style: none; }
+.trading-post-my-listings li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 10px; border-bottom: 1px solid var(--line); }
+.trading-post-listing-form { display: grid; gap: 12px; }
+.trading-post-listing-form label:not(.trading-post-checkbox) { display: grid; gap: 5px; font-weight: 750; }
+.trading-post-listing-form input, .trading-post-listing-form select { min-height: 42px; padding: 7px 9px; border: 1px solid var(--line); background: white; }
+.trading-post-checkbox { display: flex; align-items: center; gap: 8px; }
+.trading-post-checkbox input { min-height: auto; }
 .policy-list { display: grid; gap: 12px; margin-top: 28px; }
 .policy-list form { display: grid; grid-template-columns: 1fr auto minmax(180px, 1fr) minmax(130px, .6fr) auto; align-items: end; gap: 12px; padding: 16px; border: 1px solid var(--line); }
 .policy-list label { display: grid; gap: 5px; font-size: .8rem; font-weight: 700; }
@@ -652,6 +674,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .brand { font-size: .82rem; }
     .site-header nav { order: 3; grid-column: 1 / -1; width: 100%; overflow: auto; flex-wrap: nowrap; }
     .site-header nav button { min-height: 36px; padding: 5px 8px; font-size: .75rem; }
+    .trading-post-panel { padding-inline: 14px; }
+    .trading-post-heading { align-items: start; flex-direction: column; }
+    .trading-post-lower-grid { grid-template-columns: 1fr; }
+    .trading-post-my-listings li { align-items: start; flex-direction: column; }
     .session-actions { font-size: .7rem; }
     .session-account-actions > span, .session-account-actions > button:last-child { display: none; }
     .session-actions .inquiry-shortcut { min-height: 36px; padding: 5px 8px; font-size: .7rem; }

@@ -137,6 +137,12 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.resources.4.unit', 'ton')
             ->assertJsonPath('data.resources.4.unit_label', 'トン')
             ->assertJsonPath('data.resources.4.capacity', 9_999_000)
+            ->assertJsonPath('data.resources.5.key', 'oil')
+            ->assertJsonPath('data.resources.5.name', '石油')
+            ->assertJsonPath('data.resources.5.amount', 0)
+            ->assertJsonPath('data.resources.5.unit', 'ten_thousand_barrels')
+            ->assertJsonPath('data.resources.5.unit_label', '万バレル')
+            ->assertJsonPath('data.resources.5.capacity', 5_000)
             ->json('data');
         $this->actingAs($user)->postJson('/api/v1/nations', [
             ...$registrationPayload,

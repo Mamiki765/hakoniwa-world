@@ -10,6 +10,7 @@ use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\UnresolvedNextTurnRunException;
 use App\Domain\World\WorldMutationLock;
+use App\Models\AuctionListing;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\User;
@@ -80,6 +81,22 @@ final class NationAbandonmentService
                     }
                     if ($confirmationName !== $lockedNation->name) {
                         throw new NationAbandonmentConfirmationException('確認用の島名が現在の島名と一致しません。');
+                    }
+                    $marketEscrow = AuctionListing::query()
+                        ->where('world_id', $lockedWorld->id)
+                        ->where('status', AuctionListing::STATUS_ACTIVE)
+                        ->where(static function ($query) use ($lockedNation): void {
+                            $query->where('seller_nation_id', $lockedNation->id)
+                                ->orWhere('highest_bidder_nation_id', $lockedNation->id);
+                        })
+                        ->orderBy('id')
+                        ->lockForUpdate()
+                        ->first();
+                    if ($marketEscrow instanceof AuctionListing) {
+                        throw new NationAbandonmentConflictException(
+                            'nation_has_trading_post_escrow',
+                            '交易場で出品中または最高入札中の商品があるため島を破棄できません。',
+                        );
                     }
 
                     return $this->operation->execute(

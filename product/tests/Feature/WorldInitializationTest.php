@@ -60,7 +60,7 @@ class WorldInitializationTest extends TestCase
         $this->assertSame(0, MapCell::query()->where('population', '>', 0)->count());
         $this->assertSame(0, Nation::query()->count());
         $this->assertSame(0, NationCapital::query()->count());
-        $this->assertSame(['fish', 'industrial_goods', 'minerals', 'monster_meat', 'wheat'], ResourceDefinition::query()->orderBy('key')->pluck('key')->all());
+        $this->assertSame(['fish', 'industrial_goods', 'minerals', 'monster_meat', 'oil', 'wheat'], ResourceDefinition::query()->orderBy('key')->pluck('key')->all());
         $this->assertSame(2.0, ResourceDefinition::query()->where('key', 'monster_meat')->value('nutrition_per_unit'));
         $this->assertTrue(Schema::hasColumns('resource_definitions', [
             'unit', 'unit_label', 'nutrition_per_unit', 'storable', 'tradable', 'sale_price_key', 'metadata',
@@ -101,7 +101,7 @@ class WorldInitializationTest extends TestCase
         $worldRuleset = $world->rulesetVersion()->firstOrFail();
 
         $this->assertSame($published->id, $worldRuleset->id);
-        $this->assertSame('hakoniwa-2s-plus-v15', $worldRuleset->key);
+        $this->assertSame('hakoniwa-2s-plus-v16', $worldRuleset->key);
         $this->assertSame($settingsFingerprint, hash('sha256', (string) $worldRuleset->getRawOriginal('settings')));
         $this->assertSame(59, $worldRuleset->settings['initial_x_max']);
         $this->assertSame(59, $worldRuleset->settings['initial_y_max']);

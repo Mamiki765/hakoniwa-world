@@ -58,8 +58,11 @@ final class SecretaryItemPresenter
             'level' => $item->level,
             'category' => $definition['category'],
             'category_label' => $definition['category_label'],
+            'rarity' => $definition['rarity'],
+            'rarity_label' => $definition['rarity_label'],
             'equipped_slot' => $item->equipped_slot,
             'is_equipped' => $item->equipped_slot !== null,
+            'is_escrowed' => $item->is_escrowed,
             'effect_text' => $projection === null
                 ? null
                 : $this->gameplay->effectText($projection->rulesetSettings, $item->item_key, $item->level),

@@ -6,6 +6,7 @@ use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
+use App\Models\AuctionListing;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapChunk;
@@ -223,6 +224,9 @@ final class NationLifecycleService
                     throw new DomainException('Dormant Nation state changed inside a frozen target Turn.');
                 }
                 if ($nation->idle_counter >= $settings['abandonment_idle_threshold']) {
+                    if ($this->hasActiveTradingPostEscrow($context, $nation)) {
+                        continue;
+                    }
                     $this->abandonment->abandonAutomatically($context, $nation);
                     $metrics['abandoned']++;
                 }
@@ -234,6 +238,11 @@ final class NationLifecycleService
             }
             if ($nation->idle_counter >= $settings['abandonment_idle_threshold']) {
                 $this->enterDormant($context->world, $context->ruleset, $nation, 'idle', $context->targetTurn, null, null, $context);
+                if ($this->hasActiveTradingPostEscrow($context, $nation)) {
+                    $metrics['entered_dormant']++;
+
+                    continue;
+                }
                 $this->abandonment->abandonAutomatically($context, $nation->fresh());
                 $metrics['abandoned']++;
 
@@ -258,6 +267,18 @@ final class NationLifecycleService
         }
 
         return $metrics;
+    }
+
+    private function hasActiveTradingPostEscrow(TurnContext $context, Nation $nation): bool
+    {
+        return AuctionListing::query()
+            ->where('world_id', $context->world->id)
+            ->where('status', AuctionListing::STATUS_ACTIVE)
+            ->where(static function ($query) use ($nation): void {
+                $query->where('seller_nation_id', $nation->id)
+                    ->orWhere('highest_bidder_nation_id', $nation->id);
+            })
+            ->exists();
     }
 
     /** @param array<string, mixed> $metadata */

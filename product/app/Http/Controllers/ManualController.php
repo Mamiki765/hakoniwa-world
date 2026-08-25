@@ -14,6 +14,7 @@ final class ManualController extends Controller
         'beginner' => '初級編',
         'intermediate' => '中級編',
         'advanced' => '上級編',
+        'trading-post' => '交易場',
         'secretary' => '秘書について',
     ];
 

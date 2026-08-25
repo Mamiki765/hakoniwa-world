@@ -2,6 +2,8 @@
 
 namespace App\Domain\Economy;
 
+use App\Models\AuctionBid;
+use App\Models\AuctionListing;
 use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
@@ -24,13 +26,142 @@ final class CapacityBoundedAssetService
         return DB::transaction(function () use ($nation, $requested, $ruleset): CapacityAdditionResult {
             $lockedNation = Nation::query()->whereKey($nation->id)->lockForUpdate()->firstOrFail();
             $capacity = $this->capacities->resolve($lockedNation, $ruleset)->money;
-            $result = $this->addition->calculate((int) $lockedNation->money, $requested, $capacity);
+            $result = $this->planMoneyCredit($lockedNation, $requested, $capacity);
             if ($result->applied > 0) {
                 $lockedNation->increment('money', $result->applied);
             }
 
             return $result;
         }, 1);
+    }
+
+    public function planMoneyCredit(
+        Nation $nation,
+        int $requested,
+        int $capacity,
+        ?int $liquidBefore = null,
+    ): CapacityAdditionResult {
+        $liquidBefore ??= (int) $nation->money;
+        $usage = $this->addition->calculate(
+            $liquidBefore + $this->escrowedMoney($nation),
+            $requested,
+            $capacity,
+        );
+
+        return new CapacityAdditionResult(
+            before: $liquidBefore,
+            requested: $requested,
+            applied: $usage->applied,
+            overflow: $usage->overflow,
+            after: $liquidBefore + $usage->applied,
+            capacity: $capacity,
+        );
+    }
+
+    public function moneyInUse(Nation $nation): int
+    {
+        return (int) $nation->money + $this->escrowedMoney($nation);
+    }
+
+    public function liquidMoneyCapacity(Nation $nation, int $capacity): int
+    {
+        return max(0, $capacity - $this->escrowedMoney($nation));
+    }
+
+    public function escrowedMoney(Nation $nation): int
+    {
+        return $this->escrowedMoneyByNationIds([$nation->id])[$nation->id] ?? 0;
+    }
+
+    /**
+     * @param  list<int>  $nationIds
+     * @return array<int, int>
+     */
+    public function escrowedMoneyByNationIds(array $nationIds): array
+    {
+        if ($nationIds === []) {
+            return [];
+        }
+        $rows = AuctionBid::query()
+            ->whereIn('bidder_nation_id', $nationIds)
+            ->where('status', AuctionBid::STATUS_HIGHEST)
+            ->whereHas('listing', fn ($query) => $query->where('status', AuctionListing::STATUS_ACTIVE))
+            ->selectRaw('bidder_nation_id, SUM(amount) AS aggregate')
+            ->groupBy('bidder_nation_id')
+            ->pluck('aggregate', 'bidder_nation_id');
+        $escrowed = [];
+        foreach ($rows as $nationId => $amount) {
+            $escrowed[(int) $nationId] = (int) $amount;
+        }
+
+        return $escrowed;
+    }
+
+    /** @return array<int, int> */
+    public function escrowedResources(Nation $nation): array
+    {
+        return $this->escrowedResourcesByNationIds([$nation->id])[$nation->id] ?? [];
+    }
+
+    /**
+     * @param  list<int>  $nationIds
+     * @return array<int, array<int, int>>
+     */
+    public function escrowedResourcesByNationIds(array $nationIds): array
+    {
+        if ($nationIds === []) {
+            return [];
+        }
+        $rows = AuctionListing::query()
+            ->whereIn('seller_nation_id', $nationIds)
+            ->where('seller_type', 'nation')
+            ->where('product_type', 'resource')
+            ->where('status', AuctionListing::STATUS_ACTIVE)
+            ->selectRaw('seller_nation_id, resource_definition_id, SUM(quantity) AS aggregate')
+            ->groupBy('seller_nation_id', 'resource_definition_id')
+            ->get();
+        $escrowed = [];
+        foreach ($rows as $row) {
+            $nationId = (int) $row->getAttribute('seller_nation_id');
+            $resourceId = (int) $row->getAttribute('resource_definition_id');
+            $escrowed[$nationId][$resourceId] = (int) $row->getAttribute('aggregate');
+        }
+
+        return $escrowed;
+    }
+
+    public function escrowedFood(Nation $nation): int
+    {
+        return (int) AuctionListing::query()
+            ->join('resource_definitions', 'resource_definitions.id', '=', 'auction_listings.resource_definition_id')
+            ->where('auction_listings.seller_nation_id', $nation->id)
+            ->where('auction_listings.seller_type', 'nation')
+            ->where('auction_listings.product_type', 'resource')
+            ->where('auction_listings.status', AuctionListing::STATUS_ACTIVE)
+            ->where('resource_definitions.category', 'food')
+            ->sum('auction_listings.quantity');
+    }
+
+    public function planFoodCredit(
+        Nation $nation,
+        int $requestedTons,
+        int $capacity,
+        int $liquidBefore,
+    ): CapacityAdditionResult {
+        $usage = $this->addition->calculate(
+            $liquidBefore + $this->escrowedFood($nation),
+            $requestedTons,
+            $capacity,
+        );
+
+        return new CapacityAdditionResult(
+            before: $liquidBefore,
+            requested: $requestedTons,
+            applied: $usage->applied,
+            overflow: $usage->overflow,
+            after: $liquidBefore + $usage->applied,
+            capacity: $capacity,
+        );
     }
 
     public function creditFood(
@@ -52,7 +183,7 @@ final class CapacityBoundedAssetService
                 ->get();
             $before = (int) $foodBalances->sum('amount');
             $capacity = $this->capacities->resolve($lockedNation, $ruleset)->foodTons;
-            $result = $this->addition->calculate($before, $requestedTons, $capacity);
+            $result = $this->planFoodCredit($lockedNation, $requestedTons, $capacity, $before);
 
             if ($result->applied > 0) {
                 $balance = $foodBalances->firstWhere('resource_definition_id', $resource->id);
@@ -94,7 +225,8 @@ final class CapacityBoundedAssetService
                 ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
                 ->lockForUpdate()
                 ->get();
-            $before = (int) $foodBalances->sum('amount');
+            $liquidBefore = (int) $foodBalances->sum('amount');
+            $before = $liquidBefore + $this->escrowedFood($lockedNation);
             $capacity = $this->capacities->resolve($lockedNation, $ruleset)->foodTons;
 
             if ($requestedTons > 0) {

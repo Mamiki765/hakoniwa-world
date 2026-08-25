@@ -43,11 +43,8 @@ final class SecretaryItemEffectsTest extends TestCase
         [$firstUser, $firstNation] = $this->nation($world, '第一装備snapshot国');
         [, $secondNation] = $this->nation($world, '第二装備snapshot国');
         $ring = $this->ring($firstUser, 3, 2, 'snapshot-ring-2');
-        $this->ring($firstUser, 4, 3, 'snapshot-ring-3');
-        $this->ring($firstUser, 5, 4, 'snapshot-ring-4');
-        $this->ring($firstUser, 6, 5, 'snapshot-ring-5');
         $unequipped = null;
-        foreach (range(1, 45) as $number) {
+        foreach (range(1, 48) as $number) {
             $created = $this->ring(
                 $firstUser,
                 ($number % 10) + 1,
@@ -76,7 +73,7 @@ final class SecretaryItemEffectsTest extends TestCase
         $result = app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
 
         $this->assertSame(2, $result->metrics['secretary_item_effect_snapshots']);
-        $this->assertSame(6, $result->metrics['secretary_item_effect_items']);
+        $this->assertSame(3, $result->metrics['secretary_item_effect_items']);
         $this->assertSame(1, collect($queries)->filter(
             static fn (string $sql): bool => str_contains($sql, 'secretary_item_instances'),
         )->count());
@@ -86,13 +83,10 @@ final class SecretaryItemEffectsTest extends TestCase
             [
                 SecretaryItemCatalog::OLD_BOW,
                 SecretaryItemCatalog::RING,
-                SecretaryItemCatalog::RING,
-                SecretaryItemCatalog::RING,
-                SecretaryItemCatalog::RING,
             ],
             array_column($snapshot['items'], 'item_key'),
         );
-        $this->assertSame([1, 2, 3, 4, 5], array_column($snapshot['items'], 'equipped_slot'));
+        $this->assertSame([1, 2], array_column($snapshot['items'], 'equipped_slot'));
         $this->assertNotContains($unequipped->id, array_column($snapshot['items'], 'item_instance_id'));
         $skillSnapshot = $context->state->secretarySnapshot($firstNation->id);
 
@@ -150,8 +144,7 @@ final class SecretaryItemEffectsTest extends TestCase
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '自動資金指輪国');
-        $this->ring($user, 3, 2, 'automatic-ring-3');
-        $this->ring($user, 2, 3, 'automatic-ring-2');
+        $this->ring($user, 5, 2, 'automatic-ring-5');
         $this->switchToItemRuleset($world);
         $world = $world->fresh();
         $nation->update(['money' => 10_086]);

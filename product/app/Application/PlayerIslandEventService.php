@@ -1956,6 +1956,13 @@ final class PlayerIslandEventService
     /** @param array<string, mixed> $metadata */
     private function oilIncomeMessage(array $metadata): string
     {
+        if (($metadata['resource_key'] ?? null) === 'oil') {
+            return sprintf(
+                '海底油田から石油%s万バレルを産出しました。',
+                number_format($this->integer($metadata, 'applied_units')),
+            );
+        }
+
         $overflow = $this->integer($metadata, 'overflow_money');
         $message = sprintf(
             '海底油田から%s億円の収入を得ました。',
@@ -2229,6 +2236,7 @@ final class PlayerIslandEventService
             'wheat' => '小麦',
             'fish' => '魚',
             'monster_meat' => '怪獣肉',
+            'oil' => '石油',
             default => '資源',
         };
     }
@@ -2238,6 +2246,7 @@ final class PlayerIslandEventService
         return match ($key) {
             'industrial_goods' => 'ユニット',
             'minerals', 'wheat', 'fish', 'monster_meat' => 'トン',
+            'oil' => '万バレル',
             default => '',
         };
     }

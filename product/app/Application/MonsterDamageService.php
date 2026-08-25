@@ -27,6 +27,7 @@ final class MonsterDamageService
         private readonly MonsterKillCycleService $monsterCycles,
         private readonly LaunchBaseExperienceService $baseExperience,
         private readonly MonsterRewardPolicyResolver $rewardPolicies,
+        private readonly SecretaryExperienceAwardService $secretaryExperience,
     ) {}
 
     public function applyDamage(
@@ -352,11 +353,11 @@ SQL, [
             if (! $killerNation instanceof Nation) {
                 throw new DomainException('Secretary Old Bow experience requires its attacking Nation.');
             }
-            if ($requested > 0) {
-                $context->state->awardSecretaryMonsterExperience((int) $killerNation->id, $requested);
-            }
+            $awarded = $requested > 0
+                ? $this->secretaryExperience->awardMonster($context, (int) $killerNation->id, $requested)
+                : 0;
 
-            return ['base_requested' => 0, 'base_applied' => 0, 'secretary_awarded' => $requested];
+            return ['base_requested' => 0, 'base_applied' => 0, 'secretary_awarded' => $awarded];
         }
 
         return ['base_requested' => 0, 'base_applied' => 0, 'secretary_awarded' => 0];

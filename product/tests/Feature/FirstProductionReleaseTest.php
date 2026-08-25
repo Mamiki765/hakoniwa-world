@@ -18,7 +18,7 @@ final class FirstProductionReleaseTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_current_schema_and_v15_are_the_fresh_install_baseline(): void
+    public function test_current_schema_and_v16_are_the_fresh_install_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
 
@@ -27,10 +27,10 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertFalse(Schema::hasColumn('users', 'moderation_suspended_at'));
         $this->assertFalse(Schema::hasColumn('nations', 'moderation_suspended_at'));
 
-        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v15')->firstOrFail();
-        $this->assertSame('hakoniwa-2s-plus-v15', config('hakoniwa.ruleset.key'));
-        $this->assertSame(['hakoniwa-2s-plus-v15'], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(['hakoniwa-2s-plus-v15'], RulesetVersion::query()->pluck('key')->all());
+        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v16')->firstOrFail();
+        $this->assertSame('hakoniwa-2s-plus-v16', config('hakoniwa.ruleset.key'));
+        $this->assertSame(['hakoniwa-2s-plus-v16'], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(['hakoniwa-2s-plus-v16'], RulesetVersion::query()->pluck('key')->all());
         $this->assertSame($published->id, $this->lightweightWorld()->ruleset_version_id);
     }
 
@@ -162,6 +162,8 @@ final class FirstProductionReleaseTest extends TestCase
             ->assertSeeInOrder([
                 'href="/manual/advanced"',
                 '>上級編</a>',
+                'href="/manual/trading-post"',
+                '>交易場</a>',
                 'href="/manual/secretary"',
                 '>秘書について</a>',
             ], false)
@@ -180,7 +182,16 @@ final class FirstProductionReleaseTest extends TestCase
             ->assertSee('浅瀬全て埋め立て＋整地');
         $this->get('/manual/advanced')->assertOk()
             ->assertSee('地盤沈下')
-            ->assertSee('島の破棄');
+            ->assertSee('島の破棄')
+            ->assertSee('通常のKARMA下限は-10です')
+            ->assertSee('Lv20では-30になります')
+            ->assertSee('すぐに有効下限へ丸めず、ターンごとに1ずつ回復します');
+        $this->get('/manual/trading-post')->assertOk()
+            ->assertSee('<title>交易場 | 箱庭諸島２S＋</title>', false)
+            ->assertSee('最高入札中の預託資金は、資金上限の使用量に含まれます')
+            ->assertSee('出品中の数量も保管容量の使用量に含まれる')
+            ->assertSee('入札がなければ休眠中でもキャンセルでき')
+            ->assertSee('売れない超過分は破棄されます');
         $this->get('/manual/secretary')->assertOk()
             ->assertSee('<title>秘書について | 箱庭諸島２S＋</title>', false)
             ->assertSee('<h1>秘書について</h1>', false)
@@ -197,10 +208,13 @@ final class FirstProductionReleaseTest extends TestCase
             ->assertSee('自領のマスへミサイルが1発到達するごとに経験値を1獲得します')
             ->assertSee('倉庫には最大50個')
             ->assertSee('装備スロットが5個')
+            ->assertSee('弓カテゴリと衣服カテゴリは、それぞれカテゴリ全体で1個までです')
+            ->assertSee('種類の異なるアクセサリーは同時に装備できます')
+            ->assertSee('箱庭連合が指輪と次の7種類のノービス装備を期間限定で出品します')
             ->assertSee('10%の確率で、自領の地上にいる怪獣に1ダメージを与える。')
             ->assertSee('次に開始できるターンから反映')
             ->assertSee('自動の資金繰り')
-            ->assertSee('Lv3とLv2の指輪を装備していれば、追加分は5億円です')
+            ->assertSee('Lv3の指輪を装備していれば、追加分は3億円です')
             ->assertSee('島を破棄しても、秘書と倉庫のアイテム、装備状態は保持されます。活動中の島がない間は装備効果は発生せず、再参加後に必要に応じて装備を変更できます。')
             ->assertSee('アイテムと装備状態は秘書に対して共通で、対象マスや画面ごとに別管理されません。')
             ->assertDontSee('現在活動中の島がない間は、装備を変えることはできます')

@@ -2118,10 +2118,13 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $path = "/api/v1/nations/{$nation->id}/resources/{$industrialGoods->id}/sale-policy";
 
         $policies = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/sale-policies")
-            ->assertOk()->assertJsonCount(5, 'data');
+            ->assertOk()->assertJsonCount(6, 'data');
         $wheatPolicy = collect($policies->json('data'))->firstWhere('resource_key', 'wheat');
+        $oilPolicy = collect($policies->json('data'))->firstWhere('resource_key', 'oil');
         $this->assertSame('stockpile', $wheatPolicy['policy']);
         $this->assertNotContains('sell_all', $wheatPolicy['allowed_policies']);
+        $this->assertSame('stockpile', $oilPolicy['policy']);
+        $this->assertContains('sell_all', $oilPolicy['allowed_policies']);
         $this->putJson("/api/v1/nations/{$nation->id}/resources/{$wheat->id}/sale-policy", [
             'policy' => 'sell_all', 'keep_amount' => null, 'expected_version' => 1,
         ])->assertUnprocessable();

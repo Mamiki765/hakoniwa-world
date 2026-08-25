@@ -43,6 +43,7 @@ final class SecretaryTurnService
         if ($itemEffectsEnabled) {
             $relations['user.secretary.itemInstances'] = static fn ($query) => $query
                 ->whereNotNull('equipped_slot')
+                ->where('is_escrowed', false)
                 ->orderBy('secretary_id')
                 ->orderBy('equipped_slot')
                 ->orderBy('id');

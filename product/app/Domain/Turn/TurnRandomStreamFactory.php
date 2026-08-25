@@ -90,6 +90,10 @@ final class TurnRandomStreamFactory
 
     private const SECRETARY_OLD_BOW_PREFIX = 'secretary_item:old_bow:nation:';
 
+    private const SECRETARY_EXPERIENCE_PREFIX = 'secretary_item:secretary_suit:nation:';
+
+    private const TRADING_POST_NPC_PREFIX = 'enforce_capacities:trading_post_npc:';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 
@@ -219,5 +223,24 @@ final class TurnRandomStreamFactory
         }
 
         return self::SECRETARY_OLD_BOW_PREFIX.$nationId.':'.$purpose.':v'.$streamVersion;
+    }
+
+    public static function secretaryExperience(int $nationId, string $source, int $streamVersion): string
+    {
+        if ($nationId < 1 || $streamVersion < 1
+            || ! in_array($source, ['passive_skill_experience', 'monster_experience'], true)) {
+            throw new InvalidArgumentException('Secretary experience stream identity is invalid.');
+        }
+
+        return self::SECRETARY_EXPERIENCE_PREFIX.$nationId.':'.$source.':v'.$streamVersion;
+    }
+
+    public static function tradingPostNpc(int $streamVersion): string
+    {
+        if ($streamVersion < 1) {
+            throw new InvalidArgumentException('Trading-post NPC stream version must be positive.');
+        }
+
+        return self::TRADING_POST_NPC_PREFIX.'v'.$streamVersion;
     }
 }

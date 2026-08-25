@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
+use App\Application\LaunchBaseExperienceService;
 use App\Application\NationCreationService;
+use App\Application\SecretaryExperienceAwardService;
 use App\Application\SecretaryTurnService;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -93,6 +96,56 @@ final class SecretaryTurnIntegrationTest extends TestCase
                 SecretarySkillCatalog::AGRICULTURAL_POLICY,
             ),
         );
+    }
+
+    public function test_secretary_suit_draws_once_per_canonical_secretary_experience_award_only(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, 'スーツ経験国');
+        $secretary = $user->secretary()->firstOrFail();
+        $suit = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::SECRETARY_SUIT,
+            'level' => 10,
+            'equipped_slot' => 2,
+            'is_escrowed' => false,
+            'grant_key' => 'test:secretary-suit:experience',
+            'obtained_at' => now(),
+        ]);
+        $seed = collect(range(1, 2_000))->map(
+            static fn (int $attempt): string => hash('sha256', "secretary suit success {$attempt}"),
+        )->first(static function (string $candidate) use ($nation): bool {
+            $random = new TurnRandomStreamFactory($candidate);
+
+            return $random->stream(TurnRandomStreamFactory::secretaryExperience(
+                $nation->id,
+                SecretaryExperienceAwardService::PASSIVE_SKILL,
+                1,
+            ))->integer(1, 100) <= 10
+                && $random->stream(TurnRandomStreamFactory::secretaryExperience(
+                    $nation->id,
+                    SecretaryExperienceAwardService::MONSTER,
+                    1,
+                ))->integer(1, 100) <= 10;
+        });
+        $this->assertIsString($seed);
+        $context = $this->context($world, 2, $seed, [$nation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$nation->id]);
+
+        $suit->update(['equipped_slot' => null]);
+        $awards = app(SecretaryExperienceAwardService::class);
+        $awards->awardSkill($context, $nation->id, SecretarySkillCatalog::AGRICULTURAL_POLICY, 1);
+        $this->assertSame(24, $awards->awardMonster($context, $nation->id, 12));
+
+        $this->assertSame([
+            $nation->id => [SecretarySkillCatalog::AGRICULTURAL_POLICY => 2],
+        ], $context->state->pendingSecretaryExperience());
+        $this->assertSame([$nation->id => 24], $context->state->pendingSecretaryMonsterExperience());
+
+        $base = $this->facilityCell($nation, 'missile_base');
+        $this->assertSame(12, app(LaunchBaseExperienceService::class)->credit($base, $nation, 12, $context));
+        $this->assertSame(12, (int) $base->fresh()->facility_experience);
+        app(SecretaryTurnService::class)->flushExperience($context);
+        $this->assertSame(24, (int) $secretary->fresh()->monster_experience);
     }
 
     public function test_all_three_production_skills_apply_their_integer_multiplier_to_the_matching_output(): void

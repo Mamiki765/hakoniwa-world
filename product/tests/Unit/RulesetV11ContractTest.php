@@ -19,25 +19,52 @@ final class RulesetV11ContractTest extends TestCase
 
     public const V15_CHECKSUM = 'd361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70';
 
+    public const V16_CHECKSUM = '331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d';
+
+    public const V15_FILE_SHA256 = '4a033f2f0fd2ff3e241162f18842360f133741de07ceb32f9eb65a0e606b4283';
+
     public function test_normal_config_loads_only_the_standalone_current_payload(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
-        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v15.php'));
+        $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php'));
 
         $this->assertIsString($source);
         $this->assertDoesNotMatchRegularExpression('/\brequire\b/', $source);
-        $this->assertSame(['hakoniwa-2s-plus-v15'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v15']);
+        $this->assertSame(['hakoniwa-2s-plus-v16'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v16']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
         $this->assertSame(
-            self::V15_CHECKSUM,
+            self::V16_CHECKSUM,
             hash('sha256', json_encode($current, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)),
         );
 
         $upgradeRulesets = app(RulesetUpgradeAuthoringCatalog::class)->all();
-        $this->assertCount(25, $upgradeRulesets);
-        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v15']);
+        $this->assertCount(26, $upgradeRulesets);
+        $this->assertSame($current, $upgradeRulesets['hakoniwa-2s-plus-v16']);
+        $this->assertSame(
+            self::V15_CHECKSUM,
+            hash('sha256', json_encode(
+                $upgradeRulesets['hakoniwa-2s-plus-v15'],
+                JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
+            )),
+        );
+        $this->assertSame(
+            self::V15_FILE_SHA256,
+            hash_file('sha256', config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v15.php')),
+        );
+        $this->assertSame('novice', $current['secretary']['items']['ring']['rarity']);
+        $this->assertSame('accessory', $current['secretary']['items']['ring']['category']);
+        $this->assertArrayNotHasKey('same_item_max_equipped', $current['secretary']['items']['ring']);
+        $this->assertCount(9, $current['secretary']['items']);
+        $this->assertSame('ノービス', $current['secretary']['item_rarities']['novice']['name']);
+        $this->assertFalse($current['secretary']['items']['old_bow']['npc_tradable']);
+        $this->assertSame(3, $current['trading_post']['player']['active_listing_limit']);
+        $this->assertSame([9, 10, 'floor'], [
+            $current['trading_post']['player']['seller_proceeds_numerator'],
+            $current['trading_post']['player']['seller_proceeds_denominator'],
+            $current['trading_post']['player']['seller_proceeds_rounding'],
+        ]);
         $this->assertSame(
             self::V14_CHECKSUM,
             hash('sha256', json_encode(
@@ -60,8 +87,8 @@ final class RulesetV11ContractTest extends TestCase
         $this->assertIsArray($settings);
         $this->assertSame('hakoniwa-2s-plus-v11', $settings['key']);
         $this->assertSame(11, $settings['version']);
-        $this->assertSame('hakoniwa-2s-plus-v15', config('hakoniwa.ruleset.key'));
-        $this->assertSame(15, config('hakoniwa.ruleset.version'));
+        $this->assertSame('hakoniwa-2s-plus-v16', config('hakoniwa.ruleset.key'));
+        $this->assertSame(16, config('hakoniwa.ruleset.version'));
         $this->assertFileExists(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v11.php'));
         $this->assertSame(
             [
@@ -70,6 +97,7 @@ final class RulesetV11ContractTest extends TestCase
                 '2026_08_23_010000_add_nation_karma_and_publish_v13.php',
                 '2026_08_24_000000_add_secretary_profiles_and_publish_v14.php',
                 '2026_08_24_010000_add_monster_experience_and_publish_v15.php',
+                '2026_08_25_000000_add_oil_resource_and_publish_v16.php',
             ],
             array_map('basename', glob(database_path('migrations/*.php')) ?: []),
         );

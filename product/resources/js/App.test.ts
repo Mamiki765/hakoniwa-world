@@ -2,7 +2,8 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import HexMap from './components/HexMap.vue';
-import type { MapChunk, Nation, PublicNationDetail, Secretary } from './types';
+import TradingPostPanel from './components/TradingPostPanel.vue';
+import type { MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
     status,
@@ -81,7 +82,7 @@ const unnamedSecretaryFixture: Secretary = {
             slot_count: 5,
             category_limits: [
                 { category: 'bow', label: '弓', maximum_equipped: 1 },
-                { category: 'ring', label: '指輪', maximum_equipped: 5 },
+                { category: 'clothing', label: '衣服', maximum_equipped: 1 },
             ],
             slots: [
                 { slot: 1, item: null },
@@ -108,13 +109,13 @@ const unnamedSecretaryFixture: Secretary = {
         used: 2,
         items: [{
             id: 21, key: 'old_bow', name: '古びた弓', level: 1, category: 'bow', category_label: '弓',
-            equipped_slot: 1, is_equipped: true,
+            equipped_slot: 1, is_equipped: true, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
             effect_text: '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
             flavor_text: '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
             obtained_at: '2026-08-17T00:00:00Z',
         }, {
-            id: 22, key: 'ring', name: '指輪', level: 3, category: 'ring', category_label: '指輪',
-            equipped_slot: null, is_equipped: false,
+            id: 22, key: 'ring', name: '指輪', level: 3, category: 'accessory', category_label: 'アクセサリー',
+            equipped_slot: null, is_equipped: false, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
             effect_text: '資金繰りの際、追加で3億円を得る。',
             flavor_text: '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
             obtained_at: '2026-08-18T00:00:00Z',
@@ -124,7 +125,7 @@ const unnamedSecretaryFixture: Secretary = {
         slot_count: 5,
         category_limits: [
             { category: 'bow', label: '弓', maximum_equipped: 1 },
-            { category: 'ring', label: '指輪', maximum_equipped: 5 },
+            { category: 'clothing', label: '衣服', maximum_equipped: 1 },
         ],
         slots: [
             { slot: 1, item: null },
@@ -882,6 +883,60 @@ describe('application lobby and island entry', () => {
         wrapper.unmount();
     });
 
+    it('keeps the trading post browsable, disables new mutations, and allows zero-bid cancellation while dormant', async () => {
+        const dormantOwnListing: TradingPostListing = {
+            id: 82,
+            seller: { type: 'nation', nation_id: 3, name: '休眠島' },
+            product: {
+                type: 'resource', name: '石油', resource_key: 'oil', unit_label: '万バレル',
+                quantity: 50, item_key: null, item_level: null, rarity: null, rarity_label: null,
+            },
+            start_price: 100, current_price: null, minimum_bid: 100, bid_count: 0,
+            highest_bidder_nation_id: null, started_turn: 8, ends_turn: 14, remaining_turns: 4,
+            duration_turns: 6, auto_relist: true, relist_count: 1, is_mine: true,
+            can_bid: false, can_cancel: true,
+        };
+        const dormantMarket: TradingPostData = {
+            world: { id: 1, current_turn: 10 },
+            nation: { id: 3, name: '休眠島', money: 500, state: 'dormant' },
+            permissions: { can_mutate: false },
+            listings: [{
+                id: 81,
+                seller: { type: 'hakoniwa_federation', nation_id: null, name: '箱庭連合' },
+                product: {
+                    type: 'resource', name: '石油', resource_key: 'oil', unit_label: '万バレル',
+                    quantity: 100, item_key: null, item_level: null, rarity: null, rarity_label: null,
+                },
+                start_price: 200, current_price: null, minimum_bid: 200, bid_count: 0,
+                highest_bidder_nation_id: null, started_turn: 10, ends_turn: 16, remaining_turns: 6,
+                duration_turns: 6, auto_relist: false, relist_count: 0, is_mine: false,
+                can_bid: false, can_cancel: false,
+            }, dormantOwnListing],
+            my_listings: [dormantOwnListing],
+            sellable_resources: [{ id: 6, key: 'oil', name: '石油', unit_label: '万バレル', amount: 123 }],
+            sellable_items: [],
+            contract: {
+                active_listing_limit: 3, minimum_duration_turns: 3, maximum_duration_turns: 84,
+                minimum_increment_money: 1, money_unit_label: '億円', npc_seller_name: '箱庭連合',
+            },
+        };
+        const fetchMock = vi.fn(async () => response(dormantMarket));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const wrapper = mount(TradingPostPanel, { props: { nationId: 3, worldId: 1 } });
+        await flushPromises();
+
+        expect(wrapper.get('.trading-post-table').text()).toContain('石油 100万バレル');
+        expect(wrapper.get('.trading-post-table').text()).toContain('現在は入札不可');
+        expect(wrapper.get('.trading-post-panel').text()).toContain('休眠中は新規出品できません。');
+        expect(wrapper.get('.trading-post-my-listings button').text()).toBe('キャンセル');
+        const listingForm = wrapper.get('.trading-post-listing-form');
+        expect(listingForm.findAll('input').every((control) => control.attributes('disabled') !== undefined)).toBe(true);
+        expect(listingForm.findAll('select').every((control) => control.attributes('disabled') !== undefined)).toBe(true);
+        expect(listingForm.get('button').attributes('disabled')).toBeDefined();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {
         vi.useFakeTimers();
         const nation: Nation = {
@@ -910,6 +965,7 @@ describe('application lobby and island entry', () => {
                 { key: 'monster_meat', name: '怪獣肉', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 2, storable: true, tradable: true, amount: 0, capacity: 999900, remaining_capacity: 989900, is_at_capacity: false },
                 { key: 'industrial_goods', name: '工業品', category: 'industry', unit: 'unit', unit_label: 'ユニット', nutrition_per_unit: null, storable: true, tradable: true, amount: 1200, capacity: 9999000, remaining_capacity: 9997800, is_at_capacity: false },
                 { key: 'minerals', name: '鉱物', category: 'material', unit: 'ton', unit_label: 'トン', nutrition_per_unit: null, storable: true, tradable: true, amount: 0, capacity: 9999000, remaining_capacity: 9999000, is_at_capacity: false },
+                { key: 'oil', name: '石油', category: 'energy', unit: 'ten_thousand_barrels', unit_label: '万バレル', nutrition_per_unit: null, storable: true, tradable: true, amount: 123, capacity: 5000, remaining_capacity: 4877, is_at_capacity: false },
             ],
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -936,6 +992,32 @@ describe('application lobby and island entry', () => {
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
             if (path === '/api/v1/me/nation') return response(nation);
+            if (path === '/api/v1/worlds/1/trading-post') return response({
+                world: { id: 1, current_turn: 1 },
+                nation: { id: 3, name: '自島', money: 62728, state: 'active' },
+                permissions: { can_mutate: true },
+                listings: [{
+                    id: 81,
+                    seller: { type: 'hakoniwa_federation', nation_id: null, name: '箱庭連合' },
+                    product: {
+                        type: 'item', name: '指輪', resource_key: null, unit_label: null, quantity: null,
+                        item_key: 'ring', item_level: 3, rarity: 'novice', rarity_label: 'ノービス',
+                    },
+                    start_price: 300, current_price: null, minimum_bid: 300, bid_count: 0,
+                    highest_bidder_nation_id: null, started_turn: 1, ends_turn: 7, remaining_turns: 6,
+                    duration_turns: 6, auto_relist: false, relist_count: 0, is_mine: false,
+                    can_bid: true, can_cancel: false,
+                }],
+                my_listings: [],
+                sellable_resources: [{ id: 6, key: 'oil', name: '石油', unit_label: '万バレル', amount: 123 }],
+                sellable_items: [{
+                    id: 22, key: 'ring', name: '指輪', level: 3, rarity: 'novice', rarity_label: 'ノービス',
+                }],
+                contract: {
+                    active_listing_limit: 3, minimum_duration_turns: 3, maximum_duration_turns: 84,
+                    minimum_increment_money: 1, money_unit_label: '億円', npc_seller_name: '箱庭連合',
+                },
+            });
             if (path === '/api/v1/public/nations/7') return response(publicDetail);
             if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path === '/api/v1/nations/3/profile' && init?.method === 'PATCH') return response({
@@ -969,6 +1051,7 @@ describe('application lobby and island entry', () => {
         expect(headerNavigation).toContain('TOP');
         expect(headerNavigation).toContain('自島へ');
         expect(headerNavigation).toContain('資源売却');
+        expect(headerNavigation).toContain('交易場');
         expect(headerNavigation).toContain('プロフィール編集');
         expect(headerNavigation).toContain('マニュアル');
         expect(headerNavigation).not.toContain('クレジット');
@@ -976,6 +1059,17 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.session-actions').text()).toContain('Owner');
         expect(wrapper.find('.session-actions').text()).toContain('アカウント');
         expect(wrapper.find('.session-actions').text()).not.toContain('自島');
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '交易場')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.trading-post-heading h1').text()).toBe('交易場');
+        expect(wrapper.get('.trading-post-table').text()).toContain('指輪 Lv3（ノービス）');
+        expect(wrapper.get('.trading-post-table').text()).toContain('箱庭連合');
+        expect(wrapper.get('.trading-post-table').text()).toContain('残り6ターン');
+        expect(wrapper.get('.trading-post-capacity-note').text()).toContain('預託資金は資金上限の使用量に含まれ');
+        expect(wrapper.get('.trading-post-capacity-note').text()).toContain('出品中の資源も保管容量に含まれます');
+        expect(wrapper.get('.trading-post-capacity-note a').attributes('href')).toBe('/manual/trading-post');
+        expect(wrapper.get('.trading-post-panel').text()).not.toContain('オークション');
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
@@ -1004,6 +1098,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000ユニット');
         expect(wrapper.find('.hud-details').text()).toContain('鉱物0トン');
         expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000トン');
+        expect(wrapper.find('.hud-details').text()).toContain('石油123万バレル');
+        expect(wrapper.find('.hud-details').text()).toContain('上限 5,000万バレル');
         expect(wrapper.find('.island-grid').exists()).toBe(true);
         const workspaceScroll = wrapper.get('.island-workspace-scroll');
         expect(workspaceScroll.attributes('role')).toBe('region');
@@ -1473,6 +1569,9 @@ describe('application lobby and island entry', () => {
         await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
         expect(wrapper.findAll('.secretary-equipment button')).toHaveLength(5);
         expect(wrapper.get('.equipment-category-limits').text()).toContain('弓・1個まで');
+        expect(wrapper.get('.equipment-category-limits').text()).toContain('衣服・1個まで');
+        expect(wrapper.get('.equipment-category-limits').text()).not.toContain('アクセサリー');
+        expect(wrapper.get('.equipment-category-limits').text()).not.toContain('99');
         await wrapper.findAll('.secretary-equipment button')[0]!.trigger('click');
         await flushPromises();
 

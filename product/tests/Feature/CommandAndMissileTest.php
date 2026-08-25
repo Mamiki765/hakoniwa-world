@@ -20,6 +20,7 @@ use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -101,7 +102,58 @@ class CommandAndMissileTest extends TestCase
             'decay_reductions' => 1,
             'recovery_reductions' => 3,
             'monster_kill_reductions' => 2,
+            'minimum_recoveries' => 0,
         ], $metrics);
+    }
+
+    public function test_good_person_treasure_snapshots_the_lower_karma_minimum_and_removal_recovers_gradually(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '秘宝島', '秘宝島主');
+        $treasure = $user->secretary()->firstOrFail()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::GOOD_PERSON_TREASURE,
+            'level' => 10,
+            'equipped_slot' => 2,
+            'grant_key' => 'test:karma:good-person-treasure',
+            'obtained_at' => now(),
+        ]);
+        $nation->update(['karma' => -10]);
+
+        $equipped = $this->context($world, 2, hash('sha256', 'treasure equipped'), [$nation->id]);
+        $equipped->state->setLifecycleNationIds([$nation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($equipped, [$nation->id]);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($equipped);
+        $equipped->state->markForeignMonsterKill($nation->id);
+        $equippedMetrics = $karma->finalize($equipped);
+
+        $this->assertSame(-20, $equipped->state->karmaMinimumSnapshot($nation->id));
+        $this->assertSame(-11, (int) $nation->fresh()->karma);
+        $this->assertSame(1, $equippedMetrics['monster_kill_reductions']);
+
+        $treasure->update(['equipped_slot' => null]);
+        $nation->update(['karma' => -20]);
+        $removed = $this->context($world, 3, hash('sha256', 'treasure removed'), [$nation->id]);
+        $removed->state->setLifecycleNationIds([$nation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($removed, [$nation->id]);
+        $karma->prepare($removed);
+        $removed->state->markForeignMonsterKill($nation->id);
+        $removedMetrics = $karma->finalize($removed);
+
+        $this->assertSame(-10, $removed->state->karmaMinimumSnapshot($nation->id));
+        $this->assertSame(-19, (int) $nation->fresh()->karma);
+        $this->assertSame(0, $removedMetrics['monster_kill_reductions']);
+        $this->assertSame(1, $removedMetrics['minimum_recoveries']);
+
+        $nation->update(['karma' => -10]);
+        $ordinary = $this->context($world, 4, hash('sha256', 'ordinary minimum'), [$nation->id]);
+        $ordinary->state->setLifecycleNationIds([$nation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($ordinary, [$nation->id]);
+        $karma->prepare($ordinary);
+        $ordinary->state->markForeignMonsterKill($nation->id);
+        $karma->finalize($ordinary);
+        $this->assertSame(-10, (int) $nation->fresh()->karma);
     }
 
     public function test_v13_canonical_missile_impacts_apply_the_highest_single_karma_category(): void
@@ -2210,7 +2262,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v15', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v16', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);

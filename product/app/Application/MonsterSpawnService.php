@@ -8,6 +8,8 @@ use App\Domain\Monster\MonsterDispatchOption;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
 use App\Domain\Monster\MonsterSpawnSource;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -30,6 +32,7 @@ final class MonsterSpawnService
         private readonly MapCellStateService $cells,
         private readonly TurnEventRecorder $events,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly SecretaryItemEffectAggregator $secretaryItems,
     ) {}
 
     /** @return array<string, int> */
@@ -133,6 +136,16 @@ final class MonsterSpawnService
             $metrics['spawn_draws']++;
             $ownedLandCells = $landByNation[$nation->id] ?? 0;
             $spawnProbability = $this->policy->probabilityForLand($system, $ownedLandCells);
+            $itemPercent = $this->secretaryItems->snapshotPercentage(
+                $context->state,
+                (int) $nation->id,
+                SecretaryItemGameplayContract::NATURAL_MONSTER_SPAWN_PERCENT,
+                'normal_nation_natural_spawn',
+            );
+            $spawnProbability['numerator'] = min(
+                $spawnProbability['denominator'],
+                intdiv($spawnProbability['numerator'] * max(0, 100 + $itemPercent), 100),
+            );
             $triggerDraw = $context->random->stream(
                 TurnRandomStreamFactory::monsterSpawn($nation->id, 'trigger', $streamVersion),
             )->integer(0, $spawnProbability['denominator'] - 1);

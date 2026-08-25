@@ -8,6 +8,8 @@ use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\CapacityModifier;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
+use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Nation;
 use App\Models\NationResource;
@@ -42,7 +44,36 @@ class NationCapacityTest extends TestCase
         $this->assertSame([
             'industrial_goods' => 9_999_000,
             'minerals' => 9_999_000,
+            'oil' => 5_000,
         ], $base->resources);
+
+        $secretary = $user->secretary()->firstOrFail();
+        foreach ([
+            [SecretaryItemCatalog::HOARDER_TALISMAN, 10, 2],
+            [SecretaryItemCatalog::FULLNESS_HERB, 10, 3],
+            [SecretaryItemCatalog::VAULT_KEY, 10, 4],
+        ] as [$itemKey, $level, $slot]) {
+            $secretary->itemInstances()->create([
+                'item_key' => $itemKey,
+                'level' => $level,
+                'equipped_slot' => $slot,
+                'grant_key' => "test:capacity:{$itemKey}",
+                'obtained_at' => now(),
+            ]);
+        }
+        $modified = app(NationCapacityResolver::class)->resolve($nation);
+        $this->assertSame(12_978, $modified->money);
+        $this->assertSame(1_533_846, $modified->foodTons);
+        $this->assertSame([
+            'industrial_goods' => 10_998_900,
+            'minerals' => 10_998_900,
+            'oil' => 5_500,
+        ], $modified->resources);
+        $secretary->itemInstances()->whereIn('item_key', [
+            SecretaryItemCatalog::HOARDER_TALISMAN,
+            SecretaryItemCatalog::FULLNESS_HERB,
+            SecretaryItemCatalog::VAULT_KEY,
+        ])->update(['equipped_slot' => null]);
 
         $world = $nation->world()->firstOrFail();
         $currentRulesetId = $world->ruleset_version_id;
@@ -63,7 +94,10 @@ class NationCapacityTest extends TestCase
         $modifier = new class implements CapacityModifier {};
 
         try {
-            (new NationCapacityResolver([$modifier]))->resolve($nation);
+            (new NationCapacityResolver(
+                app(SecretaryItemEffectAggregator::class),
+                [$modifier],
+            ))->resolve($nation);
             $this->fail('Expected the deferred capacity modifier boundary to fail closed.');
         } catch (DomainException $exception) {
             $this->assertSame(

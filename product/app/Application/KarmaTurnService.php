@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Economy\CapacityBoundedAssetService;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Turn\TurnContext;
 use App\Models\Nation;
 use App\Models\RulesetVersion;
@@ -14,6 +15,7 @@ final class KarmaTurnService
     public function __construct(
         private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly TurnEventRecorder $events,
+        private readonly SecretaryItemEffectAggregator $secretaryItems,
     ) {}
 
     /** @return array{karma_snapshots: int, turn_start_monsters: int} */
@@ -24,10 +26,14 @@ final class KarmaTurnService
             ->orderBy('id')->lockForUpdate()->get(['id', 'name', 'karma']);
         foreach ($nations as $nation) {
             $context->state->setKarmaStartSnapshot($nation->id, (int) $nation->karma);
+            $minimum = $this->settings($context->ruleset)['minimum']
+                - $this->secretaryItems->snapshotKarmaMinimumDelta($context->state, (int) $nation->id);
+            $context->state->setKarmaMinimumSnapshot($nation->id, $minimum);
             $this->events->record($context, 'karma.turn_start_snapshot', $nation, [
                 'nation_id' => $nation->id,
                 'nation_name' => $nation->name,
                 'karma' => (int) $nation->karma,
+                'effective_minimum' => $minimum,
                 'target_turn' => $context->targetTurn,
             ], 'admin');
         }
@@ -82,7 +88,7 @@ final class KarmaTurnService
         return max(0, $context->state->karmaStartSnapshot($nationId) + $ledger['crime_points'] - $maximum);
     }
 
-    /** @return array{nations: int, changed: int, crime_points: int, victim_reductions: int, decay_reductions: int, recovery_reductions: int, monster_kill_reductions: int} */
+    /** @return array{nations: int, changed: int, crime_points: int, victim_reductions: int, decay_reductions: int, recovery_reductions: int, monster_kill_reductions: int, minimum_recoveries: int} */
     public function finalize(TurnContext $context): array
     {
         $settings = $this->settings($context->ruleset);
@@ -90,10 +96,12 @@ final class KarmaTurnService
             'nations' => 0, 'changed' => 0, 'crime_points' => 0,
             'victim_reductions' => 0, 'decay_reductions' => 0,
             'recovery_reductions' => 0, 'monster_kill_reductions' => 0,
+            'minimum_recoveries' => 0,
         ];
         foreach ($context->state->karmaLedgers() as $nationId => $ledger) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             $start = $context->state->karmaStartSnapshot($nationId);
+            $minimum = $context->state->karmaMinimumSnapshot($nationId);
             if ((int) $nation->karma !== $start) {
                 throw new DomainException('Persistent KARMA changed before the canonical Turn finalization boundary.');
             }
@@ -120,9 +128,12 @@ final class KarmaTurnService
                 : 0;
             $candidate -= $recoveryReduction;
             $monsterKillReduction = $ledger['foreign_monster_kill']
-                ? min($settings['foreign_monster_kill_reduction'], $candidate - $settings['minimum'])
+                && $candidate > $minimum
+                ? min($settings['foreign_monster_kill_reduction'], $candidate - $minimum)
                 : 0;
-            $candidate = max($settings['minimum'], $candidate - $monsterKillReduction);
+            $candidate -= $monsterKillReduction;
+            $minimumRecovery = $candidate < $minimum ? 1 : 0;
+            $candidate += $minimumRecovery;
             if ($candidate !== $start) {
                 $nation->update(['karma' => $candidate]);
                 $metrics['changed']++;
@@ -133,6 +144,7 @@ final class KarmaTurnService
             $metrics['decay_reductions'] += $decay;
             $metrics['recovery_reductions'] += $recoveryReduction;
             $metrics['monster_kill_reductions'] += $monsterKillReduction;
+            $metrics['minimum_recoveries'] += $minimumRecovery;
             $this->events->record($context, 'karma.finalized', $nation, [
                 'nation_id' => $nation->id,
                 'start_karma' => $start,
@@ -143,6 +155,8 @@ final class KarmaTurnService
                 'natural_decay' => $decay,
                 'recovery_reduction' => $recoveryReduction,
                 'foreign_monster_kill_reduction' => $monsterKillReduction,
+                'effective_minimum' => $minimum,
+                'minimum_recovery' => $minimumRecovery,
                 'final_karma' => $candidate,
             ], 'admin');
         }

@@ -375,12 +375,23 @@ class CompleteTurnIntegrationTest extends TestCase
                 ->orderBy('id')->pluck('version', 'id')->all(),
             'events' => DB::table('audit_events')->orderBy('id')->get([
                 'event_type', 'subject_type', 'subject_id', 'metadata',
-            ])->map(static fn (object $event): array => [
-                'event_type' => $event->event_type,
-                'subject_type' => $event->subject_type,
-                'subject_id' => $event->subject_id,
-                'metadata' => json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR),
-            ])->all(),
+            ])->map(static function (object $event): array {
+                $metadata = json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR);
+                $subjectId = $event->subject_id;
+                if ($event->event_type === 'trading_post.npc_listed') {
+                    // PostgreSQL sequences intentionally do not roll back. The committed listing and its audit row
+                    // remain atomic; normalize only that generated database identity when comparing retry outcomes.
+                    unset($metadata['auction_listing_id']);
+                    $subjectId = null;
+                }
+
+                return [
+                    'event_type' => $event->event_type,
+                    'subject_type' => $event->subject_type,
+                    'subject_id' => $subjectId,
+                    'metadata' => $metadata,
+                ];
+            })->all(),
         ];
     }
 

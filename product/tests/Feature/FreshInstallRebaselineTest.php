@@ -7,7 +7,7 @@ use App\Application\CurrentCatalogInstaller;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
-use App\Application\Ver250MonsterExperienceRulesetUpgrade;
+use App\Application\Ver260OilResourceRulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\CommandDefinition;
@@ -15,6 +15,7 @@ use App\Models\MapCell;
 use App\Models\MonsterDefinition;
 use App\Models\NationCommandQueueItem;
 use App\Models\ProductionDefinition;
+use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
@@ -33,19 +34,19 @@ final class FreshInstallRebaselineTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_empty_postgresql_uses_direct_current_schema_and_v15_catalog_baseline(): void
+    public function test_empty_postgresql_uses_direct_current_schema_and_v16_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
-        $ruleset = RulesetVersion::query()->where('key', Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY)->sole();
+        $ruleset = RulesetVersion::query()->where('key', Ver260OilResourceRulesetUpgrade::TARGET_KEY)->sole();
 
-        $this->assertSame('2.5.0-beta', config('hakoniwa.application_version'));
-        $this->assertSame([Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_KEY, $ruleset->key);
-        $this->assertSame(Ver250MonsterExperienceRulesetUpgrade::TARGET_VERSION, $ruleset->version);
+        $this->assertSame('2.6.0', config('hakoniwa.application_version'));
+        $this->assertSame([Ver260OilResourceRulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(Ver260OilResourceRulesetUpgrade::TARGET_KEY, $ruleset->key);
+        $this->assertSame(Ver260OilResourceRulesetUpgrade::TARGET_VERSION, $ruleset->version);
         $this->assertSame(25, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(51, DB::table('migrations')->count());
+        $this->assertSame(52, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -61,15 +62,53 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_24_010000_add_monster_experience_and_publish_v15',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_25_000000_add_oil_resource_and_publish_v16',
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->sole();
+        $this->assertSame(['石油', 'energy', 'ten_thousand_barrels', '万バレル', true, true, 'sale.oil', 60], [
+            $oil->name, $oil->category, $oil->unit, $oil->unit_label,
+            $oil->storable, $oil->tradable, $oil->sale_price_key, $oil->sort_order,
+        ]);
+        $this->assertSame(5_000, $ruleset->settings['resource_capacities']['oil']);
+        $this->assertSame([1, 2], [
+            $ruleset->settings['inventory_sale_rates']['oil']['inventory_units'],
+            $ruleset->settings['inventory_sale_rates']['oil']['money_units'],
+        ]);
+        $this->assertSame(500, $ruleset->settings['turn_processing']['oil_field']['production_units']);
+        $categoryKeys = array_keys($ruleset->settings['secretary']['item_categories']);
+        sort($categoryKeys);
+        $this->assertSame(['accessory', 'bow', 'clothing'], $categoryKeys);
+        $this->assertSame(99, $ruleset->settings['secretary']['item_categories']['accessory']['max_equipped']);
+        $this->assertSame('accessory', $ruleset->settings['secretary']['items']['ring']['category']);
+        $this->assertArrayNotHasKey('same_item_max_equipped', $ruleset->settings['secretary']['items']['ring']);
+        $this->assertCount(9, $ruleset->settings['secretary']['items']);
         $this->assertTrue(Schema::hasColumn('nations', 'karma'));
         $this->assertTrue(Schema::hasColumn('secretaries', 'profile_biography'));
         $this->assertTrue(Schema::hasColumn('users', 'show_ai_generated_secretary_images'));
         $this->assertTrue(Schema::hasColumn('secretaries', 'monster_experience'));
         $this->assertTrue(Schema::hasColumn('monster_definitions', 'experience_per_damage'));
+        $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'is_escrowed'));
+        $this->assertTrue(Schema::hasTable('auction_listings'));
+        $this->assertTrue(Schema::hasTable('auction_bids'));
+        $this->assertSame(0, DB::table('auction_listings')->count());
+        $this->assertSame(0, DB::table('auction_bids')->count());
+        $this->assertSame(6, $ruleset->settings['trading_post']['npc']['duration_turns']);
+        $this->assertSame(['resource' => 3, 'item' => 2], [
+            'resource' => $ruleset->settings['trading_post']['npc']['active_resource_limit'],
+            'item' => $ruleset->settings['trading_post']['npc']['active_item_limit'],
+        ]);
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'secretaries_monster_experience_non_negative')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'monster_definitions_experience_per_damage_non_negative')->count());
+        $karmaConstraint = DB::selectOne(<<<'SQL'
+SELECT pg_get_constraintdef(oid) AS definition
+  FROM pg_constraint
+ WHERE conname = 'nations_karma_range_check'
+SQL);
+        $this->assertNotNull($karmaConstraint);
+        $this->assertStringContainsString('-30', (string) $karmaConstraint->definition);
         $this->assertSame(0, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
             ->whereNull('experience_per_damage')->count());
         app(CurrentCatalogInstaller::class)->assertInstalled(config('hakoniwa.ruleset'));
@@ -113,6 +152,7 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertSame(1, $secretary->equipment_version);
         $starter = SecretaryItemInstance::query()->where('secretary_id', $secretary->id)->sole();
+        $this->assertFalse($starter->is_escrowed);
         $this->assertSame('old_bow', $starter->item_key);
         $this->assertSame(1, $starter->equipped_slot);
     }

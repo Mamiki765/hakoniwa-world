@@ -65,6 +65,7 @@ final class CompleteTurnEngine
         private readonly SecretaryOldBowService $secretaryOldBow,
         private readonly NationLifecycleService $nationLifecycle,
         private readonly KarmaTurnService $karma,
+        private readonly TradingPostTurnService $tradingPost,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -95,7 +96,6 @@ final class CompleteTurnEngine
             throw new DomainException('The active ruleset does not implement the complete non-combat turn contract.');
         }
         $lifecycleMetrics = $this->nationLifecycle->prepare($context);
-        $karmaMetrics = $this->karma->prepare($context);
         $nationIds = $this->orders->stableNationIds($context->world);
         $context->state->setStableNationIds($nationIds);
         foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
@@ -106,6 +106,7 @@ final class CompleteTurnEngine
             $context,
             $context->state->lifecycleNationIds(),
         );
+        $karmaMetrics = $this->karma->prepare($context);
 
         $metrics = [
             'nations' => count($nationIds),
@@ -573,13 +574,19 @@ final class CompleteTurnEngine
         $resources = $this->resourceDefinitions($context);
         $tradableResources = $resources->where('tradable', true);
         $tradableResourceIds = $tradableResources->pluck('id')->all();
+        $pendingEvents = [];
+        $nationIds = $context->state->stableNationIds();
+        $escrowedMoneyByNation = $this->boundedAssets->escrowedMoneyByNationIds($nationIds);
+        $escrowedResourcesByNation = $this->boundedAssets->escrowedResourcesByNationIds($nationIds);
 
-        foreach ($context->state->stableNationIds() as $nationId) {
+        foreach ($nationIds as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
+            $liquidMoneyCapacity = max(0, $capacity->money - ($escrowedMoneyByNation[$nationId] ?? 0));
+            $escrowedResources = $escrowedResourcesByNation[$nationId] ?? [];
             $balances = NationResource::query()
                 ->where('nation_id', $nation->id)
                 ->whereIn('resource_definition_id', $tradableResourceIds)
@@ -605,26 +612,22 @@ final class CompleteTurnEngine
                 }
                 $before = (int) $balance->amount;
                 $resourceCapacity = $capacity->resources[$resource->key] ?? null;
+                $liquidResourceCapacity = is_int($resourceCapacity)
+                    ? max(0, $resourceCapacity - ($escrowedResources[$resource->id] ?? 0))
+                    : null;
                 $requested = match ($policy) {
                     SalePolicy::SellAll->value => $before,
                     SalePolicy::KeepAmount->value => max(0, $before - (int) $keepAmount),
-                    SalePolicy::Stockpile->value => is_int($resourceCapacity)
-                        ? max(0, $before - $resourceCapacity)
+                    SalePolicy::Stockpile->value => is_int($liquidResourceCapacity)
+                        ? max(0, $before - $liquidResourceCapacity)
                         : 0,
                     default => 0,
                 };
-                $rate = $rates[$resource->key] ?? null;
-                if (! is_array($rate)
-                    || ! is_int($rate['inventory_units'] ?? null)
-                    || $rate['inventory_units'] < 1
-                    || ! is_int($rate['money_units'] ?? null)
-                    || $rate['money_units'] < 1) {
-                    throw new DomainException("Inventory sale rate is missing or invalid for {$resource->key}.");
-                }
+                $rate = $this->inventorySaleRate($rates, $resource->key);
                 $quote = $this->salePlanner->plan(
                     $requested,
                     (int) $nation->money,
-                    $capacity->money,
+                    $liquidMoneyCapacity,
                     $rate['inventory_units'],
                     $rate['money_units'],
                 );
@@ -636,18 +639,27 @@ final class CompleteTurnEngine
                     $metrics['sales']++;
                     $metrics['revenue'] += $revenue;
                 }
-                $this->events->record($context, 'resource.automatic_sale', $nation, [
-                    'resource_key' => $resource->key, 'policy' => $policy, 'keep_amount' => $keepAmount,
-                    'before' => $before, 'requested' => $requested, 'sold' => $sold,
-                    'revenue' => $revenue, 'after' => $before - $sold,
-                    'sale_reason' => $policy === SalePolicy::Stockpile->value && is_int($resourceCapacity)
-                        ? 'capacity_overflow'
-                        : 'sale_policy',
-                    'resource_capacity' => $resourceCapacity,
-                    'money_capacity' => $capacity->money,
-                ]);
+                $pendingEvents[] = [
+                    'event_type' => 'resource.automatic_sale',
+                    'subject' => $nation,
+                    'metadata' => [
+                        'resource_key' => $resource->key, 'policy' => $policy, 'keep_amount' => $keepAmount,
+                        'before' => $before, 'requested' => $requested, 'sold' => $sold,
+                        'revenue' => $revenue, 'after' => $before - $sold,
+                        'sale_reason' => $policy === SalePolicy::Stockpile->value && is_int($resourceCapacity)
+                            ? 'capacity_overflow'
+                            : 'sale_policy',
+                        'resource_capacity' => $resourceCapacity,
+                        'resource_escrow' => $escrowedResources[$resource->id] ?? 0,
+                        'money_capacity' => $capacity->money,
+                    ],
+                    'visibility' => null,
+                    'severity' => null,
+                    'message' => null,
+                ];
             }
         }
+        $this->events->recordMany($context, $pendingEvents);
 
         return $metrics;
     }
@@ -655,19 +667,27 @@ final class CompleteTurnEngine
     /** @return array<string, int> */
     private function enforceCapacities(TurnContext $context): array
     {
+        $tradingPostMetrics = $this->tradingPost->execute($context);
         $metrics = ['overflow_reports' => 0];
         $settings = $context->ruleset->settings;
         $resourceOverflowEvent = $this->resourceOverflowEvent($settings);
         $resources = $this->resourceDefinitions($context);
         $resourcesByKey = $resources->keyBy('key');
+        $resourcesById = $resources->keyBy('id');
         $resourceIds = $resources->pluck('id')->all();
+        $nationIds = $context->state->stableNationIds();
+        $escrowedMoneyByNation = $this->boundedAssets->escrowedMoneyByNationIds($nationIds);
+        $escrowedResourcesByNation = $this->boundedAssets->escrowedResourcesByNationIds($nationIds);
 
-        foreach ($context->state->stableNationIds() as $nationId) {
+        foreach ($nationIds as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
+            $escrowedMoney = $escrowedMoneyByNation[$nationId] ?? 0;
+            $liquidMoneyCapacity = max(0, $capacity->money - $escrowedMoney);
+            $escrowedResources = $escrowedResourcesByNation[$nationId] ?? [];
             $balances = NationResource::query()
                 ->where('nation_id', $nation->id)
                 ->whereIn('resource_definition_id', $resourceIds)
@@ -676,6 +696,8 @@ final class CompleteTurnEngine
                 ->keyBy('resource_definition_id');
 
             $resourceAmounts = [];
+            $resourceEscrowAmounts = [];
+            $resourceAmountsInUse = [];
             foreach ($capacity->resources as $resourceKey => $resourceCapacity) {
                 $resource = $resourcesByKey->get($resourceKey);
                 if (! $resource instanceof ResourceDefinition) {
@@ -683,25 +705,72 @@ final class CompleteTurnEngine
                 }
                 $balance = $this->lockedOrCreatedBalance($balances, $nation, $resource);
                 $before = (int) $balance->amount;
-                $after = min($before, $resourceCapacity);
-                $overflow = $before - $after;
+                $resourceEscrow = $escrowedResources[$resource->id] ?? 0;
+                $liquidResourceCapacity = max(0, $resourceCapacity - $resourceEscrow);
+                $afterSale = $before;
+                $overflow = max(0, $before - $liquidResourceCapacity);
                 if ($overflow > 0) {
+                    $storedPolicy = NationResourceSalePolicy::query()
+                        ->where('nation_id', $nation->id)
+                        ->where('resource_definition_id', $resource->id)
+                        ->lockForUpdate()
+                        ->value('policy');
+                    $policy = $storedPolicy ?? $settings['default_sale_policy'];
+                    if (! SalePolicy::isSupported($policy)) {
+                        throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
+                    }
+                    if ($policy === SalePolicy::Stockpile->value) {
+                        $rate = $this->inventorySaleRate($settings['inventory_sale_rates'], $resourceKey);
+                        $quote = $this->salePlanner->plan(
+                            $overflow,
+                            (int) $nation->money,
+                            $liquidMoneyCapacity,
+                            $rate['inventory_units'],
+                            $rate['money_units'],
+                        );
+                        if ($quote->inventorySold > 0) {
+                            $balance->decrement('amount', $quote->inventorySold);
+                            $nation->increment('money', $quote->appliedMoney);
+                            $afterSale -= $quote->inventorySold;
+                            $this->events->record($context, 'resource.automatic_sale', $nation, [
+                                'resource_key' => $resourceKey,
+                                'policy' => $policy,
+                                'keep_amount' => null,
+                                'before' => $before,
+                                'requested' => $overflow,
+                                'sold' => $quote->inventorySold,
+                                'revenue' => $quote->appliedMoney,
+                                'after' => $afterSale,
+                                'sale_reason' => 'capacity_overflow',
+                                'resource_capacity' => $resourceCapacity,
+                                'resource_escrow' => $resourceEscrow,
+                                'money_capacity' => $capacity->money,
+                            ]);
+                        }
+                    }
+                }
+                $after = min($afterSale, $liquidResourceCapacity);
+                $discarded = $afterSale - $after;
+                if ($discarded > 0) {
                     $balance->update(['amount' => $after]);
                     $metrics['overflow_reports']++;
                     $this->events->record($context, $resourceOverflowEvent, $nation, [
                         'asset' => 'resource',
                         'resource_key' => $resourceKey,
-                        'before' => $before,
-                        'requested' => $before,
+                        'before' => $afterSale,
+                        'requested' => $afterSale,
                         'applied' => $after,
-                        'overflow' => $overflow,
+                        'overflow' => $discarded,
                         'capacity' => $resourceCapacity,
+                        'escrow' => $resourceEscrow,
                         'after' => $after,
                         'discarded' => true,
                         'source' => 'post_sale_inventory_capacity',
                     ]);
                 }
                 $resourceAmounts[$resourceKey] = $after;
+                $resourceEscrowAmounts[$resourceKey] = $resourceEscrow;
+                $resourceAmountsInUse[$resourceKey] = $after + $resourceEscrow;
             }
 
             $foodTotal = 0;
@@ -711,9 +780,17 @@ final class CompleteTurnEngine
                     $foodTotal += (int) $balance->amount;
                 }
             }
+            $foodEscrow = 0;
+            foreach ($escrowedResources as $resourceId => $amount) {
+                if ($resourcesById->get($resourceId)?->category === 'food') {
+                    $foodEscrow += $amount;
+                }
+            }
+            $foodInUse = $foodTotal + $foodEscrow;
+            $moneyInUse = (int) $nation->money + $escrowedMoney;
             foreach ([
-                ['asset' => 'money', 'overflow' => max(0, (int) $nation->money - $capacity->money), 'capacity' => $capacity->money],
-                ['asset' => 'aggregate_food', 'overflow' => max(0, $foodTotal - $capacity->foodTons), 'capacity' => $capacity->foodTons],
+                ['asset' => 'money', 'overflow' => max(0, $moneyInUse - $capacity->money), 'capacity' => $capacity->money],
+                ['asset' => 'aggregate_food', 'overflow' => max(0, $foodInUse - $capacity->foodTons), 'capacity' => $capacity->foodTons],
             ] as $report) {
                 if ($report['overflow'] > 0) {
                     $metrics['overflow_reports']++;
@@ -721,15 +798,42 @@ final class CompleteTurnEngine
                 }
             }
             $this->events->record($context, 'capacity.applied', $nation, [
-                'money' => (int) $nation->money, 'money_capacity' => $capacity->money,
-                'food_tons' => $foodTotal, 'food_capacity_tons' => $capacity->foodTons,
+                'money' => (int) $nation->money, 'money_escrow' => $escrowedMoney,
+                'money_in_use' => $moneyInUse,
+                'money_capacity' => $capacity->money,
+                'food_tons' => $foodTotal, 'food_escrow_tons' => $foodEscrow,
+                'food_in_use_tons' => $foodInUse, 'food_capacity_tons' => $capacity->foodTons,
                 'resource_amounts' => $resourceAmounts,
+                'resource_escrow_amounts' => $resourceEscrowAmounts,
+                'resource_amounts_in_use' => $resourceAmountsInUse,
                 'resource_capacities' => $capacity->resources,
                 'bounded_credits' => true,
             ]);
         }
 
+        foreach ($tradingPostMetrics as $key => $value) {
+            $metrics['trading_post_'.$key] = $value;
+        }
+
         return $metrics;
+    }
+
+    /**
+     * @param  array<string, mixed>  $rates
+     * @return array{inventory_units: int, money_units: int}
+     */
+    private function inventorySaleRate(array $rates, string $resourceKey): array
+    {
+        $rate = $rates[$resourceKey] ?? null;
+        if (! is_array($rate)
+            || ! is_int($rate['inventory_units'] ?? null)
+            || $rate['inventory_units'] < 1
+            || ! is_int($rate['money_units'] ?? null)
+            || $rate['money_units'] < 1) {
+            throw new DomainException("Inventory sale rate is missing or invalid for {$resourceKey}.");
+        }
+
+        return $rate;
     }
 
     /** @param array<string, mixed> $settings */
@@ -1137,33 +1241,35 @@ final class CompleteTurnEngine
     {
         $rules = $context->ruleset->settings['turn_processing']['oil_field'];
         $nation = Nation::query()->whereKey($cell->owner_nation_id)->lockForUpdate()->firstOrFail();
-        $income = $this->boundedAssets->creditMoney($nation, $rules['income_money'], $context->ruleset);
+        $resourceKey = $rules['output_resource_key'] ?? null;
+        $productionUnits = $rules['production_units'] ?? null;
+        if (! is_string($resourceKey) || $resourceKey === ''
+            || ! is_int($productionUnits) || $productionUnits < 1) {
+            throw new DomainException('Seabed oil field production rules are invalid.');
+        }
+        $resource = $this->resourceDefinition($this->resourceDefinitions($context), $resourceKey);
+        $before = (int) NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $resource->id)
+            ->lockForUpdate()
+            ->value('amount');
+        $this->creditInventory($nation, $resource, $productionUnits);
         $this->events->record($context, 'oil.income', $cell, [
             'nation_id' => $nation->id,
             'x' => $cell->x,
             'y' => $cell->y,
-            'requested_money' => $income->requested,
-            'applied_money' => $income->applied,
-            'overflow_money' => $income->overflow,
-            'money_capacity' => $income->capacity,
+            'resource_key' => $resource->key,
+            'requested_units' => $productionUnits,
+            'applied_units' => $productionUnits,
+            'before_units' => $before,
+            'after_units' => $before + $productionUnits,
         ]);
-        if ($income->overflow > 0) {
-            $this->events->record($context, 'capacity.overflow', $nation, [
-                'nation_id' => $nation->id,
-                'asset' => 'money',
-                'requested' => $income->requested,
-                'applied' => $income->applied,
-                'overflow' => $income->overflow,
-                'capacity' => $income->capacity,
-                'source' => 'seabed_oil_field',
-            ]);
-        }
 
         $probability = $rules['depletion_probability'];
         $draw = $context->random->stream(TurnRandomStreamFactory::OIL_DEPLETION)
             ->integer(0, $probability['denominator'] - 1);
         if ($draw >= $probability['numerator']) {
-            return ['income' => $income->applied, 'depleted' => 0];
+            return ['income' => $productionUnits, 'depleted' => 0];
         }
 
         $beforeFacility = $cell->facility?->key;
@@ -1184,10 +1290,10 @@ final class CompleteTurnEngine
             'draw' => $draw,
             'numerator' => $probability['numerator'],
             'denominator' => $probability['denominator'],
-            'income_applied_first' => true,
+            'production_applied_first' => true,
         ]);
 
-        return ['income' => $income->applied, 'depleted' => 1];
+        return ['income' => $productionUnits, 'depleted' => 1];
     }
 
     private function growForest(TurnContext $context, MapCell $cell): bool
