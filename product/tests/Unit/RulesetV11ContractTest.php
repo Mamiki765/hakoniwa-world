@@ -91,8 +91,8 @@ final class RulesetV11ContractTest extends TestCase
         $this->assertSame([
             'domains' => 10,
             'leaves' => 1841,
-            'behavior' => 1153,
-            'data' => 506,
+            'behavior' => 1203,
+            'data' => 456,
             'flavor' => 182,
         ], app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset')));
     }
