@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\TradingPost\TradingPostRules;
 use App\Domain\Turn\DeterministicRandomStream;
@@ -22,6 +23,7 @@ final class TradingPostTurnService
     public function __construct(
         private readonly TurnEventRecorder $events,
         private readonly SecretaryItemCatalog $items,
+        private readonly CapacityBoundedAssetService $boundedAssets,
     ) {}
 
     /** @return array<string, int> */
@@ -102,14 +104,16 @@ final class TradingPostTurnService
             : $this->deliverItem($listing, $winner);
 
         $sellerProceeds = 0;
+        $sellerProceedsRequested = 0;
+        $sellerProceedsOverflow = 0;
         $fee = 0;
         if ($listing->seller_type === 'nation') {
             $seller = Nation::query()->whereKey($listing->seller_nation_id)->lockForUpdate()->firstOrFail();
-            $sellerProceeds = $this->sellerProceeds($bid->amount, $rules);
-            $fee = $bid->amount - $sellerProceeds;
-            if ($sellerProceeds > 0) {
-                $seller->increment('money', $sellerProceeds);
-            }
+            $sellerProceedsRequested = $this->sellerProceeds($bid->amount, $rules);
+            $fee = $bid->amount - $sellerProceedsRequested;
+            $credit = $this->boundedAssets->creditMoney($seller, $sellerProceedsRequested, $context->ruleset);
+            $sellerProceeds = $credit->applied;
+            $sellerProceedsOverflow = $credit->overflow;
         }
         $bid->update(['status' => AuctionBid::STATUS_WON]);
         $listing->update([
@@ -123,7 +127,9 @@ final class TradingPostTurnService
             'seller_nation_id' => $listing->seller_nation_id,
             'winner_nation_id' => $winner->id,
             'winning_bid' => $bid->amount,
+            'seller_proceeds_requested' => $sellerProceedsRequested,
             'seller_proceeds' => $sellerProceeds,
+            'seller_proceeds_overflow' => $sellerProceedsOverflow,
             'trading_fee' => $fee,
             'product_type' => $listing->product_type,
             ...$delivery,

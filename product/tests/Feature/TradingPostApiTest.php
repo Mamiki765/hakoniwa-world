@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\CompleteTurnEngine;
 use App\Application\NationCreationService;
 use App\Application\TradingPostTurnService;
+use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -247,6 +248,35 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(5_000, $this->resourceAmount($buyerNation, $oil));
         $this->assertSame(1_180, $sellerNation->fresh()->money);
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'trading_post.sold')->count());
+
+        [$capacitySeller, $capacitySellerNation] = $this->ownerAndNation($world, '上限売島', 1_000);
+        [$capacityBuyer, $capacityBuyerNation] = $this->ownerAndNation($world, '上限買島', 1_000);
+        $this->setResource($capacitySellerNation, $oil, 100);
+        $moneyCapacity = app(NationCapacityResolver::class)->resolve($capacitySellerNation)->money;
+        $capacitySellerNation->update(['money' => $moneyCapacity - 10]);
+        $capacityListing = $this->actingAs($capacitySeller)->postJson($this->listingUrl($capacitySellerNation), [
+            'product_type' => 'resource', 'resource_definition_id' => $oil->id, 'quantity' => 100,
+            'start_price' => 101, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($capacityBuyer)
+            ->postJson($this->bidUrl($capacityBuyerNation, $capacityListing), ['amount' => 101])
+            ->assertOk();
+
+        app(TradingPostTurnService::class)->execute($this->context(
+            $world,
+            4,
+            [$capacitySellerNation->id, $capacityBuyerNation->id],
+            'capacity-bounded-settlement',
+        ));
+        $this->assertSame($moneyCapacity, $capacitySellerNation->fresh()->money);
+        $capacityMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'trading_post.sold')
+            ->where('subject_id', $capacityListing)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(90, $capacityMetadata['seller_proceeds_requested']);
+        $this->assertSame(10, $capacityMetadata['seller_proceeds']);
+        $this->assertSame(80, $capacityMetadata['seller_proceeds_overflow']);
+        $this->assertSame(11, $capacityMetadata['trading_fee']);
+        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'trading_post.sold')->count());
     }
 
     public function test_no_bid_expiration_relist_and_npc_generation_follow_the_v16_contract(): void
