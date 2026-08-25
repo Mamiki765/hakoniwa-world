@@ -3,15 +3,27 @@
 ## Scope
 
 The normal application configuration resolves only the current immutable Ruleset,
-`hakoniwa-2s-plus-v15`. Its standalone authored file contains the complete payload and does
+`hakoniwa-2s-plus-v16`. Its standalone authored file contains the complete payload and does
 not execute any historical Ruleset source. Its identity and formal checksum remain:
 
 ```text
-key: hakoniwa-2s-plus-v15
-version: 15
-checksum: d361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70
+key: hakoniwa-2s-plus-v16
+version: 16
+checksum: 46720b62518c0b65f2be2698c4263c2a94e03caa723cc3c3b10aa932fcf39668
 ```
 
+v16 is the ver 2.6.0 oil-resource payload. It adds `oil` as a normal tradable Nation
+resource measured in ten-thousand-barrel units, with an initial balance of zero, a capacity
+of 5,000 units, a sale rate of 1 unit to 2 internal money units, and the ordinary default
+`stockpile` sale policy. A seabed oil field now credits 500 oil units per Turn through the
+canonical Nation inventory path instead of directly crediting 1,000 money units. Its
+depletion probability, depletion result, and drilling contract are unchanged. If cell-phase
+production leaves oil above its individual capacity, the capacity phase offers the `stockpile`
+overflow to the canonical inventory sale planner before discarding only the unsold remainder.
+
+Historical v15 remains immutable with formal checksum
+`d361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70` and authored-file
+SHA-256 `4a033f2f0fd2ff3e241162f18842360f133741de07ceb32f9eb65a0e606b4283`.
 v15 is the ver 2.5.0-beta monster-damage experience and Secretary forest-management payload. It fixes each monster's
 `experience_per_damage`, awards launch-base and Old Bow Secretary experience from actual
 damage, adds the fifth passive skill `forest_management`, and is published without rewriting v14. Historical v14 remains the immutable
@@ -48,8 +60,8 @@ Historical authored Ruleset sources continue to be treated as byte-for-byte immu
 
 ## Dependency boundary
 
-`config/hakoniwa.php` loads only the standalone v15 file. Current services obtain gameplay
-from `hakoniwa.ruleset`; Secretary initialization uses that current v15 payload directly so
+`config/hakoniwa.php` loads only the standalone v16 file. Current services obtain gameplay
+from `hakoniwa.ruleset`; Secretary initialization uses that current v16 payload directly so
 historical test execution cannot reintroduce an authored v7 runtime dependency.
 
 Historical authored files remain available through `RulesetUpgradeAuthoringCatalog` for three
@@ -72,8 +84,15 @@ Secretaries, Items, equipment, command/audit/event history, request identity and
 and TurnRun/RNG history remain unchanged. Historical Worlds remain readable and fail closed
 for mutation under the existing current-Ruleset guard.
 
-Fresh install loads the canonical schema dump and publishes only current v15. The immediate
-gameplay upgrade boundary accepts only exact v14 after a fail-closed payload, reference,
+Fresh install loads the canonical schema dump and publishes only current v16, including the
+oil definition and zero oil balance plus the ordinary default sale policy for every new
+Nation. The immediate gameplay upgrade boundary accepts only exact v15 after a fail-closed
+payload, reference, history, integrity, and global unresolved-TurnRun preflight. It adds oil
+balance zero and the ordinary default policy for each existing Nation, preserves every
+existing resource balance and sale policy, remaps current queued-command, alive-monster, and
+kill-stat references, and advances the production World to v16 in one forward-only
+transaction. The preceding v14-to-v15 boundary accepts exact v14 after the same class of
+fail-closed payload, reference,
 history, integrity, and global unresolved-TurnRun preflight. It adds persistent Secretary
 monster experience and monster-definition `experience_per_damage`, backfills only uniquely
 attributable historical Old Bow final blows with their historical

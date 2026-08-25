@@ -484,6 +484,20 @@ class TurnEconomyTest extends TestCase
             $limitedOverflowRun, 'capacity.overflow', 'minerals',
         )['overflow']);
 
+        $this->setResources($nation, ['industrial_goods' => 0, 'minerals' => 0, 'oil' => 500]);
+        $this->setPolicy($nation, 'oil', 'sell_all', null);
+        Nation::query()->whereKey($nation->id)->update(['money' => 0]);
+        [$oilSaleContext, $oilSaleRun] = $this->context($world, $nation);
+        $oilSale = $engine->execute('resource_sales', $oilSaleContext);
+        $this->assertSame(1, $oilSale->metrics['sales']);
+        $this->assertSame(1_000, $oilSale->metrics['revenue']);
+        $this->assertSame(0, $this->resourceAmount($nation, 'oil'));
+        $this->assertSame(1_000, (int) $nation->fresh()->money);
+        $oilSaleEvent = $this->event($oilSaleRun, 'resource.automatic_sale', 'oil');
+        $this->assertSame(500, $oilSaleEvent['requested']);
+        $this->assertSame(500, $oilSaleEvent['sold']);
+        $this->assertSame(1_000, $oilSaleEvent['revenue']);
+
         Nation::query()->whereKey($nation->id)->update(['money' => 10_099]);
         $this->setResources($nation, ['wheat' => 1_009_900, 'fish' => 0, 'monster_meat' => 0]);
         $this->setPolicy($nation, 'industrial_goods', 'stockpile', null);
