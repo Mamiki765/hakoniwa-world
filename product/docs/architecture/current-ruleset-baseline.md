@@ -17,7 +17,9 @@ resource measured in ten-thousand-barrel units, with an initial balance of zero,
 of 5,000 units, a sale rate of 1 unit to 2 internal money units, and the ordinary default
 `stockpile` sale policy. A seabed oil field now credits 500 oil units per Turn through the
 canonical Nation inventory path instead of directly crediting 1,000 money units. Its
-depletion probability, depletion result, and drilling contract are unchanged.
+depletion probability, depletion result, and drilling contract are unchanged. If cell-phase
+production leaves oil above its individual capacity, the capacity phase offers the `stockpile`
+overflow to the canonical inventory sale planner before discarding only the unsold remainder.
 
 Historical v15 remains immutable with formal checksum
 `d361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70` and authored-file

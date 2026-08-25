@@ -614,14 +614,7 @@ final class CompleteTurnEngine
                         : 0,
                     default => 0,
                 };
-                $rate = $rates[$resource->key] ?? null;
-                if (! is_array($rate)
-                    || ! is_int($rate['inventory_units'] ?? null)
-                    || $rate['inventory_units'] < 1
-                    || ! is_int($rate['money_units'] ?? null)
-                    || $rate['money_units'] < 1) {
-                    throw new DomainException("Inventory sale rate is missing or invalid for {$resource->key}.");
-                }
+                $rate = $this->inventorySaleRate($rates, $resource->key);
                 $quote = $this->salePlanner->plan(
                     $requested,
                     (int) $nation->money,
@@ -692,18 +685,59 @@ final class CompleteTurnEngine
                 }
                 $balance = $this->lockedOrCreatedBalance($balances, $nation, $resource);
                 $before = (int) $balance->amount;
-                $after = min($before, $resourceCapacity);
-                $overflow = $before - $after;
+                $afterSale = $before;
+                $overflow = max(0, $before - $resourceCapacity);
                 if ($overflow > 0) {
+                    $storedPolicy = NationResourceSalePolicy::query()
+                        ->where('nation_id', $nation->id)
+                        ->where('resource_definition_id', $resource->id)
+                        ->lockForUpdate()
+                        ->value('policy');
+                    $policy = $storedPolicy ?? $settings['default_sale_policy'];
+                    if (! SalePolicy::isSupported($policy)) {
+                        throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
+                    }
+                    if ($policy === SalePolicy::Stockpile->value) {
+                        $rate = $this->inventorySaleRate($settings['inventory_sale_rates'], $resourceKey);
+                        $quote = $this->salePlanner->plan(
+                            $overflow,
+                            (int) $nation->money,
+                            $capacity->money,
+                            $rate['inventory_units'],
+                            $rate['money_units'],
+                        );
+                        if ($quote->inventorySold > 0) {
+                            $balance->decrement('amount', $quote->inventorySold);
+                            $nation->increment('money', $quote->appliedMoney);
+                            $afterSale -= $quote->inventorySold;
+                            $this->events->record($context, 'resource.automatic_sale', $nation, [
+                                'resource_key' => $resourceKey,
+                                'policy' => $policy,
+                                'keep_amount' => null,
+                                'before' => $before,
+                                'requested' => $overflow,
+                                'sold' => $quote->inventorySold,
+                                'revenue' => $quote->appliedMoney,
+                                'after' => $afterSale,
+                                'sale_reason' => 'capacity_overflow',
+                                'resource_capacity' => $resourceCapacity,
+                                'money_capacity' => $capacity->money,
+                            ]);
+                        }
+                    }
+                }
+                $after = min($afterSale, $resourceCapacity);
+                $discarded = $afterSale - $after;
+                if ($discarded > 0) {
                     $balance->update(['amount' => $after]);
                     $metrics['overflow_reports']++;
                     $this->events->record($context, $resourceOverflowEvent, $nation, [
                         'asset' => 'resource',
                         'resource_key' => $resourceKey,
-                        'before' => $before,
-                        'requested' => $before,
+                        'before' => $afterSale,
+                        'requested' => $afterSale,
                         'applied' => $after,
-                        'overflow' => $overflow,
+                        'overflow' => $discarded,
                         'capacity' => $resourceCapacity,
                         'after' => $after,
                         'discarded' => true,
@@ -739,6 +773,24 @@ final class CompleteTurnEngine
         }
 
         return $metrics;
+    }
+
+    /**
+     * @param  array<string, mixed>  $rates
+     * @return array{inventory_units: int, money_units: int}
+     */
+    private function inventorySaleRate(array $rates, string $resourceKey): array
+    {
+        $rate = $rates[$resourceKey] ?? null;
+        if (! is_array($rate)
+            || ! is_int($rate['inventory_units'] ?? null)
+            || $rate['inventory_units'] < 1
+            || ! is_int($rate['money_units'] ?? null)
+            || $rate['money_units'] < 1) {
+            throw new DomainException("Inventory sale rate is missing or invalid for {$resourceKey}.");
+        }
+
+        return $rate;
     }
 
     /** @param array<string, mixed> $settings */

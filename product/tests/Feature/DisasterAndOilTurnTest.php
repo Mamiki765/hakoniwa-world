@@ -584,7 +584,9 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame($nation->id, $oil->fresh()->owner_nation_id);
 
         [$context, $run] = $this->context($world, $ruleset, $seed, [$nation->id], [$oil->id]);
-        $result = app(CompleteTurnEngine::class)->execute('process_cells', $context);
+        $engine = app(CompleteTurnEngine::class);
+        $engine->execute('resource_sales', $context);
+        $result = $engine->execute('process_cells', $context);
         $income = $this->event($run, 'oil.income');
         $depleted = $this->event($run, 'oil.depleted');
         $oil = $oil->fresh(['terrain', 'facility']);
@@ -610,14 +612,26 @@ class DisasterAndOilTurnTest extends TestCase
                 ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->value('id'),
         );
 
-        $capacity = app(CompleteTurnEngine::class)->execute('enforce_capacities', $context);
-        $overflow = $this->event($run, 'capacity.overflow');
-        $this->assertSame(1, $capacity->metrics['overflow_reports']);
-        $this->assertSame('oil', $overflow['resource_key']);
-        $this->assertSame(400, $overflow['overflow']);
-        $this->assertSame(5_000, $overflow['after']);
+        $capacity = $engine->execute('enforce_capacities', $context);
+        $overflowSale = DB::table('audit_events')
+            ->where('event_type', 'resource.automatic_sale')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereRaw("metadata->>'resource_key' = 'oil'")
+            ->orderByDesc('id')
+            ->value('metadata');
+        $this->assertIsString($overflowSale);
+        $overflowSale = json_decode($overflowSale, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $capacity->metrics['overflow_reports']);
+        $this->assertSame(400, $overflowSale['requested']);
+        $this->assertSame(400, $overflowSale['sold']);
+        $this->assertSame(800, $overflowSale['revenue']);
+        $this->assertSame(5_000, $overflowSale['after']);
+        $this->assertSame('capacity_overflow', $overflowSale['sale_reason']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'capacity.overflow')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
         $this->assertSame(5_000, (int) DB::table('nation_resources')->where('nation_id', $nation->id)
             ->where('resource_definition_id', $oilDefinitionId)->value('amount'));
+        $this->assertSame(800, (int) $nation->fresh()->money);
 
         [$retryContext] = $this->context($world, $ruleset, $seed, [$nation->id], [$oil->id]);
         $retry = app(CompleteTurnEngine::class)->execute('process_cells', $retryContext);
@@ -625,7 +639,7 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame(0, $retry->metrics['oil_depleted']);
         $this->assertSame(5_000, (int) DB::table('nation_resources')->where('nation_id', $nation->id)
             ->where('resource_definition_id', $oilDefinitionId)->value('amount'));
-        $this->assertSame(0, (int) $nation->fresh()->money);
+        $this->assertSame(800, (int) $nation->fresh()->money);
     }
 
     public function test_land_level_draws_only_after_success_and_applies_the_immediate_event(): void
