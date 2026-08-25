@@ -13,6 +13,7 @@ use App\Domain\Turn\TurnState;
 use App\Models\AuctionBid;
 use App\Models\AuctionListing;
 use App\Models\Nation;
+use App\Models\NationMembership;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\TurnRun;
@@ -153,6 +154,71 @@ final class TradingPostApiTest extends TestCase
             ->assertUnprocessable();
         $this->actingAs($owner)->deleteJson($this->listingUrl($nation).'/'.$bowListingId)->assertOk();
         $this->assertFalse($bow->fresh()->is_escrowed);
+
+        foreach (range(1, 48) as $index) {
+            $buyer->secretary()->firstOrFail()->itemInstances()->create([
+                'item_key' => SecretaryItemCatalog::RING,
+                'level' => 1,
+                'equipped_slot' => null,
+                'grant_key' => "test:trading-post:capacity:{$index}",
+                'obtained_at' => now(),
+            ]);
+        }
+        $firstCapacityListingId = $this->actingAs($owner)->postJson($this->listingUrl($nation), [
+            'product_type' => 'item', 'item_instance_id' => $ring->id,
+            'start_price' => 300, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $otherWorld = World::query()->create([
+            'key' => 'trading-post-capacity-world-two',
+            'name' => '交易場容量World 2',
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'current_turn' => 1,
+        ]);
+        $otherBuyerNation = Nation::query()->create([
+            'world_id' => $otherWorld->id,
+            'nation_number' => 1,
+            'registered_turn' => 1,
+            'name' => '別世界買島',
+            'owner_name' => '別世界買島主',
+            'profile_comment' => '',
+            'money' => 900,
+            'state' => 'active',
+            'idle_counter' => 0,
+        ]);
+        NationMembership::query()->create([
+            'user_id' => $buyer->id,
+            'world_id' => $otherWorld->id,
+            'nation_id' => $otherBuyerNation->id,
+            'role' => 'owner',
+        ]);
+        $reservedListing = AuctionListing::query()->create([
+            'world_id' => $otherWorld->id,
+            'seller_type' => 'hakoniwa_federation',
+            'product_type' => 'item',
+            'item_key' => SecretaryItemCatalog::RING,
+            'item_level' => 1,
+            'start_price' => 100,
+            'current_price' => 100,
+            'highest_bidder_nation_id' => $otherBuyerNation->id,
+            'bid_count' => 1,
+            'duration_turns' => 6,
+            'started_turn' => 1,
+            'ends_turn' => 7,
+            'auto_relist' => false,
+            'status' => AuctionListing::STATUS_ACTIVE,
+        ]);
+        AuctionBid::query()->create([
+            'auction_listing_id' => $reservedListing->id,
+            'bidder_nation_id' => $otherBuyerNation->id,
+            'amount' => 100,
+            'status' => AuctionBid::STATUS_HIGHEST,
+            'placed_turn' => 1,
+        ]);
+
+        $this->actingAs($buyer)
+            ->postJson($this->bidUrl($buyerNation, $firstCapacityListingId), ['amount' => 300])
+            ->assertUnprocessable();
+        $this->assertSame(1_000, $buyerNation->fresh()->money);
     }
 
     public function test_bids_escrow_money_refund_the_previous_highest_bid_and_prevent_cancellation(): void

@@ -251,7 +251,7 @@ final class TradingPostService
                 throw new DomainException("入札額は{$minimum}億円以上で指定してください。");
             }
             if ($lockedListing->product_type === 'item') {
-                $this->assertIncomingItemCapacity($user, $lockedNation, $lockedListing);
+                $this->assertIncomingItemCapacity($user, $lockedListing);
             }
 
             $previousBid = AuctionBid::query()
@@ -398,17 +398,21 @@ final class TradingPostService
         }
     }
 
-    private function assertIncomingItemCapacity(User $user, Nation $nation, AuctionListing $listing): void
+    private function assertIncomingItemCapacity(User $user, AuctionListing $listing): void
     {
         $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
         $ownedItems = SecretaryItemInstance::query()->where('secretary_id', $secretary->id)
             ->lockForUpdate()->get(['id', 'item_key'])->all();
+        $ownedNationIds = NationMembership::query()
+            ->where('user_id', $user->id)
+            ->where('role', 'owner')
+            ->pluck('nation_id');
         $incomingListings = AuctionListing::query()
-            ->where('world_id', $nation->world_id)
             ->where('product_type', 'item')
             ->where('status', AuctionListing::STATUS_ACTIVE)
-            ->where('highest_bidder_nation_id', $nation->id)
+            ->whereIn('highest_bidder_nation_id', $ownedNationIds)
             ->where('id', '<>', $listing->id)
+            ->orderBy('id')
             ->lockForUpdate()
             ->get(['id', 'item_key'])
             ->all();
