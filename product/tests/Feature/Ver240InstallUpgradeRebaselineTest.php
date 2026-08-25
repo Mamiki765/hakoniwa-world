@@ -559,8 +559,9 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
     public function test_exact_v15_to_v16_adds_zero_oil_without_changing_existing_resource_state(): void
     {
         $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
         $nation = app(NationCreationService::class)->create(
-            User::factory()->create(),
+            $owner,
             $world,
             'v16移行国',
             'v16移行島主',
@@ -581,6 +582,11 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             'nation_resource_sale_policies',
             ['policy', 'keep_amount', 'version'],
         );
+        $secretaryItem = $owner->secretary()->firstOrFail()->itemInstances()->sole();
+        $beforeItem = $secretaryItem->only([
+            'id', 'secretary_id', 'item_key', 'level', 'equipped_slot', 'grant_key',
+        ]);
+        $beforeObtainedAt = $secretaryItem->getRawOriginal('obtained_at');
         $this->removeOilCatalogState();
         DB::table('migrations')->where('migration', self::OIL_MIGRATION)->delete();
 
@@ -621,11 +627,22 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             'nation_resource_sale_policies',
             ['policy', 'keep_amount', 'version'],
         ));
+        $this->assertSame($beforeItem, $secretaryItem->fresh()->only([
+            'id', 'secretary_id', 'item_key', 'level', 'equipped_slot', 'grant_key',
+        ]));
+        $this->assertSame($beforeObtainedAt, $secretaryItem->fresh()->getRawOriginal('obtained_at'));
+        $this->assertFalse($secretaryItem->fresh()->is_escrowed);
+        $this->assertSame(0, DB::table('auction_listings')->count());
+        $this->assertSame(0, DB::table('auction_bids')->count());
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'ruleset.v16_activated',
             'visibility' => 'admin',
             'world_id' => $world->id,
         ]);
+        $activation = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'ruleset.v16_activated')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertTrue($activation['secretary_items_preserved']);
+        $this->assertTrue($activation['trading_post_schema_initialized_empty']);
         $run = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
     }

@@ -90,6 +90,8 @@ final class TurnRandomStreamFactory
 
     private const SECRETARY_OLD_BOW_PREFIX = 'secretary_item:old_bow:nation:';
 
+    private const TRADING_POST_NPC_PREFIX = 'enforce_capacities:trading_post_npc:';
+
     /** @var array<string, DeterministicRandomStream> */
     private array $streams = [];
 
@@ -219,5 +221,14 @@ final class TurnRandomStreamFactory
         }
 
         return self::SECRETARY_OLD_BOW_PREFIX.$nationId.':'.$purpose.':v'.$streamVersion;
+    }
+
+    public static function tradingPostNpc(int $streamVersion): string
+    {
+        if ($streamVersion < 1) {
+            throw new InvalidArgumentException('Trading-post NPC stream version must be positive.');
+        }
+
+        return self::TRADING_POST_NPC_PREFIX.'v'.$streamVersion;
     }
 }

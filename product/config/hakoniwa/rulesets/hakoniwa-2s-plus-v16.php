@@ -2627,6 +2627,12 @@ return [
                 ],
             ],
         ],
+        'item_rarities' => [
+            'novice' => [
+                'key' => 'novice',
+                'name' => 'ノービス',
+            ],
+        ],
         'item_categories' => [
             'bow' => [
                 'key' => 'bow',
@@ -2641,6 +2647,9 @@ return [
             'old_bow' => [
                 'key' => 'old_bow',
                 'category' => 'bow',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => false,
                 'max_level' => 1,
                 'same_item_max_equipped' => 1,
                 'effects' => [
@@ -2662,6 +2671,9 @@ return [
             'ring' => [
                 'key' => 'ring',
                 'category' => 'ring',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => true,
                 'max_level' => 10,
                 'same_item_max_equipped' => 5,
                 'effects' => [
@@ -2672,6 +2684,53 @@ return [
                     ],
                 ],
             ],
+        ],
+    ],
+    'trading_post' => [
+        'player' => [
+            'active_listing_limit' => 3,
+            'minimum_duration_turns' => 3,
+            'maximum_duration_turns' => 84,
+            'minimum_increment_money' => 1,
+            'seller_proceeds_numerator' => 9,
+            'seller_proceeds_denominator' => 10,
+            'seller_proceeds_rounding' => 'floor',
+            'fee_behavior' => 'discard_remainder_on_sale',
+        ],
+        'npc' => [
+            'seller_key' => 'hakoniwa_federation',
+            'seller_name' => '箱庭連合',
+            'duration_turns' => 6,
+            'attempts_per_turn' => 3,
+            'listing_probability' => [
+                'numerator' => 40,
+                'denominator' => 100,
+            ],
+            'active_resource_limit' => 3,
+            'active_item_limit' => 2,
+            'resource_keys' => [
+                'wheat',
+                'fish',
+                'monster_meat',
+                'industrial_goods',
+                'minerals',
+                'oil',
+            ],
+            'resource_base_value_money' => [
+                'minimum' => 100,
+                'maximum' => 1000,
+            ],
+            'resource_start_price_percent' => [
+                'minimum' => 100,
+                'maximum' => 130,
+            ],
+            'item_rarity' => 'novice',
+            'item_level' => [
+                'minimum' => 1,
+                'maximum' => 5,
+            ],
+            'item_price_money_per_level' => 100,
+            'random_stream_version' => 1,
         ],
     ],
     'turn_resolution' => [

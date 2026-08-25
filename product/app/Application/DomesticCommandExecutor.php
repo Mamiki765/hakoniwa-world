@@ -9,7 +9,7 @@ use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
-use App\Domain\Economy\CappedAddition;
+use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
@@ -50,7 +50,7 @@ final class DomesticCommandExecutor
     public function __construct(
         private readonly MapCellStateService $cells,
         private readonly NationCapacityResolver $capacities,
-        private readonly CappedAddition $addition,
+        private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
         private readonly MonsterSpawnService $monsterSpawn,
@@ -1063,7 +1063,7 @@ final class DomesticCommandExecutor
             )
             : $baseRequested;
         $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
-        $income = $this->addition->calculate((int) $nation->money, $requested, $capacity);
+        $income = $this->boundedAssets->planMoneyCredit($nation, $requested, $capacity);
         if ($income->applied > 0) {
             $nation->update(['money' => $income->after]);
         }
@@ -1212,7 +1212,7 @@ final class DomesticCommandExecutor
         if ($definition->key === 'money_aid') {
             $requested = $this->moneyAidAmount($item, $definition);
             $capacity = $this->capacities->resolve($target, $context->ruleset)->money;
-            $addition = $this->addition->calculate((int) $target->money, $requested, $capacity);
+            $addition = $this->boundedAssets->planMoneyCredit($target, $requested, $capacity);
             if ($addition->applied > 0) {
                 $nation->decrement('money', $addition->applied);
                 $target->update(['money' => $addition->after]);
@@ -1253,7 +1253,7 @@ final class DomesticCommandExecutor
                 ->lockForUpdate()->get();
             $before = (int) $foodBalances->sum('amount');
             $capacity = $this->capacities->resolve($target, $context->ruleset)->foodTons;
-            $addition = $this->addition->calculate($before, $requested, $capacity);
+            $addition = $this->boundedAssets->planFoodCredit($target, $requested, $capacity, $before);
             if ($addition->applied > 0) {
                 $this->debitFood($nation, $addition->applied);
                 $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
@@ -1578,7 +1578,7 @@ final class DomesticCommandExecutor
                 ->stream(TurnRandomStreamFactory::LAND_CLEAR_BURIED_TREASURE)
                 ->integer($settings['reward_minimum_money'], $settings['reward_maximum_money']);
             $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
-            $addition = $this->addition->calculate((int) $nation->money, $reward, $capacity);
+            $addition = $this->boundedAssets->planMoneyCredit($nation, $reward, $capacity);
             $nation->update(['money' => $addition->after]);
             $applied = $addition->applied;
             $overflow = $addition->overflow;
@@ -1609,9 +1609,9 @@ final class DomesticCommandExecutor
     ): void {
         $requested ??= $context->ruleset->settings['turn_processing']['automatic_finance_money'];
         $capacity = $this->capacities->resolve($nation, $context->ruleset)->money;
-        $base = $this->addition->calculate((int) $nation->money, $requested, $capacity);
+        $base = $this->boundedAssets->planMoneyCredit($nation, $requested, $capacity);
         $ring = $this->ringFinance->resolve($context->state, $nation->id);
-        $bonus = $this->addition->calculate($base->after, $ring['requested'], $capacity);
+        $bonus = $this->boundedAssets->planMoneyCredit($nation, $ring['requested'], $capacity, $base->after);
         $nation->update(['money' => $bonus->after]);
         $metadata = [
             'before' => $base->before,

@@ -23,7 +23,7 @@ final readonly class Ver260OilResourceRulesetUpgrade
 
     public const TARGET_VERSION = 16;
 
-    public const TARGET_CHECKSUM = '46720b62518c0b65f2be2698c4263c2a94e03caa723cc3c3b10aa932fcf39668';
+    public const TARGET_CHECKSUM = '9b063ebb9d9b4c1a32c0b723089da7f4830159d9af43df1106d6a42feb6f28e5';
 
     public const SOURCE_MIGRATION = '2026_08_24_010000_add_monster_experience_and_publish_v15';
 
@@ -59,7 +59,7 @@ final readonly class Ver260OilResourceRulesetUpgrade
             || ($targetSettings['version'] ?? null) !== self::TARGET_VERSION
             || $this->checksum($targetSettings) !== self::TARGET_CHECKSUM) {
             throw new RuntimeException(
-                'The exact v15/v16 Ruleset authoring required by the oil resource upgrade is missing or changed.',
+                'The exact v15/v16 Ruleset authoring required by the ver 2.6.0 upgrade is missing or changed.',
             );
         }
 
@@ -102,6 +102,7 @@ final readonly class Ver260OilResourceRulesetUpgrade
                 );
             }
             $this->catalogs->assertInstalled($sourceSettings);
+            $this->assertTradingPostSourceState();
 
             $requestIdentity = $this->queryDigest(DB::table('nation_command_queue_items')->select([
                 'id', 'request_key', 'request_ruleset_version_id', 'request_fingerprint', 'status',
@@ -113,6 +114,7 @@ final readonly class Ver260OilResourceRulesetUpgrade
             $existingResources = $this->resourceStateDigest('nation_resources');
             $existingPolicies = $this->resourceStateDigest('nation_resource_sale_policies');
             $auditHistory = $this->tableDigest('audit_events');
+            $secretaryItems = $this->tableDigest('secretary_item_instances');
 
             $this->catalogs->install($targetSettings);
             $this->catalogs->assertInstalled($targetSettings);
@@ -178,6 +180,9 @@ SQL, [$oil->id, $targetSettings['default_sale_policy'], $now, $now]);
                 'existing_sale_policies' => $existingPolicies
                     !== $this->resourceStateDigest('nation_resource_sale_policies'),
                 'audit_history' => $auditHistory !== $this->tableDigest('audit_events'),
+                'secretary_items' => $secretaryItems !== $this->tableDigest('secretary_item_instances'),
+                'auction_listings' => DB::table('auction_listings')->exists(),
+                'auction_bids' => DB::table('auction_bids')->exists(),
             ]));
             if ($changedProtectedData !== []) {
                 throw new RuntimeException(
@@ -209,6 +214,8 @@ SQL, [$oil->id, $targetSettings['default_sale_policy'], $now, $now]);
                     'existing_sale_policies_preserved' => true,
                     'request_identity_preserved' => true,
                     'terminal_command_history_preserved' => true,
+                    'secretary_items_preserved' => true,
+                    'trading_post_schema_initialized_empty' => true,
                 ], JSON_THROW_ON_ERROR),
                 'occurred_at' => $now,
                 'created_at' => $now,
@@ -326,6 +333,20 @@ SQL, [$worldId, $targetId, $worldId, $targetId, $worldId, $targetId, $oil->id, $
             || $invalidInitialBalances !== 0
             || $invalidInitialPolicies !== 0) {
             throw new RuntimeException('Exact v16 activation postconditions failed.');
+        }
+    }
+
+    private function assertTradingPostSourceState(): void
+    {
+        if (! Schema::hasColumn('secretary_item_instances', 'is_escrowed')
+            || ! Schema::hasTable('auction_listings')
+            || ! Schema::hasTable('auction_bids')
+            || DB::table('secretary_item_instances')->where('is_escrowed', true)->exists()
+            || DB::table('auction_listings')->exists()
+            || DB::table('auction_bids')->exists()) {
+            throw new RuntimeException(
+                'The exact v15 source must enter the final v16 upgrade with empty trading-post escrow state.',
+            );
         }
     }
 

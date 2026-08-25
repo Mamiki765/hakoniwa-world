@@ -9,10 +9,10 @@ not execute any historical Ruleset source. Its identity and formal checksum rema
 ```text
 key: hakoniwa-2s-plus-v16
 version: 16
-checksum: 46720b62518c0b65f2be2698c4263c2a94e03caa723cc3c3b10aa932fcf39668
+checksum: 9b063ebb9d9b4c1a32c0b723089da7f4830159d9af43df1106d6a42feb6f28e5
 ```
 
-v16 is the ver 2.6.0 oil-resource payload. It adds `oil` as a normal tradable Nation
+v16 is the final ver 2.6.0 oil-resource and trading-post payload. It adds `oil` as a normal tradable Nation
 resource measured in ten-thousand-barrel units, with an initial balance of zero, a capacity
 of 5,000 units, a sale rate of 1 unit to 2 internal money units, and the ordinary default
 `stockpile` sale policy. A seabed oil field now credits 500 oil units per Turn through the
@@ -20,6 +20,9 @@ canonical Nation inventory path instead of directly crediting 1,000 money units.
 depletion probability, depletion result, and drilling contract are unchanged. If cell-phase
 production leaves oil above its individual capacity, the capacity phase offers the `stockpile`
 overflow to the canonical inventory sale planner before discarding only the unsold remainder.
+The same unpublished v16 payload authors the player trading-post escrow, 90% seller proceeds
+with floor rounding, the `箱庭連合` NPC listing limits and prices, and the Secretary Item
+`novice` rarity contract. There is no v17 payload or v16-to-v17 migration in ver 2.6.0.
 
 Historical v15 remains immutable with formal checksum
 `d361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70` and authored-file
@@ -85,7 +88,7 @@ and TurnRun/RNG history remain unchanged. Historical Worlds remain readable and 
 for mutation under the existing current-Ruleset guard.
 
 Fresh install loads the canonical schema dump and publishes only current v16, including the
-oil definition and zero oil balance plus the ordinary default sale policy for every new
+oil definition, trading-post listing/bid escrow schema, Secretary Item escrow state, and zero oil balance plus the ordinary default sale policy for every new
 Nation. The immediate gameplay upgrade boundary accepts only exact v15 after a fail-closed
 payload, reference, history, integrity, and global unresolved-TurnRun preflight. It adds oil
 balance zero and the ordinary default policy for each existing Nation, preserves every

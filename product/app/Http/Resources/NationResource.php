@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Application\NationBasicStatusProjection;
+use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Models\Nation;
@@ -26,6 +27,16 @@ class NationResource extends JsonResource
         $capacities = $isOwner
             ? app(NationCapacityResolver::class)->resolve($this->resource)
             : null;
+        $boundedAssets = $isOwner ? app(CapacityBoundedAssetService::class) : null;
+        $moneyInUse = $boundedAssets?->moneyInUse($this->resource);
+        $escrowedResources = $boundedAssets?->escrowedResources($this->resource) ?? [];
+        $foodEscrow = 0;
+        foreach ($balances ?? [] as $balance) {
+            if ($balance->definition->category === 'food') {
+                $foodEscrow += $escrowedResources[$balance->resource_definition_id] ?? 0;
+            }
+        }
+        $foodInUse = $foodTotal + $foodEscrow;
         $currentTurn = (int) $this->world()->value('current_turn');
         $lifecycle = config('hakoniwa.ruleset.nation_lifecycle', []);
         $turnsPerDay = is_int($lifecycle['turns_per_day'] ?? null) ? $lifecycle['turns_per_day'] : 12;
@@ -55,11 +66,11 @@ class NationResource extends JsonResource
             'money_capacity' => $this->when($isOwner, $capacities?->money),
             'money_remaining_capacity' => $this->when(
                 $isOwner,
-                max(0, ($capacities->money ?? 0) - (int) $this->money),
+                max(0, ($capacities->money ?? 0) - ($moneyInUse ?? 0)),
             ),
             'money_is_at_capacity' => $this->when(
                 $isOwner,
-                (int) $this->money >= ($capacities->money ?? PHP_INT_MAX),
+                ($moneyInUse ?? 0) >= ($capacities->money ?? PHP_INT_MAX),
             ),
             'state' => $this->state,
             'state_label' => match ($this->state) {
@@ -96,11 +107,11 @@ class NationResource extends JsonResource
             'food_capacity_tons' => $this->when($isOwner, $capacities?->foodTons),
             'food_remaining_capacity_tons' => $this->when(
                 $isOwner,
-                max(0, ($capacities->foodTons ?? 0) - $foodTotal),
+                max(0, ($capacities->foodTons ?? 0) - $foodInUse),
             ),
             'food_is_at_capacity' => $this->when(
                 $isOwner,
-                $foodTotal >= ($capacities->foodTons ?? PHP_INT_MAX),
+                $foodInUse >= ($capacities->foodTons ?? PHP_INT_MAX),
             ),
             'farm_capacity_people' => $basicStatus['farm_capacity_people'],
             'factory_capacity_people' => $basicStatus['factory_capacity_people'],
@@ -125,7 +136,7 @@ class NationResource extends JsonResource
                     'storable' => $balance->definition->storable,
                     'tradable' => $balance->definition->tradable,
                     'amount' => $balance->amount,
-                    ...$this->capacityFields($balance, $capacities, $foodTotal),
+                    ...$this->capacityFields($balance, $capacities, $foodInUse, $escrowedResources),
                 ])->values()->all() ?? []),
             'capital' => $this->whenLoaded('capital', fn (): ?array => $this->capital === null ? null : [
                 'x' => $this->capital->x, 'y' => $this->capital->y,
@@ -133,11 +144,15 @@ class NationResource extends JsonResource
         ];
     }
 
-    /** @return array{capacity: int|null, remaining_capacity: int|null, is_at_capacity: bool} */
+    /**
+     * @param  array<int, int>  $escrowedResources
+     * @return array{capacity: int|null, remaining_capacity: int|null, is_at_capacity: bool}
+     */
     private function capacityFields(
         NationResourceBalance $balance,
         ?NationCapacities $capacities,
         ?int $foodTotal,
+        array $escrowedResources,
     ): array {
         if ($capacities === null) {
             return ['capacity' => null, 'remaining_capacity' => null, 'is_at_capacity' => false];
@@ -147,7 +162,9 @@ class NationResource extends JsonResource
         $capacity = $isFood
             ? $capacities->foodTons
             : $capacities->resource($balance->definition->key);
-        $amountForCapacity = $isFood ? ($foodTotal ?? 0) : (int) $balance->amount;
+        $amountForCapacity = $isFood
+            ? ($foodTotal ?? 0)
+            : (int) $balance->amount + ($escrowedResources[$balance->resource_definition_id] ?? 0);
 
         return [
             'capacity' => $capacity,
