@@ -3,6 +3,9 @@
 namespace App\Application;
 
 use App\Domain\Economy\CapacityBoundedAssetService;
+use App\Domain\Economy\InventorySalePlanner;
+use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Economy\SalePolicy;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\TradingPost\TradingPostRules;
 use App\Domain\Turn\DeterministicRandomStream;
@@ -13,6 +16,7 @@ use App\Models\AuctionListing;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\NationResource;
+use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
@@ -24,6 +28,9 @@ final class TradingPostTurnService
         private readonly TurnEventRecorder $events,
         private readonly SecretaryItemCatalog $items,
         private readonly CapacityBoundedAssetService $boundedAssets,
+        private readonly NationCapacityResolver $capacities,
+        private readonly InventorySalePlanner $sales,
+        private readonly FoodOverflowResolver $foodOverflow,
     ) {}
 
     /** @return array<string, int> */
@@ -99,8 +106,17 @@ final class TradingPostTurnService
         if ($winner->world_id !== $context->world->id || $winner->state === 'abandoned') {
             throw new DomainException('交易場の落札国状態が不正です。');
         }
+        // The winning bid ceases to be cash escrow at the settlement boundary.
+        // Updating both rows before delivery lets bounded overflow sales use the
+        // winner's post-purchase money capacity; the enclosing Turn transaction
+        // rolls these state changes back together if any later mutation fails.
+        $bid->update(['status' => AuctionBid::STATUS_WON]);
+        $listing->update([
+            'status' => AuctionListing::STATUS_SOLD,
+            'completed_turn' => $context->targetTurn,
+        ]);
         $delivery = $listing->product_type === 'resource'
-            ? $this->deliverResource($listing, $winner)
+            ? $this->deliverResource($context, $listing, $winner)
             : $this->deliverItem($listing, $winner);
 
         $sellerProceeds = 0;
@@ -115,11 +131,6 @@ final class TradingPostTurnService
             $sellerProceeds = $credit->applied;
             $sellerProceedsOverflow = $credit->overflow;
         }
-        $bid->update(['status' => AuctionBid::STATUS_WON]);
-        $listing->update([
-            'status' => AuctionListing::STATUS_SOLD,
-            'completed_turn' => $context->targetTurn,
-        ]);
         $this->events->record($context, 'trading_post.sold', $listing, [
             'nation_id' => $winner->id,
             'auction_listing_id' => $listing->id,
@@ -137,9 +148,33 @@ final class TradingPostTurnService
     }
 
     /** @return array<string, int|string> */
-    private function deliverResource(AuctionListing $listing, Nation $winner): array
+    private function deliverResource(TurnContext $context, AuctionListing $listing, Nation $winner): array
     {
         $resource = ResourceDefinition::query()->whereKey($listing->resource_definition_id)->firstOrFail();
+        if ($resource->category === 'food') {
+            $credit = $this->boundedAssets->creditFood(
+                $winner,
+                $resource,
+                $listing->quantity,
+                $context->ruleset,
+            );
+            $overflow = $this->foodOverflow->resolve($context, $winner, $resource, $credit);
+
+            return [
+                'resource_key' => $resource->key,
+                'quantity' => $listing->quantity,
+                'stored_quantity' => $credit->applied,
+                'overflow_sold_quantity' => $overflow['sold_tons'],
+                'overflow_discarded_quantity' => $overflow['discarded_tons'],
+                'delivery_capacity' => $credit->capacity,
+            ];
+        }
+
+        $capacity = $this->capacities->resolve($winner, $context->ruleset);
+        $resourceCapacity = $capacity->resource($resource->key);
+        if (! is_int($resourceCapacity)) {
+            throw new DomainException("交易場の資源{$resource->key}に保管容量が設定されていません。");
+        }
         $balance = NationResource::query()
             ->where('nation_id', $winner->id)
             ->where('resource_definition_id', $resource->id)
@@ -150,9 +185,88 @@ final class TradingPostTurnService
             'resource_definition_id' => $resource->id,
             'amount' => 0,
         ]);
-        $balance->increment('amount', $listing->quantity);
+        $before = (int) $balance->amount;
+        $resourceEscrow = $this->boundedAssets->escrowedResources($winner)[$resource->id] ?? 0;
+        $storedQuantity = min(
+            $listing->quantity,
+            max(0, $resourceCapacity - $before - $resourceEscrow),
+        );
+        if ($storedQuantity > 0) {
+            $balance->increment('amount', $storedQuantity);
+        }
 
-        return ['resource_key' => $resource->key, 'quantity' => $listing->quantity];
+        $overflowQuantity = $listing->quantity - $storedQuantity;
+        $soldQuantity = 0;
+        $discardedQuantity = $overflowQuantity;
+        if ($overflowQuantity > 0) {
+            $settings = $context->ruleset->settings;
+            $storedPolicy = NationResourceSalePolicy::query()
+                ->where('nation_id', $winner->id)
+                ->where('resource_definition_id', $resource->id)
+                ->lockForUpdate()
+                ->value('policy');
+            $policy = $storedPolicy ?? $settings['default_sale_policy'];
+            if (! SalePolicy::isSupported($policy)) {
+                throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
+            }
+            if ($policy === SalePolicy::Stockpile->value) {
+                $rate = $this->inventorySaleRate($settings['inventory_sale_rates'], $resource->key);
+                $quote = $this->sales->plan(
+                    $overflowQuantity,
+                    (int) $winner->money,
+                    $this->boundedAssets->liquidMoneyCapacity($winner, $capacity->money),
+                    $rate['inventory_units'],
+                    $rate['money_units'],
+                );
+                $soldQuantity = $quote->inventorySold;
+                $discardedQuantity = $quote->inventoryRemaining;
+                if ($quote->appliedMoney > 0) {
+                    $winner->increment('money', $quote->appliedMoney);
+                }
+                if ($soldQuantity > 0) {
+                    $this->events->record($context, 'resource.automatic_sale', $winner, [
+                        'resource_key' => $resource->key,
+                        'policy' => $policy,
+                        'keep_amount' => null,
+                        'before' => $before + $listing->quantity,
+                        'requested' => $overflowQuantity,
+                        'sold' => $soldQuantity,
+                        'revenue' => $quote->appliedMoney,
+                        'after' => $before + $storedQuantity,
+                        'sale_reason' => 'capacity_overflow',
+                        'source' => 'trading_post_delivery',
+                        'resource_capacity' => $resourceCapacity,
+                        'resource_escrow' => $resourceEscrow,
+                        'money_capacity' => $capacity->money,
+                    ]);
+                }
+            }
+            if ($discardedQuantity > 0) {
+                $this->events->record($context, 'capacity.overflow', $winner, [
+                    'asset' => 'resource',
+                    'resource_key' => $resource->key,
+                    'before' => $before,
+                    'requested' => $listing->quantity,
+                    'applied' => $storedQuantity,
+                    'sold' => $soldQuantity,
+                    'overflow' => $discardedQuantity,
+                    'capacity' => $resourceCapacity,
+                    'escrow' => $resourceEscrow,
+                    'after' => $before + $storedQuantity,
+                    'discarded' => true,
+                    'source' => 'trading_post_delivery',
+                ]);
+            }
+        }
+
+        return [
+            'resource_key' => $resource->key,
+            'quantity' => $listing->quantity,
+            'stored_quantity' => $storedQuantity,
+            'overflow_sold_quantity' => $soldQuantity,
+            'overflow_discarded_quantity' => $discardedQuantity,
+            'delivery_capacity' => $resourceCapacity,
+        ];
     }
 
     /** @return array<string, int|string> */
@@ -292,12 +406,7 @@ final class TradingPostTurnService
     ): AuctionListing {
         $resourceKey = $rules->npcResourceKeys[$stream->integer(0, count($rules->npcResourceKeys) - 1)];
         $resource = ResourceDefinition::query()->where('key', $resourceKey)->firstOrFail();
-        $rate = $context->ruleset->settings['inventory_sale_rates'][$resourceKey] ?? null;
-        if (! is_array($rate) || ! is_int($rate['inventory_units'] ?? null)
-            || ! is_int($rate['money_units'] ?? null) || $rate['inventory_units'] < 1
-            || $rate['money_units'] < 1) {
-            throw new DomainException("交易場NPC資源{$resourceKey}の基準売価が不正です。");
-        }
+        $rate = $this->inventorySaleRate($context->ruleset->settings['inventory_sale_rates'], $resourceKey);
         $targetValue = $stream->integer($rules->npcResourceValueMinimum, $rules->npcResourceValueMaximum);
         $quantity = intdiv($targetValue * $rate['inventory_units'], $rate['money_units']);
         $baseValue = intdiv($quantity * $rate['money_units'], $rate['inventory_units']);
@@ -355,6 +464,24 @@ final class TradingPostTurnService
             'auto_relist' => false,
             'status' => AuctionListing::STATUS_ACTIVE,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $rates
+     * @return array{inventory_units: int, money_units: int}
+     */
+    private function inventorySaleRate(array $rates, string $resourceKey): array
+    {
+        $rate = $rates[$resourceKey] ?? null;
+        if (! is_array($rate)
+            || ! is_int($rate['inventory_units'] ?? null)
+            || ! is_int($rate['money_units'] ?? null)
+            || $rate['inventory_units'] < 1
+            || $rate['money_units'] < 1) {
+            throw new DomainException("Inventory sale rate is missing or invalid for {$resourceKey}.");
+        }
+
+        return $rate;
     }
 
     private function sellerProceeds(int $amount, TradingPostRules $rules): int

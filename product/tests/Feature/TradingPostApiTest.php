@@ -376,6 +376,14 @@ final class TradingPostApiTest extends TestCase
         $this->actingAs($buyer)->postJson($this->bidUrl($buyerNation, $resourceListing), ['amount' => 101])->assertOk();
         $this->actingAs($buyer)->postJson($this->bidUrl($buyerNation, $itemListing), ['amount' => 100])->assertOk();
         $this->assertSame(799, $buyerNation->fresh()->money);
+        // A bidder may enter manual dormancy after bidding. Settlement still has
+        // to apply the same resource overflow contract before returning control.
+        $buyerNation->update([
+            'state' => 'dormant',
+            'state_reason' => 'manual',
+            'state_started_turn' => $world->current_turn,
+            'resume_at_turn' => $world->current_turn + 12,
+        ]);
 
         $context = $this->context($world, 4, [$sellerNation->id, $buyerNation->id], 'settlement-retry');
         try {
@@ -406,6 +414,9 @@ final class TradingPostApiTest extends TestCase
             ->where('subject_id', $resourceListing)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame(90, $saleMetadata['seller_proceeds']);
         $this->assertSame(11, $saleMetadata['trading_fee']);
+        $this->assertSame(0, $saleMetadata['stored_quantity']);
+        $this->assertSame(100, $saleMetadata['overflow_sold_quantity']);
+        $this->assertSame(0, $saleMetadata['overflow_discarded_quantity']);
 
         app(CompleteTurnEngine::class)->execute('enforce_capacities', $retry);
         $this->assertSame(5_000, $this->resourceAmount($buyerNation, $oil));
@@ -440,6 +451,49 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(80, $capacityMetadata['seller_proceeds_overflow']);
         $this->assertSame(11, $capacityMetadata['trading_fee']);
         $this->assertSame(3, DB::table('audit_events')->where('event_type', 'trading_post.sold')->count());
+
+        $wheat = $this->resource('wheat');
+        $this->setResource($capacitySellerNation, $wheat, 100);
+        $foodCapacity = app(NationCapacityResolver::class)->resolve($capacityBuyerNation)->foodTons;
+        $foodTotal = (int) NationResource::query()
+            ->where('nation_id', $capacityBuyerNation->id)
+            ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+            ->sum('amount');
+        $this->setResource(
+            $capacityBuyerNation,
+            $wheat,
+            $this->resourceAmount($capacityBuyerNation, $wheat) + $foodCapacity - $foodTotal,
+        );
+        $foodListing = $this->actingAs($capacitySeller)->postJson($this->listingUrl($capacitySellerNation), [
+            'product_type' => 'resource', 'resource_definition_id' => $wheat->id, 'quantity' => 100,
+            'start_price' => 101, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($capacityBuyer)
+            ->postJson($this->bidUrl($capacityBuyerNation, $foodListing), ['amount' => 101])
+            ->assertOk();
+
+        app(TradingPostTurnService::class)->execute($this->context(
+            $world,
+            4,
+            [$capacitySellerNation->id, $capacityBuyerNation->id],
+            'food-capacity-bounded-settlement',
+        ));
+        $this->assertSame($foodCapacity, (int) NationResource::query()
+            ->where('nation_id', $capacityBuyerNation->id)
+            ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+            ->sum('amount'));
+        $this->assertSame(798, $capacityBuyerNation->fresh()->money);
+        $foodMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'trading_post.sold')
+            ->where('subject_id', $foodListing)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $foodMetadata['stored_quantity']);
+        $this->assertSame(0, $foodMetadata['overflow_sold_quantity']);
+        $this->assertSame(100, $foodMetadata['overflow_discarded_quantity']);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'resource.food_overflow_resolved',
+            'nation_id' => $capacityBuyerNation->id,
+        ]);
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'trading_post.sold')->count());
     }
 
     public function test_no_bid_expiration_relist_and_npc_generation_follow_the_v16_contract(): void
