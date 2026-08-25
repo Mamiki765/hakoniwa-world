@@ -73,6 +73,8 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(700, $this->resourceAmount($nation, $oil));
         $this->actingAs($owner)->getJson("/api/v1/worlds/{$world->id}/trading-post")
             ->assertOk()
+            ->assertJsonPath('data.nation.state', 'active')
+            ->assertJsonPath('data.permissions.can_mutate', true)
             ->assertJsonPath('data.my_listings.0.id', $listingIds[0])
             ->assertJsonPath('data.my_listings.0.product.resource_key', 'oil')
             ->assertJsonPath('data.my_listings.0.seller.name', '出品島')
@@ -165,6 +167,31 @@ final class TradingPostApiTest extends TestCase
             'product_type' => 'resource', 'resource_definition_id' => $oil->id, 'quantity' => 100,
             'start_price' => 100, 'duration_turns' => 3, 'auto_relist' => false,
         ])->assertCreated()->json('data.id');
+
+        $firstNation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => $world->current_turn,
+            'resume_at_turn' => null,
+        ]);
+        $dormantMarket = $this->actingAs($first)
+            ->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()
+            ->assertJsonPath('data.nation.state', 'dormant')
+            ->assertJsonPath('data.permissions.can_mutate', false)
+            ->json('data.listings');
+        $dormantListing = collect($dormantMarket)->firstWhere('id', $listingId);
+        $this->assertIsArray($dormantListing);
+        $this->assertFalse($dormantListing['can_bid']);
+        $this->assertFalse($dormantListing['can_cancel']);
+        $this->actingAs($first)->postJson($this->bidUrl($firstNation, $listingId), ['amount' => 100])
+            ->assertUnprocessable();
+        $firstNation->update([
+            'state' => 'active',
+            'state_reason' => null,
+            'state_started_turn' => null,
+            'resume_at_turn' => null,
+        ]);
 
         $this->actingAs($first)->postJson($this->bidUrl($firstNation, $listingId), ['amount' => 99])
             ->assertUnprocessable();

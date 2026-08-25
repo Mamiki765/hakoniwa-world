@@ -2,7 +2,8 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import HexMap from './components/HexMap.vue';
-import type { MapChunk, Nation, PublicNationDetail, Secretary } from './types';
+import TradingPostPanel from './components/TradingPostPanel.vue';
+import type { MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
     status,
@@ -882,6 +883,47 @@ describe('application lobby and island entry', () => {
         wrapper.unmount();
     });
 
+    it('keeps the trading post browsable but disables mutations for a dormant nation', async () => {
+        const dormantMarket: TradingPostData = {
+            world: { id: 1, current_turn: 10 },
+            nation: { id: 3, name: '休眠島', money: 500, state: 'dormant' },
+            permissions: { can_mutate: false },
+            listings: [{
+                id: 81,
+                seller: { type: 'hakoniwa_federation', nation_id: null, name: '箱庭連合' },
+                product: {
+                    type: 'resource', name: '石油', resource_key: 'oil', unit_label: '万バレル',
+                    quantity: 100, item_key: null, item_level: null, rarity: null, rarity_label: null,
+                },
+                start_price: 200, current_price: null, minimum_bid: 200, bid_count: 0,
+                highest_bidder_nation_id: null, started_turn: 10, ends_turn: 16, remaining_turns: 6,
+                duration_turns: 6, auto_relist: false, relist_count: 0, is_mine: false,
+                can_bid: false, can_cancel: false,
+            }],
+            my_listings: [],
+            sellable_resources: [{ id: 6, key: 'oil', name: '石油', unit_label: '万バレル', amount: 123 }],
+            sellable_items: [],
+            contract: {
+                active_listing_limit: 3, minimum_duration_turns: 3, maximum_duration_turns: 84,
+                minimum_increment_money: 1, money_unit_label: '億円', npc_seller_name: '箱庭連合',
+            },
+        };
+        const fetchMock = vi.fn(async () => response(dormantMarket));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const wrapper = mount(TradingPostPanel, { props: { nationId: 3, worldId: 1 } });
+        await flushPromises();
+
+        expect(wrapper.get('.trading-post-table').text()).toContain('石油 100万バレル');
+        expect(wrapper.get('.trading-post-table').text()).toContain('現在は入札不可');
+        expect(wrapper.get('.trading-post-panel').text()).toContain('休眠中は新規出品できません。');
+        const listingForm = wrapper.get('.trading-post-listing-form');
+        expect(listingForm.findAll('input').every((control) => control.attributes('disabled') !== undefined)).toBe(true);
+        expect(listingForm.findAll('select').every((control) => control.attributes('disabled') !== undefined)).toBe(true);
+        expect(listingForm.get('button').attributes('disabled')).toBeDefined();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {
         vi.useFakeTimers();
         const nation: Nation = {
@@ -939,7 +981,8 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me/nation') return response(nation);
             if (path === '/api/v1/worlds/1/trading-post') return response({
                 world: { id: 1, current_turn: 1 },
-                nation: { id: 3, name: '自島', money: 62728 },
+                nation: { id: 3, name: '自島', money: 62728, state: 'active' },
+                permissions: { can_mutate: true },
                 listings: [{
                     id: 81,
                     seller: { type: 'hakoniwa_federation', nation_id: null, name: '箱庭連合' },

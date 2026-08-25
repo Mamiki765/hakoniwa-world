@@ -44,6 +44,7 @@ final class TradingPostService
             throw new AuthorizationException('交易場は自国を持つ島主だけが利用できます。');
         }
         $nation = $membership->nation;
+        $canMutate = in_array($nation->state, ['active', 'recovery'], true);
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $rules = TradingPostRules::fromSettings($ruleset->settings);
         $listings = AuctionListing::query()
@@ -92,7 +93,13 @@ final class TradingPostService
 
         return [
             'world' => ['id' => $world->id, 'current_turn' => $world->current_turn],
-            'nation' => ['id' => $nation->id, 'name' => $nation->name, 'money' => $nation->money],
+            'nation' => [
+                'id' => $nation->id,
+                'name' => $nation->name,
+                'money' => $nation->money,
+                'state' => $nation->state,
+            ],
+            'permissions' => ['can_mutate' => $canMutate],
             'listings' => $listings->map(
                 fn (AuctionListing $listing): array => $this->presentListing($listing, $nation, $world->current_turn, $rules),
             )->all(),
@@ -533,8 +540,11 @@ final class TradingPostService
             'auto_relist' => $listing->auto_relist,
             'relist_count' => $listing->relist_count,
             'is_mine' => $listing->seller_nation_id === $viewer->id,
-            'can_bid' => $listing->seller_nation_id !== $viewer->id,
-            'can_cancel' => $listing->seller_nation_id === $viewer->id && $listing->bid_count === 0,
+            'can_bid' => in_array($viewer->state, ['active', 'recovery'], true)
+                && $listing->seller_nation_id !== $viewer->id,
+            'can_cancel' => in_array($viewer->state, ['active', 'recovery'], true)
+                && $listing->seller_nation_id === $viewer->id
+                && $listing->bid_count === 0,
         ];
     }
 }

@@ -48,7 +48,7 @@ async function load(): Promise<void> {
 }
 
 async function createListing(): Promise<void> {
-    if (market.value === null) return;
+    if (market.value === null || !market.value.permissions.can_mutate) return;
     busy.value = true;
     error.value = '';
     try {
@@ -72,6 +72,7 @@ async function createListing(): Promise<void> {
 }
 
 async function placeBid(listing: TradingPostListing): Promise<void> {
+    if (!listing.can_bid) return;
     busy.value = true;
     error.value = '';
     try {
@@ -87,6 +88,7 @@ async function placeBid(listing: TradingPostListing): Promise<void> {
 }
 
 async function cancelListing(listing: TradingPostListing): Promise<void> {
+    if (!listing.can_cancel) return;
     busy.value = true;
     error.value = '';
     try {
@@ -136,7 +138,8 @@ onMounted(load);
                                         <span>億円</span>
                                         <button class="button primary" type="submit" :disabled="busy">入札</button>
                                     </form>
-                                    <span v-else>自分の出品</span>
+                                    <span v-else-if="listing.is_mine">自分の出品</span>
+                                    <span v-else>現在は入札不可</span>
                                 </td>
                             </tr>
                         </tbody>
@@ -153,7 +156,8 @@ onMounted(load);
                         <li v-for="listing in market.my_listings" :key="listing.id">
                             <span>{{ productLabel(listing) }}（終了 T{{ listing.ends_turn }}）</span>
                             <button v-if="listing.can_cancel" class="button secondary" type="button" :disabled="busy" @click="cancelListing(listing)">キャンセル</button>
-                            <small v-else>入札済みのためキャンセル不可</small>
+                            <small v-else-if="listing.bid_count > 0">入札済みのためキャンセル不可</small>
+                            <small v-else>現在はキャンセル不可</small>
                         </li>
                     </ul>
                     <p v-else class="empty-state">出品中の商品はありません。</p>
@@ -161,38 +165,39 @@ onMounted(load);
 
                 <section aria-labelledby="trading-post-new-title">
                     <h2 id="trading-post-new-title">新規出品</h2>
+                    <p v-if="!market.permissions.can_mutate" class="empty-state">休眠中は新規出品できません。</p>
                     <form class="trading-post-listing-form" @submit.prevent="createListing">
                         <label>商品種別
-                            <select v-model="form.product_type" :disabled="busy">
+                            <select v-model="form.product_type" :disabled="busy || !market.permissions.can_mutate">
                                 <option value="resource">国家資源</option>
                                 <option value="item">秘書アイテム</option>
                             </select>
                         </label>
                         <label v-if="form.product_type === 'resource'">商品
-                            <select v-model.number="form.resource_definition_id" required :disabled="busy">
+                            <select v-model.number="form.resource_definition_id" required :disabled="busy || !market.permissions.can_mutate">
                                 <option v-for="resource in market.sellable_resources" :key="resource.id" :value="resource.id">
                                     {{ resource.name }}（{{ resource.amount.toLocaleString('ja-JP') }}{{ resource.unit_label ?? '' }}）
                                 </option>
                             </select>
                         </label>
                         <label v-else>商品
-                            <select v-model.number="form.item_instance_id" required :disabled="busy">
+                            <select v-model.number="form.item_instance_id" required :disabled="busy || !market.permissions.can_mutate">
                                 <option v-for="item in market.sellable_items" :key="item.id" :value="item.id">
                                     {{ item.name }} Lv{{ item.level }}（{{ item.rarity_label }}）
                                 </option>
                             </select>
                         </label>
                         <label v-if="form.product_type === 'resource'">数量
-                            <input v-model.number="form.quantity" type="number" min="1" required :disabled="busy">
+                            <input v-model.number="form.quantity" type="number" min="1" required :disabled="busy || !market.permissions.can_mutate">
                         </label>
                         <label>開始価格（億円）
-                            <input v-model.number="form.start_price" type="number" min="1" required :disabled="busy">
+                            <input v-model.number="form.start_price" type="number" min="1" required :disabled="busy || !market.permissions.can_mutate">
                         </label>
                         <label>出品期間（ターン）
-                            <input v-model.number="form.duration_turns" type="number" :min="market.contract.minimum_duration_turns" :max="market.contract.maximum_duration_turns" required :disabled="busy">
+                            <input v-model.number="form.duration_turns" type="number" :min="market.contract.minimum_duration_turns" :max="market.contract.maximum_duration_turns" required :disabled="busy || !market.permissions.can_mutate">
                         </label>
-                        <label class="trading-post-checkbox"><input v-model="form.auto_relist" type="checkbox" :disabled="busy"> 入札0で期限切れなら自動再出品</label>
-                        <button class="button primary" type="submit" :disabled="busy || market.my_listings.length >= market.contract.active_listing_limit">出品する</button>
+                        <label class="trading-post-checkbox"><input v-model="form.auto_relist" type="checkbox" :disabled="busy || !market.permissions.can_mutate"> 入札0で期限切れなら自動再出品</label>
+                        <button class="button primary" type="submit" :disabled="busy || !market.permissions.can_mutate || market.my_listings.length >= market.contract.active_listing_limit">出品する</button>
                     </form>
                 </section>
             </div>

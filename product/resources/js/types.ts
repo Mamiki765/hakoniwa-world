@@ -161,7 +161,8 @@ export interface TradingPostListing {
 
 export interface TradingPostData {
     world: { id: number; current_turn: number };
-    nation: { id: number; name: string; money: number };
+    nation: { id: number; name: string; money: number; state: 'active' | 'dormant' | 'recovery' };
+    permissions: { can_mutate: boolean };
     listings: TradingPostListing[];
     my_listings: TradingPostListing[];
     sellable_resources: Array<{
