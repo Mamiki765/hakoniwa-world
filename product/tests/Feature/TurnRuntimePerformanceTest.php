@@ -203,7 +203,8 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->assertLessThanOrEqual(20 * $nationCount, $measurement['phases']['nation_economy']['queries']);
         $this->assertLessThanOrEqual(10 * $nationCount, $measurement['phases']['resource_sales']['queries']);
         $this->assertLessThanOrEqual(5 + $nationCount, $measurement['phases']['aggregate_nations']['queries']);
-        $this->assertLessThanOrEqual(5 * $nationCount, $measurement['phases']['enforce_capacities']['queries']);
+        // Trading-post settlement and NPC slot checks add one fixed World-level budget.
+        $this->assertLessThanOrEqual(5 + (5 * $nationCount), $measurement['phases']['enforce_capacities']['queries']);
     }
 
     public function test_population_eligible_natural_spawn_does_not_rehydrate_the_full_world(): void
