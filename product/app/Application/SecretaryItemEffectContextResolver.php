@@ -12,7 +12,7 @@ final class SecretaryItemEffectContextResolver
 {
     public function resolve(User $user, ?int $worldId): ?SecretaryItemEffectProjection
     {
-        return $this->resolveForNationStates($user, $worldId, ['active', 'recovery']);
+        return $this->resolveForNationStates($user, $worldId, ['active', 'dormant', 'recovery']);
     }
 
     public function resolveForPublicProfile(User $user, ?int $worldId): ?SecretaryItemEffectProjection
