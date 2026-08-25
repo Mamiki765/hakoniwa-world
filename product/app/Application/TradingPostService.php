@@ -407,13 +407,14 @@ final class TradingPostService
             ->where('user_id', $user->id)
             ->where('role', 'owner')
             ->pluck('nation_id');
+        // Settlement locks its listing before this same Secretary row. Keep cross-World reservations
+        // as an MVCC read so bids follow that order and cannot deadlock an official Turn.
         $incomingListings = AuctionListing::query()
             ->where('product_type', 'item')
             ->where('status', AuctionListing::STATUS_ACTIVE)
             ->whereIn('highest_bidder_nation_id', $ownedNationIds)
             ->where('id', '<>', $listing->id)
             ->orderBy('id')
-            ->lockForUpdate()
             ->get(['id', 'item_key'])
             ->all();
         if (count($ownedItems) + count($incomingListings) >= SecretaryItemGrantService::INVENTORY_CAPACITY) {
