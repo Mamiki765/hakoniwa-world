@@ -7,6 +7,7 @@ use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Models\Nation;
 use App\Models\RulesetVersion;
 use DomainException;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 final class NationCapacityResolver
@@ -61,7 +62,7 @@ final class NationCapacityResolver
             throw new DomainException('Capacity modifier semantics are deferred until E-04 is decided.');
         }
 
-        $secretaryPercent = 0;
+        $expectedSkillCount = null;
         $secretaryBonus = $ruleset->settings['secretary']['capacity_bonus'] ?? null;
         if ($secretaryBonus !== null) {
             if (! is_array($secretaryBonus)
@@ -78,11 +79,11 @@ final class NationCapacityResolver
             if (! is_array($skillDefinitions) || $skillDefinitions === []) {
                 throw new DomainException('Published Secretary skill settings are invalid.');
             }
-            $level = $this->secretaryLevel($nation, count($skillDefinitions));
-            $secretaryPercent = $level;
+            $expectedSkillCount = count($skillDefinitions);
         }
 
-        $itemPercentages = $this->itemEffects->currentCapacityPercentages($nation, $ruleset);
+        [$secretaryPercent, $equippedItems] = $this->capacitySources($nation, $expectedSkillCount);
+        $itemPercentages = $this->itemEffects->capacityPercentages($ruleset, $equippedItems);
         $baseMoney = $this->applyPercentageGenres(
             $baseMoney,
             $itemPercentages[SecretaryItemGameplayContract::CAPACITY_MONEY],
@@ -104,24 +105,60 @@ final class NationCapacityResolver
         return new NationCapacities($baseMoney, $baseFood, $resourceCapacities);
     }
 
-    private function secretaryLevel(Nation $nation, int $expectedSkillCount): int
+    /**
+     * @return array{int, list<array{item_key: string, level: int}>}
+     */
+    private function capacitySources(Nation $nation, ?int $expectedSkillCount): array
     {
-        $row = DB::table('nation_memberships as membership')
-            ->join('secretaries as secretary', 'secretary.user_id', '=', 'membership.user_id')
-            ->join('secretary_skills as skill', 'skill.secretary_id', '=', 'secretary.id')
-            ->where('membership.nation_id', $nation->id)
-            ->where('membership.role', 'owner')
-            ->selectRaw('count(skill.id) as skill_count, coalesce(sum(skill.level), 0) as level_total')
-            ->first();
-        $skillCount = (int) $row->skill_count;
-        if ($skillCount === 0) {
-            return 0;
+        $skillTotals = DB::table('nation_memberships as skill_membership')
+            ->join('secretaries as skill_secretary', 'skill_secretary.user_id', '=', 'skill_membership.user_id')
+            ->join('secretary_skills as skill', 'skill.secretary_id', '=', 'skill_secretary.id')
+            ->where('skill_membership.nation_id', $nation->id)
+            ->where('skill_membership.world_id', $nation->world_id)
+            ->where('skill_membership.role', 'owner')
+            ->groupBy('skill_membership.nation_id')
+            ->selectRaw('skill_membership.nation_id, count(skill.id) as skill_count, coalesce(sum(skill.level), 0) as level_total');
+        $rows = DB::table('nations as capacity_nation')
+            ->leftJoinSub($skillTotals, 'skill_totals', 'skill_totals.nation_id', '=', 'capacity_nation.id')
+            ->leftJoin('nation_memberships as membership', function (JoinClause $join): void {
+                $join->on('membership.nation_id', '=', 'capacity_nation.id')
+                    ->on('membership.world_id', '=', 'capacity_nation.world_id')
+                    ->where('membership.role', '=', 'owner');
+            })
+            ->leftJoin('secretaries as secretary', 'secretary.user_id', '=', 'membership.user_id')
+            ->leftJoin('secretary_item_instances as item', function (JoinClause $join): void {
+                $join->on('item.secretary_id', '=', 'secretary.id')
+                    ->whereNotNull('item.equipped_slot')
+                    ->where('item.is_escrowed', '=', false);
+            })
+            ->where('capacity_nation.id', $nation->id)
+            ->where('capacity_nation.world_id', $nation->world_id)
+            ->orderBy('item.equipped_slot')
+            ->orderBy('item.id')
+            ->get([
+                'skill_totals.skill_count', 'skill_totals.level_total',
+                'item.item_key', 'item.level',
+            ]);
+        $first = $rows->first();
+        if ($first === null) {
+            throw new DomainException('Capacity Nation no longer exists in its World.');
         }
-        if ($skillCount !== $expectedSkillCount) {
+        $skillCount = (int) ($first->skill_count ?? 0);
+        if ($expectedSkillCount !== null && $skillCount !== 0 && $skillCount !== $expectedSkillCount) {
             throw new DomainException('Nation owner Secretary passive skills are incomplete.');
         }
+        $items = [];
+        foreach ($rows as $row) {
+            if ($row->item_key === null) {
+                continue;
+            }
+            $items[] = ['item_key' => (string) $row->item_key, 'level' => (int) $row->level];
+        }
 
-        return (int) $row->level_total;
+        return [
+            $expectedSkillCount === null ? 0 : (int) ($first->level_total ?? 0),
+            $items,
+        ];
     }
 
     private function applyPercentageGenres(int $base, int ...$percentages): int

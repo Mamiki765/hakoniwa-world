@@ -3,10 +3,8 @@
 namespace App\Domain\Secretary;
 
 use App\Domain\Turn\TurnState;
-use App\Models\Nation;
 use App\Models\RulesetVersion;
 use DomainException;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Aggregates only Secretary Item effects. Item percentages add here; callers
@@ -20,25 +18,33 @@ final class SecretaryItemEffectAggregator
     ) {}
 
     /**
+     * @param  iterable<array{item_key: string, level: int}>  $items
      * @return array{all_nation_resources: int, money: int, food_aggregate: int}
      */
-    public function currentCapacityPercentages(Nation $nation, RulesetVersion $ruleset): array
+    public function capacityPercentages(RulesetVersion $ruleset, iterable $items): array
     {
         $totals = $this->emptyCapacityPercentages();
-        foreach ($this->currentEffects($nation, $ruleset) as $resolved) {
-            $effect = $resolved['effect'];
-            if ($effect['type'] !== SecretaryItemGameplayContract::CAPACITY_PERCENT) {
-                continue;
+        foreach ($items as $item) {
+            $itemKey = $item['item_key'];
+            $level = $item['level'];
+            $definition = $this->catalog->definition($itemKey);
+            if ($level < 1 || $level > $definition['max_level']) {
+                throw new DomainException("Secretary Item {$itemKey} has an invalid equipped level.");
             }
-            $parameters = $effect['parameters'];
-            $target = $parameters['target'] ?? null;
-            $percentPerLevel = $parameters['percent_per_level'] ?? null;
-            if (($parameters['source_genre'] ?? null) !== SecretaryItemGameplayContract::SOURCE_GENRE_ITEM
-                || ! is_string($target) || ! array_key_exists($target, $totals)
-                || ! is_int($percentPerLevel)) {
-                throw new DomainException('Secretary Item capacity snapshot is invalid.');
+            foreach ($this->gameplay->resolvedEffects($ruleset->settings, $itemKey, $level) as $effect) {
+                if ($effect['type'] !== SecretaryItemGameplayContract::CAPACITY_PERCENT) {
+                    continue;
+                }
+                $parameters = $effect['parameters'];
+                $target = $parameters['target'] ?? null;
+                $percentPerLevel = $parameters['percent_per_level'] ?? null;
+                if (($parameters['source_genre'] ?? null) !== SecretaryItemGameplayContract::SOURCE_GENRE_ITEM
+                    || ! is_string($target) || ! array_key_exists($target, $totals)
+                    || ! is_int($percentPerLevel)) {
+                    throw new DomainException('Secretary Item capacity snapshot is invalid.');
+                }
+                $totals[$target] += $level * $percentPerLevel;
             }
-            $totals[$target] += $resolved['level'] * $percentPerLevel;
         }
 
         return $totals;
@@ -114,38 +120,6 @@ final class SecretaryItemEffectAggregator
             'multiplier' => $multiplier,
             'random_stream_version' => $version,
         ];
-    }
-
-    /**
-     * @return list<array{item_key: string, level: int, effect: array<string, mixed>}>
-     */
-    private function currentEffects(Nation $nation, RulesetVersion $ruleset): array
-    {
-        $rows = DB::table('nation_memberships as membership')
-            ->join('secretaries as secretary', 'secretary.user_id', '=', 'membership.user_id')
-            ->join('secretary_item_instances as item', 'item.secretary_id', '=', 'secretary.id')
-            ->where('membership.nation_id', $nation->id)
-            ->where('membership.world_id', $nation->world_id)
-            ->where('membership.role', 'owner')
-            ->whereNotNull('item.equipped_slot')
-            ->where('item.is_escrowed', false)
-            ->orderBy('item.equipped_slot')
-            ->orderBy('item.id')
-            ->get(['item.item_key', 'item.level']);
-        $resolved = [];
-        foreach ($rows as $row) {
-            $itemKey = (string) $row->item_key;
-            $level = (int) $row->level;
-            $definition = $this->catalog->definition($itemKey);
-            if ($level < 1 || $level > $definition['max_level']) {
-                throw new DomainException("Secretary Item {$itemKey} has an invalid equipped level.");
-            }
-            foreach ($this->gameplay->resolvedEffects($ruleset->settings, $itemKey, $level) as $effect) {
-                $resolved[] = ['item_key' => $itemKey, 'level' => $level, 'effect' => $effect];
-            }
-        }
-
-        return $resolved;
     }
 
     /**
