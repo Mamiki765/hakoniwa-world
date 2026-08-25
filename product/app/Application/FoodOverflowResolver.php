@@ -96,7 +96,8 @@ final class FoodOverflowResolver
             if ($foodCredit->capacity !== $capacity->foodTons) {
                 throw new DomainException('Food capacity changed between production and overflow resolution.');
             }
-            $foodAfterNutrition = (int) $foodBalances->sum('amount');
+            $foodAfterNutrition = (int) $foodBalances->sum('amount')
+                + $this->boundedAssets->escrowedFood($lockedNation);
             $protectedHistoricalAmount = max($capacity->foodTons, $foodCredit->before);
             $overflowTons = min(
                 $foodCredit->requested,

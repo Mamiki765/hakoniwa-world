@@ -10,7 +10,6 @@ use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Economy\CapacityBoundedAssetService;
-use App\Domain\Economy\CappedAddition;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
@@ -51,7 +50,6 @@ final class DomesticCommandExecutor
     public function __construct(
         private readonly MapCellStateService $cells,
         private readonly NationCapacityResolver $capacities,
-        private readonly CappedAddition $addition,
         private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
@@ -1255,7 +1253,7 @@ final class DomesticCommandExecutor
                 ->lockForUpdate()->get();
             $before = (int) $foodBalances->sum('amount');
             $capacity = $this->capacities->resolve($target, $context->ruleset)->foodTons;
-            $addition = $this->addition->calculate($before, $requested, $capacity);
+            $addition = $this->boundedAssets->planFoodCredit($target, $requested, $capacity, $before);
             if ($addition->applied > 0) {
                 $this->debitFood($nation, $addition->applied);
                 $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();

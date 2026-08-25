@@ -577,6 +577,7 @@ final class CompleteTurnEngine
         $pendingEvents = [];
         $nationIds = $context->state->stableNationIds();
         $escrowedMoneyByNation = $this->boundedAssets->escrowedMoneyByNationIds($nationIds);
+        $escrowedResourcesByNation = $this->boundedAssets->escrowedResourcesByNationIds($nationIds);
 
         foreach ($nationIds as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
@@ -585,6 +586,7 @@ final class CompleteTurnEngine
             }
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
             $liquidMoneyCapacity = max(0, $capacity->money - ($escrowedMoneyByNation[$nationId] ?? 0));
+            $escrowedResources = $escrowedResourcesByNation[$nationId] ?? [];
             $balances = NationResource::query()
                 ->where('nation_id', $nation->id)
                 ->whereIn('resource_definition_id', $tradableResourceIds)
@@ -610,11 +612,14 @@ final class CompleteTurnEngine
                 }
                 $before = (int) $balance->amount;
                 $resourceCapacity = $capacity->resources[$resource->key] ?? null;
+                $liquidResourceCapacity = is_int($resourceCapacity)
+                    ? max(0, $resourceCapacity - ($escrowedResources[$resource->id] ?? 0))
+                    : null;
                 $requested = match ($policy) {
                     SalePolicy::SellAll->value => $before,
                     SalePolicy::KeepAmount->value => max(0, $before - (int) $keepAmount),
-                    SalePolicy::Stockpile->value => is_int($resourceCapacity)
-                        ? max(0, $before - $resourceCapacity)
+                    SalePolicy::Stockpile->value => is_int($liquidResourceCapacity)
+                        ? max(0, $before - $liquidResourceCapacity)
                         : 0,
                     default => 0,
                 };
@@ -645,6 +650,7 @@ final class CompleteTurnEngine
                             ? 'capacity_overflow'
                             : 'sale_policy',
                         'resource_capacity' => $resourceCapacity,
+                        'resource_escrow' => $escrowedResources[$resource->id] ?? 0,
                         'money_capacity' => $capacity->money,
                     ],
                     'visibility' => null,
@@ -667,9 +673,11 @@ final class CompleteTurnEngine
         $resourceOverflowEvent = $this->resourceOverflowEvent($settings);
         $resources = $this->resourceDefinitions($context);
         $resourcesByKey = $resources->keyBy('key');
+        $resourcesById = $resources->keyBy('id');
         $resourceIds = $resources->pluck('id')->all();
         $nationIds = $context->state->stableNationIds();
         $escrowedMoneyByNation = $this->boundedAssets->escrowedMoneyByNationIds($nationIds);
+        $escrowedResourcesByNation = $this->boundedAssets->escrowedResourcesByNationIds($nationIds);
 
         foreach ($nationIds as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
@@ -679,6 +687,7 @@ final class CompleteTurnEngine
             $capacity = $this->capacities->resolve($nation, $context->ruleset);
             $escrowedMoney = $escrowedMoneyByNation[$nationId] ?? 0;
             $liquidMoneyCapacity = max(0, $capacity->money - $escrowedMoney);
+            $escrowedResources = $escrowedResourcesByNation[$nationId] ?? [];
             $balances = NationResource::query()
                 ->where('nation_id', $nation->id)
                 ->whereIn('resource_definition_id', $resourceIds)
@@ -687,6 +696,8 @@ final class CompleteTurnEngine
                 ->keyBy('resource_definition_id');
 
             $resourceAmounts = [];
+            $resourceEscrowAmounts = [];
+            $resourceAmountsInUse = [];
             foreach ($capacity->resources as $resourceKey => $resourceCapacity) {
                 $resource = $resourcesByKey->get($resourceKey);
                 if (! $resource instanceof ResourceDefinition) {
@@ -694,8 +705,10 @@ final class CompleteTurnEngine
                 }
                 $balance = $this->lockedOrCreatedBalance($balances, $nation, $resource);
                 $before = (int) $balance->amount;
+                $resourceEscrow = $escrowedResources[$resource->id] ?? 0;
+                $liquidResourceCapacity = max(0, $resourceCapacity - $resourceEscrow);
                 $afterSale = $before;
-                $overflow = max(0, $before - $resourceCapacity);
+                $overflow = max(0, $before - $liquidResourceCapacity);
                 if ($overflow > 0) {
                     $storedPolicy = NationResourceSalePolicy::query()
                         ->where('nation_id', $nation->id)
@@ -730,12 +743,13 @@ final class CompleteTurnEngine
                                 'after' => $afterSale,
                                 'sale_reason' => 'capacity_overflow',
                                 'resource_capacity' => $resourceCapacity,
+                                'resource_escrow' => $resourceEscrow,
                                 'money_capacity' => $capacity->money,
                             ]);
                         }
                     }
                 }
-                $after = min($afterSale, $resourceCapacity);
+                $after = min($afterSale, $liquidResourceCapacity);
                 $discarded = $afterSale - $after;
                 if ($discarded > 0) {
                     $balance->update(['amount' => $after]);
@@ -748,12 +762,15 @@ final class CompleteTurnEngine
                         'applied' => $after,
                         'overflow' => $discarded,
                         'capacity' => $resourceCapacity,
+                        'escrow' => $resourceEscrow,
                         'after' => $after,
                         'discarded' => true,
                         'source' => 'post_sale_inventory_capacity',
                     ]);
                 }
                 $resourceAmounts[$resourceKey] = $after;
+                $resourceEscrowAmounts[$resourceKey] = $resourceEscrow;
+                $resourceAmountsInUse[$resourceKey] = $after + $resourceEscrow;
             }
 
             $foodTotal = 0;
@@ -763,10 +780,17 @@ final class CompleteTurnEngine
                     $foodTotal += (int) $balance->amount;
                 }
             }
+            $foodEscrow = 0;
+            foreach ($escrowedResources as $resourceId => $amount) {
+                if ($resourcesById->get($resourceId)?->category === 'food') {
+                    $foodEscrow += $amount;
+                }
+            }
+            $foodInUse = $foodTotal + $foodEscrow;
             $moneyInUse = (int) $nation->money + $escrowedMoney;
             foreach ([
                 ['asset' => 'money', 'overflow' => max(0, $moneyInUse - $capacity->money), 'capacity' => $capacity->money],
-                ['asset' => 'aggregate_food', 'overflow' => max(0, $foodTotal - $capacity->foodTons), 'capacity' => $capacity->foodTons],
+                ['asset' => 'aggregate_food', 'overflow' => max(0, $foodInUse - $capacity->foodTons), 'capacity' => $capacity->foodTons],
             ] as $report) {
                 if ($report['overflow'] > 0) {
                     $metrics['overflow_reports']++;
@@ -777,8 +801,11 @@ final class CompleteTurnEngine
                 'money' => (int) $nation->money, 'money_escrow' => $escrowedMoney,
                 'money_in_use' => $moneyInUse,
                 'money_capacity' => $capacity->money,
-                'food_tons' => $foodTotal, 'food_capacity_tons' => $capacity->foodTons,
+                'food_tons' => $foodTotal, 'food_escrow_tons' => $foodEscrow,
+                'food_in_use_tons' => $foodInUse, 'food_capacity_tons' => $capacity->foodTons,
                 'resource_amounts' => $resourceAmounts,
+                'resource_escrow_amounts' => $resourceEscrowAmounts,
+                'resource_amounts_in_use' => $resourceAmountsInUse,
                 'resource_capacities' => $capacity->resources,
                 'bounded_credits' => true,
             ]);

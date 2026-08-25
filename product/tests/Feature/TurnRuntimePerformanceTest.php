@@ -200,11 +200,12 @@ final class TurnRuntimePerformanceTest extends TestCase
 
         $this->report("32x32-{$nationCount}-nations", $measurement);
         $this->assertSame($nationCount, $measurement['phases']['prepare_turn']['metrics']['nations']);
-        $this->assertLessThanOrEqual(20 * $nationCount, $measurement['phases']['nation_economy']['queries']);
+        // Food production reserves active seller escrow with one bounded lookup per Nation.
+        $this->assertLessThanOrEqual(21 * $nationCount, $measurement['phases']['nation_economy']['queries']);
         $this->assertLessThanOrEqual(10 * $nationCount, $measurement['phases']['resource_sales']['queries']);
         $this->assertLessThanOrEqual(5 + $nationCount, $measurement['phases']['aggregate_nations']['queries']);
-        // Trading-post settlement, NPC slot checks, and bid-escrow aggregation use fixed World-level queries.
-        $this->assertLessThanOrEqual(6 + (5 * $nationCount), $measurement['phases']['enforce_capacities']['queries']);
+        // Trading-post settlement, NPC checks, and bid/resource escrow aggregation use fixed World-level queries.
+        $this->assertLessThanOrEqual(7 + (5 * $nationCount), $measurement['phases']['enforce_capacities']['queries']);
     }
 
     public function test_population_eligible_natural_spawn_does_not_rehydrate_the_full_world(): void
@@ -279,8 +280,8 @@ final class TurnRuntimePerformanceTest extends TestCase
 
         $this->report('32x32-multi-resource-sales', $measurement);
         $this->assertGreaterThanOrEqual(3, $sales['metrics']['sales']);
-        // One fixed select aggregates active bid escrow before applying the shared money capacity.
-        $this->assertLessThanOrEqual(6, $sales['query_types']['select'] ?? 0);
+        // Fixed selects aggregate active bid and listed-resource escrow before applying shared capacities.
+        $this->assertLessThanOrEqual(7, $sales['query_types']['select'] ?? 0);
     }
 
     #[DataProvider('missileShotProfiles')]

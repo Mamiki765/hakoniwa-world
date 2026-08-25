@@ -36,7 +36,8 @@ final class TradingPostApiTest extends TestCase
         $world = $this->lightweightWorld();
         [$owner, $nation] = $this->ownerAndNation($world, '出品島');
         $oil = $this->resource('oil');
-        $this->setResource($nation, $oil, 1_000);
+        $oilCapacity = app(NationCapacityResolver::class)->resolve($nation)->resources['oil'];
+        $this->setResource($nation, $oil, $oilCapacity);
         $outsider = User::factory()->create();
         $this->actingAs($outsider)->getJson("/api/v1/worlds/{$world->id}/trading-post")
             ->assertForbidden();
@@ -59,7 +60,7 @@ final class TradingPostApiTest extends TestCase
                 'auto_relist' => false,
             ])->assertUnprocessable();
         }
-        $this->assertSame(1_000, $this->resourceAmount($nation, $oil));
+        $this->assertSame($oilCapacity, $this->resourceAmount($nation, $oil));
 
         $listingIds = [];
         foreach (range(1, 3) as $number) {
@@ -69,10 +70,10 @@ final class TradingPostApiTest extends TestCase
                 'quantity' => 100,
                 'start_price' => 50 + $number,
                 'duration_turns' => 3,
-                'auto_relist' => false,
+                'auto_relist' => $number === 3,
             ])->assertCreated()->json('data.id');
         }
-        $this->assertSame(700, $this->resourceAmount($nation, $oil));
+        $this->assertSame($oilCapacity - 300, $this->resourceAmount($nation, $oil));
         $this->actingAs($owner)->getJson("/api/v1/worlds/{$world->id}/trading-post")
             ->assertOk()
             ->assertJsonPath('data.nation.state', 'active')
@@ -100,7 +101,47 @@ final class TradingPostApiTest extends TestCase
         $this->actingAs($owner)->deleteJson(
             $this->listingUrl($nation).'/'.$listingIds[0],
         )->assertOk()->assertJsonPath('data.status', AuctionListing::STATUS_CANCELLED);
-        $this->assertSame(800, $this->resourceAmount($nation, $oil));
+        $this->assertSame($oilCapacity - 200, $this->resourceAmount($nation, $oil));
+
+        // Simulate production refilling the liquid balance before the end-of-Turn capacity phase.
+        $this->setResource($nation, $oil, $oilCapacity);
+        app(CompleteTurnEngine::class)->execute(
+            'enforce_capacities',
+            $this->context($world, 2, [$nation->id], 'listed-resource-capacity'),
+        );
+        $this->assertSame($oilCapacity - 200, $this->resourceAmount($nation, $oil));
+        $nationPayload = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}")->assertOk()->json('data');
+        $oilPayload = collect($nationPayload['resources'])->firstWhere('key', 'oil');
+        $this->assertSame(0, $oilPayload['remaining_capacity']);
+        $this->assertTrue($oilPayload['is_at_capacity']);
+        foreach (array_slice($listingIds, 1) as $listingId) {
+            $this->actingAs($owner)->deleteJson($this->listingUrl($nation).'/'.$listingId)->assertOk();
+        }
+        $this->assertSame($oilCapacity, $this->resourceAmount($nation, $oil));
+
+        $wheat = $this->resource('wheat');
+        $foodCapacity = app(NationCapacityResolver::class)->resolve($nation)->foodTons;
+        $foodTotal = (int) NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+            ->sum('amount');
+        $this->setResource(
+            $nation,
+            $wheat,
+            $this->resourceAmount($nation, $wheat) + $foodCapacity - $foodTotal,
+        );
+        $foodListingId = $this->actingAs($owner)->postJson($this->listingUrl($nation), [
+            'product_type' => 'resource', 'resource_definition_id' => $wheat->id, 'quantity' => 100,
+            'start_price' => 100, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $foodCredit = app(CapacityBoundedAssetService::class)->creditFood($nation, $wheat, 100);
+        $this->assertSame(0, $foodCredit->applied);
+        $this->assertSame(100, $foodCredit->overflow);
+        $this->actingAs($owner)->deleteJson($this->listingUrl($nation).'/'.$foodListingId)->assertOk();
+        $this->assertSame($foodCapacity, (int) NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+            ->sum('amount'));
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.listed']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.cancelled']);
     }

@@ -97,6 +97,73 @@ final class CapacityBoundedAssetService
         return $escrowed;
     }
 
+    /** @return array<int, int> */
+    public function escrowedResources(Nation $nation): array
+    {
+        return $this->escrowedResourcesByNationIds([$nation->id])[$nation->id] ?? [];
+    }
+
+    /**
+     * @param  list<int>  $nationIds
+     * @return array<int, array<int, int>>
+     */
+    public function escrowedResourcesByNationIds(array $nationIds): array
+    {
+        if ($nationIds === []) {
+            return [];
+        }
+        $rows = AuctionListing::query()
+            ->whereIn('seller_nation_id', $nationIds)
+            ->where('seller_type', 'nation')
+            ->where('product_type', 'resource')
+            ->where('status', AuctionListing::STATUS_ACTIVE)
+            ->selectRaw('seller_nation_id, resource_definition_id, SUM(quantity) AS aggregate')
+            ->groupBy('seller_nation_id', 'resource_definition_id')
+            ->get();
+        $escrowed = [];
+        foreach ($rows as $row) {
+            $nationId = (int) $row->getAttribute('seller_nation_id');
+            $resourceId = (int) $row->getAttribute('resource_definition_id');
+            $escrowed[$nationId][$resourceId] = (int) $row->getAttribute('aggregate');
+        }
+
+        return $escrowed;
+    }
+
+    public function escrowedFood(Nation $nation): int
+    {
+        return (int) AuctionListing::query()
+            ->join('resource_definitions', 'resource_definitions.id', '=', 'auction_listings.resource_definition_id')
+            ->where('auction_listings.seller_nation_id', $nation->id)
+            ->where('auction_listings.seller_type', 'nation')
+            ->where('auction_listings.product_type', 'resource')
+            ->where('auction_listings.status', AuctionListing::STATUS_ACTIVE)
+            ->where('resource_definitions.category', 'food')
+            ->sum('auction_listings.quantity');
+    }
+
+    public function planFoodCredit(
+        Nation $nation,
+        int $requestedTons,
+        int $capacity,
+        int $liquidBefore,
+    ): CapacityAdditionResult {
+        $usage = $this->addition->calculate(
+            $liquidBefore + $this->escrowedFood($nation),
+            $requestedTons,
+            $capacity,
+        );
+
+        return new CapacityAdditionResult(
+            before: $liquidBefore,
+            requested: $requestedTons,
+            applied: $usage->applied,
+            overflow: $usage->overflow,
+            after: $liquidBefore + $usage->applied,
+            capacity: $capacity,
+        );
+    }
+
     public function creditFood(
         Nation $nation,
         ResourceDefinition $resource,
@@ -116,7 +183,7 @@ final class CapacityBoundedAssetService
                 ->get();
             $before = (int) $foodBalances->sum('amount');
             $capacity = $this->capacities->resolve($lockedNation, $ruleset)->foodTons;
-            $result = $this->addition->calculate($before, $requestedTons, $capacity);
+            $result = $this->planFoodCredit($lockedNation, $requestedTons, $capacity, $before);
 
             if ($result->applied > 0) {
                 $balance = $foodBalances->firstWhere('resource_definition_id', $resource->id);
@@ -158,7 +225,8 @@ final class CapacityBoundedAssetService
                 ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
                 ->lockForUpdate()
                 ->get();
-            $before = (int) $foodBalances->sum('amount');
+            $liquidBefore = (int) $foodBalances->sum('amount');
+            $before = $liquidBefore + $this->escrowedFood($lockedNation);
             $capacity = $this->capacities->resolve($lockedNation, $ruleset)->foodTons;
 
             if ($requestedTons > 0) {
