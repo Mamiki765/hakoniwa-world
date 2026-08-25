@@ -573,6 +573,7 @@ final class CompleteTurnEngine
         $resources = $this->resourceDefinitions($context);
         $tradableResources = $resources->where('tradable', true);
         $tradableResourceIds = $tradableResources->pluck('id')->all();
+        $pendingEvents = [];
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
@@ -636,18 +637,26 @@ final class CompleteTurnEngine
                     $metrics['sales']++;
                     $metrics['revenue'] += $revenue;
                 }
-                $this->events->record($context, 'resource.automatic_sale', $nation, [
-                    'resource_key' => $resource->key, 'policy' => $policy, 'keep_amount' => $keepAmount,
-                    'before' => $before, 'requested' => $requested, 'sold' => $sold,
-                    'revenue' => $revenue, 'after' => $before - $sold,
-                    'sale_reason' => $policy === SalePolicy::Stockpile->value && is_int($resourceCapacity)
-                        ? 'capacity_overflow'
-                        : 'sale_policy',
-                    'resource_capacity' => $resourceCapacity,
-                    'money_capacity' => $capacity->money,
-                ]);
+                $pendingEvents[] = [
+                    'event_type' => 'resource.automatic_sale',
+                    'subject' => $nation,
+                    'metadata' => [
+                        'resource_key' => $resource->key, 'policy' => $policy, 'keep_amount' => $keepAmount,
+                        'before' => $before, 'requested' => $requested, 'sold' => $sold,
+                        'revenue' => $revenue, 'after' => $before - $sold,
+                        'sale_reason' => $policy === SalePolicy::Stockpile->value && is_int($resourceCapacity)
+                            ? 'capacity_overflow'
+                            : 'sale_policy',
+                        'resource_capacity' => $resourceCapacity,
+                        'money_capacity' => $capacity->money,
+                    ],
+                    'visibility' => null,
+                    'severity' => null,
+                    'message' => null,
+                ];
             }
         }
+        $this->events->recordMany($context, $pendingEvents);
 
         return $metrics;
     }

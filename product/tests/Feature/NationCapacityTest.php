@@ -42,6 +42,7 @@ class NationCapacityTest extends TestCase
         $this->assertSame([
             'industrial_goods' => 9_999_000,
             'minerals' => 9_999_000,
+            'oil' => 5_000,
         ], $base->resources);
 
         $world = $nation->world()->firstOrFail();
