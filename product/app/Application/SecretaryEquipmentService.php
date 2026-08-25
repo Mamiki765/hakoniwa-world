@@ -252,7 +252,7 @@ class SecretaryEquipmentService
             ->join('nations', 'nations.id', '=', 'nation_memberships.nation_id')
             ->where('nation_memberships.user_id', $userId)
             ->where('nation_memberships.role', 'owner')
-            ->whereIn('nations.state', ['active', 'recovery'])
+            ->whereIn('nations.state', ['active', 'dormant', 'recovery'])
             ->whereColumn('nations.world_id', 'nation_memberships.world_id')
             ->orderBy('nation_memberships.world_id')
             ->orderBy('nation_memberships.nation_id')
@@ -290,7 +290,7 @@ class SecretaryEquipmentService
         $snapshot = [];
         foreach ($memberships as $membership) {
             $nation = $nationsById->get($membership->nation_id);
-            if (! $nation instanceof Nation || ! in_array($nation->state, ['active', 'recovery'], true)) {
+            if (! $nation instanceof Nation || ! in_array($nation->state, ['active', 'dormant', 'recovery'], true)) {
                 continue;
             }
             if ($nation->world_id !== $membership->world_id) {

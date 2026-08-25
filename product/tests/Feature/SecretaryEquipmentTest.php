@@ -311,10 +311,24 @@ SQL);
     }
 
     #[DataProvider('unresolvedTurnStatuses')]
-    public function test_each_unresolved_next_turn_status_blocks_equipment_without_mutation(string $status): void
-    {
+    public function test_each_unresolved_next_turn_status_blocks_equipment_without_mutation(
+        string $status,
+        string $nationState,
+    ): void {
         [$user, $secretary, $world] = $this->affectedWorldFixture();
-        $bow = $secretary->itemInstances()->create($this->itemAttributes('old_bow', 1));
+        $nation = Nation::query()->where('world_id', $world->id)->sole();
+        if ($nationState === 'dormant') {
+            $nation->update([
+                'state' => 'dormant',
+                'state_reason' => 'manual',
+                'state_started_turn' => 1,
+                'resume_at_turn' => 86,
+            ]);
+        }
+        $item = $secretary->itemInstances()->create($this->itemAttributes(
+            $nationState === 'dormant' ? 'good_person_treasure' : 'old_bow',
+            1,
+        ));
         $this->turnRun($world, $status);
 
         try {
@@ -324,7 +338,7 @@ SQL);
             $this->assertSame('secretary_equipment_turn_unresolved', $exception->errorCode);
         }
 
-        $this->assertSame(1, $bow->fresh()->equipped_slot);
+        $this->assertSame(1, $item->fresh()->equipped_slot);
         $this->assertSame(1, $secretary->fresh()->equipment_version);
         $this->assertSame(0, $this->equipmentAuditCount($secretary));
     }
@@ -467,10 +481,10 @@ SQL);
     public static function unresolvedTurnStatuses(): array
     {
         return [
-            'pending' => [TurnRun::STATUS_PENDING],
-            'running' => [TurnRun::STATUS_RUNNING],
-            'failed' => [TurnRun::STATUS_FAILED],
-            'blocked' => [TurnRun::STATUS_BLOCKED],
+            'pending' => [TurnRun::STATUS_PENDING, 'active'],
+            'running' => [TurnRun::STATUS_RUNNING, 'active'],
+            'failed' => [TurnRun::STATUS_FAILED, 'dormant'],
+            'blocked' => [TurnRun::STATUS_BLOCKED, 'active'],
         ];
     }
 
