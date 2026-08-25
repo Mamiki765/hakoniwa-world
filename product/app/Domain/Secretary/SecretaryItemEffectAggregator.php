@@ -24,6 +24,10 @@ final class SecretaryItemEffectAggregator
     public function capacityPercentages(RulesetVersion $ruleset, iterable $items): array
     {
         $totals = $this->emptyCapacityPercentages();
+        $effectCatalog = $this->gameplay->validatedEffectCatalog($ruleset->settings);
+        if ($effectCatalog === []) {
+            return $totals;
+        }
         foreach ($items as $item) {
             $itemKey = $item['item_key'];
             $level = $item['level'];
@@ -31,7 +35,9 @@ final class SecretaryItemEffectAggregator
             if ($level < 1 || $level > $definition['max_level']) {
                 throw new DomainException("Secretary Item {$itemKey} has an invalid equipped level.");
             }
-            foreach ($this->gameplay->resolvedEffects($ruleset->settings, $itemKey, $level) as $effect) {
+            $effects = $effectCatalog[$itemKey]
+                ?? throw new DomainException("Ruleset Secretary item {$itemKey} is missing.");
+            foreach ($effects as $effect) {
                 if ($effect['type'] !== SecretaryItemGameplayContract::CAPACITY_PERCENT) {
                     continue;
                 }
