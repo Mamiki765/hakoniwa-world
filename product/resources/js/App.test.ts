@@ -82,7 +82,7 @@ const unnamedSecretaryFixture: Secretary = {
             slot_count: 5,
             category_limits: [
                 { category: 'bow', label: '弓', maximum_equipped: 1 },
-                { category: 'ring', label: '指輪', maximum_equipped: 5 },
+                { category: 'clothing', label: '衣服', maximum_equipped: 1 },
             ],
             slots: [
                 { slot: 1, item: null },
@@ -114,7 +114,7 @@ const unnamedSecretaryFixture: Secretary = {
             flavor_text: '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
             obtained_at: '2026-08-17T00:00:00Z',
         }, {
-            id: 22, key: 'ring', name: '指輪', level: 3, category: 'ring', category_label: '指輪',
+            id: 22, key: 'ring', name: '指輪', level: 3, category: 'accessory', category_label: 'アクセサリー',
             equipped_slot: null, is_equipped: false, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
             effect_text: '資金繰りの際、追加で3億円を得る。',
             flavor_text: '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
@@ -125,7 +125,7 @@ const unnamedSecretaryFixture: Secretary = {
         slot_count: 5,
         category_limits: [
             { category: 'bow', label: '弓', maximum_equipped: 1 },
-            { category: 'ring', label: '指輪', maximum_equipped: 5 },
+            { category: 'clothing', label: '衣服', maximum_equipped: 1 },
         ],
         slots: [
             { slot: 1, item: null },
@@ -1569,6 +1569,9 @@ describe('application lobby and island entry', () => {
         await wrapper.findAll('[role="tab"]')[2]!.trigger('click');
         expect(wrapper.findAll('.secretary-equipment button')).toHaveLength(5);
         expect(wrapper.get('.equipment-category-limits').text()).toContain('弓・1個まで');
+        expect(wrapper.get('.equipment-category-limits').text()).toContain('衣服・1個まで');
+        expect(wrapper.get('.equipment-category-limits').text()).not.toContain('アクセサリー');
+        expect(wrapper.get('.equipment-category-limits').text()).not.toContain('99');
         await wrapper.findAll('.secretary-equipment button')[0]!.trigger('click');
         await flushPromises();
 

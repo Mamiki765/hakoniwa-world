@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryItemProbability;
 use App\Domain\Secretary\SecretaryItemTargetSafetyPolicy;
@@ -73,22 +74,37 @@ final class SecretaryItemEffectPoliciesTest extends TestCase
         app(SecretaryItemTargetSafetyPolicy::class)->allows($monster, 1, 2);
     }
 
-    public function test_ring_bonus_sums_equipped_levels_from_the_immutable_snapshot(): void
+    public function test_ring_bonus_uses_the_equipped_level_from_the_immutable_snapshot(): void
     {
         $state = new TurnState;
         $state->setSecretaryItemEffectSnapshot(4, 9, 3, [
-            $this->ringSnapshot(21, 2, 1),
-            $this->ringSnapshot(22, 4, 2),
+            $this->ringSnapshot(21, 4, 2),
         ]);
 
         $this->assertSame(
-            ['equipped_level_sum' => 6, 'requested' => 6],
+            ['equipped_level_sum' => 4, 'requested' => 4],
             app(SecretaryRingFinanceBonus::class)->resolve($state, 4),
         );
         $this->assertSame(
             ['equipped_level_sum' => 0, 'requested' => 0],
             app(SecretaryRingFinanceBonus::class)->resolve(new TurnState, 4),
         );
+    }
+
+    public function test_natural_spawn_item_percentages_add_signed_values_within_the_item_genre(): void
+    {
+        $state = new TurnState;
+        $state->setSecretaryItemEffectSnapshot(4, 9, 3, [
+            $this->percentageSnapshot(21, 'inora_bracelet', 5, 2, 10),
+            $this->percentageSnapshot(22, 'monster_repellent_incense', 5, 3, -1),
+        ]);
+
+        $this->assertSame(45, app(SecretaryItemEffectAggregator::class)->snapshotPercentage(
+            $state,
+            4,
+            SecretaryItemGameplayContract::NATURAL_MONSTER_SPAWN_PERCENT,
+            'normal_nation_natural_spawn',
+        ));
     }
 
     /** @return iterable<string, array{int, int, bool}> */
@@ -119,7 +135,7 @@ final class SecretaryItemEffectPoliciesTest extends TestCase
         return [
             'item_instance_id' => $id,
             'item_key' => 'ring',
-            'category' => 'ring',
+            'category' => 'accessory',
             'level' => $level,
             'equipped_slot' => $slot,
             'effects' => [[
@@ -128,6 +144,35 @@ final class SecretaryItemEffectPoliciesTest extends TestCase
                 'parameters' => [
                     'bonus_money_per_level' => 1,
                     'stacking' => SecretaryItemGameplayContract::RING_STACKING,
+                ],
+                'target_map_space_keys' => [],
+                'random_stream_version' => null,
+            ]],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function percentageSnapshot(
+        int $id,
+        string $itemKey,
+        int $level,
+        int $slot,
+        int $percentPerLevel,
+    ): array {
+        return [
+            'item_instance_id' => $id,
+            'item_key' => $itemKey,
+            'category' => 'accessory',
+            'level' => $level,
+            'equipped_slot' => $slot,
+            'effects' => [[
+                'type' => SecretaryItemGameplayContract::NATURAL_MONSTER_SPAWN_PERCENT,
+                'timing' => 'normal_monster_natural_spawn',
+                'parameters' => [
+                    'source_genre' => SecretaryItemGameplayContract::SOURCE_GENRE_ITEM,
+                    'target' => 'normal_nation_natural_spawn',
+                    'percent_per_level' => $percentPerLevel,
+                    'minimum_final_probability' => 0,
                 ],
                 'target_map_space_keys' => [],
                 'random_stream_version' => null,

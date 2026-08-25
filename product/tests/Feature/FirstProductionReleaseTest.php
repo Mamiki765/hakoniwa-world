@@ -182,7 +182,10 @@ final class FirstProductionReleaseTest extends TestCase
             ->assertSee('浅瀬全て埋め立て＋整地');
         $this->get('/manual/advanced')->assertOk()
             ->assertSee('地盤沈下')
-            ->assertSee('島の破棄');
+            ->assertSee('島の破棄')
+            ->assertSee('通常のKARMA下限は-10です')
+            ->assertSee('Lv20では-30になります')
+            ->assertSee('すぐに有効下限へ丸めず、ターンごとに1ずつ回復します');
         $this->get('/manual/trading-post')->assertOk()
             ->assertSee('<title>交易場 | 箱庭諸島２S＋</title>', false)
             ->assertSee('最高入札中の預託資金は、資金上限の使用量に含まれます')
@@ -205,10 +208,13 @@ final class FirstProductionReleaseTest extends TestCase
             ->assertSee('自領のマスへミサイルが1発到達するごとに経験値を1獲得します')
             ->assertSee('倉庫には最大50個')
             ->assertSee('装備スロットが5個')
+            ->assertSee('弓カテゴリと衣服カテゴリは、それぞれカテゴリ全体で1個までです')
+            ->assertSee('種類の異なるアクセサリーは同時に装備できます')
+            ->assertSee('箱庭連合が指輪と次の7種類のノービス装備を期間限定で出品します')
             ->assertSee('10%の確率で、自領の地上にいる怪獣に1ダメージを与える。')
             ->assertSee('次に開始できるターンから反映')
             ->assertSee('自動の資金繰り')
-            ->assertSee('Lv3とLv2の指輪を装備していれば、追加分は5億円です')
+            ->assertSee('Lv3の指輪を装備していれば、追加分は3億円です')
             ->assertSee('島を破棄しても、秘書と倉庫のアイテム、装備状態は保持されます。活動中の島がない間は装備効果は発生せず、再参加後に必要に応じて装備を変更できます。')
             ->assertSee('アイテムと装備状態は秘書に対して共通で、対象マスや画面ごとに別管理されません。')
             ->assertDontSee('現在活動中の島がない間は、装備を変えることはできます')

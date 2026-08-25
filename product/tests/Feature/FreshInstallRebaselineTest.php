@@ -76,6 +76,13 @@ final class FreshInstallRebaselineTest extends TestCase
             $ruleset->settings['inventory_sale_rates']['oil']['money_units'],
         ]);
         $this->assertSame(500, $ruleset->settings['turn_processing']['oil_field']['production_units']);
+        $categoryKeys = array_keys($ruleset->settings['secretary']['item_categories']);
+        sort($categoryKeys);
+        $this->assertSame(['accessory', 'bow', 'clothing'], $categoryKeys);
+        $this->assertSame(99, $ruleset->settings['secretary']['item_categories']['accessory']['max_equipped']);
+        $this->assertSame('accessory', $ruleset->settings['secretary']['items']['ring']['category']);
+        $this->assertArrayNotHasKey('same_item_max_equipped', $ruleset->settings['secretary']['items']['ring']);
+        $this->assertCount(9, $ruleset->settings['secretary']['items']);
         $this->assertTrue(Schema::hasColumn('nations', 'karma'));
         $this->assertTrue(Schema::hasColumn('secretaries', 'profile_biography'));
         $this->assertTrue(Schema::hasColumn('users', 'show_ai_generated_secretary_images'));
@@ -95,6 +102,13 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'secretaries_monster_experience_non_negative')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'monster_definitions_experience_per_damage_non_negative')->count());
+        $karmaConstraint = DB::selectOne(<<<'SQL'
+SELECT pg_get_constraintdef(oid) AS definition
+  FROM pg_constraint
+ WHERE conname = 'nations_karma_range_check'
+SQL);
+        $this->assertNotNull($karmaConstraint);
+        $this->assertStringContainsString('-30', (string) $karmaConstraint->definition);
         $this->assertSame(0, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
             ->whereNull('experience_per_damage')->count());
         app(CurrentCatalogInstaller::class)->assertInstalled(config('hakoniwa.ruleset'));

@@ -122,8 +122,15 @@ final class SecretaryItemPresentationTest extends TestCase
             ->assertJsonPath('data.inventory.items.0.effect_text', null)
             ->assertJsonPath('data.inventory.items.1.effect_text', null);
         $this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$v11World->id}")
-            ->assertUnprocessable()
-            ->assertJsonPath('code', 'secretary_equipment_invalid');
+            ->assertOk()
+            ->assertJsonPath('data.effect_context.world_id', $v11World->id)
+            ->assertJsonPath(
+                'data.inventory.items.0.effect_text',
+                '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
+            )->assertJsonPath(
+                'data.inventory.items.1.effect_text',
+                '資金繰りの際、追加で3億円を得る。',
+            );
         $this->actingAs($user)->getJson('/api/v1/me/secretary?world_id=999999')
             ->assertUnprocessable()
             ->assertJsonPath('code', 'secretary_equipment_invalid');

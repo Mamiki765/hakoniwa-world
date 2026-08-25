@@ -11,7 +11,10 @@ use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
+use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -75,6 +78,71 @@ class MonsterSystemTest extends TestCase
         }
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'monster.spawned')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
+    public function test_natural_spawn_applies_the_signed_item_genre_sum_without_changing_the_authored_pool(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('装備自然出現国');
+        $this->prepareSettlement($nation, 400_000);
+        $system = $ruleset->settings['monster_system']['natural_spawn'];
+        $land = app(NationLandAreaCalculator::class)->forNation($nation);
+        $probability = app(MonsterNaturalSpawnPolicy::class)->probabilityForLand($system, $land);
+        $itemNumerator = min(
+            $probability['denominator'],
+            intdiv($probability['numerator'] * 145, 100),
+        );
+        $seedLabel = null;
+        foreach (range(0, 100_000) as $candidate) {
+            $label = "item-natural-spawn-{$candidate}";
+            $draw = (new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
+                TurnRandomStreamFactory::monsterSpawn($nation->id, 'trigger', 1),
+            )->integer(0, $probability['denominator'] - 1);
+            if ($draw >= $probability['numerator'] && $draw < $itemNumerator) {
+                $seedLabel = $label;
+                break;
+            }
+        }
+        $this->assertNotNull($seedLabel);
+
+        [$withoutItems] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+        $this->assertSame(0, app(MonsterSpawnService::class)->spawnNatural($withoutItems, $space)['monsters_spawned']);
+
+        [$withItems] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+        $gameplay = app(SecretaryItemGameplayContract::class);
+        $withItems->state->setSecretaryItemEffectSnapshot($nation->id, 1, 1, [
+            [
+                'item_instance_id' => 1,
+                'item_key' => SecretaryItemCatalog::INORA_BRACELET,
+                'category' => 'accessory',
+                'level' => 5,
+                'equipped_slot' => 2,
+                'effects' => $gameplay->resolvedEffects(
+                    $ruleset->settings,
+                    SecretaryItemCatalog::INORA_BRACELET,
+                    5,
+                ),
+            ],
+            [
+                'item_instance_id' => 2,
+                'item_key' => SecretaryItemCatalog::MONSTER_REPELLENT_INCENSE,
+                'category' => 'accessory',
+                'level' => 5,
+                'equipped_slot' => 3,
+                'effects' => $gameplay->resolvedEffects(
+                    $ruleset->settings,
+                    SecretaryItemCatalog::MONSTER_REPELLENT_INCENSE,
+                    5,
+                ),
+            ],
+        ]);
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($withItems, $space);
+
+        $this->assertSame(1, $metrics['spawn_draws']);
+        $this->assertSame(1, $metrics['monsters_spawned']);
+        $spawned = MonsterInstance::query()->with('definition')->sole();
+        $pool = app(MonsterNaturalSpawnPolicy::class)->poolForPopulation($system, 400_000);
+        $this->assertContains($spawned->definition->key, $pool);
+        $this->assertNotSame('aoi_inora', $spawned->definition->key);
     }
 
     public function test_natural_spawn_supports_ten_definitions_without_adding_non_pool_species_or_changing_the_type_draw(): void

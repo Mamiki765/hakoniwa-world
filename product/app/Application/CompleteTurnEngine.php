@@ -96,7 +96,6 @@ final class CompleteTurnEngine
             throw new DomainException('The active ruleset does not implement the complete non-combat turn contract.');
         }
         $lifecycleMetrics = $this->nationLifecycle->prepare($context);
-        $karmaMetrics = $this->karma->prepare($context);
         $nationIds = $this->orders->stableNationIds($context->world);
         $context->state->setStableNationIds($nationIds);
         foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
@@ -107,6 +106,7 @@ final class CompleteTurnEngine
             $context,
             $context->state->lifecycleNationIds(),
         );
+        $karmaMetrics = $this->karma->prepare($context);
 
         $metrics = [
             'nations' => count($nationIds),

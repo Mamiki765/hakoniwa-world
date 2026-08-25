@@ -49,6 +49,40 @@ final class SecretaryItemGameplayContractTest extends TestCase
         );
     }
 
+    public function test_final_v16_reuses_novice_defaults_and_resolves_the_seven_new_item_effects(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
+        $contract = app(SecretaryItemGameplayContract::class);
+        $catalog = app(SecretaryItemCatalog::class);
+
+        $contract->validate($settings);
+        $this->assertSame(['accessory', 'bow', 'clothing'], array_keys($settings['secretary']['item_categories']));
+        $this->assertSame(99, $catalog->maximumEquipped('accessory'));
+        $this->assertSame(1, $catalog->maximumEquipped('clothing'));
+        $this->assertSame(1, $catalog->sameItemMaximum(SecretaryItemCatalog::RING));
+        $this->assertSame(1, $catalog->sameItemMaximum(SecretaryItemCatalog::VAULT_KEY));
+        $this->assertCount(9, $settings['secretary']['items']);
+        foreach ($settings['secretary']['items'] as $item) {
+            $this->assertArrayNotHasKey('same_item_max_equipped', $item);
+        }
+        $this->assertSame(
+            '秘書本人が経験値を得る際、10%の確率でその獲得経験値を2倍にする。',
+            $contract->effectText($settings, SecretaryItemCatalog::SECRETARY_SUIT, 10),
+        );
+        $this->assertSame(
+            '自島の通常怪獣自然出現率 +50%',
+            $contract->effectText($settings, SecretaryItemCatalog::INORA_BRACELET, 5),
+        );
+        $this->assertSame(
+            '食料aggregate最大値 +20%',
+            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 10),
+        );
+        $this->assertSame(
+            'secretary_item:secretary_suit:nation:7:monster_experience:v1',
+            TurnRandomStreamFactory::secretaryExperience(7, 'monster_experience', 1),
+        );
+    }
+
     #[DataProvider('invalidContracts')]
     public function test_invalid_or_open_ended_contracts_fail_closed(callable $mutate): void
     {

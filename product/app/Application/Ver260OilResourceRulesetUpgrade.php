@@ -23,7 +23,7 @@ final readonly class Ver260OilResourceRulesetUpgrade
 
     public const TARGET_VERSION = 16;
 
-    public const TARGET_CHECKSUM = '9b063ebb9d9b4c1a32c0b723089da7f4830159d9af43df1106d6a42feb6f28e5';
+    public const TARGET_CHECKSUM = '331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d';
 
     public const SOURCE_MIGRATION = '2026_08_24_010000_add_monster_experience_and_publish_v15';
 
@@ -114,12 +114,16 @@ final readonly class Ver260OilResourceRulesetUpgrade
             $existingResources = $this->resourceStateDigest('nation_resources');
             $existingPolicies = $this->resourceStateDigest('nation_resource_sale_policies');
             $auditHistory = $this->tableDigest('audit_events');
-            $secretaryItems = $this->tableDigest('secretary_item_instances');
+            $secretaryItems = $this->queryDigest(DB::table('secretary_item_instances')->select([
+                'id', 'secretary_id', 'item_key', 'level', 'is_escrowed', 'grant_key',
+                'obtained_at', 'created_at',
+            ]));
 
             $this->catalogs->install($targetSettings);
             $this->catalogs->assertInstalled($targetSettings);
             $target = $this->publisher->publish($targetSettings);
             $this->assertStableDefinitionKeys((int) $source->id, (int) $target->id);
+            $ringNormalization = $this->normalizeEquippedRings();
             $oil = ResourceDefinition::query()->where('key', self::RESOURCE_KEY)->sole();
             $nationCount = DB::table('nations')->count();
             if (DB::table('nation_resources')->where('resource_definition_id', $oil->id)->exists()
@@ -180,7 +184,12 @@ SQL, [$oil->id, $targetSettings['default_sale_policy'], $now, $now]);
                 'existing_sale_policies' => $existingPolicies
                     !== $this->resourceStateDigest('nation_resource_sale_policies'),
                 'audit_history' => $auditHistory !== $this->tableDigest('audit_events'),
-                'secretary_items' => $secretaryItems !== $this->tableDigest('secretary_item_instances'),
+                'secretary_item_identity' => $secretaryItems !== $this->queryDigest(
+                    DB::table('secretary_item_instances')->select([
+                        'id', 'secretary_id', 'item_key', 'level', 'is_escrowed', 'grant_key',
+                        'obtained_at', 'created_at',
+                    ]),
+                ),
                 'auction_listings' => DB::table('auction_listings')->exists(),
                 'auction_bids' => DB::table('auction_bids')->exists(),
             ]));
@@ -214,7 +223,9 @@ SQL, [$oil->id, $targetSettings['default_sale_policy'], $now, $now]);
                     'existing_sale_policies_preserved' => true,
                     'request_identity_preserved' => true,
                     'terminal_command_history_preserved' => true,
-                    'secretary_items_preserved' => true,
+                    'secretary_item_identity_preserved' => true,
+                    'ring_secretaries_normalized' => $ringNormalization['secretaries'],
+                    'ring_items_unequipped' => $ringNormalization['items'],
                     'trading_post_schema_initialized_empty' => true,
                 ], JSON_THROW_ON_ERROR),
                 'occurred_at' => $now,
@@ -334,6 +345,58 @@ SQL, [$worldId, $targetId, $worldId, $targetId, $worldId, $targetId, $oil->id, $
             || $invalidInitialPolicies !== 0) {
             throw new RuntimeException('Exact v16 activation postconditions failed.');
         }
+        if (DB::table('secretary_item_instances')
+            ->where('item_key', 'ring')
+            ->whereNotNull('equipped_slot')
+            ->select('secretary_id')
+            ->groupBy('secretary_id')
+            ->havingRaw('count(*) > 1')
+            ->exists()) {
+            throw new RuntimeException('Exact v16 activation left multiple Rings equipped for one Secretary.');
+        }
+    }
+
+    /** @return array{secretaries: int, items: int} */
+    private function normalizeEquippedRings(): array
+    {
+        $secretaryIds = DB::table('secretary_item_instances')
+            ->where('item_key', 'ring')
+            ->whereNotNull('equipped_slot')
+            ->select('secretary_id')
+            ->groupBy('secretary_id')
+            ->havingRaw('count(*) > 1')
+            ->orderBy('secretary_id')
+            ->pluck('secretary_id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+        $unequipped = 0;
+        $now = now();
+        foreach ($secretaryIds as $secretaryId) {
+            $rings = DB::table('secretary_item_instances')
+                ->where('secretary_id', $secretaryId)
+                ->where('item_key', 'ring')
+                ->whereNotNull('equipped_slot')
+                ->orderBy('equipped_slot')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id', 'equipped_slot']);
+            $removeIds = $rings->skip(1)->pluck('id')->all();
+            if ($removeIds === []) {
+                throw new RuntimeException('Ring normalization candidate no longer has duplicate equipped Rings.');
+            }
+            $changed = DB::table('secretary_item_instances')
+                ->whereIn('id', $removeIds)
+                ->whereNotNull('equipped_slot')
+                ->update(['equipped_slot' => null, 'updated_at' => $now]);
+            if ($changed !== count($removeIds)
+                || DB::table('secretaries')->where('id', $secretaryId)
+                    ->increment('equipment_version', 1, ['updated_at' => $now]) !== 1) {
+                throw new RuntimeException('Ring normalization did not update the exact expected equipment state.');
+            }
+            $unequipped += $changed;
+        }
+
+        return ['secretaries' => count($secretaryIds), 'items' => $unequipped];
     }
 
     private function assertTradingPostSourceState(): void

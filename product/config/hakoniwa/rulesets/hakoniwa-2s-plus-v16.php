@@ -2634,13 +2634,17 @@ return [
             ],
         ],
         'item_categories' => [
+            'accessory' => [
+                'key' => 'accessory',
+                'max_equipped' => 99,
+            ],
             'bow' => [
                 'key' => 'bow',
                 'max_equipped' => 1,
             ],
-            'ring' => [
-                'key' => 'ring',
-                'max_equipped' => 5,
+            'clothing' => [
+                'key' => 'clothing',
+                'max_equipped' => 1,
             ],
         ],
         'items' => [
@@ -2651,7 +2655,6 @@ return [
                 'tradable' => true,
                 'npc_tradable' => false,
                 'max_level' => 1,
-                'same_item_max_equipped' => 1,
                 'effects' => [
                     0 => [
                         'type' => 'pre_normal_monster_attack',
@@ -2670,17 +2673,134 @@ return [
             ],
             'ring' => [
                 'key' => 'ring',
-                'category' => 'ring',
+                'category' => 'accessory',
                 'rarity' => 'novice',
                 'tradable' => true,
                 'npc_tradable' => true,
                 'max_level' => 10,
-                'same_item_max_equipped' => 5,
                 'effects' => [
                     0 => [
                         'type' => 'finance_income_bonus',
                         'bonus_money_per_level' => 1,
                         'stacking' => 'sum_equipped_levels',
+                    ],
+                ],
+            ],
+            'secretary_suit' => [
+                'key' => 'secretary_suit',
+                'category' => 'clothing',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => true,
+                'max_level' => 10,
+                'effects' => [
+                    [
+                        'type' => 'secretary_experience_double_chance',
+                        'chance_percent_per_level' => 1,
+                        'multiplier' => 2,
+                        'sources' => ['passive_skill_experience', 'monster_experience'],
+                        'draw_unit' => 'canonical_award_event',
+                        'random_stream_version' => 1,
+                    ],
+                ],
+            ],
+            'inora_bracelet' => [
+                'key' => 'inora_bracelet',
+                'category' => 'accessory',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => true,
+                'max_level' => 10,
+                'effects' => [
+                    [
+                        'type' => 'natural_monster_spawn_percent',
+                        'source_genre' => 'item',
+                        'target' => 'normal_nation_natural_spawn',
+                        'percent_per_level' => 10,
+                        'minimum_final_probability' => 0,
+                    ],
+                ],
+            ],
+            'hoarder_talisman' => [
+                'key' => 'hoarder_talisman',
+                'category' => 'accessory',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => true,
+                'max_level' => 10,
+                'effects' => [
+                    [
+                        'type' => 'capacity_percent',
+                        'source_genre' => 'item',
+                        'target' => 'all_nation_resources',
+                        'percent_per_level' => 1,
+                        'rounding' => 'floor_after_all_source_genres',
+                    ],
+                ],
+            ],
+            'good_person_treasure' => [
+                'key' => 'good_person_treasure',
+                'category' => 'accessory',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => true,
+                'max_level' => 20,
+                'effects' => [
+                    [
+                        'type' => 'karma_minimum_delta',
+                        'lower_minimum_per_level' => 1,
+                        'snapshot_timing' => 'turn_start',
+                    ],
+                ],
+            ],
+            'vault_key' => [
+                'key' => 'vault_key',
+                'category' => 'accessory',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => true,
+                'max_level' => 10,
+                'effects' => [
+                    [
+                        'type' => 'capacity_percent',
+                        'source_genre' => 'item',
+                        'target' => 'money',
+                        'percent_per_level' => 1,
+                        'rounding' => 'floor_after_all_source_genres',
+                    ],
+                ],
+            ],
+            'monster_repellent_incense' => [
+                'key' => 'monster_repellent_incense',
+                'category' => 'accessory',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => true,
+                'max_level' => 10,
+                'effects' => [
+                    [
+                        'type' => 'natural_monster_spawn_percent',
+                        'source_genre' => 'item',
+                        'target' => 'normal_nation_natural_spawn',
+                        'percent_per_level' => -1,
+                        'minimum_final_probability' => 0,
+                    ],
+                ],
+            ],
+            'fullness_herb' => [
+                'key' => 'fullness_herb',
+                'category' => 'accessory',
+                'rarity' => 'novice',
+                'tradable' => true,
+                'npc_tradable' => true,
+                'max_level' => 10,
+                'effects' => [
+                    [
+                        'type' => 'capacity_percent',
+                        'source_genre' => 'item',
+                        'target' => 'food_aggregate',
+                        'percent_per_level' => 2,
+                        'rounding' => 'floor_after_all_source_genres',
                     ],
                 ],
             ],

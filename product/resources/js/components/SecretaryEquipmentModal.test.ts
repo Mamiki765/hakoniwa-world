@@ -21,13 +21,13 @@ const options: SecretaryEquipmentOptions = {
         },
         {
             id: 31, key: 'test_ring', name: '指輪', level: 3,
-            category: 'ring', category_label: '指輪', equipped_slot: null,
+            category: 'accessory', category_label: 'アクセサリー', equipped_slot: null,
             effect_text: '装備効果の説明',
         },
     ],
     category_limits: [
         { category: 'bow', label: '弓', maximum_equipped: 1 },
-        { category: 'ring', label: '指輪', maximum_equipped: 5 },
+        { category: 'clothing', label: '衣服', maximum_equipped: 1 },
     ],
 };
 

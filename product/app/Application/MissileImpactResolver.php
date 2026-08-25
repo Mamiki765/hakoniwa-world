@@ -67,6 +67,7 @@ final class MissileImpactResolver
         private readonly MonsterBehaviorResolver $monsterBehaviors,
         private readonly KarmaTurnService $karma,
         private readonly NationLifecycleService $nationLifecycle,
+        private readonly SecretaryExperienceAwardService $secretaryExperience,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -687,7 +688,8 @@ final class MissileImpactResolver
         if ($targetNationId === null || ! $context->state->hasSecretarySnapshot($targetNationId)) {
             return;
         }
-        $context->state->awardSecretaryExperience(
+        $this->secretaryExperience->awardSkill(
+            $context,
             $targetNationId,
             SecretarySkillCatalog::FINAL_DEFENSE_LINE,
         );

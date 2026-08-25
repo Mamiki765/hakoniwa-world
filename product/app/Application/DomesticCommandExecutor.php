@@ -63,6 +63,7 @@ final class DomesticCommandExecutor
         private readonly SecretaryItemGameplayContract $secretaryItems,
         private readonly SecretaryProductionBonus $secretaryProduction,
         private readonly SecretaryRingFinanceBonus $ringFinance,
+        private readonly SecretaryExperienceAwardService $secretaryExperience,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
         private readonly NationProtectionPolicy $nationProtection,
     ) {}
@@ -273,7 +274,7 @@ final class DomesticCommandExecutor
             default => null,
         };
         if ($skillKey !== null) {
-            $context->state->awardSecretaryExperience($nationId, $skillKey);
+            $this->secretaryExperience->awardSkill($context, $nationId, $skillKey);
         }
     }
 

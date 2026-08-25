@@ -556,7 +556,7 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
 
     }
 
-    public function test_exact_v15_to_v16_adds_zero_oil_without_changing_existing_resource_state(): void
+    public function test_exact_v15_to_v16_adds_zero_oil_and_normalizes_equipped_rings_without_deleting_items(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -576,17 +576,36 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
                 'version' => 2,
             ]);
         $v15 = $this->attachExactV15($world);
+        $secretary = $owner->secretary()->firstOrFail();
+        $firstRing = $secretary->itemInstances()->create([
+            'item_key' => 'ring',
+            'level' => 3,
+            'equipped_slot' => 2,
+            'grant_key' => 'test:v15:ring:slot-2',
+            'obtained_at' => now(),
+        ]);
+        $secondRing = $secretary->itemInstances()->create([
+            'item_key' => 'ring',
+            'level' => 4,
+            'equipped_slot' => 3,
+            'grant_key' => 'test:v15:ring:slot-3',
+            'obtained_at' => now(),
+        ]);
+        $beforeItemCount = $secretary->itemInstances()->count();
+        $beforeEquipmentVersion = (int) $secretary->equipment_version;
         $beforeBalances = $this->nonOilResourceState($nation->id, 'nation_resources', ['amount']);
         $beforePolicies = $this->nonOilResourceState(
             $nation->id,
             'nation_resource_sale_policies',
             ['policy', 'keep_amount', 'version'],
         );
-        $secretaryItem = $owner->secretary()->firstOrFail()->itemInstances()->sole();
-        $beforeItem = $secretaryItem->only([
-            'id', 'secretary_id', 'item_key', 'level', 'equipped_slot', 'grant_key',
-        ]);
-        $beforeObtainedAt = $secretaryItem->getRawOriginal('obtained_at');
+        $secretaryItems = $owner->secretary()->firstOrFail()->itemInstances()->orderBy('id')->get();
+        $beforeItems = $secretaryItems->map->only([
+            'id', 'secretary_id', 'item_key', 'level', 'grant_key', 'is_escrowed',
+        ])->all();
+        $beforeObtainedAt = $secretaryItems->map(
+            static fn (SecretaryItemInstance $item): string => $item->getRawOriginal('obtained_at'),
+        )->all();
         $this->removeOilCatalogState();
         DB::table('migrations')->where('migration', self::OIL_MIGRATION)->delete();
 
@@ -627,11 +646,17 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
             'nation_resource_sale_policies',
             ['policy', 'keep_amount', 'version'],
         ));
-        $this->assertSame($beforeItem, $secretaryItem->fresh()->only([
-            'id', 'secretary_id', 'item_key', 'level', 'equipped_slot', 'grant_key',
-        ]));
-        $this->assertSame($beforeObtainedAt, $secretaryItem->fresh()->getRawOriginal('obtained_at'));
-        $this->assertFalse($secretaryItem->fresh()->is_escrowed);
+        $afterItems = $secretary->itemInstances()->orderBy('id')->get();
+        $this->assertSame($beforeItems, $afterItems->map->only([
+            'id', 'secretary_id', 'item_key', 'level', 'grant_key', 'is_escrowed',
+        ])->all());
+        $this->assertSame($beforeObtainedAt, $afterItems->map(
+            static fn (SecretaryItemInstance $item): string => $item->getRawOriginal('obtained_at'),
+        )->all());
+        $this->assertSame(2, $firstRing->fresh()->equipped_slot);
+        $this->assertNull($secondRing->fresh()->equipped_slot);
+        $this->assertSame($beforeItemCount, $secretary->itemInstances()->count());
+        $this->assertSame($beforeEquipmentVersion + 1, (int) $secretary->fresh()->equipment_version);
         $this->assertSame(0, DB::table('auction_listings')->count());
         $this->assertSame(0, DB::table('auction_bids')->count());
         $this->assertDatabaseHas('audit_events', [
@@ -641,7 +666,9 @@ final class Ver240InstallUpgradeRebaselineTest extends TestCase
         ]);
         $activation = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'ruleset.v16_activated')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertTrue($activation['secretary_items_preserved']);
+        $this->assertTrue($activation['secretary_item_identity_preserved']);
+        $this->assertSame(1, $activation['ring_secretaries_normalized']);
+        $this->assertSame(1, $activation['ring_items_unequipped']);
         $this->assertTrue($activation['trading_post_schema_initialized_empty']);
         $run = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
