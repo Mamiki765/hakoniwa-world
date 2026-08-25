@@ -114,6 +114,10 @@ onMounted(load);
             </div>
             <p v-if="market" class="trading-post-balance">所持資金 {{ market.nation.money.toLocaleString('ja-JP') }}億円</p>
         </header>
+        <p class="trading-post-capacity-note">
+            最高入札中の預託資金は資金上限の使用量に含まれ、出品中の資源も保管容量に含まれます。
+            <a href="/manual/trading-post">交易場のルール</a>
+        </p>
         <p v-if="error" class="field-error" role="alert">{{ error }}</p>
         <p v-if="busy && market === null" role="status">交易場を読み込んでいます…</p>
 

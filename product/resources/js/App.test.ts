@@ -1053,6 +1053,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.trading-post-table').text()).toContain('指輪 Lv3（ノービス）');
         expect(wrapper.get('.trading-post-table').text()).toContain('箱庭連合');
         expect(wrapper.get('.trading-post-table').text()).toContain('残り6ターン');
+        expect(wrapper.get('.trading-post-capacity-note').text()).toContain('預託資金は資金上限の使用量に含まれ');
+        expect(wrapper.get('.trading-post-capacity-note').text()).toContain('出品中の資源も保管容量に含まれます');
+        expect(wrapper.get('.trading-post-capacity-note a').attributes('href')).toBe('/manual/trading-post');
         expect(wrapper.get('.trading-post-panel').text()).not.toContain('オークション');
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
