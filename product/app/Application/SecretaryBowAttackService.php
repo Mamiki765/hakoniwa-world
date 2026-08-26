@@ -177,6 +177,13 @@ final class SecretaryBowAttackService
             if ($result->blocked || ! in_array($result->status, ['damaged', 'killed'], true)) {
                 throw new DomainException('Secretary Bow authoritative damage did not match its safe current target.');
             }
+            if ($result->killed) {
+                $occupancies = $occupancies->reject(
+                    static fn (MonsterOccupancy $occupancy): bool => $occupancy->monster_instance_id === $target->monster_instance_id,
+                )->values();
+            } else {
+                $target->monster->current_hp = $result->afterHp;
+            }
             $metrics['secretary_bow_hits']++;
             $metrics['secretary_bow_kills'] += $result->killed ? 1 : 0;
             $metrics['secretary_mechanical_bow_finishers'] += $candidate['finisher'] ? 1 : 0;

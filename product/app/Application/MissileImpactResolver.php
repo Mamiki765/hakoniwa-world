@@ -7,6 +7,7 @@ use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryItemProbability;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -71,6 +72,7 @@ final class MissileImpactResolver
         private readonly NationLifecycleService $nationLifecycle,
         private readonly SecretaryExperienceAwardService $secretaryExperience,
         private readonly SecretaryItemProbability $itemProbability,
+        private readonly SecretaryDemographicPolicy $demographics,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -1258,6 +1260,18 @@ final class MissileImpactResolver
             'generated_population' => $generated,
         ], 'public');
         $settlementKeys = $context->ruleset->settings['military']['refugees']['settlement_facility_keys'] ?? [];
+        $attractionMaximum = $context->ruleset->settings['turn_processing']['settlement']['attraction_maximum_population'];
+        if ($this->demographics->enabled($context->ruleset->settings)
+            && $context->state->hasSecretarySnapshot($recipient->id)) {
+            $attractionMaximum = $this->demographics->attractionMaximum(
+                $context->ruleset->settings,
+                $attractionMaximum,
+                $context->state->secretarySkillLevel(
+                    $recipient->id,
+                    SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+                ),
+            );
+        }
         $cells = MapCell::query()->where('owner_nation_id', $recipient->id)
             ->whereHas('facility', fn ($query) => $query->whereIn('key', $settlementKeys))
             ->with(['terrain', 'facility'])->orderBy('id')->lockForUpdate()->get()
@@ -1266,7 +1280,7 @@ final class MissileImpactResolver
         foreach ($cells as $cell) {
             $maximum = $cell->facility?->key === 'capital'
                 ? $context->ruleset->settings['capital_growth_maximum_population']
-                : $context->ruleset->settings['turn_processing']['settlement']['attraction_maximum_population'];
+                : $attractionMaximum;
             $applied = min($remaining, max(0, $maximum - $cell->population));
             if ($applied < 1) {
                 continue;

@@ -2607,6 +2607,87 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'karma.refugee_bonus')->count());
     }
 
+    public function test_refugees_use_the_turn_start_birthrate_skill_attraction_capacity_without_raising_capital_capacity(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('birthrate-refugee');
+        $firing->update(['karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $firingUser->secretary()->sole()->skills()
+            ->where('skill_key', SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY)
+            ->update(['level' => 10, 'experience' => 0]);
+        $rules = $world->rulesetVersion()->sole()->settings['turn_processing']['settlement'];
+        $baseMaximum = $rules['attraction_maximum_population'];
+        $effectiveMaximum = $baseMaximum + 1_000;
+        $firingCapitalId = $firing->capital()->value('map_cell_id');
+        $receivingCell = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereKeyNot($firingCapitalId)->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $receivingCell,
+            FacilityDefinition::query()->where('key', 'city')->firstOrFail(),
+        );
+        $receivingCell->population = $baseMaximum;
+        $receivingCell->version++;
+        $receivingCell->save();
+        $settlementKeys = $world->rulesetVersion()->sole()->settings['military']['refugees']['settlement_facility_keys'];
+        MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereKeyNot($receivingCell->id)
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', $settlementKeys))
+            ->get()->each(function (MapCell $cell) use ($firingCapitalId, $effectiveMaximum, $world): void {
+                $cell->population = $cell->id === $firingCapitalId
+                    ? $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population']
+                    : $effectiveMaximum;
+                $cell->version++;
+                $cell->save();
+            });
+        $targetCapital = $target->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $targetCapital->update(['population' => 25_000]);
+        $base = $this->missileBase($firing);
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing->fresh(),
+            $this->surfaceMapSpace($world),
+            'spp_missile',
+            $targetCapital->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $nationIds = [$firing->id, $target->id];
+        $context = $this->context($world, 2, str_repeat('7', 64), $nationIds);
+        $context->state->setLifecycleNationIds($nationIds);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
+        $firingUser->secretary()->sole()->skills()
+            ->where('skill_key', SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY)
+            ->update(['level' => 0]);
+        app(DomesticCommandExecutor::class)->execute($context);
+        $karma->snapshotMissileBoundary($context);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+
+        $metrics = $resolver->processBase(
+            $context,
+            $this->surfaceMapSpace($world),
+            $base->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $resolver->finalize($context);
+
+        $this->assertSame(1, $metrics['shots_fired']);
+        $received = DB::table('audit_events')->where('event_type', 'refugee_received')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->sole();
+        $metadata = json_decode((string) $received->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1_250, $metadata['generated_population']);
+        $this->assertSame(1_000, $metadata['received_population']);
+        $this->assertSame(250, $metadata['unreceived_population']);
+        $this->assertSame($effectiveMaximum, $receivingCell->fresh()->population);
+        $this->assertSame(
+            $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population'],
+            (int) MapCell::query()->whereKey($firingCapitalId)->value('population'),
+        );
+    }
+
     public function test_collar_doubles_only_positive_settlement_crime_on_one_versioned_impact_draw_without_public_leak(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants('crime-double');

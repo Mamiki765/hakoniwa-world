@@ -834,6 +834,57 @@ final class SecretaryItemEffectsTest extends TestCase
             ->where('nation_id', $mechanicalNation->id)->count());
     }
 
+    public function test_later_bow_skips_an_aoi_killed_by_an_earlier_nation_in_the_same_pass(): void
+    {
+        $world = $this->lightweightWorld();
+        [, $ownerNation] = $this->nation($world, '先行弓国');
+        [$longshotUser, $longshotNation] = $this->nation($world, '後続遠当て国');
+        $ruleset = $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+        $this->equipBow($longshotUser, SecretaryItemCatalog::LONGSHOT_BOW, 10);
+        $aoi = $this->monster(
+            $world,
+            $ruleset,
+            $this->ownedNonCapitalCell($ownerNation),
+            1,
+            'aoi_inora',
+        );
+        $seed = null;
+        foreach (range(0, 10_000) as $candidate) {
+            $attempt = hash('sha256', "shared-aoi-bow-{$candidate}");
+            $random = new TurnRandomStreamFactory($attempt);
+            if ($random->stream(TurnRandomStreamFactory::secretaryOldBow($ownerNation->id, 'trigger', 1))
+                ->integer(0, 9_999) < 1_000
+                && $random->stream(TurnRandomStreamFactory::secretaryBow(
+                    $longshotNation->id,
+                    SecretaryItemCatalog::LONGSHOT_BOW,
+                    'trigger',
+                    1,
+                ))->integer(0, 9_999) < 2_100) {
+                $seed = $attempt;
+                break;
+            }
+        }
+        if ($seed === null) {
+            throw new RuntimeException('No deterministic shared Aoi Bow trigger seed was found.');
+        }
+        $context = $this->context($world, $seed, [$ownerNation->id, $longshotNation->id]);
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
+
+        $metrics = app(SecretaryBowAttackService::class)->execute(
+            $context,
+            $this->surfaceMapSpace($world),
+            true,
+        );
+
+        $this->assertSame(2, $metrics['secretary_bow_eligible_nations']);
+        $this->assertSame(1, $metrics['secretary_bow_attempts']);
+        $this->assertSame(1, $metrics['secretary_bow_hits']);
+        $this->assertSame(1, $metrics['secretary_bow_kills']);
+        $this->assertSame('killed', $aoi->fresh()->state);
+        $this->assertFalse(MonsterOccupancy::query()->where('monster_instance_id', $aoi->id)->exists());
+    }
+
     public function test_inventory_full_foreign_host_drop_stops_before_identity_draw_without_reroute_or_leak(): void
     {
         $world = $this->lightweightWorld();
