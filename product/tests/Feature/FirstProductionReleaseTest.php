@@ -284,6 +284,14 @@ final class FirstProductionReleaseTest extends TestCase
             '.secretary-warehouse .item-flavor { color: var(--muted); font-style: italic;',
             $css,
         );
+        $this->assertStringContainsString(
+            '.hud-more-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr);',
+            $css,
+        );
+        $this->assertMatchesRegularExpression(
+            '/@media \(max-width: 820px\)\s*\{.*\.hud-more-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/s',
+            $css,
+        );
         $manualCss = file_get_contents(resource_path('css/manual.css'));
         $this->assertIsString($manualCss);
         $this->assertStringContainsString('html[data-theme="dark"]', $manualCss);

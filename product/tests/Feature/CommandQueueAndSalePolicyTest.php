@@ -2126,15 +2126,26 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertOk()->assertJsonCount(6, 'data');
         $wheatPolicy = collect($policies->json('data'))->firstWhere('resource_key', 'wheat');
         $oilPolicy = collect($policies->json('data'))->firstWhere('resource_key', 'oil');
+        $this->assertSame([
+            'wheat' => 'トン',
+            'fish' => 'トン',
+            'monster_meat' => 'トン',
+            'industrial_goods' => 'ユニット',
+            'minerals' => 'トン',
+            'oil' => '万バレル',
+        ], collect($policies->json('data'))->pluck('unit_label', 'resource_key')->all());
         $this->assertSame('stockpile', $wheatPolicy['policy']);
+        $this->assertSame('トン', $wheatPolicy['unit_label']);
         $this->assertNotContains('sell_all', $wheatPolicy['allowed_policies']);
         $this->assertSame('stockpile', $oilPolicy['policy']);
+        $this->assertSame('万バレル', $oilPolicy['unit_label']);
         $this->assertContains('sell_all', $oilPolicy['allowed_policies']);
         $this->putJson("/api/v1/nations/{$nation->id}/resources/{$wheat->id}/sale-policy", [
             'policy' => 'sell_all', 'keep_amount' => null, 'expected_version' => 1,
         ])->assertUnprocessable();
         $this->putJson($path, ['policy' => 'sell_all', 'keep_amount' => null, 'expected_version' => 1])
-            ->assertOk()->assertJsonPath('data.policy', 'sell_all')->assertJsonPath('data.version', 2);
+            ->assertOk()->assertJsonPath('data.policy', 'sell_all')
+            ->assertJsonPath('data.unit_label', 'ユニット')->assertJsonPath('data.version', 2);
         $this->putJson($path, ['policy' => 'keep_amount', 'keep_amount' => 25, 'expected_version' => 2])
             ->assertOk()->assertJsonPath('data.keep_amount', 25)->assertJsonPath('data.version', 3);
         $this->putJson($path, ['policy' => 'stockpile', 'keep_amount' => null, 'expected_version' => 2])->assertConflict();

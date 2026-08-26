@@ -127,39 +127,53 @@ class PlayerIslandEventApiTest extends TestCase
     {
         [$world, , $first] = $this->nation('第一島');
         [, , $second] = $this->nation('第二島', $world);
-        $world->update(['current_turn' => 5]);
+        $world->update(['current_turn' => 25]);
         DB::table('audit_events')->delete();
 
-        $this->publicFacility($first, 5, 1, 2, 'farm');
-        $this->publicFacility($second, 4, 3, 4, 'factory');
-        $this->publicFacility($first, 3, 5, 6, 'mine');
+        $this->publicFacility($first, 25, 1, 2, 'farm');
+        $this->publicFacility($second, 24, 3, 4, 'factory');
+        $this->publicFacility($first, 23, 5, 6, 'mine');
+        $this->publicFacility($first, 13, 7, 8, 'farm');
 
         $firstPage = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()
             ->assertJsonPath('data.turns_per_page', 2)
-            ->assertJsonPath('data.turn_range.start', 4)
-            ->assertJsonPath('data.turn_range.end', 5)
+            ->assertJsonPath('data.turn_range.start', 24)
+            ->assertJsonPath('data.turn_range.end', 25)
             ->assertJsonPath('data.has_older_page', true);
-        $this->assertSame([5, 4], $this->turns($firstPage->json('data.groups')));
+        $this->assertSame([25, 24], $this->turns($firstPage->json('data.groups')));
 
-        $secondPage = $this->getJson("/api/v1/public/worlds/{$world->id}/events?page=2&anchor_turn=5")
+        $secondPage = $this->getJson("/api/v1/public/worlds/{$world->id}/events?page=2&anchor_turn=25")
             ->assertOk()
-            ->assertJsonPath('data.turn_range.start', 2)
-            ->assertJsonPath('data.turn_range.end', 3);
-        $this->assertSame([3], $this->turns($secondPage->json('data.groups')));
+            ->assertJsonPath('data.turn_range.start', 22)
+            ->assertJsonPath('data.turn_range.end', 23);
+        $this->assertSame([23], $this->turns($secondPage->json('data.groups')));
 
         $islandPage = $this->getJson("/api/v1/public/nations/{$first->id}/events")
             ->assertOk()
-            ->assertJsonPath('data.turns_per_page', 24);
+            ->assertJsonPath('data.turns_per_page', 12)
+            ->assertJsonPath('data.turn_range.start', 14)
+            ->assertJsonPath('data.turn_range.end', 25)
+            ->assertJsonPath('data.has_older_page', true);
         $body = (string) $islandPage->getContent();
         $messages = $this->messages($islandPage->json('data.groups'));
         $this->assertContains('第一島(1,2)で農場整備が行われました。', $messages);
         $this->assertContains('第一島(5,6)で採掘場整備が行われました。', $messages);
+        $this->assertNotContains('第一島(7,8)で農場整備が行われました。', $messages);
         $this->assertFalse(collect($messages)->contains(
             static fn (string $message): bool => str_contains($message, '第二島'),
         ));
         $this->assertStringNotContainsString('occurred_at', $body);
         $this->assertStringNotContainsString('coordinate', $body);
+
+        $olderIslandPage = $this->getJson("/api/v1/public/nations/{$first->id}/events?page=2&anchor_turn=25")
+            ->assertOk()
+            ->assertJsonPath('data.turn_range.start', 2)
+            ->assertJsonPath('data.turn_range.end', 13);
+        $this->assertContains(
+            '第一島(7,8)で農場整備が行われました。',
+            $this->messages($olderIslandPage->json('data.groups')),
+        );
     }
 
     public function test_monster_damage_uses_historical_host_metadata_and_missing_host_events_fail_closed(): void
@@ -319,17 +333,18 @@ class PlayerIslandEventApiTest extends TestCase
     {
         [$world, $owner, $nation] = $this->nation('所有島');
         [, $otherOwner, $other] = $this->nation('他島', $world);
-        $world->update(['current_turn' => 2]);
+        $world->update(['current_turn' => 25]);
         DB::table('audit_events')->delete();
 
-        $finance = $this->audit('command.finance', $nation, $nation, 'nation', 2, ['applied' => 50]);
-        $ownPublic = $this->publicFacility($nation, 2, 6, 7, 'farm');
-        $this->audit('command.finance', $other, $other, 'nation', 2, ['applied' => 99_999]);
-        $this->publicFacility($other, 2, 8, 8, 'farm');
-        $this->audit('message_board.secret_sent', $nation, $nation, 'private', 2, [
+        $finance = $this->audit('command.finance', $nation, $nation, 'nation', 25, ['applied' => 50]);
+        $ownPublic = $this->publicFacility($nation, 25, 6, 7, 'farm');
+        $olderOwnPublic = $this->publicFacility($nation, 13, 4, 5, 'mine');
+        $this->audit('command.finance', $other, $other, 'nation', 25, ['applied' => 99_999]);
+        $this->publicFacility($other, 25, 8, 8, 'farm');
+        $this->audit('message_board.secret_sent', $nation, $nation, 'private', 25, [
             'body' => '秘密通信本文', 'money_before' => 9999,
         ]);
-        $this->audit('message_board.secret_sent', $nation, $nation, 'public', 2, [
+        $this->audit('message_board.secret_sent', $nation, $nation, 'public', 25, [
             'body' => '誤分類されても非表示', 'money_before' => 8888,
         ]);
 
@@ -337,6 +352,10 @@ class PlayerIslandEventApiTest extends TestCase
         $this->actingAs($otherOwner)->getJson("/api/v1/nations/{$nation->id}/events")->assertForbidden();
         $response = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")
             ->assertOk()
+            ->assertJsonPath('data.turns_per_page', 12)
+            ->assertJsonPath('data.turn_range.start', 14)
+            ->assertJsonPath('data.turn_range.end', 25)
+            ->assertJsonPath('data.has_older_page', true)
             ->assertJsonPath('data.groups.0.events.0.id', $ownPublic)
             ->assertJsonPath('data.groups.0.events.0.confidential', false);
 
@@ -345,9 +364,17 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertTrue(collect($response->json('data.groups.0.events'))->contains(
             static fn (array $event): bool => $event['id'] === $finance,
         ));
+        $this->assertStringNotContainsString('(4,5)', $body);
         foreach (['99,999', '(8,8)', 'message_board.secret_sent', '秘密通信本文', '誤分類されても非表示', 'money_before'] as $hidden) {
             $this->assertStringNotContainsString($hidden, $body);
         }
+
+        $olderPage = $this->actingAs($owner)
+            ->getJson("/api/v1/nations/{$nation->id}/events?page=2&anchor_turn=25")
+            ->assertOk()
+            ->assertJsonPath('data.turn_range.start', 2)
+            ->assertJsonPath('data.turn_range.end', 13);
+        $this->assertSame($olderOwnPublic, $olderPage->json('data.groups.0.events.0.id'));
     }
 
     public function test_legacy_public_monster_reward_remains_visible_only_to_related_owners(): void

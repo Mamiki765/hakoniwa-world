@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
 use App\Application\MapChunkService;
+use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\SeaAreaNameResolver;
 use App\Models\FacilityDefinition;
@@ -89,6 +90,20 @@ class ApiAndAssetTest extends TestCase
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $mapSpace = MapSpace::query()->firstOrFail();
+        $rulesetSettings = $world->rulesetVersion()->firstOrFail()->settings;
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        app(NationEconomyCalculator::class)->calculate(
+            $rulesetSettings,
+            'active',
+            10,
+            5,
+            [['cell_id' => 1, 'key' => 'factory', 'capacity' => 5]],
+            1,
+        );
+        $calculatorQueries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $this->assertSame([], $calculatorQueries, 'The shared economy calculator must not query persistent state.');
         DB::statement("SELECT setval(pg_get_serial_sequence('nations', 'id'), 18, false)");
 
         $this->actingAs($user)->getJson("/api/v1/worlds/{$world->id}/map-spaces")
@@ -161,11 +176,78 @@ class ApiAndAssetTest extends TestCase
             app(MapCellStateService::class)->setFacility($cell, $facility, $facility->initial_scale);
             $cell->save();
         }
-        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
+        $nationModel = Nation::query()->findOrFail($nation['id']);
+        MapCell::query()->where('owner_nation_id', $nationModel->id)->update(['population' => 0]);
+        $nationModel->capital()->firstOrFail()->cell()->update(['population' => 25_000]);
+        $secretaryId = (int) DB::table('secretaries')->where('user_id', $user->id)->value('id');
+        foreach (['agricultural_policy' => 10, 'specialty_development' => 20, 'gold_vein_survey' => 30] as $skillKey => $level) {
+            DB::table('secretary_skills')->where('secretary_id', $secretaryId)
+                ->where('skill_key', $skillKey)->update(['level' => $level]);
+        }
+        foreach (['wheat' => 100, 'fish' => 200, 'monster_meat' => 300, 'oil' => 123] as $resourceKey => $amount) {
+            NationResource::query()->where('nation_id', $nationModel->id)
+                ->whereHas('definition', fn ($query) => $query->where('key', $resourceKey))
+                ->update(['amount' => $amount]);
+        }
+        $oilCell = MapCell::query()->where('owner_nation_id', $nationModel->id)
+            ->whereNull('facility_definition_id')->firstOrFail()->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->transitionTerrain(
+            $oilCell,
+            TerrainDefinition::query()->where('key', 'sea')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $oilCell,
+            FacilityDefinition::query()->where('key', 'seabed_oil_field')->firstOrFail(),
+        );
+        $oilCell->save();
+
+        $forecast = $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
             ->assertJsonPath('data.id', $nation['id'])
             ->assertJsonPath('data.farm_capacity_people', 10_000)
             ->assertJsonPath('data.factory_capacity_people', 30_000)
-            ->assertJsonPath('data.mine_capacity_people', 5_000);
+            ->assertJsonPath('data.mine_capacity_people', 5_000)
+            ->assertJsonPath('data.resource_forecast.rows.0.key', 'food')
+            ->assertJsonPath('data.resource_forecast.rows.0.production', 10_100)
+            ->assertJsonPath('data.resource_forecast.rows.0.consumption', 5_000)
+            ->assertJsonPath('data.resource_forecast.rows.0.delta', 5_100)
+            ->assertJsonPath('data.resource_forecast.rows.0.holding', 900)
+            ->assertJsonPath('data.resource_forecast.rows.1.production', 13_114)
+            ->assertJsonPath('data.resource_forecast.rows.1.consumption', 0)
+            ->assertJsonPath('data.resource_forecast.rows.2.production', 2_207)
+            ->assertJsonPath('data.resource_forecast.rows.3.production', 500)
+            ->assertJsonPath('data.resource_forecast.rows.3.holding', 123)
+            ->assertJsonPath('data.resource_forecast.food_holding_note', '食料の所持は小麦換算です。')
+            ->assertJsonPath('data.resource_forecast.workforce.status', 'saturation')
+            ->assertJsonPath('data.resource_forecast.workforce.percentage_tenths', 444);
+        $this->assertSame(
+            ['food', 'industrial_goods', 'minerals', 'oil'],
+            collect($forecast->json('data.resource_forecast.rows'))->pluck('key')->all(),
+        );
+
+        foreach ([1, 2] as $index) {
+            $cell = $scaleCells[$index]->fresh(['facility']);
+            app(MapCellStateService::class)->setFacility($cell, null);
+            $cell->save();
+        }
+        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
+            ->assertJsonPath('data.resource_forecast.workforce.status', 'unemployment')
+            ->assertJsonPath('data.resource_forecast.workforce.percentage_tenths', 600);
+        MapCell::query()->where('owner_nation_id', $nationModel->id)->update(['population' => 0]);
+        $nationModel->capital()->firstOrFail()->cell()->update(['population' => 10_000]);
+        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
+            ->assertJsonPath('data.resource_forecast.workforce.status', 'saturation')
+            ->assertJsonPath('data.resource_forecast.workforce.percentage_tenths', 0);
+        foreach (['factory', 'mine'] as $index => $facilityKey) {
+            $cell = $scaleCells[$index + 1]->fresh(['facility']);
+            $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
+            app(MapCellStateService::class)->setFacility($cell, $facility, $facility->initial_scale);
+            $cell->save();
+        }
+        foreach (['wheat' => 10_000, 'fish' => 0, 'monster_meat' => 0, 'oil' => 0] as $resourceKey => $amount) {
+            NationResource::query()->where('nation_id', $nationModel->id)
+                ->whereHas('definition', fn ($query) => $query->where('key', $resourceKey))
+                ->update(['amount' => $amount]);
+        }
         $ownedCell = MapCell::query()->where('owner_nation_id', $nation['id'])->firstOrFail();
         $ownedChunk = $this->actingAs($user)->getJson(
             "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$ownedCell->chunk_x}/{$ownedCell->chunk_y}",
@@ -208,6 +290,7 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.food_total_tons', 10_250)
             ->assertJsonPath('data.food_resources.3.key', 'seaweed')
             ->assertJsonPath('data.food_resources.3.balance', 250)
+            ->assertJsonPath('data.resource_forecast.rows.0.holding', 12_250)
             ->json('data');
 
         $other = User::factory()->create();
@@ -223,6 +306,7 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonMissingPath('data.money')
             ->assertJsonMissingPath('data.money_capacity')
             ->assertJsonMissingPath('data.food_capacity_tons')
+            ->assertJsonMissingPath('data.resource_forecast')
             ->assertJsonMissingPath('data.food_resources')
             ->assertJsonMissingPath('data.resources');
         $publicRanking = $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")

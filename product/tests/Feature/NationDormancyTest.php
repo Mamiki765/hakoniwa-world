@@ -114,6 +114,10 @@ final class NationDormancyTest extends TestCase
         $moneyBefore = (int) $nation->fresh()->money;
         $idleBefore = (int) $nation->fresh()->idle_counter;
         $world->update(['current_turn' => 12]);
+        $notDueForecast = $this->actingAs($owner)->getJson('/api/v1/me/nation')
+            ->assertOk()->json('data.resource_forecast.rows.0');
+        $this->assertSame(0, $notDueForecast['production']);
+        $this->assertSame(0, $notDueForecast['consumption']);
 
         $skipped = app(TurnRunner::class)->run($world->fresh());
 
@@ -124,6 +128,10 @@ final class NationDormancyTest extends TestCase
         $this->assertSame('forest', $target->fresh()->terrain()->value('key'));
         $this->assertSame($moneyBefore + 10, (int) $nation->fresh()->money);
         $this->assertSame($idleBefore + 1, (int) $nation->fresh()->idle_counter);
+        $dueForecast = $this->actingAs($owner)->getJson('/api/v1/me/nation')
+            ->assertOk()->json('data.resource_forecast.rows.0');
+        $this->assertGreaterThan(0, $dueForecast['production']);
+        $this->assertGreaterThan(0, $dueForecast['consumption']);
 
         $resumed = app(TurnRunner::class)->run($world->fresh());
 
@@ -144,6 +152,31 @@ final class NationDormancyTest extends TestCase
         $this->assertContains($resumeMessage, $this->messages($publicLog->json('data.groups')));
         $ownerLog = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
         $this->assertContains($resumeMessage, $this->messages($ownerLog->json('data.groups')));
+
+        $queuedTarget = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
+            ->firstOrFail();
+        app(CommandQueueService::class)->add(
+            user: $owner,
+            nation: $nation->fresh(),
+            mapSpace: $this->surfaceMapSpace($world),
+            commandKey: 'land_clear',
+            targetX: $queuedTarget->x,
+            targetY: $queuedTarget->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) ($nation->commandQueue()->value('version') ?? 1),
+        );
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 14,
+            'resume_at_turn' => null,
+        ]);
+        $queuedResumeForecast = $this->actingAs($owner)->getJson('/api/v1/me/nation')
+            ->assertOk()->json('data.resource_forecast.rows.0');
+        $this->assertGreaterThan(0, $queuedResumeForecast['production']);
+        $this->assertGreaterThan(0, $queuedResumeForecast['consumption']);
     }
 
     public function test_recovery_exposes_exact_remaining_turns_and_exits_only_on_t_plus_85(): void
@@ -219,6 +252,10 @@ final class NationDormancyTest extends TestCase
             requestKey: (string) Str::uuid(),
             expectedVersion: 1,
         )['item'];
+        $idleRecoveryForecast = $this->actingAs($idleOwner)->getJson('/api/v1/me/nation')
+            ->assertOk()->json('data.resource_forecast.rows.0');
+        $this->assertSame(0, $idleRecoveryForecast['production']);
+        $this->assertSame(0, $idleRecoveryForecast['consumption']);
 
         $firstUnprotectedTurn = app(TurnRunner::class)->run($world->fresh());
 

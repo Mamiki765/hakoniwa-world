@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Nation\NationLifecyclePrepareStateResolver;
 use App\Domain\Turn\TurnContext;
 use App\Models\AuctionListing;
 use App\Models\FacilityDefinition;
@@ -32,6 +33,7 @@ final class NationLifecycleService
         private readonly MapCellStateService $cellStates,
         private readonly TurnEventRecorder $events,
         private readonly MonsterRemovalService $monsterRemoval,
+        private readonly NationLifecyclePrepareStateResolver $prepareState,
     ) {}
 
     /** @return array{participants: int, active: int, dormant: int, recovery: int, resumed: int, recovery_resumed: int} */
@@ -48,9 +50,15 @@ final class NationLifecycleService
                     continue;
                 }
                 $hasMeaningfulQueue = $this->hasQueuedNonFinanceCommand($nation, $settings['finance_command_key']);
-                $nextState = ! $hasMeaningfulQueue && $nation->idle_counter >= $settings['dormant_idle_threshold']
-                    ? 'dormant'
-                    : 'active';
+                $nextState = $this->prepareState->resolve(
+                    $nation->state,
+                    $nation->state_reason,
+                    $nation->resume_at_turn,
+                    (int) $nation->idle_counter,
+                    $context->targetTurn,
+                    $hasMeaningfulQueue,
+                    (int) $settings['dormant_idle_threshold'],
+                );
                 $this->exitRecovery($context, $nation, $nextState, [
                     'meaningful_non_finance_queue' => $hasMeaningfulQueue,
                     'idle_counter' => (int) $nation->idle_counter,
@@ -62,14 +70,21 @@ final class NationLifecycleService
             if ($nation->state !== 'dormant') {
                 continue;
             }
-            $manualDue = $nation->state_reason === 'manual'
-                && is_int($nation->resume_at_turn)
-                && $context->targetTurn >= $nation->resume_at_turn;
-            $queuedResume = $nation->state_reason !== 'manual'
+            $hasMeaningfulQueue = $nation->state_reason !== 'manual'
                 && $this->hasQueuedNonFinanceCommand($nation, $settings['finance_command_key']);
-            if (! $manualDue && ! $queuedResume) {
+            $nextState = $this->prepareState->resolve(
+                $nation->state,
+                $nation->state_reason,
+                $nation->resume_at_turn,
+                (int) $nation->idle_counter,
+                $context->targetTurn,
+                $hasMeaningfulQueue,
+                (int) $settings['dormant_idle_threshold'],
+            );
+            if ($nextState !== 'active') {
                 continue;
             }
+            $manualDue = $nation->state_reason === 'manual';
             $reason = $manualDue ? 'manual_period_complete' : 'queued_non_finance_command';
             $beforeReason = $nation->state_reason;
             $nation->state = 'active';

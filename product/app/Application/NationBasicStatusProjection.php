@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Map\NationLandAreaCalculator;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\NationResource;
@@ -37,14 +38,39 @@ final class NationBasicStatusProjection
      */
     public function forNation(Nation $nation): array
     {
-        $cells = $nation->territoryCells()->with('facility')->get();
         $foodTotals = $this->foodTotals([$nation->id]);
+        $status = [
+            'total_population' => (int) $nation->territoryCells()->sum('population'),
+            'territory_cell_count' => $nation->territoryCells()->count(),
+            'owned_land_cells' => $this->landArea->forNation($nation),
+            'food_total_tons' => $foodTotals[$nation->id] ?? 0,
+            'farm_capacity_people' => 0,
+            'factory_capacity_people' => 0,
+            'mine_capacity_people' => 0,
+        ];
+        $definitions = FacilityDefinition::query()
+            ->whereIn('key', array_keys(self::FACILITY_STATUS_FIELDS))
+            ->get()
+            ->keyBy('id');
+        $groups = MapCell::query()
+            ->selectRaw('facility_definition_id, facility_scale, COUNT(*) AS aggregate')
+            ->where('owner_nation_id', $nation->id)
+            ->whereIn('facility_definition_id', $definitions->modelKeys())
+            ->groupBy('facility_definition_id', 'facility_scale')
+            ->get();
+        foreach ($groups as $group) {
+            $definition = $definitions->get((int) $group->facility_definition_id);
+            if (! $definition instanceof FacilityDefinition || $group->facility_scale === null) {
+                throw new \DomainException('Facility has incomplete workforce capacity state.');
+            }
+            $field = self::FACILITY_STATUS_FIELDS[$definition->key];
+            $status[$field] += $this->facilityCapacities->capacityPeople(
+                $definition,
+                (int) $group->facility_scale,
+            ) * (int) $group->getRawOriginal('aggregate');
+        }
 
-        return $this->project(
-            $cells,
-            $this->landArea->forNation($nation),
-            $foodTotals[$nation->id] ?? 0,
-        );
+        return $status;
     }
 
     /**

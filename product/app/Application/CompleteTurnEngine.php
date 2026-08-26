@@ -5,7 +5,9 @@ namespace App\Application;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\InventorySalePlanner;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Economy\SalePolicy;
+use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
@@ -53,6 +55,8 @@ final class CompleteTurnEngine
         private readonly FoodOverflowResolver $foodOverflow,
         private readonly InventorySalePlanner $salePlanner,
         private readonly NationCapacityResolver $capacities,
+        private readonly NationEconomyCalculator $economyCalculator,
+        private readonly FacilityCapacityService $facilityCapacities,
         private readonly MapCellStateService $cells,
         private readonly NationLandAreaCalculator $landArea,
         private readonly TurnEventRecorder $events,
@@ -166,7 +170,6 @@ final class CompleteTurnEngine
             'food_overflow_sold' => 0, 'food_overflow_revenue' => 0,
             'food_overflow_discarded' => 0,
         ];
-        $workforceRules = $context->ruleset->settings['turn_processing']['workforce'];
         $foodRules = $context->ruleset->settings['turn_processing']['food'];
         $productionOverflowStage = $foodRules['production_overflow_resolution_stage'] ?? null;
         if ($productionOverflowStage !== null
@@ -181,16 +184,33 @@ final class CompleteTurnEngine
             if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
-            $aggregate = $this->nationEconomyAggregate($nation);
-            $population = $aggregate['population'];
-            $agriculturalWorkers = min($population, $aggregate['farm_capacity']);
-            $wheatProduction = $agriculturalWorkers * $workforceRules['farm_output_per_worker'];
-            $wheatProduction = $this->secretaryProduction(
-                $context,
-                $nation->id,
-                SecretarySkillCatalog::AGRICULTURAL_POLICY,
-                $wheatProduction,
+            $skillLevels = $context->state->hasSecretarySnapshot($nation->id) ? [
+                SecretarySkillCatalog::AGRICULTURAL_POLICY => $context->state->secretarySkillLevel(
+                    $nation->id,
+                    SecretarySkillCatalog::AGRICULTURAL_POLICY,
+                ),
+                SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => $context->state->secretarySkillLevel(
+                    $nation->id,
+                    SecretarySkillCatalog::SPECIALTY_DEVELOPMENT,
+                ),
+                SecretarySkillCatalog::GOLD_VEIN_SURVEY => $context->state->secretarySkillLevel(
+                    $nation->id,
+                    SecretarySkillCatalog::GOLD_VEIN_SURVEY,
+                ),
+            ] : [];
+            $inputs = $this->currentEconomyInputs($context, $nation);
+            $economy = $this->economyCalculator->calculate(
+                $context->ruleset->settings,
+                $nation->state,
+                $inputs['population'],
+                $inputs['farm_capacity'],
+                $inputs['industrial_facilities'],
+                $inputs['oil_field_count'],
+                $skillLevels,
             );
+            $population = $economy['population'];
+            $agriculturalWorkers = $economy['farm_workers'];
+            $wheatProduction = $economy['wheat_production'];
             $foodCredit = $productionOverflowStage === 'after_population_nutrition_consumption'
                 ? $this->boundedAssets->creditFoodProductionForTurn(
                     $nation,
@@ -201,7 +221,7 @@ final class CompleteTurnEngine
                 : $this->boundedAssets->creditFood($nation, $wheat, $wheatProduction, $context->ruleset);
             $productionMetadata = [
                 'resource_key' => 'wheat', 'population' => $population,
-                'farm_capacity_people' => $aggregate['farm_capacity'], 'workers' => $agriculturalWorkers,
+                'farm_capacity_people' => $economy['farm_capacity'], 'workers' => $agriculturalWorkers,
                 'requested_tons' => $wheatProduction, 'applied_tons' => $foodCredit->applied,
                 'overflow_tons' => $productionOverflowStage === null ? $foodCredit->overflow : 0,
             ];
@@ -217,25 +237,8 @@ final class CompleteTurnEngine
                 $metrics['food_overflow_discarded'] += $overflow['discarded_tons'];
             }
 
-            $remainingWorkers = max(0, $population - $agriculturalWorkers);
-            $allocation = $this->allocateFactoryAndMineWorkers(
-                $aggregate['industrial_facilities'],
-                $remainingWorkers,
-            );
-            $industrial = $allocation['factory'] * $workforceRules['factory_output_per_worker'];
-            $minerals = $allocation['mine'] * $workforceRules['mine_output_per_worker'];
-            $industrial = $this->secretaryProduction(
-                $context,
-                $nation->id,
-                SecretarySkillCatalog::SPECIALTY_DEVELOPMENT,
-                $industrial,
-            );
-            $minerals = $this->secretaryProduction(
-                $context,
-                $nation->id,
-                SecretarySkillCatalog::GOLD_VEIN_SURVEY,
-                $minerals,
-            );
+            $industrial = $economy['industrial_goods_production'];
+            $minerals = $economy['minerals_production'];
             $this->creditInventory(
                 $nation,
                 $this->resourceDefinition($resources, 'industrial_goods'),
@@ -243,13 +246,13 @@ final class CompleteTurnEngine
             );
             $this->creditInventory($nation, $this->resourceDefinition($resources, 'minerals'), $minerals);
             $this->events->record($context, 'resource.industrial_produced', $nation, [
-                'workers' => $allocation['factory'], 'produced_units' => $industrial,
+                'workers' => $economy['factory_workers'], 'produced_units' => $industrial,
             ]);
             $this->events->record($context, 'resource.mineral_produced', $nation, [
-                'workers' => $allocation['mine'], 'produced_units' => $minerals,
+                'workers' => $economy['mine_workers'], 'produced_units' => $minerals,
             ]);
 
-            $requiredNutrition = intdiv($population, $foodRules['population_per_nutrition']);
+            $requiredNutrition = $economy['food_consumption'];
             $consumption = $this->consumeFood(
                 $nation,
                 $foodRules['consumption_priority'],
@@ -289,6 +292,62 @@ final class CompleteTurnEngine
         }
 
         return $metrics;
+    }
+
+    /**
+     * @return array{
+     *     population: int,
+     *     farm_capacity: int,
+     *     industrial_facilities: list<array{cell_id: int, key: string, capacity: int}>,
+     *     oil_field_count: int
+     * }
+     */
+    private function currentEconomyInputs(TurnContext $context, Nation $nation): array
+    {
+        $oilRules = $context->ruleset->settings['turn_processing']['oil_field'] ?? null;
+        $oilFacilityKey = is_array($oilRules) ? ($oilRules['facility_key'] ?? null) : null;
+        if (! is_string($oilFacilityKey)) {
+            throw new DomainException('Published ruleset oil-field settings are invalid.');
+        }
+        $farmCapacity = 0;
+        $industrialFacilities = [];
+        $oilFieldCount = 0;
+        $facilities = MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->whereNotNull('facility_definition_id')
+            ->with('facility')
+            ->orderBy('id')
+            ->get();
+        foreach ($facilities as $cell) {
+            $definition = $cell->facility;
+            $key = $definition?->key;
+            if ($key === $oilFacilityKey) {
+                $oilFieldCount++;
+            }
+            if (! is_string($key) || ! in_array($key, ['farm', 'factory', 'mine'], true)) {
+                continue;
+            }
+            if ($cell->facility_scale === null) {
+                throw new DomainException("Facility {$key} has incomplete workforce capacity state.");
+            }
+            $capacity = $this->facilityCapacities->capacityPeople($definition, (int) $cell->facility_scale);
+            if ($key === 'farm') {
+                $farmCapacity += $capacity;
+            } else {
+                $industrialFacilities[] = [
+                    'cell_id' => (int) $cell->id,
+                    'key' => $key,
+                    'capacity' => $capacity,
+                ];
+            }
+        }
+
+        return [
+            'population' => (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population'),
+            'farm_capacity' => $farmCapacity,
+            'industrial_facilities' => $industrialFacilities,
+            'oil_field_count' => $oilFieldCount,
+        ];
     }
 
     /** @return array<string, int> */
@@ -911,24 +970,6 @@ final class CompleteTurnEngine
         ];
     }
 
-    private function secretaryProduction(
-        TurnContext $context,
-        int $nationId,
-        string $skillKey,
-        int $baseProduction,
-    ): int {
-        if (! $context->state->hasSecretarySnapshot($nationId)) {
-            return $baseProduction;
-        }
-
-        return $this->secretaryProduction->apply(
-            $context->ruleset->settings,
-            $skillKey,
-            $context->state->secretarySkillLevel($nationId, $skillKey),
-            $baseProduction,
-        );
-    }
-
     /**
      * @param  list<int>  $nationIds
      * @return array<int, array{nation: Nation, summary: array{money: int, population: int, food: int}}>
@@ -1066,85 +1107,6 @@ final class CompleteTurnEngine
         $balances->put($resource->id, $balance);
 
         return $balance;
-    }
-
-    /**
-     * @return array{
-     *     population: int,
-     *     farm_capacity: int,
-     *     factory_capacity: int,
-     *     mine_capacity: int,
-     *     industrial_facilities: list<array{cell_id: int, key: string, capacity: int, workers: int, remainder: int}>
-     * }
-     */
-    private function nationEconomyAggregate(Nation $nation): array
-    {
-        $population = (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population');
-        $capacities = ['farm' => 0, 'factory' => 0, 'mine' => 0];
-        $industrialFacilities = [];
-        $facilities = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereNotNull('facility_definition_id')->with('facility')->orderBy('id')->get();
-        foreach ($facilities as $cell) {
-            $key = $cell->facility?->key;
-            if (! is_string($key) || ! array_key_exists($key, $capacities)) {
-                continue;
-            }
-            if ($cell->facility_scale === null || $cell->facility->scale_unit_people === null) {
-                throw new DomainException("Facility {$key} has incomplete workforce capacity state.");
-            }
-            $capacity = $cell->facility_scale * $cell->facility->scale_unit_people;
-            $capacities[$key] += $capacity;
-            if (in_array($key, ['factory', 'mine'], true)) {
-                $industrialFacilities[] = [
-                    'cell_id' => $cell->id,
-                    'key' => $key,
-                    'capacity' => $capacity,
-                    'workers' => 0,
-                    'remainder' => 0,
-                ];
-            }
-        }
-
-        return [
-            'population' => $population, 'farm_capacity' => $capacities['farm'],
-            'factory_capacity' => $capacities['factory'], 'mine_capacity' => $capacities['mine'],
-            'industrial_facilities' => $industrialFacilities,
-        ];
-    }
-
-    /**
-     * @param  list<array{cell_id: int, key: string, capacity: int, workers: int, remainder: int}>  $facilities
-     * @return array{factory: int, mine: int}
-     */
-    private function allocateFactoryAndMineWorkers(array $facilities, int $availableWorkers): array
-    {
-        $totalCapacity = array_sum(array_column($facilities, 'capacity'));
-        $workers = min($availableWorkers, $totalCapacity);
-        if ($workers === 0 || $totalCapacity === 0) {
-            return ['factory' => 0, 'mine' => 0];
-        }
-        $allocated = 0;
-        foreach ($facilities as &$facility) {
-            $weighted = $workers * $facility['capacity'];
-            $facility['workers'] = intdiv($weighted, $totalCapacity);
-            $facility['remainder'] = $weighted % $totalCapacity;
-            $allocated += $facility['workers'];
-        }
-        unset($facility);
-        usort($facilities, static function (array $left, array $right): int {
-            return $right['remainder'] <=> $left['remainder']
-                ?: $left['key'] <=> $right['key']
-                ?: $left['cell_id'] <=> $right['cell_id'];
-        });
-        for ($index = 0; $index < $workers - $allocated; $index++) {
-            $facilities[$index]['workers']++;
-        }
-        $result = ['factory' => 0, 'mine' => 0];
-        foreach ($facilities as $facility) {
-            $result[$facility['key']] += $facility['workers'];
-        }
-
-        return $result;
     }
 
     private function creditInventory(Nation $nation, ResourceDefinition $resource, int $amount): void

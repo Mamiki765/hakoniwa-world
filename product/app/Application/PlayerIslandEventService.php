@@ -12,11 +12,11 @@ use Illuminate\Support\Facades\DB;
 
 final class PlayerIslandEventService
 {
-    public const OWNER_TURNS_PER_PAGE = 24;
+    public const OWNER_TURNS_PER_PAGE = 12;
 
     public const PUBLIC_WORLD_TURNS_PER_PAGE = 2;
 
-    public const PUBLIC_NATION_TURNS_PER_PAGE = 24;
+    public const PUBLIC_NATION_TURNS_PER_PAGE = 12;
 
     public const MAJOR_NEWS_LIMIT = 15;
 

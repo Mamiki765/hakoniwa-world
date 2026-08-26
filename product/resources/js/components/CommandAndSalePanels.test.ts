@@ -984,6 +984,7 @@ describe('sale policy panel', () => {
             resource_id: 10,
             resource_key: 'wheat',
             resource_name: '小麦',
+            unit_label: 'トン',
             amount: 100,
             policy: 'stockpile',
             keep_amount: null,
@@ -998,13 +999,16 @@ describe('sale policy panel', () => {
         expect(wrapper.find('option[value="stockpile"]').text()).toBe('上限まで備蓄');
         expect(wrapper.find('option[value="keep_amount"]').exists()).toBe(true);
         expect(wrapper.text()).toContain('個別上限を超えた分だけを売却');
+        expect(wrapper.text()).toContain('在庫 100トン');
+        await wrapper.find('select').setValue('keep_amount');
+        expect(wrapper.text()).toContain('保持数（トン）');
     });
 
     it('updates keep_amount with the row version and exposes non-negative validation', async () => {
         const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
             const data = init?.method === 'PUT'
-                ? { resource_id: 10, resource_key: 'wheat', resource_name: '小麦', amount: 100, policy: 'keep_amount', keep_amount: 25, version: 2 }
-                : [{ resource_id: 10, resource_key: 'wheat', resource_name: '小麦', amount: 100, policy: 'stockpile', keep_amount: null, version: 1 }];
+                ? { resource_id: 10, resource_key: 'wheat', resource_name: '小麦', unit_label: 'トン', amount: 100, policy: 'keep_amount', keep_amount: 25, version: 2 }
+                : [{ resource_id: 10, resource_key: 'wheat', resource_name: '小麦', unit_label: 'トン', amount: 100, policy: 'stockpile', keep_amount: null, version: 1 }];
             return jsonResponse(data);
         });
         vi.stubGlobal('fetch', fetchMock);

@@ -187,6 +187,16 @@ function scrollIslandWorkspaceTo(selector: string): void {
     });
 }
 
+function formatForecastDelta(value: number): string {
+    if (value === 0) return '0';
+
+    return `${value > 0 ? '+' : '−'}${Math.abs(value).toLocaleString('ja-JP')}`;
+}
+
+function formatPercentageTenths(value: number): string {
+    return (value / 10).toFixed(1);
+}
+
 function formatResource(amount: number, unitLabel: string | null): string {
     return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
 }
@@ -1664,23 +1674,49 @@ async function abandonNation(): Promise<void> {
                 </dl>
                 <details class="hud-more">
                     <summary>詳細情報</summary>
-                    <dl class="hud-details">
-                        <div><dt>KARMA</dt><dd :class="{ 'karma-text': nation.karma_positive }">{{ nation.karma }}</dd></div>
-                        <div><dt>資金上限</dt><dd>{{ formatExactMoney(nation.money_capacity) }}</dd></div>
-                        <div><dt>食料上限</dt><dd>{{ formatResource(nation.food_capacity_tons, 'トン') }}</dd></div>
-                        <div v-for="resource in nation.food_resources" :key="`food:${resource.key}`">
-                            <dt>{{ resource.name }}</dt><dd>{{ formatResource(resource.balance, resource.unit_label) }}</dd>
-                        </div>
-                        <div v-for="resource in nonFoodResources" :key="resource.key">
-                            <dt>{{ resource.name }}</dt>
-                            <dd v-if="resource.capacity !== null">
-                                {{ formatResource(resource.amount, resource.unit_label) }}
-                                （上限 {{ formatResource(resource.capacity, resource.unit_label) }}）
-                            </dd>
-                            <dd v-else>{{ formatResource(resource.amount, resource.unit_label) }}</dd>
-                        </div>
-                    </dl>
-                    <span>出来事は24ターンごとに表示</span>
+                    <div class="hud-more-grid">
+                        <section class="resource-forecast" aria-labelledby="resource-forecast-heading">
+                            <h2 id="resource-forecast-heading">資源推計</h2>
+                            <div class="resource-forecast-table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr><th scope="col">資源</th><th scope="col">生産</th><th scope="col">消費</th><th scope="col">予測</th><th scope="col">所持</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="row in nation.resource_forecast.rows" :key="row.key">
+                                            <th scope="row">{{ row.name }}</th>
+                                            <td>{{ row.production.toLocaleString('ja-JP') }}</td>
+                                            <td>{{ row.consumption.toLocaleString('ja-JP') }}</td>
+                                            <td :class="{ 'forecast-positive': row.delta > 0, 'forecast-negative': row.delta < 0 }">{{ formatForecastDelta(row.delta) }}</td>
+                                            <td>{{ row.holding.toLocaleString('ja-JP') }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="resource-forecast-note">{{ nation.resource_forecast.food_holding_note }}</p>
+                            <p class="workforce-forecast" :class="`workforce-${nation.resource_forecast.workforce.status}`">
+                                <strong>{{ nation.resource_forecast.workforce.label }}</strong>
+                                {{ formatPercentageTenths(nation.resource_forecast.workforce.percentage_tenths) }}%
+                            </p>
+                        </section>
+                        <section class="hud-support" aria-labelledby="hud-support-heading">
+                            <h2 id="hud-support-heading">その他</h2>
+                            <dl class="hud-details">
+                                <div><dt>KARMA</dt><dd :class="{ 'karma-text': nation.karma_positive }">{{ nation.karma }}</dd></div>
+                                <div><dt>資金上限</dt><dd>{{ formatExactMoney(nation.money_capacity) }}</dd></div>
+                                <div><dt>食材上限</dt><dd>{{ formatResource(nation.food_capacity_tons, 'トン') }}</dd></div>
+                                <div v-for="resource in nation.food_resources" :key="`food:${resource.key}`">
+                                    <dt>{{ resource.name }}</dt><dd>{{ formatResource(resource.balance, resource.unit_label) }}</dd>
+                                </div>
+                                <div v-for="resource in nonFoodResources" :key="resource.key">
+                                    <template v-if="resource.capacity !== null">
+                                        <dt>{{ resource.name }}上限</dt>
+                                        <dd>{{ formatResource(resource.capacity, resource.unit_label) }}</dd>
+                                    </template>
+                                </div>
+                            </dl>
+                        </section>
+                    </div>
                 </details>
             </header>
             <div class="island-workspace-region">

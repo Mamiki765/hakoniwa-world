@@ -64,7 +64,7 @@ watch(() => [props.nationId, props.audience], resetAndLoad);
             <span v-if="result?.turn_range">
                 第{{ result.turn_range.start }}〜{{ result.turn_range.end }}ターン
             </span>
-            <span v-else>{{ result?.turns_per_page ?? 24 }}ターンごと</span>
+            <span v-else>{{ result?.turns_per_page ?? 12 }}ターンごと</span>
         </header>
 
         <p v-if="loading" class="island-events-status" role="status">出来事を読み込み中…</p>
@@ -73,7 +73,7 @@ watch(() => [props.nationId, props.audience], resetAndLoad);
             <button type="button" :disabled="loading" @click="loadPage(currentPage)">再読み込み</button>
         </div>
         <p v-else-if="!loading && result?.groups.length === 0" class="empty-state">
-            この{{ result?.turns_per_page ?? 24 }}ターンには表示できるログがありません。
+            この{{ result?.turns_per_page ?? 12 }}ターンには表示できるログがありません。
         </p>
 
         <div v-if="result?.groups.length" class="island-event-groups">

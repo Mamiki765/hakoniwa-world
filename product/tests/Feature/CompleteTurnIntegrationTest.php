@@ -116,6 +116,10 @@ class CompleteTurnIntegrationTest extends TestCase
             ],
         ]);
         $chunkVersionsBefore = DB::table('map_chunks')->orderBy('id')->pluck('version', 'id');
+        $economyForecast = collect(
+            $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
+                ->json('data.resource_forecast.rows'),
+        )->keyBy('key');
 
         $run = (new TurnRunner(
             app(TurnPipeline::class),
@@ -136,6 +140,12 @@ class CompleteTurnIntegrationTest extends TestCase
         $consumption = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'resource.food_consumed')->where('subject_id', $nation->id)
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $industrialProduction = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'resource.industrial_produced')->where('subject_id', $nation->id)
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $mineralProduction = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'resource.mineral_produced')->where('subject_id', $nation->id)
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         /** @var list<array{resource_key: string, consumed_units: int}> $consumedResources */
         $consumedResources = $consumption['resources'];
         $consumedWheat = 0;
@@ -148,6 +158,10 @@ class CompleteTurnIntegrationTest extends TestCase
         $wheatAfter = (int) NationResource::query()->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('key', 'wheat'))->value('amount');
         $this->assertGreaterThan(0, $production['applied_tons']);
+        $this->assertSame($economyForecast['food']['production'], $production['requested_tons']);
+        $this->assertSame($economyForecast['food']['consumption'], $consumption['required_nutrition']);
+        $this->assertSame($economyForecast['industrial_goods']['production'], $industrialProduction['produced_units']);
+        $this->assertSame($economyForecast['minerals']['production'], $mineralProduction['produced_units']);
         $this->assertSame($wheatBefore + $production['applied_tons'] - $consumedWheat, $wheatAfter);
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'resource.food_produced')->count());
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'resource.food_consumed')->count());
@@ -178,7 +192,6 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame('completed', $secondCommand->fresh()->status);
         $this->assertSame('factory', $factoryTarget->fresh()->facility()->value('key'));
         $this->assertSame('plain', $secondTarget->fresh()->terrain()->value('key'));
-        $this->assertSame(0, $this->eventMetadata('resource.industrial_produced', $nation->id)['produced_units']);
         $this->assertSame(500, (int) NationResource::query()->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('key', 'industrial_goods'))->value('amount'));
         $this->assertGreaterThan(0, DB::table('audit_events')->where('event_type', 'population.increased')->count());
