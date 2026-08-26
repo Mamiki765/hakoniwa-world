@@ -9,7 +9,10 @@ final class SecretaryDemographicPolicy
     /** @param array<string, mixed> $settings */
     public function enabled(array $settings): bool
     {
-        return ($settings['key'] ?? null) === 'hakoniwa-2s-plus-v17';
+        return in_array($settings['key'] ?? null, [
+            'hakoniwa-2s-plus-v17',
+            'hakoniwa-2s-plus-v18',
+        ], true);
     }
 
     /** @param array<string, mixed> $settings */

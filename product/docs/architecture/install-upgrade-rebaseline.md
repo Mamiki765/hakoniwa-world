@@ -15,6 +15,11 @@
 > production upgrades only from exact v16 through the single forward-only v16-to-v17
 > migration. The final-v16 schema dump remains unchanged; v17 schema/data effects are applied
 > by the new migration and current installer.
+>
+> **Current ver 2.8.0 boundary:** fresh installation publishes immutable v18. Existing
+> production upgrades only from exact v17 through the single forward-only v17-to-v18
+> migration. Published v17 remains unchanged; queued definitions and current live references
+> are rebound by stable key while provenance and historical records are preserved.
 
 ## Historical v11 rebaseline identity
 

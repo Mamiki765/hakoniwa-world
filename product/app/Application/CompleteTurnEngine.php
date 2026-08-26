@@ -7,6 +7,7 @@ use App\Domain\Economy\InventorySalePlanner;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Economy\SalePolicy;
+use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -35,7 +36,7 @@ use Illuminate\Database\Eloquent\Collection;
 final class CompleteTurnEngine
 {
     /** @var list<string> */
-    private const SETTLEMENT_FACILITY_KEYS = ['village', 'town', 'city', 'capital'];
+    private const SETTLEMENT_FACILITY_KEYS = ['village', 'town', 'city', 'capital', 'undersea_city'];
 
     private ?int $definitionCatalogTurnRunId = null;
 
@@ -56,6 +57,7 @@ final class CompleteTurnEngine
         private readonly InventorySalePlanner $salePlanner,
         private readonly NationCapacityResolver $capacities,
         private readonly NationEconomyCalculator $economyCalculator,
+        private readonly UnderseaCityMaintenancePlanner $underseaCityMaintenance,
         private readonly FacilityCapacityService $facilityCapacities,
         private readonly MapCellStateService $cells,
         private readonly NationLandAreaCalculator $landArea,
@@ -169,6 +171,10 @@ final class CompleteTurnEngine
             'nutrition_shortage' => 0, 'famine_nations' => 0,
             'food_overflow_sold' => 0, 'food_overflow_revenue' => 0,
             'food_overflow_discarded' => 0,
+            'undersea_city_maintenance_paid' => 0,
+            'undersea_city_maintenance_failed' => 0,
+            'undersea_city_industrial_goods_consumed' => 0,
+            'undersea_city_minerals_consumed' => 0,
         ];
         $foodRules = $context->ruleset->settings['turn_processing']['food'];
         $productionOverflowStage = $foodRules['production_overflow_resolution_stage'] ?? null;
@@ -252,6 +258,13 @@ final class CompleteTurnEngine
                 'workers' => $economy['mine_workers'], 'produced_units' => $minerals,
             ]);
 
+            $maintenance = $this->settleUnderseaCityMaintenance(
+                $context,
+                $nation,
+                $inputs['undersea_city_cells'],
+                $resources,
+            );
+
             $requiredNutrition = $economy['food_consumption'];
             $consumption = $this->consumeFood(
                 $nation,
@@ -289,6 +302,10 @@ final class CompleteTurnEngine
             $metrics['minerals_produced'] += $minerals;
             $metrics['nutrition_required'] += $requiredNutrition;
             $metrics['nutrition_shortage'] += $consumption['shortage'];
+            $metrics['undersea_city_maintenance_paid'] += $maintenance['paid'];
+            $metrics['undersea_city_maintenance_failed'] += $maintenance['failed'];
+            $metrics['undersea_city_industrial_goods_consumed'] += $maintenance['industrial_goods_consumed'];
+            $metrics['undersea_city_minerals_consumed'] += $maintenance['minerals_consumed'];
         }
 
         return $metrics;
@@ -299,7 +316,8 @@ final class CompleteTurnEngine
      *     population: int,
      *     farm_capacity: int,
      *     industrial_facilities: list<array{cell_id: int, key: string, capacity: int}>,
-     *     oil_field_count: int
+     *     oil_field_count: int,
+     *     undersea_city_cells: list<MapCell>
      * }
      */
     private function currentEconomyInputs(TurnContext $context, Nation $nation): array
@@ -312,6 +330,7 @@ final class CompleteTurnEngine
         $farmCapacity = 0;
         $industrialFacilities = [];
         $oilFieldCount = 0;
+        $underseaCityCells = [];
         $facilities = MapCell::query()
             ->where('owner_nation_id', $nation->id)
             ->whereNotNull('facility_definition_id')
@@ -323,6 +342,9 @@ final class CompleteTurnEngine
             $key = $definition?->key;
             if ($key === $oilFacilityKey) {
                 $oilFieldCount++;
+            }
+            if ($key === 'undersea_city') {
+                $underseaCityCells[] = $cell;
             }
             if (! is_string($key) || ! in_array($key, ['farm', 'factory', 'mine'], true)) {
                 continue;
@@ -347,6 +369,79 @@ final class CompleteTurnEngine
             'farm_capacity' => $farmCapacity,
             'industrial_facilities' => $industrialFacilities,
             'oil_field_count' => $oilFieldCount,
+            'undersea_city_cells' => $underseaCityCells,
+        ];
+    }
+
+    /**
+     * @param  list<MapCell>  $cells
+     * @param  Collection<int, ResourceDefinition>  $resources
+     * @return array{paid: int, failed: int, industrial_goods_consumed: int, minerals_consumed: int}
+     */
+    private function settleUnderseaCityMaintenance(
+        TurnContext $context,
+        Nation $nation,
+        array $cells,
+        Collection $resources,
+    ): array {
+        if ($cells === []) {
+            return ['paid' => 0, 'failed' => 0, 'industrial_goods_consumed' => 0, 'minerals_consumed' => 0];
+        }
+        $industrialGoods = $this->resourceDefinition($resources, 'industrial_goods');
+        $minerals = $this->resourceDefinition($resources, 'minerals');
+        $balances = NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->whereIn('resource_definition_id', [$industrialGoods->id, $minerals->id])
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('resource_definition_id');
+        $industrialBalance = $this->lockedOrCreatedBalance($balances, $nation, $industrialGoods);
+        $mineralBalance = $this->lockedOrCreatedBalance($balances, $nation, $minerals);
+        $cellsById = [];
+        foreach ($cells as $cell) {
+            $cellsById[(int) $cell->id] = $cell;
+        }
+        $plan = $this->underseaCityMaintenance->plan(
+            $context->ruleset->settings,
+            (int) $industrialBalance->amount,
+            (int) $mineralBalance->amount,
+            array_keys($cellsById),
+        );
+        if ($plan['industrial_goods_consumed'] > 0) {
+            $industrialBalance->decrement('amount', $plan['industrial_goods_consumed']);
+        }
+        if ($plan['minerals_consumed'] > 0) {
+            $mineralBalance->decrement('amount', $plan['minerals_consumed']);
+        }
+
+        $paid = 0;
+        $failed = 0;
+        foreach ($plan['settlements'] as $settlement) {
+            if ($settlement['paid']) {
+                $paid++;
+
+                continue;
+            }
+            $failed++;
+            $context->state->markUnderseaCityMaintenanceFailure($settlement['cell_id']);
+            $cell = $cellsById[$settlement['cell_id']];
+            $this->events->record($context, 'resource.undersea_city_maintenance_failed', $cell, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'facility_key' => 'undersea_city',
+                'required_industrial_goods' => 1000,
+                'required_minerals' => 1000,
+                'substitution_ratio' => 2,
+            ], 'private');
+        }
+
+        return [
+            'paid' => $paid,
+            'failed' => $failed,
+            'industrial_goods_consumed' => $plan['industrial_goods_consumed'],
+            'minerals_consumed' => $plan['minerals_consumed'],
         ];
     }
 
@@ -438,7 +533,8 @@ final class CompleteTurnEngine
             if ($cell->owner_nation_id === null || ! $activeNations->has($cell->owner_nation_id)) {
                 continue;
             }
-            $famine = $context->state->isFamine($cell->owner_nation_id);
+            $famine = $context->state->isFamine($cell->owner_nation_id)
+                || $context->state->hasUnderseaCityMaintenanceFailure((int) $cell->id);
             if ($cell->facility?->key === ($context->ruleset->settings['turn_processing']['oil_field']['facility_key'] ?? null)) {
                 $oil = $this->processOilField($context, $cell);
                 $metrics['oil_income'] += $oil['income'];
@@ -1388,7 +1484,7 @@ final class CompleteTurnEngine
             ? $context->ruleset->settings['capital_minimum_population']
             : 0;
         $cell->population = max($minimumPopulation, $before - $loss);
-        if ($cell->population === 0 && $facilityKey !== 'capital') {
+        if ($cell->population === 0 && ! in_array($facilityKey, ['capital', 'undersea_city'], true)) {
             $plain = $this->terrainDefinition($context, 'plain');
             $this->cells->setFacility($cell, null);
             $this->cells->transitionTerrain($cell, $plain);
@@ -1411,11 +1507,12 @@ final class CompleteTurnEngine
             'minimum_population_applied' => $minimumPopulationAdjustment > 0,
             'minimum_population_adjustment' => $minimumPopulationAdjustment,
         ]);
-        $stageTransition = $cell->population > 0
+        $discarded = $this->discardUnderseaCityBelowMinimum($context, $cell, 'population_loss');
+        $stageTransition = ! $discarded && $cell->population > 0
             ? $this->syncSettlementStage($context, $cell)
             : 0;
 
-        return ['decrease' => $actualLoss, 'stage_transition' => $stageTransition];
+        return ['decrease' => max(0, $before - $cell->population), 'stage_transition' => $stageTransition];
     }
 
     /** @return array{increase: int, decrease: int, stage_transition: int} */
@@ -1467,8 +1564,11 @@ final class CompleteTurnEngine
             ];
             sort($keys);
             sort($expectedKeys);
+            $expectedFacilityKeys = ($context->ruleset->settings['version'] ?? null) === 18
+                ? ['village', 'town', 'city', 'undersea_city']
+                : ['village', 'town', 'city'];
             if (! is_array($declineContract) || $keys !== $expectedKeys
-                || ($declineContract['facility_keys'] ?? null) !== ['village', 'town', 'city']
+                || ($declineContract['facility_keys'] ?? null) !== $expectedFacilityKeys
                 || ($declineContract['excluded_facility_key'] ?? null) !== 'capital'
                 || ($declineContract['loss_per_turn'] ?? null) !== 100
                 || ($declineContract['skip_natural_growth'] ?? null) !== true
@@ -1493,10 +1593,16 @@ final class CompleteTurnEngine
                 'effective_attraction_maximum' => $attractionMaximum,
             ]);
 
+            $discarded = $this->discardUnderseaCityBelowMinimum(
+                $context,
+                $cell,
+                'above_attraction_maximum',
+            );
+
             return [
                 'increase' => 0,
-                'decrease' => $loss,
-                'stage_transition' => $this->syncSettlementStage($context, $cell),
+                'decrease' => $discarded ? $before : $loss,
+                'stage_transition' => $discarded ? 0 : $this->syncSettlementStage($context, $cell),
             ];
         }
         $maximumPopulation = $attraction && $cell->facility?->key !== 'capital'
@@ -1542,7 +1648,12 @@ final class CompleteTurnEngine
 
     private function syncSettlementStage(TurnContext $context, MapCell $cell): int
     {
-        if ($cell->facility?->key === 'capital') {
+        $fixedIdentityKeys = $context->ruleset->settings['turn_processing']['settlement']['fixed_identity_facility_keys']
+            ?? ['capital'];
+        if (! is_array($fixedIdentityKeys)) {
+            throw new DomainException('Settlement fixed-identity facility keys are invalid.');
+        }
+        if (in_array($cell->facility?->key, $fixedIdentityKeys, true)) {
             return 0;
         }
         $stages = $context->ruleset->settings['turn_processing']['settlement']['stages'];
@@ -1568,6 +1679,46 @@ final class CompleteTurnEngine
         ]);
 
         return 1;
+    }
+
+    private function discardUnderseaCityBelowMinimum(
+        TurnContext $context,
+        MapCell $cell,
+        string $reason,
+    ): bool {
+        if ($cell->facility?->key !== 'undersea_city') {
+            return false;
+        }
+        $minimum = $context->ruleset->settings['turn_processing']['undersea_city_maintenance']['minimum_population']
+            ?? null;
+        if ($minimum !== 3000) {
+            throw new DomainException('The active ruleset has an invalid undersea-city minimum population.');
+        }
+        if ((int) $cell->population >= $minimum) {
+            return false;
+        }
+
+        $nationId = $cell->owner_nation_id;
+        $beforePopulation = (int) $cell->population;
+        $this->cells->setFacility($cell, null);
+        $this->cells->transitionTerrain($cell, $this->terrainDefinition($context, 'sea'));
+        $cell->owner_nation_id = null;
+        $cell->population = 0;
+        $cell->version++;
+        $this->saveChangedCell($context, $cell);
+        $this->events->record($context, 'facility.undersea_city_abandoned', $cell, [
+            'nation_id' => $nationId,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'facility_key' => 'undersea_city',
+            'reason' => $reason,
+            'before_population' => $beforePopulation,
+            'minimum_population' => $minimum,
+            'after_population' => 0,
+            'result_terrain_key' => 'sea',
+        ], 'private');
+
+        return true;
     }
 
     private function saveChangedCell(TurnContext $context, MapCell $cell): void

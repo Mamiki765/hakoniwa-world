@@ -463,13 +463,20 @@ final class DisasterTurnService
         $rules = $this->rules($context);
         $settings = $rules['fire'];
         $facilityKey = $cell->facility?->key;
+        $unprotectedSeaFacility = in_array(
+            $facilityKey,
+            $settings['unprotected_sea_facility_keys'] ?? [],
+            true,
+        );
         $settlement = in_array($facilityKey, ['village', 'town', 'city', 'capital'], true)
             && $cell->population >= $settings['minimum_city_population'];
-        if (! $settlement && ! in_array($facilityKey, $settings['facility_keys'], true)) {
+        if (! $unprotectedSeaFacility
+            && ! $settlement
+            && ! in_array($facilityKey, $settings['facility_keys'], true)) {
             return false;
         }
 
-        $protection = $this->adjacentProtectionCount(
+        $protection = $unprotectedSeaFacility ? 0 : $this->adjacentProtectionCount(
             $cell,
             $settings['protection_facility_keys'],
             $cellIndex,
@@ -498,6 +505,15 @@ final class DisasterTurnService
                 'draw' => $trigger['draw'],
                 'source' => 'process_cells',
             ]);
+
+            return true;
+        }
+        if ($unprotectedSeaFacility) {
+            $this->changeCell($context, $cell, 'fire', 'sea', true, 'fire.undersea_city_destroyed', [
+                'draw' => $trigger['draw'],
+                'numerator' => $settings['probability']['numerator'],
+                'denominator' => $settings['probability']['denominator'],
+            ], $cellIndex, 'private');
 
             return true;
         }
@@ -1001,6 +1017,7 @@ final class DisasterTurnService
         string $eventType,
         array $extra = [],
         ?DisasterMutableCellIndex $cellIndex = null,
+        ?string $visibility = null,
     ): bool {
         if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
             return false;
@@ -1037,7 +1054,7 @@ final class DisasterTurnService
             'before_population' => $beforePopulation,
             'after_population' => 0,
             ...$extra,
-        ]);
+        ], $visibility);
 
         return true;
     }

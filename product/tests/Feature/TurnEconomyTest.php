@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\CompleteTurnEngine;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
+use App\Application\SecretaryTurnService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -517,6 +518,99 @@ class TurnEconomyTest extends TestCase
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('Stored sell_all policy is forbidden for wheat');
         $engine->execute('resource_sales', $forbiddenContext);
+    }
+
+    public function test_undersea_city_maintenance_precedes_sales_includes_food_and_marks_only_unpaid_city_for_famine(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '海底維持国', '試験島主');
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 0, 'denominator' => 1];
+        $ruleset->settings = $settings;
+        $ruleset->save();
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capital->id)->whereNull('facility_definition_id')->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $cells);
+        $sea = TerrainDefinition::query()->where('key', 'sea')->firstOrFail();
+        $undersea = FacilityDefinition::query()->where('key', 'undersea_city')->firstOrFail();
+        foreach ($cells as $cell) {
+            $cell = $cell->fresh(['terrain', 'facility']);
+            app(MapCellStateService::class)->transitionTerrain($cell, $sea);
+            app(MapCellStateService::class)->setFacility($cell, $undersea);
+            $cell->population = 3_000;
+            $cell->save();
+        }
+        [$first, $second] = $cells->all();
+        $capital->update(['population' => 100]);
+        $this->setResources($nation, [
+            'wheat' => 10_000,
+            'fish' => 0,
+            'monster_meat' => 0,
+            'industrial_goods' => 2_000,
+            'minerals' => 2_000,
+        ]);
+        $this->setPolicy($nation, 'industrial_goods', 'sell_all', null);
+        $this->setPolicy($nation, 'minerals', 'sell_all', null);
+        [$normalContext, $normalRun] = $this->context($world, $nation);
+        $engine = app(CompleteTurnEngine::class);
+
+        $normal = $engine->execute('nation_economy', $normalContext);
+        $this->assertSame(2, $normal->metrics['undersea_city_maintenance_paid']);
+        $this->assertSame(0, $normal->metrics['undersea_city_maintenance_failed']);
+        $this->assertSame(2_000, $normal->metrics['undersea_city_industrial_goods_consumed']);
+        $this->assertSame(2_000, $normal->metrics['undersea_city_minerals_consumed']);
+        $this->assertSame(1_320, $this->event($normalRun, 'resource.food_consumed')['required_nutrition']);
+        $this->assertSame(0, $this->resourceAmount($nation, 'industrial_goods'));
+        $this->assertSame(0, $this->resourceAmount($nation, 'minerals'));
+
+        $this->setResources($nation, ['industrial_goods' => 2_000, 'minerals' => 2_000]);
+        foreach ($cells as $cell) {
+            $cell->update(['population' => 3_000]);
+        }
+        [$saleContext, $saleRun] = $this->context($world, $nation);
+        app(CompleteTurnEngine::class)->execute('nation_economy', $saleContext);
+        $sales = app(CompleteTurnEngine::class)->execute('resource_sales', $saleContext);
+        $this->assertSame(0, $sales->metrics['sales']);
+        $this->assertSame(0, $this->event($saleRun, 'resource.automatic_sale', 'industrial_goods')['sold']);
+        $this->assertSame(0, $this->event($saleRun, 'resource.automatic_sale', 'minerals')['sold']);
+
+        $first->update(['population' => 5_000]);
+        $second->update(['population' => 5_000]);
+        $this->setResources($nation, [
+            'wheat' => 10_000,
+            'fish' => 0,
+            'monster_meat' => 0,
+            'industrial_goods' => 500,
+            'minerals' => 3_000,
+        ]);
+        [$failureContext, $failureRun] = $this->context($world, $nation);
+        $failureContext->state->setDevelopmentNationIds([$nation->id]);
+        $failureContext->state->setSurfaceCellIds([$first->id, $second->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($failureContext, [$nation->id]);
+        $maintenance = $engine->execute('nation_economy', $failureContext);
+        $this->assertSame(1, $maintenance->metrics['undersea_city_maintenance_paid']);
+        $this->assertSame(1, $maintenance->metrics['undersea_city_maintenance_failed']);
+        $this->assertSame(500, $maintenance->metrics['undersea_city_industrial_goods_consumed']);
+        $this->assertSame(2_000, $maintenance->metrics['undersea_city_minerals_consumed']);
+        $this->assertSame(0, $this->resourceAmount($nation, 'industrial_goods'));
+        $this->assertSame(1_000, $this->resourceAmount($nation, 'minerals'));
+        $this->assertTrue($failureContext->state->hasUnderseaCityMaintenanceFailure($second->id));
+        $this->assertFalse($failureContext->state->hasUnderseaCityMaintenanceFailure($first->id));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'resource.undersea_city_maintenance_failed')
+            ->where('subject_id', $second->id)
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $failureRun->id])->count());
+
+        $engine->execute('process_cells', $failureContext);
+        $this->assertGreaterThan(5_000, $first->fresh()->population);
+        $this->assertLessThan(5_000, $second->fresh()->population);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'famine.applied')
+            ->where('subject_id', $second->id)
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $failureRun->id])->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'famine.applied')
+            ->where('subject_id', $first->id)
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $failureRun->id])->count());
     }
 
     private function facilityCell(Nation $nation, string $facilityKey, int $scale): MapCell

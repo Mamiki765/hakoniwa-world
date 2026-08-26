@@ -26,6 +26,7 @@ final class AssetManifestResolver
         'tile.seabed_oil_field' => 'land16.gif',
         'tile.defense' => 'land10.gif',
         'tile.seabed_base' => 'seabed-base.png',
+        'tile.undersea_city' => 'undersea-city.gif',
         'tile.monument' => 'monument.png',
         'tile.decoy' => 'land10.gif',
         'tile.monument.peace' => 'monument-peace.png',

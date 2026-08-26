@@ -447,6 +447,85 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(2_000, $cell->fresh()->population);
     }
 
+    public function test_undersea_city_reuses_settlement_growth_and_one_famine_loss_then_discards_below_3000(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '海底人口国', '海底人口島主');
+        $capitalId = $nation->capital()->value('map_cell_id');
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capitalId)->orderBy('id')->limit(4)->get();
+        $this->assertCount(4, $cells);
+        [$natural, $attraction, $minimum, $overlap] = $cells->all();
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 0, 'denominator' => 1];
+        $ruleset->settings = $settings;
+        $ruleset->save();
+        $engine = app(CompleteTurnEngine::class);
+        $growthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100);
+
+        $this->underseaCity($natural, 9_950);
+        [$naturalContext] = $this->context($world, $nation, [$natural->id], $growthSeed, ruleset: $ruleset);
+        $naturalResult = $engine->execute('process_cells', $naturalContext);
+        $this->assertSame(50, $naturalResult->metrics['population_increased']);
+        $this->assertSame(10_000, $natural->fresh()->population);
+        $this->assertSame('undersea_city', $natural->fresh()->facility()->value('key'));
+        $this->assertSame(0, $naturalResult->metrics['stage_transitions']);
+
+        $this->underseaCity($attraction, 19_950);
+        [$attractionContext] = $this->context($world, $nation, [$attraction->id], $growthSeed, ruleset: $ruleset);
+        $attractionContext->state->markAttraction($nation->id);
+        $attractionResult = $engine->execute('process_cells', $attractionContext);
+        $this->assertSame(50, $attractionResult->metrics['population_increased']);
+        $this->assertSame(20_000, $attraction->fresh()->population);
+        $this->assertSame('undersea_city', $attraction->fresh()->facility()->value('key'));
+        $this->assertSame(0, $attractionResult->metrics['stage_transitions']);
+
+        $lossSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::FAMINE_POPULATION_LOSS, 100, 3_000, 100);
+        $this->underseaCity($minimum, 3_100);
+        [$minimumContext, $minimumRun] = $this->context(
+            $world,
+            $nation,
+            [$minimum->id],
+            $lossSeed,
+            ruleset: $ruleset,
+        );
+        $minimumContext->state->markUnderseaCityMaintenanceFailure($minimum->id);
+        $engine->execute('process_cells', $minimumContext);
+        $this->assertSame(3_000, $minimum->fresh()->population);
+        $this->assertSame('undersea_city', $minimum->fresh()->facility()->value('key'));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'famine.applied')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $minimumRun->id])->count());
+
+        $this->underseaCity($minimum, 3_099);
+        [$discardContext] = $this->context($world, $nation, [$minimum->id], $lossSeed, ruleset: $ruleset);
+        $discardContext->state->markUnderseaCityMaintenanceFailure($minimum->id);
+        $engine->execute('process_cells', $discardContext);
+        $discarded = $minimum->fresh(['terrain', 'facility']);
+        $this->assertSame(0, $discarded->population);
+        $this->assertNull($discarded->facility_definition_id);
+        $this->assertSame('sea', $discarded->terrain->key);
+        $this->assertNull($discarded->owner_nation_id);
+
+        $this->underseaCity($overlap, 5_000);
+        [$overlapContext, $overlapRun] = $this->context(
+            $world,
+            $nation,
+            [$overlap->id],
+            $lossSeed,
+            true,
+            $ruleset,
+        );
+        $overlapContext->state->markUnderseaCityMaintenanceFailure($overlap->id);
+        $overlapResult = $engine->execute('process_cells', $overlapContext);
+        $this->assertSame(100, $overlapResult->metrics['population_decreased']);
+        $this->assertSame(4_900, $overlap->fresh()->population);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'famine.applied')
+            ->where('subject_id', $overlap->id)
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $overlapRun->id])->count());
+    }
+
     public function test_uniform_population_growth_ignores_signed_world_edges_and_expansion_provenance(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize();
@@ -582,6 +661,11 @@ class TurnCellProcessingTest extends TestCase
     private function settlement(MapCell $cell, string $facilityKey, int $population): void
     {
         $this->mutateCell($cell, 'plain', $facilityKey, $population);
+    }
+
+    private function underseaCity(MapCell $cell, int $population): void
+    {
+        $this->mutateCell($cell, 'sea', 'undersea_city', $population);
     }
 
     private function facility(MapCell $cell, string $facilityKey, string $terrainKey): void

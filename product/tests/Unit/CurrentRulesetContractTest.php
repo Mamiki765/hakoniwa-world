@@ -11,6 +11,10 @@ final class CurrentRulesetContractTest extends TestCase
 {
     private const V16_CHECKSUM = '331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d';
 
+    private const V17_CHECKSUM = '8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3';
+
+    private const V18_CHECKSUM = '40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b';
+
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
     private const V16_COVERAGE = [
         'domains' => 10,
@@ -20,30 +24,32 @@ final class CurrentRulesetContractTest extends TestCase
         'flavor' => 176,
     ];
 
-    public function test_normal_config_loads_v17_while_preserving_the_explicit_v16_contract(): void
+    public function test_normal_config_loads_v18_while_preserving_the_explicit_v16_and_v17_contracts(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
         $v16 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
+        $v17 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v17.php');
         $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php'));
 
         $this->assertIsString($source);
         $this->assertSame(10, substr_count($source, "require __DIR__.'/current/"));
         $this->assertLessThan(100, substr_count($source, "\n"));
-        $this->assertSame(['hakoniwa-2s-plus-v17'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v17']);
+        $this->assertSame(['hakoniwa-2s-plus-v18'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v18']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v17', $current['key']);
-        $this->assertSame(17, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v18', $current['key']);
+        $this->assertSame(18, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
         $this->assertSame(self::V16_CHECKSUM, $this->checksum($v16));
-        $this->assertNotSame(self::V16_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V17_CHECKSUM, $this->checksum($v17));
+        $this->assertSame(self::V18_CHECKSUM, $this->checksum($current));
 
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v17', $summary['key']);
-        $this->assertSame(17, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v18', $summary['key']);
+        $this->assertSame(18, $summary['version']);
         $this->assertSame(count($current['command_definitions']), $summary['commands']);
         $this->assertSame(count($current['production_definitions']), $summary['production']);
     }

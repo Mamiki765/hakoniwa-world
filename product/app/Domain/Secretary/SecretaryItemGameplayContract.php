@@ -52,6 +52,8 @@ final class SecretaryItemGameplayContract
 
     private const V17_RULESET_KEY = 'hakoniwa-2s-plus-v17';
 
+    private const V18_RULESET_KEY = 'hakoniwa-2s-plus-v18';
+
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
     /** @param array<string, mixed> $settings */
@@ -80,8 +82,8 @@ final class SecretaryItemGameplayContract
         }
 
         $rulesetKey = $settings['key'] ?? null;
-        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY], true);
-        $v17 = $rulesetKey === self::V17_RULESET_KEY;
+        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY], true);
+        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY], true);
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
             $rarities = $this->map($secretary['item_rarities'] ?? null, 'ruleset.secretary.item_rarities');
@@ -551,7 +553,7 @@ final class SecretaryItemGameplayContract
     private function catalogDefinitions(mixed $rulesetKey): array
     {
         $definitions = $this->catalog->definitions();
-        if ($rulesetKey === self::V17_RULESET_KEY) {
+        if (in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY], true)) {
             return $definitions;
         }
         if ($rulesetKey !== self::V16_RULESET_KEY) {
