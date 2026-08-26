@@ -56,7 +56,7 @@ function allows(policy: SalePolicy, value: SalePolicy['policy']): boolean {
         <div class="policy-list">
             <form v-for="policy in policies" :key="policy.resource_id" @submit.prevent="save(policy)">
                 <strong>{{ policy.resource_name }}</strong>
-                <span>在庫 {{ policy.amount.toLocaleString() }}</span>
+                <span>在庫 {{ policy.amount.toLocaleString() }}{{ policy.unit_label ?? '' }}</span>
                 <label>
                     方針
                     <select v-model="policy.policy">
@@ -66,7 +66,7 @@ function allows(policy: SalePolicy, value: SalePolicy['policy']): boolean {
                     </select>
                 </label>
                 <label v-if="policy.policy === 'keep_amount'">
-                    保持数
+                    保持数<span v-if="policy.unit_label">（{{ policy.unit_label }}）</span>
                     <input v-model.number="policy.keep_amount" type="number" min="0" required>
                 </label>
                 <button type="submit" :disabled="busyResource === policy.resource_id">保存</button>

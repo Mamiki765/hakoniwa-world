@@ -40,12 +40,24 @@ const publicDetail: PublicNationDetail = {
     map_space: { id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 } },
 };
 
+const resourceForecastFixture: Nation['resource_forecast'] = {
+    rows: [
+        { key: 'food', name: '食料', production: 55_000, consumption: 60_000, delta: -5_000, holding: 12_000 },
+        { key: 'industrial_goods', name: '工業品', production: 15_000, consumption: 0, delta: 15_000, holding: 1_200 },
+        { key: 'minerals', name: '鉱物', production: 46_154, consumption: 0, delta: 46_154, holding: 0 },
+        { key: 'oil', name: '石油', production: 500, consumption: 0, delta: 500, holding: 123 },
+    ],
+    food_holding_note: '食料の所持は小麦換算です。',
+    workforce: { status: 'unemployment', label: '失業率', percentage_tenths: 160, population: 60_000, demand: 50_400 },
+};
+
 const ownerNationFixture: Nation = {
     id: 3, world_id: 1, nation_number: 1, name: '自島', owner_name: '自島主', comment: '',
     money: 100, money_display: '100億円', money_capacity: 9999, money_remaining_capacity: 9899,
     money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
     food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
     farm_capacity_people: 10000, factory_capacity_people: 0, mine_capacity_people: 0,
+    resource_forecast: resourceForecastFixture,
     food_resources: [], resources: [], state: 'active', state_label: '', karma: 0, karma_positive: false,
     recovery_remaining_turns: null, state_reason: null,
     state_started_turn: null, resume_at_turn: null, manual_dormancy_days: null,
@@ -172,7 +184,7 @@ function publicResponse(path: string): Response | null {
     });
     if (/^\/api\/v1\/public\/nations\/\d+\/events/.test(path)) return response({
         groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
-        turns_per_page: 24, has_newer_page: false, has_older_page: false,
+        turns_per_page: 12, has_newer_page: false, has_older_page: false,
     });
     if (/^\/api\/v1\/nations\/\d+\/message-board$/.test(path)) return response({
         board: { nation_number: 1, name: '公開島' }, entries: [],
@@ -609,6 +621,7 @@ describe('application lobby and island entry', () => {
             money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
             food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
             farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
+            resource_forecast: resourceForecastFixture,
             food_resources: [], resources: [], state: 'active', state_label: '', karma: 0, karma_positive: false,
             recovery_remaining_turns: null, state_reason: null,
             state_started_turn: null, resume_at_turn: null, manual_dormancy_days: null,
@@ -673,7 +686,7 @@ describe('application lobby and island entry', () => {
                 return response({
                     groups: [], page: 1, anchor_turn: ownerEventCalls,
                     turn_range: { start: 1, end: ownerEventCalls },
-                    turns_per_page: 24, has_newer_page: false, has_older_page: false,
+                    turns_per_page: 12, has_newer_page: false, has_older_page: false,
                 });
             }
             if (path.includes('command-definitions')) return response({
@@ -1024,6 +1037,7 @@ describe('application lobby and island entry', () => {
             total_food_tons: 10000, food_total_tons: 10000,
             food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
             farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
+            resource_forecast: resourceForecastFixture,
             food_resources: [
                 { key: 'wheat', name: '小麦', balance: 10000, unit: 'ton', unit_label: 'トン' },
                 { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },
@@ -1123,7 +1137,7 @@ describe('application lobby and island entry', () => {
             if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path === '/api/v1/nations/3/events?page=1') return response({
                 groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
-                turns_per_page: 24, has_newer_page: false, has_older_page: false,
+                turns_per_page: 12, has_newer_page: false, has_older_page: false,
             });
             if (path.includes('command-definitions')) return response({
                 commands: [],
@@ -1215,17 +1229,27 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.hud-primary').text()).not.toContain('工業品');
         expect(wrapper.find('.hud-primary').text()).not.toContain('上限');
         expect(wrapper.find('.hud-more').text()).toContain('詳細情報');
+        expect(wrapper.findAll('.hud-more-grid > section').map((section) => section.classes()[0])).toEqual([
+            'resource-forecast', 'hud-support',
+        ]);
+        expect(wrapper.findAll('.resource-forecast thead th').map((heading) => heading.text())).toEqual([
+            '資源', '生産', '消費', '予測', '所持',
+        ]);
+        expect(wrapper.findAll('.resource-forecast tbody tr')).toHaveLength(4);
+        expect(wrapper.findAll('.resource-forecast tbody tr')[0]!.text()).toContain('食料55,00060,000−5,00012,000');
+        expect(wrapper.find('.resource-forecast .forecast-positive').text()).toBe('+15,000');
+        expect(wrapper.find('.resource-forecast .forecast-negative').text()).toBe('−5,000');
+        expect(wrapper.find('.resource-forecast-note').text()).toBe('食料の所持は小麦換算です。');
+        expect(wrapper.find('.workforce-forecast').text()).toContain('失業率 16.0%');
         expect(wrapper.find('.hud-details').text()).toContain('資金上限9,999億円');
-        expect(wrapper.find('.hud-details').text()).toContain('食料上限999,900トン');
+        expect(wrapper.find('.hud-details').text()).toContain('食材上限999,900トン');
         expect(wrapper.find('.hud-details').text()).toContain('小麦10,000トン');
         expect(wrapper.find('.hud-details').text()).toContain('魚0トン');
         expect(wrapper.find('.hud-details').text()).toContain('怪獣肉0トン');
-        expect(wrapper.find('.hud-details').text()).toContain('工業品1,200ユニット');
-        expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000ユニット');
-        expect(wrapper.find('.hud-details').text()).toContain('鉱物0トン');
-        expect(wrapper.find('.hud-details').text()).toContain('上限 9,999,000トン');
-        expect(wrapper.find('.hud-details').text()).toContain('石油123万バレル');
-        expect(wrapper.find('.hud-details').text()).toContain('上限 5,000万バレル');
+        expect(wrapper.find('.hud-details').text()).toContain('工業品上限9,999,000ユニット');
+        expect(wrapper.find('.hud-details').text()).toContain('鉱物上限9,999,000トン');
+        expect(wrapper.find('.hud-details').text()).toContain('石油上限5,000万バレル');
+        expect(wrapper.find('.hud-more').text()).not.toContain('出来事は24ターンごとに');
         expect(wrapper.find('.island-grid').exists()).toBe(true);
         const workspaceScroll = wrapper.get('.island-workspace-scroll');
         expect(workspaceScroll.attributes('role')).toBe('region');
