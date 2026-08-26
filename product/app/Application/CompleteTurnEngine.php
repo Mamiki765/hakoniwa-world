@@ -309,53 +309,44 @@ final class CompleteTurnEngine
         if (! is_string($oilFacilityKey)) {
             throw new DomainException('Published ruleset oil-field settings are invalid.');
         }
-        $farm = $this->facilityDefinition($context, 'farm');
-        $factory = $this->facilityDefinition($context, 'factory');
-        $mine = $this->facilityDefinition($context, 'mine');
-        $oilField = $this->facilityDefinition($context, $oilFacilityKey);
-
         $farmCapacity = 0;
-        $farmGroups = MapCell::query()
-            ->selectRaw('facility_scale, COUNT(*) AS aggregate')
-            ->where('owner_nation_id', $nation->id)
-            ->where('facility_definition_id', $farm->id)
-            ->groupBy('facility_scale')
-            ->get();
-        foreach ($farmGroups as $group) {
-            if ($group->facility_scale === null) {
-                throw new DomainException('Farm has incomplete workforce capacity state.');
-            }
-            $farmCapacity += $this->facilityCapacities->capacityPeople($farm, (int) $group->facility_scale)
-                * (int) $group->getRawOriginal('aggregate');
-        }
-
-        $definitions = [$factory->id => $factory, $mine->id => $mine];
         $industrialFacilities = [];
-        $rows = MapCell::query()
+        $oilFieldCount = 0;
+        $facilities = MapCell::query()
             ->where('owner_nation_id', $nation->id)
-            ->whereIn('facility_definition_id', array_keys($definitions))
+            ->whereNotNull('facility_definition_id')
+            ->with('facility')
             ->orderBy('id')
-            ->get(['id', 'facility_definition_id', 'facility_scale']);
-        foreach ($rows as $row) {
-            $definition = $definitions[(int) $row->facility_definition_id] ?? null;
-            if (! $definition instanceof FacilityDefinition || $row->facility_scale === null) {
-                throw new DomainException('Facility has incomplete workforce capacity state.');
+            ->get();
+        foreach ($facilities as $cell) {
+            $definition = $cell->facility;
+            $key = $definition?->key;
+            if ($key === $oilFacilityKey) {
+                $oilFieldCount++;
             }
-            $industrialFacilities[] = [
-                'cell_id' => (int) $row->id,
-                'key' => $definition->key,
-                'capacity' => $this->facilityCapacities->capacityPeople($definition, (int) $row->facility_scale),
-            ];
+            if (! is_string($key) || ! in_array($key, ['farm', 'factory', 'mine'], true)) {
+                continue;
+            }
+            if (! $definition instanceof FacilityDefinition || $cell->facility_scale === null) {
+                throw new DomainException("Facility {$key} has incomplete workforce capacity state.");
+            }
+            $capacity = $this->facilityCapacities->capacityPeople($definition, (int) $cell->facility_scale);
+            if ($key === 'farm') {
+                $farmCapacity += $capacity;
+            } else {
+                $industrialFacilities[] = [
+                    'cell_id' => (int) $cell->id,
+                    'key' => $key,
+                    'capacity' => $capacity,
+                ];
+            }
         }
 
         return [
             'population' => (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population'),
             'farm_capacity' => $farmCapacity,
             'industrial_facilities' => $industrialFacilities,
-            'oil_field_count' => MapCell::query()
-                ->where('owner_nation_id', $nation->id)
-                ->where('facility_definition_id', $oilField->id)
-                ->count(),
+            'oil_field_count' => $oilFieldCount,
         ];
     }
 
