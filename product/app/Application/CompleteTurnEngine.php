@@ -327,7 +327,7 @@ final class CompleteTurnEngine
             if (! is_string($key) || ! in_array($key, ['farm', 'factory', 'mine'], true)) {
                 continue;
             }
-            if (! $definition instanceof FacilityDefinition || $cell->facility_scale === null) {
+            if ($cell->facility_scale === null) {
                 throw new DomainException("Facility {$key} has incomplete workforce capacity state.");
             }
             $capacity = $this->facilityCapacities->capacityPeople($definition, (int) $cell->facility_scale);
