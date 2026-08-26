@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Nation\NationLifecyclePrepareStateResolver;
 use App\Models\FacilityDefinition;
 use App\Models\Nation;
 use App\Models\NationResource;
@@ -18,6 +19,7 @@ final class NationResourceForecastProjection
         private readonly NationEconomyCalculator $economy,
         private readonly SecretaryTurnService $secretaries,
         private readonly FacilityCapacityService $facilityCapacities,
+        private readonly NationLifecyclePrepareStateResolver $prepareState,
     ) {}
 
     /**
@@ -39,8 +41,14 @@ final class NationResourceForecastProjection
      */
     public function forNation(Nation $nation, Collection $balances, array $basicStatus): array
     {
-        $ruleset = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail();
+        $world = $nation->world()->firstOrFail();
+        $ruleset = $world->rulesetVersion()->firstOrFail();
         $skillLevels = $this->secretaries->currentSkillLevels($nation, $ruleset);
+        $effectiveNationState = $this->effectiveNationState(
+            $nation,
+            $ruleset->settings,
+            (int) $world->current_turn + 1,
+        );
         $oilRules = $ruleset->settings['turn_processing']['oil_field'] ?? null;
         $oilFacilityKey = is_array($oilRules) ? ($oilRules['facility_key'] ?? null) : null;
         if (! is_string($oilFacilityKey)) {
@@ -86,7 +94,7 @@ final class NationResourceForecastProjection
             ->count();
         $economy = $this->economy->calculate(
             $ruleset->settings,
-            $nation->state,
+            $effectiveNationState,
             $basicStatus['total_population'],
             $basicStatus['farm_capacity_people'],
             $industrialFacilities,
@@ -148,6 +156,38 @@ final class NationResourceForecastProjection
                 'demand' => $demand,
             ],
         ];
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function effectiveNationState(Nation $nation, array $settings, int $targetTurn): string
+    {
+        $lifecycle = $settings['nation_lifecycle'] ?? null;
+        $financeKey = is_array($lifecycle) ? ($lifecycle['finance_command_key'] ?? null) : null;
+        $dormantIdleThreshold = is_array($lifecycle) ? ($lifecycle['dormant_idle_threshold'] ?? null) : null;
+        if (! is_string($financeKey) || ! is_int($dormantIdleThreshold)) {
+            throw new DomainException('Published ruleset Nation lifecycle settings are invalid.');
+        }
+
+        $resumeDue = $nation->resume_at_turn !== null && $targetTurn >= $nation->resume_at_turn;
+        $needsQueueProjection = ($nation->state === 'recovery' && $resumeDue)
+            || ($nation->state === 'dormant' && $nation->state_reason !== 'manual');
+        $hasQueuedNonFinanceCommand = $needsQueueProjection && DB::table('nation_command_queue_items as item')
+            ->join('nation_command_queues as queue', 'queue.id', '=', 'item.nation_command_queue_id')
+            ->join('command_definitions as definition', 'definition.id', '=', 'item.command_definition_id')
+            ->where('queue.nation_id', $nation->id)
+            ->where('item.status', 'queued')
+            ->where('definition.key', '<>', $financeKey)
+            ->exists();
+
+        return $this->prepareState->resolve(
+            $nation->state,
+            $nation->state_reason,
+            $nation->resume_at_turn,
+            (int) $nation->idle_counter,
+            $targetTurn,
+            $hasQueuedNonFinanceCommand,
+            $dormantIdleThreshold,
+        );
     }
 
     /**
