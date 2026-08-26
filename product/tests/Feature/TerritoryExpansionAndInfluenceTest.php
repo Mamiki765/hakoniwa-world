@@ -784,6 +784,9 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $state = new TurnState;
         $state->setStableNationIds($nationIds);
         $state->setDevelopmentNationIds($nationIds);
+        foreach ($nationIds as $nationId) {
+            $state->setKarmaStartSnapshot($nationId, 0);
+        }
 
         return new TurnContext(
             $world,

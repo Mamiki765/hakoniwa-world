@@ -44,6 +44,7 @@ final class CommandQueueController extends Controller
     ): JsonResponse {
         try {
             $queue = $service->queueFor($request->user(), $nation, $mapSpace);
+            $world = $nation->world()->with('rulesetVersion')->firstOrFail();
             $position = max(1, min(
                 $this->queueLimit($nation),
                 $request->integer('position', 1),
@@ -60,7 +61,7 @@ final class CommandQueueController extends Controller
             $nationTargetOptions = $this->nationTargets->options($nation);
             $monsterDispatchTargetOptions = $this->nationTargets->monsterDispatchOptions($nation);
             $definitions = CommandDefinition::query()
-                ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+                ->where('ruleset_version_id', $world->ruleset_version_id)
                 ->where('enabled', true)
                 ->orderBy('sort_order')
                 ->get();
@@ -171,7 +172,7 @@ final class CommandQueueController extends Controller
                     ];
                 });
 
-            $rules = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
+            $rules = $world->rulesetVersion->settings;
             $quantityContract = $rules['development_plan_quantity'] ?? null;
             if (! DevelopmentPlanQuantity::matchesContract($quantityContract)) {
                 throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');

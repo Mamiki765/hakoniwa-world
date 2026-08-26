@@ -898,7 +898,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $resultFacilityDefinitionCount = CommandDefinition::query()
             ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
             ->whereNotNull('result_facility_key')->count();
-        $this->assertSame(9, $resultFacilityDefinitionCount);
+        $this->assertSame(10, $resultFacilityDefinitionCount);
 
         $queries = [];
         DB::listen(static function (QueryExecuted $query) use (&$queries): void {
@@ -1568,7 +1568,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.quantity_contract.maximum', 99)
             ->assertJsonPath('data.quantity_contract.default', 1)
             ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99])
-            ->assertJsonCount(25, 'data.commands');
+            ->assertJsonCount(26, 'data.commands');
         foreach ($definitions->json('data.commands') as $definition) {
             $this->assertArrayNotHasKey('parameter_schema', $definition);
             $this->assertArrayHasKey('target_type', $definition);

@@ -972,7 +972,7 @@ final class CommandQueueService
             && $state['facility_key'] !== null) {
             return false;
         }
-        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'excavate'], true)) {
+        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'build_undersea_city', 'excavate'], true)) {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
         }
 
@@ -1262,6 +1262,16 @@ final class CommandQueueService
             }
             if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false)) {
                 throw new PlayerFacingCommandException('埋め立て対象の隣に自国領がありません。');
+            }
+
+            return;
+        }
+        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city'], true)) {
+            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
+                throw new PlayerFacingCommandException('他国所有の海には建設できません。');
+            }
+            if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 3)) {
+                throw new PlayerFacingCommandException('建設対象の3hex以内に自国領がありません。');
             }
 
             return;
