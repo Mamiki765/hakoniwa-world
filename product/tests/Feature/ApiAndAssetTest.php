@@ -257,6 +257,21 @@ class ApiAndAssetTest extends TestCase
         $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
             ->assertJsonPath('data.resource_forecast.rows.1.consumption', 500)
             ->assertJsonPath('data.resource_forecast.rows.2.consumption', 2_000);
+        $nationModel->update([
+            'state' => 'dormant',
+            'state_reason' => 'manual',
+            'state_started_turn' => $world->current_turn,
+            'resume_at_turn' => $world->current_turn + 12,
+        ]);
+        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
+            ->assertJsonPath('data.resource_forecast.rows.1.consumption', 0)
+            ->assertJsonPath('data.resource_forecast.rows.2.consumption', 0);
+        $nationModel->update([
+            'state' => 'active',
+            'state_reason' => null,
+            'state_started_turn' => null,
+            'resume_at_turn' => null,
+        ]);
         NationResource::query()->where('nation_id', $nationModel->id)
             ->whereHas('definition', fn ($query) => $query->where('key', 'minerals'))
             ->update(['amount' => 1_500]);

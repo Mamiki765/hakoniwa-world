@@ -142,7 +142,9 @@ final class NationResourceForecastProjection
                 + $economy['industrial_goods_production'],
             (int) $this->balance($balancesByKey, 'minerals')->amount
                 + $economy['minerals_production'],
-            $underseaCityCellIds,
+            in_array($effectiveNationState, ['active', 'recovery'], true)
+                ? $underseaCityCellIds
+                : [],
         );
 
         $wheat = $this->balance($balancesByKey, 'wheat');
