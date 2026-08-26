@@ -67,7 +67,7 @@ final class InquiryApiTest extends TestCase
             'nation_id' => $nation->id,
             'world_id' => $world->id,
             'submitted_turn' => 42,
-            'application_version' => '2.6.1',
+            'application_version' => '2.7.0',
             'category' => 'bug',
             'attachment_token' => null,
             'attachment_path' => null,

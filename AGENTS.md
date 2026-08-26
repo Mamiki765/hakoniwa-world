@@ -37,6 +37,14 @@ Owner explicitly requests a handoff update.
 The Owner and the Web ChatGPT development-advisor workflow maintain that document separately
 after implementation, review evidence, and Owner decisions have been examined.
 
+### Player manual
+
+Prioritize information that changes a player's decisions; do not exhaustively document
+internal processing. Describe ordering, RNG consumption, fail-closed behavior, transactions,
+or rare race conditions only when players need them to make decisions or understand visible
+behavior. Do not pre-document behavior that causes no disadvantage or loss of control when
+unknown and can be learned through ordinary play.
+
 ## Read-only references
 
 Everything under `_references/` is third-party reference material.

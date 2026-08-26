@@ -198,9 +198,9 @@ final class FirstProductionReleaseTest extends TestCase
         $this->get('/manual/advanced')->assertOk()
             ->assertSee('地盤沈下')
             ->assertSee('島の破棄')
-            ->assertSee('通常のKARMA下限は-10です')
-            ->assertSee('Lv20では-30になります')
-            ->assertSee('すぐに有効下限へ丸めず、ターンごとに1ずつ回復します');
+            ->assertSee('KARMAが100を超えた場合、超過分だけ箱庭連合の制裁ミサイルが発射され、KARMAは100に戻ります')
+            ->assertSee('KARMAが下限を下回っている場合、ターンごとに1増加します')
+            ->assertSee('休戦状態は84ターン続き、期間終了後は通常状態または休眠状態へ戻ります');
         $this->get('/manual/trading-post')->assertOk()
             ->assertSee('<title>交易場 | 箱庭諸島２S＋</title>', false)
             ->assertSee('最高入札中の預託資金は、資金上限の使用量に含まれます')
