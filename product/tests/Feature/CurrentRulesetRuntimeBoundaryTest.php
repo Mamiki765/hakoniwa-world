@@ -7,6 +7,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\TurnRunner;
 use App\Domain\Ruleset\ResetRequiredException;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapChunk;
@@ -42,6 +43,10 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
             15,
             SyntheticHistoricalRulesetSnapshot::withLegacySecretaryItems(...),
         );
+        $user->secretary()->firstOrFail()->skills()->whereIn('skill_key', [
+            SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+            SecretarySkillCatalog::INDOMITABLE,
+        ])->delete();
         $world->update(['ruleset_version_id' => $historical->id]);
         $run = TurnRun::query()->create([
             'world_id' => $world->id,
