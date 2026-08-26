@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { api } from '../api/client';
 import type { TradingPostData, TradingPostListing } from '../types';
+import ItemEffectInfo from './ItemEffectInfo.vue';
 
 const props = defineProps<{ nationId: number; worldId: number }>();
 const market = ref<TradingPostData | null>(null);
@@ -17,6 +18,9 @@ const form = reactive({
     duration_turns: 6,
     auto_relist: false,
 });
+const selectedSellableItem = computed(() => market.value?.sellable_items.find(
+    (item) => item.id === form.item_instance_id,
+) ?? null);
 
 function productLabel(listing: TradingPostListing): string {
     if (listing.product.type === 'item') {
@@ -24,6 +28,15 @@ function productLabel(listing: TradingPostListing): string {
     }
 
     return `${listing.product.name} ${listing.product.quantity?.toLocaleString('ja-JP')}${listing.product.unit_label ?? ''}`;
+}
+
+function bidStatusLabel(status: TradingPostListing['viewer_bid_status']): string {
+    return {
+        seller: '自分の出品',
+        none: '未入札',
+        highest: 'あなたが最高額入札中',
+        outbid: '入札済み・現在は他国が最高額',
+    }[status];
 }
 
 function errorMessage(cause: unknown, fallback: string): string {
@@ -131,19 +144,36 @@ onMounted(load);
                         </thead>
                         <tbody>
                             <tr v-for="listing in market.listings" :key="listing.id">
-                                <td>{{ productLabel(listing) }}</td>
+                                <td>
+                                    <template v-if="listing.product.type === 'item'">
+                                        {{ productLabel(listing) }}
+                                        <ItemEffectInfo
+                                            v-if="listing.product.effect_text"
+                                            :item-name="listing.product.name"
+                                            :effect-text="listing.product.effect_text"
+                                        />
+                                    </template>
+                                    <template v-else>{{ productLabel(listing) }}</template>
+                                </td>
                                 <td>{{ listing.seller.name }}</td>
                                 <td>{{ listing.start_price.toLocaleString('ja-JP') }}億円</td>
-                                <td>{{ listing.current_price === null ? '入札なし' : `${listing.current_price.toLocaleString('ja-JP')}億円` }}</td>
+                                <td class="trading-post-price-cell">
+                                    <span>{{ listing.current_price === null ? '入札なし' : `${listing.current_price.toLocaleString('ja-JP')}億円` }}</span>
+                                    <small class="trading-post-secondary-line">最高額入札者：{{ listing.highest_bidder?.name ?? 'なし' }}</small>
+                                </td>
                                 <td>残り{{ listing.remaining_turns }}ターン<br><small>終了 T{{ listing.ends_turn }}</small></td>
                                 <td>
-                                    <form v-if="listing.can_bid" class="trading-post-bid" @submit.prevent="placeBid(listing)">
-                                        <input v-model.number="bidAmounts[listing.id]" type="number" :min="listing.minimum_bid" required :disabled="busy" :aria-label="`${listing.product.name}の入札額`">
-                                        <span>億円</span>
-                                        <button class="button primary" type="submit" :disabled="busy">入札</button>
-                                    </form>
-                                    <span v-else-if="listing.is_mine">自分の出品</span>
-                                    <span v-else>現在は入札不可</span>
+                                    <div class="trading-post-bid-cell">
+                                        <span class="trading-post-bid-status" :class="`trading-post-bid-status-${listing.viewer_bid_status}`">
+                                            {{ bidStatusLabel(listing.viewer_bid_status) }}
+                                        </span>
+                                        <form v-if="listing.can_bid" class="trading-post-bid" @submit.prevent="placeBid(listing)">
+                                            <input v-model.number="bidAmounts[listing.id]" type="number" :min="listing.minimum_bid" required :disabled="busy" :aria-label="`${listing.product.name}の入札額`">
+                                            <span>億円</span>
+                                            <button class="button primary" type="submit" :disabled="busy">入札</button>
+                                        </form>
+                                        <span v-else-if="!listing.is_mine">現在は入札不可</span>
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>
@@ -158,7 +188,21 @@ onMounted(load);
                     <p>{{ market.my_listings.length }} / {{ market.contract.active_listing_limit }}件</p>
                     <ul v-if="market.my_listings.length" class="trading-post-my-listings">
                         <li v-for="listing in market.my_listings" :key="listing.id">
-                            <span>{{ productLabel(listing) }}（終了 T{{ listing.ends_turn }}）</span>
+                            <span class="trading-post-my-listing-details">
+                                <span>
+                                    <template v-if="listing.product.type === 'item'">
+                                        {{ productLabel(listing) }}
+                                        <ItemEffectInfo
+                                            v-if="listing.product.effect_text"
+                                            :item-name="listing.product.name"
+                                            :effect-text="listing.product.effect_text"
+                                        />
+                                    </template>
+                                    <template v-else>{{ productLabel(listing) }}</template>
+                                    （終了 T{{ listing.ends_turn }}）
+                                </span>
+                                <small>現在価格：{{ listing.current_price === null ? '入札なし' : `${listing.current_price.toLocaleString('ja-JP')}億円` }}・最高額入札者：{{ listing.highest_bidder?.name ?? 'なし' }}</small>
+                            </span>
                             <button v-if="listing.can_cancel" class="button secondary" type="button" :disabled="busy" @click="cancelListing(listing)">キャンセル</button>
                             <small v-else-if="listing.bid_count > 0">入札済みのためキャンセル不可</small>
                             <small v-else>現在はキャンセル不可</small>
@@ -191,6 +235,13 @@ onMounted(load);
                                 </option>
                             </select>
                         </label>
+                        <div v-if="form.product_type === 'item' && selectedSellableItem?.effect_text" class="trading-post-selected-item-effect">
+                            <span>選択中の効果</span>
+                            <ItemEffectInfo
+                                :item-name="selectedSellableItem.name"
+                                :effect-text="selectedSellableItem.effect_text"
+                            />
+                        </div>
                         <label v-if="form.product_type === 'resource'">数量
                             <input v-model.number="form.quantity" type="number" min="1" required :disabled="busy || !market.permissions.can_mutate">
                         </label>
