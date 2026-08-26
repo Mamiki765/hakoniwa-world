@@ -102,7 +102,10 @@ const unnamedSecretaryFixture: Secretary = {
         { key: 'agricultural_policy', name: '農業政策', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '小麦生産＋0.0%' },
         { key: 'specialty_development', name: '特産品開発', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '工場生産＋0.0%' },
         { key: 'gold_vein_survey', name: '金鉱脈調査', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '採掘場生産＋0.0%' },
+        { key: 'forest_management', name: '森林管理', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '伐採資金・森林増加＋0%' },
         { key: 'final_defense_line', name: '最終防衛ライン', level: 1, experience: 0, required_experience: 100, remaining_experience: 100, effect: '防衛されなかったミサイルを1ターンにつき1発まで迎撃' },
+        { key: 'declining_birthrate_policy', name: '少子化対策', level: 10, experience: 460000, required_experience: 560000, remaining_experience: 100000, effect: '自然人口上限 +500人 / 誘致人口上限 +1,000人' },
+        { key: 'indomitable', name: '不屈', level: 10, experience: 0, required_experience: 560000, remaining_experience: 560000, effect: '自然人口増加 +2.50%' },
     ],
     inventory: {
         capacity: 50,
@@ -110,12 +113,14 @@ const unnamedSecretaryFixture: Secretary = {
         items: [{
             id: 21, key: 'old_bow', name: '古びた弓', level: 1, category: 'bow', category_label: '弓',
             equipped_slot: 1, is_equipped: true, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
+            fixed_sale_price_money: 100, fixed_sale_label: '売却（100億円）',
             effect_text: '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
             flavor_text: '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
             obtained_at: '2026-08-17T00:00:00Z',
         }, {
             id: 22, key: 'ring', name: '指輪', level: 3, category: 'accessory', category_label: 'アクセサリー',
             equipped_slot: null, is_equipped: false, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
+            fixed_sale_price_money: 100, fixed_sale_label: '売却（100億円）',
             effect_text: '資金繰りの際、追加で3億円を得る。',
             flavor_text: '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
             obtained_at: '2026-08-18T00:00:00Z',
@@ -1405,15 +1410,17 @@ describe('application lobby and island entry', () => {
         await initialTabs[1]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
         const skillRows = wrapper.findAll('.secretary-skill');
-        expect(skillRows).toHaveLength(4);
+        expect(skillRows).toHaveLength(7);
         const agriculturalSkill = skillRows[0]!;
-        const defenseSkill = skillRows[3]!;
+        const defenseSkill = skillRows[4]!;
         expect(agriculturalSkill.get('.secretary-skill-name').text()).toBe('農業政策');
         expect(agriculturalSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv0', 'XP 0 / 1']);
         expect(agriculturalSkill.get('.secretary-skill-effect').text()).toBe('小麦生産＋0.0%');
         expect(defenseSkill.get('.secretary-skill-name').text()).toBe('最終防衛ライン');
         expect(defenseSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv1', 'XP 0 / 100']);
         expect(defenseSkill.get('.secretary-skill-effect').text()).toBe('防衛されなかったミサイルを1ターンにつき1発まで迎撃');
+        expect(skillRows[5]!.get('.secretary-skill-effect').text()).toBe('自然人口上限 +500人 / 誘致人口上限 +1,000人');
+        expect(skillRows[6]!.get('.secretary-skill-effect').text()).toBe('自然人口増加 +2.50%');
         expect(wrapper.get('.secretary-skills').text()).not.toContain('次のlevelまで');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'ペリドット')).toBe(true);
 

@@ -123,6 +123,7 @@ final class TradingPostTurnService
         $sellerProceedsRequested = 0;
         $sellerProceedsOverflow = 0;
         $fee = 0;
+        $seller = null;
         if ($listing->seller_type === 'nation') {
             $seller = Nation::query()->whereKey($listing->seller_nation_id)->lockForUpdate()->firstOrFail();
             $sellerProceedsRequested = $this->sellerProceeds($bid->amount, $rules);
@@ -145,6 +146,99 @@ final class TradingPostTurnService
             'product_type' => $listing->product_type,
             ...$delivery,
         ], 'admin');
+        $this->recordPlayerSettlementEvents(
+            $context,
+            $listing,
+            $winner,
+            $seller,
+            (int) $bid->amount,
+            $sellerProceedsRequested,
+            $sellerProceeds,
+            $sellerProceedsOverflow,
+            $fee,
+        );
+    }
+
+    private function recordPlayerSettlementEvents(
+        TurnContext $context,
+        AuctionListing $listing,
+        Nation $winner,
+        ?Nation $seller,
+        int $winningBid,
+        int $sellerProceedsRequested,
+        int $sellerProceeds,
+        int $sellerProceedsOverflow,
+        int $fee,
+    ): void {
+        if ($listing->product_type === 'item') {
+            $item = $this->items->definition((string) $listing->item_key);
+            $public = [
+                'nation_id' => (int) $winner->id,
+                'nation_name' => $winner->name,
+                'product_type' => 'item',
+                'winning_bid' => $winningBid,
+                'item_name' => $item['name'],
+                'item_level' => (int) $listing->item_level,
+            ];
+            $privateProduct = [
+                'item_key' => (string) $listing->item_key,
+                'item_name' => $item['name'],
+                'item_level' => (int) $listing->item_level,
+            ];
+            $publicMessage = $winner->name.'が交易場で「'.$item['name'].' Lv'.$listing->item_level.'」を'
+                .number_format($winningBid).'億円で落札しました。';
+            $privateProductText = '「'.$item['name'].' Lv'.$listing->item_level.'」';
+        } else {
+            $resource = ResourceDefinition::query()->whereKey($listing->resource_definition_id)->firstOrFail();
+            $public = [
+                'nation_id' => (int) $winner->id,
+                'nation_name' => $winner->name,
+                'product_type' => 'resource',
+                'winning_bid' => $winningBid,
+                'resource_name' => $resource->name,
+                'quantity' => (int) $listing->quantity,
+                'unit_label' => $resource->unit_label,
+            ];
+            $privateProduct = [
+                'resource_key' => $resource->key,
+                'resource_name' => $resource->name,
+                'quantity' => (int) $listing->quantity,
+                'unit_label' => $resource->unit_label,
+            ];
+            $quantity = number_format((int) $listing->quantity).$resource->unit_label;
+            $publicMessage = $winner->name.'が交易場で'.$resource->name.$quantity.'を'
+                .number_format($winningBid).'億円で落札しました。';
+            $privateProductText = $resource->name.$quantity;
+        }
+        $this->events->record(
+            $context,
+            'trading_post.won_public',
+            $listing,
+            $public,
+            'public',
+            'info',
+            $publicMessage,
+        );
+        if (! $seller instanceof Nation) {
+            return;
+        }
+        $overflowText = $sellerProceedsOverflow > 0
+            ? '、資金上限超過:'.number_format($sellerProceedsOverflow).'億円'
+            : '';
+        $privateMessage = 'あなたが競売に出した'.$privateProductText.'が落札され、'
+            .number_format($sellerProceeds).'億円を入手しました（手数料:'
+            .number_format($fee).'億円'.$overflowText.'）。';
+        $this->events->record($context, 'trading_post.sold_private', $listing, [
+            'nation_id' => (int) $seller->id,
+            'auction_listing_id' => (int) $listing->id,
+            'product_type' => $listing->product_type,
+            'winning_bid' => $winningBid,
+            'seller_proceeds_requested' => $sellerProceedsRequested,
+            'seller_proceeds' => $sellerProceeds,
+            'seller_proceeds_overflow' => $sellerProceedsOverflow,
+            'trading_fee' => $fee,
+            ...$privateProduct,
+        ], 'private', 'info', $privateMessage);
     }
 
     /** @return array<string, int|string> */
@@ -272,6 +366,9 @@ final class TradingPostTurnService
     /** @return array<string, int|string> */
     private function deliverItem(AuctionListing $listing, Nation $winner): array
     {
+        if (! $this->items->definition((string) $listing->item_key)['tradable']) {
+            throw new DomainException('交易場へ出品できないアイテムは移転できません。');
+        }
         $membership = NationMembership::query()
             ->where('world_id', $winner->world_id)
             ->where('nation_id', $winner->id)

@@ -8,6 +8,14 @@ class SecretaryItemCatalog
 {
     public const OLD_BOW = 'old_bow';
 
+    public const ELF_BOW = 'elf_bow';
+
+    public const LONGSHOT_BOW = 'longshot_bow';
+
+    public const MECHANICAL_BOW = 'mechanical_bow';
+
+    public const COLLAR = 'collar';
+
     public const RING = 'ring';
 
     public const SECRETARY_SUIT = 'secretary_suit';
@@ -25,6 +33,17 @@ class SecretaryItemCatalog
     public const FULLNESS_HERB = 'fullness_herb';
 
     public const RARITY_NOVICE = 'novice';
+
+    public const RARITY_REGULAR = 'regular';
+
+    public const RARITY_CURSED = 'cursed';
+
+    /** @var array<string, array{label: string, fixed_sale_price_money: int}> */
+    private const RARITIES = [
+        self::RARITY_NOVICE => ['label' => 'ノービス', 'fixed_sale_price_money' => 100],
+        self::RARITY_REGULAR => ['label' => 'レギュラー', 'fixed_sale_price_money' => 500],
+        self::RARITY_CURSED => ['label' => 'カースド', 'fixed_sale_price_money' => 1],
+    ];
 
     private const DEFAULT_SAME_ITEM_MAX_EQUIPPED = 1;
 
@@ -49,6 +68,7 @@ class SecretaryItemCatalog
      *   name: string,
      *   flavor_text: string,
      *   unique_per_secretary: bool,
+     *   fixed_sale_price_money: int,
      *   same_item_max_equipped?: int
      * }
      */
@@ -76,25 +96,87 @@ class SecretaryItemCatalog
      *   name: string,
      *   flavor_text: string,
      *   unique_per_secretary: bool,
+     *   fixed_sale_price_money: int,
      *   same_item_max_equipped?: int
      * }>
      */
     public function definitions(): array
     {
-        return [
+        $definitions = [
             self::OLD_BOW => [
                 'key' => self::OLD_BOW,
                 'category' => 'bow',
                 'category_label' => self::CATEGORIES['bow']['label'],
                 'category_max_equipped' => self::CATEGORIES['bow']['maximum_equipped'],
                 'rarity' => self::RARITY_NOVICE,
-                'rarity_label' => 'ノービス',
-                'tradable' => true,
+                'rarity_label' => self::RARITIES[self::RARITY_NOVICE]['label'],
+                'tradable' => false,
                 'npc_tradable' => false,
                 'max_level' => 1,
                 'name' => '古びた弓',
                 'flavor_text' => '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
                 'unique_per_secretary' => true,
+                'fixed_sale_price_money' => self::RARITIES[self::RARITY_NOVICE]['fixed_sale_price_money'],
+            ],
+            self::ELF_BOW => [
+                'key' => self::ELF_BOW,
+                'category' => 'bow',
+                'category_label' => self::CATEGORIES['bow']['label'],
+                'category_max_equipped' => self::CATEGORIES['bow']['maximum_equipped'],
+                'rarity' => self::RARITY_REGULAR,
+                'rarity_label' => self::RARITIES[self::RARITY_REGULAR]['label'],
+                'tradable' => true,
+                'npc_tradable' => false,
+                'max_level' => 10,
+                'name' => 'エルフの弓',
+                'flavor_text' => '永い時を生きた古木の材で継ぎ直された弓。エルフの魔力との親和性が高い。',
+                'unique_per_secretary' => false,
+                'fixed_sale_price_money' => self::RARITIES[self::RARITY_REGULAR]['fixed_sale_price_money'],
+            ],
+            self::LONGSHOT_BOW => [
+                'key' => self::LONGSHOT_BOW,
+                'category' => 'bow',
+                'category_label' => self::CATEGORIES['bow']['label'],
+                'category_max_equipped' => self::CATEGORIES['bow']['maximum_equipped'],
+                'rarity' => self::RARITY_REGULAR,
+                'rarity_label' => self::RARITIES[self::RARITY_REGULAR]['label'],
+                'tradable' => true,
+                'npc_tradable' => false,
+                'max_level' => 10,
+                'name' => '遠当ての弓',
+                'flavor_text' => 'アクアマリンの飾りがついた木製の弓。海の怪獣に効果がありそうだ。',
+                'unique_per_secretary' => false,
+                'fixed_sale_price_money' => self::RARITIES[self::RARITY_REGULAR]['fixed_sale_price_money'],
+            ],
+            self::MECHANICAL_BOW => [
+                'key' => self::MECHANICAL_BOW,
+                'category' => 'bow',
+                'category_label' => self::CATEGORIES['bow']['label'],
+                'category_max_equipped' => self::CATEGORIES['bow']['maximum_equipped'],
+                'rarity' => self::RARITY_REGULAR,
+                'rarity_label' => self::RARITIES[self::RARITY_REGULAR]['label'],
+                'tradable' => true,
+                'npc_tradable' => false,
+                'max_level' => 10,
+                'name' => '機械弓',
+                'flavor_text' => '特殊なからくりによって、通常より強く弦を引き絞れるよう補強された弓。扱いは難しいが、力を込めた強烈な一撃を放てる。',
+                'unique_per_secretary' => false,
+                'fixed_sale_price_money' => self::RARITIES[self::RARITY_REGULAR]['fixed_sale_price_money'],
+            ],
+            self::COLLAR => [
+                'key' => self::COLLAR,
+                'category' => 'accessory',
+                'category_label' => self::CATEGORIES['accessory']['label'],
+                'category_max_equipped' => self::CATEGORIES['accessory']['maximum_equipped'],
+                'rarity' => self::RARITY_CURSED,
+                'rarity_label' => self::RARITIES[self::RARITY_CURSED]['label'],
+                'tradable' => true,
+                'npc_tradable' => false,
+                'max_level' => 11,
+                'name' => '首輪',
+                'flavor_text' => 'それをつけさせるのは狂った愛か支配欲か、はたまた自分の傍から離したくないと思わせるエルフの魔性なのか。',
+                'unique_per_secretary' => false,
+                'fixed_sale_price_money' => self::RARITIES[self::RARITY_CURSED]['fixed_sale_price_money'],
             ],
             self::RING => [
                 'key' => self::RING,
@@ -102,13 +184,14 @@ class SecretaryItemCatalog
                 'category_label' => self::CATEGORIES['accessory']['label'],
                 'category_max_equipped' => self::CATEGORIES['accessory']['maximum_equipped'],
                 'rarity' => self::RARITY_NOVICE,
-                'rarity_label' => 'ノービス',
+                'rarity_label' => self::RARITIES[self::RARITY_NOVICE]['label'],
                 'tradable' => true,
                 'npc_tradable' => true,
                 'max_level' => 10,
                 'name' => '指輪',
                 'flavor_text' => '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
                 'unique_per_secretary' => false,
+                'fixed_sale_price_money' => self::RARITIES[self::RARITY_NOVICE]['fixed_sale_price_money'],
             ],
             self::SECRETARY_SUIT => [
                 'key' => self::SECRETARY_SUIT,
@@ -209,6 +292,36 @@ class SecretaryItemCatalog
                 'unique_per_secretary' => false,
             ],
         ];
+        foreach ($definitions as $key => $definition) {
+            $rarity = $definition['rarity'];
+            $definitions[$key] = [
+                ...$definition,
+                'rarity_label' => self::RARITIES[$rarity]['label'],
+                'fixed_sale_price_money' => self::RARITIES[$rarity]['fixed_sale_price_money'],
+            ];
+        }
+
+        return $definitions;
+    }
+
+    /** @return array<string, array{key: string, name: string, fixed_sale_price_money: int}> */
+    public function rarities(): array
+    {
+        $rarities = [];
+        foreach (self::RARITIES as $key => $definition) {
+            $rarities[$key] = [
+                'key' => $key,
+                'name' => $definition['label'],
+                'fixed_sale_price_money' => $definition['fixed_sale_price_money'],
+            ];
+        }
+
+        return $rarities;
+    }
+
+    public function fixedSalePrice(string $itemKey): int
+    {
+        return $this->definition($itemKey)['fixed_sale_price_money'];
     }
 
     public function maximumEquipped(string $category): int

@@ -29,6 +29,9 @@ const props = defineProps<{
     mapSpaceId: number;
     selected: MapCell | null;
 }>();
+const emit = defineEmits<{
+    queue: [queue: CommandQueue];
+}>();
 
 const definitions = ref<CommandDefinition[]>([]);
 const quantityContract = ref({
@@ -415,6 +418,7 @@ function clampPosition(position: number, limit = queue.value.limit): number {
 
 function applyServerQueue(nextQueue: CommandQueue): void {
     queue.value = nextQueue;
+    emit('queue', nextQueue);
     selectedPosition.value = clampPosition(selectedPosition.value, nextQueue.limit);
     synchronizeEditingItem(nextQueue);
 }

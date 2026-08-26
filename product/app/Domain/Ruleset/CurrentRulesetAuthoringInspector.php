@@ -20,6 +20,13 @@ final class CurrentRulesetAuthoringInspector
         'trading-post.php',
     ];
 
+    /** @var array<string, string> */
+    private const V17_DOMAIN_OVERRIDES = [
+        'turn-pipeline.php' => 'v17/turn-pipeline.php',
+        'monsters-and-military.php' => 'v17/monsters-and-military.php',
+        'secretary.php' => 'v17/secretary.php',
+    ];
+
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
 
     /**
@@ -28,12 +35,19 @@ final class CurrentRulesetAuthoringInspector
      */
     public function inspect(array $publishedPayload): array
     {
+        $rulesetKey = $publishedPayload['key'] ?? null;
+        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17'], true)) {
+            throw new DomainException('Ruleset authoring inspection supports only immutable v16 and v17.');
+        }
         $authoredLeaves = [];
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
         foreach (self::DOMAIN_FILES as $file) {
-            $domain = require config_path('hakoniwa/rulesets/current/'.$file);
+            $relativePath = $rulesetKey === 'hakoniwa-2s-plus-v17'
+                ? (self::V17_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file)
+                : 'current/'.$file;
+            $domain = require config_path('hakoniwa/rulesets/'.$relativePath);
             if (! is_array($domain) || array_keys($domain) !== ['payload', 'classification']) {
                 throw new DomainException("Current Ruleset domain {$file} must contain only payload and classification.");
             }

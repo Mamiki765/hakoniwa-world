@@ -10,6 +10,7 @@ use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
+use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryProductionBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
@@ -62,7 +63,9 @@ final class CompleteTurnEngine
         private readonly TerritoryInfluenceService $territoryInfluence,
         private readonly SecretaryTurnService $secretaries,
         private readonly SecretaryProductionBonus $secretaryProduction,
-        private readonly SecretaryOldBowService $secretaryOldBow,
+        private readonly SecretaryDemographicPolicy $demographics,
+        private readonly SecretaryDemographicExperienceService $demographicExperience,
+        private readonly SecretaryBowAttackService $secretaryBows,
         private readonly NationLifecycleService $nationLifecycle,
         private readonly KarmaTurnService $karma,
         private readonly TradingPostTurnService $tradingPost,
@@ -398,6 +401,7 @@ final class CompleteTurnEngine
                 } else {
                     $growth = $this->growPopulation($context, $cell);
                     $metrics['population_increased'] += $growth['increase'];
+                    $metrics['population_decreased'] += $growth['decrease'];
                     $metrics['stage_transitions'] += $growth['stage_transition'];
                 }
 
@@ -448,7 +452,7 @@ final class CompleteTurnEngine
         $metrics['missile_launches'] = $launches['launches'];
         $metrics['missile_idle_counter_resets'] = $launches['idle_counter_resets'];
 
-        $secretaryItemMetrics = $this->secretaryOldBow->execute(
+        $secretaryItemMetrics = $this->secretaryBows->execute(
             $context,
             $space,
             $separateNormalMonsterPass,
@@ -854,6 +858,11 @@ final class CompleteTurnEngine
     /** @return array<string, int|bool> */
     private function finalizeTurn(TurnContext $context): array
     {
+        $finalPopulationByNation = [];
+        foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
+            $finalPopulationByNation[$nationId] = $record['summary']['population'];
+        }
+        $demographicMetrics = $this->demographicExperience->award($context, $finalPopulationByNation);
         $secretaryMetrics = $this->secretaries->flushExperience($context);
         $awardMetrics = $this->awards->finalize($context);
         $lifecycleMetrics = $this->nationLifecycle->finalize($context);
@@ -893,6 +902,9 @@ final class CompleteTurnEngine
             'secretary_levels_gained' => $secretaryMetrics['levels_gained'],
             'secretary_monster_experience_awarded' => $secretaryMetrics['monster_experience_awarded'],
             'secretary_monster_experience_changed' => $secretaryMetrics['monster_experience_secretaries_changed'],
+            'secretary_population_high_water_increase' => $demographicMetrics['population_high_water_increase'],
+            'secretary_net_population_loss' => $demographicMetrics['net_population_loss'],
+            'secretary_demographic_nations_awarded' => $demographicMetrics['nations_awarded'],
             ...$lifecycleMetrics,
             ...$karmaResultMetrics,
             ...$awardMetrics,
@@ -1444,7 +1456,7 @@ final class CompleteTurnEngine
         return ['decrease' => $actualLoss, 'stage_transition' => $stageTransition];
     }
 
-    /** @return array{increase: int, stage_transition: int} */
+    /** @return array{increase: int, decrease: int, stage_transition: int} */
     private function growPopulation(TurnContext $context, MapCell $cell): array
     {
         $rules = $context->ruleset->settings['turn_processing']['settlement'];
@@ -1453,14 +1465,74 @@ final class CompleteTurnEngine
             throw new DomainException('Settlement ordinary maximum population is missing.');
         }
         $before = $cell->population;
+        $birthrateLevel = 0;
+        $indomitableLevel = 0;
+        $demographicsEnabled = $this->demographics->enabled($context->ruleset->settings);
+        if ($demographicsEnabled) {
+            if ($cell->owner_nation_id === null || ! $context->state->hasSecretarySnapshot($cell->owner_nation_id)) {
+                throw new DomainException('Demographic population processing requires a turn-start Secretary snapshot.');
+            }
+            $birthrateLevel = $context->state->secretarySkillLevel(
+                $cell->owner_nation_id,
+                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+            );
+            $indomitableLevel = $context->state->secretarySkillLevel(
+                $cell->owner_nation_id,
+                SecretarySkillCatalog::INDOMITABLE,
+            );
+        }
         $attraction = $cell->owner_nation_id !== null
             && $context->state->hasAttraction($cell->owner_nation_id);
-        $ordinaryMaximum = $cell->facility?->key === 'capital'
+        $capital = $cell->facility?->key === 'capital';
+        $ordinaryMaximum = $capital
             ? $context->ruleset->settings['capital_growth_maximum_population']
-            : $ordinaryMaximum;
+            : ($demographicsEnabled ? $this->demographics->naturalMaximum(
+                $context->ruleset->settings,
+                $ordinaryMaximum,
+                $birthrateLevel,
+            ) : $ordinaryMaximum);
+        $attractionMaximum = $demographicsEnabled ? $this->demographics->attractionMaximum(
+            $context->ruleset->settings,
+            $rules['attraction_maximum_population'],
+            $birthrateLevel,
+        ) : $rules['attraction_maximum_population'];
+        $declineContract = $rules['over_attraction_maximum_decline'] ?? null;
+        if ($declineContract !== null && (! is_array($declineContract) || $declineContract !== [
+            'facility_keys' => ['village', 'town', 'city'],
+            'excluded_facility_key' => 'capital',
+            'loss_per_turn' => 100,
+            'skip_natural_growth' => true,
+            'event_type' => 'population.decreased',
+            'reason' => 'above_attraction_maximum',
+        ])) {
+            throw new DomainException('The v17 over-attraction population decline contract is invalid.');
+        }
+        if ($declineContract !== null && ! $capital
+            && in_array($cell->facility?->key, $declineContract['facility_keys'], true)
+            && $before > $attractionMaximum) {
+            $loss = min($declineContract['loss_per_turn'], $before - $attractionMaximum);
+            $cell->population = $before - $loss;
+            $cell->version++;
+            $this->saveChangedCell($context, $cell);
+            $this->events->record($context, $declineContract['event_type'], $cell, [
+                'nation_id' => $cell->owner_nation_id,
+                'reason' => $declineContract['reason'],
+                'before' => $before,
+                'after' => $cell->population,
+                'actual_loss' => $loss,
+                'effective_attraction_maximum' => $attractionMaximum,
+            ]);
+
+            return [
+                'increase' => 0,
+                'decrease' => $loss,
+                'stage_transition' => $this->syncSettlementStage($context, $cell),
+            ];
+        }
         $maximumPopulation = $attraction && $cell->facility?->key !== 'capital'
-            ? $rules['attraction_maximum_population']
+            ? $attractionMaximum
             : $ordinaryMaximum;
+        $indomitableBonus = 0;
         if ($before < $maximumPopulation) {
             $growthRules = match (true) {
                 ! $attraction => $rules['ordinary_growth'],
@@ -1470,7 +1542,14 @@ final class CompleteTurnEngine
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'],
             );
-            $cell->population = min($maximumPopulation, $before + $growth);
+            if (! $attraction && $demographicsEnabled) {
+                $indomitableBonus = $this->demographics->indomitableBonus(
+                    $context->ruleset->settings,
+                    $before,
+                    $indomitableLevel,
+                );
+            }
+            $cell->population = min($maximumPopulation, $before + $growth + $indomitableBonus);
         }
         $increase = $cell->population - $before;
         $transition = $this->syncSettlementStage($context, $cell);
@@ -1483,11 +1562,12 @@ final class CompleteTurnEngine
                 'ordinary_maximum' => $ordinaryMaximum,
                 'effective_maximum' => $maximumPopulation,
                 'attraction' => $attraction,
+                'indomitable_bonus' => $indomitableBonus,
             ];
             $this->events->record($context, 'population.increased', $cell, $metadata);
         }
 
-        return ['increase' => $increase, 'stage_transition' => $transition];
+        return ['increase' => $increase, 'decrease' => 0, 'stage_transition' => $transition];
     }
 
     private function syncSettlementStage(TurnContext $context, MapCell $cell): int

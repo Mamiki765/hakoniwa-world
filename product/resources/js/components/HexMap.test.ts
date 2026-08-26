@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MapCell } from '../types';
+import type { CommandQueue, MapCell } from '../types';
 import HexMap from './HexMap.vue';
 
 const worldBounds = { min_x: 0, max_x: 59, min_y: 0, max_y: 59 };
@@ -58,6 +58,49 @@ function trackPointerCapture(element: Element): { captured: number[]; released: 
 }
 
 describe('staggered square-image map', () => {
+    it('shows only matching queued commands below the sea-area line in position order without scanning an API', async () => {
+        const cell = mapCell({
+            x: 4,
+            y: 7,
+            details: [
+                { key: 'sea_area', label: '海域', value: 'ウォーリアン海域', unit: null, formatted: 'ウォーリアン海域', visibility: 'public' },
+                { key: 'population', label: '人口', value: 1000, unit: '人', formatted: '1,000人', visibility: 'public' },
+            ],
+        });
+        const commandQueue: CommandQueue = {
+            version: 9,
+            limit: 20,
+            explicit_count: 5,
+            items: [
+                { id: 5, command_key: 'excavate', command_name: '掘削', queue_position: 5, target_x: 4, target_y: 7, quantity: 99, quantity_semantics: 'selector', quantity_label: '油田', parameters: {}, status: 'queued', queued_at: null },
+                { id: 1, command_key: 'landfill', command_name: '埋め立て', queue_position: 1, target_x: 4, target_y: 7, quantity: 1, quantity_semantics: 'unused', quantity_label: null, parameters: {}, status: 'queued', queued_at: null },
+                { id: 3, command_key: 'plant', command_name: '植林', queue_position: 3, target_x: 4, target_y: 7, quantity: 6, quantity_semantics: 'ordinary', quantity_label: '6回', parameters: {}, status: 'queued', queued_at: null },
+                { id: 2, command_key: 'level', command_name: '整地', queue_position: 2, target_x: 8, target_y: 8, quantity: 1, quantity_semantics: 'unused', quantity_label: null, parameters: {}, status: 'queued', queued_at: null },
+                { id: 7, command_key: 'dispatch', command_name: '怪獣派遣', queue_position: 7, target_x: null, target_y: null, quantity: 4, quantity_semantics: 'selector', quantity_label: 'いのら', parameters: {}, status: 'queued', queued_at: null },
+            ],
+            plan: [],
+        };
+        const wrapper = mount(HexMap, { props: {
+            cells: [cell], selected: null, capital: { x: 4, y: 7 }, bounds: worldBounds,
+            commandQueue, loading: false, error: null, emptyChunks: [],
+        } });
+        await flushPromises();
+        await wrapper.get('.map-cell').trigger('mouseenter');
+
+        const lines = wrapper.findAll('.cell-tooltip span').map((line) => line.text());
+        const seaIndex = lines.indexOf('海域: ウォーリアン海域');
+        expect(lines.slice(seaIndex, seaIndex + 5)).toEqual([
+            '海域: ウォーリアン海域',
+            '[1] 埋め立て ×1',
+            '[3] 植林 ×6',
+            '[5] 掘削 ×1',
+            '人口: 1,000人',
+        ]);
+        expect(wrapper.get('.cell-tooltip').text()).not.toContain('整地');
+        expect(wrapper.get('.cell-tooltip').text()).not.toContain('怪獣派遣');
+        expect(wrapper.get('.cell-tooltip').text()).not.toContain('開発計画');
+    });
+
     it('renders completed and optional overlay images, fallback, selection and six-way keyboard input', async () => {
         const selected = mapCell({
             details: [{ key: 'population', label: '人口', value: 1000, unit: '人', formatted: '1,000人', visibility: 'public' }],

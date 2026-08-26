@@ -139,6 +139,8 @@ final class TurnState
 
     private bool $secretaryExperienceFlushed = false;
 
+    private bool $demographicExperienceAwarded = false;
+
     /** @param array<array-key, mixed> $nationIds */
     public function setStableNationIds(array $nationIds): void
     {
@@ -736,7 +738,7 @@ final class TurnState
         if (! is_int($monsterExperience) || $monsterExperience < 0) {
             throw new InvalidArgumentException('Secretary monster experience snapshot must be a non-negative integer.');
         }
-        if (array_keys($skills) !== SecretarySkillCatalog::KEYS) {
+        if (! in_array(array_keys($skills), [SecretarySkillCatalog::KEYS, SecretarySkillCatalog::V17_KEYS], true)) {
             throw new InvalidArgumentException('Secretary snapshot must contain the exact current skill catalog.');
         }
         $validatedSkills = [];
@@ -927,7 +929,7 @@ final class TurnState
 
     public function secretarySkillLevel(mixed $nationId, string $skillKey): int
     {
-        if (! in_array($skillKey, SecretarySkillCatalog::KEYS, true)) {
+        if (! in_array($skillKey, SecretarySkillCatalog::V17_KEYS, true)) {
             throw new InvalidArgumentException("Unknown Secretary skill {$skillKey}.");
         }
 
@@ -938,7 +940,7 @@ final class TurnState
     {
         $nationId = $this->validatedNationId($nationId);
         $this->secretarySnapshot($nationId);
-        if (! in_array($skillKey, SecretarySkillCatalog::KEYS, true) || $amount < 1) {
+        if (! in_array($skillKey, SecretarySkillCatalog::V17_KEYS, true) || $amount < 1) {
             throw new InvalidArgumentException('Secretary experience award must use a known skill and positive amount.');
         }
         if ($this->secretaryExperienceFlushed) {
@@ -949,6 +951,17 @@ final class TurnState
             throw new InvalidArgumentException('Secretary experience award exceeds the supported integer range.');
         }
         $this->pendingSecretaryExperience[$nationId][$skillKey] = $current + $amount;
+    }
+
+    public function claimDemographicExperienceAward(): void
+    {
+        if ($this->demographicExperienceAwarded) {
+            throw new InvalidArgumentException('Demographic Secretary experience was already awarded for this attempt.');
+        }
+        if ($this->secretaryExperienceFlushed) {
+            throw new InvalidArgumentException('Demographic Secretary experience cannot be awarded after the attempt flush.');
+        }
+        $this->demographicExperienceAwarded = true;
     }
 
     /** @return array<int, array<string, int>> */

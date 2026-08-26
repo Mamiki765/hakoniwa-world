@@ -16,6 +16,10 @@ final class SecretarySkillCatalog
 
     public const FINAL_DEFENSE_LINE = 'final_defense_line';
 
+    public const DECLINING_BIRTHRATE_POLICY = 'declining_birthrate_policy';
+
+    public const INDOMITABLE = 'indomitable';
+
     /** @var list<string> */
     public const V14_KEYS = [
         self::AGRICULTURAL_POLICY,
@@ -31,6 +35,13 @@ final class SecretarySkillCatalog
         self::GOLD_VEIN_SURVEY,
         self::FOREST_MANAGEMENT,
         self::FINAL_DEFENSE_LINE,
+    ];
+
+    /** @var list<string> */
+    public const V17_KEYS = [
+        ...self::KEYS,
+        self::DECLINING_BIRTHRATE_POLICY,
+        self::INDOMITABLE,
     ];
 
     /**
@@ -103,6 +114,10 @@ final class SecretarySkillCatalog
             throw new DomainException('The active ruleset has an invalid Secretary catalog version.');
         }
 
-        return $version >= 15 ? self::KEYS : self::V14_KEYS;
+        return match (true) {
+            $version >= 17 => self::V17_KEYS,
+            $version >= 15 => self::KEYS,
+            default => self::V14_KEYS,
+        };
     }
 }

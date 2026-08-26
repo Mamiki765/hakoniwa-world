@@ -342,6 +342,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .equipment-slot-number { position: absolute; top: 4px; left: 6px; color: var(--muted); font-size: .64rem; }
 .secretary-warehouse { display: grid; gap: 9px; margin: 12px 0 0; padding: 0; list-style: none; }
 .secretary-warehouse li { padding: 13px 15px; border: 1px solid var(--line); background: var(--input-surface); }
+.secretary-warehouse-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.secretary-item-sell { flex: 0 0 auto; }
 .secretary-warehouse p { margin: 5px 0 0; font-size: .78rem; }
 .secretary-warehouse .item-effect { color: var(--ink); font-weight: 600; line-height: 1.5; }
 .secretary-warehouse .item-flavor { color: var(--muted); font-style: italic; line-height: 1.55; }
@@ -708,7 +710,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .trading-post-table th, .trading-post-table td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
 .trading-post-table th { background: var(--table-heading); font-size: .78rem; }
 .trading-post-table tbody tr:last-child td { border-bottom: 0; }
-.trading-post-price-cell, .trading-post-bid-cell, .trading-post-my-listing-details { display: grid; gap: 4px; }
+.trading-post-bid-cell, .trading-post-my-listing-details { display: grid; gap: 4px; }
+.trading-post-price-cell .trading-post-secondary-line { display: block; margin-top: 4px; }
 .trading-post-secondary-line { color: var(--muted); font-size: .72rem; }
 .trading-post-bid-status { font-size: .75rem; font-weight: 800; }
 .trading-post-bid-status-highest { color: var(--coral); }

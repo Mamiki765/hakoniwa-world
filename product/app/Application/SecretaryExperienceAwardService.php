@@ -24,7 +24,7 @@ final class SecretaryExperienceAwardService
         $context->state->awardSecretaryExperience(
             $nationId,
             $skillKey,
-            $this->resolvedAmount($context, $nationId, self::PASSIVE_SKILL, $amount),
+            $this->resolvedAmount($context, $nationId, self::PASSIVE_SKILL, $amount, $skillKey),
         );
     }
 
@@ -44,11 +44,12 @@ final class SecretaryExperienceAwardService
         int $nationId,
         string $source,
         int $amount,
+        ?string $skillKey = null,
     ): int {
         if ($amount < 1) {
             throw new DomainException('Secretary experience award amount must be positive.');
         }
-        $effect = $this->items->snapshotExperienceDouble($context->state, $nationId, $source);
+        $effect = $this->items->snapshotExperienceDouble($context->state, $nationId, $source, $skillKey);
         if ($effect === null) {
             return $amount;
         }

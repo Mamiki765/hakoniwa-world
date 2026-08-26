@@ -339,6 +339,8 @@ class CompleteTurnIntegrationTest extends TestCase
         return [
             'current_turn' => $world->fresh()->current_turn,
             'money' => $world->nations()->whereKey($nationId)->value('money'),
+            'population_high_water' => $world->nations()->whereKey($nationId)->value('population_high_water'),
+            'secretary_skills' => $this->secretarySkillSnapshot($nationId),
             'resources' => NationResource::query()->where('nation_id', $nationId)
                 ->orderBy('resource_definition_id')->pluck('amount', 'resource_definition_id')->all(),
             'cells' => MapCell::query()->where('owner_nation_id', $nationId)->orderBy('id')->get([
@@ -361,6 +363,8 @@ class CompleteTurnIntegrationTest extends TestCase
     {
         return [
             'money' => $world->nations()->whereKey($nationId)->value('money'),
+            'population_high_water' => $world->nations()->whereKey($nationId)->value('population_high_water'),
+            'secretary_skills' => $this->secretarySkillSnapshot($nationId),
             'resources' => NationResource::query()->where('nation_id', $nationId)
                 ->orderBy('resource_definition_id')->pluck('amount', 'resource_definition_id')->all(),
             'cells' => MapCell::query()->where('owner_nation_id', $nationId)->orderBy('id')->get([
@@ -409,6 +413,21 @@ class CompleteTurnIntegrationTest extends TestCase
             512,
             JSON_THROW_ON_ERROR,
         );
+    }
+
+    /** @return array<string, array{level: int, experience: int}> */
+    private function secretarySkillSnapshot(int $nationId): array
+    {
+        $secretaryId = DB::table('nation_memberships')->where('nation_id', $nationId)
+            ->where('role', 'owner')->join('secretaries', 'secretaries.user_id', '=', 'nation_memberships.user_id')
+            ->value('secretaries.id');
+
+        return DB::table('secretary_skills')->where('secretary_id', $secretaryId)
+            ->orderBy('skill_key')->get(['skill_key', 'level', 'experience'])
+            ->mapWithKeys(static fn (object $row): array => [(string) $row->skill_key => [
+                'level' => (int) $row->level,
+                'experience' => (int) $row->experience,
+            ]])->all();
     }
 }
 

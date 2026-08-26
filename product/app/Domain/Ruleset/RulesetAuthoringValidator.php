@@ -16,6 +16,7 @@ use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryItemTargetSafetyPolicy;
+use App\Domain\Secretary\SecretaryMonsterDropContract;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\TradingPost\TradingPostRules;
 use App\Domain\Turn\DeterministicRandomStream;
@@ -37,6 +38,8 @@ final class RulesetAuthoringValidator
     private const FORMAL_V15_KEY = 'hakoniwa-2s-plus-v15';
 
     private const FORMAL_V16_KEY = 'hakoniwa-2s-plus-v16';
+
+    private const FORMAL_V17_KEY = 'hakoniwa-2s-plus-v17';
 
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
@@ -356,6 +359,9 @@ final class RulesetAuthoringValidator
             $authoredKey,
             $version,
         );
+        $dropSettings = $settings;
+        $dropSettings['key'] = $authoredKey;
+        (new SecretaryMonsterDropContract(new SecretaryItemCatalog))->validate($dropSettings);
         $this->validateMilitary($settings, $facilityKeys, $version);
         $this->validateSecretary($settings, $resourceKeys, $commandKeys, $authoredKey);
 
@@ -402,7 +408,7 @@ final class RulesetAuthoringValidator
             $requirement = $this->map($definition['level_requirement'], "{$path}.level_requirement");
             $this->requireKeys($requirement, ['basis', 'multiplier'], "{$path}.level_requirement");
             $basis = $requirement['basis'] ?? null;
-            if (! in_array($basis, ['next_level_squared', 'current_level_squared'], true)) {
+            if (! in_array($basis, ['next_level_squared', 'current_level_squared', 'triangular_growth'], true)) {
                 throw new DomainException("{$path}.level_requirement.basis is invalid.");
             }
             $multiplier = $this->integer(
@@ -459,6 +465,49 @@ final class RulesetAuthoringValidator
                 continue;
             }
 
+            if ($key === SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY) {
+                if ($initialLevel !== 0 || $basis !== 'triangular_growth' || $multiplier !== 10_000
+                    || ($requirement['accounting'] ?? null) !== 'cumulative_non_consuming'
+                    || $effect !== [
+                        'type' => 'settlement_population_limits',
+                        'natural_maximum_per_level' => 50,
+                        'attraction_maximum_per_level' => 100,
+                        'capital_maximum_modifier' => 0,
+                    ]
+                    || $source !== [
+                        'type' => 'nation_population_high_water_increase',
+                        'checkpoint' => 'nations.population_high_water',
+                        'timing' => 'final_population_before_secretary_experience_flush',
+                        'historical_backfill' => 'authoritative_turn_summary_and_current_population_only',
+                    ]) {
+                    throw new DomainException("{$path} does not match the demographic high-water skill contract.");
+                }
+
+                continue;
+            }
+
+            if ($key === SecretarySkillCatalog::INDOMITABLE) {
+                if ($initialLevel !== 0 || $basis !== 'triangular_growth' || $multiplier !== 10_000
+                    || ($requirement['accounting'] ?? null) !== 'consume_required_carry_remainder'
+                    || $effect !== [
+                        'type' => 'natural_population_growth_percent',
+                        'basis_points_per_level' => 25,
+                        'rounding' => 'floor',
+                        'maximum' => 'effective_natural_maximum',
+                        'extra_random_draw' => false,
+                    ]
+                    || $source !== [
+                        'type' => 'turn_net_population_loss',
+                        'calculation' => 'max_zero_start_population_minus_end_population',
+                        'timing' => 'final_population_before_secretary_experience_flush',
+                        'historical_backfill' => 'authoritative_turn_summary_only',
+                    ]) {
+                    throw new DomainException("{$path} does not match the Indomitable skill contract.");
+                }
+
+                continue;
+            }
+
             if ($key !== SecretarySkillCatalog::FINAL_DEFENSE_LINE
                 || $initialLevel !== 1
                 || $basis !== 'current_level_squared'
@@ -485,7 +534,7 @@ final class RulesetAuthoringValidator
         $itemSettings = $settings;
         $itemSettings['key'] = $authoredKey;
         (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($itemSettings);
-        if ($authoredKey === self::FORMAL_V16_KEY) {
+        if (in_array($authoredKey, [self::FORMAL_V16_KEY, self::FORMAL_V17_KEY], true)) {
             TradingPostRules::fromSettings($settings);
         }
 
@@ -536,10 +585,11 @@ final class RulesetAuthoringValidator
             14 => self::FORMAL_V14_KEY,
             15 => self::FORMAL_V15_KEY,
             16 => self::FORMAL_V16_KEY,
+            17 => self::FORMAL_V17_KEY,
             default => null,
         };
         if ($expectedKey === null || $authoredKey !== $expectedKey || ! $hasLifecycle) {
-            throw new DomainException('The v12-v16 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+            throw new DomainException('The v12-v17 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
         }
 
         $path = 'ruleset.nation_lifecycle';
@@ -627,10 +677,10 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($version, [13, 14, 15, 16], true)
-            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY], true)
+        if (! in_array($version, [13, 14, 15, 16, 17], true)
+            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY], true)
             || ! is_array($authored)) {
-            throw new DomainException('The v13-v16 Ruleset identity requires the KARMA contract.');
+            throw new DomainException('The v13-v17 Ruleset identity requires the KARMA contract.');
         }
         $expected = [
             'minimum' => -10,
@@ -1294,11 +1344,12 @@ final class RulesetAuthoringValidator
             14 => self::FORMAL_V14_KEY,
             15 => self::FORMAL_V15_KEY,
             16 => self::FORMAL_V16_KEY,
+            17 => self::FORMAL_V17_KEY,
             default => null,
         };
         if (($expectedKey !== null && $key !== $expectedKey)
-            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY], true))) {
-            throw new DomainException('The v11-v16 ruleset identity and version must be authored together.');
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY], true))) {
+            throw new DomainException('The v11-v17 ruleset identity and version must be authored together.');
         }
 
         return $version >= 11;
@@ -1315,8 +1366,8 @@ final class RulesetAuthoringValidator
         ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
-        if (in_array($version, [12, 13, 14, 15, 16], true)
-            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY], true)) {
+        if (in_array($version, [12, 13, 14, 15, 16, 17], true)
+            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 

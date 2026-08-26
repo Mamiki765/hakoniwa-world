@@ -8,6 +8,8 @@ use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretarySkillCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
+use App\Domain\Secretary\SecretaryItemProbability;
 use App\Domain\Turn\LaunchIntent;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -68,6 +70,7 @@ final class MissileImpactResolver
         private readonly KarmaTurnService $karma,
         private readonly NationLifecycleService $nationLifecycle,
         private readonly SecretaryExperienceAwardService $secretaryExperience,
+        private readonly SecretaryItemProbability $itemProbability,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -454,7 +457,26 @@ final class MissileImpactResolver
         $attackerStartKarma = $context->state->karmaStartSnapshot($intent->nationId);
         $antiMonsterExempt = $intent->definitionKey !== 'land_destruction_missile'
             && $intent->antiMonsterContext();
-        $crimePoints = $targetStartKarma <= 0 && ! $antiMonsterExempt ? $points : 0;
+        $baseCrimePoints = $targetStartKarma <= 0 && ! $antiMonsterExempt ? $points : 0;
+        $collarTriggered = false;
+        $crimePoints = $baseCrimePoints;
+        $collar = $this->collarEffect($context, (int) $intent->nationId, SecretaryItemGameplayContract::KARMA_CRIME_DOUBLE_CHANCE);
+        if ($baseCrimePoints > 0 && $collar !== null && $attackerStartKarma >= 1
+            && $this->collarQualifyingImpact($impact)) {
+            $impactIndex = (int) $launch['fired'];
+            $draw = $context->random->stream(TurnRandomStreamFactory::secretaryCollar(
+                (int) $intent->nationId,
+                (int) $intent->queueItemId,
+                $impactIndex,
+                (int) $collar['effect']['random_stream_version'],
+            ))->integer(0, 9_999);
+            $chance = ((int) $collar['effect']['parameters']['base_percent']
+                + (int) $collar['item']['level'] * (int) $collar['effect']['parameters']['percent_per_level']) * 100;
+            $collarTriggered = $this->itemProbability->passesBasisPointDraw($draw, $chance);
+            if ($collarTriggered) {
+                $crimePoints = $baseCrimePoints * (int) $collar['effect']['parameters']['multiplier'];
+            }
+        }
         if ($crimePoints > 0) {
             $context->state->addKarmaCrime($intent->nationId, $crimePoints);
         }
@@ -497,6 +519,9 @@ final class MissileImpactResolver
             'effect' => $impact['effect'],
             'impact_category_points' => $points,
             'crime_points' => $crimePoints,
+            'base_crime_points' => $baseCrimePoints,
+            'collar_triggered' => $collarTriggered,
+            'final_crime_points' => $crimePoints,
             'attacker_start_karma' => $attackerStartKarma,
             'target_start_karma' => $targetStartKarma,
             'turn_start_monster' => $launch['turn_start_monster'],
@@ -1218,6 +1243,12 @@ final class MissileImpactResolver
                 ], 'admin');
             }
         }
+        $collar = $this->collarEffect($context, (int) $recipient->id, SecretaryItemGameplayContract::REFUGEE_GENERATION_PERCENT);
+        if ($collar !== null && $context->state->karmaStartSnapshot((int) $recipient->id) >= 1) {
+            $percent = (int) $collar['effect']['parameters']['base_percent']
+                + (int) $collar['item']['level'] * (int) $collar['effect']['parameters']['percent_per_level'];
+            $generated += intdiv($generated * $percent, 100);
+        }
         $this->events->record($context, 'refugee_generated', $source, [
             'nation_id' => $sourceNationId,
             'recipient_nation_id' => $recipient->id,
@@ -1279,6 +1310,38 @@ final class MissileImpactResolver
             }
         }
         $this->cells->setFacility($cell, FacilityDefinition::query()->where('key', 'city')->firstOrFail());
+    }
+
+    /** @return array{item: array<string, mixed>, effect: array<string, mixed>}|null */
+    private function collarEffect(TurnContext $context, int $nationId, string $effectType): ?array
+    {
+        if (! $context->state->hasSecretaryItemEffectSnapshot($nationId)) {
+            return null;
+        }
+        $found = null;
+        foreach ($context->state->secretaryItemEffectSnapshot($nationId)['items'] as $item) {
+            if ($item['item_key'] !== 'collar') {
+                continue;
+            }
+            foreach ($item['effects'] as $effect) {
+                if ($effect['type'] !== $effectType) {
+                    continue;
+                }
+                if ($found !== null) {
+                    throw new DomainException('Secretary Collar snapshot contains a duplicate effect.');
+                }
+                $found = ['item' => $item, 'effect' => $effect];
+            }
+        }
+
+        return $found;
+    }
+
+    /** @param array<string, mixed> $impact */
+    private function collarQualifyingImpact(array $impact): bool
+    {
+        return in_array($impact['removed_facility_key'] ?? null, ['village', 'town', 'city'], true)
+            || in_array($impact['effect'] ?? null, ['capital_damaged', 'capital_at_minimum'], true);
     }
 
     /** @param array<string, mixed> $metadata */
