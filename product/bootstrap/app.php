@@ -12,6 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->encryptCookies(except: [
+            'hakoniwa_theme',
+        ]);
         $middleware->trimStrings(except: [
             static fn (Request $request): bool => $request->is('api/v1/nations/*/abandon'),
         ]);
