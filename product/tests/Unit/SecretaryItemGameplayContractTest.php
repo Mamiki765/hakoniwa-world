@@ -74,8 +74,12 @@ final class SecretaryItemGameplayContractTest extends TestCase
             $contract->effectText($settings, SecretaryItemCatalog::INORA_BRACELET, 5),
         );
         $this->assertSame(
-            '食料aggregate最大値 +20%',
-            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 10),
+            '食料最大値 +2%',
+            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 1),
+        );
+        $this->assertSame(
+            '食料最大値 +6%',
+            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 3),
         );
         $this->assertSame(
             'secretary_item:secretary_suit:nation:7:monster_experience:v1',

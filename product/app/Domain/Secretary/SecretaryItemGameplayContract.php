@@ -260,7 +260,7 @@ final class SecretaryItemGameplayContract
             self::CAPACITY_PERCENT => match ($effects[0]['parameters']['target']) {
                 self::CAPACITY_ALL_RESOURCES => "あらゆる国家資源の最大保有量 +{$level}%",
                 self::CAPACITY_MONEY => "資金最大値 +{$level}%",
-                self::CAPACITY_FOOD => '食料aggregate最大値 +'.($level * 2).'%',
+                self::CAPACITY_FOOD => '食料最大値 +'.($level * 2).'%',
                 default => throw new DomainException('Unknown Secretary Item capacity target.'),
             },
             self::KARMA_MINIMUM_DELTA => "カルマの下限を{$level}低くする。",
