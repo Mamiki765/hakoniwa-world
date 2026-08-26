@@ -2,8 +2,11 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
+use App\Domain\Secretary\SecretaryMonsterDropContract;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -12,6 +15,83 @@ use Tests\TestCase;
 
 final class SecretaryItemGameplayContractTest extends TestCase
 {
+    public function test_v17_catalog_fixes_rarities_prices_player_trading_and_npc_exclusion(): void
+    {
+        $settings = config('hakoniwa.ruleset');
+        $contract = app(SecretaryItemGameplayContract::class);
+        $catalog = app(SecretaryItemCatalog::class);
+        $contract->validate($settings);
+
+        $this->assertSame([
+            'novice' => ['key' => 'novice', 'name' => 'ノービス', 'fixed_sale_price_money' => 100],
+            'regular' => ['key' => 'regular', 'name' => 'レギュラー', 'fixed_sale_price_money' => 500],
+            'cursed' => ['key' => 'cursed', 'name' => 'カースド', 'fixed_sale_price_money' => 1],
+        ], $catalog->rarities());
+        foreach ([SecretaryItemCatalog::ELF_BOW, SecretaryItemCatalog::LONGSHOT_BOW, SecretaryItemCatalog::MECHANICAL_BOW] as $itemKey) {
+            $definition = $catalog->definition($itemKey);
+            $this->assertSame('regular', $definition['rarity']);
+            $this->assertTrue($definition['tradable']);
+            $this->assertFalse($definition['npc_tradable']);
+            $this->assertSame(500, $definition['fixed_sale_price_money']);
+        }
+        $collar = $catalog->definition(SecretaryItemCatalog::COLLAR);
+        $this->assertSame('cursed', $collar['rarity']);
+        $this->assertTrue($collar['tradable']);
+        $this->assertFalse($collar['npc_tradable']);
+        $this->assertSame(1, $collar['fixed_sale_price_money']);
+        $this->assertSame(1, $settings['secretary']['items'][SecretaryItemCatalog::COLLAR]['effects'][0]['minimum_start_karma']);
+        $this->assertArrayNotHasKey(
+            'minimum_start_karma',
+            $settings['secretary']['items'][SecretaryItemCatalog::COLLAR]['effects'][1],
+        );
+        $oldBow = $catalog->definition(SecretaryItemCatalog::OLD_BOW);
+        $this->assertFalse($oldBow['tradable']);
+        $this->assertFalse($oldBow['npc_tradable']);
+        $this->assertSame(100, $oldBow['fixed_sale_price_money']);
+        $this->assertSame(
+            [SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY],
+            $settings['secretary']['items'][SecretaryItemCatalog::SECRETARY_SUIT]['effects'][0]['excluded_skill_keys'],
+        );
+        $demographics = app(SecretaryDemographicPolicy::class);
+        $this->assertSame(10_500, $demographics->naturalMaximum($settings, 10_000, 10));
+        $this->assertSame(21_000, $demographics->attractionMaximum($settings, 20_000, 10));
+        $this->assertSame(225, $demographics->indomitableBonus($settings, 9_000, 10));
+
+        $this->assertSame(
+            '12%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
+            $contract->effectText($settings, SecretaryItemCatalog::ELF_BOW, 1),
+        );
+        $this->assertSame(
+            '21%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
+            $contract->effectText($settings, SecretaryItemCatalog::ELF_BOW, 10),
+        );
+        $this->assertSame(
+            'secretary_item:bow:nation:7:item:elf_bow:trigger:v1',
+            TurnRandomStreamFactory::secretaryBow(7, SecretaryItemCatalog::ELF_BOW, 'trigger', 1),
+        );
+    }
+
+    public function test_v17_monster_drop_tables_and_pools_are_closed_and_exclude_old_bow_and_mecha(): void
+    {
+        $settings = config('hakoniwa.ruleset');
+        app(SecretaryMonsterDropContract::class)->validate($settings);
+        $drop = $settings['monster_system']['item_drop'];
+
+        $this->assertSame(['mecha_inora', 'mecha_inora_zero'], $drop['excluded_monster_keys']);
+        $this->assertSame(75, $drop['recipient']['killer_percent_when_foreign_host']);
+        $this->assertSame(25, $drop['recipient']['host_percent_when_foreign_host']);
+        $this->assertSame([
+            'elf_bow', 'longshot_bow', 'mechanical_bow',
+        ], $drop['rarity_pools']['regular']);
+        $this->assertSame(['collar'], $drop['rarity_pools']['cursed']);
+        $this->assertNotContains('old_bow', $drop['rarity_pools']['novice']);
+        $this->assertSame(
+            ['novice' => 40, 'regular' => 40, 'cursed' => 20],
+            $drop['monster_tables']['king_inora']['rarity_weights'],
+        );
+        $this->assertSame(100, $drop['monster_tables']['king_inora']['level_cap_percent']);
+    }
+
     public function test_current_contract_validates_and_resolves_exact_player_text(): void
     {
         $settings = CurrentRulesetFixture::settings();
@@ -69,13 +149,21 @@ final class SecretaryItemGameplayContractTest extends TestCase
             '秘書本人が経験値を得る際、10%の確率でその獲得経験値を2倍にする。',
             $contract->effectText($settings, SecretaryItemCatalog::SECRETARY_SUIT, 10),
         );
+        $this->assertArrayNotHasKey(
+            'excluded_skill_keys',
+            $settings['secretary']['items'][SecretaryItemCatalog::SECRETARY_SUIT]['effects'][0],
+        );
         $this->assertSame(
             '自島の通常怪獣自然出現率 +50%',
             $contract->effectText($settings, SecretaryItemCatalog::INORA_BRACELET, 5),
         );
         $this->assertSame(
-            '食料aggregate最大値 +20%',
-            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 10),
+            '食料最大値 +2%',
+            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 1),
+        );
+        $this->assertSame(
+            '食料最大値 +6%',
+            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 3),
         );
         $this->assertSame(
             'secretary_item:secretary_suit:nation:7:monster_experience:v1',

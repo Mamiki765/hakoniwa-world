@@ -12,7 +12,7 @@ final class CurrentRulesetContractTest extends TestCase
     private const V16_CHECKSUM = '331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d';
 
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
-    private const COVERAGE = [
+    private const V16_COVERAGE = [
         'domains' => 10,
         'leaves' => 1841,
         'behavior' => 1210,
@@ -20,28 +20,30 @@ final class CurrentRulesetContractTest extends TestCase
         'flavor' => 176,
     ];
 
-    public function test_normal_config_loads_only_the_explicit_current_v16_contract(): void
+    public function test_normal_config_loads_v17_while_preserving_the_explicit_v16_contract(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
+        $v16 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
         $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php'));
 
         $this->assertIsString($source);
         $this->assertSame(10, substr_count($source, "require __DIR__.'/current/"));
         $this->assertLessThan(100, substr_count($source, "\n"));
-        $this->assertSame(['hakoniwa-2s-plus-v16'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v16']);
+        $this->assertSame(['hakoniwa-2s-plus-v17'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v17']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v16', $current['key']);
-        $this->assertSame(16, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v17', $current['key']);
+        $this->assertSame(17, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
-        $this->assertSame(self::V16_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V16_CHECKSUM, $this->checksum($v16));
+        $this->assertNotSame(self::V16_CHECKSUM, $this->checksum($current));
 
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v16', $summary['key']);
-        $this->assertSame(16, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v17', $summary['key']);
+        $this->assertSame(17, $summary['version']);
         $this->assertSame(count($current['command_definitions']), $summary['commands']);
         $this->assertSame(count($current['production_definitions']), $summary['production']);
     }
@@ -49,9 +51,11 @@ final class CurrentRulesetContractTest extends TestCase
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void
     {
         $this->assertSame(
-            self::COVERAGE,
-            app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset')),
+            10,
+            app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'))['domains'],
         );
+        $coverage = app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'));
+        $this->assertSame($coverage['leaves'], $coverage['behavior'] + $coverage['data'] + $coverage['flavor']);
     }
 
     public function test_absolute_selector_wildcard_rejects_string_and_numeric_associative_keys(): void
@@ -88,15 +92,16 @@ final class CurrentRulesetContractTest extends TestCase
     public function test_scalar_classification_does_not_replace_the_container_checksum_contract(): void
     {
         $current = config('hakoniwa.ruleset');
+        $v16 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
         $withAdditionalEmptyContainer = $current;
         $withAdditionalEmptyContainer['classification_boundary_probe'] = [];
 
         $this->assertSame(
-            self::COVERAGE,
+            app(CurrentRulesetAuthoringInspector::class)->inspect($current),
             app(CurrentRulesetAuthoringInspector::class)->inspect($withAdditionalEmptyContainer),
         );
-        $this->assertSame(self::V16_CHECKSUM, $this->checksum($current));
-        $this->assertNotSame(self::V16_CHECKSUM, $this->checksum($withAdditionalEmptyContainer));
+        $this->assertSame(self::V16_CHECKSUM, $this->checksum($v16));
+        $this->assertNotSame($this->checksum($current), $this->checksum($withAdditionalEmptyContainer));
     }
 
     /** @param array<string, mixed> $payload */

@@ -1,13 +1,15 @@
 # Ruleset authoring
 
-The thin `hakoniwa-2s-plus-v16.php` entrypoint explicitly composes the domain-first current
-authoring under `current/`. Historical `roadmap-pr*` snapshots and formal
+The immutable `hakoniwa-2s-plus-v17.php` entrypoint explicitly reuses unchanged v16 domain
+fragments and composes only the changed v17 fragments under `v17/`. The standalone
+`hakoniwa-2s-plus-v16.php` payload remains immutable as the exact source accepted by the
+forward-only v16-to-v17 migration. Historical `roadmap-pr*` snapshots and formal
 `hakoniwa-2s-plus-v1.php` through `v15.php` are preserved by Git and retired from the current
 tree. Pre-MVP prototypes also live only in repository history. Test fixtures live under
 `tests/` and must never be registered or published as gameplay Rulesets.
 
-`config/hakoniwa.php`, tests, and the operator validator load only current v16. There is no
-current historical-authoring catalog or migration bootstrap. Historical source bytes,
+`config/hakoniwa.php`, tests, and the operator validator load only current v17. There is no
+generic historical-authoring catalog or inheritance framework. Historical source bytes,
 resolved payloads, checksums, and published database snapshots remain immutable in their
 recorded Git/database authority; Markdown summaries do not reproduce them.
 
@@ -24,7 +26,7 @@ Ruleset version and publication.
 The configured current identity is in `config/hakoniwa.php`. Verify its source with:
 
 ```text
-php artisan hakoniwa:ruleset:validate --key=hakoniwa-2s-plus-v16
+php artisan hakoniwa:ruleset:validate --key=hakoniwa-2s-plus-v17
 ```
 
 Validation does not publish, migrate, or update a World. A future gameplay/balance change

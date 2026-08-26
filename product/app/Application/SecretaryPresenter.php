@@ -40,7 +40,7 @@ final class SecretaryPresenter
                 'experience' => $row->experience,
                 'required_experience' => $required,
                 'remaining_experience' => max(0, $required - $row->experience),
-                'effect' => $this->effect($key, $row->level),
+                'effect' => $this->effect($key, $row->level, $definition),
             ];
         }
         if ($rows->count() !== count($skills)) {
@@ -58,7 +58,8 @@ final class SecretaryPresenter
         ];
     }
 
-    private function effect(string $skillKey, int $level): string
+    /** @param array<string, mixed> $definition */
+    private function effect(string $skillKey, int $level, array $definition): string
     {
         return match ($skillKey) {
             SecretarySkillCatalog::AGRICULTURAL_POLICY => sprintf('小麦生産＋%.1f%%', $level / 10),
@@ -66,7 +67,38 @@ final class SecretaryPresenter
             SecretarySkillCatalog::GOLD_VEIN_SURVEY => sprintf('採掘場生産＋%.1f%%', $level / 10),
             SecretarySkillCatalog::FOREST_MANAGEMENT => "伐採資金・森林増加＋{$level}%",
             SecretarySkillCatalog::FINAL_DEFENSE_LINE => "防衛されなかったミサイルを1ターンにつき{$level}発まで迎撃",
+            SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => $this->birthratePolicyEffect($definition, $level),
+            SecretarySkillCatalog::INDOMITABLE => $this->indomitableEffect($definition, $level),
             default => throw new DomainException("Unknown Secretary skill {$skillKey}."),
         };
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function birthratePolicyEffect(array $definition, int $level): string
+    {
+        $effect = $definition['effect'] ?? null;
+        $naturalPerLevel = is_array($effect) ? ($effect['natural_maximum_per_level'] ?? null) : null;
+        $attractionPerLevel = is_array($effect) ? ($effect['attraction_maximum_per_level'] ?? null) : null;
+        if (! is_int($naturalPerLevel) || ! is_int($attractionPerLevel)) {
+            throw new DomainException('Declining birthrate policy presentation contract is invalid.');
+        }
+
+        return sprintf(
+            '自然人口上限 +%s人 / 誘致人口上限 +%s人',
+            number_format($level * $naturalPerLevel),
+            number_format($level * $attractionPerLevel),
+        );
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function indomitableEffect(array $definition, int $level): string
+    {
+        $effect = $definition['effect'] ?? null;
+        $basisPointsPerLevel = is_array($effect) ? ($effect['basis_points_per_level'] ?? null) : null;
+        if (! is_int($basisPointsPerLevel)) {
+            throw new DomainException('Indomitable presentation contract is invalid.');
+        }
+
+        return sprintf('自然人口増加 +%.2f%%', ($level * $basisPointsPerLevel) / 100);
     }
 }

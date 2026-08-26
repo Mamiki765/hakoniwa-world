@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\CompleteTurnEngine;
 use App\Application\NationCreationService;
+use App\Application\PlayerIslandEventService;
 use App\Application\TradingPostTurnService;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacityResolver;
@@ -167,6 +168,26 @@ final class TradingPostApiTest extends TestCase
             'grant_key' => 'test:trading-post:ring',
             'obtained_at' => now(),
         ]);
+        $regularBow = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::ELF_BOW,
+            'level' => 4,
+            'equipped_slot' => null,
+            'grant_key' => 'test:trading-post:regular-bow',
+            'obtained_at' => now(),
+        ]);
+        $cursedCollar = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::COLLAR,
+            'level' => 3,
+            'equipped_slot' => null,
+            'grant_key' => 'test:trading-post:cursed-collar',
+            'obtained_at' => now(),
+        ]);
+
+        $sellableIds = collect($this->actingAs($owner)->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()->json('data.sellable_items'))->pluck('id')->all();
+        $this->assertNotContains($bow->id, $sellableIds);
+        $this->assertContains($regularBow->id, $sellableIds);
+        $this->assertContains($cursedCollar->id, $sellableIds);
 
         $this->actingAs($owner)->postJson($this->listingUrl($nation), [
             'product_type' => 'item', 'item_instance_id' => $bow->id,
@@ -193,17 +214,26 @@ final class TradingPostApiTest extends TestCase
         $this->assertFalse($ring->fresh()->is_escrowed);
         $this->assertSame(SecretaryItemCatalog::RARITY_NOVICE, app(SecretaryItemCatalog::class)->definition('old_bow')['rarity']);
         $this->assertFalse(app(SecretaryItemCatalog::class)->definition('old_bow')['npc_tradable']);
+        $this->assertFalse(app(SecretaryItemCatalog::class)->definition('old_bow')['tradable']);
 
         $bow->update(['equipped_slot' => null]);
-        $bowListingId = $this->actingAs($owner)->postJson($this->listingUrl($nation), [
+        $this->actingAs($owner)->postJson($this->listingUrl($nation), [
             'product_type' => 'item', 'item_instance_id' => $bow->id,
             'start_price' => 100, 'duration_turns' => 3, 'auto_relist' => false,
-        ])->assertCreated()->json('data.id');
-        [$buyer, $buyerNation] = $this->ownerAndNation($world, '弓買島');
-        $this->actingAs($buyer)->postJson($this->bidUrl($buyerNation, $bowListingId), ['amount' => 100])
-            ->assertUnprocessable();
-        $this->actingAs($owner)->deleteJson($this->listingUrl($nation).'/'.$bowListingId)->assertOk();
+        ])->assertUnprocessable();
         $this->assertFalse($bow->fresh()->is_escrowed);
+
+        foreach ([[$regularBow, 500], [$cursedCollar, 1]] as [$tradableItem, $startPrice]) {
+            $tradableListingId = $this->actingAs($owner)->postJson($this->listingUrl($nation), [
+                'product_type' => 'item', 'item_instance_id' => $tradableItem->id,
+                'start_price' => $startPrice, 'duration_turns' => 3, 'auto_relist' => false,
+            ])->assertCreated()->json('data.id');
+            $this->assertTrue($tradableItem->fresh()->is_escrowed);
+            $this->actingAs($owner)->deleteJson($this->listingUrl($nation).'/'.$tradableListingId)->assertOk();
+            $this->assertFalse($tradableItem->fresh()->is_escrowed);
+        }
+
+        [$buyer, $buyerNation] = $this->ownerAndNation($world, '弓買島');
 
         foreach (range(1, 48) as $index) {
             $buyer->secretary()->firstOrFail()->itemInstances()->create([
@@ -528,6 +558,9 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(5_000, $this->resourceAmount($buyerNation, $oil));
         $this->assertSame(1_000, $sellerNation->fresh()->money);
         $this->assertTrue($ring->fresh()->is_escrowed);
+        foreach (['trading_post.sold', 'trading_post.won_public', 'trading_post.sold_private'] as $eventType) {
+            $this->assertSame(0, DB::table('audit_events')->where('event_type', $eventType)->count());
+        }
 
         $retry = $this->context($world, 4, [$sellerNation->id, $buyerNation->id], 'settlement-retry', $context->run);
         app(CompleteTurnEngine::class)->execute('enforce_capacities', $retry);
@@ -551,6 +584,8 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(5_000, $this->resourceAmount($buyerNation, $oil));
         $this->assertSame(1_180, $sellerNation->fresh()->money);
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'trading_post.sold')->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'trading_post.won_public')->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'trading_post.sold_private')->count());
 
         [$capacitySeller, $capacitySellerNation] = $this->ownerAndNation($world, '上限売島', 1_000);
         [$capacityBuyer, $capacityBuyerNation] = $this->ownerAndNation($world, '上限買島', 1_000);
@@ -580,6 +615,13 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(80, $capacityMetadata['seller_proceeds_overflow']);
         $this->assertSame(11, $capacityMetadata['trading_fee']);
         $this->assertSame(3, DB::table('audit_events')->where('event_type', 'trading_post.sold')->count());
+        $capacityOwnerMessages = collect(app(PlayerIslandEventService::class)
+            ->ownerPage($capacitySellerNation->fresh(), 1, 4)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message')->all();
+        $this->assertContains(
+            'あなたが競売に出した石油100万バレルが落札され、10億円を入手しました（手数料:11億円、資金上限超過:80億円）。',
+            $capacityOwnerMessages,
+        );
 
         $wheat = $this->resource('wheat');
         $this->setResource($capacitySellerNation, $wheat, 100);
@@ -623,6 +665,118 @@ final class TradingPostApiTest extends TestCase
             'nation_id' => $capacityBuyerNation->id,
         ]);
         $this->assertSame(4, DB::table('audit_events')->where('event_type', 'trading_post.sold')->count());
+    }
+
+    public function test_settlement_projects_exact_winner_public_and_seller_private_item_resource_npc_messages(): void
+    {
+        $world = $this->lightweightWorld();
+        [$seller, $sellerNation] = $this->ownerAndNation($world, '出品者島', 1_000);
+        [$buyer, $buyerNation] = $this->ownerAndNation($world, 'ペリドット島', 3_000);
+        $elfBow = $seller->secretary()->sole()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::ELF_BOW,
+            'level' => 4,
+            'equipped_slot' => null,
+            'grant_key' => 'test:trading-post:event-elf-bow',
+            'obtained_at' => now(),
+        ]);
+        $wheat = $this->resource('wheat');
+        $this->setResource($sellerNation, $wheat, 1_000);
+        $itemListing = $this->actingAs($seller)->postJson($this->listingUrl($sellerNation), [
+            'product_type' => 'item', 'item_instance_id' => $elfBow->id,
+            'start_price' => 820, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $resourceListing = $this->actingAs($seller)->postJson($this->listingUrl($sellerNation), [
+            'product_type' => 'resource', 'resource_definition_id' => $wheat->id, 'quantity' => 1_000,
+            'start_price' => 250, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($buyer)->postJson($this->bidUrl($buyerNation, $itemListing), ['amount' => 820])->assertOk();
+        $this->actingAs($buyer)->postJson($this->bidUrl($buyerNation, $resourceListing), ['amount' => 250])->assertOk();
+
+        app(TradingPostTurnService::class)->execute($this->context(
+            $world,
+            4,
+            [$sellerNation->id, $buyerNation->id],
+            'player-facing-settlement-events',
+        ));
+        $events = app(PlayerIslandEventService::class);
+        $winnerPublic = collect($events->publicNationPage($buyerNation->fresh(), 1, 4)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $worldPublic = collect($events->publicWorldPage($world, 1, 4)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $sellerPublic = collect($events->publicNationPage($sellerNation->fresh(), 1, 4)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $sellerOwner = collect($events->ownerPage($sellerNation->fresh(), 1, 4)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $buyerOwner = collect($events->ownerPage($buyerNation->fresh(), 1, 4)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+
+        $itemPublic = 'ペリドット島が交易場で「エルフの弓 Lv4」を820億円で落札しました。';
+        $resourcePublic = 'ペリドット島が交易場で小麦1,000トンを250億円で落札しました。';
+        $itemPrivate = 'あなたが競売に出した「エルフの弓 Lv4」が落札され、738億円を入手しました（手数料:82億円）。';
+        $resourcePrivate = 'あなたが競売に出した小麦1,000トンが落札され、225億円を入手しました（手数料:25億円）。';
+        foreach ([$itemPublic, $resourcePublic] as $message) {
+            $this->assertContains($message, $winnerPublic->pluck('message')->all());
+            $this->assertContains($message, $worldPublic->pluck('message')->all());
+        }
+        $this->assertSame(0, $sellerPublic->where('type', 'trading_post.won_public')->count());
+        foreach ([$itemPrivate, $resourcePrivate] as $message) {
+            $event = $sellerOwner->firstWhere('message', $message);
+            $this->assertIsArray($event);
+            $this->assertTrue($event['confidential']);
+            $this->assertNotContains($message, $buyerOwner->pluck('message')->all());
+            $this->assertNotContains($message, $worldPublic->pluck('message')->all());
+        }
+        $this->assertSame(0, collect($events->majorNews($world)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])
+            ->where('type', 'trading_post.won_public')->count());
+
+        $publicMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'trading_post.won_public')->where('subject_id', $itemListing)
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('ペリドット島', $publicMetadata['nation_name']);
+        $this->assertSame('item', $publicMetadata['product_type']);
+        $this->assertSame(820, $publicMetadata['winning_bid']);
+        $this->assertSame('エルフの弓', $publicMetadata['item_name']);
+        $this->assertSame(4, $publicMetadata['item_level']);
+        foreach ([
+            'item_instance_id', 'secretary_id', 'bid_id', 'seller_proceeds', 'trading_fee',
+            'ruleset_key', 'seller_user_id', 'seller_nation_name',
+        ] as $forbiddenKey) {
+            $this->assertArrayNotHasKey($forbiddenKey, $publicMetadata);
+        }
+        $privateMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'trading_post.sold_private')->where('subject_id', $itemListing)
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame([820, 738, 738, 0, 82], [
+            $privateMetadata['winning_bid'],
+            $privateMetadata['seller_proceeds_requested'],
+            $privateMetadata['seller_proceeds'],
+            $privateMetadata['seller_proceeds_overflow'],
+            $privateMetadata['trading_fee'],
+        ]);
+
+        $npcListing = AuctionListing::query()->create([
+            'world_id' => $world->id,
+            'seller_type' => 'hakoniwa_federation',
+            'product_type' => 'item',
+            'item_key' => SecretaryItemCatalog::RING,
+            'item_level' => 1,
+            'start_price' => 100,
+            'duration_turns' => 3,
+            'started_turn' => 1,
+            'ends_turn' => 4,
+            'auto_relist' => false,
+            'status' => AuctionListing::STATUS_ACTIVE,
+        ]);
+        $this->actingAs($buyer)->postJson($this->bidUrl($buyerNation, $npcListing->id), ['amount' => 100])->assertOk();
+        app(TradingPostTurnService::class)->execute($this->context(
+            $world,
+            4,
+            [$sellerNation->id, $buyerNation->id],
+            'npc-player-facing-settlement-event',
+        ));
+        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'trading_post.won_public')->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'trading_post.sold_private')->count());
     }
 
     public function test_no_bid_expiration_relist_and_npc_generation_follow_the_v16_contract(): void
@@ -699,6 +853,9 @@ final class TradingPostApiTest extends TestCase
             if ($listing->product_type === 'item') {
                 $this->assertContains($listing->item_key, $expectedNpcItems);
                 $this->assertNotSame(SecretaryItemCatalog::OLD_BOW, $listing->item_key);
+                $npcDefinition = app(SecretaryItemCatalog::class)->definition($listing->item_key);
+                $this->assertSame(SecretaryItemCatalog::RARITY_NOVICE, $npcDefinition['rarity']);
+                $this->assertTrue($npcDefinition['npc_tradable']);
                 $this->assertGreaterThanOrEqual(1, $listing->item_level);
                 $this->assertLessThanOrEqual(5, $listing->item_level);
                 $this->assertSame($listing->item_level * 100, $listing->start_price);

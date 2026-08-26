@@ -95,8 +95,12 @@ final class SecretaryItemEffectAggregator
     }
 
     /** @return array{chance_percent: int, multiplier: int, random_stream_version: int}|null */
-    public function snapshotExperienceDouble(TurnState $state, int $nationId, string $source): ?array
-    {
+    public function snapshotExperienceDouble(
+        TurnState $state,
+        int $nationId,
+        string $source,
+        ?string $skillKey = null,
+    ): ?array {
         $matches = $this->snapshotEffects(
             $state,
             $nationId,
@@ -111,14 +115,24 @@ final class SecretaryItemEffectAggregator
         $resolved = $matches[0];
         $parameters = $resolved['effect']['parameters'];
         $sources = $parameters['sources'] ?? null;
+        $excludedSkillKeys = $parameters['excluded_skill_keys'] ?? [];
         $chancePerLevel = $parameters['chance_percent_per_level'] ?? null;
         $multiplier = $parameters['multiplier'] ?? null;
         $version = $resolved['effect']['random_stream_version'] ?? null;
         if (! is_array($sources) || ! in_array($source, $sources, true)
+            || ! is_array($excludedSkillKeys) || ! array_is_list($excludedSkillKeys)
             || ! is_int($chancePerLevel) || $chancePerLevel < 1
             || ! is_int($multiplier) || $multiplier < 2
             || ! is_int($version) || $version < 1) {
             throw new DomainException('Secretary experience equipment snapshot is invalid.');
+        }
+        foreach ($excludedSkillKeys as $excludedSkillKey) {
+            if (! is_string($excludedSkillKey) || $excludedSkillKey === '') {
+                throw new DomainException('Secretary experience equipment skill exclusion is invalid.');
+            }
+        }
+        if ($skillKey !== null && in_array($skillKey, $excludedSkillKeys, true)) {
+            return null;
         }
 
         return [

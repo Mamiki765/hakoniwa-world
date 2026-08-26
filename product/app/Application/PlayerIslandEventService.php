@@ -66,6 +66,9 @@ final class PlayerIslandEventService
         'secretary.missile_intercepted',
         'refugee_received',
         'karma.spp_self_destruct_setup',
+        'monster.item_drop_received',
+        'monster.item_drop_inventory_full',
+        'trading_post.sold_private',
         'turn.summary',
     ];
 
@@ -110,6 +113,7 @@ final class PlayerIslandEventService
         'nation.recovery_monsters_removed',
         'karma.sanction_decided',
         'karma.sanction_launched',
+        'trading_post.won_public',
     ];
 
     /** @var list<string> */
@@ -145,6 +149,9 @@ final class PlayerIslandEventService
         'command.monster_dispatched',
         'missile.launch_detail',
         'karma.spp_self_destruct_setup',
+        'monster.item_drop_received',
+        'monster.item_drop_inventory_full',
+        'trading_post.sold_private',
     ];
 
     /**
@@ -834,6 +841,7 @@ final class PlayerIslandEventService
                 $nation,
                 number_format($this->integer($metadata, 'sanction_shots')),
             ),
+            'trading_post.won_public' => $this->tradingPostWonMessage($metadata),
             default => "{$nation}で出来事がありました。",
         };
     }
@@ -849,6 +857,60 @@ final class PlayerIslandEventService
         return ($metadata['reason'] ?? null) === 'collapse'
             ? "{$nation}から住民が居なくなった悲しみで{$secretary}が涙を流しました。{$nation}に冬が訪れています……"
             : "主が帰ってくるまでの間、{$secretary}が禁呪を解き放ちました。{$nation}に冬が訪れています……";
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function tradingPostWonMessage(array $metadata): string
+    {
+        $nation = is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '島';
+        $price = number_format($this->integer($metadata, 'winning_bid'));
+        if (($metadata['product_type'] ?? null) === 'item') {
+            return sprintf(
+                '%sが交易場で「%s Lv%s」を%s億円で落札しました。',
+                $nation,
+                is_string($metadata['item_name'] ?? null) ? $metadata['item_name'] : 'Item',
+                number_format($this->integer($metadata, 'item_level')),
+                $price,
+            );
+        }
+
+        return sprintf(
+            '%sが交易場で%s%s%sを%s億円で落札しました。',
+            $nation,
+            is_string($metadata['resource_name'] ?? null) ? $metadata['resource_name'] : '資源',
+            number_format($this->integer($metadata, 'quantity')),
+            is_string($metadata['unit_label'] ?? null) ? $metadata['unit_label'] : '',
+            $price,
+        );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function tradingPostSoldMessage(array $metadata): string
+    {
+        $product = ($metadata['product_type'] ?? null) === 'item'
+            ? sprintf(
+                '「%s Lv%s」',
+                is_string($metadata['item_name'] ?? null) ? $metadata['item_name'] : 'Item',
+                number_format($this->integer($metadata, 'item_level')),
+            )
+            : sprintf(
+                '%s%s%s',
+                is_string($metadata['resource_name'] ?? null) ? $metadata['resource_name'] : '資源',
+                number_format($this->integer($metadata, 'quantity')),
+                is_string($metadata['unit_label'] ?? null) ? $metadata['unit_label'] : '',
+            );
+        $details = '手数料:'.number_format($this->integer($metadata, 'trading_fee')).'億円';
+        $overflow = $this->integer($metadata, 'seller_proceeds_overflow');
+        if ($overflow > 0) {
+            $details .= '、資金上限超過:'.number_format($overflow).'億円';
+        }
+
+        return sprintf(
+            'あなたが競売に出した%sが落札され、%s億円を入手しました（%s）。',
+            $product,
+            number_format($this->integer($metadata, 'seller_proceeds')),
+            $details,
+        );
     }
 
     /** @param array<string, mixed> $metadata */
@@ -945,6 +1007,9 @@ final class PlayerIslandEventService
             'nation.recovery_monsters_removed' => ['nation_name'],
             'karma.sanction_decided' => ['nation_name'],
             'karma.sanction_launched' => ['nation_name', 'sanction_shots'],
+            'trading_post.won_public' => ($metadata['product_type'] ?? null) === 'item'
+                ? ['nation_name', 'product_type', 'winning_bid', 'item_name', 'item_level']
+                : ['nation_name', 'product_type', 'winning_bid', 'resource_name', 'quantity', 'unit_label'],
             default => [],
         };
         $safe = array_intersect_key($metadata, array_fill_keys($keys, true));
@@ -1298,6 +1363,13 @@ final class PlayerIslandEventService
                 $this->monsterLabel($metadata['monster_key'] ?? null),
             ),
             'monster.reward_distributed' => $this->monsterRewardMessage($metadata, $audienceNationId),
+            'monster.item_drop_received' => sprintf(
+                '怪獣の戦利品として「%s Lv%s」を入手しました。',
+                is_string($metadata['item_name'] ?? null) ? $metadata['item_name'] : 'Item',
+                number_format($this->integer($metadata, 'item_level')),
+            ),
+            'monster.item_drop_inventory_full' => '倉庫がいっぱいのため、怪獣の戦利品を受け取れませんでした。',
+            'trading_post.sold_private' => $this->tradingPostSoldMessage($metadata),
             'monster.defense_self_destructed' => sprintf(
                 '%sが防衛施設へ接触し、施設とともに消滅しました。',
                 $this->monsterLabel($metadata['monster_key'] ?? null),

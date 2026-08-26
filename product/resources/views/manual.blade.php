@@ -1,5 +1,9 @@
+@php
+    $theme = request()->cookie('hakoniwa_theme');
+    $theme = in_array($theme, ['system', 'light', 'dark'], true) ? $theme : 'system';
+@endphp
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-theme="{{ $theme }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">

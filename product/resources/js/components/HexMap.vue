@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { floorMod, gridToPixel, TILE_SIZE } from '../map/projection';
-import type { MapBounds, MapCell } from '../types';
+import type { CommandQueue, CommandQueueItem, MapBounds, MapCell } from '../types';
 
 const props = defineProps<{
     cells: MapCell[];
@@ -9,6 +9,7 @@ const props = defineProps<{
     capital: { x: number; y: number };
     bounds: MapBounds;
     ownNationId?: number;
+    commandQueue?: CommandQueue | null;
     loading: boolean;
     error: string | null;
     emptyChunks: string[];
@@ -57,9 +58,39 @@ const visiblePositioned = computed(() => positioned.value.filter((item) => {
         && screenY >= -padding && screenY <= viewportSize.value.height + padding;
 }));
 
+const queuedCommandsByCoordinate = computed(() => {
+    const index = new Map<string, CommandQueueItem[]>();
+    for (const item of props.commandQueue?.items ?? []) {
+        if (!Number.isInteger(item.target_x) || !Number.isInteger(item.target_y)) continue;
+        const key = `${item.target_x}:${item.target_y}`;
+        const items = index.get(key) ?? [];
+        items.push(item);
+        index.set(key, items);
+    }
+    for (const items of index.values()) {
+        items.sort((left, right) => left.queue_position - right.queue_position || left.id - right.id);
+    }
+
+    return index;
+});
+
+function queuedCommandLines(cell: MapCell): string[] {
+    return (queuedCommandsByCoordinate.value.get(`${cell.x}:${cell.y}`) ?? []).map((item) => {
+        const quantity = item.quantity_semantics === 'ordinary' ? item.quantity : 1;
+
+        return `[${item.queue_position}] ${item.command_name} ×${quantity}`;
+    });
+}
+
 const tooltipDetails = computed(() => {
     const cell = tooltipCell.value;
     if (cell === null) return [];
+
+    const detailLines: string[] = [];
+    for (const detail of cell.details) {
+        detailLines.push(`${detail.label}: ${detail.formatted}`);
+        if (detail.key === 'sea_area') detailLines.push(...queuedCommandLines(cell));
+    }
 
     return [
         `座標 x=${cell.x}, y=${cell.y}`,
@@ -71,7 +102,7 @@ const tooltipDetails = computed(() => {
             ...(cell.monster.hardened_now ? ['状態: 硬化中'] : []),
         ]),
         ...(cell.facility === null ? ['施設: なし'] : []),
-        ...cell.details.map((detail) => `${detail.label}: ${detail.formatted}`),
+        ...detailLines,
     ];
 });
 

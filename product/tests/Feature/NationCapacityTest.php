@@ -85,16 +85,23 @@ class NationCapacityTest extends TestCase
                 return SyntheticHistoricalRulesetSnapshot::withLegacySecretaryItems($settings);
             },
         );
-        $forestSkill = $user->secretary()->firstOrFail()->skills()
-            ->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)
-            ->firstOrFail();
-        $forestSkill->delete();
+        $historicalExcludedSkills = $user->secretary()->firstOrFail()->skills()
+            ->whereIn('skill_key', [
+                SecretarySkillCatalog::FOREST_MANAGEMENT,
+                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+                SecretarySkillCatalog::INDOMITABLE,
+            ])->get();
+        foreach ($historicalExcludedSkills as $skill) {
+            $skill->delete();
+        }
         $world->update(['ruleset_version_id' => $historicalCapacity->id]);
         $historicalCapacityResult = app(NationCapacityResolver::class)->resolve($nation, $historicalCapacity);
         $this->assertSame($base->money, $historicalCapacityResult->money);
         $this->assertSame($base->foodTons, $historicalCapacityResult->foodTons);
         $world->update(['ruleset_version_id' => $currentRulesetId]);
-        $forestSkill->save();
+        foreach ($historicalExcludedSkills as $skill) {
+            $skill->save();
+        }
 
         $modifier = new class implements CapacityModifier {};
 

@@ -102,7 +102,10 @@ const unnamedSecretaryFixture: Secretary = {
         { key: 'agricultural_policy', name: '農業政策', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '小麦生産＋0.0%' },
         { key: 'specialty_development', name: '特産品開発', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '工場生産＋0.0%' },
         { key: 'gold_vein_survey', name: '金鉱脈調査', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '採掘場生産＋0.0%' },
+        { key: 'forest_management', name: '森林管理', level: 0, experience: 0, required_experience: 1, remaining_experience: 1, effect: '伐採資金・森林増加＋0%' },
         { key: 'final_defense_line', name: '最終防衛ライン', level: 1, experience: 0, required_experience: 100, remaining_experience: 100, effect: '防衛されなかったミサイルを1ターンにつき1発まで迎撃' },
+        { key: 'declining_birthrate_policy', name: '少子化対策', level: 10, experience: 460000, required_experience: 560000, remaining_experience: 100000, effect: '自然人口上限 +500人 / 誘致人口上限 +1,000人' },
+        { key: 'indomitable', name: '不屈', level: 10, experience: 0, required_experience: 560000, remaining_experience: 560000, effect: '自然人口増加 +2.50%' },
     ],
     inventory: {
         capacity: 50,
@@ -110,12 +113,14 @@ const unnamedSecretaryFixture: Secretary = {
         items: [{
             id: 21, key: 'old_bow', name: '古びた弓', level: 1, category: 'bow', category_label: '弓',
             equipped_slot: 1, is_equipped: true, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
+            fixed_sale_price_money: 100, fixed_sale_label: '売却（100億円）',
             effect_text: '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
             flavor_text: '秘書が捕らえられていた施設の最奥から見つかった、大きく古ぼけた弓。宝石があしらわれており、どこか不思議な力を感じさせる。',
             obtained_at: '2026-08-17T00:00:00Z',
         }, {
             id: 22, key: 'ring', name: '指輪', level: 3, category: 'accessory', category_label: 'アクセサリー',
             equipped_slot: null, is_equipped: false, is_escrowed: false, rarity: 'novice', rarity_label: 'ノービス',
+            fixed_sale_price_money: 100, fixed_sale_label: '売却（100億円）',
             effect_text: '資金繰りの際、追加で3億円を得る。',
             flavor_text: '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
             obtained_at: '2026-08-18T00:00:00Z',
@@ -181,6 +186,8 @@ function publicResponse(path: string): Response | null {
 }
 
 beforeEach(() => {
+    document.documentElement.dataset.theme = 'system';
+    document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
     const meta = document.createElement('meta');
     meta.name = 'hakoniwa-application-version';
     meta.content = '2.4.0';
@@ -188,12 +195,82 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    document.documentElement.dataset.theme = 'system';
+    document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
     document.querySelector('meta[name="hakoniwa-application-version"]')?.remove();
     vi.unstubAllGlobals();
     vi.useRealTimers();
 });
 
 describe('application lobby and island entry', () => {
+    it('opens theme options before authentication and persists the selected document mode', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+
+            return publicResponse(path) ?? response(null, 401);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const wrapper = mount(App);
+        const optionsButton = wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'オプション')!;
+        expect(optionsButton.exists()).toBe(true);
+        expect(wrapper.find('.site-header nav').text()).not.toContain('プロフィール編集');
+        const requestCountBeforeOptions = fetchMock.mock.calls.length;
+        await optionsButton.trigger('click');
+        expect(fetchMock).toHaveBeenCalledTimes(requestCountBeforeOptions);
+        expect(wrapper.get('.options-panel h1').text()).toBe('オプション');
+        expect(wrapper.get('.theme-options legend').text()).toBe('表示テーマ');
+        expect(wrapper.find('.profile-settings').exists()).toBe(false);
+        expect(wrapper.get<HTMLInputElement>('input[value="system"]').element.checked).toBe(true);
+
+        await flushPromises();
+        const requestCount = fetchMock.mock.calls.length;
+        await wrapper.get<HTMLInputElement>('input[value="dark"]').setValue();
+        expect(document.documentElement.dataset.theme).toBe('dark');
+        expect(document.cookie).toContain('hakoniwa_theme=dark');
+        await wrapper.get<HTMLInputElement>('input[value="light"]').setValue();
+        expect(document.documentElement.dataset.theme).toBe('light');
+        expect(document.cookie).toContain('hakoniwa_theme=light');
+        await wrapper.get<HTMLInputElement>('input[value="system"]').setValue();
+        expect(document.documentElement.dataset.theme).toBe('system');
+        expect(document.cookie).toContain('hakoniwa_theme=system');
+        expect(fetchMock).toHaveBeenCalledTimes(requestCount);
+        wrapper.unmount();
+
+        document.documentElement.dataset.theme = 'dark';
+        const darkWrapper = mount(App);
+        await darkWrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'オプション')!.trigger('click');
+        expect(darkWrapper.get<HTMLInputElement>('input[value="dark"]').element.checked).toBe(true);
+        await flushPromises();
+        darkWrapper.unmount();
+
+        let resolveNation!: (value: Response) => void;
+        const pendingNation = new Promise<Response>((resolve) => {
+            resolveNation = resolve;
+        });
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
+            if (path === '/api/v1/me/nation') return pendingNation;
+            if (path === '/api/v1/me/secretary?world_id=1') return response(null);
+
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const pendingWrapper = mount(App);
+        await pendingWrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'オプション')!.trigger('click');
+        await flushPromises();
+        expect(pendingWrapper.find('.profile-settings').exists()).toBe(false);
+
+        resolveNation(response({ ...ownerNationFixture, comment: '既存コメント' }));
+        await flushPromises();
+        expect(pendingWrapper.get<HTMLInputElement>('.profile-form input').element.value).toBe('自島主');
+        expect(pendingWrapper.get<HTMLTextAreaElement>('.profile-form textarea').element.value).toBe('既存コメント');
+        pendingWrapper.unmount();
+    });
+
     it('continues rendering the public lobby after the normal guest /me 401', async () => {
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
@@ -1069,7 +1146,7 @@ describe('application lobby and island entry', () => {
         expect(headerNavigation).toContain('自島へ');
         expect(headerNavigation).toContain('資源売却');
         expect(headerNavigation).toContain('交易場');
-        expect(headerNavigation).toContain('プロフィール編集');
+        expect(headerNavigation).toContain('オプション');
         expect(headerNavigation).toContain('マニュアル');
         expect(headerNavigation).not.toContain('クレジット');
         expect(headerNavigation).not.toContain('利用ルール');
@@ -1193,7 +1270,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
 
-        const profileButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === 'プロフィール編集')!;
+        const profileButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
         await wrapper.find('.profile-form input').setValue('更新島主');
         await wrapper.find('.profile-form textarea').setValue('<b>更新コメント</b>');
@@ -1333,15 +1410,17 @@ describe('application lobby and island entry', () => {
         await initialTabs[1]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
         const skillRows = wrapper.findAll('.secretary-skill');
-        expect(skillRows).toHaveLength(4);
+        expect(skillRows).toHaveLength(7);
         const agriculturalSkill = skillRows[0]!;
-        const defenseSkill = skillRows[3]!;
+        const defenseSkill = skillRows[4]!;
         expect(agriculturalSkill.get('.secretary-skill-name').text()).toBe('農業政策');
         expect(agriculturalSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv0', 'XP 0 / 1']);
         expect(agriculturalSkill.get('.secretary-skill-effect').text()).toBe('小麦生産＋0.0%');
         expect(defenseSkill.get('.secretary-skill-name').text()).toBe('最終防衛ライン');
         expect(defenseSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv1', 'XP 0 / 100']);
         expect(defenseSkill.get('.secretary-skill-effect').text()).toBe('防衛されなかったミサイルを1ターンにつき1発まで迎撃');
+        expect(skillRows[5]!.get('.secretary-skill-effect').text()).toBe('自然人口上限 +500人 / 誘致人口上限 +1,000人');
+        expect(skillRows[6]!.get('.secretary-skill-effect').text()).toBe('自然人口増加 +2.50%');
         expect(wrapper.get('.secretary-skills').text()).not.toContain('次のlevelまで');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'ペリドット')).toBe(true);
 
@@ -1370,7 +1449,7 @@ describe('application lobby and island entry', () => {
         expect(secretaryGetCount()).toBe(beforeTabSwitch);
 
         await wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'プロフィール編集')!.trigger('click');
+            .find((button) => button.text() === 'オプション')!.trigger('click');
         expect(wrapper.get<HTMLInputElement>('.secretary-rename-form input').element.value).toBe('ペリドット');
         await wrapper.get('.secretary-rename-form input').setValue('エメラルド');
         await wrapper.get('.secretary-rename-form').trigger('submit');
@@ -1494,7 +1573,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).not.toContain('Secretaryを命名できませんでした。');
 
         await wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'プロフィール編集')!.trigger('click');
+            .find((button) => button.text() === 'オプション')!.trigger('click');
         await wrapper.get('.secretary-rename-form input').setValue('エメラルド');
         await wrapper.get('.secretary-rename-form').trigger('submit');
         await flushPromises();
@@ -1806,7 +1885,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         const profileButton = wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'プロフィール編集')!;
+            .find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
         expect(wrapper.findAll('.danger-zone h3').map((heading) => heading.text())).toEqual([
             '島を休止する', '島を破棄する',
@@ -1848,7 +1927,7 @@ describe('application lobby and island entry', () => {
         const automaticWrapper = mount(App);
         await flushPromises();
         const automaticProfileButton = automaticWrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'プロフィール編集')!;
+            .find((button) => button.text() === 'オプション')!;
         await automaticProfileButton.trigger('click');
         expect(automaticWrapper.get('.dormancy-status').text())
             .toContain('再開予定turn通常command登録後の次official Turn');
@@ -1875,7 +1954,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         const profileButton = wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'プロフィール編集')!;
+            .find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
         expect(wrapper.find('.danger-zone').text()).toContain('危険な操作');
         await wrapper.get('.danger-zone .danger').trigger('click');
@@ -1925,7 +2004,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         const profileButton = wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'プロフィール編集')!;
+            .find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
         await wrapper.get('.danger-zone .danger').trigger('click');
         await wrapper.get('#abandonment-confirmation').setValue('自島');
@@ -1984,7 +2063,7 @@ describe('application lobby and island entry', () => {
         expect(nationCalls).toBe(2);
 
         const profileButton = wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'プロフィール編集')!;
+            .find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
         await wrapper.get('.danger-zone .danger').trigger('click');
         await wrapper.get('#abandonment-confirmation').setValue('自島');
@@ -2021,7 +2100,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         const profileButton = wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'プロフィール編集')!;
+            .find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
         await wrapper.get('.danger-zone .danger').trigger('click');
         await wrapper.get('#abandonment-confirmation').setValue('自島');

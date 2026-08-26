@@ -14,6 +14,7 @@ import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import type {
     Announcement,
+    CommandQueue,
     CurrentUser,
     InquiryDetail,
     InquirySubmission,
@@ -34,6 +35,15 @@ import type {
 const applicationVersion = document.querySelector<HTMLMetaElement>(
     'meta[name="hakoniwa-application-version"]',
 )?.content ?? '';
+const themeModes = ['system', 'light', 'dark'] as const;
+type ThemeMode = typeof themeModes[number];
+
+function normaliseThemeMode(value: string | undefined): ThemeMode {
+    return themeModes.includes(value as ThemeMode) ? value as ThemeMode : 'system';
+}
+
+const themeMode = ref<ThemeMode>(normaliseThemeMode(document.documentElement.dataset.theme));
+document.documentElement.dataset.theme = themeMode.value;
 const user = ref<CurrentUser | null>(null);
 const worlds = ref<World[]>([]);
 const worldSummary = ref<PublicWorldSummary | null>(null);
@@ -89,7 +99,8 @@ const inquiryErrors = ref<Record<string, string>>({});
 const inquiryConfirmation = ref<InquirySubmission | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
-const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'profile' | 'account' | 'credits'>(
+const authoritativeCommandQueue = ref<CommandQueue | null>(null);
+const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits' ? 'credits' : 'home',
 );
 
@@ -218,6 +229,10 @@ onMounted(async () => {
     try {
         user.value = await api<CurrentUser>('/api/v1/me');
         nation.value = await api<Nation | null>('/api/v1/me/nation');
+        if (page.value === 'options' && nation.value !== null) {
+            profileOwnerName.value = nation.value.owner_name;
+            profileComment.value = nation.value.comment;
+        }
         if (nation.value !== null) await loadSecretary();
         if (user.value.can_manage_inquiries) await loadLatestInquiries();
     } catch (error) {
@@ -721,6 +736,7 @@ async function loadSecretary(): Promise<void> {
     const worldQuery = nation.value === null ? '' : `?world_id=${nation.value.world_id}`;
     secretary.value = await api<Secretary | null>(`/api/v1/me/secretary${worldQuery}`);
     if (secretary.value !== null) setOwnedSecretaryProfile(secretary.value);
+    if (page.value === 'options') profileSecretaryName.value = secretary.value?.name ?? '';
 }
 
 function setViewedSecretaryProfile(profile: SecretaryProfile, worldId: number | null): void {
@@ -965,6 +981,27 @@ async function submitEquipment(itemId: number | null): Promise<void> {
     }
 }
 
+async function sellSecretaryItem(item: Secretary['inventory']['items'][number]): Promise<void> {
+    if (secretary.value === null || nation.value === null || busy.value) return;
+    if (!window.confirm(`${item.name} Lv${item.level}を${item.fixed_sale_price_money.toLocaleString()}億円で売却しますか？`)) return;
+    busy.value = true;
+    message.value = '';
+    try {
+        const committed = await api<{ secretary: Secretary; nation: Nation }>(
+            `/api/v1/me/secretary/items/${item.id}/sell`,
+            { method: 'POST', body: JSON.stringify({ world_id: nation.value.world_id }) },
+        );
+        secretary.value = committed.secretary;
+        nation.value = committed.nation;
+        setOwnedSecretaryProfile(committed.secretary);
+        message.value = `${item.name} Lv${item.level}を${item.fixed_sale_price_money.toLocaleString()}億円で売却しました。`;
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'アイテムを売却できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
 async function openSecretary(): Promise<void> {
     if (user.value === null || nation.value === null) return;
     busy.value = true;
@@ -1048,15 +1085,23 @@ function validationErrors(error: unknown): Record<string, string> {
     return Object.fromEntries(Object.entries(error.errors).map(([key, messages]) => [key, messages[0] ?? '入力を確認してください。']));
 }
 
-function openProfile(): void {
-    if (nation.value === null) return;
-    profileOwnerName.value = nation.value.owner_name;
-    profileComment.value = nation.value.comment;
+function selectTheme(selectedTheme: ThemeMode): void {
+    themeMode.value = selectedTheme;
+    document.documentElement.dataset.theme = selectedTheme;
+    const secureAttribute = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `hakoniwa_theme=${selectedTheme}; Path=/; Max-Age=31536000; SameSite=Lax${secureAttribute}`;
+}
+
+function openOptions(): void {
+    if (nation.value !== null) {
+        profileOwnerName.value = nation.value.owner_name;
+        profileComment.value = nation.value.comment;
+        profileSecretaryName.value = secretary.value?.name ?? '';
+    }
     profileErrors.value = {};
-    profileSecretaryName.value = secretary.value?.name ?? '';
     profileSecretaryErrors.value = {};
     message.value = '';
-    page.value = 'profile';
+    page.value = 'options';
 }
 
 async function renameProfileSecretary(): Promise<void> {
@@ -1240,7 +1285,7 @@ async function abandonNation(): Promise<void> {
             <button v-if="nation" type="button" @click="openSecretary">{{ secretary?.header_label ?? '？？？' }}</button>
             <button v-if="nation" type="button" @click="page = 'resources'">資源売却</button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
-            <button v-if="nation" type="button" @click="openProfile">プロフィール編集</button>
+            <button type="button" @click="openOptions">オプション</button>
             <a href="/manual">マニュアル</a>
         </nav>
         <div class="session-actions">
@@ -1653,7 +1698,12 @@ async function abandonNation(): Promise<void> {
                     tabindex="0"
                 >
                     <div class="island-grid">
-                        <CommandQueuePanel :nation-id="nation.id" :map-space-id="mapSpace.id" :selected="map.selected.value" />
+                        <CommandQueuePanel
+                            :nation-id="nation.id"
+                            :map-space-id="mapSpace.id"
+                            :selected="map.selected.value"
+                            @queue="authoritativeCommandQueue = $event"
+                        />
                         <div class="map-column">
                             <HexMap
                                 :cells="map.visibleCells.value"
@@ -1661,6 +1711,7 @@ async function abandonNation(): Promise<void> {
                                 :capital="nation.capital"
                                 :bounds="mapSpace.bounds"
                                 :own-nation-id="nation.id"
+                                :command-queue="authoritativeCommandQueue"
                                 :loading="map.loading.value"
                                 :error="map.error.value"
                                 :empty-chunks="map.emptyChunks.value"
@@ -1890,9 +1941,12 @@ async function abandonNation(): Promise<void> {
                     <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
                     <ul class="secretary-warehouse">
                         <li v-for="item in secretary.inventory.items" :key="item.id">
-                            <div><strong>{{ item.name }}</strong> <span>Lv{{ item.level }}</span></div>
+                            <div class="secretary-warehouse-heading">
+                                <div><strong>{{ item.name }}</strong> <span>Lv{{ item.level }}</span></div>
+                                <button class="button danger secretary-item-sell" type="button" :disabled="busy" @click="sellSecretaryItem(item)">{{ item.fixed_sale_label }}</button>
+                            </div>
                             <p v-if="item.effect_text" class="item-effect">{{ item.effect_text }}</p>
-                            <p>{{ item.category_label }}<template v-if="item.is_equipped">・slot {{ item.equipped_slot }} に装備中</template></p>
+                            <p>{{ item.rarity_label }}・{{ item.category_label }}<template v-if="item.is_equipped">・slot {{ item.equipped_slot }} に装備中</template><template v-if="item.is_escrowed">・交易場へ出品中</template></p>
                             <p class="item-flavor">{{ item.flavor_text }}</p>
                         </li>
                     </ul>
@@ -1901,71 +1955,110 @@ async function abandonNation(): Promise<void> {
             </template>
         </section>
 
-        <section v-else-if="user && nation && page === 'profile'" class="panel profile-panel">
-            <p class="eyebrow">ISLAND PROFILE</p>
-            <h1>プロフィール編集</h1>
-            <p>N{{ nation.nation_number }} {{ nation.name }}の公開プロフィールです。島名は変更できません。</p>
-            <form class="profile-form" @submit.prevent="updateProfile">
-                <label>
-                    島主名
-                    <input v-model="profileOwnerName" minlength="1" maxlength="30" required aria-describedby="profile-owner-help profile-owner-error">
-                    <small id="profile-owner-help" class="field-hint">1〜30文字。公開ロビーや島previewへ表示されます。</small>
-                    <span v-if="profileErrors.owner_name" id="profile-owner-error" class="field-error" role="alert">{{ profileErrors.owner_name }}</span>
-                </label>
-                <label>
-                    一言コメント
-                    <textarea v-model="profileComment" maxlength="100" rows="3" aria-describedby="profile-comment-help profile-comment-error" @keydown.enter.prevent></textarea>
-                    <small id="profile-comment-help" class="field-hint">100文字以内、改行不可。HTMLやURLはリンクとして解釈されません。</small>
-                    <span v-if="profileErrors.comment" id="profile-comment-error" class="field-error" role="alert">{{ profileErrors.comment }}</span>
-                </label>
-                <div class="profile-actions">
-                    <button class="button primary" type="submit" :disabled="busy">保存</button>
-                    <button type="button" :disabled="busy" @click="openOwnIsland">キャンセル</button>
-                </div>
-            </form>
-            <form v-if="secretary?.name !== null" class="profile-form secretary-rename-form" @submit.prevent="renameProfileSecretary">
-                <h2>秘書プロフィール</h2>
-                <label>
-                    秘書名
-                    <input v-model="profileSecretaryName" minlength="1" maxlength="30" required autocomplete="off" aria-describedby="profile-secretary-help profile-secretary-error">
-                    <small id="profile-secretary-help" class="field-hint">1〜30文字。何度でも変更できます。過去のログの名前は変わりません。</small>
-                    <span v-if="profileSecretaryErrors.name" id="profile-secretary-error" class="field-error" role="alert">{{ profileSecretaryErrors.name }}</span>
-                </label>
-                <div class="profile-actions">
-                    <button class="button primary" type="submit" :disabled="busy">秘書名を保存</button>
-                </div>
-            </form>
-            <section class="danger-zone" aria-labelledby="danger-zone-title">
-                <h2 id="danger-zone-title">危険な操作</h2>
-                <section class="dormancy-block" aria-labelledby="dormancy-title">
-                    <h3 id="dormancy-title">島を休止する</h3>
-                    <template v-if="nation.state === 'dormant'">
-                        <p><strong>現在休止中</strong></p>
-                        <dl class="dormancy-status">
-                            <div><dt>理由</dt><dd>{{ nation.state_reason === 'manual' ? '手動休止' : nation.state_reason === 'collapse' ? '人口・食料の枯渇' : '無活動' }}</dd></div>
-                            <div><dt>指定期間</dt><dd>{{ nation.manual_dormancy_days === null ? '自動休止' : `${nation.manual_dormancy_days}日` }}</dd></div>
-                            <div><dt>再開予定turn</dt><dd>{{ nation.resume_at_turn === null ? '通常command登録後の次official Turn' : `Turn ${nation.resume_at_turn}` }}</dd></div>
-                            <div><dt>残りturn / 日数</dt><dd>{{ nation.dormancy_remaining_turns === null ? '期限なし' : `${nation.dormancy_remaining_turns} turn / 約${nation.dormancy_remaining_days}日` }}</dd></div>
-                            <div><dt>自動破棄まで</dt><dd>{{ nation.abandonment_remaining_turns }} turn</dd></div>
-                            <div><dt>表示</dt><dd>冬theme適用中</dd></div>
-                        </dl>
-                        <p class="field-hint">手動休止は指定期間が終わるまで解除できません。</p>
-                    </template>
-                    <form v-else class="dormancy-form" @submit.prevent="requestDormancy">
-                        <p>1〜7日から期間を選択します。指定期間中は早期解除できません。</p>
-                        <label for="dormancy-days">休止期間</label>
-                        <select id="dormancy-days" v-model.number="dormancyDays" :disabled="busy">
-                            <option v-for="days in 7" :key="days" :value="days">{{ days }}日</option>
-                        </select>
-                        <p class="field-hint">選択した期間と期限前解除不可の説明を確認して申請してください。</p>
-                        <p v-if="dormancyError" class="field-error" role="alert">{{ dormancyError }}</p>
-                        <button class="button secondary" type="submit" :disabled="busy || !nation.can_request_dormancy">この島を休止する</button>
-                    </form>
-                </section>
-                <section class="abandonment-block" aria-labelledby="abandonment-block-title">
-                    <h3 id="abandonment-block-title">島を破棄する</h3>
-                    <p>島の破棄は元に戻せません。領土・人口・施設・資源・開発予定はすべて失われます。</p>
-                    <button class="button danger" type="button" :disabled="busy || nation.state !== 'active'" @click="openAbandonmentModal">この島を破棄する</button>
+        <section v-else-if="page === 'options'" class="panel profile-panel options-panel">
+            <p class="eyebrow">OPTIONS</p>
+            <h1>オプション</h1>
+            <section class="options-section display-settings" aria-labelledby="display-settings-title">
+                <h2 id="display-settings-title">表示設定</h2>
+                <fieldset class="theme-options">
+                    <legend>表示テーマ</legend>
+                    <label class="theme-choice">
+                        <input
+                            type="radio"
+                            name="display-theme"
+                            value="system"
+                            :checked="themeMode === 'system'"
+                            @change="selectTheme('system')"
+                        >
+                        <span><strong>システム設定に従う</strong><small>OS・ブラウザのライト／ダーク設定に合わせます。</small></span>
+                    </label>
+                    <label class="theme-choice">
+                        <input
+                            type="radio"
+                            name="display-theme"
+                            value="light"
+                            :checked="themeMode === 'light'"
+                            @change="selectTheme('light')"
+                        >
+                        <span><strong>ライトテーマ</strong><small>常に明るい配色で表示します。</small></span>
+                    </label>
+                    <label class="theme-choice">
+                        <input
+                            type="radio"
+                            name="display-theme"
+                            value="dark"
+                            :checked="themeMode === 'dark'"
+                            @change="selectTheme('dark')"
+                        >
+                        <span><strong>ダークテーマ</strong><small>常に暗い紺・深緑系の配色で表示します。</small></span>
+                    </label>
+                </fieldset>
+            </section>
+            <section v-if="user && nation" class="options-section profile-settings" aria-labelledby="profile-settings-title">
+                <h2 id="profile-settings-title">プロフィール</h2>
+                <p>N{{ nation.nation_number }} {{ nation.name }}の公開プロフィールです。島名は変更できません。</p>
+                <form class="profile-form" @submit.prevent="updateProfile">
+                    <label>
+                        島主名
+                        <input v-model="profileOwnerName" minlength="1" maxlength="30" required aria-describedby="profile-owner-help profile-owner-error">
+                        <small id="profile-owner-help" class="field-hint">1〜30文字。公開ロビーや島previewへ表示されます。</small>
+                        <span v-if="profileErrors.owner_name" id="profile-owner-error" class="field-error" role="alert">{{ profileErrors.owner_name }}</span>
+                    </label>
+                    <label>
+                        一言コメント
+                        <textarea v-model="profileComment" maxlength="100" rows="3" aria-describedby="profile-comment-help profile-comment-error" @keydown.enter.prevent></textarea>
+                        <small id="profile-comment-help" class="field-hint">100文字以内、改行不可。HTMLやURLはリンクとして解釈されません。</small>
+                        <span v-if="profileErrors.comment" id="profile-comment-error" class="field-error" role="alert">{{ profileErrors.comment }}</span>
+                    </label>
+                    <div class="profile-actions">
+                        <button class="button primary" type="submit" :disabled="busy">保存</button>
+                        <button type="button" :disabled="busy" @click="openOwnIsland">キャンセル</button>
+                    </div>
+                </form>
+                <form v-if="secretary?.name !== null" class="profile-form secretary-rename-form" @submit.prevent="renameProfileSecretary">
+                    <h2>秘書プロフィール</h2>
+                    <label>
+                        秘書名
+                        <input v-model="profileSecretaryName" minlength="1" maxlength="30" required autocomplete="off" aria-describedby="profile-secretary-help profile-secretary-error">
+                        <small id="profile-secretary-help" class="field-hint">1〜30文字。何度でも変更できます。過去のログの名前は変わりません。</small>
+                        <span v-if="profileSecretaryErrors.name" id="profile-secretary-error" class="field-error" role="alert">{{ profileSecretaryErrors.name }}</span>
+                    </label>
+                    <div class="profile-actions">
+                        <button class="button primary" type="submit" :disabled="busy">秘書名を保存</button>
+                    </div>
+                </form>
+                <section class="danger-zone" aria-labelledby="danger-zone-title">
+                    <h2 id="danger-zone-title">危険な操作</h2>
+                    <section class="dormancy-block" aria-labelledby="dormancy-title">
+                        <h3 id="dormancy-title">島を休止する</h3>
+                        <template v-if="nation.state === 'dormant'">
+                            <p><strong>現在休止中</strong></p>
+                            <dl class="dormancy-status">
+                                <div><dt>理由</dt><dd>{{ nation.state_reason === 'manual' ? '手動休止' : nation.state_reason === 'collapse' ? '人口・食料の枯渇' : '無活動' }}</dd></div>
+                                <div><dt>指定期間</dt><dd>{{ nation.manual_dormancy_days === null ? '自動休止' : `${nation.manual_dormancy_days}日` }}</dd></div>
+                                <div><dt>再開予定turn</dt><dd>{{ nation.resume_at_turn === null ? '通常command登録後の次official Turn' : `Turn ${nation.resume_at_turn}` }}</dd></div>
+                                <div><dt>残りturn / 日数</dt><dd>{{ nation.dormancy_remaining_turns === null ? '期限なし' : `${nation.dormancy_remaining_turns} turn / 約${nation.dormancy_remaining_days}日` }}</dd></div>
+                                <div><dt>自動破棄まで</dt><dd>{{ nation.abandonment_remaining_turns }} turn</dd></div>
+                                <div><dt>表示</dt><dd>冬theme適用中</dd></div>
+                            </dl>
+                            <p class="field-hint">手動休止は指定期間が終わるまで解除できません。</p>
+                        </template>
+                        <form v-else class="dormancy-form" @submit.prevent="requestDormancy">
+                            <p>1〜7日から期間を選択します。指定期間中は早期解除できません。</p>
+                            <label for="dormancy-days">休止期間</label>
+                            <select id="dormancy-days" v-model.number="dormancyDays" :disabled="busy">
+                                <option v-for="days in 7" :key="days" :value="days">{{ days }}日</option>
+                            </select>
+                            <p class="field-hint">選択した期間と期限前解除不可の説明を確認して申請してください。</p>
+                            <p v-if="dormancyError" class="field-error" role="alert">{{ dormancyError }}</p>
+                            <button class="button secondary" type="submit" :disabled="busy || !nation.can_request_dormancy">この島を休止する</button>
+                        </form>
+                    </section>
+                    <section class="abandonment-block" aria-labelledby="abandonment-block-title">
+                        <h3 id="abandonment-block-title">島を破棄する</h3>
+                        <p>島の破棄は元に戻せません。領土・人口・施設・資源・開発予定はすべて失われます。</p>
+                        <button class="button danger" type="button" :disabled="busy || nation.state !== 'active'" @click="openAbandonmentModal">この島を破棄する</button>
+                    </section>
                 </section>
             </section>
         </section>

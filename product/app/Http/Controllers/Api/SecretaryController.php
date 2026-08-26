@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\SecretaryEquipmentService;
 use App\Application\SecretaryItemEffectContextResolver;
+use App\Application\SecretaryItemSaleService;
 use App\Application\SecretaryNamingService;
 use App\Application\SecretaryPresenter;
 use App\Application\SecretaryProfilePresenter;
@@ -18,6 +19,7 @@ use App\Http\Requests\UpdateSecretaryEquipmentRequest;
 use App\Http\Requests\UpdateSecretaryImagePreferencesRequest;
 use App\Http\Requests\UpdateSecretaryMainImageMetadataRequest;
 use App\Http\Requests\UpdateSecretaryProfileRequest;
+use App\Http\Resources\NationResource;
 use App\Models\Secretary;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -162,6 +164,33 @@ final class SecretaryController extends Controller
         }
 
         return response()->json(['data' => $presenter->present($secretary, viewer: $request->user())]);
+    }
+
+    public function sellItem(
+        Request $request,
+        string $item,
+        SecretaryItemSaleService $sales,
+        SecretaryPresenter $presenter,
+        SecretaryItemEffectContextResolver $effectContexts,
+    ): JsonResponse {
+        $validated = $request->validate(['world_id' => ['required', 'integer', 'min:1']]);
+        if (filter_var($item, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
+            throw ValidationException::withMessages(['item_id' => '売却するアイテムを確認してください。']);
+        }
+        try {
+            $result = $sales->sell($request->user(), (int) $validated['world_id'], (int) $item);
+        } catch (DomainException $exception) {
+            return response()->json([
+                'code' => 'secretary_item_sale_rejected',
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+        $projection = $effectContexts->resolve($request->user(), (int) $validated['world_id']);
+
+        return response()->json(['data' => [
+            'secretary' => $presenter->present($result['secretary'], $projection, $request->user()),
+            'nation' => (new NationResource($result['nation']))->resolve($request),
+        ]]);
     }
 
     public function updateProfile(

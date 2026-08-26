@@ -5,13 +5,19 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
+use App\Application\MonsterDamageService;
 use App\Application\NationCreationService;
-use App\Application\SecretaryOldBowService;
+use App\Application\SecretaryBowAttackService;
+use App\Application\SecretaryItemGrantService;
+use App\Application\SecretaryItemSaleService;
 use App\Application\SecretaryTurnService;
+use App\Application\TradingPostTurnService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
+use App\Models\AuctionBid;
+use App\Models\AuctionListing;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterDefinition;
@@ -351,7 +357,7 @@ final class SecretaryItemEffectsTest extends TestCase
         $ruleset = $this->switchToItemRuleset($world);
         $world = $world->fresh();
         $surface = $this->surfaceMapSpace($world);
-        $service = app(SecretaryOldBowService::class);
+        $service = app(SecretaryBowAttackService::class);
 
         $noTarget = $this->context($world, hash('sha256', 'old bow no target'), [$nation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $noTarget);
@@ -482,7 +488,7 @@ final class SecretaryItemEffectsTest extends TestCase
 
         $hit = $this->context($world, $this->oldBowHitSeed($firstNation->id), [$firstNation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $hit);
-        $metrics = app(SecretaryOldBowService::class)->execute($hit, $surface, true);
+        $metrics = app(SecretaryBowAttackService::class)->execute($hit, $surface, true);
         $this->assertSame(1, $metrics['secretary_old_bow_hits']);
         $this->assertSame(1, $legal->fresh()->current_hp);
         foreach ([$neutral, $foreign, $dead, $removed, $hardened, $offSurface] as $excluded) {
@@ -505,7 +511,7 @@ final class SecretaryItemEffectsTest extends TestCase
             $queries[] = $query->sql;
         });
 
-        $metrics = app(SecretaryOldBowService::class)->execute($bounded, $surface, true);
+        $metrics = app(SecretaryBowAttackService::class)->execute($bounded, $surface, true);
 
         $this->assertSame(2, $metrics['secretary_old_bow_attempts']);
         $this->assertSame(2, $metrics['secretary_old_bow_misses']);
@@ -666,7 +672,7 @@ final class SecretaryItemEffectsTest extends TestCase
         $context = $this->context($world, $seed, $nationIds);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
 
-        $metrics = app(SecretaryOldBowService::class)->execute(
+        $metrics = app(SecretaryBowAttackService::class)->execute(
             $context,
             $this->surfaceMapSpace($world),
             true,
@@ -698,8 +704,8 @@ final class SecretaryItemEffectsTest extends TestCase
         $rolledBack = [];
 
         try {
-            DB::transaction(function () use ($firstContext, $world, $monster, $secretaryId, $experiencePerDamage, &$rolledBack): void {
-                $metrics = app(SecretaryOldBowService::class)->execute(
+            DB::transaction(function () use ($firstContext, $world, $monster, $nation, $secretaryId, $experiencePerDamage, &$rolledBack): void {
+                $metrics = app(SecretaryBowAttackService::class)->execute(
                     $firstContext,
                     $this->surfaceMapSpace($world),
                     true,
@@ -707,6 +713,10 @@ final class SecretaryItemEffectsTest extends TestCase
                 $metadata = $this->event($firstContext, 'monster.killed');
                 unset($metadata['turn_run_id'], $metadata['kill_stat_id']);
                 $rolledBack = ['metrics' => $metrics, 'metadata' => $metadata];
+                $rolledBack['drop'] = DB::table('secretary_item_instances')
+                    ->where('grant_key', "monster-drop:v1:{$monster->id}:{$nation->id}")
+                    ->first(['item_key', 'level']);
+                $this->assertNotNull($rolledBack['drop']);
                 $this->assertSame('killed', $monster->fresh()->state);
                 $flush = app(SecretaryTurnService::class)->flushExperience($firstContext);
                 $this->assertSame($experiencePerDamage, $flush['monster_experience_awarded']);
@@ -723,10 +733,11 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->assertSame(0, DB::table('nation_monster_kill_stats')->where('nation_id', $nation->id)->count());
         $this->assertSame(0, (int) DB::table('secretaries')
             ->where('id', $secretaryId)->value('monster_experience'));
+        $this->assertSame(1, DB::table('secretary_item_instances')->where('secretary_id', $secretaryId)->count());
 
         $retry = $this->context($world, $seed, [$nation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $retry);
-        $retryMetrics = app(SecretaryOldBowService::class)->execute(
+        $retryMetrics = app(SecretaryBowAttackService::class)->execute(
             $retry,
             $this->surfaceMapSpace($world),
             true,
@@ -736,6 +747,10 @@ final class SecretaryItemEffectsTest extends TestCase
         $retryFlush = app(SecretaryTurnService::class)->flushExperience($retry);
         $this->assertSame($rolledBack['metrics'], $retryMetrics);
         $this->assertSame($rolledBack['metadata'], $retryMetadata);
+        $retryDrop = DB::table('secretary_item_instances')
+            ->where('grant_key', "monster-drop:v1:{$monster->id}:{$nation->id}")
+            ->first(['item_key', 'level']);
+        $this->assertEquals($rolledBack['drop'], $retryDrop);
         $this->assertSame('killed', $monster->fresh()->state);
         $this->assertSame(1, DB::table('nation_monster_kill_stats')
             ->where('nation_id', $nation->id)->value('kill_count'));
@@ -744,6 +759,278 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->assertSame($experiencePerDamage, $retryFlush['monster_experience_awarded']);
         $this->assertSame($experiencePerDamage, (int) DB::table('secretaries')
             ->where('id', $secretaryId)->value('monster_experience'));
+    }
+
+    public function test_regular_bows_use_versioned_item_streams_longshot_aoi_scope_and_mechanical_finisher(): void
+    {
+        $world = $this->lightweightWorld();
+        [$elfUser, $elfNation] = $this->nation($world, 'エルフ弓国');
+        [$longshotUser, $longshotNation] = $this->nation($world, '遠当て弓国');
+        [$mechanicalUser, $mechanicalNation] = $this->nation($world, '機械弓国');
+        $ruleset = $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+
+        $this->equipBow($elfUser, SecretaryItemCatalog::ELF_BOW, 1);
+        $elfTarget = $this->monster($world, $ruleset, $this->ownedNonCapitalCell($elfNation), 1, 'inora');
+        $elfContext = $this->context(
+            $world,
+            $this->bowHitSeed($elfNation->id, SecretaryItemCatalog::ELF_BOW, 1_200),
+            [$elfNation->id],
+        );
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $elfContext);
+        $elfMetrics = app(SecretaryBowAttackService::class)->execute(
+            $elfContext,
+            $this->surfaceMapSpace($world),
+            true,
+        );
+        $this->assertSame(1, $elfMetrics['secretary_bow_attempts']);
+        $this->assertSame(1, $elfMetrics['secretary_bow_hits']);
+        $this->assertSame('killed', $elfTarget->fresh()->state);
+        $this->assertSame('secretary_elf_bow', $elfTarget->fresh()->removal_reason);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.item_drop_received')
+            ->where('nation_id', $elfNation->id)->count());
+
+        $this->equipBow($longshotUser, SecretaryItemCatalog::LONGSHOT_BOW, 10);
+        $neutralCell = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)
+            ->whereNull('owner_nation_id')->with(['terrain', 'facility'])->orderBy('id')->firstOrFail();
+        $aoi = $this->monster($world, $ruleset, $neutralCell, 1, 'aoi_inora');
+        $longshotContext = $this->context(
+            $world,
+            $this->bowHitSeed($longshotNation->id, SecretaryItemCatalog::LONGSHOT_BOW, 2_100),
+            [$longshotNation->id],
+        );
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $longshotContext);
+        $longshotMetrics = app(SecretaryBowAttackService::class)->execute(
+            $longshotContext,
+            $this->surfaceMapSpace($world),
+            true,
+        );
+        $this->assertSame(1, $longshotMetrics['secretary_bow_hits']);
+        $this->assertSame('killed', $aoi->fresh()->state);
+        $this->assertSame('secretary_longshot_bow', $aoi->fresh()->removal_reason);
+
+        $this->equipBow($mechanicalUser, SecretaryItemCatalog::MECHANICAL_BOW, 10);
+        $finisherTarget = $this->monster(
+            $world,
+            $ruleset,
+            $this->ownedNonCapitalCell($mechanicalNation),
+            2,
+            'mecha_inora_zero',
+        );
+        $mechanicalContext = $this->context(
+            $world,
+            $this->bowHitSeed($mechanicalNation->id, SecretaryItemCatalog::MECHANICAL_BOW, 760),
+            [$mechanicalNation->id],
+        );
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $mechanicalContext);
+        $mechanicalMetrics = app(SecretaryBowAttackService::class)->execute(
+            $mechanicalContext,
+            $this->surfaceMapSpace($world),
+            true,
+        );
+        $this->assertSame(1, $mechanicalMetrics['secretary_bow_attempts']);
+        $this->assertSame(1, $mechanicalMetrics['secretary_bow_hits']);
+        $this->assertSame(1, $mechanicalMetrics['secretary_mechanical_bow_finishers']);
+        $this->assertSame('killed', $finisherTarget->fresh()->state);
+        $this->assertSame('secretary_mechanical_bow', $finisherTarget->fresh()->removal_reason);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.item_drop_received')
+            ->where('nation_id', $mechanicalNation->id)->count());
+    }
+
+    public function test_later_bow_skips_an_aoi_killed_by_an_earlier_nation_in_the_same_pass(): void
+    {
+        $world = $this->lightweightWorld();
+        [, $ownerNation] = $this->nation($world, '先行弓国');
+        [$longshotUser, $longshotNation] = $this->nation($world, '後続遠当て国');
+        $ruleset = $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+        $this->equipBow($longshotUser, SecretaryItemCatalog::LONGSHOT_BOW, 10);
+        $aoi = $this->monster(
+            $world,
+            $ruleset,
+            $this->ownedNonCapitalCell($ownerNation),
+            1,
+            'aoi_inora',
+        );
+        $seed = null;
+        foreach (range(0, 10_000) as $candidate) {
+            $attempt = hash('sha256', "shared-aoi-bow-{$candidate}");
+            $random = new TurnRandomStreamFactory($attempt);
+            if ($random->stream(TurnRandomStreamFactory::secretaryOldBow($ownerNation->id, 'trigger', 1))
+                ->integer(0, 9_999) < 1_000
+                && $random->stream(TurnRandomStreamFactory::secretaryBow(
+                    $longshotNation->id,
+                    SecretaryItemCatalog::LONGSHOT_BOW,
+                    'trigger',
+                    1,
+                ))->integer(0, 9_999) < 2_100) {
+                $seed = $attempt;
+                break;
+            }
+        }
+        if ($seed === null) {
+            throw new RuntimeException('No deterministic shared Aoi Bow trigger seed was found.');
+        }
+        $context = $this->context($world, $seed, [$ownerNation->id, $longshotNation->id]);
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
+
+        $metrics = app(SecretaryBowAttackService::class)->execute(
+            $context,
+            $this->surfaceMapSpace($world),
+            true,
+        );
+
+        $this->assertSame(2, $metrics['secretary_bow_eligible_nations']);
+        $this->assertSame(1, $metrics['secretary_bow_attempts']);
+        $this->assertSame(1, $metrics['secretary_bow_hits']);
+        $this->assertSame(1, $metrics['secretary_bow_kills']);
+        $this->assertSame('killed', $aoi->fresh()->state);
+        $this->assertFalse(MonsterOccupancy::query()->where('monster_instance_id', $aoi->id)->exists());
+    }
+
+    public function test_inventory_full_foreign_host_drop_stops_before_identity_draw_without_reroute_or_leak(): void
+    {
+        $world = $this->lightweightWorld();
+        [$killerUser, $killer] = $this->nation($world, '満杯撃破国');
+        [$hostUser, $host] = $this->nation($world, '満杯所在国');
+        $ruleset = $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+        $hostSecretary = $hostUser->secretary()->sole();
+        foreach (range(1, SecretaryItemGrantService::INVENTORY_CAPACITY - 1) as $index) {
+            $hostSecretary->itemInstances()->create([
+                'item_key' => SecretaryItemCatalog::RING,
+                'level' => 1,
+                'equipped_slot' => null,
+                'grant_key' => "test:full-drop:{$index}",
+                'obtained_at' => now(),
+            ]);
+        }
+        $monster = $this->monster($world, $ruleset, $this->ownedNonCapitalCell($host), 1, 'inora');
+        $seed = $this->dropHostRecipientSeed($monster->id);
+        $context = $this->context($world, $seed, [$killer->id, $host->id]);
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
+        $killerItemsBefore = $killerUser->secretary->itemInstances()->count();
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            1,
+            'monster_missile',
+            $killer,
+            null,
+            $monster->occupancy()->firstOrFail()->cell()->firstOrFail(),
+            $context,
+        );
+
+        $this->assertSame('killed', $result->status);
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $hostSecretary->itemInstances()->count());
+        $this->assertSame($killerItemsBefore, $killerUser->secretary->itemInstances()->count());
+        $event = DB::table('audit_events')->where('event_type', 'monster.item_drop_inventory_full')->sole();
+        $this->assertSame($host->id, $event->nation_id);
+        $metadata = json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR);
+        foreach (['item_key', 'item_name', 'item_level', 'rarity'] as $forbidden) {
+            $this->assertArrayNotHasKey($forbidden, $metadata);
+        }
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.item_drop_received')->count());
+        foreach (['rarity', 'item', 'level'] as $purpose) {
+            $label = TurnRandomStreamFactory::monsterItemDrop($monster->id, $purpose, 1);
+            $this->assertSame(
+                (new TurnRandomStreamFactory($seed))->stream($label)->integer(0, 9_999),
+                $context->random->stream($label)->integer(0, 9_999),
+                "Inventory-full handling consumed the {$purpose} stream.",
+            );
+        }
+    }
+
+    public function test_auction_delivery_may_overfill_inventory_but_further_drops_wait_until_usage_returns_below_capacity(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '落札予約国');
+        $ruleset = $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+        $secretary = $user->secretary()->sole();
+        $used = $secretary->itemInstances()->count();
+        foreach (range($used + 1, SecretaryItemGrantService::INVENTORY_CAPACITY - 1) as $index) {
+            $secretary->itemInstances()->create([
+                'item_key' => SecretaryItemCatalog::RING,
+                'level' => 1,
+                'equipped_slot' => null,
+                'grant_key' => "test:auction-overfill:{$index}",
+                'obtained_at' => now(),
+            ]);
+        }
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY - 1, $secretary->itemInstances()->count());
+
+        $listing = AuctionListing::query()->create([
+            'world_id' => $world->id,
+            'seller_type' => 'hakoniwa_federation',
+            'product_type' => 'item',
+            'item_key' => SecretaryItemCatalog::RING,
+            'item_level' => 1,
+            'start_price' => 1,
+            'current_price' => 1,
+            'highest_bidder_nation_id' => $nation->id,
+            'bid_count' => 1,
+            'duration_turns' => 3,
+            'started_turn' => 1,
+            'ends_turn' => 4,
+            'auto_relist' => false,
+            'status' => AuctionListing::STATUS_ACTIVE,
+        ]);
+        AuctionBid::query()->create([
+            'auction_listing_id' => $listing->id,
+            'bidder_nation_id' => $nation->id,
+            'amount' => 1,
+            'status' => AuctionBid::STATUS_HIGHEST,
+            'placed_turn' => 1,
+        ]);
+        $nation->update(['money' => 0]);
+
+        $context = $this->context(
+            $world,
+            hash('sha256', 'auction delivery inventory overfill'),
+            [$nation->id],
+            4,
+        );
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
+        $cell = $this->ownedNonCapitalCell($nation);
+        $kill = function () use ($world, $ruleset, $cell, $nation, $context): array {
+            $monster = $this->monster($world, $ruleset, $cell, 1, 'inora');
+            $result = app(MonsterDamageService::class)->applyDamage(
+                $monster,
+                1,
+                'monster_missile',
+                $nation,
+                null,
+                $cell,
+                $context,
+            );
+
+            return [$monster, $result];
+        };
+
+        [, $firstKill] = $kill();
+        $this->assertSame('killed', $firstKill->status);
+        $firstDrop = $secretary->itemInstances()->where('grant_key', 'like', 'monster-drop:v1:%')->sole();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $secretary->itemInstances()->count());
+
+        app(TradingPostTurnService::class)->execute($context);
+        $auctionItem = $secretary->itemInstances()->where('grant_key', 'trading-post:npc:'.$listing->id)->sole();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY + 1, $secretary->itemInstances()->count());
+
+        $kill();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY + 1, $secretary->itemInstances()->count());
+
+        app(SecretaryItemSaleService::class)->sell($user, $world->id, $firstDrop->id);
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $secretary->itemInstances()->count());
+        $kill();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $secretary->itemInstances()->count());
+
+        app(SecretaryItemSaleService::class)->sell($user, $world->id, $auctionItem->id);
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY - 1, $secretary->itemInstances()->count());
+        $kill();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $secretary->itemInstances()->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'monster.item_drop_received')->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'monster.item_drop_inventory_full')->count());
     }
 
     /** @return array{User, Nation} */
@@ -777,6 +1064,21 @@ final class SecretaryItemEffectsTest extends TestCase
         ]);
     }
 
+    private function equipBow(User $user, string $itemKey, int $level): SecretaryItemInstance
+    {
+        $secretary = $user->secretary()->sole();
+        $secretary->itemInstances()->where('equipped_slot', 1)->update(['equipped_slot' => null]);
+
+        return SecretaryItemInstance::query()->create([
+            'secretary_id' => $secretary->id,
+            'item_key' => $itemKey,
+            'level' => $level,
+            'equipped_slot' => 1,
+            'grant_key' => "test:regular-bow:{$itemKey}",
+            'obtained_at' => now(),
+        ]);
+    }
+
     private function queueFinance(User $user, Nation $nation, World $world): NationCommandQueueItem
     {
         return app(CommandQueueService::class)->add(
@@ -794,12 +1096,12 @@ final class SecretaryItemEffectsTest extends TestCase
     }
 
     /** @param list<int> $nationIds */
-    private function context(World $world, string $seed, array $nationIds): TurnContext
+    private function context(World $world, string $seed, array $nationIds, int $targetTurn = 2): TurnContext
     {
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $run = TurnRun::query()->create([
             'world_id' => $world->id,
-            'target_turn' => 2,
+            'target_turn' => $targetTurn,
             'ruleset_version_id' => $ruleset->id,
             'random_seed' => $seed,
             'source' => 'manual',
@@ -818,7 +1120,7 @@ final class SecretaryItemEffectsTest extends TestCase
             $world,
             $run,
             $ruleset,
-            2,
+            $targetTurn,
             $seed,
             new TurnRandomStreamFactory($seed),
             $state,
@@ -901,6 +1203,35 @@ final class SecretaryItemEffectsTest extends TestCase
         }
 
         $this->fail('No deterministic Old Bow hit seed was found in the bounded fixture search.');
+    }
+
+    private function bowHitSeed(int $nationId, string $itemKey, int $chanceBasisPoints): string
+    {
+        for ($candidate = 0; $candidate < 1_000; $candidate++) {
+            $seed = hash('sha256', "bow-hit-{$nationId}-{$itemKey}-{$candidate}");
+            $draw = (new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::secretaryBow($nationId, $itemKey, 'trigger', 1),
+            )->integer(0, 9_999);
+            if ($draw < $chanceBasisPoints) {
+                return $seed;
+            }
+        }
+
+        $this->fail("No deterministic {$itemKey} hit seed was found in the bounded fixture search.");
+    }
+
+    private function dropHostRecipientSeed(int $monsterId): string
+    {
+        for ($candidate = 0; $candidate < 100; $candidate++) {
+            $seed = hash('sha256', "drop-host-{$monsterId}-{$candidate}");
+            if ((new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::monsterItemDrop($monsterId, 'recipient', 1),
+            )->integer(1, 100) > 75) {
+                return $seed;
+            }
+        }
+
+        $this->fail('No deterministic host-recipient drop seed was found.');
     }
 
     /** @param list<int> $nationIds */

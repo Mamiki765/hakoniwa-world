@@ -225,6 +225,12 @@ final class NationCreationService
                         ]);
                     }
                     $this->islands->apply($islandPlan, $mapSpace, $nation);
+                    if (($rules['key'] ?? null) === 'hakoniwa-2s-plus-v17') {
+                        $nation->population_high_water = (int) $mapSpace->cells()
+                            ->where('owner_nation_id', $nation->id)
+                            ->sum('population');
+                        $nation->save();
+                    }
                     NationMembership::query()->create([
                         'user_id' => $user->id, 'world_id' => $world->id,
                         'nation_id' => $nation->id, 'role' => 'owner',
