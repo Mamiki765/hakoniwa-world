@@ -8,7 +8,7 @@ The normal application configuration resolves only the current immutable Ruleset
 ```text
 key: hakoniwa-2s-plus-v17
 version: 17
-checksum: 10ef012e8c267aae6d1f6c4e5b888674e11f9c94058bdfdc118a6a7730dfc780
+checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
 ```
 
 v17 is the ver 2.7.0 gameplay contract. It adds Regular and Cursed Secretary Items,

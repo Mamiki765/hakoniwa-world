@@ -146,7 +146,6 @@ $secretary['items']['collar'] = [
         ],
         [
             'type' => 'karma_crime_double_chance',
-            'minimum_start_karma' => 1,
             'base_percent' => 4,
             'percent_per_level' => 1,
             'multiplier' => 2,

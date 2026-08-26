@@ -2691,7 +2691,7 @@ class CommandAndMissileTest extends TestCase
     public function test_collar_doubles_only_positive_settlement_crime_on_one_versioned_impact_draw_without_public_leak(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants('crime-double');
-        $firing->update(['money' => 9_999, 'karma' => 1]);
+        $firing->update(['money' => 9_999, 'karma' => 0]);
         $target->update(['karma' => 0]);
         $this->equipCollar($firingUser, 11);
         DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
@@ -2709,6 +2709,7 @@ class CommandAndMissileTest extends TestCase
         $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'karma.missile_impact')
             ->orderByDesc('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($item->id, $impact['queue_item_id']);
+        $this->assertSame(0, $impact['attacker_start_karma']);
         $this->assertGreaterThan(0, $impact['base_crime_points']);
         $this->assertTrue($impact['collar_triggered']);
         $this->assertSame($impact['base_crime_points'] * 2, $impact['final_crime_points']);

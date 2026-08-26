@@ -515,11 +515,10 @@ final class SecretaryItemGameplayContract
     private function validateCollarKarma(array $effect, string $path): void
     {
         $this->exactKeys($effect, [
-            'type', 'minimum_start_karma', 'base_percent', 'percent_per_level', 'multiplier',
+            'type', 'base_percent', 'percent_per_level', 'multiplier',
             'facility_keys', 'draw_unit', 'snapshot_timing', 'random_stream_version',
         ], $path);
         if (($effect['type'] ?? null) !== self::KARMA_CRIME_DOUBLE_CHANCE
-            || ($effect['minimum_start_karma'] ?? null) !== 1
             || ($effect['base_percent'] ?? null) !== 4
             || ($effect['percent_per_level'] ?? null) !== 1
             || ($effect['multiplier'] ?? null) !== 2

@@ -4,7 +4,7 @@
 
 The current application authors and validates only immutable
 `hakoniwa-2s-plus-v17` (`17`, checksum
-`10ef012e8c267aae6d1f6c4e5b888674e11f9c94058bdfdc118a6a7730dfc780`). Exact immutable
+`8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3`). Exact immutable
 v16 remains executable only as the immediately preceding supported source for the explicit
 forward-only v16-to-v17 migration. Its checksum remains
 `331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d`.

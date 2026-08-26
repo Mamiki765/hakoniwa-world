@@ -39,6 +39,11 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $this->assertTrue($collar['tradable']);
         $this->assertFalse($collar['npc_tradable']);
         $this->assertSame(1, $collar['fixed_sale_price_money']);
+        $this->assertSame(1, $settings['secretary']['items'][SecretaryItemCatalog::COLLAR]['effects'][0]['minimum_start_karma']);
+        $this->assertArrayNotHasKey(
+            'minimum_start_karma',
+            $settings['secretary']['items'][SecretaryItemCatalog::COLLAR]['effects'][1],
+        );
         $oldBow = $catalog->definition(SecretaryItemCatalog::OLD_BOW);
         $this->assertFalse($oldBow['tradable']);
         $this->assertFalse($oldBow['npc_tradable']);

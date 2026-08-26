@@ -24,7 +24,7 @@ final readonly class Ver270SecretaryItemRulesetUpgrade
 
     public const TARGET_VERSION = 17;
 
-    public const TARGET_CHECKSUM = '10ef012e8c267aae6d1f6c4e5b888674e11f9c94058bdfdc118a6a7730dfc780';
+    public const TARGET_CHECKSUM = '8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3';
 
     private const WORLD_KEY = 'shared-world';
 

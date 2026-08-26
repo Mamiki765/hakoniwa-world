@@ -463,7 +463,7 @@ final class MissileImpactResolver
         $collarTriggered = false;
         $crimePoints = $baseCrimePoints;
         $collar = $this->collarEffect($context, (int) $intent->nationId, SecretaryItemGameplayContract::KARMA_CRIME_DOUBLE_CHANCE);
-        if ($baseCrimePoints > 0 && $collar !== null && $attackerStartKarma >= 1
+        if ($baseCrimePoints > 0 && $collar !== null
             && $this->collarQualifyingImpact($impact)) {
             $impactIndex = (int) $launch['fired'];
             $draw = $context->random->stream(TurnRandomStreamFactory::secretaryCollar(

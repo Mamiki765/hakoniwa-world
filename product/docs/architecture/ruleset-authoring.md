@@ -97,7 +97,7 @@ types, nulls, and values. Classification metadata never enters the published pay
 The v16 key, version, full payload, and checksum
 `331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d`
 are immutable. The v17 key, version, full payload, and checksum
-`10ef012e8c267aae6d1f6c4e5b888674e11f9c94058bdfdc118a6a7730dfc780`
+`8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3`
 become immutable when published.
 
 A changed checksum under an already-published identity fails closed. A later gameplay,
