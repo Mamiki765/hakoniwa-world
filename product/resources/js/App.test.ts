@@ -240,6 +240,30 @@ describe('application lobby and island entry', () => {
         expect(darkWrapper.get<HTMLInputElement>('input[value="dark"]').element.checked).toBe(true);
         await flushPromises();
         darkWrapper.unmount();
+
+        let resolveNation!: (value: Response) => void;
+        const pendingNation = new Promise<Response>((resolve) => {
+            resolveNation = resolve;
+        });
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
+            if (path === '/api/v1/me/nation') return pendingNation;
+            if (path === '/api/v1/me/secretary?world_id=1') return response(null);
+
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const pendingWrapper = mount(App);
+        await pendingWrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'オプション')!.trigger('click');
+        await flushPromises();
+        expect(pendingWrapper.find('.profile-settings').exists()).toBe(false);
+
+        resolveNation(response({ ...ownerNationFixture, comment: '既存コメント' }));
+        await flushPromises();
+        expect(pendingWrapper.get<HTMLInputElement>('.profile-form input').element.value).toBe('自島主');
+        expect(pendingWrapper.get<HTMLTextAreaElement>('.profile-form textarea').element.value).toBe('既存コメント');
+        pendingWrapper.unmount();
     });
 
     it('continues rendering the public lobby after the normal guest /me 401', async () => {

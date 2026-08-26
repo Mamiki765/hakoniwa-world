@@ -227,6 +227,10 @@ onMounted(async () => {
     try {
         user.value = await api<CurrentUser>('/api/v1/me');
         nation.value = await api<Nation | null>('/api/v1/me/nation');
+        if (page.value === 'options' && nation.value !== null) {
+            profileOwnerName.value = nation.value.owner_name;
+            profileComment.value = nation.value.comment;
+        }
         if (nation.value !== null) await loadSecretary();
         if (user.value.can_manage_inquiries) await loadLatestInquiries();
     } catch (error) {
@@ -730,6 +734,7 @@ async function loadSecretary(): Promise<void> {
     const worldQuery = nation.value === null ? '' : `?world_id=${nation.value.world_id}`;
     secretary.value = await api<Secretary | null>(`/api/v1/me/secretary${worldQuery}`);
     if (secretary.value !== null) setOwnedSecretaryProfile(secretary.value);
+    if (page.value === 'options') profileSecretaryName.value = secretary.value?.name ?? '';
 }
 
 function setViewedSecretaryProfile(profile: SecretaryProfile, worldId: number | null): void {
