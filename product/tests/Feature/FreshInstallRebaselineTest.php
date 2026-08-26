@@ -160,6 +160,7 @@ SQL);
         $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '新規基準国', '新規基準島主');
+        $populationHighWaterBefore = (int) $nation->population_high_water;
         $space = $this->surfaceMapSpace($world);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
@@ -191,12 +192,15 @@ SQL);
             'level' => 0,
             'experience' => 0,
         ]);
-        $this->assertDatabaseHas('secretary_skills', [
-            'secretary_id' => $secretary->id,
-            'skill_key' => SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
-            'level' => 0,
-            'experience' => 0,
-        ]);
+        $birthrate = $secretary->skills()->where(
+            'skill_key',
+            SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+        )->sole();
+        $this->assertSame(0, $birthrate->level);
+        $this->assertSame(
+            (int) $nation->fresh()->population_high_water - $populationHighWaterBefore,
+            $birthrate->experience,
+        );
         $this->assertDatabaseHas('secretary_skills', [
             'secretary_id' => $secretary->id,
             'skill_key' => SecretarySkillCatalog::INDOMITABLE,
@@ -301,7 +305,7 @@ SQL);
             'world_id' => $world->id,
             'nation_id' => $nation->id,
             'monster_definition_id' => $sourceMonster->id,
-            'kill_count' => 2,
+            'kill_count' => 1,
             'first_killed_turn' => 1,
             'last_killed_turn' => 1,
             'version' => 1,

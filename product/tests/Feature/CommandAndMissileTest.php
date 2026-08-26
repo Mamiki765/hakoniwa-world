@@ -2262,7 +2262,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v16', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v17', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -2609,10 +2609,12 @@ class CommandAndMissileTest extends TestCase
 
     public function test_collar_doubles_only_positive_settlement_crime_on_one_versioned_impact_draw_without_public_leak(): void
     {
-        [$world, $firingUser, $firing, $target] = $this->combatants('collar-crime');
+        [$world, $firingUser, $firing, $target] = $this->combatants('crime-double');
         $firing->update(['money' => 9_999, 'karma' => 1]);
         $target->update(['karma' => 0]);
         $this->equipCollar($firingUser, 11);
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
         $settlement = MapCell::query()->where('owner_nation_id', $target->id)
@@ -2624,7 +2626,8 @@ class CommandAndMissileTest extends TestCase
         $this->resolvePreparedKarmaMissileTurn($world, $firing, $target, $base, $item, 2, $seed);
 
         $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'karma.missile_impact')
-            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+            ->orderByDesc('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($item->id, $impact['queue_item_id']);
         $this->assertGreaterThan(0, $impact['base_crime_points']);
         $this->assertTrue($impact['collar_triggered']);
         $this->assertSame($impact['base_crime_points'] * 2, $impact['final_crime_points']);
@@ -2647,7 +2650,8 @@ class CommandAndMissileTest extends TestCase
         $secondSeed = $this->seedForImpactAndCollarTrigger($second, $farm, 2, $farm, $firing->id, 1_500);
         $this->resolvePreparedKarmaMissileTurn($world, $firing->fresh(), $target->fresh(), $base, $second, 3, $secondSeed);
         $farmImpact = json_decode((string) DB::table('audit_events')->where('event_type', 'karma.missile_impact')
-            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $second->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+            ->orderByDesc('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($second->id, $farmImpact['queue_item_id']);
         $this->assertGreaterThan(0, $farmImpact['base_crime_points']);
         $this->assertFalse($farmImpact['collar_triggered']);
         $this->assertSame($farmImpact['base_crime_points'], $farmImpact['final_crime_points']);

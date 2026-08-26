@@ -2,11 +2,11 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryMonsterDropContract;
 use App\Domain\Secretary\SecretarySkillCatalog;
-use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -61,7 +61,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
             $contract->effectText($settings, SecretaryItemCatalog::ELF_BOW, 10),
         );
         $this->assertSame(
-            'secretary_item:elf_bow:nation:7:trigger:v1',
+            'secretary_item:bow:nation:7:item:elf_bow:trigger:v1',
             TurnRandomStreamFactory::secretaryBow(7, SecretaryItemCatalog::ELF_BOW, 'trigger', 1),
         );
     }

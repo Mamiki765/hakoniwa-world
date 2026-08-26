@@ -2,9 +2,9 @@
 
 namespace App\Application;
 
-use App\Domain\World\WorldMutationLock;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
+use App\Domain\World\WorldMutationLock;
 use App\Models\RulesetVersion;
 use App\Models\World;
 use Illuminate\Database\Query\Builder;
@@ -24,7 +24,7 @@ final readonly class Ver270SecretaryItemRulesetUpgrade
 
     public const TARGET_VERSION = 17;
 
-    public const TARGET_CHECKSUM = '190f3219491323d7a541495d0588d7c20fbe2e04e2bed0ac81bad993ef838867';
+    public const TARGET_CHECKSUM = '10ef012e8c267aae6d1f6c4e5b888674e11f9c94058bdfdc118a6a7730dfc780';
 
     private const WORLD_KEY = 'shared-world';
 
@@ -38,6 +38,7 @@ final readonly class Ver270SecretaryItemRulesetUpgrade
     private const INFRASTRUCTURE_TABLES = ['cache', 'cache_locks', 'migrations', 'sessions'];
 
     public function __construct(
+        private CurrentCatalogInstaller $catalogInstaller,
         private RulesetPublisher $publisher,
         private WorldMutationLock $worldMutationLock,
         private NextProductionTurnRunGuard $turnRunGuard,
@@ -65,6 +66,7 @@ final readonly class Ver270SecretaryItemRulesetUpgrade
                 if (World::query()->exists()) {
                     throw new RuntimeException('A World appeared while publishing fresh-install v17.');
                 }
+                $this->catalogInstaller->install($targetSettings);
                 $this->publisher->publish($targetSettings);
 
                 return 'fresh_install_current_v17';
@@ -84,7 +86,7 @@ final readonly class Ver270SecretaryItemRulesetUpgrade
     }
 
     /** @param array<string, mixed> $sourceSettings
-     * @param array<string, mixed> $targetSettings
+     * @param  array<string, mixed>  $targetSettings
      */
     private function upgradeLockedWorld(World $advisoryWorld, array $sourceSettings, array $targetSettings): string
     {
@@ -374,7 +376,8 @@ SQL, [$worldId, $targetId, $worldId, $targetId, $worldId, $targetId]);
             ])),
             'terminal_commands' => $this->queryDigest(DB::table('nation_command_queue_items')->where('status', '<>', 'queued')),
             'turn_runs' => $this->queryDigest(DB::table('turn_runs')),
-            'monster_kill_records' => $this->queryDigest(DB::table('monster_kill_records')),
+            'historical_monsters' => $this->queryDigest(DB::table('monster_instances')->where('state', '<>', 'alive')),
+            'historical_events' => $this->queryDigest(DB::table('audit_events')),
             'secretaries' => $this->queryDigest(DB::table('secretaries')),
             'existing_secretary_skills' => $this->queryDigest(DB::table('secretary_skills')
                 ->whereNotIn('skill_key', [

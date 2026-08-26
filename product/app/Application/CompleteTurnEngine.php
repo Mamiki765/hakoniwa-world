@@ -9,8 +9,8 @@ use App\Domain\Economy\SalePolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
-use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryDemographicPolicy;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryProductionBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
@@ -1497,15 +1497,23 @@ final class CompleteTurnEngine
             $birthrateLevel,
         ) : $rules['attraction_maximum_population'];
         $declineContract = $rules['over_attraction_maximum_decline'] ?? null;
-        if ($declineContract !== null && (! is_array($declineContract) || $declineContract !== [
-            'facility_keys' => ['village', 'town', 'city'],
-            'excluded_facility_key' => 'capital',
-            'loss_per_turn' => 100,
-            'skip_natural_growth' => true,
-            'event_type' => 'population.decreased',
-            'reason' => 'above_attraction_maximum',
-        ])) {
-            throw new DomainException('The v17 over-attraction population decline contract is invalid.');
+        if ($declineContract !== null) {
+            $keys = is_array($declineContract) ? array_keys($declineContract) : [];
+            $expectedKeys = [
+                'facility_keys', 'excluded_facility_key', 'loss_per_turn',
+                'skip_natural_growth', 'event_type', 'reason',
+            ];
+            sort($keys);
+            sort($expectedKeys);
+            if (! is_array($declineContract) || $keys !== $expectedKeys
+                || ($declineContract['facility_keys'] ?? null) !== ['village', 'town', 'city']
+                || ($declineContract['excluded_facility_key'] ?? null) !== 'capital'
+                || ($declineContract['loss_per_turn'] ?? null) !== 100
+                || ($declineContract['skip_natural_growth'] ?? null) !== true
+                || ($declineContract['event_type'] ?? null) !== 'population.decreased'
+                || ($declineContract['reason'] ?? null) !== 'above_attraction_maximum') {
+                throw new DomainException('The v17 over-attraction population decline contract is invalid.');
+            }
         }
         if ($declineContract !== null && ! $capital
             && in_array($cell->facility?->key, $declineContract['facility_keys'], true)

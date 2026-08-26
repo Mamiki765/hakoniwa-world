@@ -242,6 +242,7 @@ final class SecretaryItemGameplayContract
                     $parameters[$field] = $effect[$field];
                 }
             }
+
             return [[
                 'type' => self::PRE_NORMAL_MONSTER_ATTACK,
                 'timing' => $effect['timing'],
@@ -317,8 +318,7 @@ final class SecretaryItemGameplayContract
         string $path,
         int $index = 0,
         bool $v17 = false,
-    ): void
-    {
+    ): void {
         match ($itemKey) {
             SecretaryItemCatalog::OLD_BOW => $this->validateOldBow($effect, $path),
             SecretaryItemCatalog::RING => $this->validateRing($effect, $path),
@@ -478,15 +478,20 @@ final class SecretaryItemGameplayContract
             || ($effect['random_stream_version'] ?? null) !== 1) {
             throw new DomainException("{$path} is not a supported level Bow contract.");
         }
-        if ($mechanical && ($effect['finisher'] ?? null) !== [
-            'current_hp' => 2,
-            'damage' => 2,
-            'chance_multiplier_numerator' => 2,
-            'chance_multiplier_denominator' => 5,
-            'requires_damage_one_safety_rejection' => true,
-            'requires_damage_two_kill' => true,
-        ]) {
-            throw new DomainException("{$path}.finisher differs from the Mechanical Bow contract.");
+        if ($mechanical) {
+            $finisher = is_array($effect['finisher'] ?? null) ? $effect['finisher'] : [];
+            $this->exactKeys($finisher, [
+                'current_hp', 'damage', 'chance_multiplier_numerator', 'chance_multiplier_denominator',
+                'requires_damage_one_safety_rejection', 'requires_damage_two_kill',
+            ], "{$path}.finisher");
+            if (($finisher['current_hp'] ?? null) !== 2
+                || ($finisher['damage'] ?? null) !== 2
+                || ($finisher['chance_multiplier_numerator'] ?? null) !== 2
+                || ($finisher['chance_multiplier_denominator'] ?? null) !== 5
+                || ($finisher['requires_damage_one_safety_rejection'] ?? null) !== true
+                || ($finisher['requires_damage_two_kill'] ?? null) !== true) {
+                throw new DomainException("{$path}.finisher differs from the Mechanical Bow contract.");
+            }
         }
     }
 
@@ -496,14 +501,12 @@ final class SecretaryItemGameplayContract
         $this->exactKeys($effect, [
             'type', 'minimum_start_karma', 'base_percent', 'percent_per_level', 'rounding', 'apply_after',
         ], $path);
-        if ($effect !== [
-            'type' => self::REFUGEE_GENERATION_PERCENT,
-            'minimum_start_karma' => 1,
-            'base_percent' => 4,
-            'percent_per_level' => 1,
-            'rounding' => 'floor',
-            'apply_after' => 'karma_refugee_generation',
-        ]) {
+        if (($effect['type'] ?? null) !== self::REFUGEE_GENERATION_PERCENT
+            || ($effect['minimum_start_karma'] ?? null) !== 1
+            || ($effect['base_percent'] ?? null) !== 4
+            || ($effect['percent_per_level'] ?? null) !== 1
+            || ($effect['rounding'] ?? null) !== 'floor'
+            || ($effect['apply_after'] ?? null) !== 'karma_refugee_generation') {
             throw new DomainException("{$path} differs from the Collar refugee contract.");
         }
     }
@@ -515,17 +518,15 @@ final class SecretaryItemGameplayContract
             'type', 'minimum_start_karma', 'base_percent', 'percent_per_level', 'multiplier',
             'facility_keys', 'draw_unit', 'snapshot_timing', 'random_stream_version',
         ], $path);
-        if ($effect !== [
-            'type' => self::KARMA_CRIME_DOUBLE_CHANCE,
-            'minimum_start_karma' => 1,
-            'base_percent' => 4,
-            'percent_per_level' => 1,
-            'multiplier' => 2,
-            'facility_keys' => ['village', 'town', 'city', 'capital'],
-            'draw_unit' => 'qualifying_impact',
-            'snapshot_timing' => 'turn_start',
-            'random_stream_version' => 1,
-        ]) {
+        if (($effect['type'] ?? null) !== self::KARMA_CRIME_DOUBLE_CHANCE
+            || ($effect['minimum_start_karma'] ?? null) !== 1
+            || ($effect['base_percent'] ?? null) !== 4
+            || ($effect['percent_per_level'] ?? null) !== 1
+            || ($effect['multiplier'] ?? null) !== 2
+            || ($effect['facility_keys'] ?? null) !== ['village', 'town', 'city', 'capital']
+            || ($effect['draw_unit'] ?? null) !== 'qualifying_impact'
+            || ($effect['snapshot_timing'] ?? null) !== 'turn_start'
+            || ($effect['random_stream_version'] ?? null) !== 1) {
             throw new DomainException("{$path} differs from the Collar KARMA contract.");
         }
     }

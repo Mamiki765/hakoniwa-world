@@ -38,14 +38,17 @@ final class SecretaryMonsterDropContract
         if (! is_array($drop) || array_is_list($drop)) {
             throw new DomainException('ruleset.monster_system.item_drop must be an object map.');
         }
+        $recipient = is_array($drop['recipient'] ?? null) ? $drop['recipient'] : [];
         if (($drop['random_stream_version'] ?? null) !== 1
             || ($drop['excluded_monster_keys'] ?? null) !== self::EXCLUDED_MONSTERS
-            || ($drop['recipient'] ?? null) !== [
-                'killer_percent_when_foreign_host' => 75,
-                'host_percent_when_foreign_host' => 25,
-                'same_or_no_host' => 'killer',
-                'inventory_full_reroute' => false,
-            ]) {
+            || ! $this->hasExactKeys($recipient, [
+                'killer_percent_when_foreign_host', 'host_percent_when_foreign_host',
+                'same_or_no_host', 'inventory_full_reroute',
+            ])
+            || ($recipient['killer_percent_when_foreign_host'] ?? null) !== 75
+            || ($recipient['host_percent_when_foreign_host'] ?? null) !== 25
+            || ($recipient['same_or_no_host'] ?? null) !== 'killer'
+            || ($recipient['inventory_full_reroute'] ?? null) !== false) {
             throw new DomainException('ruleset.monster_system.item_drop differs from the recipient/RNG contract.');
         }
         $definitionKeys = [];
@@ -77,8 +80,15 @@ final class SecretaryMonsterDropContract
             ],
             SecretaryItemCatalog::RARITY_CURSED => [SecretaryItemCatalog::COLLAR],
         ];
-        if (($drop['rarity_pools'] ?? null) !== $expectedPools) {
+        $rarityPools = $drop['rarity_pools'] ?? null;
+        if (! is_array($rarityPools)
+            || ! $this->hasExactKeys($rarityPools, array_keys($expectedPools))) {
             throw new DomainException('ruleset.monster_system.item_drop.rarity_pools differs from the closed pools.');
+        }
+        foreach ($expectedPools as $rarity => $pool) {
+            if (($rarityPools[$rarity] ?? null) !== $pool) {
+                throw new DomainException('ruleset.monster_system.item_drop.rarity_pools differs from the closed pools.');
+            }
         }
         $authoredPools = $this->authoredPools($drop);
         if (! is_array($authoredPools)) {
@@ -97,14 +107,14 @@ final class SecretaryMonsterDropContract
             }
         }
         $tables = $drop['monster_tables'] ?? null;
-        if (! is_array($tables) || array_keys($tables) !== self::ELIGIBLE_MONSTERS) {
+        if (! is_array($tables) || ! $this->hasExactKeys($tables, self::ELIGIBLE_MONSTERS)) {
             throw new DomainException('ruleset.monster_system.item_drop.monster_tables has invalid monster keys/order.');
         }
         foreach ($tables as $monsterKey => $table) {
             $weights = $table['rarity_weights'] ?? null;
             $cap = $table['level_cap_percent'] ?? null;
             if (! is_array($weights)
-                || array_keys($weights) !== array_keys($expectedPools)
+                || ! $this->hasExactKeys($weights, array_keys($expectedPools))
                 || array_sum($weights) !== 100
                 || array_filter($weights, static fn (mixed $weight): bool => ! is_int($weight) || $weight < 0) !== []
                 || ! is_int($cap) || $cap < 1 || $cap > 100) {
@@ -138,5 +148,17 @@ final class SecretaryMonsterDropContract
     private function authoredPools(array $drop): mixed
     {
         return $drop['rarity_pools'] ?? null;
+    }
+
+    /** @param array<array-key, mixed> $value
+     * @param  list<string>  $expected
+     */
+    private function hasExactKeys(array $value, array $expected): bool
+    {
+        $actual = array_keys($value);
+        sort($actual);
+        sort($expected);
+
+        return $actual === $expected;
     }
 }

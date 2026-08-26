@@ -18,19 +18,20 @@ final class FirstProductionReleaseTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_current_schema_and_v16_are_the_fresh_install_baseline(): void
+    public function test_current_schema_and_v17_are_the_fresh_install_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
 
         $this->assertTrue(Schema::hasColumn('nations', 'registered_turn'));
+        $this->assertTrue(Schema::hasColumn('nations', 'population_high_water'));
         $this->assertTrue(Schema::hasTable('moderation_records'));
         $this->assertFalse(Schema::hasColumn('users', 'moderation_suspended_at'));
         $this->assertFalse(Schema::hasColumn('nations', 'moderation_suspended_at'));
 
-        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v16')->firstOrFail();
-        $this->assertSame('hakoniwa-2s-plus-v16', config('hakoniwa.ruleset.key'));
-        $this->assertSame(['hakoniwa-2s-plus-v16'], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(['hakoniwa-2s-plus-v16'], RulesetVersion::query()->pluck('key')->all());
+        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v17')->firstOrFail();
+        $this->assertSame('hakoniwa-2s-plus-v17', config('hakoniwa.ruleset.key'));
+        $this->assertSame(['hakoniwa-2s-plus-v17'], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(['hakoniwa-2s-plus-v17'], RulesetVersion::query()->pluck('key')->all());
         $this->assertSame($published->id, $this->lightweightWorld()->ruleset_version_id);
     }
 
@@ -220,17 +221,31 @@ final class FirstProductionReleaseTest extends TestCase
             ->assertSee('採掘場建設が1回成功するごとに経験値を1獲得します')
             ->assertSee('最終防衛ライン')
             ->assertSee('自領のマスへミサイルが1発到達するごとに経験値を1獲得します')
+            ->assertSee('少子化対策')
+            ->assertSee('歴代最高人口を更新した人数だけ経験値を獲得')
+            ->assertSee('不屈')
+            ->assertSee('ターン開始時よりターン終了時の人口が少ない場合')
+            ->assertSee('少子化対策の経験値は増幅しません')
             ->assertSee('倉庫には最大50個')
             ->assertSee('装備スロットが5個')
             ->assertSee('弓カテゴリと衣服カテゴリは、それぞれカテゴリ全体で1個までです')
             ->assertSee('種類の異なるアクセサリーは同時に装備できます')
             ->assertSee('箱庭連合が指輪と次の7種類のノービス装備を期間限定で出品します')
-            ->assertSee('10%の確率で、自領の地上にいる怪獣に1ダメージを与える。')
             ->assertSee('次に開始できるターンから反映')
-            ->assertSee('自動の資金繰り')
-            ->assertSee('Lv3の指輪を装備していれば、追加分は3億円です')
+            ->assertSee('レギュラー')
+            ->assertSee('カースド')
+            ->assertSee('プレイヤー間の交易場では売買できます')
+            ->assertSee('怪獣の戦利品')
+            ->assertSee('メカいのらとメカいのら零式を除く')
+            ->assertSee('撃破側が75%')
+            ->assertSee('アイテムLv上限補正')
+            ->assertSee('入手できなかったアイテムの名前、レアリティ、Lvも決定・表示しません')
+            ->assertSee('弓系装備の挙動')
+            ->assertSee('機械弓')
+            ->assertSee('ノービスは100億円、レギュラーは500億円、カースドは1億円')
             ->assertSee('島を破棄しても、秘書と倉庫のアイテム、装備状態は保持されます。活動中の島がない間は装備効果は発生せず、再参加後に必要に応じて装備を変更できます。')
             ->assertSee('アイテムと装備状態は秘書に対して共通で、対象マスや画面ごとに別管理されません。')
+            ->assertDontSee('<h2>指輪</h2>', false)
             ->assertDontSee('現在活動中の島がない間は、装備を変えることはできます')
             ->assertDontSee('複数の海域や島を持っていても、装備セットは一つです');
         $this->get('/community-guidelines')->assertOk()

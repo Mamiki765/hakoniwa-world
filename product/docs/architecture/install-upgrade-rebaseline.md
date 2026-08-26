@@ -10,6 +10,11 @@
 > production source is already-final-v16. To upgrade v15 or earlier, check out ver 2.6.0,
 > complete its supported migration to v16, then advance to 2.6.1. The current tree does not
 > execute the historical authored PHP or replay the retired v11-to-v16 migration chain.
+>
+> **Current ver 2.7.0 boundary:** fresh installation publishes immutable v17. Existing
+> production upgrades only from exact v16 through the single forward-only v16-to-v17
+> migration. The final-v16 schema dump remains unchanged; v17 schema/data effects are applied
+> by the new migration and current installer.
 
 ## Historical v11 rebaseline identity
 

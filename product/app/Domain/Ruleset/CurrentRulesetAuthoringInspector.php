@@ -22,6 +22,7 @@ final class CurrentRulesetAuthoringInspector
 
     /** @var array<string, string> */
     private const V17_DOMAIN_OVERRIDES = [
+        'world-and-map.php' => 'v17/world-and-map.php',
         'turn-pipeline.php' => 'v17/turn-pipeline.php',
         'monsters-and-military.php' => 'v17/monsters-and-military.php',
         'secretary.php' => 'v17/secretary.php',

@@ -1,13 +1,16 @@
 <?php
 
 $v16 = require __DIR__.'/hakoniwa-2s-plus-v16.php';
+$worldAndMap = (require __DIR__.'/v17/world-and-map.php')['payload'];
 $turnPipeline = (require __DIR__.'/v17/turn-pipeline.php')['payload'];
 $monstersAndMilitary = (require __DIR__.'/v17/monsters-and-military.php')['payload'];
 $secretary = (require __DIR__.'/v17/secretary.php')['payload'];
+$turnProcessing = $v16['turn_processing'];
+$turnProcessing['settlement'] = $turnPipeline['turn_processing']['settlement'];
 
 return [
-    'key' => 'hakoniwa-2s-plus-v17',
-    'version' => 17,
+    'key' => $worldAndMap['key'],
+    'version' => $worldAndMap['version'],
     'chunk_size' => $v16['chunk_size'],
     'initial_x_min' => $v16['initial_x_min'],
     'initial_x_max' => $v16['initial_x_max'],
@@ -38,7 +41,7 @@ return [
     'base_money_capacity' => $v16['base_money_capacity'],
     'base_food_capacity_tons' => $v16['base_food_capacity_tons'],
     'inventory_sale_rates' => $v16['inventory_sale_rates'],
-    'turn_processing' => $turnPipeline['turn_processing'],
+    'turn_processing' => $turnProcessing,
     'capital_growth_maximum_population' => $v16['capital_growth_maximum_population'],
     'capital_damage_percentages' => $v16['capital_damage_percentages'],
     'resource_capacities' => $v16['resource_capacities'],

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
+use App\Application\MonsterDamageService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryBowAttackService;
 use App\Application\SecretaryItemGrantService;
@@ -700,7 +701,7 @@ final class SecretaryItemEffectsTest extends TestCase
         $rolledBack = [];
 
         try {
-            DB::transaction(function () use ($firstContext, $world, $monster, $secretaryId, $experiencePerDamage, &$rolledBack): void {
+            DB::transaction(function () use ($firstContext, $world, $monster, $nation, $secretaryId, $experiencePerDamage, &$rolledBack): void {
                 $metrics = app(SecretaryOldBowService::class)->execute(
                     $firstContext,
                     $this->surfaceMapSpace($world),
@@ -856,7 +857,7 @@ final class SecretaryItemEffectsTest extends TestCase
         app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
         $killerItemsBefore = $killerUser->secretary->itemInstances()->count();
 
-        $result = app(\App\Application\MonsterDamageService::class)->applyDamage(
+        $result = app(MonsterDamageService::class)->applyDamage(
             $monster,
             1,
             'monster_missile',

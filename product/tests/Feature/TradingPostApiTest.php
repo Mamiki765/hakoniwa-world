@@ -733,9 +733,17 @@ final class TradingPostApiTest extends TestCase
         $publicMetadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'trading_post.won_public')->where('subject_id', $itemListing)
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame([
-            'nation_id', 'nation_name', 'product_type', 'winning_bid', 'item_name', 'item_level',
-        ], array_keys($publicMetadata));
+        $this->assertSame('ペリドット島', $publicMetadata['nation_name']);
+        $this->assertSame('item', $publicMetadata['product_type']);
+        $this->assertSame(820, $publicMetadata['winning_bid']);
+        $this->assertSame('エルフの弓', $publicMetadata['item_name']);
+        $this->assertSame(4, $publicMetadata['item_level']);
+        foreach ([
+            'item_instance_id', 'secretary_id', 'bid_id', 'seller_proceeds', 'trading_fee',
+            'ruleset_key', 'seller_user_id', 'seller_nation_name',
+        ] as $forbiddenKey) {
+            $this->assertArrayNotHasKey($forbiddenKey, $publicMetadata);
+        }
         $privateMetadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'trading_post.sold_private')->where('subject_id', $itemListing)
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);

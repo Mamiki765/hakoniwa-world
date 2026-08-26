@@ -35,8 +35,10 @@ $classification = $domain['classification'];
 $classification['behavior'] = array_values(array_unique([
     ...$classification['behavior'],
     '/monster_system/item_drop/excluded_monster_keys/*',
-    '/monster_system/item_drop/rarity_pools/*/*',
-    'same_or_no_host', 'inventory_full_reroute',
+    '/monster_system/item_drop/rarity_pools/novice/*',
+    '/monster_system/item_drop/rarity_pools/regular/*',
+    '/monster_system/item_drop/rarity_pools/cursed/*',
+    'same_or_no_host', 'inventory_full_reroute', 'random_stream_version',
 ]));
 $classification['data'] = array_values(array_unique([
     ...$classification['data'],

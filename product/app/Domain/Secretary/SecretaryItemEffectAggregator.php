@@ -100,8 +100,7 @@ final class SecretaryItemEffectAggregator
         int $nationId,
         string $source,
         ?string $skillKey = null,
-    ): ?array
-    {
+    ): ?array {
         $matches = $this->snapshotEffects(
             $state,
             $nationId,

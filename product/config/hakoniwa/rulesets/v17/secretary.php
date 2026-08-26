@@ -161,9 +161,13 @@ $secretary['items']['collar'] = [
 $classification = $domain['classification'];
 $classification['behavior'] = array_values(array_unique([
     ...$classification['behavior'],
-    'apply_after', 'facility_keys', 'requires_damage_one_safety_rejection',
+    'apply_after', 'requires_damage_one_safety_rejection',
     'requires_damage_two_kill', 'minimum_start_karma', 'accounting', 'checkpoint',
     'calculation', 'maximum', 'extra_random_draw',
+    '/secretary/items/elf_bow/effects/*/target_map_space_keys/*',
+    '/secretary/items/longshot_bow/effects/*/target_map_space_keys/*',
+    '/secretary/items/mechanical_bow/effects/*/target_map_space_keys/*',
+    '/secretary/items/collar/effects/*/facility_keys/*',
     '/secretary/items/secretary_suit/effects/*/excluded_skill_keys/*',
 ]));
 $classification['data'] = array_values(array_unique([

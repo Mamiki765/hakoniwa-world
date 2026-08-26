@@ -108,6 +108,7 @@ final class SecretaryBowAttackService
                 $finisher = false;
                 if ($this->safety->allows($occupancy->monster, $damage, $context->targetTurn)) {
                     $candidates[] = ['occupancy' => $occupancy, 'damage' => $damage, 'finisher' => false];
+
                     continue;
                 }
                 if ($itemKey === SecretaryItemCatalog::MECHANICAL_BOW
@@ -124,6 +125,7 @@ final class SecretaryBowAttackService
                 if ($isOld) {
                     $metrics['secretary_old_bow_no_safe_target']++;
                 }
+
                 continue;
             }
 
@@ -153,6 +155,7 @@ final class SecretaryBowAttackService
                 if ($isOld) {
                     $metrics['secretary_old_bow_misses']++;
                 }
+
                 continue;
             }
             if ($isOld) {
