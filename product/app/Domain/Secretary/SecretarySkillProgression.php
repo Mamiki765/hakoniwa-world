@@ -23,6 +23,17 @@ final class SecretarySkillProgression
         if (! is_int($multiplier) || $multiplier < 1) {
             throw new DomainException('Secretary skill level requirement multiplier must be positive.');
         }
+        if ($basis === 'triangular_growth') {
+            if ($currentLevel > 3_000_000_000) {
+                throw new DomainException('Secretary triangular skill level exceeds the supported integer range.');
+            }
+            $triangular = intdiv($currentLevel * ($currentLevel + 1), 2);
+            if ($triangular > intdiv(PHP_INT_MAX, $multiplier) - 1) {
+                throw new DomainException('Secretary skill level requirement exceeds the supported integer range.');
+            }
+
+            return (1 + $triangular) * $multiplier;
+        }
         $levelBasis = match ($basis) {
             'next_level_squared' => $currentLevel + 1,
             'current_level_squared' => $currentLevel,
@@ -59,8 +70,14 @@ final class SecretarySkillProgression
         $level = $currentLevel;
         $experience = $currentExperience + $gainedExperience;
         $levelsGained = 0;
+        $accounting = $definition['level_requirement']['accounting'] ?? 'consume_required_carry_remainder';
+        if (! in_array($accounting, ['consume_required_carry_remainder', 'cumulative_non_consuming'], true)) {
+            throw new DomainException('Secretary skill experience accounting mode is invalid.');
+        }
         while ($experience >= ($required = $this->requiredExperience($definition, $level))) {
-            $experience -= $required;
+            if ($accounting === 'consume_required_carry_remainder') {
+                $experience -= $required;
+            }
             $level++;
             $levelsGained++;
         }

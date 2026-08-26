@@ -2262,7 +2262,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v16', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v17', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -2574,6 +2574,169 @@ class CommandAndMissileTest extends TestCase
                 && str_contains($message, sprintf('発射基地: (%d,%d)から1発', $base->x, $base->y))
                 && str_contains($message, '着弾結果:'),
         ));
+    }
+
+    public function test_collar_level_eleven_adds_fifteen_percent_after_karma_refugee_generation(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('collar-refugee');
+        $firing->update(['karma' => 1]);
+        $target->update(['karma' => 0]);
+        $this->equipCollar($firingUser, 11);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $capital = $target->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $before = $capital->population;
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $capital);
+
+        $this->resolvePreparedKarmaMissileTurn(
+            $world,
+            $firing,
+            $target,
+            $base,
+            $item,
+            2,
+            str_repeat('7', 64),
+        );
+
+        $baseGenerated = intdiv($before - $capital->fresh()->population, 2);
+        $expected = $baseGenerated + intdiv($baseGenerated * 15, 100);
+        $generated = (int) DB::table('audit_events')->where('event_type', 'refugee_generated')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])
+            ->value(DB::raw("(metadata->>'generated_population')::integer"));
+        $this->assertSame($expected, $generated);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'karma.refugee_bonus')->count());
+    }
+
+    public function test_refugees_use_the_turn_start_birthrate_skill_attraction_capacity_without_raising_capital_capacity(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('birthrate-refugee');
+        $firing->update(['karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $firingUser->secretary()->sole()->skills()
+            ->where('skill_key', SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY)
+            ->update(['level' => 10, 'experience' => 0]);
+        $rules = $world->rulesetVersion()->sole()->settings['turn_processing']['settlement'];
+        $baseMaximum = $rules['attraction_maximum_population'];
+        $effectiveMaximum = $baseMaximum + 1_000;
+        $firingCapitalId = $firing->capital()->value('map_cell_id');
+        $receivingCell = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereKeyNot($firingCapitalId)->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $receivingCell,
+            FacilityDefinition::query()->where('key', 'city')->firstOrFail(),
+        );
+        $receivingCell->population = $baseMaximum;
+        $receivingCell->version++;
+        $receivingCell->save();
+        $settlementKeys = $world->rulesetVersion()->sole()->settings['military']['refugees']['settlement_facility_keys'];
+        MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereKeyNot($receivingCell->id)
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', $settlementKeys))
+            ->get()->each(function (MapCell $cell) use ($firingCapitalId, $effectiveMaximum, $world): void {
+                $cell->population = $cell->id === $firingCapitalId
+                    ? $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population']
+                    : $effectiveMaximum;
+                $cell->version++;
+                $cell->save();
+            });
+        $targetCapital = $target->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $targetCapital->update(['population' => 25_000]);
+        $base = $this->missileBase($firing);
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing->fresh(),
+            $this->surfaceMapSpace($world),
+            'spp_missile',
+            $targetCapital->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $nationIds = [$firing->id, $target->id];
+        $context = $this->context($world, 2, str_repeat('7', 64), $nationIds);
+        $context->state->setLifecycleNationIds($nationIds);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
+        $firingUser->secretary()->sole()->skills()
+            ->where('skill_key', SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY)
+            ->update(['level' => 0]);
+        app(DomesticCommandExecutor::class)->execute($context);
+        $karma->snapshotMissileBoundary($context);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+
+        $metrics = $resolver->processBase(
+            $context,
+            $this->surfaceMapSpace($world),
+            $base->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $resolver->finalize($context);
+
+        $this->assertSame(1, $metrics['shots_fired']);
+        $received = DB::table('audit_events')->where('event_type', 'refugee_received')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->sole();
+        $metadata = json_decode((string) $received->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1_250, $metadata['generated_population']);
+        $this->assertSame(1_000, $metadata['received_population']);
+        $this->assertSame(250, $metadata['unreceived_population']);
+        $this->assertSame($effectiveMaximum, $receivingCell->fresh()->population);
+        $this->assertSame(
+            $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population'],
+            (int) MapCell::query()->whereKey($firingCapitalId)->value('population'),
+        );
+    }
+
+    public function test_collar_doubles_only_positive_settlement_crime_on_one_versioned_impact_draw_without_public_leak(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('crime-double');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        $this->equipCollar($firingUser, 11);
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $settlement = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', ['village', 'town', 'city']))
+            ->with(['terrain', 'facility', 'ownerNation'])->orderBy('id')->firstOrFail();
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $settlement);
+        $seed = $this->seedForImpactAndCollarTrigger($item, $settlement, 2, $settlement, $firing->id, 1_500);
+
+        $this->resolvePreparedKarmaMissileTurn($world, $firing, $target, $base, $item, 2, $seed);
+
+        $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'karma.missile_impact')
+            ->orderByDesc('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($item->id, $impact['queue_item_id']);
+        $this->assertSame(0, $impact['attacker_start_karma']);
+        $this->assertGreaterThan(0, $impact['base_crime_points']);
+        $this->assertTrue($impact['collar_triggered']);
+        $this->assertSame($impact['base_crime_points'] * 2, $impact['final_crime_points']);
+        $this->assertSame($impact['final_crime_points'], $impact['crime_points']);
+        $publicJson = json_encode(app(PlayerIslandEventService::class)->publicWorldPage($world, 1, 2), JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('首輪', $publicJson);
+        $this->assertStringNotContainsString('collar', $publicJson);
+
+        $target->update(['karma' => 0]);
+        $farm = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))->with(['terrain', 'facility', 'ownerNation'])
+            ->orderByDesc('id')->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $farm,
+            FacilityDefinition::query()->where('key', 'farm')->firstOrFail(),
+        );
+        $farm->population = 0;
+        $farm->save();
+        $second = $this->queue(app(CommandQueueService::class), $firingUser, $firing->fresh(), $space, 'missile', $farm);
+        $secondSeed = $this->seedForImpactAndCollarTrigger($second, $farm, 2, $farm, $firing->id, 1_500);
+        $this->resolvePreparedKarmaMissileTurn($world, $firing->fresh(), $target->fresh(), $base, $second, 3, $secondSeed);
+        $farmImpact = json_decode((string) DB::table('audit_events')->where('event_type', 'karma.missile_impact')
+            ->orderByDesc('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($second->id, $farmImpact['queue_item_id']);
+        $this->assertGreaterThan(0, $farmImpact['base_crime_points']);
+        $this->assertFalse($farmImpact['collar_triggered']);
+        $this->assertSame($farmImpact['base_crime_points'], $farmImpact['final_crime_points']);
     }
 
     public function test_normal_missile_at_minimum_capital_is_private_no_op_and_publicly_aggregated(): void
@@ -4151,6 +4314,17 @@ class CommandAndMissileTest extends TestCase
         return $cell->fresh(['terrain', 'facility']);
     }
 
+    private function equipCollar(User $user, int $level): void
+    {
+        $user->secretary()->sole()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::COLLAR,
+            'level' => $level,
+            'equipped_slot' => 2,
+            'grant_key' => "test:collar:{$level}",
+            'obtained_at' => now(),
+        ]);
+    }
+
     private function placeFacilityAtDistance(
         MapSpace $space,
         MapCell $center,
@@ -4580,6 +4754,35 @@ class CommandAndMissileTest extends TestCase
         $this->assertIsInt($index);
 
         return $this->seedForDrawIndex($item, count($candidates), $index);
+    }
+
+    private function seedForImpactAndCollarTrigger(
+        NationCommandQueueItem $item,
+        MapCell $aim,
+        int $radius,
+        MapCell $desired,
+        int $nationId,
+        int $chanceBasisPoints,
+    ): string {
+        $candidates = (new GridCoordinate($aim->x, $aim->y))->radius($radius);
+        $index = array_search(
+            $desired->x.':'.$desired->y,
+            array_map(fn (GridCoordinate $candidate): string => $candidate->x.':'.$candidate->y, $candidates),
+            true,
+        );
+        $this->assertIsInt($index);
+        foreach (range(0, 10_000) as $candidate) {
+            $seed = hash('sha256', "collar-impact:{$item->id}:{$candidate}");
+            $random = new TurnRandomStreamFactory($seed);
+            if ($random->stream(TurnRandomStreamFactory::missileImpact($item->id))
+                ->integer(0, count($candidates) - 1) === $index
+                && $random->stream(TurnRandomStreamFactory::secretaryCollar($nationId, $item->id, 0, 1))
+                    ->integer(0, 9_999) < $chanceBasisPoints) {
+                return $seed;
+            }
+        }
+
+        $this->fail('No deterministic combined missile-impact and Collar trigger seed was found.');
     }
 
     private function seedForFirstDraw(string $label, int $denominator, int $expected): string

@@ -14,6 +14,7 @@ import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import type {
     Announcement,
+    CommandQueue,
     CurrentUser,
     InquiryDetail,
     InquirySubmission,
@@ -98,6 +99,7 @@ const inquiryErrors = ref<Record<string, string>>({});
 const inquiryConfirmation = ref<InquirySubmission | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
+const authoritativeCommandQueue = ref<CommandQueue | null>(null);
 const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits' ? 'credits' : 'home',
 );
@@ -979,6 +981,27 @@ async function submitEquipment(itemId: number | null): Promise<void> {
     }
 }
 
+async function sellSecretaryItem(item: Secretary['inventory']['items'][number]): Promise<void> {
+    if (secretary.value === null || nation.value === null || busy.value) return;
+    if (!window.confirm(`${item.name} Lv${item.level}を${item.fixed_sale_price_money.toLocaleString()}億円で売却しますか？`)) return;
+    busy.value = true;
+    message.value = '';
+    try {
+        const committed = await api<{ secretary: Secretary; nation: Nation }>(
+            `/api/v1/me/secretary/items/${item.id}/sell`,
+            { method: 'POST', body: JSON.stringify({ world_id: nation.value.world_id }) },
+        );
+        secretary.value = committed.secretary;
+        nation.value = committed.nation;
+        setOwnedSecretaryProfile(committed.secretary);
+        message.value = `${item.name} Lv${item.level}を${item.fixed_sale_price_money.toLocaleString()}億円で売却しました。`;
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'アイテムを売却できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
 async function openSecretary(): Promise<void> {
     if (user.value === null || nation.value === null) return;
     busy.value = true;
@@ -1675,7 +1698,12 @@ async function abandonNation(): Promise<void> {
                     tabindex="0"
                 >
                     <div class="island-grid">
-                        <CommandQueuePanel :nation-id="nation.id" :map-space-id="mapSpace.id" :selected="map.selected.value" />
+                        <CommandQueuePanel
+                            :nation-id="nation.id"
+                            :map-space-id="mapSpace.id"
+                            :selected="map.selected.value"
+                            @queue="authoritativeCommandQueue = $event"
+                        />
                         <div class="map-column">
                             <HexMap
                                 :cells="map.visibleCells.value"
@@ -1683,6 +1711,7 @@ async function abandonNation(): Promise<void> {
                                 :capital="nation.capital"
                                 :bounds="mapSpace.bounds"
                                 :own-nation-id="nation.id"
+                                :command-queue="authoritativeCommandQueue"
                                 :loading="map.loading.value"
                                 :error="map.error.value"
                                 :empty-chunks="map.emptyChunks.value"
@@ -1912,9 +1941,12 @@ async function abandonNation(): Promise<void> {
                     <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
                     <ul class="secretary-warehouse">
                         <li v-for="item in secretary.inventory.items" :key="item.id">
-                            <div><strong>{{ item.name }}</strong> <span>Lv{{ item.level }}</span></div>
+                            <div class="secretary-warehouse-heading">
+                                <div><strong>{{ item.name }}</strong> <span>Lv{{ item.level }}</span></div>
+                                <button class="button danger secretary-item-sell" type="button" :disabled="busy" @click="sellSecretaryItem(item)">{{ item.fixed_sale_label }}</button>
+                            </div>
                             <p v-if="item.effect_text" class="item-effect">{{ item.effect_text }}</p>
-                            <p>{{ item.category_label }}<template v-if="item.is_equipped">・slot {{ item.equipped_slot }} に装備中</template></p>
+                            <p>{{ item.rarity_label }}・{{ item.category_label }}<template v-if="item.is_equipped">・slot {{ item.equipped_slot }} に装備中</template><template v-if="item.is_escrowed">・交易場へ出品中</template></p>
                             <p class="item-flavor">{{ item.flavor_text }}</p>
                         </li>
                     </ul>

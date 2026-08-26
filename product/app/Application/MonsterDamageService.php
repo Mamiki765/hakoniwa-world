@@ -28,6 +28,7 @@ final class MonsterDamageService
         private readonly LaunchBaseExperienceService $baseExperience,
         private readonly MonsterRewardPolicyResolver $rewardPolicies,
         private readonly SecretaryExperienceAwardService $secretaryExperience,
+        private readonly SecretaryMonsterDropService $itemDrops,
     ) {}
 
     public function applyDamage(
@@ -45,9 +46,9 @@ final class MonsterDamageService
         if ($firingBase !== null && $killerNation === null) {
             throw new DomainException('Monster damage cannot credit a firing base without its owning Nation.');
         }
-        if ($damageType === SecretaryItemGameplayContract::OLD_BOW_DAMAGE_TYPE
+        if ($this->isSecretaryBowDamage($damageType)
             && ($killerNation === null || $firingBase !== null)) {
-            throw new DomainException('Secretary Old Bow damage requires one attacking Nation and no firing base.');
+            throw new DomainException('Secretary Bow damage requires one attacking Nation and no firing base.');
         }
 
         return DB::transaction(function () use (
@@ -226,6 +227,9 @@ final class MonsterDamageService
                 && array_key_exists($killerNation->id, $context->state->karmaStartSnapshots())) {
                 $context->state->markForeignMonsterKill($killerNation->id);
             }
+            if ($killerNation !== null) {
+                $this->itemDrops->grantForKill($context, $locked, $killerNation, $hostNation);
+            }
 
             $eventMetadata = [
                 'monster_instance_id' => $locked->id,
@@ -349,9 +353,9 @@ SQL, [
                 'secretary_awarded' => 0,
             ];
         }
-        if ($damageType === SecretaryItemGameplayContract::OLD_BOW_DAMAGE_TYPE) {
+        if ($this->isSecretaryBowDamage($damageType)) {
             if (! $killerNation instanceof Nation) {
-                throw new DomainException('Secretary Old Bow experience requires its attacking Nation.');
+                throw new DomainException('Secretary Bow experience requires its attacking Nation.');
             }
             $awarded = $requested > 0
                 ? $this->secretaryExperience->awardMonster($context, (int) $killerNation->id, $requested)
@@ -371,5 +375,15 @@ SQL, [
         }
 
         return $experience;
+    }
+
+    private function isSecretaryBowDamage(string $damageType): bool
+    {
+        return in_array($damageType, [
+            SecretaryItemGameplayContract::OLD_BOW_DAMAGE_TYPE,
+            SecretaryItemGameplayContract::ELF_BOW_DAMAGE_TYPE,
+            SecretaryItemGameplayContract::LONGSHOT_BOW_DAMAGE_TYPE,
+            SecretaryItemGameplayContract::MECHANICAL_BOW_DAMAGE_TYPE,
+        ], true);
     }
 }

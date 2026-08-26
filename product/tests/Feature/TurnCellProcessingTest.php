@@ -328,6 +328,75 @@ class TurnCellProcessingTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $commandRun->id])->count());
     }
 
+    public function test_demographic_skills_raise_noncapital_limits_add_natural_growth_and_normalize_over_cap_population_without_queries(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '人口政策国', '人口政策島主');
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capital->id)->orderBy('id')->limit(3)->get();
+        $this->assertCount(3, $cells);
+        [$growthCell, $nearMaximum, $farAboveMaximum] = $cells->all();
+        $secretary = $user->secretary()->firstOrFail();
+        $secretary->skills()->whereIn('skill_key', [
+            SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+            SecretarySkillCatalog::INDOMITABLE,
+        ])->update(['level' => 10, 'experience' => 0]);
+
+        $this->settlement($growthCell, 'city', 9_000);
+        $this->settlement($nearMaximum, 'city', 21_050);
+        $this->settlement($farAboveMaximum, 'city', 25_000);
+        $this->settlement($capital, 'capital', 25_000);
+        [$context, $run] = $this->context(
+            $world,
+            $nation,
+            [$growthCell->id, $nearMaximum->id, $farAboveMaximum->id, $capital->id],
+            $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100),
+        );
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+
+        $result = app(CompleteTurnEngine::class)->execute('process_cells', $context);
+        $secretaryQueries = array_values(array_filter(
+            $queries,
+            static fn (string $query): bool => str_contains($query, 'secretar'),
+        ));
+
+        $this->assertSame([], $secretaryQueries);
+        $this->assertSame(325, $result->metrics['population_increased']);
+        $this->assertSame(150, $result->metrics['population_decreased']);
+        $this->assertSame(9_325, $growthCell->fresh()->population);
+        $growth = DB::table('audit_events')->where('event_type', 'population.increased')
+            ->where('subject_id', $growthCell->id)
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->sole();
+        $growthMetadata = json_decode((string) $growth->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(225, $growthMetadata['indomitable_bonus']);
+        $this->assertSame(10_500, $growthMetadata['ordinary_maximum']);
+        $this->assertSame(10_500, $growthMetadata['effective_maximum']);
+
+        $this->assertSame(21_000, $nearMaximum->fresh()->population);
+        $this->assertSame(24_900, $farAboveMaximum->fresh()->population);
+        foreach ([[$nearMaximum, 50], [$farAboveMaximum, 100]] as [$cell, $expectedLoss]) {
+            $decline = DB::table('audit_events')->where('event_type', 'population.decreased')
+                ->where('subject_id', $cell->id)
+                ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->sole();
+            $metadata = json_decode((string) $decline->metadata, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame('above_attraction_maximum', $metadata['reason']);
+            $this->assertSame($expectedLoss, $metadata['actual_loss']);
+            $this->assertSame(21_000, $metadata['effective_attraction_maximum']);
+            $this->assertSame(0, DB::table('audit_events')->where('event_type', 'population.increased')
+                ->where('subject_id', $cell->id)
+                ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+        }
+        $this->assertSame(25_000, $capital->fresh()->population);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'population.decreased')
+            ->where('subject_id', $capital->id)
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
     public function test_attraction_growth_uses_distinct_pre_and_post_ordinary_ranges_and_clamps(): void
     {
         $world = $this->lightweightWorld();

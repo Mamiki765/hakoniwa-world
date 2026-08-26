@@ -60,6 +60,8 @@ final class SecretaryItemPresenter
             'category_label' => $definition['category_label'],
             'rarity' => $definition['rarity'],
             'rarity_label' => $definition['rarity_label'],
+            'fixed_sale_price_money' => $definition['fixed_sale_price_money'],
+            'fixed_sale_label' => sprintf('売却（%s億円）', number_format($definition['fixed_sale_price_money'])),
             'equipped_slot' => $item->equipped_slot,
             'is_equipped' => $item->equipped_slot !== null,
             'is_escrowed' => $item->is_escrowed,

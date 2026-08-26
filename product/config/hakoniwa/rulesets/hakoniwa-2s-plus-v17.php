@@ -1,0 +1,57 @@
+<?php
+
+$v16 = require __DIR__.'/hakoniwa-2s-plus-v16.php';
+$worldAndMap = (require __DIR__.'/v17/world-and-map.php')['payload'];
+$turnPipeline = (require __DIR__.'/v17/turn-pipeline.php')['payload'];
+$monstersAndMilitary = (require __DIR__.'/v17/monsters-and-military.php')['payload'];
+$secretary = (require __DIR__.'/v17/secretary.php')['payload'];
+$turnProcessing = $v16['turn_processing'];
+$turnProcessing['settlement'] = $turnPipeline['turn_processing']['settlement'];
+
+return [
+    'key' => $worldAndMap['key'],
+    'version' => $worldAndMap['version'],
+    'chunk_size' => $v16['chunk_size'],
+    'initial_x_min' => $v16['initial_x_min'],
+    'initial_x_max' => $v16['initial_x_max'],
+    'initial_y_min' => $v16['initial_y_min'],
+    'initial_y_max' => $v16['initial_y_max'],
+    'minimum_capital_distance' => $v16['minimum_capital_distance'],
+    'capital_initial_population' => $v16['capital_initial_population'],
+    'capital_minimum_population' => $v16['capital_minimum_population'],
+    'initial_money' => $v16['initial_money'],
+    'nation_lifecycle' => $v16['nation_lifecycle'],
+    'karma' => $v16['karma'],
+    'resource_definitions' => $v16['resource_definitions'],
+    'resource_sale_prices' => $v16['resource_sale_prices'],
+    'initial_resources' => $v16['initial_resources'],
+    'default_sale_policy' => $v16['default_sale_policy'],
+    'command_queue_limit' => $v16['command_queue_limit'],
+    'terrain_quantities' => $v16['terrain_quantities'],
+    'facility_definitions' => $v16['facility_definitions'],
+    'command_definitions' => $v16['command_definitions'],
+    'production_definitions' => $v16['production_definitions'],
+    'initial_territory_radius' => $v16['initial_territory_radius'],
+    'initial_island_land_radius' => $v16['initial_island_land_radius'],
+    'initial_island_growth_radius' => $v16['initial_island_growth_radius'],
+    'initial_island_reservation_radius' => $v16['initial_island_reservation_radius'],
+    'initial_island_growth_steps' => $v16['initial_island_growth_steps'],
+    'development_plan_quantity' => $v16['development_plan_quantity'],
+    'initial_island_minimum_shallow_cells' => $v16['initial_island_minimum_shallow_cells'],
+    'base_money_capacity' => $v16['base_money_capacity'],
+    'base_food_capacity_tons' => $v16['base_food_capacity_tons'],
+    'inventory_sale_rates' => $v16['inventory_sale_rates'],
+    'turn_processing' => $turnProcessing,
+    'capital_growth_maximum_population' => $v16['capital_growth_maximum_population'],
+    'capital_damage_percentages' => $v16['capital_damage_percentages'],
+    'resource_capacities' => $v16['resource_capacities'],
+    'resource_capacity_overflow' => $v16['resource_capacity_overflow'],
+    'monster_definitions' => $monstersAndMilitary['monster_definitions'],
+    'monster_system' => $monstersAndMilitary['monster_system'],
+    'capital_relocation_cost_money' => $v16['capital_relocation_cost_money'],
+    'military' => $monstersAndMilitary['military'],
+    'territory_transfer' => $v16['territory_transfer'],
+    'secretary' => $secretary['secretary'],
+    'trading_post' => $v16['trading_post'],
+    'turn_resolution' => $turnPipeline['turn_resolution'],
+];

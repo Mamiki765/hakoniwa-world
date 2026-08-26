@@ -13,7 +13,7 @@ export interface CurrentUser {
 }
 
 export interface SecretarySkill {
-    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'final_defense_line';
+    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable';
     name: string;
     level: number;
     experience: number;
@@ -124,6 +124,8 @@ export interface SecretaryItem {
     is_escrowed: boolean;
     rarity: string;
     rarity_label: string;
+    fixed_sale_price_money: number;
+    fixed_sale_label: string;
     effect_text: string | null;
     flavor_text: string;
     obtained_at: string;
@@ -626,8 +628,8 @@ export interface CommandQueueItem {
     command_suffix?: string | null;
     command_suffix_tone?: 'danger' | null;
     queue_position: number;
-    target_x: number;
-    target_y: number;
+    target_x: number | null;
+    target_y: number | null;
     quantity: number;
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_label: string | null;

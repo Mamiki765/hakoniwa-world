@@ -7,6 +7,7 @@ use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
 use App\Application\LaunchBaseExperienceService;
 use App\Application\NationCreationService;
+use App\Application\SecretaryDemographicExperienceService;
 use App\Application\SecretaryExperienceAwardService;
 use App\Application\SecretaryTurnService;
 use App\Domain\Map\MapCellStateService;
@@ -98,6 +99,85 @@ final class SecretaryTurnIntegrationTest extends TestCase
         );
     }
 
+    public function test_demographic_experience_uses_population_high_water_and_turn_net_loss_before_same_turn_flush(): void
+    {
+        $world = $this->lightweightWorld();
+        [, $nation] = $this->nation($world, '人口経験国');
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $initialPopulation = (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population');
+        $this->assertSame($initialPopulation, (int) $nation->fresh()->population_high_water);
+        $engine = app(CompleteTurnEngine::class);
+        $demographics = app(SecretaryDemographicExperienceService::class);
+
+        $peakContext = $this->context($world, 2, hash('sha256', 'population peak plus one thousand'), [$nation->id]);
+        $engine->execute('prepare_turn', $peakContext);
+        $capital->increment('population', 1_000);
+        $peakMetrics = $demographics->award($peakContext, [$nation->id => $initialPopulation + 1_000]);
+        $this->assertSame(1_000, $peakMetrics['population_high_water_increase']);
+        $this->assertSame(0, $peakMetrics['net_population_loss']);
+        app(SecretaryTurnService::class)->flushExperience($peakContext);
+        $this->assertSame($initialPopulation + 1_000, (int) $nation->fresh()->population_high_water);
+        $this->assertSame(1_000, $this->skill(
+            $nation,
+            SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+        )->experience);
+
+        $lossContext = $this->context($world, 3, hash('sha256', 'population below high water'), [$nation->id]);
+        $engine->execute('prepare_turn', $lossContext);
+        $capital->decrement('population', 2_000);
+        $lossMetrics = $demographics->award($lossContext, [$nation->id => $initialPopulation - 1_000]);
+        $this->assertSame(0, $lossMetrics['population_high_water_increase']);
+        $this->assertSame(2_000, $lossMetrics['net_population_loss']);
+        app(SecretaryTurnService::class)->flushExperience($lossContext);
+        $this->assertSame($initialPopulation + 1_000, (int) $nation->fresh()->population_high_water);
+        $this->assertSame(1_000, $this->skill(
+            $nation,
+            SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+        )->experience);
+        $this->assertSame(2_000, $this->skill($nation, SecretarySkillCatalog::INDOMITABLE)->experience);
+
+        $equalContext = $this->context($world, 4, hash('sha256', 'population returns to high water'), [$nation->id]);
+        $engine->execute('prepare_turn', $equalContext);
+        $capital->increment('population', 2_000);
+        $equalMetrics = $demographics->award($equalContext, [$nation->id => $initialPopulation + 1_000]);
+        $this->assertSame(0, $equalMetrics['population_high_water_increase']);
+        app(SecretaryTurnService::class)->flushExperience($equalContext);
+
+        $oneMoreContext = $this->context($world, 5, hash('sha256', 'population exceeds high water by one'), [$nation->id]);
+        $engine->execute('prepare_turn', $oneMoreContext);
+        $capital->increment('population');
+        $oneMoreMetrics = $demographics->award($oneMoreContext, [$nation->id => $initialPopulation + 1_001]);
+        $this->assertSame(1, $oneMoreMetrics['population_high_water_increase']);
+        app(SecretaryTurnService::class)->flushExperience($oneMoreContext);
+        $birthrate = $this->skill($nation, SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY);
+        $this->assertSame(0, $birthrate->level);
+        $this->assertSame(1_001, $birthrate->experience);
+    }
+
+    public function test_indomitable_experience_uses_turn_start_to_end_net_loss_instead_of_intermediate_events(): void
+    {
+        $world = $this->lightweightWorld();
+        [, $nation] = $this->nation($world, '不屈経験国');
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $capital->update(['population' => 600_000]);
+        $nation->update(['population_high_water' => 600_000]);
+        $context = $this->context($world, 2, hash('sha256', 'indomitable net loss'), [$nation->id]);
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
+        $capital->update(['population' => 510_000]);
+
+        $metrics = app(SecretaryDemographicExperienceService::class)->award(
+            $context,
+            [$nation->id => 510_000],
+        );
+        $this->assertSame(90_000, $metrics['net_population_loss']);
+        $this->assertSame(0, $metrics['population_high_water_increase']);
+        app(SecretaryTurnService::class)->flushExperience($context);
+        $indomitable = $this->skill($nation, SecretarySkillCatalog::INDOMITABLE);
+        $this->assertSame(3, $indomitable->level);
+        $this->assertSame(20_000, $indomitable->experience);
+    }
+
     public function test_secretary_suit_draws_once_per_canonical_secretary_experience_award_only(): void
     {
         $world = $this->lightweightWorld();
@@ -115,12 +195,14 @@ final class SecretaryTurnIntegrationTest extends TestCase
             static fn (int $attempt): string => hash('sha256', "secretary suit success {$attempt}"),
         )->first(static function (string $candidate) use ($nation): bool {
             $random = new TurnRandomStreamFactory($candidate);
-
-            return $random->stream(TurnRandomStreamFactory::secretaryExperience(
+            $passive = $random->stream(TurnRandomStreamFactory::secretaryExperience(
                 $nation->id,
                 SecretaryExperienceAwardService::PASSIVE_SKILL,
                 1,
-            ))->integer(1, 100) <= 10
+            ));
+
+            return $passive->integer(1, 100) <= 10
+                && $passive->integer(1, 100) <= 10
                 && $random->stream(TurnRandomStreamFactory::secretaryExperience(
                     $nation->id,
                     SecretaryExperienceAwardService::MONSTER,
@@ -133,11 +215,17 @@ final class SecretaryTurnIntegrationTest extends TestCase
 
         $suit->update(['equipped_slot' => null]);
         $awards = app(SecretaryExperienceAwardService::class);
+        $awards->awardSkill($context, $nation->id, SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY, 1_000);
+        $awards->awardSkill($context, $nation->id, SecretarySkillCatalog::INDOMITABLE, 1_000);
         $awards->awardSkill($context, $nation->id, SecretarySkillCatalog::AGRICULTURAL_POLICY, 1);
         $this->assertSame(24, $awards->awardMonster($context, $nation->id, 12));
 
         $this->assertSame([
-            $nation->id => [SecretarySkillCatalog::AGRICULTURAL_POLICY => 2],
+            $nation->id => [
+                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => 1_000,
+                SecretarySkillCatalog::INDOMITABLE => 2_000,
+                SecretarySkillCatalog::AGRICULTURAL_POLICY => 2,
+            ],
         ], $context->state->pendingSecretaryExperience());
         $this->assertSame([$nation->id => 24], $context->state->pendingSecretaryMonsterExperience());
 

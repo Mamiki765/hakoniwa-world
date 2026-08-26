@@ -90,6 +90,12 @@ final class TurnRandomStreamFactory
 
     private const SECRETARY_OLD_BOW_PREFIX = 'secretary_item:old_bow:nation:';
 
+    private const SECRETARY_BOW_PREFIX = 'secretary_item:bow:nation:';
+
+    private const SECRETARY_COLLAR_PREFIX = 'secretary_item:collar:nation:';
+
+    private const MONSTER_ITEM_DROP_PREFIX = 'monster_item_drop:instance:';
+
     private const SECRETARY_EXPERIENCE_PREFIX = 'secretary_item:secretary_suit:nation:';
 
     private const TRADING_POST_NPC_PREFIX = 'enforce_capacities:trading_post_npc:';
@@ -223,6 +229,39 @@ final class TurnRandomStreamFactory
         }
 
         return self::SECRETARY_OLD_BOW_PREFIX.$nationId.':'.$purpose.':v'.$streamVersion;
+    }
+
+    public static function secretaryBow(int $nationId, string $itemKey, string $purpose, int $streamVersion): string
+    {
+        if ($itemKey === 'old_bow') {
+            return self::secretaryOldBow($nationId, $purpose, $streamVersion);
+        }
+        if ($nationId < 1 || $streamVersion < 1
+            || ! in_array($itemKey, ['elf_bow', 'longshot_bow', 'mechanical_bow'], true)
+            || ! in_array($purpose, ['trigger', 'target'], true)) {
+            throw new InvalidArgumentException('Secretary Bow stream identity is invalid.');
+        }
+
+        return self::SECRETARY_BOW_PREFIX.$nationId.':item:'.$itemKey.':'.$purpose.':v'.$streamVersion;
+    }
+
+    public static function secretaryCollar(int $nationId, int $queueItemId, int $impactIndex, int $streamVersion): string
+    {
+        if ($nationId < 1 || $queueItemId < 1 || $impactIndex < 0 || $streamVersion < 1) {
+            throw new InvalidArgumentException('Secretary Collar stream identity is invalid.');
+        }
+
+        return self::SECRETARY_COLLAR_PREFIX.$nationId.':queue:'.$queueItemId.':impact:'.$impactIndex.':v'.$streamVersion;
+    }
+
+    public static function monsterItemDrop(int $monsterInstanceId, string $purpose, int $streamVersion): string
+    {
+        if ($monsterInstanceId < 1 || $streamVersion < 1
+            || ! in_array($purpose, ['recipient', 'rarity', 'item', 'level'], true)) {
+            throw new InvalidArgumentException('Monster Item drop stream identity is invalid.');
+        }
+
+        return self::MONSTER_ITEM_DROP_PREFIX.$monsterInstanceId.':'.$purpose.':v'.$streamVersion;
     }
 
     public static function secretaryExperience(int $nationId, string $source, int $streamVersion): string

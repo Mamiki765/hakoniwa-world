@@ -87,6 +87,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->where('slot', '-?\d+');
     Route::put('/me/secretary/equipment/{slot}', [SecretaryController::class, 'updateEquipment'])
         ->where('slot', '-?\d+');
+    Route::post('/me/secretary/items/{item}/sell', [SecretaryController::class, 'sellItem'])
+        ->where('item', '-?\d+');
     Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1');
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/trading-post', [TradingPostController::class, 'index']);

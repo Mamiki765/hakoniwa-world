@@ -30,7 +30,7 @@ final class SecretaryPersistenceTest extends TestCase
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
 
-        app(NationCreationService::class)->create($user, $world, '現行秘書島', '現行島主');
+        $nation = app(NationCreationService::class)->create($user, $world, '現行秘書島', '現行島主');
 
         $skills = $user->secretary()->firstOrFail()->skills()->pluck('level', 'skill_key');
         $this->assertSame(0, $skills[SecretarySkillCatalog::AGRICULTURAL_POLICY]);
@@ -38,6 +38,12 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame(0, $skills[SecretarySkillCatalog::GOLD_VEIN_SURVEY]);
         $this->assertSame(0, $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]);
         $this->assertSame(1, $skills[SecretarySkillCatalog::FINAL_DEFENSE_LINE]);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY]);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::INDOMITABLE]);
+        $this->assertSame(
+            (int) DB::table('map_cells')->where('owner_nation_id', $nation->id)->sum('population'),
+            (int) $nation->fresh()->population_high_water,
+        );
     }
 
     public function test_first_successful_registration_creates_one_unnamed_secretary_and_replay_is_idempotent(): void
@@ -61,7 +67,7 @@ final class SecretaryPersistenceTest extends TestCase
         );
         $skills = $secretary->skills->keyBy('skill_key');
         $this->assertSame(
-            collect(SecretarySkillCatalog::KEYS)->sort()->values()->all(),
+            collect(SecretarySkillCatalog::V17_KEYS)->sort()->values()->all(),
             $skills->keys()->sort()->values()->all(),
         );
         $this->assertSame(0, $skills[SecretarySkillCatalog::AGRICULTURAL_POLICY]->level);
@@ -69,12 +75,14 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame(0, $skills[SecretarySkillCatalog::GOLD_VEIN_SURVEY]->level);
         $this->assertSame(0, $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]->level);
         $this->assertSame(1, $skills[SecretarySkillCatalog::FINAL_DEFENSE_LINE]->level);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY]->level);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::INDOMITABLE]->level);
         $this->assertSame([0], $skills->pluck('experience')->unique()->values()->all());
 
         $replayed = $service->create($user, $world->fresh(), '別入力', '別入力', '', $requestKey);
         $this->assertSame($nation->id, $replayed->id);
         $this->assertSame(1, Secretary::query()->where('user_id', $user->id)->count());
-        $this->assertSame(5, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(7, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
     }
 
     public function test_user_id_is_unique_and_different_users_may_choose_the_same_name_once(): void
@@ -87,6 +95,12 @@ final class SecretaryPersistenceTest extends TestCase
         $service->create($second, $world->fresh(), '第二秘書島', '第二島主');
 
         foreach ([$first, $second] as $user) {
+            $user->secretary()->firstOrFail()->skills()
+                ->where('skill_key', SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY)
+                ->update(['level' => 10, 'experience' => 460_000]);
+            $user->secretary()->firstOrFail()->skills()
+                ->where('skill_key', SecretarySkillCatalog::INDOMITABLE)
+                ->update(['level' => 10, 'experience' => 0]);
             $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => 'ペリドット'])
                 ->assertOk()
                 ->assertJsonPath('data.name', 'ペリドット')
@@ -94,7 +108,9 @@ final class SecretaryPersistenceTest extends TestCase
                 ->assertJsonPath('data.skills.0.effect', '小麦生産＋0.0%')
                 ->assertJsonPath('data.skills.3.effect', '伐採資金・森林増加＋0%')
                 ->assertJsonPath('data.skills.4.effect', '防衛されなかったミサイルを1ターンにつき1発まで迎撃')
-                ->assertJsonCount(5, 'data.skills');
+                ->assertJsonPath('data.skills.5.effect', '自然人口上限 +500人 / 誘致人口上限 +1,000人')
+                ->assertJsonPath('data.skills.6.effect', '自然人口増加 +2.50%')
+                ->assertJsonCount(7, 'data.skills');
         }
         $this->assertSame(2, Secretary::query()->where('name', 'ペリドット')->count());
 
