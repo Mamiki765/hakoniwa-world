@@ -10,7 +10,6 @@ use App\Application\NationCreationService;
 use App\Application\SecretaryBowAttackService;
 use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryItemSaleService;
-use App\Application\SecretaryOldBowService;
 use App\Application\SecretaryTurnService;
 use App\Application\TradingPostTurnService;
 use App\Domain\Secretary\SecretaryItemCatalog;
@@ -358,7 +357,7 @@ final class SecretaryItemEffectsTest extends TestCase
         $ruleset = $this->switchToItemRuleset($world);
         $world = $world->fresh();
         $surface = $this->surfaceMapSpace($world);
-        $service = app(SecretaryOldBowService::class);
+        $service = app(SecretaryBowAttackService::class);
 
         $noTarget = $this->context($world, hash('sha256', 'old bow no target'), [$nation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $noTarget);
@@ -489,7 +488,7 @@ final class SecretaryItemEffectsTest extends TestCase
 
         $hit = $this->context($world, $this->oldBowHitSeed($firstNation->id), [$firstNation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $hit);
-        $metrics = app(SecretaryOldBowService::class)->execute($hit, $surface, true);
+        $metrics = app(SecretaryBowAttackService::class)->execute($hit, $surface, true);
         $this->assertSame(1, $metrics['secretary_old_bow_hits']);
         $this->assertSame(1, $legal->fresh()->current_hp);
         foreach ([$neutral, $foreign, $dead, $removed, $hardened, $offSurface] as $excluded) {
@@ -512,7 +511,7 @@ final class SecretaryItemEffectsTest extends TestCase
             $queries[] = $query->sql;
         });
 
-        $metrics = app(SecretaryOldBowService::class)->execute($bounded, $surface, true);
+        $metrics = app(SecretaryBowAttackService::class)->execute($bounded, $surface, true);
 
         $this->assertSame(2, $metrics['secretary_old_bow_attempts']);
         $this->assertSame(2, $metrics['secretary_old_bow_misses']);
@@ -673,7 +672,7 @@ final class SecretaryItemEffectsTest extends TestCase
         $context = $this->context($world, $seed, $nationIds);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
 
-        $metrics = app(SecretaryOldBowService::class)->execute(
+        $metrics = app(SecretaryBowAttackService::class)->execute(
             $context,
             $this->surfaceMapSpace($world),
             true,
@@ -706,7 +705,7 @@ final class SecretaryItemEffectsTest extends TestCase
 
         try {
             DB::transaction(function () use ($firstContext, $world, $monster, $nation, $secretaryId, $experiencePerDamage, &$rolledBack): void {
-                $metrics = app(SecretaryOldBowService::class)->execute(
+                $metrics = app(SecretaryBowAttackService::class)->execute(
                     $firstContext,
                     $this->surfaceMapSpace($world),
                     true,
@@ -738,7 +737,7 @@ final class SecretaryItemEffectsTest extends TestCase
 
         $retry = $this->context($world, $seed, [$nation->id]);
         app(CompleteTurnEngine::class)->execute('prepare_turn', $retry);
-        $retryMetrics = app(SecretaryOldBowService::class)->execute(
+        $retryMetrics = app(SecretaryBowAttackService::class)->execute(
             $retry,
             $this->surfaceMapSpace($world),
             true,
