@@ -1477,21 +1477,23 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ]])
             ->all();
 
-        $underseaCity = FacilityDefinition::query()->where('key', 'undersea_city')->firstOrFail();
-        $target->update([
-            'facility_definition_id' => $underseaCity->id,
-            'owner_nation_id' => $rival->id,
-            'population' => 3_000,
-        ]);
-        $disguisedPreview = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
-            ->where('target_type', 'cell')
-            ->mapWithKeys(static fn (array $definition): array => [$definition['key'] => [
-                'status' => $definition['execution_preview_status'],
-                'warnings' => $definition['execution_warnings'],
-            ]])
-            ->all();
+        foreach (['seabed_base', 'undersea_city'] as $disguisedFacilityKey) {
+            $disguisedFacility = FacilityDefinition::query()->where('key', $disguisedFacilityKey)->firstOrFail();
+            $target->update([
+                'facility_definition_id' => $disguisedFacility->id,
+                'owner_nation_id' => $rival->id,
+                'population' => $disguisedFacilityKey === 'undersea_city' ? 3_000 : 0,
+            ]);
+            $disguisedPreview = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
+                ->where('target_type', 'cell')
+                ->mapWithKeys(static fn (array $definition): array => [$definition['key'] => [
+                    'status' => $definition['execution_preview_status'],
+                    'warnings' => $definition['execution_warnings'],
+                ]])
+                ->all();
 
-        $this->assertSame($neutralPreview, $disguisedPreview);
+            $this->assertSame($neutralPreview, $disguisedPreview, $disguisedFacilityKey);
+        }
     }
 
     public function test_queue_limit_is_enforced_from_the_versioned_ruleset_boundary(): void
