@@ -22,6 +22,7 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
+use App\Services\MapCellPresenter;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -65,19 +66,21 @@ final class CommandQueueController extends Controller
                 ->where('enabled', true)
                 ->orderBy('sort_order')
                 ->get();
+            $visibleState = $cell === null ? null : MapCellPresenter::visibleState($cell, $nation->id);
             $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
                 $cell,
                 $queue,
                 $position,
                 $nation,
                 $mapSpace,
+                $visibleState,
             );
             $resultFacilities = FacilityDefinition::query()
                 ->whereIn('key', $definitions->pluck('result_facility_key')->filter()->unique()->values())
                 ->get()
                 ->keyBy('key');
             $definitions = $definitions
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState): array {
                     $ownerOverbuildEffect = $projected === null
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
@@ -85,7 +88,7 @@ final class CommandQueueController extends Controller
                     $projectedExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
                         try {
-                            $service->validateTarget($nation, $mapSpace, $definition, $cell);
+                            $service->validateTarget($nation, $mapSpace, $definition, $cell, $visibleState);
                         } catch (PlayerFacingCommandException $exception) {
                             $unavailableReason = $exception->getMessage();
                             $projectedExecutable = $definition->key === 'territory_expand'
