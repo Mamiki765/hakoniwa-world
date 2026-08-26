@@ -61,11 +61,18 @@ handoffへの確定反映は、それらとGitHubの現物、Owner decisionを�
 ## 1.1 一行要約
 
 ```text
-mainはver 2.6.1 / Ruleset v16。
-PR #90・#91・#92を統合したrelease/2.6.1は、PR #93でmainへmerge済み。
-main HEADは4e7cf209...で、release PRのexact-head QualityとCodex reviewは成功。
-Owner確認ではver 2.6.1はrelease済み。
-次の開発線としてrelease/2.7.0をmainから作成し、このhandoff更新を最初のbranch-only commitとする。
+mainはver 2.6.1 / Ruleset v16のまま。
+release/2.7.0ではPR #94と#95がmerge済みで、現在のrelease HEADは
+ffc3386cdac094902d92eda9bd51ce90604bccfd。
+current gameplay Rulesetはhakoniwa-2s-plus-v17 / version 17。
+application versionはrelease finalization前のため2.6.1のまま。
+
+PR #95は最終head 6b51daca62e7b291f3ee21f6a8108f6bda9d0fd0でQualityとCodex reviewを通過し、
+全review thread解決後にrelease/2.7.0へmerge済み。
+
+次はver 2.7.0 finalizationとしてapplication version 2.7.0、
+player manual整理、AGENTS manual-writing policy、integrated handoffを確定し、
+release/2.7.0 → main release PRをfinalized headで検証する。
 ```
 
 ## 1.2 main / ver 2.6.1
@@ -115,16 +122,21 @@ productionの現況が必要な作業では、repository stateやapplication ver
 
 ```text
 branch: release/2.7.0
-base:   main
-base SHA at creation: 4e7cf209964d2c84698b1361eb52a371b7e91869
+HEAD:   ffc3386cdac094902d92eda9bd51ce90604bccfd
+application: 2.6.1（finalization前）
+Ruleset: hakoniwa-2s-plus-v17
+version: 17
+checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+supported source: exact v16
+v16 checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
 ```
 
-`release/2.7.0`はver 2.6.1完了後の次期開発線として作成します。
-最初のbranch-only changeは、この統合handoffをver 2.6.1完了状態へ更新するdocumentation commitです。
+`release/2.7.0`はmain `4e7cf209...`から開始し、PR #94とPR #95を取り込みました。
+現在のHEAD `ffc3386...`はPR #95のmerge commitです。
 
-branch作成時点ではapplication versionは2.6.1、current Rulesetはv16のままです。
-`2.7.0`というbranch名だけを根拠にversion bump、新Ruleset、gameplay変更、schema変更を先行実装してはいけません。
-2.7.0の具体的scopeはOwnerの今後の明示指示を正本とします。
+PR #94でtheme options / dark modeを追加し、PR #95でimmutable Ruleset v17、Secretary Item、
+monster drop、人口skill、Trading Post event、map queue tooltipを実装しました。
+application versionはfinalization前のため2.6.1を維持しています。
 
 ## 1.5 ver 2.6.1 completion evidence
 
@@ -164,11 +176,12 @@ PR #92で発見されたhover-open tooltipがEscape直後に再表示されるP2
 
 ## 1.6 直近の作業順
 
-1. `release/2.7.0`でこのhandoff更新commitを起点にする
-2. 次の2.7.0 taskごとに`AGENTS.md`、`docs/open-questions.md`、current code/docを確認する
-3. 2.7.0のgameplay / Ruleset / schema / UI scopeはOwnerの明示指示から確定する
-4. 古いhandoffや将来候補から、船・地下・複数MapSpace・generic modifier等を自動的に2.7.0仕様へ昇格させない
-5. Codex / implementation agentはhandoffをread-onlyとして扱い、Ownerが明示した場合だけ更新する
+1. ver 2.7.0 finalizationとしてapplication versionを2.7.0へ確定する
+2. `AGENTS.md`へplayer manual writing policyを追加し、advanced manualのKARMA / recovery説明をplayer-facingに整理する
+3. integrated handoffを2.7.0 current stateへ更新する
+4. finalized exact headでQualityとCodex reviewを完了する
+5. `release/2.7.0 → main` release PRをfinalized headで確認し、Owner判断後にだけmergeする
+6. Codex / implementation agentはhandoffをread-onlyとして扱い、Ownerが明示した場合だけ更新する
 
 production deploy、migration、backup、Turn操作はrepository開発と別の明示作業として扱ってください。
 
@@ -975,6 +988,86 @@ Ownerはその後、ver 2.6.1をrelease済みと確認しました。
 
 ---
 
+# 3.17 ver 2.7.0 — theme、Item拡張、怪獣drop、人口skill
+
+## PR #94: theme options / dark mode
+
+- `system` / `light` / `dark` theme
+- `hakoniwa_theme` cookie
+- Option画面を未認証時から利用可能
+- app / manual / community guidelinesをdark対応
+- server-rendered画面もCSS読込前にtheme確定
+- 満腹のハーブ表示を「食料最大値」へ整理
+- gameplay / Ruleset v16 / schema不変
+- merge commit: `9ccd257400d078cfceb24cdaee0a4497d9fcd65e`
+
+## PR #95: Ruleset v17 / Secretary Item foundation
+
+- immutable Ruleset v17
+- exact v16→v17 forward migration
+- v16 payload/checksum不変
+- Regular / Cursed rarity
+- エルフの弓 / 遠当ての弓 / 機械弓 / 首輪
+- 古びた弓はplayer/NPC auction不可、固定売却も秘書が拒否
+- 怪獣撃破によるItem drop
+- foreign host時はkiller 75% / host 25%
+- Regular / Cursedはplayer trading可、箱庭連合NPC listingなし
+- Trading Post winner public event / seller private event
+- 少子化対策 / 不屈
+- `population_high_water`追加
+- 誘致上限超過時の通常集落人口減少
+- map tooltipにowner command queue表示
+- Trading Post table CSS修正
+
+Ruleset v17 identity:
+
+```text
+key: hakoniwa-2s-plus-v17
+version: 17
+checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+supported migration source: exact v16
+v16 checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
+```
+
+PR #95 final head `6b51daca62e7b291f3ee21f6a8108f6bda9d0fd0`はexact-head Quality
+`32955989743`を通過し、最終Codex reviewはmajor issueなし、全review thread解決済みです。
+release/2.7.0へのmerge commitは`ffc3386cdac094902d92eda9bd51ce90604bccfd`です。
+
+### Inventory soft-cap
+
+倉庫50個は通常の新規取得gateであり、DB上の絶対上限ではありません。
+
+49個の時点で確定済みのauction deliveryと怪獣dropが重なった場合、
+既に確定した受取によって51個以上になることを許容します。
+actual inventoryが50個以上の間は新しいgrant / dropを拒否し、
+49個以下へ戻れば再び取得可能です。
+
+player manualではこの内部例外を詳説せず「最大50個」と案内します。
+
+### Bow canonicalization
+
+PR reviewで、productionが`SecretaryBowAttackService`へ移行している一方、
+旧`SecretaryOldBowService`を直接実行するOld Bow contract testsが残っているP1を発見しました。
+
+最終修正では:
+
+- `SecretaryOldBowService`を削除
+- `SecretaryBowAttackService`を唯一のcanonical Bow execution pathに統一
+- Old Bowの全詳細contract testもproduction serviceを通す
+- Old Bow RNG identity / timing / safety / retry / drop契約を維持
+
+final fix commitは`6b51daca62e7b291f3ee21f6a8108f6bda9d0fd0`です。
+
+reviewで事故防止上重要だった経緯:
+
+- stale Bow targetを除外し、nonlethal damage後のHPを後続Nationへ同期
+- refugee receiptへturn-start attraction capを適用
+- Collar crime doublingから意図しないattacker-KARMA gateを除去
+- auction inventory overfillはOwner decisionによりsoft-cap仕様として確定
+- duplicate Bow engineを削除し、production canonical pathへ統一
+
+---
+
 # 4. 設計方針がどう変化したか
 
 ## 4.1 Ruleset
@@ -1005,6 +1098,13 @@ Ownerはその後、ver 2.6.1をrelease済みと確認しました。
 - Behavior / Data / Flavorをmachine-inspected metadataへ
 - old executable authoring・upgrade chainをcurrent treeから退役
 - Git historyをold implementation authorityへ
+
+### 2.7.0
+
+- current Rulesetはv17
+- v16は直前supported migration sourceとしてexact immutable保持
+- 新gameplayはv17だけへ追加
+- application versionとRuleset gameplay identityは別にfinalize可能
 
 ## 4.2 Migration
 
@@ -1054,6 +1154,10 @@ schema dumpやapplication versionだけから、本番がmigration済みだと�
 - historical replay testの削減
 - expensive evidenceの無意味な再実行を避ける
 
+production canonical pathから外れた旧serviceを直接試験して、
+「同じcontractを別engineで保証」しません。
+代表contract testはproductionで実際に使われるcanonical execution pathを所有します。
+
 削減してはいけないもの:
 
 - current migration
@@ -1098,17 +1202,26 @@ schema dumpやapplication versionだけから、本番がmigration済みだと�
 ```text
 application main: 2.6.1
 main HEAD: 4e7cf209964d2c84698b1361eb52a371b7e91869
+
 current development branch: release/2.7.0
-release/2.7.0 creation base: main 4e7cf209...
+release HEAD before finalization:
+  ffc3386cdac094902d92eda9bd51ce90604bccfd
+
+application on release branch: 2.6.1
+planned final application version: 2.7.0
+
 current Ruleset:
-  key: hakoniwa-2s-plus-v16
-  version: 16
+  key: hakoniwa-2s-plus-v17
+  version: 17
+  checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+
+supported migration source:
+  hakoniwa-2s-plus-v16 / 16
   checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
-v17: なし
 ```
 
-`release/2.7.0`というbranch名は、新Rulesetやgameplay変更を自動的に意味しません。
-Ownerが具体的な2.7.0 scopeを決めるまでは、mainの2.6.1 / v16契約がstarting pointです。
+release branchではv17 gameplay contractまで実装済みです。
+application versionはfinalizationで2.7.0へ確定するまで2.6.1を維持します。
 
 ## 5.2 deterministic Turn
 
@@ -1275,39 +1388,35 @@ auctionは2.6.0の交易場として実装されました。
 
 # 7. 現在の残件
 
-## 7.1 release/2.7.0
+## 7.1 ver 2.7.0 finalization
 
-ver 2.6.1のrelease完了後、次の開発線として`release/2.7.0`をmainから作成します。
+残件:
 
-branch開始時点で確定しているのは次だけです。
+- application versionを2.7.0へ確定
+- `AGENTS.md`へplayer manual writing policyを追加
+- advanced manualのKARMA / recovery説明をplayer-facingに簡略化
+- integrated handoffを2.7.0 current stateへ更新
+- finalized exact-head Quality
+- Codex review
+- `release/2.7.0 → main` release PRをfinalized headで確認
+- Owner判断後のmerge
 
-```text
-base: main / ver 2.6.1
-Ruleset: v16
-first branch-only change: integrated handoff refresh
-```
+Player manualは「プレイヤーが判断を変える情報」を優先し、内部処理を網羅しません。
+処理順、RNG消費、fail-close、transaction、稀な競合例外は、
+操作判断や目に見える挙動の理解に必要な場合だけ記載します。
 
-2.7.0の具体的なfeature、Ruleset version、schema変更、balance変更はまだこのhandoffでは確定していません。
-Ownerの今後の明示指示を待ち、古い将来候補を自動的にactive TODOへ戻さないでください。
+事前に知らなくても不利益・操作不能にならず、
+実際のプレイ中に観察して理解できる挙動は、
+原則としてmanualへ先回りして書きません。
 
-## 7.2 ver 2.6.1から持ち越していないもの
+production deploy / migration execution / backup / cronは別作業です。
 
-以下は2.6.1で完了済みであり、2.7.0の未完了TODOとして復活させません。
-
-- PR #91 current-only runtime / fresh-install rebaseline
-- wildcard selector P2
-- Production migration policyの`AGENTS.md`明文化
-- Behavior / Data / Flavor quick definitionの`AGENTS.md`導線
-- Development handoff ownership
-- PR #92の交易場表示改善とtooltip Escape P2
-- `release/2.6.1 → main` release PR
-
-## 7.3 handoff maintenance
+## 7.2 handoff maintenance
 
 この文書はOwner / Web版ChatGPT development-advisor workflowが節目で更新します。
 Codex / implementation agentは通常のfeature実装やreview対応では変更しません。
 
-次回更新候補は、2.7.0の大きな設計判断、複数PRを跨ぐ現在地変更、2.7.0 release完了、またはOwnerが明示的に引継ぎ更新を求めた時です。
+次回更新候補は、2.7.0 finalization結果またはOwnerが明示的に引継ぎ更新を求めた時です。
 
 ---
 
@@ -1321,17 +1430,35 @@ Codex / implementation agentは通常のfeature実装やreview対応では変更
 6. taskに関係するADR / decision
 7. raw sourceが必要な仕様だけ`_references/`をread-only監査
 
-2.7.0開始時の基準点:
+2.7.0 finalization開始時の基準点:
 
 ```text
-main: 4e7cf209964d2c84698b1361eb52a371b7e91869
-application: 2.6.1
-Ruleset: hakoniwa-2s-plus-v16 / version 16
-checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
-release/2.7.0: mainから作成
+application main: 2.6.1
+main HEAD: 4e7cf209964d2c84698b1361eb52a371b7e91869
+
+current development branch: release/2.7.0
+release HEAD before finalization:
+ffc3386cdac094902d92eda9bd51ce90604bccfd
+
+application on release branch: 2.6.1
+planned final application version: 2.7.0
+
+current Ruleset:
+  key: hakoniwa-2s-plus-v17
+  version: 17
+  checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+
+supported migration source:
+  hakoniwa-2s-plus-v16 / 16
+  checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
 ```
 
 exact SHAは作業開始時に必ずGitHubで再確認してください。
+2.7.0はv17まで実装済みで、現在はfinalization段階です。
+
+PR番号、final head、Quality run IDなど未確定の将来値を予測してhandoffへ書いてはいけません。
+この更新で確定している最後のGitHub事実はPR #95 mergeとrelease head `ffc3386...`です。
+finalization結果は確定後に追記します。
 
 ---
 
@@ -1344,14 +1471,24 @@ hakoniwa-worldの統合handoffです。
 正本は最新のreview済みコード、immutable Ruleset、ADR/decision、運用文書、Ownerの最新明示決定です。
 古いhandoffのSHAや当時TODO、将来候補を現在仕様として復活させないでください。
 
-ver 2.6.1は完了し、PR #93でmainへmerge済みです。
-mainの基準点は4e7cf209964d2c84698b1361eb52a371b7e91869、application versionは2.6.1、
-current Rulesetはhakoniwa-2s-plus-v16 / version 16 / checksum
+mainはver 2.6.1 / Ruleset v16で、基準点は
+4e7cf209964d2c84698b1361eb52a371b7e91869です。
+
+release/2.7.0ではPR #94とPR #95がmerge済みです。
+finalization前のrelease headはffc3386cdac094902d92eda9bd51ce90604bccfd、
+application versionは2.6.1、current gameplay Rulesetは
+hakoniwa-2s-plus-v17 / version 17 / checksum
+8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3です。
+直前supported migration sourceはexact v16 / checksum
 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487dです。
 
-release/2.7.0はこのmainから開始します。
-2.7.0の具体的scopeはOwnerの新しい指示から確定してください。
-branch名だけを理由にv17、新schema、gameplay/balance変更を先行実装しないでください。
+2.7.0はv17まで実装済みで、現在はfinalization段階です。
+application version 2.7.0、player manual整理、AGENTS manual-writing policy、
+integrated handoffをfinalizeし、exact-head QualityとCodex reviewを完了してください。
+
+PR番号、final head、Quality run IDなど未確定の将来値を予測してhandoffへ書かないでください。
+このhandoffで確定している最後のGitHub事実はPR #95 merge / release head ffc3386...です。
+finalization結果は確定後に追記対象です。
 
 product/docs/handoffs/development-history-and-current-handoff.mdはCodex / implementation agentにはread-onlyです。
 Ownerがhandoff更新そのものを明示した場合だけ変更してください。
@@ -1451,9 +1588,15 @@ product/docs/handoffs/
   PR #93でmainへmerge、Owner確認でrelease済み
 
 2.7.0:
-  release branchをver 2.6.1 mainから開始
-  最初のbranch-only changeはこのhandoff更新
-  具体的scopeはOwnerの今後の明示指示待ち
+  theme options / dark mode
+  Regular・Cursed Secretary Items
+  three advanced bows / Collar
+  monster Item drops
+  Trading Post settlement visibility
+  demographic skills / population_high_water
+  queue tooltip integration
+  canonical Bow execution unification
+  finalization pending: application 2.7.0 / manual policy / release PR
 ```
 
 この文書の役割は、失われた会話を推測で埋めることではありません。
