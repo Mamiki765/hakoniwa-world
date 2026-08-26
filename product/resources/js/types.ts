@@ -142,12 +142,15 @@ export interface TradingPostListing {
         item_level: number | null;
         rarity: string | null;
         rarity_label: string | null;
+        effect_text: string | null;
     };
     start_price: number;
     current_price: number | null;
     minimum_bid: number;
     bid_count: number;
     highest_bidder_nation_id: number | null;
+    highest_bidder: { nation_id: number; name: string } | null;
+    viewer_bid_status: 'seller' | 'none' | 'highest' | 'outbid';
     started_turn: number;
     ends_turn: number;
     remaining_turns: number;
@@ -179,6 +182,7 @@ export interface TradingPostData {
         level: number;
         rarity: string;
         rarity_label: string;
+        effect_text: string | null;
     }>;
     contract: {
         active_listing_limit: number;

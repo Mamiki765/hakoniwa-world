@@ -8,6 +8,7 @@ use App\Application\TradingPostTurnService;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -268,6 +269,120 @@ final class TradingPostApiTest extends TestCase
             ->postJson($this->bidUrl($buyerNation, $firstCapacityListingId), ['amount' => 300])
             ->assertUnprocessable();
         $this->assertSame(1_000, $buyerNation->fresh()->money);
+    }
+
+    public function test_listing_presentation_exposes_bidder_viewer_status_and_canonical_item_effects(): void
+    {
+        $world = $this->lightweightWorld();
+        [$seller, $sellerNation] = $this->ownerAndNation($world, '表示出品島');
+        [$first, $firstNation] = $this->ownerAndNation($world, '第一表示島');
+        [$second, $secondNation] = $this->ownerAndNation($world, '第二表示島');
+        $oil = $this->resource('oil');
+        $this->setResource($sellerNation, $oil, 100);
+        $secretary = $seller->secretary()->firstOrFail();
+        $listedRing = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::RING,
+            'level' => 3,
+            'equipped_slot' => null,
+            'grant_key' => 'test:trading-post:presentation-listed-ring',
+            'obtained_at' => now(),
+        ]);
+        $sellableRing = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::RING,
+            'level' => 4,
+            'equipped_slot' => null,
+            'grant_key' => 'test:trading-post:presentation-sellable-ring',
+            'obtained_at' => now(),
+        ]);
+        $resourceListingId = $this->actingAs($seller)->postJson($this->listingUrl($sellerNation), [
+            'product_type' => 'resource', 'resource_definition_id' => $oil->id, 'quantity' => 100,
+            'start_price' => 100, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $itemListingId = $this->actingAs($seller)->postJson($this->listingUrl($sellerNation), [
+            'product_type' => 'item', 'item_instance_id' => $listedRing->id,
+            'start_price' => 300, 'duration_turns' => 3, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $npcItemListing = AuctionListing::query()->create([
+            'world_id' => $world->id,
+            'seller_type' => 'hakoniwa_federation',
+            'product_type' => 'item',
+            'item_key' => SecretaryItemCatalog::RING,
+            'item_level' => 2,
+            'start_price' => 200,
+            'duration_turns' => 6,
+            'started_turn' => $world->current_turn,
+            'ends_turn' => $world->current_turn + 6,
+            'auto_relist' => false,
+            'status' => AuctionListing::STATUS_ACTIVE,
+        ]);
+
+        $settings = $world->rulesetVersion()->firstOrFail()->settings;
+        $gameplay = app(SecretaryItemGameplayContract::class);
+        $sellerMarket = $this->actingAs($seller)
+            ->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()->json('data');
+        $sellerResourceListing = collect($sellerMarket['listings'])->firstWhere('id', $resourceListingId);
+        $sellerItemListing = collect($sellerMarket['listings'])->firstWhere('id', $itemListingId);
+        $sellerNpcItemListing = collect($sellerMarket['listings'])->firstWhere('id', $npcItemListing->id);
+        $sellableItem = collect($sellerMarket['sellable_items'])->firstWhere('id', $sellableRing->id);
+        $this->assertIsArray($sellerResourceListing);
+        $this->assertIsArray($sellerItemListing);
+        $this->assertIsArray($sellerNpcItemListing);
+        $this->assertIsArray($sellableItem);
+        $this->assertNull($sellerResourceListing['highest_bidder']);
+        $this->assertNull($sellerResourceListing['product']['effect_text']);
+        $this->assertSame('seller', $sellerResourceListing['viewer_bid_status']);
+        $this->assertSame($gameplay->effectText($settings, SecretaryItemCatalog::RING, 3), $sellerItemListing['product']['effect_text']);
+        $this->assertSame($gameplay->effectText($settings, SecretaryItemCatalog::RING, 2), $sellerNpcItemListing['product']['effect_text']);
+        $this->assertSame($gameplay->effectText($settings, SecretaryItemCatalog::RING, 4), $sellableItem['effect_text']);
+
+        $unrelatedMarket = $this->actingAs($second)
+            ->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()->json('data');
+        $unrelatedResourceListing = collect($unrelatedMarket['listings'])->firstWhere('id', $resourceListingId);
+        $this->assertIsArray($unrelatedResourceListing);
+        $this->assertSame('none', $unrelatedResourceListing['viewer_bid_status']);
+
+        $this->actingAs($first)->postJson($this->bidUrl($firstNation, $resourceListingId), ['amount' => 100])
+            ->assertOk();
+        $firstMarket = $this->actingAs($first)
+            ->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()->json('data');
+        $firstResourceListing = collect($firstMarket['listings'])->firstWhere('id', $resourceListingId);
+        $this->assertIsArray($firstResourceListing);
+        $this->assertSame('highest', $firstResourceListing['viewer_bid_status']);
+        $this->assertSame($firstNation->id, $firstResourceListing['highest_bidder_nation_id']);
+        $this->assertSame([
+            'nation_id' => $firstNation->id,
+            'name' => $firstNation->name,
+        ], $firstResourceListing['highest_bidder']);
+        $sellerAfterFirstBid = $this->actingAs($seller)
+            ->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()->json('data');
+        $sellerResourceAfterFirstBid = collect($sellerAfterFirstBid['listings'])->firstWhere('id', $resourceListingId);
+        $this->assertIsArray($sellerResourceAfterFirstBid);
+        $this->assertSame('seller', $sellerResourceAfterFirstBid['viewer_bid_status']);
+
+        $this->actingAs($second)->postJson($this->bidUrl($secondNation, $resourceListingId), ['amount' => 130])
+            ->assertOk();
+        $firstAfterOutbid = $this->actingAs($first)
+            ->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()->json('data');
+        $secondAfterBid = $this->actingAs($second)
+            ->getJson("/api/v1/worlds/{$world->id}/trading-post")
+            ->assertOk()->json('data');
+        $firstResourceAfterOutbid = collect($firstAfterOutbid['listings'])->firstWhere('id', $resourceListingId);
+        $secondResourceAfterBid = collect($secondAfterBid['listings'])->firstWhere('id', $resourceListingId);
+        $this->assertIsArray($firstResourceAfterOutbid);
+        $this->assertIsArray($secondResourceAfterBid);
+        $this->assertSame('outbid', $firstResourceAfterOutbid['viewer_bid_status']);
+        $this->assertSame('highest', $secondResourceAfterBid['viewer_bid_status']);
+        $this->assertSame($secondNation->id, $firstResourceAfterOutbid['highest_bidder_nation_id']);
+        $this->assertSame([
+            'nation_id' => $secondNation->id,
+            'name' => $secondNation->name,
+        ], $firstResourceAfterOutbid['highest_bidder']);
+        $this->assertSame(1, AuctionBid::query()->where('status', AuctionBid::STATUS_REFUNDED)->count());
     }
 
     public function test_bids_escrow_money_refund_the_previous_highest_bid_and_prevent_cancellation(): void
