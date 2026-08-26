@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Support\V11SecretaryItemRulesetFixture;
+use Tests\Support\CurrentRulesetFixture;
 use Tests\TestCase;
 
 class MonsterApiAssetTest extends TestCase
@@ -246,7 +246,7 @@ class MonsterApiAssetTest extends TestCase
     {
         [$world, $nation, $ruleset] = $this->worldAndNation('十種討伐国');
         $secondNation = $this->createNation($world, '第二十種討伐国');
-        $fixture = collect(V11SecretaryItemRulesetFixture::settings()['monster_definitions'])->keyBy('key');
+        $fixture = collect(CurrentRulesetFixture::settings()['monster_definitions'])->keyBy('key');
         $definitions = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->get();
         foreach ($definitions as $index => $definition) {
             DB::table('nation_monster_kill_stats')->insert([
@@ -322,7 +322,7 @@ class MonsterApiAssetTest extends TestCase
     public function test_public_detail_and_rankings_keep_the_same_query_bound_for_twenty_species(): void
     {
         [$world, $nation, $ruleset] = $this->worldAndNation('二十種討伐国');
-        $template = V11SecretaryItemRulesetFixture::newMonsterDefinitions()[0];
+        $template = CurrentRulesetFixture::newMonsterDefinitions()[0];
         foreach (range(1, 10) as $index) {
             $payload = $template;
             $payload['key'] = "synthetic_monster_{$index}";

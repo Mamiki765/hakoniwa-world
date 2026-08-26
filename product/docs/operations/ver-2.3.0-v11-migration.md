@@ -1,5 +1,9 @@
 # ver 2.3.0 ruleset v11 operator checklist
 
+> Historical operation record; do not execute it from the current tree. The current
+> application supports already-final-v16 production sources only. See
+> [`../architecture/current-ruleset-baseline.md`](../architecture/current-ruleset-baseline.md).
+
 この文書はreview済みver 2.3.0 releaseをexact v10 `shared-world`へ適用するoperator checklistである。mergeはdeploy、production DB migration、turn再開を許可しない。実行window、担当者、release SHA、backup、停止時間は別途明示承認する。本PRの検証ではこの手順をproductionへ実行しない。
 
 ## 1. Freeze, identity, and backup

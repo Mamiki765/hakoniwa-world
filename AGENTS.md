@@ -4,6 +4,39 @@
 
 The new application must be implemented only under `product/`.
 
+## Agent guardrails
+
+### Production migrations
+
+Existing migrations are append-only by default. Unless the Owner explicitly identifies the
+production baseline, do not modify, delete, squash, or rebaseline an existing migration.
+Schema or persisted-data changes require a new forward migration. Repository state is not
+evidence of production migration state.
+
+Retire an existing migration only when the Owner has identified that baseline and the
+schema/data effects and supported runtime, fresh-install, test, and upgrade paths prove that
+they no longer depend on it.
+
+### Current Ruleset classification
+
+Behavior describes how the application acts or interprets a value: paths, identities,
+selectors, timing, state transitions, RNG semantics, and semantic sentinels. Data is an input
+to unchanged Behavior, such as HP, prices, probabilities, capacities, durations, and effect
+amounts. Flavor is presentation-only, such as names, descriptions, player-facing labels, and
+`unit_label` values.
+
+`product/docs/architecture/ruleset-authoring.md` is the detailed authority. Do not duplicate
+its large example set in this file.
+
+### Development handoff
+
+`product/docs/handoffs/development-history-and-current-handoff.md` is read-only context for
+Codex and implementation agents. Do not modify, regenerate, format, or commit it unless the
+Owner explicitly requests a handoff update.
+
+The Owner and the Web ChatGPT development-advisor workflow maintain that document separately
+after implementation, review evidence, and Owner decisions have been examined.
+
 ## Read-only references
 
 Everything under `_references/` is third-party reference material.

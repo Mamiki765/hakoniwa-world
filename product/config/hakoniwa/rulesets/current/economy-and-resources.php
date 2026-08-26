@@ -1,0 +1,202 @@
+<?php
+
+$behavior = [
+    0 => '/resource_definitions/*/unit',
+    1 => 'applies_after_sale_policy',
+    2 => 'behavior',
+    3 => 'category',
+    4 => 'converts_unsold_to_money',
+    5 => 'default_sale_policy',
+    6 => 'event_type',
+    7 => 'key',
+    8 => 'produced_by',
+    9 => 'sale_price_key',
+    10 => 'sort_order',
+    11 => 'storable',
+    12 => 'tradable',
+];
+
+$data = [
+    0 => 'base_food_capacity_tons',
+    1 => 'base_money_capacity',
+    2 => 'fish',
+    3 => 'industrial_goods',
+    4 => 'initial_money',
+    5 => 'inventory_units',
+    6 => 'minerals',
+    7 => 'money_units',
+    8 => 'monster_meat',
+    9 => 'nutrition_per_unit',
+    10 => 'oil',
+    11 => 'sale.fish',
+    12 => 'sale.industrial_goods',
+    13 => 'sale.minerals',
+    14 => 'sale.monster_meat',
+    15 => 'sale.oil',
+    16 => 'sale.wheat',
+    17 => 'wheat',
+];
+
+$flavor = [
+    0 => 'name',
+    1 => 'nutrition_is_provisional',
+    2 => 'unit_label',
+];
+
+return [
+    'payload' => [
+        'initial_money' => 100,
+        'resource_definitions' => [
+            0 => [
+                'key' => 'wheat',
+                'name' => '小麦',
+                'category' => 'food',
+                'unit' => 'ton',
+                'nutrition_per_unit' => 1,
+                'storable' => true,
+                'tradable' => true,
+                'sale_price_key' => 'sale.wheat',
+                'sort_order' => 10,
+                'metadata' => [
+                    'produced_by' => 'farm',
+                ],
+                'unit_label' => 'トン',
+            ],
+            1 => [
+                'key' => 'fish',
+                'name' => '魚',
+                'category' => 'food',
+                'unit' => 'ton',
+                'nutrition_per_unit' => 1,
+                'storable' => true,
+                'tradable' => true,
+                'sale_price_key' => 'sale.fish',
+                'sort_order' => 20,
+                'metadata' => [
+                ],
+                'unit_label' => 'トン',
+            ],
+            2 => [
+                'key' => 'monster_meat',
+                'name' => '怪獣肉',
+                'category' => 'food',
+                'unit' => 'ton',
+                'nutrition_per_unit' => 2,
+                'storable' => true,
+                'tradable' => true,
+                'sale_price_key' => 'sale.monster_meat',
+                'sort_order' => 30,
+                'metadata' => [
+                    'nutrition_is_provisional' => true,
+                ],
+                'unit_label' => 'トン',
+            ],
+            3 => [
+                'key' => 'industrial_goods',
+                'name' => '工業品',
+                'category' => 'industry',
+                'unit' => 'unit',
+                'nutrition_per_unit' => null,
+                'storable' => true,
+                'tradable' => true,
+                'sale_price_key' => 'sale.industrial_goods',
+                'sort_order' => 40,
+                'metadata' => [
+                    'produced_by' => 'factory',
+                ],
+                'unit_label' => 'ユニット',
+            ],
+            4 => [
+                'key' => 'minerals',
+                'name' => '鉱物',
+                'category' => 'material',
+                'unit' => 'ton',
+                'nutrition_per_unit' => null,
+                'storable' => true,
+                'tradable' => true,
+                'sale_price_key' => 'sale.minerals',
+                'sort_order' => 50,
+                'metadata' => [
+                    'produced_by' => 'mine',
+                ],
+                'unit_label' => 'トン',
+            ],
+            5 => [
+                'key' => 'oil',
+                'name' => '石油',
+                'category' => 'energy',
+                'unit' => 'ten_thousand_barrels',
+                'nutrition_per_unit' => null,
+                'storable' => true,
+                'tradable' => true,
+                'sale_price_key' => 'sale.oil',
+                'sort_order' => 60,
+                'metadata' => [
+                    'produced_by' => 'seabed_oil_field',
+                ],
+                'unit_label' => '万バレル',
+            ],
+        ],
+        'resource_sale_prices' => [
+            'sale.wheat' => 1,
+            'sale.fish' => 1,
+            'sale.monster_meat' => 2,
+            'sale.industrial_goods' => 1,
+            'sale.minerals' => 1,
+            'sale.oil' => 2,
+        ],
+        'initial_resources' => [
+            'wheat' => 10000,
+            'fish' => 0,
+            'monster_meat' => 0,
+            'industrial_goods' => 0,
+            'minerals' => 0,
+            'oil' => 0,
+        ],
+        'default_sale_policy' => 'stockpile',
+        'base_money_capacity' => 9999,
+        'base_food_capacity_tons' => 999900,
+        'inventory_sale_rates' => [
+            'wheat' => [
+                'inventory_units' => 1000,
+                'money_units' => 1,
+            ],
+            'fish' => [
+                'inventory_units' => 1000,
+                'money_units' => 1,
+            ],
+            'monster_meat' => [
+                'inventory_units' => 1000,
+                'money_units' => 2,
+            ],
+            'industrial_goods' => [
+                'inventory_units' => 1000,
+                'money_units' => 1,
+            ],
+            'minerals' => [
+                'inventory_units' => 1000,
+                'money_units' => 1,
+            ],
+            'oil' => [
+                'inventory_units' => 1,
+                'money_units' => 2,
+            ],
+        ],
+        'resource_capacities' => [
+            'industrial_goods' => 9999000,
+            'minerals' => 9999000,
+            'oil' => 5000,
+        ],
+        'resource_capacity_overflow' => [
+            'behavior' => 'sell_stockpile_overflow_then_discard_unsold',
+            'applies_after_sale_policy' => true,
+            'converts_unsold_to_money' => false,
+            'event_type' => 'capacity.overflow',
+        ],
+    ],
+    'classification' => [
+        'behavior' => $behavior,
+        'data' => $data,
+        'flavor' => $flavor,
+    ],
+];

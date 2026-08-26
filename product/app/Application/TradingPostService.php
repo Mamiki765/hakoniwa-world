@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\TradingPost\TradingPostRules;
 use App\Domain\World\WorldMutationLock;
 use App\Models\AuctionBid;
@@ -28,6 +29,7 @@ final class TradingPostService
         private readonly NextProductionTurnRunGuard $turnRunGuard,
         private readonly CurrentRulesetGuard $rulesetGuard,
         private readonly SecretaryItemCatalog $items,
+        private readonly SecretaryItemGameplayContract $itemGameplay,
     ) {}
 
     /** @return array<string, mixed> */
@@ -54,6 +56,17 @@ final class TradingPostService
             ->orderBy('ends_turn')
             ->orderBy('id')
             ->get();
+        $viewerBidListingIds = $listings->isEmpty()
+            ? []
+            : array_fill_keys(
+                AuctionBid::query()
+                    ->whereIn('auction_listing_id', $listings->modelKeys())
+                    ->where('bidder_nation_id', $nation->id)
+                    ->pluck('auction_listing_id')
+                    ->map(static fn (mixed $id): int => (int) $id)
+                    ->all(),
+                true,
+            );
 
         $resources = ResourceDefinition::query()
             ->where('tradable', true)
@@ -87,6 +100,7 @@ final class TradingPostService
                     'level' => $item->level,
                     'rarity' => $definition['rarity'],
                     'rarity_label' => $definition['rarity_label'],
+                    'effect_text' => $this->itemGameplay->effectText($ruleset->settings, $item->item_key, $item->level),
                 ];
             }
         }
@@ -101,10 +115,24 @@ final class TradingPostService
             ],
             'permissions' => ['can_mutate' => $canMutate],
             'listings' => $listings->map(
-                fn (AuctionListing $listing): array => $this->presentListing($listing, $nation, $world->current_turn, $rules),
+                fn (AuctionListing $listing): array => $this->presentListing(
+                    $listing,
+                    $nation,
+                    $world->current_turn,
+                    $rules,
+                    $ruleset->settings,
+                    $viewerBidListingIds,
+                ),
             )->all(),
             'my_listings' => $listings->where('seller_nation_id', $nation->id)->map(
-                fn (AuctionListing $listing): array => $this->presentListing($listing, $nation, $world->current_turn, $rules),
+                fn (AuctionListing $listing): array => $this->presentListing(
+                    $listing,
+                    $nation,
+                    $world->current_turn,
+                    $rules,
+                    $ruleset->settings,
+                    $viewerBidListingIds,
+                ),
             )->values()->all(),
             'sellable_resources' => $resources,
             'sellable_items' => $itemOptions,
@@ -504,20 +532,37 @@ final class TradingPostService
         ]);
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>  $rulesetSettings
+     * @param  array<int|string, bool>  $viewerBidListingIds
+     * @return array<string, mixed>
+     */
     private function presentListing(
         AuctionListing $listing,
         Nation $viewer,
         int $currentTurn,
         TradingPostRules $rules,
+        array $rulesetSettings,
+        array $viewerBidListingIds,
     ): array {
         $item = $listing->item_key === null ? null : $this->items->definition($listing->item_key);
+        $itemEffectText = $listing->product_type === 'item'
+            && $listing->item_key !== null
+            && $listing->item_level !== null
+            ? $this->itemGameplay->effectText($rulesetSettings, $listing->item_key, $listing->item_level)
+            : null;
         $sellerName = $listing->seller_type === 'hakoniwa_federation'
             ? $rules->npcSellerName
             : $listing->sellerNation?->name;
         $productName = $listing->product_type === 'resource'
             ? $listing->resourceDefinition?->name
             : $item['name'];
+        $viewerBidStatus = match (true) {
+            $listing->seller_nation_id === $viewer->id => 'seller',
+            $listing->highest_bidder_nation_id === $viewer->id => 'highest',
+            isset($viewerBidListingIds[$listing->id]) => 'outbid',
+            default => 'none',
+        };
 
         return [
             'id' => $listing->id,
@@ -536,6 +581,7 @@ final class TradingPostService
                 'item_level' => $listing->item_level,
                 'rarity' => $item['rarity'] ?? null,
                 'rarity_label' => $item['rarity_label'] ?? null,
+                'effect_text' => $itemEffectText,
             ],
             'start_price' => $listing->start_price,
             'current_price' => $listing->current_price,
@@ -544,6 +590,13 @@ final class TradingPostService
                 : $listing->current_price + $rules->minimumIncrementMoney,
             'bid_count' => $listing->bid_count,
             'highest_bidder_nation_id' => $listing->highest_bidder_nation_id,
+            'highest_bidder' => $listing->highestBidderNation instanceof Nation
+                ? [
+                    'nation_id' => $listing->highestBidderNation->id,
+                    'name' => $listing->highestBidderNation->name,
+                ]
+                : null,
+            'viewer_bid_status' => $viewerBidStatus,
             'started_turn' => $listing->started_turn,
             'ends_turn' => $listing->ends_turn,
             'remaining_turns' => max(0, $listing->ends_turn - $currentTurn),

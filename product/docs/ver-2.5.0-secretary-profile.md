@@ -1,5 +1,9 @@
 # ver 2.5.0 Secretary public profile
 
+> Historical release-slice document. References to a "current" v14/v15 describe ver 2.5.0
+> only. Current application authoring is v16; see
+> [`architecture/current-ruleset-baseline.md`](architecture/current-ruleset-baseline.md).
+
 ## Scope and authority
 
 This is the first ver 2.5.0 profile slice approved by the Owner. The two external PBW pages

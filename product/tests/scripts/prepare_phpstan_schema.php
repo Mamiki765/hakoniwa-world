@@ -29,7 +29,7 @@ $derivedTables = [];
 foreach ($tables as $table) {
     $columns = [];
 
-    foreach (preg_split('/\R/', $table[2]) ?: [] as $line) {
+    foreach (preg_split('/\R/u', $table[2]) ?: [] as $line) {
         $line = trim($line, " \t\n\r\0\x0B,");
 
         if ($line === '' || str_starts_with($line, 'CONSTRAINT ')) {

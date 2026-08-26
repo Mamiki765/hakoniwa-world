@@ -9,3 +9,5 @@ floor(base × (100 + item合計)% × (100 + secretary合計)% × (100 + facility
 `bow`、`clothing`、`accessory`は装備数を制約するカテゴリであり、補正源ジャンルではない。これらの装備効果はすべて`item`ジャンルへ加算する。たとえばitemが`+10%`、`+5%`、`-3%`ならitem合計は`+12%`であり、個々の装備を乗算しない。秘書Lv由来の`secretary +10%`が同時にある場合は`floor(base × 112 × 110 / 10000)`とする。
 
 ver 2.6.0ではこの契約を秘書装備の容量補正と通常怪獣自然出現率補正へ適用する。将来の汎用Modifier framework、優先度、cycle処理はこの限定実装へ含めない。
+
+Ruleset上のstacking方式・rounding・対象はbehavior、percentや上限などの効果量はdataとしてauthoringする。分類規則は[`ruleset-authoring.md`](ruleset-authoring.md)を参照する。本書の補正仕様はこの分類整理では変更しない。

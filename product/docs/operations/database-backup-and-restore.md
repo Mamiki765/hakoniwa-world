@@ -1,5 +1,19 @@
 # PostgreSQL backup and restore
 
+## ver 2.6.1 deployment source boundary
+
+The supported direct source for ver 2.6.1 is a database already migrated to final v16 by
+ver 2.6.0. The 2.6.1 current tree has no direct v15-or-earlier upgrade path and applies no
+business-data migration. If an older source must be advanced, check out the recorded ver
+2.6.0 release, use its supported forward migration to reach final v16, verify that state,
+and only then advance to 2.6.1. Do not copy retired migration PHP into the current tree or
+reconstruct a payload from the Markdown archive.
+
+This boundary does not remove or rewrite the production migration ledger, published
+Ruleset/definition rows, historical World references, request/TurnRun identity, audit data,
+or any other business history. It does not authorize a production backup, restore,
+migration, deploy, or Turn execution.
+
 ## ver 2.5.0 upgrade recovery boundary
 
 The supported direct ver 2.5.0 source is an exact application 2.4.0/v13 database. Before the

@@ -889,10 +889,11 @@ describe('application lobby and island entry', () => {
             seller: { type: 'nation', nation_id: 3, name: '休眠島' },
             product: {
                 type: 'resource', name: '石油', resource_key: 'oil', unit_label: '万バレル',
-                quantity: 50, item_key: null, item_level: null, rarity: null, rarity_label: null,
+                quantity: 50, item_key: null, item_level: null, rarity: null, rarity_label: null, effect_text: null,
             },
             start_price: 100, current_price: null, minimum_bid: 100, bid_count: 0,
-            highest_bidder_nation_id: null, started_turn: 8, ends_turn: 14, remaining_turns: 4,
+            highest_bidder_nation_id: null, highest_bidder: null, viewer_bid_status: 'seller',
+            started_turn: 8, ends_turn: 14, remaining_turns: 4,
             duration_turns: 6, auto_relist: true, relist_count: 1, is_mine: true,
             can_bid: false, can_cancel: true,
         };
@@ -905,10 +906,11 @@ describe('application lobby and island entry', () => {
                 seller: { type: 'hakoniwa_federation', nation_id: null, name: '箱庭連合' },
                 product: {
                     type: 'resource', name: '石油', resource_key: 'oil', unit_label: '万バレル',
-                    quantity: 100, item_key: null, item_level: null, rarity: null, rarity_label: null,
+                    quantity: 100, item_key: null, item_level: null, rarity: null, rarity_label: null, effect_text: null,
                 },
                 start_price: 200, current_price: null, minimum_bid: 200, bid_count: 0,
-                highest_bidder_nation_id: null, started_turn: 10, ends_turn: 16, remaining_turns: 6,
+                highest_bidder_nation_id: null, highest_bidder: null, viewer_bid_status: 'none',
+                started_turn: 10, ends_turn: 16, remaining_turns: 6,
                 duration_turns: 6, auto_relist: false, relist_count: 0, is_mine: false,
                 can_bid: false, can_cancel: false,
             }, dormantOwnListing],
@@ -1002,9 +1004,23 @@ describe('application lobby and island entry', () => {
                     product: {
                         type: 'item', name: '指輪', resource_key: null, unit_label: null, quantity: null,
                         item_key: 'ring', item_level: 3, rarity: 'novice', rarity_label: 'ノービス',
+                        effect_text: '資金繰りの際、追加で3億円を得る。',
                     },
-                    start_price: 300, current_price: null, minimum_bid: 300, bid_count: 0,
-                    highest_bidder_nation_id: null, started_turn: 1, ends_turn: 7, remaining_turns: 6,
+                    start_price: 300, current_price: 300, minimum_bid: 301, bid_count: 1,
+                    highest_bidder_nation_id: 3, highest_bidder: { nation_id: 3, name: '自島' },
+                    viewer_bid_status: 'highest', started_turn: 1, ends_turn: 7, remaining_turns: 6,
+                    duration_turns: 6, auto_relist: false, relist_count: 0, is_mine: false,
+                    can_bid: true, can_cancel: false,
+                }, {
+                    id: 82,
+                    seller: { type: 'nation', nation_id: 7, name: '第二島' },
+                    product: {
+                        type: 'resource', name: '石油', resource_key: 'oil', unit_label: '万バレル',
+                        quantity: 100, item_key: null, item_level: null, rarity: null, rarity_label: null, effect_text: null,
+                    },
+                    start_price: 100, current_price: 200, minimum_bid: 201, bid_count: 2,
+                    highest_bidder_nation_id: 9, highest_bidder: { nation_id: 9, name: '第三島' },
+                    viewer_bid_status: 'outbid', started_turn: 1, ends_turn: 7, remaining_turns: 6,
                     duration_turns: 6, auto_relist: false, relist_count: 0, is_mine: false,
                     can_bid: true, can_cancel: false,
                 }],
@@ -1012,6 +1028,7 @@ describe('application lobby and island entry', () => {
                 sellable_resources: [{ id: 6, key: 'oil', name: '石油', unit_label: '万バレル', amount: 123 }],
                 sellable_items: [{
                     id: 22, key: 'ring', name: '指輪', level: 3, rarity: 'novice', rarity_label: 'ノービス',
+                    effect_text: '資金繰りの際、追加で3億円を得る。',
                 }],
                 contract: {
                     active_listing_limit: 3, minimum_duration_turns: 3, maximum_duration_turns: 84,
@@ -1065,6 +1082,38 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.trading-post-heading h1').text()).toBe('交易場');
         expect(wrapper.get('.trading-post-table').text()).toContain('指輪 Lv3（ノービス）');
         expect(wrapper.get('.trading-post-table').text()).toContain('箱庭連合');
+        expect(wrapper.get('.trading-post-table').text()).toContain('最高額入札者：自島');
+        expect(wrapper.get('.trading-post-table').text()).toContain('あなたが最高額入札中');
+        expect(wrapper.get('.trading-post-table').text()).toContain('入札済み・現在は他国が最高額');
+        expect(wrapper.get('.trading-post-table').text()).toContain('最高額入札者：第三島');
+        expect(wrapper.get('.trading-post-table').text()).not.toContain('資金繰りの際、追加で3億円を得る。');
+        expect(wrapper.get('.trading-post-table').findAll('.item-effect-info-button')).toHaveLength(1);
+        const listingForm = wrapper.get('.trading-post-listing-form');
+        expect(listingForm.findAll('.item-effect-info-button')).toHaveLength(0);
+        await listingForm.findAll('select')[0]!.setValue('item');
+        expect(listingForm.findAll('.item-effect-info-button')).toHaveLength(1);
+        const effectButton = wrapper.get('.trading-post-table .item-effect-info-button');
+        expect(effectButton.attributes('aria-expanded')).toBe('false');
+        await wrapper.get('.trading-post-table .item-effect-info').trigger('mouseenter');
+        expect(wrapper.findAll('[role="tooltip"]')).toHaveLength(1);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await flushPromises();
+        expect(wrapper.findAll('[role="tooltip"]')).toHaveLength(0);
+        expect(document.activeElement).not.toBe(effectButton.element);
+        await effectButton.trigger('focus');
+        expect(effectButton.attributes('aria-expanded')).toBe('true');
+        expect(wrapper.get('[role="tooltip"]').text()).toBe('資金繰りの際、追加で3億円を得る。');
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await flushPromises();
+        expect(wrapper.findAll('[role="tooltip"]')).toHaveLength(0);
+        await effectButton.trigger('click');
+        expect(wrapper.findAll('[role="tooltip"]')).toHaveLength(1);
+        await effectButton.trigger('click');
+        expect(wrapper.findAll('[role="tooltip"]')).toHaveLength(0);
+        await effectButton.trigger('click');
+        document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+        await flushPromises();
+        expect(wrapper.findAll('[role="tooltip"]')).toHaveLength(0);
         expect(wrapper.get('.trading-post-table').text()).toContain('残り6ターン');
         expect(wrapper.get('.trading-post-capacity-note').text()).toContain('預託資金は資金上限の使用量に含まれ');
         expect(wrapper.get('.trading-post-capacity-note').text()).toContain('出品中の資源も保管容量に含まれます');

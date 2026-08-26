@@ -5,14 +5,13 @@ namespace Tests\Feature;
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
 use App\Application\NationCreationService;
-use App\Application\RulesetPublisher;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\Nation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 class NationProfileTest extends TestCase
@@ -155,9 +154,7 @@ class NationProfileTest extends TestCase
         $this->assertSame('', $nation->fresh()->profile_comment);
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'nation.profile_updated')->count());
 
-        $historical = app(RulesetPublisher::class)->publish(
-            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr18-v1'),
-        );
+        $historical = SyntheticHistoricalRulesetSnapshot::create('historical-profile-snapshot-v15', 15);
         $world->update(['ruleset_version_id' => $historical->id]);
         $this->actingAs($owner)->patchJson($endpoint, [
             'owner_name' => '旧World変更',

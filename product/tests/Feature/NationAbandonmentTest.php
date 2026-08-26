@@ -7,14 +7,12 @@ use App\Application\MessageBoardService;
 use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
 use App\Application\NationProfileService;
-use App\Application\RulesetPublisher;
 use App\Application\SalePolicyService;
 use App\Application\WorldExpansionService;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\MessageBoard\MessageBoardValidationException;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\World\MapBounds;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
@@ -40,6 +38,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 final class NationAbandonmentTest extends TestCase
@@ -72,9 +71,7 @@ final class NationAbandonmentTest extends TestCase
         $this->assertSame('active', $nation->fresh()->state);
 
         $currentRulesetId = $world->ruleset_version_id;
-        $historical = app(RulesetPublisher::class)->publish(
-            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v4'),
-        );
+        $historical = SyntheticHistoricalRulesetSnapshot::create('historical-abandonment-snapshot-v15', 15);
         $world->update(['ruleset_version_id' => $historical->id]);
         $this->actingAs($owner)->postJson($endpoint, ['confirmation_name' => $nation->name])
             ->assertConflict()

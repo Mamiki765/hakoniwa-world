@@ -1,5 +1,10 @@
 # ver 2.4.0 Nation dormancy, winter protection, and abandonment
 
+> Historical release record. References to a "current" Ruleset or release below describe
+> the ver 2.4.0 implementation context, not the current application contract. Current
+> authoring is v16; see
+> [`architecture/current-ruleset-baseline.md`](architecture/current-ruleset-baseline.md).
+
 ## Scope and authority
 
 This slice implements the Owner decision supplied for ver 2.4.0. The current

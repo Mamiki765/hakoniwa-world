@@ -8,12 +8,12 @@ use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use App\Services\AssetManifestResolver;
 use DomainException;
-use Tests\Support\V11SecretaryItemRulesetFixture;
+use Tests\Support\CurrentRulesetFixture;
 use Tests\TestCase;
 
 final class MonsterFoundationContractTest extends TestCase
 {
-    public function test_formal_v11_fixture_has_the_exact_ten_species_and_no_new_natural_spawn_members(): void
+    public function test_current_fixture_has_the_exact_ten_species_and_no_new_natural_spawn_members(): void
     {
         $settings = $this->authoringSettings();
 
@@ -47,7 +47,7 @@ final class MonsterFoundationContractTest extends TestCase
         }
     }
 
-    public function test_v11_monster_dispatch_is_one_exact_two_option_contract(): void
+    public function test_current_monster_dispatch_is_one_exact_two_option_contract(): void
     {
         $settings = $this->authoringSettings();
         $dispatches = array_values(array_filter(
@@ -110,13 +110,13 @@ final class MonsterFoundationContractTest extends TestCase
             }
         }
 
-        $settings = V11SecretaryItemRulesetFixture::settings();
+        $settings = CurrentRulesetFixture::settings();
         $settings['monster_definitions'][1]['display_order'] = 0;
         $this->expectException(DomainException::class);
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    public function test_v11_authoring_rejects_a_dispatch_option_whose_monster_definition_is_missing(): void
+    public function test_current_authoring_rejects_a_dispatch_option_whose_monster_definition_is_missing(): void
     {
         $settings = $this->authoringSettings();
         $settings['monster_definitions'] = array_values(array_filter(
@@ -128,7 +128,7 @@ final class MonsterFoundationContractTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    public function test_v11_authoring_requires_the_aoi_c4_baseline_without_forbidding_future_species(): void
+    public function test_current_authoring_requires_the_aoi_c4_baseline_without_forbidding_future_species(): void
     {
         $settings = $this->authoringSettings();
         $settings['monster_definitions'] = array_values(array_filter(
@@ -140,7 +140,7 @@ final class MonsterFoundationContractTest extends TestCase
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    public function test_v11_dispatch_options_require_dispatchable_authored_behaviors(): void
+    public function test_current_dispatch_options_require_dispatchable_authored_behaviors(): void
     {
         $settings = $this->authoringSettings();
         foreach ($settings['monster_definitions'] as &$definition) {
@@ -157,20 +157,20 @@ final class MonsterFoundationContractTest extends TestCase
     public function test_reward_policies_are_ruleset_owned_and_preserve_standard_split(): void
     {
         $resolver = app(MonsterRewardPolicyResolver::class);
-        $v11 = V11SecretaryItemRulesetFixture::settings();
+        $current = CurrentRulesetFixture::settings();
 
         $this->assertSame([
             'policy' => 'standard_split', 'explicitly_authored' => true,
             'killer_share' => 600, 'host_share' => 600, 'unclaimed_share' => 0,
-        ], $resolver->shares($v11, 'inora', 1_200, true));
+        ], $resolver->shares($current, 'inora', 1_200, true));
         $this->assertSame([
             'policy' => 'hostless_full_killer_money', 'explicitly_authored' => true,
             'killer_share' => 1_200, 'host_share' => 0, 'unclaimed_share' => 0,
-        ], $resolver->shares($v11, 'aoi_inora', 1_200, false));
+        ], $resolver->shares($current, 'aoi_inora', 1_200, false));
         $this->assertSame([
             'policy' => 'hostless_full_killer_money', 'explicitly_authored' => true,
             'killer_share' => 600, 'host_share' => 600, 'unclaimed_share' => 0,
-        ], $resolver->shares($v11, 'aoi_inora', 1_200, true));
+        ], $resolver->shares($current, 'aoi_inora', 1_200, true));
     }
 
     public function test_custom_asset_contracts_and_missing_binary_fallback_are_exact(): void
@@ -189,7 +189,7 @@ final class MonsterFoundationContractTest extends TestCase
         }
     }
 
-    public function test_advanced_manual_table_is_derived_from_the_shared_v11_fixture(): void
+    public function test_advanced_manual_table_is_derived_from_the_shared_current_fixture(): void
     {
         $document = file_get_contents(base_path('docs/manual/advanced.md'));
         $this->assertIsString($document);
@@ -199,7 +199,7 @@ final class MonsterFoundationContractTest extends TestCase
         $this->assertIsArray($lines);
         $actualRows = array_slice($lines, 2);
         $expectedRows = [];
-        foreach (V11SecretaryItemRulesetFixture::settings()['monster_definitions'] as $definition) {
+        foreach (CurrentRulesetFixture::settings()['monster_definitions'] as $definition) {
             $maximumHp = $definition['base_hp'] + $definition['hp_variation'];
             $hp = $maximumHp === $definition['base_hp']
                 ? (string) $definition['base_hp']
@@ -223,6 +223,6 @@ final class MonsterFoundationContractTest extends TestCase
     /** @return array<string, mixed> */
     private function authoringSettings(): array
     {
-        return V11SecretaryItemRulesetFixture::settings();
+        return CurrentRulesetFixture::settings();
     }
 }
