@@ -4,11 +4,9 @@ namespace Tests\Feature;
 
 use App\Application\CommandQueueService;
 use App\Application\NationCreationService;
-use App\Application\RulesetPublisher;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -29,6 +27,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 class CommandQueueAndSalePolicyTest extends TestCase
@@ -1054,19 +1053,33 @@ class CommandQueueAndSalePolicyTest extends TestCase
             '対象島主',
         );
         $world = $nation->world()->firstOrFail();
-        $v10 = app(RulesetPublisher::class)->publish(
-            app(RulesetUpgradeAuthoringCatalog::class)->get('hakoniwa-2s-plus-v10'),
-        );
-        $v10Definition = CommandDefinition::query()
-            ->where('ruleset_version_id', $v10->id)
-            ->where('key', 'monster_dispatch')
-            ->sole();
-        $v11Definition = CommandDefinition::query()
+        $v10 = SyntheticHistoricalRulesetSnapshot::create('hakoniwa-2s-plus-v10-db-snapshot', 10);
+        $currentDefinition = CommandDefinition::query()
             ->where('ruleset_version_id', $world->ruleset_version_id)
             ->where('key', 'monster_dispatch')
             ->sole();
+        $legacyMetadata = $currentDefinition->metadata;
+        unset($legacyMetadata['quantity_selects_catalog']);
+        $v10Definition = CommandDefinition::query()->create([
+            'ruleset_version_id' => $v10->id,
+            'key' => $currentDefinition->key,
+            'name' => $currentDefinition->name,
+            'description' => $currentDefinition->description,
+            'target_type' => $currentDefinition->target_type,
+            'target_terrain_keys' => $currentDefinition->target_terrain_keys,
+            'target_facility_keys' => $currentDefinition->target_facility_keys,
+            'requires_empty_facility' => $currentDefinition->requires_empty_facility,
+            'cost_money' => $currentDefinition->cost_money,
+            'required_resources' => $currentDefinition->required_resources,
+            'execution_phase' => $currentDefinition->execution_phase,
+            'result_terrain_key' => $currentDefinition->result_terrain_key,
+            'result_facility_key' => $currentDefinition->result_facility_key,
+            'enabled' => $currentDefinition->enabled,
+            'sort_order' => $currentDefinition->sort_order,
+            'metadata' => $legacyMetadata,
+        ]);
         $this->assertArrayNotHasKey('quantity_selects_catalog', $v10Definition->metadata);
-        $this->assertSame('monster_dispatch_options', $v11Definition->metadata['quantity_selects_catalog']);
+        $this->assertSame('monster_dispatch_options', $currentDefinition->metadata['quantity_selects_catalog']);
 
         $queue = NationCommandQueue::query()->create([
             'nation_id' => $nation->id,
@@ -1087,7 +1100,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
         $item = NationCommandQueueItem::query()->create([
             'nation_command_queue_id' => $queue->id,
-            'command_definition_id' => $v11Definition->id,
+            'command_definition_id' => $currentDefinition->id,
             'request_ruleset_version_id' => $v10->id,
             'queue_position' => 1,
             'target_x' => $capital->x,
@@ -1121,7 +1134,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         );
 
         $this->assertTrue($duplicate['duplicate']);
-        $this->assertSame($v11Definition->id, $duplicate['item']->command_definition_id);
+        $this->assertSame($currentDefinition->id, $duplicate['item']->command_definition_id);
         $this->assertSame($v10->id, $duplicate['item']->request_ruleset_version_id);
         $this->assertSame($fingerprint, $duplicate['item']->request_fingerprint);
         $this->assertSame($immutable, $item->fresh()->only(array_keys($immutable)));
@@ -1820,36 +1833,28 @@ class CommandQueueAndSalePolicyTest extends TestCase
     public function test_future_special_parameter_api_distinguishes_omitted_defaults_from_explicit_null(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('特殊parameter国');
-        $settings = app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr6-v1');
-        $settings['key'] = 'test-special-parameters-v1';
-        foreach ($settings['command_definitions'] as &$definition) {
-            if ($definition['key'] !== 'land_clear') {
-                continue;
-            }
-            $definition['metadata']['parameters'] = [
-                'design_id' => [
-                    'type' => 'integer',
-                    'minimum' => 1,
-                    'maximum' => 9,
-                    'default' => 2,
-                    'required' => true,
-                ],
-                'optional_variant' => [
-                    'type' => 'integer',
-                    'minimum' => 1,
-                    'maximum' => 9,
-                    'required' => false,
-                    'nullable' => true,
-                ],
-            ];
-        }
-        unset($definition);
-        $ruleset = app(RulesetPublisher::class)->publish($settings);
-        config([
-            'hakoniwa.ruleset.key' => $settings['key'],
-            'hakoniwa.ruleset.version' => $settings['version'],
-        ]);
-        $nation->world()->update(['ruleset_version_id' => $ruleset->id]);
+        $definition = CommandDefinition::query()
+            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
+            ->where('key', 'land_clear')
+            ->sole();
+        $metadata = $definition->metadata;
+        $metadata['parameters'] = [
+            'design_id' => [
+                'type' => 'integer',
+                'minimum' => 1,
+                'maximum' => 9,
+                'default' => 2,
+                'required' => true,
+            ],
+            'optional_variant' => [
+                'type' => 'integer',
+                'minimum' => 1,
+                'maximum' => 9,
+                'required' => false,
+                'nullable' => true,
+            ],
+        ];
+        $definition->update(['metadata' => $metadata]);
         $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";

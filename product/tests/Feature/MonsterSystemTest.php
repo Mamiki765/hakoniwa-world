@@ -39,7 +39,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Support\V11SecretaryItemRulesetFixture;
+use Tests\Support\CurrentRulesetFixture;
 use Tests\TestCase;
 
 class MonsterSystemTest extends TestCase
@@ -177,7 +177,7 @@ class MonsterSystemTest extends TestCase
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('多種自然発生国');
         $settings = $ruleset->settings;
-        $template = V11SecretaryItemRulesetFixture::newMonsterDefinitions()[0];
+        $template = CurrentRulesetFixture::newMonsterDefinitions()[0];
         foreach (range(1, 10) as $index) {
             $payload = $template;
             $payload['key'] = "unpooled_monster_{$index}";

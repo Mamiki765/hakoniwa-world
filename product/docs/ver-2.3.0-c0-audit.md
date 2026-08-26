@@ -1,5 +1,9 @@
 # ver 2.3.0 Checkpoint 0 audit
 
+> Historical checkpoint evidence. Any "current v11" wording below is scoped to that
+> checkpoint and is not a current application contract. Current authoring is v16; see
+> [`architecture/current-ruleset-baseline.md`](architecture/current-ruleset-baseline.md).
+
 Status: temporary release-integration evidence. This document audits baseline
 `8dcf2c316c4f7e3646632e7d4e79071e7537d952`; it does not publish v11 or authorize
 implementation, merge, deploy, OCI access, or production DB access. Before the final

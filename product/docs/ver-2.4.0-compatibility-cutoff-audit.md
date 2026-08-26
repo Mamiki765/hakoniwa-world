@@ -1,5 +1,9 @@
 # ver 2.4.0 data-preserving compatibility cutoff audit
 
+> Historical audit. References to "current v11" describe its 2.3.1/2.4.0 evidence baseline,
+> not the current application contract. Current authoring is v16; see
+> [`architecture/current-ruleset-baseline.md`](architecture/current-ruleset-baseline.md).
+
 > Status: documentation-only audit
 >
 > Date: 2026-08-22

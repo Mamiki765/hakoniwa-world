@@ -2,37 +2,22 @@
 
 namespace Tests\Unit;
 
-use App\Domain\Ruleset\RulesetAuthoringCollection;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class RulesetAuthoringValidatorTest extends TestCase
 {
-    public function test_every_retained_authoring_source_passes_the_shared_validator(): void
+    public function test_current_authoring_source_passes_the_shared_validator(): void
     {
         $validator = app(RulesetAuthoringValidator::class);
-        $rulesets = app(RulesetUpgradeAuthoringCatalog::class)->all();
+        $settings = config('hakoniwa.ruleset');
 
-        $this->assertCount(26, $rulesets);
-        foreach ($rulesets as $key => $settings) {
-            $summary = $validator->validate($settings);
-            $this->assertSame($key, $summary['key']);
-            $this->assertSame($settings['version'], $summary['version']);
-            $this->assertSame(count($settings['command_definitions']), $summary['commands']);
-        }
-    }
-
-    public function test_duplicate_authoring_keys_are_rejected(): void
-    {
-        $ruleset = config('hakoniwa.ruleset');
-
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Duplicate ruleset authoring key');
-
-        RulesetAuthoringCollection::fromArrays([$ruleset, $ruleset]);
+        $summary = $validator->validate($settings);
+        $this->assertSame('hakoniwa-2s-plus-v16', $summary['key']);
+        $this->assertSame(16, $summary['version']);
+        $this->assertSame(count($settings['command_definitions']), $summary['commands']);
     }
 
     /**

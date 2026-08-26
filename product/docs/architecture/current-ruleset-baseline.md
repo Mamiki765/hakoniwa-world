@@ -13,7 +13,8 @@ version: 16
 checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
 ```
 
-v16 is the final ver 2.6.0 oil-resource and trading-post payload. It adds `oil` as a normal tradable Nation
+v16 is the final ver 2.6.0 oil-resource and trading-post payload and remains the current
+payload for application ver 2.6.1. It adds `oil` as a normal tradable Nation
 resource measured in ten-thousand-barrel units, with an initial balance of zero, a capacity
 of 5,000 units, a sale rate of 1 unit to 2 internal money units, and the ordinary default
 `stockpile` sale policy. A seabed oil field now credits 500 oil units per Turn through the
@@ -23,7 +24,7 @@ production leaves oil above its individual capacity, the capacity phase offers t
 overflow to the canonical inventory sale planner before discarding only the unsold remainder.
 The same v16 payload authors the player trading-post escrow, 90% seller proceeds
 with floor rounding, the `箱庭連合` NPC listing limits and prices, and the Secretary Item
-`novice` rarity contract. There is no v17 payload or v16-to-v17 migration in ver 2.6.0.
+`novice` rarity contract. There is no v17 payload or v16-to-v17 migration in ver 2.6.1.
 
 Historical v15 remains immutable with formal checksum
 `d361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70` and authored-file
@@ -72,14 +73,10 @@ Current services obtain gameplay from `hakoniwa.ruleset`; Secretary initializati
 current v16 payload directly so historical test execution cannot reintroduce an authored v7
 runtime dependency.
 
-Historical authored files remain available through `RulesetUpgradeAuthoringCatalog` for three
-explicit consumers:
-
-- the historical migration chain, installed only when Laravel emits `MigrationsStarted`;
-- historical migration/contract tests that opt in through an explicit database-fixture
-  concern; and
-- the operator validation command, which reads the catalog directly without installing it
-  into normal application configuration.
+Historical authored PHP, its catalog/bootstrap, and the v11-to-v16 upgrade services and
+migrations are retired from the current tree. Git is the authority for their complete
+implementation. The Markdown archive is only a human-readable index and cannot reconstruct
+or execute a historical payload. `hakoniwa:ruleset:validate` validates current v16 only.
 
 The exact v10 monster-dispatch duplicate-request compatibility remains in the current request
 path. It reads immutable database Ruleset and command-definition snapshots and does not make
@@ -92,29 +89,17 @@ Secretaries, Items, equipment, command/audit/event history, request identity and
 and TurnRun/RNG history remain unchanged. Historical Worlds remain readable and fail closed
 for mutation under the existing current-Ruleset guard.
 
-Fresh install loads the canonical schema dump and publishes only current v16, including the
-oil definition, trading-post listing/bid escrow schema, Secretary Item escrow state, and zero oil balance plus the ordinary default sale policy for every new
-Nation. The immediate gameplay upgrade boundary accepts only exact v15 after a fail-closed
-payload, reference, history, integrity, and global unresolved-TurnRun preflight. It adds oil
-balance zero and the ordinary default policy for each existing Nation, preserves every
-existing resource balance and sale policy, remaps current queued-command, alive-monster, and
-kill-stat references, and advances the production World to v16 in one forward-only
-transaction. The preceding v14-to-v15 boundary accepts exact v14 after the same class of
-fail-closed payload, reference,
-history, integrity, and global unresolved-TurnRun preflight. It adds persistent Secretary
-monster experience and monster-definition `experience_per_damage`, backfills only uniquely
-attributable historical Old Bow final blows with their historical
-`missile_base_experience`, remaps only current queued-command, alive-monster, and kill-stat
-references, and changes the World Ruleset reference without resetting other gameplay data.
-The same v14-to-v15 transaction adds only the missing `forest_management` row at Lv0/EXP0
-for every existing Secretary, preserves all four legacy skill rows, and performs no historical
-logging or planting EXP backfill. Fresh Secretaries start with all five skills. Successful
-logging and planting each award one forest-management EXP; logging income and the Ruleset
-forest `growth_increment` use `floor(base * (100 + Lv) / 100)` before their existing caps.
-It does not rescan historical nonlethal Old Bow damage or reconstruct historical launch-base
-damage. Every existing `map_cells.facility_experience` value is digested before and after the
-upgrade and remains unchanged; actual-damage launch-base experience begins only under v15.
-The preceding exact-v11 rebaseline, v11-to-v12 dormancy, v12-to-v13 KARMA, and v13-to-v14
-Secretary profile conversions remain historical upgrade provenance; see
-`install-upgrade-rebaseline.md`, `../ver-2.4.0-karma-recovery.md`, and
-`../ver-2.5.0-secretary-profile.md`.
+Fresh install loads the canonical final-v16 schema dump, installs/asserts the current
+catalogs, and publishes only current v16. The dump includes oil-compatible resource storage,
+auction listings/bids, Secretary Item escrow, Secretary profile/image preferences, monster
+experience, the KARMA `-30..100` constraint, current indexes, triggers, foreign keys, and the
+applied historical migration ledger. It does not replay historical Ruleset PHP or migrations.
+
+The only supported production source for ver 2.6.1 is a database already migrated to final
+v16 by ver 2.6.0. Applying the current migration set to that source has no pending migration
+and performs no business-data mutation. A v15-or-earlier source must first use the recorded
+ver 2.6.0 Git release to migrate to v16, and only then advance to 2.6.1. The current tree does
+not directly upgrade it. Historical ledger rows, Ruleset/definition rows, World references,
+request provenance/fingerprints, terminal commands, TurnRuns/RNG identity, events/audit,
+monster records/statistics, and Secretary/Item records remain readable database data. The
+current guard continues to fail closed when a historical World is asked to mutate.

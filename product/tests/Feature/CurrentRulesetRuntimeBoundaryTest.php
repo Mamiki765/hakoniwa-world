@@ -5,10 +5,8 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
-use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
 use App\Domain\Ruleset\ResetRequiredException;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
 use App\Models\MapChunk;
@@ -24,6 +22,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 final class CurrentRulesetRuntimeBoundaryTest extends TestCase
@@ -38,8 +37,10 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
         $nation = app(NationCreationService::class)->create($user, $world, '閲覧国', '試験島主');
         $space = $this->surfaceMapSpace($world);
         $chunk = MapChunk::query()->where('map_space_id', $space->id)->orderBy('id')->firstOrFail();
-        $historical = app(RulesetPublisher::class)->publish(
-            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr14-v1'),
+        $historical = SyntheticHistoricalRulesetSnapshot::create(
+            'historical-read-snapshot-v15',
+            15,
+            SyntheticHistoricalRulesetSnapshot::withLegacySecretaryItems(...),
         );
         $world->update(['ruleset_version_id' => $historical->id]);
         $run = TurnRun::query()->create([
@@ -109,9 +110,7 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
             ->where('nation_id', $nation->id)
             ->where('resource_definition_id', $resource->id)
             ->firstOrFail();
-        $historical = app(RulesetPublisher::class)->publish(
-            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr2-v1'),
-        );
+        $historical = SyntheticHistoricalRulesetSnapshot::create('historical-mutation-snapshot-v15', 15);
         $world->update(['ruleset_version_id' => $historical->id]);
         $before = $this->gameState($world, $nation, $item, $policy);
 

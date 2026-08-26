@@ -7,14 +7,14 @@ use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Tests\Support\V11SecretaryItemRulesetFixture;
+use Tests\Support\CurrentRulesetFixture;
 use Tests\TestCase;
 
 final class SecretaryItemGameplayContractTest extends TestCase
 {
-    public function test_formal_v11_contract_validates_and_resolves_exact_player_text(): void
+    public function test_current_contract_validates_and_resolves_exact_player_text(): void
     {
-        $settings = V11SecretaryItemRulesetFixture::settings();
+        $settings = CurrentRulesetFixture::settings();
         $contract = app(SecretaryItemGameplayContract::class);
         $effectCatalog = $contract->validatedEffectCatalog($settings);
 
@@ -86,7 +86,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
     #[DataProvider('invalidContracts')]
     public function test_invalid_or_open_ended_contracts_fail_closed(callable $mutate): void
     {
-        $settings = $mutate(V11SecretaryItemRulesetFixture::settings());
+        $settings = $mutate(CurrentRulesetFixture::settings());
 
         $this->expectException(DomainException::class);
         app(SecretaryItemGameplayContract::class)->validate($settings);

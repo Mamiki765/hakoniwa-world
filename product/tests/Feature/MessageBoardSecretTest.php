@@ -4,8 +4,6 @@ namespace Tests\Feature;
 
 use App\Application\MessageBoardAuditRecorder;
 use App\Application\MessageBoardService;
-use App\Application\RulesetPublisher;
-use App\Domain\Ruleset\RulesetUpgradeAuthoringCatalog;
 use App\Models\AuthIdentity;
 use App\Models\IslandMessage;
 use App\Models\Nation;
@@ -18,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 class MessageBoardSecretTest extends TestCase
@@ -175,9 +174,7 @@ class MessageBoardSecretTest extends TestCase
         $world = $this->lightweightWorld();
         [$owner, $sender] = $this->ownerAndNation($world, '履歴送信島', 500);
         [, $target] = $this->ownerAndNation($world, '履歴受信島', 500);
-        $historical = app(RulesetPublisher::class)->publish(
-            app(RulesetUpgradeAuthoringCatalog::class)->get('roadmap-pr2-v1'),
-        );
+        $historical = SyntheticHistoricalRulesetSnapshot::create('historical-message-board-snapshot-v15', 15);
         $world->update(['ruleset_version_id' => $historical->id]);
 
         $this->actingAs($owner)

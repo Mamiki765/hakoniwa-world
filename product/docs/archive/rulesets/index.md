@@ -22,6 +22,7 @@ past payload from the prose summary.
 - [Current authoring architecture](../../architecture/ruleset-authoring.md) explains the v16
   domain and behavior/data/flavor structure.
 
-The retained historical PHP and upgrade catalog remain present in this stage so the next PR
-can retire them against an already complete archive. Their presence here does not make them
-normal runtime inputs.
+Historical formal/roadmap PHP, its upgrade catalog, and the obsolete upgrade runtime are
+retired from the current tree. Git at the recorded commit/path is the authority for the
+complete implementation. Markdown is not a restore source. Historical database rows remain
+readable and are not deleted or rewritten by this retirement.

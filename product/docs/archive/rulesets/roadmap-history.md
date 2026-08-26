@@ -2,8 +2,8 @@
 
 Roadmap Rulesets are immutable development-stage artifacts. They are not formal production
 Rulesets and must not be mixed into the `hakoniwa-2s-plus-v1` through v16 production history.
-The current runtime does not use them. This stage retains their PHP only for audit and
-upgrade-catalog compatibility; the next rebaseline may retire that runtime authoring.
+The current runtime does not use them. Their PHP and upgrade-catalog path have been retired
+from the current tree; the recorded Git commit/path is the executable authority.
 
 | Artifact | Development stage represented | Git source reference | Historical publication evidence | Current handling |
 |---|---|---|---|---|

@@ -5,6 +5,11 @@
 > immutable v13 for KARMA/recovery. Fresh install now publishes only v13; the immediate
 > supported gameplay transition is exact v12 to v13. See
 > `product/docs/ver-2.4.0-karma-recovery.md`.
+>
+> **Current ver 2.6.1 boundary:** this document is historical architecture. The supported
+> production source is already-final-v16. To upgrade v15 or earlier, check out ver 2.6.0,
+> complete its supported migration to v16, then advance to 2.6.1. The current tree does not
+> execute the historical authored PHP or replay the retired v11-to-v16 migration chain.
 
 ## Historical v11 rebaseline identity
 
@@ -96,19 +101,16 @@ Running the old application in place against the migrated database and a complet
 path are not supported. The backup and restore procedure remains the contract in
 `docs/operations/database-backup-and-restore.md`.
 
-## Historical responsibilities after this PR
+## Current responsibilities after ver 2.6.1 Stage 2
 
-Historical authored PHP is not normal runtime input. `RulesetUpgradeAuthoringCatalog`
-remains the explicit source for operator validation, immutable authoring audit, and the few
-focused tests that prove historical DB rows remain readable while mutation fails closed.
-`hakoniwa:ruleset:validate` continues to validate a historical key while normal config
-contains only v11.
+Historical authored PHP, `RulesetUpgradeAuthoringCatalog`, migration-only runtime services,
+and the remaining v11-to-v16 Ruleset publication/upgrade migrations are retired. Their exact
+implementation remains available only from the recorded Git commits. The current operator
+validator and all normal/test bootstrap paths load current v16 only.
 
-Historical migration PHP, its `MigrationsStarted` bootstrap, and migration-only runtime
-services were retired after the exact-source rebaseline was proven. The schema dump keeps
-the historical migration ledger, so fresh installation does not rediscover or replay those
-files. Existing production has already crossed the exact 2.3.1/v11 source preflight and
-executes only the forward-only ver 2.4.0 rebaseline migration.
+The schema dump contains the final-v16 schema and the applied historical migration ledger,
+so a fresh installation does not rediscover or replay the retired files. Existing production
+must already be at final v16; applying 2.6.1 is a migration no-op for business data.
 
 ## PR D retirement result
 
@@ -119,15 +121,13 @@ The historical-retirement PR removed:
 - historical migration/idempotency suites and obsolete release checkpoint contracts; and
 - normal-test bootstrap that published all 21 authored Rulesets for every fixture.
 
-It retained:
+It retained at that earlier stage:
 
-- historical authored Ruleset PHP and `RulesetUpgradeAuthoringCatalog`;
 - immutable historical database rows and definition links;
-- validation proof that historical authoring is available without restoring it to normal
-  config;
 - historical World read presentation and current mutation fail-closed tests; and
 - exact current fresh-install/source-upgrade, checksum, fingerprint, provenance, TurnRun,
   lock, transaction, and integrity coverage.
 
-Historical authored source is therefore an audit/operator artifact, not an executable
-upgrade chain.
+Stage 2 subsequently retired the historical authored PHP and catalog as listed in
+`ruleset-runtime-retirement.md`. Git, not the current application or Markdown, is the
+authority for the old executable implementation.

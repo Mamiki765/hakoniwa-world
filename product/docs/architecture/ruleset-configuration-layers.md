@@ -6,7 +6,10 @@
 > not create a fourth current classification, and the deferred physical-split decision below
 > was superseded by the checksum-preserving v16 domain-first composition.
 
-この文書はcurrent v11 payloadのfield responsibility mapである。2.3.1では物理splitを実装せず、historical authored payloadとchecksumを一切変更しない。分類は将来変更時のreview境界であり、別fileや別tableがすでに存在するという意味ではない。
+この文書は2.3.1当時のcurrent v11 payloadのfield responsibility mapである。現在の
+contractではなく、上記のv16文書を参照すること。2.3.1では物理splitを実装せず、
+historical authored payloadとchecksumを一切変更しない。分類は当時のreview境界であり、
+別fileや別tableがすでに存在するという意味ではない。
 
 ## Layer definitions
 

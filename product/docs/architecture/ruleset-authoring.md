@@ -89,10 +89,12 @@ therefore expresses behavior.
 
 ## Mechanical validation
 
-`CurrentRulesetAuthoringInspector` is inspection-only. It flattens domain and final payload
-leaves for comparison but never composes runtime settings. A classification selector is
-either a field name or an absolute JSON-pointer-like path where `*` matches one list index.
-The inspector rejects:
+`CurrentRulesetAuthoringInspector` is inspection-only. It owns the semantic classification
+of scalar leaves and never composes runtime settings. It flattens scalar domain and final
+payload leaves for comparison; empty arrays and all container properties are intentionally
+outside that traversal. A classification selector is either a field name or an absolute
+JSON-pointer-like path where `*` matches exactly one numeric list index. It never matches an
+associative key. The inspector rejects:
 
 - a domain with keys other than `payload` and `classification`;
 - a classification other than behavior, data, or flavor;
@@ -102,9 +104,15 @@ The inspector rejects:
 - an unused classification selector; or
 - any domain leaf/value/type that differs from the final payload.
 
-The immutable checksum contract separately proves top-level and nested keys, ordering,
-associative/list shape, scalar types, nulls, and values. Classification metadata is authoring
-metadata and must never appear in the published runtime payload.
+The immutable checksum contract separately owns empty arrays, key presence, top-level and
+nested keys, array order, associative/list shape, scalar types, nulls, and values. Classifying
+all 1,841 scalar leaves does not by itself protect those container contracts. Classification
+metadata is authoring metadata and must never appear in the published runtime payload.
+
+Field-name selectors apply automatically to every present and future leaf with that name.
+Use an absolute path selector for a null sentinel, stable identity, interpretation key, or a
+field whose classification changes by context. A broad field-name selector is appropriate
+only when the same semantic classification is intended everywhere.
 
 ## Change discipline
 

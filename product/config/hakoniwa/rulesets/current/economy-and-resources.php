@@ -1,18 +1,19 @@
 <?php
 
 $behavior = [
-    0 => 'applies_after_sale_policy',
-    1 => 'behavior',
-    2 => 'category',
-    3 => 'converts_unsold_to_money',
-    4 => 'default_sale_policy',
-    5 => 'event_type',
-    6 => 'key',
-    7 => 'produced_by',
-    8 => 'sale_price_key',
-    9 => 'sort_order',
-    10 => 'storable',
-    11 => 'tradable',
+    0 => '/resource_definitions/*/unit',
+    1 => 'applies_after_sale_policy',
+    2 => 'behavior',
+    3 => 'category',
+    4 => 'converts_unsold_to_money',
+    5 => 'default_sale_policy',
+    6 => 'event_type',
+    7 => 'key',
+    8 => 'produced_by',
+    9 => 'sale_price_key',
+    10 => 'sort_order',
+    11 => 'storable',
+    12 => 'tradable',
 ];
 
 $data = [
@@ -39,8 +40,7 @@ $data = [
 $flavor = [
     0 => 'name',
     1 => 'nutrition_is_provisional',
-    2 => 'unit',
-    3 => 'unit_label',
+    2 => 'unit_label',
 ];
 
 return [
