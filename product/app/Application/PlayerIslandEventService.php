@@ -37,11 +37,14 @@ final class PlayerIslandEventService
         'disaster.cell_damaged',
         'capital.disaster_damaged',
         'fire.damaged',
+        'fire.undersea_city_destroyed',
         'oil.income',
         'oil.depleted',
         'population.decreased',
         'resource.food_shortage',
+        'resource.undersea_city_maintenance_failed',
         'famine.applied',
+        'facility.undersea_city_abandoned',
         'facility.riot',
         'resource.automatic_sale',
         'resource.food_overflow_resolved',
@@ -50,6 +53,7 @@ final class PlayerIslandEventService
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
+        'command.undersea_city_built_private',
         'command.decoy_built_private',
         'command.logging_private',
         'command.capital_relocated',
@@ -78,6 +82,7 @@ final class PlayerIslandEventService
         'command.terrain_changed_public',
         'command.forest_planted_public',
         'command.seabed_base_built_public',
+        'command.undersea_city_built_public',
         'command.facility_built_public',
         'command.logging_public',
         'command.capital_relocated_public',
@@ -143,6 +148,10 @@ final class PlayerIslandEventService
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
+        'command.undersea_city_built_private',
+        'resource.undersea_city_maintenance_failed',
+        'facility.undersea_city_abandoned',
+        'fire.undersea_city_destroyed',
         'command.decoy_built_private',
         'command.logging_private',
         'command.monument_launched',
@@ -714,6 +723,7 @@ final class PlayerIslandEventService
             'command.forest_planted_public' => "こころなしか、{$nation}のどこかで森が増えた気がします。",
             'command.logging_public' => "こころなしか、{$nation}のどこかで森が減った気がします。",
             'command.seabed_base_built_public' => "{$nation}で海底基地が建設されたようです(?,?)。",
+            'command.undersea_city_built_public' => "{$nation}で海底都市が建設されたようです(?,?)。",
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
             'command.capital_relocated_public' => sprintf(
                 '%sの首都が(%s,%s)から(%s,%s)へ移転しました。',
@@ -954,7 +964,8 @@ final class PlayerIslandEventService
             'award.granted' => ['nation_name', 'award_key', 'award_name'],
             'command.terrain_changed_public' => ['nation_name', 'command_key', 'x', 'y'],
             'command.forest_planted_public', 'command.logging_public',
-            'command.seabed_base_built_public', 'land_subsidence.triggered',
+            'command.seabed_base_built_public', 'command.undersea_city_built_public',
+            'land_subsidence.triggered',
             'refugee_generated' => ['nation_name'],
             'command.facility_built_public' => [
                 'nation_name', 'facility_key', 'expanded', 'before_scale', 'facility_scale', 'x', 'y',
@@ -1257,6 +1268,10 @@ final class PlayerIslandEventService
             ),
             'fire.prevented' => '周囲の森または記念碑が火災を防ぎました。',
             'fire.damaged' => '火災により施設または都市が荒地になりました。',
+            'fire.undersea_city_destroyed' => sprintf(
+                '%sにあった海底都市は火災により消滅しました。',
+                $this->privateCellLocation($metadata),
+            ),
             'oil.income' => $this->oilIncomeMessage($metadata),
             'oil.depleted' => '海底油田が枯渇し、中立の深海へ戻りました。',
             'settlement.appeared' => sprintf(
@@ -1283,10 +1298,19 @@ final class PlayerIslandEventService
                 '%sで食料が不足しています！',
                 $metadata['nation_name'] ?? $metadata['audience_nation_name'] ?? '自国',
             ),
+            'resource.undersea_city_maintenance_failed' => sprintf(
+                '%sの海底都市は設備維持に必要な工業品または鉱物が不足し、人口が減少しました。',
+                $this->privateCellLocation($metadata),
+            ),
             'famine.applied' => sprintf(
                 '飢餓により人口が%s人減少し、%s人になりました。',
                 number_format($this->integer($metadata, 'actual_loss')),
                 number_format($this->integer($metadata, 'after')),
+            ),
+            'facility.undersea_city_abandoned' => sprintf(
+                '%sにあった海底都市は人口が%s人まで減少し、維持が困難になったため破棄されました。',
+                $this->privateCellLocation($metadata),
+                number_format($this->integer($metadata, 'before_population')),
             ),
             'facility.riot' => sprintf(
                 '暴動により%sが荒地になりました。',
@@ -1395,7 +1419,9 @@ final class PlayerIslandEventService
             'command.missile_base_built_public' => 'こころなしか、どこかで森が増えた気がします。',
             'command.missile_base_built_private' => $this->privateConstructionMessage($metadata, 'ミサイル基地'),
             'command.seabed_base_built_public' => 'どこかで海底基地が建設されたようです(?,?)。',
+            'command.undersea_city_built_public' => 'どこかで海底都市が建設されたようです(?,?)。',
             'command.seabed_base_built_private' => $this->privateConstructionMessage($metadata, '海底基地'),
+            'command.undersea_city_built_private' => $this->privateConstructionMessage($metadata, '海底都市'),
             'command.decoy_built_public' => $this->constructionMessage($metadata, '防衛施設'),
             'command.decoy_built_private' => $this->privateConstructionMessage($metadata, 'ハリボテ'),
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
@@ -1548,6 +1574,7 @@ final class PlayerIslandEventService
         $reason = match ($failureReason) {
             'insufficient_funds', 'insufficient_money' => '資金不足のため実行できませんでした。',
             'insufficient_resource', 'insufficient_resources' => '必要な資源が不足しているため実行できませんでした。',
+            'insufficient_population' => '首都人口が不足しているため実行できませんでした。',
             'missing_adjacent_territory', 'no_adjacent_owned_land' => '隣接する自国領地がないため実行できませんでした。',
             'foreign_adjacent_water' => '他国領に接する水域のため実行できませんでした。',
             'foreign_owned' => '他国領のため実行できませんでした。',
@@ -1665,6 +1692,7 @@ final class PlayerIslandEventService
         $prefix = match ($event['type'] ?? null) {
             'command.forest_planted_private' => 'terrain',
             'command.missile_base_built_private', 'command.seabed_base_built_private',
+            'command.undersea_city_built_private',
             'command.decoy_built_private' => 'facility',
             default => null,
         };
@@ -1683,6 +1711,7 @@ final class PlayerIslandEventService
             'facility.constructed', 'facility.expanded' => $this->ownerCoordinateKey('facility', $event),
             'command.forest_planted_private', 'command.missile_base_built_private' => "forest:{$turn}",
             'command.seabed_base_built_private' => "seabed:{$turn}",
+            'command.undersea_city_built_private' => "undersea-city:{$turn}",
             'command.decoy_built_private' => $this->ownerCoordinateKey('facility', $event),
             'command.logging_private' => "logging:{$turn}",
             'command.capital_relocated' => $this->ownerCoordinateKey('capital', $event),
@@ -1707,6 +1736,7 @@ final class PlayerIslandEventService
             'command.facility_built_public' => $this->ownerCoordinateKey('facility', $event),
             'command.forest_planted_public' => "forest:{$turn}",
             'command.seabed_base_built_public' => "seabed:{$turn}",
+            'command.undersea_city_built_public' => "undersea-city:{$turn}",
             'command.logging_public' => "logging:{$turn}",
             'command.capital_relocated_public' => $this->ownerCoordinateKey('capital', $event),
             'command.attraction_started_public' => "attraction:{$turn}",
@@ -2071,12 +2101,17 @@ final class PlayerIslandEventService
     /** @param array<string, mixed> $metadata */
     private function privateConstructionMessage(array $metadata, string $facility): string
     {
+        return sprintf('%sで%sを建設しました。', $this->privateCellLocation($metadata), $facility);
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function privateCellLocation(array $metadata): string
+    {
         return sprintf(
-            '%s(%s,%s)で%sを建設しました。',
-            $metadata['nation_name'] ?? '自国',
+            '%s(%s,%s)',
+            $metadata['nation_name'] ?? $metadata['audience_nation_name'] ?? '自国',
             number_format($this->integer($metadata, 'x')),
             number_format($this->integer($metadata, 'y')),
-            $facility,
         );
     }
 
@@ -2250,6 +2285,7 @@ final class PlayerIslandEventService
             'build_missile_base' => 'ミサイル基地建設',
             'build_defense_facility' => '防衛施設建設',
             'build_seabed_base' => '海底基地建設',
+            'build_undersea_city' => '海底都市建設',
             'build_monument' => '記念碑建設',
             'build_decoy' => 'ハリボテ建築',
             'missile' => 'ミサイル発射',
@@ -2294,6 +2330,7 @@ final class PlayerIslandEventService
             'seabed_oil_field' => '海底油田',
             'defense' => '防衛施設',
             'seabed_base' => '海底基地',
+            'undersea_city' => '海底都市',
             'monument' => '記念碑',
             'decoy' => 'ハリボテ',
             default => $fallback,

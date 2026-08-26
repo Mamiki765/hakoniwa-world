@@ -556,6 +556,9 @@ final class MissileImpactResolver
         if ($removedFacility === 'seabed_base') {
             return $points['seabed_base_destroyed'];
         }
+        if ($removedFacility === 'undersea_city') {
+            return $points['undersea_city_destroyed'];
+        }
         if (($impact['effect'] ?? null) === 'terrain_destroyed') {
             return $points['land_destroyed'];
         }
@@ -847,8 +850,11 @@ final class MissileImpactResolver
         ?int $queueItemId,
     ): array {
         $resistance = $context->ruleset->settings['military']['seabed_base_resistance'] ?? null;
+        $resistantFacilityKeys = is_array($resistance)
+            ? ($resistance['facility_keys'] ?? [$resistance['facility_key'] ?? null])
+            : [];
         if (is_array($resistance)
-            && $cell->facility?->key === ($resistance['facility_key'] ?? null)
+            && in_array($cell->facility?->key, $resistantFacilityKeys, true)
             && in_array($missileKey, $resistance['ineffective_missile_keys'] ?? [], true)) {
             return [...$base, 'effect' => 'seabed_base_resisted'];
         }

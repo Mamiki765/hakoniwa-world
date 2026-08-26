@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Economy\NationEconomyCalculator;
+use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Nation\NationLifecyclePrepareStateResolver;
 use App\Models\FacilityDefinition;
@@ -17,6 +18,7 @@ final class NationResourceForecastProjection
 {
     public function __construct(
         private readonly NationEconomyCalculator $economy,
+        private readonly UnderseaCityMaintenancePlanner $underseaCityMaintenance,
         private readonly SecretaryTurnService $secretaries,
         private readonly FacilityCapacityService $facilityCapacities,
         private readonly NationLifecyclePrepareStateResolver $prepareState,
@@ -54,8 +56,18 @@ final class NationResourceForecastProjection
         if (! is_string($oilFacilityKey)) {
             throw new DomainException('Published ruleset oil-field settings are invalid.');
         }
+        $maintenanceRules = $ruleset->settings['turn_processing']['undersea_city_maintenance'] ?? null;
+        $underseaCityFacilityKey = is_array($maintenanceRules)
+            ? ($maintenanceRules['facility_key'] ?? null)
+            : null;
+        if ($maintenanceRules !== null && $underseaCityFacilityKey !== 'undersea_city') {
+            throw new DomainException('Published undersea-city maintenance settings are invalid.');
+        }
+        $facilityKeys = array_values(array_unique(array_filter([
+            'factory', 'mine', $oilFacilityKey, $underseaCityFacilityKey,
+        ], 'is_string')));
         $definitions = FacilityDefinition::query()
-            ->whereIn('key', ['factory', 'mine', $oilFacilityKey])
+            ->whereIn('key', $facilityKeys)
             ->get();
         $definitionsByKey = $definitions->keyBy('key');
         $definitionsById = $definitions->keyBy('id');
@@ -67,19 +79,45 @@ final class NationResourceForecastProjection
             || ! $oilField instanceof FacilityDefinition) {
             throw new DomainException('Facility catalog is missing an economy projection definition.');
         }
+        $underseaCity = $underseaCityFacilityKey === null
+            ? null
+            : $definitionsByKey->get($underseaCityFacilityKey);
+        if ($underseaCityFacilityKey !== null && ! $underseaCity instanceof FacilityDefinition) {
+            throw new DomainException('Facility catalog is missing the undersea-city projection definition.');
+        }
         $industrialIds = [
             (int) $factory->id,
             (int) $mine->id,
         ];
         $industrialFacilities = [];
+        $underseaCityCellIds = [];
+        $oilFieldCount = 0;
+        $projectedFacilityIds = array_values(array_unique(array_filter([
+            ...$industrialIds,
+            (int) $oilField->id,
+            $underseaCity instanceof FacilityDefinition ? (int) $underseaCity->id : null,
+        ], 'is_int')));
         $facilityRows = DB::table('map_cells')
             ->where('owner_nation_id', $nation->id)
-            ->whereIn('facility_definition_id', $industrialIds)
+            ->whereIn('facility_definition_id', $projectedFacilityIds)
             ->orderBy('id')
             ->get(['id', 'facility_definition_id', 'facility_scale']);
         foreach ($facilityRows as $row) {
             $definition = $definitionsById->get((int) $row->facility_definition_id);
-            if (! $definition instanceof FacilityDefinition || ! is_numeric($row->facility_scale)) {
+            if (! $definition instanceof FacilityDefinition) {
+                throw new DomainException('Facility catalog is missing an economy projection definition.');
+            }
+            if ($definition->id === $oilField->id) {
+                $oilFieldCount++;
+
+                continue;
+            }
+            if ($underseaCity instanceof FacilityDefinition && $definition->id === $underseaCity->id) {
+                $underseaCityCellIds[] = (int) $row->id;
+
+                continue;
+            }
+            if (! is_numeric($row->facility_scale)) {
                 throw new DomainException('Facility has incomplete workforce capacity state.');
             }
             $industrialFacilities[] = [
@@ -88,10 +126,6 @@ final class NationResourceForecastProjection
                 'capacity' => $this->facilityCapacities->capacityPeople($definition, (int) $row->facility_scale),
             ];
         }
-        $oilFieldCount = DB::table('map_cells')
-            ->where('owner_nation_id', $nation->id)
-            ->where('facility_definition_id', $oilField->id)
-            ->count();
         $economy = $this->economy->calculate(
             $ruleset->settings,
             $effectiveNationState,
@@ -102,6 +136,16 @@ final class NationResourceForecastProjection
             $skillLevels,
         );
         $balancesByKey = $balances->keyBy(fn (NationResource $balance): string => $balance->definition->key);
+        $maintenance = $this->underseaCityMaintenance->plan(
+            $ruleset->settings,
+            (int) $this->balance($balancesByKey, 'industrial_goods')->amount
+                + $economy['industrial_goods_production'],
+            (int) $this->balance($balancesByKey, 'minerals')->amount
+                + $economy['minerals_production'],
+            in_array($effectiveNationState, ['active', 'recovery'], true)
+                ? $underseaCityCellIds
+                : [],
+        );
 
         $wheat = $this->balance($balancesByKey, 'wheat');
         $foodHolding = 0;
@@ -125,8 +169,14 @@ final class NationResourceForecastProjection
                 $balancesByKey,
                 'industrial_goods',
                 $economy['industrial_goods_production'],
+                $maintenance['industrial_goods_consumed'],
             ),
-            $this->resourceRow($balancesByKey, 'minerals', $economy['minerals_production']),
+            $this->resourceRow(
+                $balancesByKey,
+                'minerals',
+                $economy['minerals_production'],
+                $maintenance['minerals_consumed'],
+            ),
             $this->resourceRow($balancesByKey, 'oil', $economy['oil_production']),
         ];
         $population = $economy['population'];
@@ -194,11 +244,15 @@ final class NationResourceForecastProjection
      * @param  Collection<string, NationResource>  $balances
      * @return array{key: string, name: string, production: int, consumption: int, delta: int, holding: int}
      */
-    private function resourceRow(Collection $balances, string $key, int $production): array
-    {
+    private function resourceRow(
+        Collection $balances,
+        string $key,
+        int $production,
+        int $consumption = 0,
+    ): array {
         $balance = $this->balance($balances, $key);
 
-        return $this->row($key, $balance->definition->name, $production, 0, (int) $balance->amount);
+        return $this->row($key, $balance->definition->name, $production, $consumption, (int) $balance->amount);
     }
 
     /** @return array{key: string, name: string, production: int, consumption: int, delta: int, holding: int} */

@@ -898,7 +898,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $resultFacilityDefinitionCount = CommandDefinition::query()
             ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
             ->whereNotNull('result_facility_key')->count();
-        $this->assertSame(9, $resultFacilityDefinitionCount);
+        $this->assertSame(10, $resultFacilityDefinitionCount);
 
         $queries = [];
         DB::listen(static function (QueryExecuted $query) use (&$queries): void {
@@ -1467,6 +1467,33 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertTrue($rivalOwned['applicable']);
         $this->assertSame('currently_unavailable', $rivalOwned['execution_preview_status']);
         $this->assertContains('他国所有の水域は掘削できません。', $rivalOwned['execution_warnings']);
+
+        $target->update(['facility_definition_id' => null, 'owner_nation_id' => null, 'population' => 0]);
+        $neutralPreview = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
+            ->where('target_type', 'cell')
+            ->mapWithKeys(static fn (array $definition): array => [$definition['key'] => [
+                'status' => $definition['execution_preview_status'],
+                'warnings' => $definition['execution_warnings'],
+            ]])
+            ->all();
+
+        foreach (['seabed_base', 'undersea_city'] as $disguisedFacilityKey) {
+            $disguisedFacility = FacilityDefinition::query()->where('key', $disguisedFacilityKey)->firstOrFail();
+            $target->update([
+                'facility_definition_id' => $disguisedFacility->id,
+                'owner_nation_id' => $rival->id,
+                'population' => $disguisedFacilityKey === 'undersea_city' ? 3_000 : 0,
+            ]);
+            $disguisedPreview = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
+                ->where('target_type', 'cell')
+                ->mapWithKeys(static fn (array $definition): array => [$definition['key'] => [
+                    'status' => $definition['execution_preview_status'],
+                    'warnings' => $definition['execution_warnings'],
+                ]])
+                ->all();
+
+            $this->assertSame($neutralPreview, $disguisedPreview, $disguisedFacilityKey);
+        }
     }
 
     public function test_queue_limit_is_enforced_from_the_versioned_ruleset_boundary(): void
@@ -1568,7 +1595,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.quantity_contract.maximum', 99)
             ->assertJsonPath('data.quantity_contract.default', 1)
             ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99])
-            ->assertJsonCount(25, 'data.commands');
+            ->assertJsonCount(26, 'data.commands');
         foreach ($definitions->json('data.commands') as $definition) {
             $this->assertArrayNotHasKey('parameter_schema', $definition);
             $this->assertArrayHasKey('target_type', $definition);

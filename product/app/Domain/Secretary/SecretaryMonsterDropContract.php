@@ -6,7 +6,7 @@ use DomainException;
 
 final class SecretaryMonsterDropContract
 {
-    public const RULESET_KEY = 'hakoniwa-2s-plus-v17';
+    public const RULESET_KEYS = ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18'];
 
     /** @var list<string> */
     public const ELIGIBLE_MONSTERS = [
@@ -28,9 +28,9 @@ final class SecretaryMonsterDropContract
     public function validate(array $settings): void
     {
         $drop = $settings['monster_system']['item_drop'] ?? null;
-        if (($settings['key'] ?? null) !== self::RULESET_KEY) {
+        if (! in_array($settings['key'] ?? null, self::RULESET_KEYS, true)) {
             if ($drop !== null) {
-                throw new DomainException('Secretary monster drops may only be authored by the v17 contract.');
+                throw new DomainException('Secretary monster drops may only be authored by the v17+ contract.');
             }
 
             return;

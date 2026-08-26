@@ -256,6 +256,30 @@ class CommandAndMissileTest extends TestCase
         );
         $this->assertSame(36, (int) $firing->fresh()->karma);
 
+        $underseaCity = $this->ownedWaterFacility($target, 'undersea_city');
+        $underseaCity->update(['population' => 3_000]);
+        $underseaItem = $this->queue(
+            app(CommandQueueService::class), $firingUser, $firing->fresh(), $space,
+            'land_destruction_missile', $underseaCity,
+        );
+        $this->resolvePreparedKarmaMissileTurn(
+            $world,
+            $firing,
+            $target,
+            $base,
+            $underseaItem,
+            $turn++,
+            $this->seedForImpactIndex($underseaItem, $underseaCity, 2, $underseaCity),
+        );
+        $this->assertSame(39, (int) $firing->fresh()->karma);
+        $this->assertSame('sea', $underseaCity->fresh()->terrain()->value('key'));
+        $this->assertNull($underseaCity->fresh()->facility_definition_id);
+        $this->assertNull($underseaCity->fresh()->owner_nation_id);
+        $this->assertSame(0, $underseaCity->fresh()->population);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'karma.missile_impact')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $underseaItem->id])
+            ->whereRaw("metadata->>'crime_points' = '3'")->count());
+
         MapCell::query()->where('owner_nation_id', $target->id)->update(['population' => 0]);
         $capital = MapCell::query()->whereKey($target->capital()->value('map_cell_id'))
             ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
@@ -263,12 +287,73 @@ class CommandAndMissileTest extends TestCase
         $this->resolveKarmaMissileTurn(
             $world, $firingUser, $firing, $target, $base, 'spp_missile', $capital, $turn++,
         );
-        $this->assertSame(38, (int) $firing->fresh()->karma);
+        $this->assertSame(41, (int) $firing->fresh()->karma);
         $capital->refresh()->update(['population' => 100]);
         $this->resolveKarmaMissileTurn(
             $world, $firingUser, $firing, $target, $base, 'spp_missile', $capital, $turn,
         );
-        $this->assertSame(38, (int) $firing->fresh()->karma);
+        $this->assertSame(41, (int) $firing->fresh()->karma);
+
+        $karma = app(KarmaTurnService::class);
+        $territoryTargets = $this->neutralCellsNearTerritory($firing, $space, 3);
+        $expectedKarma = 41;
+        foreach ([
+            [$territoryTargets[0], 'wasteland', $target->id, 1],
+            [$territoryTargets[1], 'wasteland', null, 0],
+            [$territoryTargets[2], 'scorched', $target->id, 0],
+        ] as $index => [$territoryCell, $terrainKey, $ownerNationId, $expectedCrime]) {
+            app(MapCellStateService::class)->setFacility($territoryCell, null);
+            app(MapCellStateService::class)->transitionTerrain(
+                $territoryCell,
+                TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail(),
+            );
+            $territoryCell->owner_nation_id = $ownerNationId;
+            $territoryCell->population = 0;
+            $territoryCell->save();
+            $territoryCell = $territoryCell->fresh(['terrain', 'facility', 'ownerNation']);
+            $territoryItem = $this->queue(
+                app(CommandQueueService::class),
+                $firingUser,
+                $firing->fresh(),
+                $space,
+                'territory_expand',
+                $territoryCell,
+            );
+            $territoryContext = $this->context(
+                $world,
+                19 + $index,
+                hash('sha256', "foreign wasteland karma {$index}"),
+                [$firing->id, $target->id],
+            );
+            $territoryContext->state->setLifecycleNationIds([$firing->id, $target->id]);
+            $karma->prepare($territoryContext);
+            app(SecretaryTurnService::class)->loadAttemptSnapshots($territoryContext, [$firing->id, $target->id]);
+            app(DomesticCommandExecutor::class)->execute($territoryContext);
+            $karma->finalize($territoryContext);
+
+            $this->assertSame('completed', $territoryItem->fresh()->status);
+            $this->assertSame($firing->id, $territoryCell->fresh()->owner_nation_id);
+            $expectedKarma += $expectedCrime;
+            $this->assertSame($expectedKarma, (int) $firing->fresh()->karma);
+            if ($expectedCrime === 1) {
+                $this->assertSame(1, DB::table('audit_events')
+                    ->where('event_type', 'karma.foreign_wasteland_expanded')
+                    ->where('subject_id', $territoryItem->id)->count());
+            }
+        }
+
+        $retryContext = $this->context(
+            $world,
+            22,
+            hash('sha256', 'foreign wasteland completed retry'),
+            [$firing->id, $target->id],
+        );
+        $retryContext->state->setLifecycleNationIds([$firing->id, $target->id]);
+        $karma->prepare($retryContext);
+        app(DomesticCommandExecutor::class)->execute($retryContext);
+        $karma->finalize($retryContext);
+        $this->assertSame(42, (int) $firing->fresh()->karma);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'karma.foreign_wasteland_expanded')->count());
     }
 
     public function test_v13_turn_start_snapshot_freezes_twenty_one_hit_rewards_reductions_and_refugee_bonus(): void
@@ -2262,7 +2347,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v17', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v18', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -2631,6 +2716,20 @@ class CommandAndMissileTest extends TestCase
         $receivingCell->population = $baseMaximum;
         $receivingCell->version++;
         $receivingCell->save();
+        $underseaCity = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereNotIn('id', [$firingCapitalId, $receivingCell->id])
+            ->with(['terrain', 'facility'])->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain(
+            $underseaCity,
+            TerrainDefinition::query()->where('key', 'sea')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $underseaCity,
+            FacilityDefinition::query()->where('key', 'undersea_city')->firstOrFail(),
+        );
+        $underseaCity->population = 3_000;
+        $underseaCity->version++;
+        $underseaCity->save();
         $settlementKeys = $world->rulesetVersion()->sole()->settings['military']['refugees']['settlement_facility_keys'];
         MapCell::query()->where('owner_nation_id', $firing->id)
             ->whereKeyNot($receivingCell->id)
@@ -2682,6 +2781,8 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1_000, $metadata['received_population']);
         $this->assertSame(250, $metadata['unreceived_population']);
         $this->assertSame($effectiveMaximum, $receivingCell->fresh()->population);
+        $this->assertSame(3_000, $underseaCity->fresh()->population);
+        $this->assertSame('undersea_city', $underseaCity->fresh()->facility()->value('key'));
         $this->assertSame(
             $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population'],
             (int) MapCell::query()->whereKey($firingCapitalId)->value('population'),
@@ -3959,6 +4060,168 @@ class CommandAndMissileTest extends TestCase
                     $cityTarget->y,
                 ),
         ));
+    }
+
+    public function test_undersea_city_command_is_atomic_near_territory_retry_safe_and_disguised(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '海底都市国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $nearTargets = $this->neutralCellsNearTerritory($nation, $space, 3);
+        $owned = MapCell::query()->where('owner_nation_id', $nation->id)->get(['x', 'y']);
+        $farTarget = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->orderByDesc('id')->get()
+            ->first(static function (MapCell $candidate) use ($owned): bool {
+                $coordinate = new GridCoordinate($candidate->x, $candidate->y);
+
+                return ! $owned->contains(static fn (MapCell $cell): bool => $coordinate->distanceTo(
+                    new GridCoordinate($cell->x, $cell->y),
+                ) <= 3);
+            });
+        $this->assertInstanceOf(MapCell::class, $farTarget);
+        $sea = TerrainDefinition::query()->where('key', 'sea')->firstOrFail();
+        foreach ([...$nearTargets, $farTarget] as $target) {
+            app(MapCellStateService::class)->setFacility($target, null);
+            app(MapCellStateService::class)->transitionTerrain($target, $sea);
+            $target->owner_nation_id = null;
+            $target->population = 0;
+            $target->save();
+        }
+
+        $capital->update(['population' => 3100]);
+        $nation->update(['money' => 999]);
+        $insufficientFunds = $this->queue(
+            app(CommandQueueService::class),
+            $user,
+            $nation->fresh(),
+            $space,
+            'build_undersea_city',
+            $nearTargets[0],
+        );
+        app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            2,
+            hash('sha256', 'undersea city insufficient funds'),
+            [$nation->id],
+        ));
+        $this->assertSame('insufficient_funds', $insufficientFunds->fresh()->failure_code);
+        $this->assertSame(3100, $capital->fresh()->population);
+        $this->assertNull($nearTargets[0]->fresh()->facility_definition_id);
+        $this->assertSame(1009, (int) $nation->fresh()->money, 'Failed command keeps funds; canonical automatic finance still applies.');
+
+        $capital->update(['population' => 3099]);
+        $nation->update(['money' => 1000]);
+        $insufficientPopulation = $this->queue(
+            app(CommandQueueService::class),
+            $user,
+            $nation->fresh(),
+            $space,
+            'build_undersea_city',
+            $nearTargets[1],
+        );
+        app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            3,
+            hash('sha256', 'undersea city insufficient population'),
+            [$nation->id],
+        ));
+        $this->assertSame('insufficient_population', $insufficientPopulation->fresh()->failure_code);
+        $this->assertSame(3099, $capital->fresh()->population);
+        $this->assertNull($nearTargets[1]->fresh()->facility_definition_id);
+        $this->assertSame(1010, (int) $nation->fresh()->money);
+
+        $capital->update(['population' => 3100]);
+        $nation->update(['money' => 1000]);
+        $tooFar = $this->queue(
+            app(CommandQueueService::class),
+            $user,
+            $nation->fresh(),
+            $space,
+            'build_undersea_city',
+            $farTarget,
+        );
+        app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            4,
+            hash('sha256', 'undersea city too far'),
+            [$nation->id],
+        ));
+        $this->assertSame('missing_adjacent_territory', $tooFar->fresh()->failure_code);
+        $this->assertSame(3100, $capital->fresh()->population);
+        $this->assertNull($farTarget->fresh()->facility_definition_id);
+
+        $nation->update(['money' => 1000]);
+        $builtItem = $this->queue(
+            app(CommandQueueService::class),
+            $user,
+            $nation->fresh(),
+            $space,
+            'build_undersea_city',
+            $nearTargets[2],
+        );
+        app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            5,
+            hash('sha256', 'undersea city success'),
+            [$nation->id],
+        ));
+        $built = $nearTargets[2]->fresh(['terrain', 'facility', 'ownerNation']);
+        $this->assertSame('completed', $builtItem->fresh()->status);
+        $moneyAfterBuild = (int) $nation->fresh()->money;
+        $successMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.success')
+            ->where('subject_id', $builtItem->id)
+            ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1000, $successMetadata['cost_money']);
+        $this->assertSame(100, $capital->fresh()->population);
+        $this->assertSame('sea', $built->terrain->key);
+        $this->assertSame('undersea_city', $built->facility?->key);
+        $this->assertSame($nation->id, $built->owner_nation_id);
+        $this->assertSame(3000, $built->population);
+
+        app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            6,
+            hash('sha256', 'undersea city completed retry'),
+            [$nation->id],
+        ));
+        $this->assertSame($moneyAfterBuild + 10, (int) $nation->fresh()->money,
+            'Retry runs only canonical automatic finance.');
+        $this->assertSame(100, $capital->fresh()->population);
+        $this->assertSame(3000, $built->fresh()->population);
+        $this->assertSame(1, MapCell::query()->where('facility_definition_id', $built->facility_definition_id)->count());
+
+        $owner = app(MapCellPresenter::class)->present($built, $nation->id, 6);
+        $public = app(MapCellPresenter::class)->present($built, null, 6);
+        $this->assertSame(['sea', 'undersea_city', $nation->id], [
+            $owner['terrain'], $owner['facility'], $owner['owner_nation_id'],
+        ]);
+        $this->assertSame(3000, collect($owner['details'])->firstWhere('key', 'population')['value'] ?? null);
+        $this->assertSame(['sea', null, null], [
+            $public['terrain'], $public['facility'], $public['owner_nation_id'],
+        ]);
+        $this->assertNull(collect($public['details'])->firstWhere('key', 'population'));
+
+        $events = app(PlayerIslandEventService::class);
+        $ownerEvents = collect($events->ownerPage($nation->fresh(), 1, 6)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $publicEvents = collect($events->publicNationPage($nation->fresh(), 1, 6)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $this->assertTrue($ownerEvents->contains(
+            fn (array $event): bool => $event['type'] === 'command.undersea_city_built_private'
+                && str_contains($event['message'], "({$built->x},{$built->y})"),
+        ));
+        $publicEvent = $publicEvents->firstWhere('type', 'command.undersea_city_built_public');
+        $this->assertIsArray($publicEvent);
+        $this->assertStringContainsString('(?,?)', $publicEvent['message']);
+        $this->assertStringNotContainsString("({$built->x},{$built->y})", $publicEvent['message']);
+        $this->assertArrayNotHasKey('x', $publicEvent);
+        $this->assertArrayNotHasKey('y', $publicEvent);
+        $publicAuditMetadata = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.undersea_city_built_public')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayNotHasKey('x', $publicAuditMetadata);
+        $this->assertArrayNotHasKey('y', $publicAuditMetadata);
     }
 
     public function test_aid_attraction_and_monster_dispatch_execute_as_nation_commands(): void

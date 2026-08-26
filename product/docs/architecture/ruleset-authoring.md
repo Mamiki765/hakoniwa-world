@@ -2,9 +2,9 @@
 
 ## Purpose and authority
 
-The current application authors one canonical runtime Ruleset: `hakoniwa-2s-plus-v17`.
-The thin entrypoint at `config/hakoniwa/rulesets/hakoniwa-2s-plus-v17.php` explicitly composes
-unchanged fields from immutable v16 and changed fields from the bounded v17 domain fragments.
+The current application authors one canonical runtime Ruleset: `hakoniwa-2s-plus-v18`.
+The thin entrypoint at `config/hakoniwa/rulesets/hakoniwa-2s-plus-v18.php` explicitly composes
+unchanged fields from immutable v17 and changed fields from the bounded v18 domain fragments.
 It does not load an unsupported historical or roadmap Ruleset and does not introduce a
 second runtime schema.
 
@@ -13,16 +13,20 @@ Git is the complete implementation history. The Markdown archive under
 
 ## Domain-first layout
 
-The v16 source remains the complete immutable predecessor. v17 changes only these fragments:
+The v17 source remains the complete immutable predecessor. v18 changes only these fragments:
 
-- `v17/world-and-map.php` (identity only)
-- `v17/turn-pipeline.php`
-- `v17/monsters-and-military.php`
-- `v17/secretary.php`
+- `v18/world-and-map.php` (identity only)
+- `v18/lifecycle-and-karma.php`
+- `v18/terrain-and-disasters.php`
+- `v18/facilities.php`
+- `v18/commands-and-production.php`
+- `v18/turn-pipeline.php`
+- `v18/monsters-and-military.php`
 
 The entrypoint names every final top-level field explicitly and explicitly replaces the
-settlement portion of `turn_processing`. Unchanged world, lifecycle, economy, terrain,
-facilities, commands, disasters, and Trading Post behavior is reused as-is from v16. There is
+changed KARMA, facility, command, settlement, maintenance, disaster, refugee, and military
+portions. Unchanged world generation, economy, Secretary, and Trading Post behavior is reused
+as-is from v17. There is
 no recursive merge, implicit flattening, reflection, generic Ruleset inheritance, or dynamic
 historical catalog.
 
@@ -40,20 +44,21 @@ eligibility, target selection, state transitions, transaction and retry semantic
 timing, RNG stream identity/version, selectors, policy/effect/progression types, stable keys,
 ordering identities, settlement order, and cap application order.
 
-For v17 this includes Item tradability and NPC eligibility, drop eligibility/pools and RNG
-streams, recipient and capacity-check order, bow target/safety/finisher behavior, Collar
-qualifying impacts, skill progression accounting mode and requirement basis, experience
-source, Secretary Suit excluded skill keys, population-limit targets and rounding, and
-historical backfill source policy.
+For v18 this includes the `undersea_city` identity, disguised presentation, sea/territory
+target eligibility, capital-population transfer, fixed settlement identity, refugee exclusion,
+maintenance payment and ordering policies, famine deduplication, minimum-population removal,
+fire/disaster eligibility, missile resistance and destruction classification, and KARMA ledger
+category identities.
 
 ### Data
 
 Data is the value supplied to an unchanged algorithm. It includes probabilities, HP,
 experience, prices, capacities, rates, levels, per-level amounts, weights, and limits.
 
-For v17 this includes the 10,000 triangular multiplier, natural maximum +50 per level,
-attraction maximum +100 per level, Indomitable's 25 basis points per level, the 100-person
-over-cap decline, Item fixed-sale prices, drop weights/caps, and bow probabilities/damage.
+For v18 this includes the 100-billion-yen (`cost_money = 1000`) command cost, 3,100/3,000-person transfer values,
+1,000-unit maintenance bases, 2:1 substitution ratio, 3,000-person minimum, and +3/+1 KARMA
+amounts. Existing settlement growth and famine ranges remain unchanged inputs inherited from
+v17.
 
 ### Flavor
 
@@ -98,7 +103,9 @@ The v16 key, version, full payload, and checksum
 `331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d`
 are immutable. The v17 key, version, full payload, and checksum
 `8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3`
-become immutable when published.
+are immutable. The v18 key, version, full payload, and checksum
+`40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b`
+are immutable after this publication. Later ver 2.8.0 gameplay contracts require v19 or later.
 
 A changed checksum under an already-published identity fails closed. A later gameplay,
 balance, RNG, or persistence-interpretation change requires a new Ruleset identity and a

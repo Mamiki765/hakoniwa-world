@@ -902,6 +902,7 @@ final class CommandQueueService
     }
 
     /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null  $initialState
      * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
      */
     public function projectCellStateBeforePosition(
@@ -910,8 +911,9 @@ final class CommandQueueService
         int $beforePosition,
         Nation $nation,
         MapSpace $mapSpace,
+        ?array $initialState = null,
     ): array {
-        $state = [
+        $state = $initialState ?? [
             'terrain_key' => $cell->terrain->key,
             'facility_key' => $cell->facility?->key,
             'owner_nation_id' => $cell->owner_nation_id,
@@ -972,7 +974,7 @@ final class CommandQueueService
             && $state['facility_key'] !== null) {
             return false;
         }
-        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'excavate'], true)) {
+        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'build_undersea_city', 'excavate'], true)) {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
         }
 
@@ -1198,11 +1200,25 @@ final class CommandQueueService
         return $effects;
     }
 
-    public function validateTarget(Nation $nation, MapSpace $mapSpace, CommandDefinition $definition, MapCell $cell): void
-    {
-        $terrainKey = $cell->terrain->key;
-        $facilityKey = $cell->facility?->key;
-        $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell);
+    /** @param array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null $visibleState */
+    public function validateTarget(
+        Nation $nation,
+        MapSpace $mapSpace,
+        CommandDefinition $definition,
+        MapCell $cell,
+        ?array $visibleState = null,
+    ): void {
+        $state = $visibleState ?? [
+            'terrain_key' => $cell->terrain->key,
+            'facility_key' => $cell->facility?->key,
+            'owner_nation_id' => $cell->owner_nation_id,
+        ];
+        $terrainKey = $state['terrain_key'];
+        $facilityKey = $state['facility_key'];
+        $ownerNationId = $state['owner_nation_id'];
+        $ownerOverbuildEffect = $visibleState === null
+            ? OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell)
+            : OwnerFacilityOverbuildPolicy::effectForState($definition, $nation, $state);
         if ($definition->key === 'territory_expand') {
             $this->validateTerritoryExpansionState(
                 $nation,
@@ -1212,7 +1228,7 @@ final class CommandQueueService
                 [
                     'terrain_key' => $terrainKey,
                     'facility_key' => $facilityKey,
-                    'owner_nation_id' => $cell->owner_nation_id,
+                    'owner_nation_id' => $ownerNationId,
                 ],
                 $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false),
             );
@@ -1236,9 +1252,11 @@ final class CommandQueueService
 
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             $world = $nation->world()->with('rulesetVersion')->firstOrFail();
-            $targetNation = $cell->owner_nation_id === null
+            $targetNation = $ownerNationId === null
                 ? null
-                : $cell->ownerNation;
+                : ($ownerNationId === $cell->owner_nation_id
+                    ? $cell->ownerNation
+                    : Nation::query()->whereKey($ownerNationId)->first());
             if ($targetNation !== null && $targetNation->id !== $nation->id
                 && ($nation->state === 'recovery' || $targetNation->state === 'recovery')) {
                 throw new PlayerFacingCommandException(
@@ -1257,7 +1275,7 @@ final class CommandQueueService
         }
 
         if (in_array($definition->key, ['reclaim'], true)) {
-            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
+            if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の水域は埋め立てできません。');
             }
             if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false)) {
@@ -1266,11 +1284,21 @@ final class CommandQueueService
 
             return;
         }
+        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city'], true)) {
+            if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
+                throw new PlayerFacingCommandException('他国所有の海には建設できません。');
+            }
+            if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 3)) {
+                throw new PlayerFacingCommandException('建設対象の3hex以内に自国領がありません。');
+            }
+
+            return;
+        }
         if ($definition->key === 'excavate' && in_array($terrainKey, ['sea', 'shallow'], true)) {
-            if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
+            if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の水域は掘削できません。');
             }
-            if ($terrainKey === 'sea' && $cell->facility_definition_id !== null) {
+            if ($terrainKey === 'sea' && $facilityKey !== null) {
                 throw new PlayerFacingCommandException('施設のある海では油田探索できません。');
             }
             if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 3)) {
@@ -1279,7 +1307,7 @@ final class CommandQueueService
 
             return;
         }
-        if ($cell->owner_nation_id !== $nation->id) {
+        if ($ownerNationId !== $nation->id) {
             throw new PlayerFacingCommandException('自国領のcellだけを対象にできます。');
         }
     }
