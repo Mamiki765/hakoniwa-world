@@ -157,6 +157,20 @@ final class FirstProductionReleaseTest extends TestCase
         $this->withoutVite();
         config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
 
+        $themePaths = ['/', '/manual', '/community-guidelines'];
+        foreach ($themePaths as $path) {
+            $this->get($path)->assertOk()
+                ->assertSee('<html lang="ja" data-theme="system">', false);
+        }
+        foreach (['system' => 'system', 'light' => 'light', 'dark' => 'dark', 'wat' => 'system'] as $cookie => $expected) {
+            foreach ($themePaths as $path) {
+                $response = $this->withUnencryptedCookie('hakoniwa_theme', $cookie)->get($path);
+                $response->assertOk()
+                    ->assertSee("<html lang=\"ja\" data-theme=\"{$expected}\">", false)
+                    ->assertDontSee('<html lang="ja" data-theme="wat">', false);
+            }
+        }
+
         $this->get('/manual')->assertOk()
             ->assertSee('箱庭諸島２S＋マニュアル')
             ->assertSeeInOrder([
@@ -231,6 +245,13 @@ final class FirstProductionReleaseTest extends TestCase
         }
         $css = file_get_contents(resource_path('css/hakoniwa.css'));
         $this->assertIsString($css);
+        $this->assertStringContainsString('html[data-theme="light"]', $css);
+        $this->assertStringContainsString('html[data-theme="dark"]', $css);
+        $this->assertMatchesRegularExpression(
+            '/@media \(prefers-color-scheme: dark\)\s*\{\s*html\[data-theme="system"\]\s*\{[^}]*color-scheme: dark;/s',
+            $css,
+        );
+        $this->assertStringNotContainsString('filter: invert(', $css);
         $this->assertStringContainsString(
             '.secretary-equipment { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));',
             $css,
@@ -246,6 +267,13 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertStringContainsString(
             '.secretary-warehouse .item-flavor { color: var(--muted); font-style: italic;',
             $css,
+        );
+        $manualCss = file_get_contents(resource_path('css/manual.css'));
+        $this->assertIsString($manualCss);
+        $this->assertStringContainsString('html[data-theme="dark"]', $manualCss);
+        $this->assertMatchesRegularExpression(
+            '/@media \(prefers-color-scheme: dark\)\s*\{\s*html\[data-theme="system"\]\s*\{[^}]*color-scheme: dark;/s',
+            $manualCss,
         );
     }
 }
