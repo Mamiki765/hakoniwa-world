@@ -9,12 +9,16 @@ use App\Application\MonsterDamageService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryBowAttackService;
 use App\Application\SecretaryItemGrantService;
+use App\Application\SecretaryItemSaleService;
 use App\Application\SecretaryOldBowService;
 use App\Application\SecretaryTurnService;
+use App\Application\TradingPostTurnService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
+use App\Models\AuctionBid;
+use App\Models\AuctionListing;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterDefinition;
@@ -938,6 +942,98 @@ final class SecretaryItemEffectsTest extends TestCase
         }
     }
 
+    public function test_auction_delivery_may_overfill_inventory_but_further_drops_wait_until_usage_returns_below_capacity(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '落札予約国');
+        $ruleset = $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+        $secretary = $user->secretary()->sole();
+        $used = $secretary->itemInstances()->count();
+        foreach (range($used + 1, SecretaryItemGrantService::INVENTORY_CAPACITY - 1) as $index) {
+            $secretary->itemInstances()->create([
+                'item_key' => SecretaryItemCatalog::RING,
+                'level' => 1,
+                'equipped_slot' => null,
+                'grant_key' => "test:auction-overfill:{$index}",
+                'obtained_at' => now(),
+            ]);
+        }
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY - 1, $secretary->itemInstances()->count());
+
+        $listing = AuctionListing::query()->create([
+            'world_id' => $world->id,
+            'seller_type' => 'hakoniwa_federation',
+            'product_type' => 'item',
+            'item_key' => SecretaryItemCatalog::RING,
+            'item_level' => 1,
+            'start_price' => 1,
+            'current_price' => 1,
+            'highest_bidder_nation_id' => $nation->id,
+            'bid_count' => 1,
+            'duration_turns' => 3,
+            'started_turn' => 1,
+            'ends_turn' => 4,
+            'auto_relist' => false,
+            'status' => AuctionListing::STATUS_ACTIVE,
+        ]);
+        AuctionBid::query()->create([
+            'auction_listing_id' => $listing->id,
+            'bidder_nation_id' => $nation->id,
+            'amount' => 1,
+            'status' => AuctionBid::STATUS_HIGHEST,
+            'placed_turn' => 1,
+        ]);
+        $nation->update(['money' => 0]);
+
+        $context = $this->context(
+            $world,
+            hash('sha256', 'auction delivery inventory overfill'),
+            [$nation->id],
+            4,
+        );
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
+        $cell = $this->ownedNonCapitalCell($nation);
+        $kill = function () use ($world, $ruleset, $cell, $nation, $context): array {
+            $monster = $this->monster($world, $ruleset, $cell, 1, 'inora');
+            $result = app(MonsterDamageService::class)->applyDamage(
+                $monster,
+                1,
+                'monster_missile',
+                $nation,
+                null,
+                $cell,
+                $context,
+            );
+
+            return [$monster, $result];
+        };
+
+        [, $firstKill] = $kill();
+        $this->assertSame('killed', $firstKill->status);
+        $firstDrop = $secretary->itemInstances()->where('grant_key', 'like', 'monster-drop:v1:%')->sole();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $secretary->itemInstances()->count());
+
+        app(TradingPostTurnService::class)->execute($context);
+        $auctionItem = $secretary->itemInstances()->where('grant_key', 'trading-post:npc:'.$listing->id)->sole();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY + 1, $secretary->itemInstances()->count());
+
+        $kill();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY + 1, $secretary->itemInstances()->count());
+
+        app(SecretaryItemSaleService::class)->sell($user, $world->id, $firstDrop->id);
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $secretary->itemInstances()->count());
+        $kill();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $secretary->itemInstances()->count());
+
+        app(SecretaryItemSaleService::class)->sell($user, $world->id, $auctionItem->id);
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY - 1, $secretary->itemInstances()->count());
+        $kill();
+        $this->assertSame(SecretaryItemGrantService::INVENTORY_CAPACITY, $secretary->itemInstances()->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'monster.item_drop_received')->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'monster.item_drop_inventory_full')->count());
+    }
+
     /** @return array{User, Nation} */
     private function nation(World $world, string $name): array
     {
@@ -1001,12 +1097,12 @@ final class SecretaryItemEffectsTest extends TestCase
     }
 
     /** @param list<int> $nationIds */
-    private function context(World $world, string $seed, array $nationIds): TurnContext
+    private function context(World $world, string $seed, array $nationIds, int $targetTurn = 2): TurnContext
     {
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $run = TurnRun::query()->create([
             'world_id' => $world->id,
-            'target_turn' => 2,
+            'target_turn' => $targetTurn,
             'ruleset_version_id' => $ruleset->id,
             'random_seed' => $seed,
             'source' => 'manual',
@@ -1025,7 +1121,7 @@ final class SecretaryItemEffectsTest extends TestCase
             $world,
             $run,
             $ruleset,
-            2,
+            $targetTurn,
             $seed,
             new TurnRandomStreamFactory($seed),
             $state,
