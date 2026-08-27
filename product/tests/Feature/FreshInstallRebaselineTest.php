@@ -9,6 +9,7 @@ use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
 use App\Application\Ver270SecretaryItemRulesetUpgrade;
+use App\Application\Ver280UnderseaCityRulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
 use App\Domain\World\WorldGenerationProfile;
@@ -39,22 +40,22 @@ final class FreshInstallRebaselineTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_empty_postgresql_uses_direct_current_schema_and_v17_catalog_baseline(): void
+    public function test_empty_postgresql_uses_direct_current_schema_and_v18_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $current = config('hakoniwa.ruleset');
         app(CurrentCatalogInstaller::class)->install($current);
         app(RulesetPublisher::class)->publish($current);
-        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v17')->sole();
+        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v18')->sole();
 
-        $this->assertSame('2.7.0', config('hakoniwa.application_version'));
-        $this->assertSame(['hakoniwa-2s-plus-v17'], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame('hakoniwa-2s-plus-v17', $ruleset->key);
-        $this->assertSame(17, $ruleset->version);
-        $this->assertSame(25, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
+        $this->assertSame('2.8.0', config('hakoniwa.application_version'));
+        $this->assertSame(['hakoniwa-2s-plus-v18'], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame('hakoniwa-2s-plus-v18', $ruleset->key);
+        $this->assertSame(18, $ruleset->version);
+        $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(53, DB::table('migrations')->count());
+        $this->assertSame(54, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -75,6 +76,14 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_26_000000_publish_v17_secretary_item_foundation',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_27_000000_publish_v18_undersea_city',
+        ]);
+        $this->assertDatabaseHas('facility_definitions', [
+            'key' => 'undersea_city',
+            'asset_key' => 'tile.undersea_city',
+            'visibility_policy' => 'disguised',
         ]);
         $oil = ResourceDefinition::query()->where('key', 'oil')->sole();
         $this->assertSame(['石油', 'energy', 'ten_thousand_barrels', '万バレル', true, true, 'sale.oil', 60], [
@@ -214,7 +223,7 @@ SQL);
         $this->assertSame(1, $starter->equipped_slot);
     }
 
-    public function test_already_current_v17_deployment_is_a_business_data_no_op_and_remains_runnable(): void
+    public function test_already_current_v18_deployment_is_a_business_data_no_op_and_remains_runnable(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
         $user = User::factory()->create();
@@ -246,7 +255,7 @@ SQL);
         $this->assertSame([], $this->pendingMigrations());
         $this->assertSame($before, $this->businessSnapshot());
         $this->assertSame($rulesetId, $world->fresh()->ruleset_version_id);
-        $this->assertSame(Ver270SecretaryItemRulesetUpgrade::TARGET_CHECKSUM, $formalChecksum);
+        $this->assertSame(Ver280UnderseaCityRulesetUpgrade::TARGET_CHECKSUM, $formalChecksum);
         $this->assertEquals(config('hakoniwa.ruleset'), $ruleset->fresh()->settings);
         app(RulesetPublisher::class)->assertPublished(config('hakoniwa.ruleset'));
         $this->assertSame(
@@ -261,7 +270,8 @@ SQL);
 
     public function test_exact_v16_to_v17_upgrade_rolls_back_rebinds_by_stable_key_backfills_authoritative_history_and_is_idempotent(): void
     {
-        $targetSettings = config('hakoniwa.ruleset');
+        RulesetVersion::query()->where('key', Ver280UnderseaCityRulesetUpgrade::TARGET_KEY)->delete();
+        $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v17.php');
         $target = RulesetVersion::query()->where('key', Ver270SecretaryItemRulesetUpgrade::TARGET_KEY)->sole();
         $target->delete();
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
@@ -378,6 +388,63 @@ SQL);
             SecretarySkillCatalog::INDOMITABLE,
         ])->where('skill_key', SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY)->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v17_activated')->count());
+    }
+
+    public function test_exact_v17_to_v18_upgrade_rebinds_queued_definitions_and_preserves_request_provenance(): void
+    {
+        $targetSettings = config('hakoniwa.ruleset');
+        RulesetVersion::query()->where('key', Ver280UnderseaCityRulesetUpgrade::TARGET_KEY)->delete();
+        $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v17.php');
+        config([
+            'hakoniwa.ruleset' => $sourceSettings,
+            'hakoniwa.published_rulesets' => [$sourceSettings['key'] => $sourceSettings],
+        ]);
+        $source = app(RulesetPublisher::class)->assertPublished($sourceSettings);
+        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '海底都市移行国', '移行島主');
+        $space = $this->surfaceMapSpace($world);
+        $targetCell = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
+            ->firstOrFail();
+        $queued = app(CommandQueueService::class)->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $space,
+            commandKey: 'land_clear',
+            targetX: $targetCell->x,
+            targetY: $targetCell->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        )['item'];
+        $requestRulesetId = (int) $queued->request_ruleset_version_id;
+        $requestFingerprint = $queued->request_fingerprint;
+        $sourceDefinitionId = (int) $queued->command_definition_id;
+
+        config([
+            'hakoniwa.ruleset' => $targetSettings,
+            'hakoniwa.published_rulesets' => [$targetSettings['key'] => $targetSettings],
+        ]);
+        $this->assertSame('production_v17_to_v18', app(Ver280UnderseaCityRulesetUpgrade::class)->run());
+
+        $target = RulesetVersion::query()->where('key', Ver280UnderseaCityRulesetUpgrade::TARGET_KEY)->sole();
+        $queued->refresh();
+        $this->assertSame($target->id, $world->fresh()->ruleset_version_id);
+        $this->assertNotSame($sourceDefinitionId, (int) $queued->command_definition_id);
+        $this->assertSame('land_clear', $queued->definition()->value('key'));
+        $this->assertSame($target->id, $queued->definition()->value('ruleset_version_id'));
+        $this->assertSame($source->id, $requestRulesetId);
+        $this->assertSame($requestRulesetId, (int) $queued->request_ruleset_version_id);
+        $this->assertSame($requestFingerprint, $queued->request_fingerprint);
+        $this->assertDatabaseHas('command_definitions', [
+            'ruleset_version_id' => $target->id,
+            'key' => 'build_undersea_city',
+            'cost_money' => 1000,
+        ]);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v18_activated')->count());
+        $this->assertSame('already_current_v18', app(Ver280UnderseaCityRulesetUpgrade::class)->run());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v18_activated')->count());
     }
 
     /** @return array<string, string> */

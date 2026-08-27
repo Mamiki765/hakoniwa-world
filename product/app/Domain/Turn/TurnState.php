@@ -29,6 +29,9 @@ final class TurnState
     private array $famineNationIds = [];
 
     /** @var array<int, true> */
+    private array $underseaCityMaintenanceFailureCellIds = [];
+
+    /** @var array<int, true> */
     private array $attractionNationIds = [];
 
     /** @var array<int, true> */
@@ -311,6 +314,23 @@ final class TurnState
     public function famineNationIds(): array
     {
         return array_map('intval', array_keys($this->famineNationIds));
+    }
+
+    public function markUnderseaCityMaintenanceFailure(int $cellId): void
+    {
+        if ($cellId < 1) {
+            throw new InvalidArgumentException('Undersea-city maintenance MapCell ID must be positive.');
+        }
+        $this->underseaCityMaintenanceFailureCellIds[$cellId] = true;
+    }
+
+    public function hasUnderseaCityMaintenanceFailure(int $cellId): bool
+    {
+        if ($cellId < 1) {
+            throw new InvalidArgumentException('Undersea-city maintenance MapCell ID must be positive.');
+        }
+
+        return isset($this->underseaCityMaintenanceFailureCellIds[$cellId]);
     }
 
     public function markAttraction(int $nationId): void

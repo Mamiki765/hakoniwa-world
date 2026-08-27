@@ -7,7 +7,9 @@ use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
 use App\Domain\Turn\TurnContext;
+use App\Models\Nation;
 use App\Models\NationMembership;
+use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretarySkill;
 use DomainException;
@@ -64,21 +66,7 @@ final class SecretaryTurnService
             if (! $secretary instanceof Secretary) {
                 throw new DomainException("Active Nation {$nationId} is missing its User Secretary.");
             }
-            $rows = $secretary->skills->keyBy('skill_key');
-            $skills = [];
-            foreach (array_keys($expected) as $skillKey) {
-                $row = $rows->get($skillKey);
-                if (! $row instanceof SecretarySkill) {
-                    throw new DomainException("Secretary {$secretary->id} is missing skill {$skillKey}.");
-                }
-                $skills[$skillKey] = [
-                    'level' => (int) $row->level,
-                    'experience' => (int) $row->experience,
-                ];
-            }
-            if ($rows->count() !== count($skills)) {
-                throw new DomainException("Secretary {$secretary->id} has an unexpected skill outside the active catalog.");
-            }
+            $skills = $this->validatedSkillStates($secretary, $expected);
             $context->state->setSecretarySnapshot(
                 $nationId,
                 (int) $secretary->id,
@@ -97,6 +85,58 @@ final class SecretaryTurnService
         }
 
         return count($nationIds);
+    }
+
+    /** @return array<string, int> */
+    public function currentSkillLevels(Nation $nation, RulesetVersion $ruleset): array
+    {
+        if ((int) $nation->world()->value('ruleset_version_id') !== (int) $ruleset->id) {
+            throw new DomainException('Secretary projection ruleset does not match the Nation World snapshot.');
+        }
+        if (! isset($ruleset->settings['secretary'])) {
+            return [];
+        }
+        $membership = NationMembership::query()
+            ->where('nation_id', $nation->id)
+            ->where('world_id', $nation->world_id)
+            ->where('role', 'owner')
+            ->with('user.secretary.skills')
+            ->first();
+        $secretary = $membership?->user?->secretary;
+        if (! $secretary instanceof Secretary) {
+            throw new DomainException("Nation {$nation->id} is missing its User Secretary.");
+        }
+        $states = $this->validatedSkillStates(
+            $secretary,
+            $this->catalog->definitions($ruleset->settings),
+        );
+
+        return array_map(static fn (array $state): int => $state['level'], $states);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $expected
+     * @return array<string, array{level: int, experience: int}>
+     */
+    private function validatedSkillStates(Secretary $secretary, array $expected): array
+    {
+        $rows = $secretary->skills->keyBy('skill_key');
+        $skills = [];
+        foreach (array_keys($expected) as $skillKey) {
+            $row = $rows->get($skillKey);
+            if (! $row instanceof SecretarySkill) {
+                throw new DomainException("Secretary {$secretary->id} is missing skill {$skillKey}.");
+            }
+            $skills[$skillKey] = [
+                'level' => (int) $row->level,
+                'experience' => (int) $row->experience,
+            ];
+        }
+        if ($rows->count() !== count($skills)) {
+            throw new DomainException("Secretary {$secretary->id} has an unexpected skill outside the active catalog.");
+        }
+
+        return $skills;
     }
 
     /**

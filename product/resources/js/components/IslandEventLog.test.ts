@@ -33,8 +33,8 @@ describe('IslandEventLog', () => {
             }],
             page: 1,
             anchor_turn: 25,
-            turn_range: { start: 2, end: 25 },
-            turns_per_page: 24,
+            turn_range: { start: 14, end: 25 },
+            turns_per_page: 12,
             has_newer_page: false,
             has_older_page: false,
         } satisfies PlayerIslandEventPage));
@@ -73,7 +73,7 @@ describe('IslandEventLog', () => {
                     importance: 'info', target_turn: 25,
                 }],
             }],
-            page: 1, anchor_turn: 25, turn_range: { start: 2, end: 25 }, turns_per_page: 24,
+            page: 1, anchor_turn: 25, turn_range: { start: 14, end: 25 }, turns_per_page: 12,
             has_newer_page: false, has_older_page: true,
         } satisfies PublicEventPage));
         await flushPromises();
@@ -87,12 +87,12 @@ describe('IslandEventLog', () => {
             .toBe('/api/v1/public/nations/3/events?page=2&anchor_turn=25');
 
         secondRequest.resolve(response({
-            groups: [], page: 2, anchor_turn: 25, turn_range: { start: 1, end: 1 },
-            turns_per_page: 24, has_newer_page: true, has_older_page: false,
+            groups: [], page: 2, anchor_turn: 25, turn_range: { start: 2, end: 13 },
+            turns_per_page: 12, has_newer_page: true, has_older_page: false,
         } satisfies PublicEventPage));
         await flushPromises();
 
-        expect(wrapper.text()).toContain('この24ターンには表示できるログがありません。');
+        expect(wrapper.text()).toContain('この12ターンには表示できるログがありません。');
         expect(wrapper.text()).toContain('2ページ');
     });
 
@@ -101,7 +101,7 @@ describe('IslandEventLog', () => {
             .mockResolvedValueOnce(response(null, 500))
             .mockResolvedValueOnce(response({
                 groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
-                turns_per_page: 24, has_newer_page: false, has_older_page: false,
+                turns_per_page: 12, has_newer_page: false, has_older_page: false,
             } satisfies PlayerIslandEventPage));
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mount(IslandEventLog, { props: { nationId: 3, audience: 'owner' } });

@@ -898,7 +898,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $resultFacilityDefinitionCount = CommandDefinition::query()
             ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
             ->whereNotNull('result_facility_key')->count();
-        $this->assertSame(9, $resultFacilityDefinitionCount);
+        $this->assertSame(10, $resultFacilityDefinitionCount);
 
         $queries = [];
         DB::listen(static function (QueryExecuted $query) use (&$queries): void {
@@ -1467,6 +1467,33 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertTrue($rivalOwned['applicable']);
         $this->assertSame('currently_unavailable', $rivalOwned['execution_preview_status']);
         $this->assertContains('他国所有の水域は掘削できません。', $rivalOwned['execution_warnings']);
+
+        $target->update(['facility_definition_id' => null, 'owner_nation_id' => null, 'population' => 0]);
+        $neutralPreview = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
+            ->where('target_type', 'cell')
+            ->mapWithKeys(static fn (array $definition): array => [$definition['key'] => [
+                'status' => $definition['execution_preview_status'],
+                'warnings' => $definition['execution_warnings'],
+            ]])
+            ->all();
+
+        foreach (['seabed_base', 'undersea_city'] as $disguisedFacilityKey) {
+            $disguisedFacility = FacilityDefinition::query()->where('key', $disguisedFacilityKey)->firstOrFail();
+            $target->update([
+                'facility_definition_id' => $disguisedFacility->id,
+                'owner_nation_id' => $rival->id,
+                'population' => $disguisedFacilityKey === 'undersea_city' ? 3_000 : 0,
+            ]);
+            $disguisedPreview = collect($this->getJson($definitionsPath)->assertOk()->json('data.commands'))
+                ->where('target_type', 'cell')
+                ->mapWithKeys(static fn (array $definition): array => [$definition['key'] => [
+                    'status' => $definition['execution_preview_status'],
+                    'warnings' => $definition['execution_warnings'],
+                ]])
+                ->all();
+
+            $this->assertSame($neutralPreview, $disguisedPreview, $disguisedFacilityKey);
+        }
     }
 
     public function test_queue_limit_is_enforced_from_the_versioned_ruleset_boundary(): void
@@ -1568,7 +1595,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.quantity_contract.maximum', 99)
             ->assertJsonPath('data.quantity_contract.default', 1)
             ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99])
-            ->assertJsonCount(25, 'data.commands');
+            ->assertJsonCount(26, 'data.commands');
         foreach ($definitions->json('data.commands') as $definition) {
             $this->assertArrayNotHasKey('parameter_schema', $definition);
             $this->assertArrayHasKey('target_type', $definition);
@@ -2126,15 +2153,26 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertOk()->assertJsonCount(6, 'data');
         $wheatPolicy = collect($policies->json('data'))->firstWhere('resource_key', 'wheat');
         $oilPolicy = collect($policies->json('data'))->firstWhere('resource_key', 'oil');
+        $this->assertSame([
+            'wheat' => 'トン',
+            'fish' => 'トン',
+            'monster_meat' => 'トン',
+            'industrial_goods' => 'ユニット',
+            'minerals' => 'トン',
+            'oil' => '万バレル',
+        ], collect($policies->json('data'))->pluck('unit_label', 'resource_key')->all());
         $this->assertSame('stockpile', $wheatPolicy['policy']);
+        $this->assertSame('トン', $wheatPolicy['unit_label']);
         $this->assertNotContains('sell_all', $wheatPolicy['allowed_policies']);
         $this->assertSame('stockpile', $oilPolicy['policy']);
+        $this->assertSame('万バレル', $oilPolicy['unit_label']);
         $this->assertContains('sell_all', $oilPolicy['allowed_policies']);
         $this->putJson("/api/v1/nations/{$nation->id}/resources/{$wheat->id}/sale-policy", [
             'policy' => 'sell_all', 'keep_amount' => null, 'expected_version' => 1,
         ])->assertUnprocessable();
         $this->putJson($path, ['policy' => 'sell_all', 'keep_amount' => null, 'expected_version' => 1])
-            ->assertOk()->assertJsonPath('data.policy', 'sell_all')->assertJsonPath('data.version', 2);
+            ->assertOk()->assertJsonPath('data.policy', 'sell_all')
+            ->assertJsonPath('data.unit_label', 'ユニット')->assertJsonPath('data.version', 2);
         $this->putJson($path, ['policy' => 'keep_amount', 'keep_amount' => 25, 'expected_version' => 2])
             ->assertOk()->assertJsonPath('data.keep_amount', 25)->assertJsonPath('data.version', 3);
         $this->putJson($path, ['policy' => 'stockpile', 'keep_amount' => null, 'expected_version' => 2])->assertConflict();

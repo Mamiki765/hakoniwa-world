@@ -260,6 +260,7 @@ export interface Nation {
     farm_capacity_people: number;
     factory_capacity_people: number;
     mine_capacity_people: number;
+    resource_forecast: ResourceForecast;
     food_resources: FoodResource[];
     resources: NationResource[];
     state: 'active' | 'dormant' | 'recovery' | 'abandoned';
@@ -285,6 +286,25 @@ export interface Nation {
     territory_cell_count: number;
     owned_land_cells: number;
     capital: { x: number; y: number } | null;
+}
+
+export interface ResourceForecast {
+    rows: Array<{
+        key: 'food' | 'industrial_goods' | 'minerals' | 'oil';
+        name: string;
+        production: number;
+        consumption: number;
+        delta: number;
+        holding: number;
+    }>;
+    food_holding_note: string;
+    workforce: {
+        status: 'unemployment' | 'saturation';
+        label: '失業率' | '労働力飽和';
+        percentage_tenths: number;
+        population: number;
+        demand: number;
+    };
 }
 
 export interface PublicWorldSummary {
@@ -663,6 +683,7 @@ export interface SalePolicy {
     resource_id: number;
     resource_key: string;
     resource_name: string;
+    unit_label: string | null;
     amount: number;
     policy: 'sell_all' | 'stockpile' | 'keep_amount';
     allowed_policies?: Array<'sell_all' | 'stockpile' | 'keep_amount'>;

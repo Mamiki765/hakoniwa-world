@@ -14,7 +14,9 @@ final class NationLandAreaCalculator
 
     public function forNation(Nation $nation): int
     {
-        return $this->byNation($this->surfaceCells($nation->world_id))[$nation->id] ?? 0;
+        $world = $nation->world()->firstOrFail();
+
+        return $this->forNationIds($world, [$nation->id])[$nation->id] ?? 0;
     }
 
     /** @return array<int, int> */

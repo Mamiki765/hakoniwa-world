@@ -389,6 +389,57 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
     }
 
+    public function test_undersea_city_burns_at_3000_without_forest_or_monument_protection_and_reuses_seabed_disaster_lists(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('海底災害国');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        });
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $neighbors = $center->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y);
+        $forest = $this->cellAt($space, $neighbors[0]->x, $neighbors[0]->y);
+        $monument = $this->cellAt($space, $neighbors[1]->x, $neighbors[1]->y);
+        $this->setCell($target, 'sea', 'undersea_city', $nation->id, 3_000);
+        $this->setCell($forest, 'forest', null, $nation->id, 0);
+        $this->setCell($monument, 'plain', 'monument', $nation->id, 0);
+        $target = $target->fresh(['terrain', 'facility']);
+        $forest = $forest->fresh(['terrain', 'facility']);
+        $monument = $monument->fresh(['terrain', 'facility']);
+        $cellIndex = DisasterMutableCellIndex::fromCells(
+            [$target, $forest, $monument],
+            terrainDefinitions: ['sea' => TerrainDefinition::query()->where('key', 'sea')->firstOrFail()],
+        );
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'undersea fire'), [$nation->id]);
+
+        $this->assertTrue(app(DisasterTurnService::class)->processFire($context, $target, $cellIndex));
+        $burned = $target->fresh(['terrain', 'facility']);
+        $this->assertSame('sea', $burned->terrain->key);
+        $this->assertNull($burned->facility_definition_id);
+        $this->assertSame(0, $burned->population);
+        $this->assertNull($burned->owner_nation_id);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'fire.prevented')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'fire.undersea_city_destroyed',
+            'visibility' => 'private',
+            'subject_id' => $target->id,
+        ]);
+
+        $disasters = $ruleset->settings['turn_processing']['disasters'];
+        $this->assertContains('seabed_base', $disasters['tsunami']['excluded_facility_keys']);
+        $this->assertContains('undersea_city', $disasters['tsunami']['excluded_facility_keys']);
+        $this->assertContains('seabed_base', $disasters['tsunami']['water_facility_keys']);
+        $this->assertContains('undersea_city', $disasters['tsunami']['water_facility_keys']);
+        foreach (['meteor_shower', 'huge_meteor', 'eruption'] as $disasterKey) {
+            $this->assertSame(
+                in_array('seabed_base', $disasters[$disasterKey]['seabed_facility_keys'], true),
+                in_array('undersea_city', $disasters[$disasterKey]['seabed_facility_keys'], true),
+                $disasterKey,
+            );
+        }
+    }
+
     public function test_earthquake_removal_is_visible_to_later_typhoon_protection_checks(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('連続災害国');

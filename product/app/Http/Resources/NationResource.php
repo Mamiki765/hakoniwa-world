@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Application\NationBasicStatusProjection;
+use App\Application\NationResourceForecastProjection;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationCapacityResolver;
@@ -24,6 +25,9 @@ class NationResource extends JsonResource
         $isOwner = $balances !== null;
         $basicStatus = app(NationBasicStatusProjection::class)->forNation($this->resource);
         $foodTotal = $basicStatus['food_total_tons'];
+        $resourceForecast = $balances === null
+            ? null
+            : app(NationResourceForecastProjection::class)->forNation($this->resource, $balances, $basicStatus);
         $capacities = $isOwner
             ? app(NationCapacityResolver::class)->resolve($this->resource)
             : null;
@@ -116,6 +120,7 @@ class NationResource extends JsonResource
             'farm_capacity_people' => $basicStatus['farm_capacity_people'],
             'factory_capacity_people' => $basicStatus['factory_capacity_people'],
             'mine_capacity_people' => $basicStatus['mine_capacity_people'],
+            'resource_forecast' => $this->when($isOwner, $resourceForecast),
             'food_resources' => $this->when($isOwner, fn (): array => $balances
                 ?->filter(fn (NationResourceBalance $balance): bool => $balance->definition->category === 'food')
                 ->map(fn (NationResourceBalance $balance): array => [

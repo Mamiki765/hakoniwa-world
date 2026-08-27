@@ -343,7 +343,7 @@ final class DomesticCommandExecutor
             }
         } elseif ($occupancy !== null) {
             return ['reason' => CommandFailureReason::OccupiedByMonster, 'observed' => $observed];
-        } elseif ($definition->key === 'build_seabed_base') {
+        } elseif (in_array($definition->key, ['build_seabed_base', 'build_undersea_city'], true)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
@@ -352,6 +352,17 @@ final class DomesticCommandExecutor
             }
             if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
                 return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
+            }
+            if ($definition->key === 'build_undersea_city') {
+                $capital = $this->lockedCapitalCell($nation);
+                $minimum = $definition->metadata['minimum_capital_population'] ?? null;
+                $transfer = $definition->metadata['capital_transfer_population'] ?? null;
+                if ($minimum !== 3100 || $transfer !== 3000) {
+                    throw new DomainException('The active ruleset has an invalid undersea-city population transfer contract.');
+                }
+                if ((int) $capital->population < $minimum) {
+                    return ['reason' => CommandFailureReason::InsufficientPopulation, 'observed' => $observed];
+                }
             }
         }
         if ($cell->facility?->key === 'capital'
@@ -374,7 +385,7 @@ final class DomesticCommandExecutor
             if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
                 return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
-        } elseif (! in_array($definition->key, ['territory_expand', 'build_seabed_base'], true)) {
+        } elseif (! in_array($definition->key, ['territory_expand', 'build_seabed_base', 'build_undersea_city'], true)) {
             if ($cell->owner_nation_id !== $nation->id
                 && ! ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true))) {
                 return [
@@ -678,7 +689,7 @@ final class DomesticCommandExecutor
             return true;
         }
         if ($definition->key === 'territory_expand') {
-            $this->applyTerritoryExpand($context, $nation, $cell);
+            $this->applyTerritoryExpand($context, $nation, $item, $cell);
 
             return true;
         }
@@ -788,20 +799,34 @@ final class DomesticCommandExecutor
             is_int($initialExperience) ? $initialExperience : null,
         );
         $monument = null;
-        if ($definition->key === 'build_seabed_base') {
+        $population = 0;
+        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city'], true)) {
             $this->assignNationOwnership($context, $nation, $cell);
+        }
+        if ($definition->key === 'build_undersea_city') {
+            $capital = $this->lockedCapitalCell($nation);
+            $minimum = $definition->metadata['minimum_capital_population'] ?? null;
+            $transfer = $definition->metadata['capital_transfer_population'] ?? null;
+            if ($minimum !== 3100 || $transfer !== 3000 || (int) $capital->population < $minimum) {
+                throw new DomainException('Undersea-city population validation changed while the World transaction was locked.');
+            }
+            $capital->population -= $transfer;
+            $capital->version++;
+            $capital->save();
+            $context->state->markMapChunkChanged($capital->map_chunk_id);
+            $population = $transfer;
         }
         if ($definition->key === 'build_monument') {
             $monument = MonumentDefinition::query()->findOrFail($item->quantity);
             $cell->monument_definition_id = $monument->id;
         }
-        $cell->population = 0;
+        $cell->population = $population;
         $cell->version++;
         $cell->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $constructionVisibility = in_array(
             $definition->key,
-            ['build_missile_base', 'build_seabed_base', 'build_decoy'],
+            ['build_missile_base', 'build_seabed_base', 'build_undersea_city', 'build_decoy'],
             true,
         ) ? 'private' : 'nation';
         $this->events->record($context, $expanded ? 'facility.expanded' : 'facility.constructed', $cell, [
@@ -1000,6 +1025,17 @@ final class DomesticCommandExecutor
 
             return;
         }
+        if ($definition->key === 'build_undersea_city') {
+            if ($expanded) {
+                return;
+            }
+            $this->events->record($context, 'command.undersea_city_built_public', $nation, [
+                'nation_id' => $nation->id, 'nation_name' => $nation->name,
+            ], 'public');
+            $this->events->record($context, 'command.undersea_city_built_private', $cell, $metadata, 'private');
+
+            return;
+        }
         if ($definition->key === 'build_decoy') {
             if ($expanded) {
                 return;
@@ -1087,11 +1123,18 @@ final class DomesticCommandExecutor
         $this->events->record($context, 'command.logging_private', $cell, $metadata, 'private');
     }
 
-    private function applyTerritoryExpand(TurnContext $context, Nation $nation, MapCell $cell): void
-    {
+    private function applyTerritoryExpand(
+        TurnContext $context,
+        Nation $nation,
+        NationCommandQueueItem $item,
+        MapCell $cell,
+    ): void {
         $cell->loadMissing('ownerNation');
         $oldOwnerNationId = $cell->owner_nation_id;
         $oldOwnerNationName = $oldOwnerNationId === null ? '中立' : $cell->ownerNation->name;
+        $foreignWasteland = $oldOwnerNationId !== null
+            && $oldOwnerNationId !== $nation->id
+            && $cell->terrain->key === 'wasteland';
         $this->assignNationOwnership($context, $nation, $cell);
         $cell->version++;
         $cell->save();
@@ -1106,6 +1149,31 @@ final class DomesticCommandExecutor
             'new_owner_nation_name' => $nation->name,
             'ownership_changed' => true,
         ], 'public');
+        if ($foreignWasteland) {
+            $points = $context->ruleset->settings['karma']['foreign_wasteland_territory_expand'] ?? null;
+            if ($points !== 1) {
+                throw new DomainException('The active ruleset has an invalid foreign-wasteland KARMA contract.');
+            }
+            $context->state->addKarmaCrime($nation->id, $points);
+            $this->events->record($context, 'karma.foreign_wasteland_expanded', $item, [
+                'nation_id' => $nation->id,
+                'source_queue_item_id' => $item->id,
+                'target_nation_id' => $oldOwnerNationId,
+                'target_x' => $cell->x,
+                'target_y' => $cell->y,
+                'crime_points' => $points,
+            ], 'admin');
+        }
+    }
+
+    private function lockedCapitalCell(Nation $nation): MapCell
+    {
+        $capital = NationCapital::query()
+            ->where('nation_id', $nation->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        return MapCell::query()->whereKey($capital->map_cell_id)->lockForUpdate()->firstOrFail();
     }
 
     private function territoryExpansionFailure(

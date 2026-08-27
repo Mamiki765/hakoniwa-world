@@ -225,7 +225,7 @@ final class NationCreationService
                         ]);
                     }
                     $this->islands->apply($islandPlan, $mapSpace, $nation);
-                    if (($rules['key'] ?? null) === 'hakoniwa-2s-plus-v17') {
+                    if (in_array($rules['key'] ?? null, ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18'], true)) {
                         $nation->population_high_water = (int) $mapSpace->cells()
                             ->where('owner_nation_id', $nation->id)
                             ->sum('population');

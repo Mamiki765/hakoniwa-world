@@ -61,129 +61,108 @@ handoffへの確定反映は、それらとGitHubの現物、Owner decisionを�
 ## 1.1 一行要約
 
 ```text
-mainはver 2.6.1 / Ruleset v16のまま。
-release/2.7.0ではPR #94と#95がmerge済みで、現在のrelease HEADは
-ffc3386cdac094902d92eda9bd51ce90604bccfd。
-current gameplay Rulesetはhakoniwa-2s-plus-v17 / version 17。
-application versionはrelease finalization前のため2.6.1のまま。
+mainはver 2.7.0 / Ruleset v17、HEADは
+defe2672f2cbeb79e6f77be0c02b3a2793ad73c0。
 
-PR #95は最終head 6b51daca62e7b291f3ee21f6a8108f6bda9d0fd0でQualityとCodex reviewを通過し、
-全review thread解決後にrelease/2.7.0へmerge済み。
+release/2.8.0ではPR #97と#98がmerge済みで、finalization開始時のrelease HEADは
+6f069eab350509eaa5b952534b0e7688054c0fee。application versionをこのfinalizationで
+2.8.0へ確定し、current authored Rulesetはhakoniwa-2s-plus-v18 / version 18。
 
-次はver 2.7.0 finalizationとしてapplication version 2.7.0、
-player manual整理、AGENTS manual-writing policy、integrated handoffを確定し、
-release/2.7.0 → main release PRをfinalized headで検証する。
+release PR #99（release/2.8.0 → main）はopen / finalized exact-head review前。
+productionはOwner確認済みのver 2.7.0 / Ruleset v17であり、2.8.0 deployとv18 migrationは
+PR #99 merge後に別途明示して行う未実施作業。
 ```
 
-## 1.2 main / ver 2.6.1
+## 1.2 main / ver 2.7.0
 
 **GitHub確認**
 
 ```text
 branch: main
-HEAD:   4e7cf209964d2c84698b1361eb52a371b7e91869
-version: 2.6.1
-Ruleset key: hakoniwa-2s-plus-v16
-Ruleset version: 16
-checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
+HEAD:   defe2672f2cbeb79e6f77be0c02b3a2793ad73c0
+version: 2.7.0
+Ruleset key: hakoniwa-2s-plus-v17
+Ruleset version: 17
+checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
 ```
 
-`main`のHEADはPR #93 `release: merge 2.6.1 into main`のmerge commitです。
-merge commitのtreeはrelease head `4a55c66bacfa4078dfad698dfac21bbe7f8f2355`と同一で、integration時の追加source変更はありません。
-
-ver 2.6.1でmainへ入った主要要素:
-
-- current v16 authoringを10 domainへ分割
-- scalar leafをBehavior / Data / Flavorへexactly once分類
-- current-only executable Ruleset runtimeへrebaseline
-- formal v1～v15 / roadmap Ruleset PHP、historical upgrade runtime、適用済みold Ruleset migrationをcurrent treeから退役
-- historical DB rows、provenance、idempotency、audit、historical read compatibilityを保持
-- fresh installをfinal-v16 schema baselineへ直接化
-- already-current v16 DBではbusiness-data no-op
-- development handoff ownership、production migration policy、Ruleset分類のagent guardrailを`AGENTS.md`へ追加
-- 交易場で最高額入札者、自分の入札状態、秘書Item効果を表示
-- v17は作成せず、v16 payload/checksumとgameplay/balance/RNGは維持
+`main`のHEADはPR #96 `release: merge 2.7.0 into main`のmerge commitです。
+ver 2.7.0でmainへ入った主要要素は、theme options / dark mode、immutable Ruleset v17、
+Regular / Cursed Secretary Item、怪獣Item drop、人口skill、Trading Post settlement visibility、
+owner map queue tooltip、canonical Bow execution統一です。
 
 ## 1.3 production / release status
 
 **Owner確認**
 
-Ownerは2026-08-26にver 2.6.1をrelease済みと明示しています。
+Ownerが確認しているproductionはver 2.7.0 / Ruleset v17です。
 
 このhandoff更新ではproductionへSSH接続せず、production DB、TurnRun、web health、official Turnを独立再確認していません。
 productionの現況が必要な作業では、repository stateやapplication versionから推測せず、Ownerの明示確認または許可されたread-only確認を行ってください。
 
-2.6.1はalready-final-v16 DBをsupported sourceとする内部rebaselineであり、新しいRuleset migrationやbusiness-data migrationは追加していません。
-2.6.0までにproductionで確認されたv15→v16 migrationとfinal-v16稼働が、2.6.1 rebaselineの前提でした。
+2.8.0 production deployとv18 migrationは未実施です。PR #99をOwner判断でmergeした後も、
+asset確認、deploy、migration、post-deploy確認を別の明示作業として扱います。
 
-## 1.4 release/2.7.0
+## 1.4 release/2.8.0
 
 **GitHub確認 / Owner指示**
 
 ```text
-branch: release/2.7.0
-HEAD:   ffc3386cdac094902d92eda9bd51ce90604bccfd
-application: 2.6.1（finalization前）
-Ruleset: hakoniwa-2s-plus-v17
-version: 17
-checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
-supported source: exact v16
-v16 checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
+branch: release/2.8.0
+HEAD before finalization: 6f069eab350509eaa5b952534b0e7688054c0fee
+application: 2.8.0（このfinalizationで確定）
+Ruleset: hakoniwa-2s-plus-v18
+version: 18
+checksum: 40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b
+supported source: exact v17
+v17 checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
 ```
 
-`release/2.7.0`はmain `4e7cf209...`から開始し、PR #94とPR #95を取り込みました。
-現在のHEAD `ffc3386...`はPR #95のmerge commitです。
+`release/2.8.0`にはPR #97とPR #98がmerge済みです。PR #99
+`release: merge 2.8.0 into main`は`release/2.8.0 → main`でopenです。
+finalization後のexact head、Quality、Codex reviewはPR #99のGitHub evidenceを正本とします。
 
-PR #94でtheme options / dark modeを追加し、PR #95でimmutable Ruleset v17、Secretary Item、
-monster drop、人口skill、Trading Post event、map queue tooltipを実装しました。
-application versionはfinalization前のため2.6.1を維持しています。
-
-## 1.5 ver 2.6.1 completion evidence
+## 1.5 ver 2.8.0 integration evidence
 
 **GitHub確認**
 
 ```text
-PR #90  refactor: reorganize current Ruleset authoring
-         merged into release/2.6.1
-         merge commit: 8c405395bacd14c3d8c3b4c6ca725caed77c2b70
+PR #97  ver 2.8.0 PR1: 資源まわりの調整
+         final head:   5d8b5f0ab6676034b7ef275d7e19490e91ded555
+         merge commit: e7cfa912844853289b3362aade18c1195eba20d3
 
-PR #91  refactor: rebaseline current v16 and retire historical Ruleset runtime
-         final head:   28196468d0c43c2af9343a3b7fc0ae87f02c3035
-         merge commit: 5a87cc50d5744636334cc4585ac7fc82f8f2ce9a
+PR #98  ver 2.8.0 PR2: 海底都市
+         final head:   d52a415ea22f8cf06be66ccde9f9ea667b743fe1
+         merge commit: 6f069eab350509eaa5b952534b0e7688054c0fee
 
-integrated handoff
-         commit:       6e3a87eb2eebd0e636f223dd8c506f594b88ec3f
-
-PR #92  fix: show trading post bid status and item effects
-         final head:   66ae294a2abc0e903043e4361b3fafe15cf24b44
-         merge commit: 4a55c66bacfa4078dfad698dfac21bbe7f8f2355
-
-PR #93  release: merge 2.6.1 into main
-         release head: 4a55c66bacfa4078dfad698dfac21bbe7f8f2355
-         main merge:   4e7cf209964d2c84698b1361eb52a371b7e91869
+PR #99  release: merge 2.8.0 into main
+         release/2.8.0 → main
+         open / final review前
 ```
 
-Release PR #93:
+PR #98 final head `d52a415ea22f8cf06be66ccde9f9ea667b743fe1`:
 
-- exact-head Quality run `32924183852`: success
-- reviewed commit: `4a55c66bac...`
-- Codex review: major issueなし
+- exact-head Quality run `33022126772`: success
+- Codex exact-head review: major issueなし（reviewed commit `d52a415ea2`）
+- dormant Nationのmaintenance forecastを除外するP2は`056d28c880...`で修正済み
+- disguised facilityがcommand previewから漏れるP1は`3151132361...`でviewer-safe stateへ修正済み
+- foreign `seabed_base` / `undersea_city`双方のneutral sea同値regressionは`d52a415...`で追加済み
+- raw locked execution / revalidation contractは変更なし
 - unresolved review thread: 0
-- merge後のmain treeはreview済みrelease head treeと同一
-
-PR #91で発見されたwildcard selector P2は`28196468...`で修正済みです。
-PR #92で発見されたhover-open tooltipがEscape直後に再表示されるP2も`66ae294...`で修正され、回帰testとexact-head Qualityを通過しています。
 
 ## 1.6 直近の作業順
 
-1. ver 2.7.0 finalizationとしてapplication versionを2.7.0へ確定する
-2. `AGENTS.md`へplayer manual writing policyを追加し、advanced manualのKARMA / recovery説明をplayer-facingに整理する
-3. integrated handoffを2.7.0 current stateへ更新する
-4. finalized exact headでQualityとCodex reviewを完了する
-5. `release/2.7.0 → main` release PRをfinalized headで確認し、Owner判断後にだけmergeする
-6. Codex / implementation agentはhandoffをread-onlyとして扱い、Ownerが明示した場合だけ更新する
+1. application version 2.8.0 finalization
+2. integrated handoff更新
+3. finalized exact-head Quality
+4. finalized exact-head Codex review
+5. PR #99をOwner判断でmerge
+6. production asset `undersea-city.gif`確認
+7. production deploy
+8. v18 migration
+9. post-deploy確認
 
-production deploy、migration、backup、Turn操作はrepository開発と別の明示作業として扱ってください。
+この作業では4までを完了対象とし、merge、asset配置、deploy、migration、post-deploy操作は行いません。
 
 ---
 
@@ -1068,6 +1047,63 @@ reviewで事故防止上重要だった経緯:
 
 ---
 
+# 3.18 ver 2.8.0 — 資源推計、海底都市、Ruleset v18
+
+## PR #97: 資源まわりの調整
+
+- owner resource forecastへ食料 / 工業品 / 鉱物 / 石油の生産 / 消費 / 予測 / 所持を追加
+- 食料所持はresource definitionのnutrition換算
+- 失業率 / 労働力飽和を表示
+- Turnとowner APIでside-effect-free canonical economy calculatorを共有
+- owner APIはaggregate / current-state inputだけを収集し、Turn simulatorや全MapCell hydrateを行わない
+- 資源売却UIへcanonical unit labelを表示
+- owner / public Nation event windowを24 Turnから12 Turnへ変更
+- public World event windowは2 Turnのまま
+- Nation詳細欄をKARMA、capacity、食料内訳中心へ整理
+
+## PR #98: 海底都市 / Ruleset v18
+
+- immutable Ruleset v18とexact v17→v18 forward migration
+- 過去のver 2.7.0 upgradeはtargetを明示的なv17 snapshotへ固定
+- `undersea_city`は施設のないseaへ1000億円で建設し、自国領から3hex以内を要求
+- 首都人口3100人以上から3000人を移住し、海底都市人口3000人で開始
+- 通常集落の人口増加を再利用し、自然増加上限10000、誘致上限20000
+- Nation総人口と通常食料消費へ含むが、陸地面積や難民受入先には含めない
+- 1都市ごとに工業品1000 + 鉱物1000 / Turnを維持費として消費
+- 片方の不足は、もう片方の基本分を確保した余剰から2:1で代替
+- 満額を払えない都市は両資源とも消費0で、その都市だけへcanonical famine相当の人口減少
+- 通常飢餓とのpopulation lossは二重適用せず、人口3000は存続、3000未満で破棄
+- 火災では即消滅し、森 / 記念碑による防止なし
+- 火災以外の災害分類は`seabed_base`と同一
+- disguised facilityとして非owner / publicには通常のneutral seaを提示
+- command previewもviewer-safe stateを初期値にし、秘密施設の有無やownerをwarning/statusから漏らさない
+- raw locked execution / revalidationは変更しない
+- 陸地破壊弾で破壊可能、foreign undersea city破壊でcanonical KARMA ledgerへ+3
+- foreign-owned wastelandの領土拡張成功時だけ同ledgerへ+1
+- `tile.undersea_city`は`undersea-city.gif`へ解決
+
+Ruleset identity:
+
+```text
+current: hakoniwa-2s-plus-v18 / 18
+checksum: 40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b
+
+supported source: hakoniwa-2s-plus-v17 / 17
+checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+```
+
+v17 payload / checksumは不変です。v18はpublish対象のimmutable gameplay contractであり、
+船、探索、海底財宝、視界、海洋系秘書skillなどの将来候補はv18を書き換えずv19以降で扱います。
+
+productionへ実画像はこのrelease sourceから追加しません。期待pathは
+`/srv/hakoniwa-assets/tiles/undersea-city.gif`で、配置 / 確認はOwnerの別作業です。
+
+PR #98 final head `d52a415ea22f8cf06be66ccde9f9ea667b743fe1`はQuality run
+`33022126772`を通過し、Codex exact-head reviewはmajor issueなし、P2 maintenance forecastと
+P1 disguised command-preview leakはいずれも修正済み、unresolved review threadは0です。
+
+---
+
 # 4. 設計方針がどう変化したか
 
 ## 4.1 Ruleset
@@ -1105,6 +1141,13 @@ reviewで事故防止上重要だった経緯:
 - v16は直前supported migration sourceとしてexact immutable保持
 - 新gameplayはv17だけへ追加
 - application versionとRuleset gameplay identityは別にfinalize可能
+
+### 2.8.0
+
+- current Rulesetはv18
+- v17は直前supported migration sourceとしてexact immutable保持
+- v17→v18 upgradeはqueued definitionをstable keyでrebindし、request provenanceを保持
+- v18は公開後immutableで、後続gameplay contractはv19以降へ追加
 
 ## 4.2 Migration
 
@@ -1200,28 +1243,32 @@ production canonical pathから外れた旧serviceを直接試験して、
 ## 5.1 current identity
 
 ```text
-application main: 2.6.1
-main HEAD: 4e7cf209964d2c84698b1361eb52a371b7e91869
+application main: 2.7.0
+main HEAD: defe2672f2cbeb79e6f77be0c02b3a2793ad73c0
+main Ruleset: hakoniwa-2s-plus-v17 / 17
 
-current development branch: release/2.7.0
+current development branch: release/2.8.0
 release HEAD before finalization:
-  ffc3386cdac094902d92eda9bd51ce90604bccfd
+  6f069eab350509eaa5b952534b0e7688054c0fee
 
-application on release branch: 2.6.1
-planned final application version: 2.7.0
+application on finalized release branch: 2.8.0
 
-current Ruleset:
-  key: hakoniwa-2s-plus-v17
-  version: 17
-  checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+current authored Ruleset:
+  key: hakoniwa-2s-plus-v18
+  version: 18
+  checksum: 40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b
 
 supported migration source:
-  hakoniwa-2s-plus-v16 / 16
-  checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
+  hakoniwa-2s-plus-v17 / 17
+  checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+
+open release PR:
+  #99 release/2.8.0 -> main
 ```
 
-release branchではv17 gameplay contractまで実装済みです。
-application versionはfinalizationで2.7.0へ確定するまで2.6.1を維持します。
+release branchではv18 gameplay contractとapplication version 2.8.0まで実装済みです。
+productionはOwner確認済みver 2.7.0 / Ruleset v17であり、repository finalizationと
+production releaseを同一視しません。
 
 ## 5.2 deterministic Turn
 
@@ -1281,6 +1328,10 @@ publicへ漏らさない:
 
 public eventはevent発生時点のsafe snapshotを使い、
 後からcurrent map owner等を推測しない。
+
+disguised `seabed_base` / `undersea_city`のcommand previewは、非ownerに見える
+neutral sea stateからown queued command projectionを重ねます。実Turnのraw locked
+revalidationはこのpresentation境界と分離します。
 
 ## 5.5 production safety
 
@@ -1388,35 +1439,36 @@ auctionは2.6.0の交易場として実装されました。
 
 # 7. 現在の残件
 
-## 7.1 ver 2.7.0 finalization
+## 7.1 ver 2.8.0 release finalization
 
-残件:
+release直前の順序:
 
-- application versionを2.7.0へ確定
-- `AGENTS.md`へplayer manual writing policyを追加
-- advanced manualのKARMA / recovery説明をplayer-facingに簡略化
-- integrated handoffを2.7.0 current stateへ更新
-- finalized exact-head Quality
-- Codex review
-- `release/2.7.0 → main` release PRをfinalized headで確認
-- Owner判断後のmerge
+1. application version 2.8.0 finalization
+2. integrated handoff更新
+3. finalized exact-head Quality
+4. finalized exact-head Codex review
+5. PR #99をOwner判断でmerge
+6. production asset `undersea-city.gif`配置 / 確認
+7. production deploy
+8. v18 migration
+9. post-deploy確認
 
-Player manualは「プレイヤーが判断を変える情報」を優先し、内部処理を網羅しません。
-処理順、RNG消費、fail-close、transaction、稀な競合例外は、
-操作判断や目に見える挙動の理解に必要な場合だけ記載します。
+このrepository finalization作業は1～4だけを実行します。5～9はOwnerの別の明示作業です。
+production期待pathは`/srv/hakoniwa-assets/tiles/undersea-city.gif`で、repositoryへ実画像や
+placeholderを追加しません。
 
-事前に知らなくても不利益・操作不能にならず、
-実際のプレイ中に観察して理解できる挙動は、
-原則としてmanualへ先回りして書きません。
+Player manualの海底都市説明はPR #98のcontractと整合しています。finalizationのために
+transaction、lock、RNG stream、cell visit order、retry内部処理を追加説明しません。
 
-production deploy / migration execution / backup / cronは別作業です。
+船、探索、海底財宝、視界、海洋系秘書skillは将来候補であり、2.8.0確定仕様ではありません。
+実装する場合はimmutable v18を書き換えずv19以降を使用します。
 
 ## 7.2 handoff maintenance
 
 この文書はOwner / Web版ChatGPT development-advisor workflowが節目で更新します。
 Codex / implementation agentは通常のfeature実装やreview対応では変更しません。
 
-次回更新候補は、2.7.0 finalization結果またはOwnerが明示的に引継ぎ更新を求めた時です。
+次回更新候補は、2.8.0 production release結果またはOwnerが明示的に引継ぎ更新を求めた時です。
 
 ---
 
@@ -1425,40 +1477,41 @@ Codex / implementation agentは通常のfeature実装やreview対応では変更
 1. `AGENTS.md`
 2. `product/docs/handoffs/development-history-and-current-handoff.md`
 3. `docs/open-questions.md`
-4. `main`と`release/2.7.0`のcurrent HEAD / open PR / CI
+4. `main`、`release/2.8.0`、PR #99のcurrent HEAD / CI / review thread
 5. taskに関係するcurrent Ruleset authoring / architecture / operations docs
 6. taskに関係するADR / decision
 7. raw sourceが必要な仕様だけ`_references/`をread-only監査
 
-2.7.0 finalization開始時の基準点:
+2.8.0 finalizationの基準点:
 
 ```text
-application main: 2.6.1
-main HEAD: 4e7cf209964d2c84698b1361eb52a371b7e91869
+application main: 2.7.0
+main HEAD: defe2672f2cbeb79e6f77be0c02b3a2793ad73c0
+main Ruleset: hakoniwa-2s-plus-v17 / 17
 
-current development branch: release/2.7.0
+current development branch: release/2.8.0
 release HEAD before finalization:
-ffc3386cdac094902d92eda9bd51ce90604bccfd
+6f069eab350509eaa5b952534b0e7688054c0fee
 
-application on release branch: 2.6.1
-planned final application version: 2.7.0
+application on finalized release branch: 2.8.0
 
-current Ruleset:
-  key: hakoniwa-2s-plus-v17
-  version: 17
-  checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+current authored Ruleset:
+  key: hakoniwa-2s-plus-v18
+  version: 18
+  checksum: 40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b
 
 supported migration source:
-  hakoniwa-2s-plus-v16 / 16
-  checksum: 331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d
+  hakoniwa-2s-plus-v17 / 17
+  checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
+
+release PR:
+  #99 release/2.8.0 -> main / open
 ```
 
 exact SHAは作業開始時に必ずGitHubで再確認してください。
-2.7.0はv17まで実装済みで、現在はfinalization段階です。
-
-PR番号、final head、Quality run IDなど未確定の将来値を予測してhandoffへ書いてはいけません。
-この更新で確定している最後のGitHub事実はPR #95 mergeとrelease head `ffc3386...`です。
-finalization結果は確定後に追記します。
+PR #97 / #98はrelease/2.8.0へmerge済みで、PR #98 review evidenceは1.5節に記録しています。
+finalized exact head、Quality、Codex review、thread状態はPR #99のGitHub evidenceを正本とします。
+productionはOwner確認済みver 2.7.0 / Ruleset v17で、2.8.0 deploy / v18 migrationは未実施です。
 
 ---
 
@@ -1471,24 +1524,24 @@ hakoniwa-worldの統合handoffです。
 正本は最新のreview済みコード、immutable Ruleset、ADR/decision、運用文書、Ownerの最新明示決定です。
 古いhandoffのSHAや当時TODO、将来候補を現在仕様として復活させないでください。
 
-mainはver 2.6.1 / Ruleset v16で、基準点は
-4e7cf209964d2c84698b1361eb52a371b7e91869です。
+mainはver 2.7.0 / Ruleset v17、確認済み基準点は
+defe2672f2cbeb79e6f77be0c02b3a2793ad73c0です。
 
-release/2.7.0ではPR #94とPR #95がmerge済みです。
-finalization前のrelease headはffc3386cdac094902d92eda9bd51ce90604bccfd、
-application versionは2.6.1、current gameplay Rulesetは
-hakoniwa-2s-plus-v17 / version 17 / checksum
+release/2.8.0にはPR #97とPR #98がmerge済みで、application version 2.8.0、
+current authored Rulesetはhakoniwa-2s-plus-v18 / version 18 / checksum
+40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8bです。
+直前supported migration sourceはexact v17 / checksum
 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3です。
-直前supported migration sourceはexact v16 / checksum
-331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487dです。
 
-2.7.0はv17まで実装済みで、現在はfinalization段階です。
-application version 2.7.0、player manual整理、AGENTS manual-writing policy、
-integrated handoffをfinalizeし、exact-head QualityとCodex reviewを完了してください。
+PR #99 release/2.8.0 -> mainはopenです。finalized exact-head Quality、Codex review、
+unresolved threadをGitHubで確認し、mergeはOwnerの明示判断後だけ行ってください。
 
-PR番号、final head、Quality run IDなど未確定の将来値を予測してhandoffへ書かないでください。
-このhandoffで確定している最後のGitHub事実はPR #95 merge / release head ffc3386...です。
-finalization結果は確定後に追記対象です。
+productionはOwner確認済みver 2.7.0 / Ruleset v17です。repository stateから2.8.0へ
+deploy済みと推測してはいけません。PR #99 merge後もundersea-city.gif配置 / 確認、
+production deploy、v18 migration、post-deploy確認は別の明示作業です。
+
+船、探索、海底財宝、視界、海洋系秘書skillは将来候補であり2.8.0仕様ではありません。
+実装時はimmutable v18を書き換えずv19以降を使用してください。
 
 product/docs/handoffs/development-history-and-current-handoff.mdはCodex / implementation agentにはread-onlyです。
 Ownerがhandoff更新そのものを明示した場合だけ変更してください。
@@ -1596,7 +1649,15 @@ product/docs/handoffs/
   demographic skills / population_high_water
   queue tooltip integration
   canonical Bow execution unification
-  finalization pending: application 2.7.0 / manual policy / release PR
+
+2.8.0 / v18:
+  resource forecast / workforce presentation / 12-turn Nation events
+  undersea city / disguised presentation / maintenance / famine / fire
+  exact v17 -> v18 forward migration
+  terrain-destruction and KARMA +3 / foreign wasteland KARMA +1
+  application 2.8.0 finalized in release branch
+  PR #99 release/2.8.0 -> main remains Owner merge decision
+  production asset / deploy / v18 migration / post-deploy remain separate Owner work
 ```
 
 この文書の役割は、失われた会話を推測で埋めることではありません。

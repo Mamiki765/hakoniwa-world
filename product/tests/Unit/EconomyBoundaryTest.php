@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Domain\Economy\CappedAddition;
 use App\Domain\Economy\InventorySalePlanner;
+use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use DomainException;
 use PHPUnit\Framework\TestCase;
 
@@ -65,5 +66,38 @@ class EconomyBoundaryTest extends TestCase
         $this->assertSame(1_500, $sold->inventoryRemaining);
         $this->assertSame(2, $sold->appliedMoney);
         $this->assertSame(2, $sold->overflowMoney);
+    }
+
+    public function test_undersea_city_maintenance_is_all_or_nothing_with_one_way_two_for_one_substitution(): void
+    {
+        $planner = new UnderseaCityMaintenancePlanner;
+        $ruleset = ['turn_processing' => ['undersea_city_maintenance' => [
+            'facility_key' => 'undersea_city',
+            'resource_keys' => ['industrial_goods', 'minerals'],
+            'base_units_per_resource' => 1000,
+            'substitution_units_per_shortage' => 2,
+            'payment_policy' => 'all_or_nothing',
+            'settlement_order' => 'map_cell_id_ascending',
+        ]]];
+
+        foreach ([
+            [1000, 1000, 1000, 1000, true],
+            [500, 2000, 500, 2000, true],
+            [2000, 500, 2000, 500, true],
+            [900, 1200, 900, 1200, true],
+            [500, 1500, 0, 0, false],
+            [900, 900, 0, 0, false],
+        ] as [$industrial, $minerals, $expectedIndustrial, $expectedMinerals, $paid]) {
+            $plan = $planner->plan($ruleset, $industrial, $minerals, [7]);
+            $this->assertSame($expectedIndustrial, $plan['industrial_goods_consumed']);
+            $this->assertSame($expectedMinerals, $plan['minerals_consumed']);
+            $this->assertSame($paid, $plan['settlements'][0]['paid']);
+        }
+
+        $sequential = $planner->plan($ruleset, 500, 3000, [9, 3]);
+        $this->assertSame([3, 9], array_column($sequential['settlements'], 'cell_id'));
+        $this->assertSame([true, false], array_column($sequential['settlements'], 'paid'));
+        $this->assertSame(500, $sequential['industrial_goods_consumed']);
+        $this->assertSame(2000, $sequential['minerals_consumed']);
     }
 }
