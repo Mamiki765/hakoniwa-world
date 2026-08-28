@@ -15,11 +15,12 @@ final class UndergroundBalanceSimulatorTest extends TestCase
     public function test_small_smoke_generates_a_reproducible_laboratory_summary_without_raw_logs(): void
     {
         [$contents, $manifest] = $this->manifest();
+        $manifestPath = 'C:/tmp/Underground experiment;$seed.json';
         $report = $this->simulator()->run(
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/foundation-v0.json',
+            $manifestPath,
             str_repeat('a', 40),
             false,
             0,
@@ -29,7 +30,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/foundation-v0.json',
+            $manifestPath,
             str_repeat('a', 40),
             false,
             0,
@@ -53,7 +54,9 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $this->assertNull($scenario['experiment_thresholds']);
             $this->assertNull($scenario['experiment_thresholds_passed']);
             $this->assertArrayNotHasKey('action_log', $scenario);
-            $this->assertStringContainsString('--replay-seed=', $scenario['reproduction_command_template']);
+            $this->assertSame('--manifest='.$manifestPath, $scenario['reproduction_arguments'][3]);
+            $this->assertStringStartsWith('--replay-seed=', $scenario['reproduction_arguments'][5]);
+            $this->assertArrayNotHasKey('reproduction_command_template', $scenario);
         }
 
         $byId = array_column($report['scenarios'], null, 'id');

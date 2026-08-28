@@ -224,7 +224,7 @@ final readonly class UndergroundBalanceSimulator
                     $abnormalSeeds[] = [
                         'seed' => $seed,
                         'states' => $result->abnormalState,
-                        'reproduction_command' => $this->reproductionCommand($manifestPath, $scenario['id'], $seed),
+                        'reproduction_arguments' => $this->reproductionArguments($manifestPath, $scenario['id'], $seed),
                     ];
                 }
             }
@@ -276,7 +276,7 @@ final readonly class UndergroundBalanceSimulator
             'threshold_violations' => $violations,
             'metrics' => $metrics,
             'abnormal_seeds' => $abnormalSeeds,
-            'reproduction_command_template' => $this->reproductionCommand(
+            'reproduction_arguments' => $this->reproductionArguments(
                 $manifestPath,
                 $scenario['id'],
                 $seedStart,
@@ -599,8 +599,16 @@ final readonly class UndergroundBalanceSimulator
         return round($numerator / $denominator, 6);
     }
 
-    private function reproductionCommand(string $manifestPath, string $scenarioId, int $seed): string
+    /** @return list<string> */
+    private function reproductionArguments(string $manifestPath, string $scenarioId, int $seed): array
     {
-        return "php artisan underground:balance --manifest={$manifestPath} --scenario={$scenarioId} --replay-seed={$seed}";
+        return [
+            'php',
+            'artisan',
+            'underground:balance',
+            "--manifest={$manifestPath}",
+            "--scenario={$scenarioId}",
+            "--replay-seed={$seed}",
+        ];
     }
 }
