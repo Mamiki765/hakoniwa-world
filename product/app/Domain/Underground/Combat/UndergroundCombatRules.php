@@ -178,6 +178,28 @@ final class UndergroundCombatRules
         return ['key' => $key, ...$definition];
     }
 
+    public function damage(
+        int $attackerAttack,
+        int $defenderDefense,
+        int $defenderRemainingHp,
+        int $power,
+        int $defenseIgnorePercent,
+        UndergroundRandom $random,
+        string $stream,
+        bool $guarding,
+    ): int {
+        $effectiveDefense = intdiv($defenderDefense * (100 - $defenseIgnorePercent), 100);
+        $raw = max(1, intdiv($attackerAttack * $power, 100));
+        $mitigated = max(1, intdiv($raw * 100, 100 + $effectiveDefense));
+        $variance = $random->integer('damage_variance:'.$stream, 95, 105);
+        $damage = max(1, intdiv($mitigated * $variance, 100));
+        if ($guarding) {
+            $damage = max(1, intdiv($damage * self::GUARD_DAMAGE_PERCENT, 100));
+        }
+
+        return min($damage, $defenderRemainingHp);
+    }
+
     /** @return list<string> */
     public function enemyKeys(): array
     {

@@ -6,6 +6,7 @@ use App\Domain\Underground\Combat\BuiltInCombatAi;
 use App\Domain\Underground\Combat\CombatResult;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
+use App\Domain\Underground\Combat\UndergroundRandom;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
@@ -98,14 +99,39 @@ final class UndergroundCombatLaboratoryTest extends TestCase
         foreach ($heavyStrikes as $heavyStrike) {
             $this->assertTrue($heavyStrike['guarded']);
         }
+        $this->assertCount(count($heavyStrikes), $defends);
 
         $rules = new UndergroundCombatRules;
         $actor = $rules->actor('knife_initiate');
         $enemy = $rules->enemy('gloom_herald');
-        $raw = intdiv($enemy['attack'] * 205, 100);
-        $unmitigatedMaximum = intdiv(intdiv($raw * 100, 100 + $actor['defense']) * 105, 100);
-        $guardedMaximum = intdiv($unmitigatedMaximum * UndergroundCombatRules::GUARD_DAMAGE_PERCENT, 100);
-        $this->assertLessThanOrEqual($guardedMaximum, max(array_column($heavyStrikes, 'amount')));
+        $unguardedDamage = $rules->damage(
+            $enemy['attack'],
+            $actor['defense'],
+            $actor['max_hp'],
+            205,
+            0,
+            new UndergroundRandom(21),
+            'enemy:enemy_heavy_strike',
+            false,
+        );
+        $guardedDamage = $rules->damage(
+            $enemy['attack'],
+            $actor['defense'],
+            $actor['max_hp'],
+            205,
+            0,
+            new UndergroundRandom(21),
+            'enemy:enemy_heavy_strike',
+            true,
+        );
+
+        $this->assertSame(['unguarded' => 199, 'guarded' => 109], [
+            'unguarded' => $unguardedDamage,
+            'guarded' => $guardedDamage,
+        ]);
+        $this->assertLessThan($unguardedDamage, $guardedDamage);
+        $this->assertSame($guardedDamage, $heavyStrikes[0]['amount']);
+        $this->assertSame('enemy_telegraph', $defends[0]['reason']);
     }
 
     public function test_fast_and_armored_prototypes_have_relative_scenario_semantics(): void

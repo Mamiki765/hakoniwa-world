@@ -335,16 +335,20 @@ final readonly class UndergroundCombatEngine
         UndergroundRandom $random,
         string $stream,
     ): int {
-        $effectiveDefense = intdiv($defender->defense * (100 - $defenseIgnorePercent), 100);
-        $raw = max(1, intdiv($attacker->attack * $power, 100));
-        $mitigated = max(1, intdiv($raw * 100, 100 + $effectiveDefense));
-        $variance = $random->integer('damage_variance:'.$stream, 95, 105);
-        $damage = max(1, intdiv($mitigated * $variance, 100));
-        if ($defender->guarding) {
-            $damage = max(1, intdiv($damage * UndergroundCombatRules::GUARD_DAMAGE_PERCENT, 100));
+        $guarding = $defender->guarding;
+        $damage = $this->rules->damage(
+            $attacker->attack,
+            $defender->defense,
+            $defender->hp,
+            $power,
+            $defenseIgnorePercent,
+            $random,
+            $stream,
+            $guarding,
+        );
+        if ($guarding) {
             $defender->guarding = false;
         }
-        $damage = min($damage, $defender->hp);
         $defender->hp -= $damage;
 
         return $damage;
