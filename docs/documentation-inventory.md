@@ -12,8 +12,9 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 
 | Classification | Count |
 |---|---:|
-| CURRENT AUTHORITY | 32 |
+| CURRENT AUTHORITY | 23 |
 | CURRENT INDEX / HANDOFF | 6 |
+| MIXED / PARTIALLY CURRENT | 9 |
 | HISTORICAL IMPLEMENTATION | 48 |
 | AUDIT / REFERENCE ANALYSIS | 44 |
 | OPERATIONS | 7 |
@@ -27,7 +28,7 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 - `STARTUP`: normal agent startup sequence.
 - `TASK-SPECIFIC`: read when the task touches the named domain.
 - `ONLY WHEN NEEDED`: supporting index or player-facing material selected for the task.
-- `DO NOT USE AS CURRENT AUTHORITY`: history, audit, future proposal, or unresolved conflict; inspect only for its stated purpose.
+- `DO NOT USE AS CURRENT AUTHORITY`: mixed-era material, history, audit, future proposal, or unresolved conflict; inspect only for its stated purpose.
 
 ## Root and `docs/`
 
@@ -41,26 +42,26 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 | `docs/documentation-inventory.md` | CURRENT INDEX / HANDOFF | ONLY WHEN NEEDED | Current inventory | Per-file role and default-read map | This table is not authority. |
 | `docs/open-questions.md` | CURRENT INDEX / HANDOFF | STARTUP | Current design gates | Decided/Open/Deferred decision index | Follow linked ADR/record; stop at reached Open gate. |
 | `docs/architecture/authentication-and-identities.md` | UNKNOWN / CONFLICT | DO NOT USE AS CURRENT AUTHORITY | Mixed MVP and implemented auth | Early auth domain design | Opening/undecided sections conflict with its later implemented package note, ADR-0006, and code. |
-| `docs/architecture/capital-and-territory.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Current foundational contract | Capital, territory, damage boundaries | Current values still yield to v18 Ruleset and reached Open gates. |
-| `docs/architecture/chunk-storage.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Current foundational contract | Chunk persistence and coordinate arithmetic | Use ADR-0003 for canonical coordinate decision. |
+| `docs/architecture/capital-and-territory.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | Current invariants plus v5/MVP/proposal material | Capital, territory, damage rationale | Starts with active invariants but mixes v5 values, unadopted recovery/emergency proposals, data-model ideas, and MVP history. Use current Ruleset, code, ADR-0014, and current Decisions first. |
+| `docs/architecture/chunk-storage.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | Initial storage contract with retained invariants | Chunk arithmetic and early schema/API design | `chunk_size = 16` arithmetic remains useful, but turn/event/outbox and lock policy are described as future. Use ADR-0003, current schema, and `MapChunkService` first. |
 | `docs/architecture/command-api.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Roadmap PR2 | Queue-only API contract at that checkpoint | Current command execution exists; use code / v18 definitions. |
-| `docs/architecture/configuration-management.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Initial release policy with active invariants | Immutable Ruleset publication and configuration classes | Use current-ruleset-baseline for current identity. |
+| `docs/architecture/configuration-management.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | Immutable-policy rationale plus v1-v9/MVP state | Ruleset/configuration history and retained principles | Correct immutability guidance coexists with “current v5”, v6-v9 migration history, unimplemented economy claims, and future admin proposals. Start with v18 config, authoring guide, baseline, and code. |
 | `docs/architecture/initial-ocean-and-island-generation.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Current foundational contract | World/Nation initial generation | Current Ruleset and generator code own exact values. |
-| `docs/architecture/monster-system.md` | CURRENT AUTHORITY | TASK-SPECIFIC | PR21 foundation inherited by current runtime | Canonical monster responsibilities, occupancy, Turn boundaries | Values and later variants come from current Ruleset/code; PR21 audit is provenance. |
+| `docs/architecture/monster-system.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | PR21 foundation with later additions and v5 framing | Monster responsibility and execution rationale | Retained actor/occupancy ideas coexist with “current v5”, PR21/v1-v10 catalog, and checkpoint observability text. Start with v18 fragments, canonical services, schema, and ADR-0007. |
 | `docs/architecture/mvp-implementation.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Initial MVP | Early implementation topology | Later releases substantially expanded the application. |
 | `docs/architecture/nation-lifecycle.md` | UNKNOWN / CONFLICT | DO NOT USE AS CURRENT AUTHORITY | ver 2.4.0 / v13 framing | Dormancy/KARMA architecture summary | Calls v13 current; application is v18. Start with ADR-0014/0015, v18 fragment, and code. |
 | `docs/architecture/public-lobby-and-island-dashboard.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Roadmap PR5 | Public lobby/dashboard checkpoint | Current UI/API may retain parts; verify code. |
-| `docs/architecture/registration-and-world-expansion.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Current architecture evolved from MVP | Nation placement and automatic expansion | Exact current behavior belongs to code / v18 Ruleset. |
+| `docs/architecture/registration-and-world-expansion.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | Pre-implementation design plus MVP/PR19/expansion record | Registration and expansion rationale | Implemented flow is interleaved with “decide before Nation creation”, unimplemented economy, candidate algorithms, and MVP wording. Start with v18 world fragment and current registration/expansion code. |
 | `docs/architecture/roadmap-pr2-systems.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Roadmap PR2 | Command/facility/map checkpoint contract | Explicitly excluded execution later implemented. |
 | `docs/architecture/target-architecture.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Foundational architecture | Domain boundaries and design goals | Not approval to implement named future systems. |
 | `docs/architecture/turn-pipeline.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Initial pipeline proposal | Early Turn design rationale | Header says phase table is not implementation authority. |
-| `docs/architecture/turn-randomness.md` | CURRENT AUTHORITY | TASK-SPECIFIC | T-01 current contract | Deterministic RNG, streams, retry identity | Verify task-specific labels in current code/Ruleset. |
+| `docs/architecture/turn-randomness.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | T-01 algorithm plus pre-missile/scaffold scope | Deterministic RNG rationale and fixed vector | Core derivation may remain valid, but the document says required phases stay stubs and missile execution is not connected. Start with current Turn/RNG code and Ruleset; use this for algorithm provenance. |
 | `docs/architecture/turn-runner-scaffold.md` | UNKNOWN / CONFLICT | DO NOT USE AS CURRENT AUTHORITY | Mixed PR7 scaffold and later additions | TurnRun schema/lock/retry history | Still states required phases are stubs and production returns non-zero; current runtime implements them. |
-| `docs/architecture/ui-and-map-loading.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Current x/y API/UI architecture | Map API, projection, renderer, accessibility | Current component/API code owns exact payload. |
-| `docs/architecture/world-and-map-space.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Current foundational contract | World, MapSpace, canonical bounds/coordinates | ADR-0003 and current schema/code take precedence. |
+| `docs/architecture/ui-and-map-loading.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | x/y migration and PR21 UI contract | Map API/projection and renderer rationale | Useful parity/viewer-safety material coexists with queue-only scope and a whole-world 60x60 footprint despite supported expansion. Start with current API/Vue code and ADR-0003. |
+| `docs/architecture/world-and-map-space.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | Coordinate migration checkpoint | World/MapSpace/storage rationale | Canonical x/y remains active, but expansion and TurnRunner are described as future/unimplemented. Start with ADR-0003, v18 fragment, current schema, and runtime services. |
 | `docs/architecture/world-expansion-foundation.md` | UNKNOWN / CONFLICT | DO NOT USE AS CURRENT AUTHORITY | ver 1.5.0 expansion plus mixed lifecycle text | Expansion invariants and history | Says automatic dormancy/abandonment is unimplemented; ADR-0014 and code implement it. |
 | `docs/assets/hakoniwa-original-tile-inventory.md` | AUDIT / REFERENCE ANALYSIS | DO NOT USE AS CURRENT AUTHORITY | Legacy asset inventory | Original image inventory | Not the current manifest or distribution authority. |
-| `docs/assets/tile-asset-mapping.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Current asset architecture | Logical tile mapping and external placement | Runtime resolver/manifest owns exact current mapping. |
+| `docs/assets/tile-asset-mapping.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | Initial design plus PR21 and later mapping notes | Asset mapping/provenance rationale | Candidate IDs, PR-era mappings, proposed delivery checks, and unresolved choices coexist with implemented entries. Use `AssetManifestResolver` and current config as exact current mapping. |
 | `docs/decisions/ADR-0002-reference-integration-policy.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Accepted | Reference integration policy | `_references/` remains read-only. |
 | `docs/decisions/ADR-0003-hex-coordinate-system.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Accepted | Canonical staggered x/y coordinate decision | Active. |
 | `docs/decisions/ADR-0004-nation-dormancy-lifecycle.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Superseded | Earlier dormancy proposal | Explicitly superseded by ADR-0014. |
@@ -211,10 +212,26 @@ All entries in this table are read-only analysis inputs. They are never current 
 | `product/docs/ver-2.4.0-karma-recovery.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | ver 2.4.0 | KARMA/recovery release record | Current ADR-0015/code/Ruleset first. |
 | `product/docs/ver-2.5.0-secretary-profile.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | ver 2.5.0 | Secretary profile release slice | Current ADR-0016/code/UI first. |
 
+## Mixed documents retained for scoped use
+
+The nine `MIXED / PARTIALLY CURRENT` files remain useful for invariant provenance or design history, but none is a safe standalone description of the current application:
+
+1. `docs/architecture/configuration-management.md`: immutable publication principles plus v1-v9 and MVP-era current-state claims.
+2. `docs/architecture/monster-system.md`: retained actor/occupancy rationale plus PR21, v5, and v1-v10 framing.
+3. `docs/architecture/ui-and-map-loading.md`: retained x/y and viewer-safety guidance plus queue-only and fixed-60x60 scope.
+4. `docs/architecture/world-and-map-space.md`: retained coordinate/storage model plus pre-expansion and pre-Turn statements.
+5. `docs/architecture/registration-and-world-expansion.md`: implementation records mixed with pre-implementation decisions and obsolete MVP exclusions.
+6. `docs/assets/tile-asset-mapping.md`: provenance and mapping rationale mixed with candidate IDs, PR-era mappings, and unresolved delivery design.
+7. `docs/architecture/capital-and-territory.md`: active invariants mixed with v5 values, proposals, model ideas, and MVP history.
+8. `docs/architecture/chunk-storage.md`: active chunk arithmetic mixed with pre-Turn storage and locking scope.
+9. `docs/architecture/turn-randomness.md`: retained deterministic algorithm/vector mixed with pre-missile and phase-stub scope.
+
+For current work, follow `docs/README.md` to reach current code, the immutable Ruleset, schema, and active ADR first. Use these files only when the historical rationale or origin of a retained invariant is needed.
+
 ## Review-needed conflicts retained for follow-up
 
 No existing file was moved, renamed, deleted, or bulk-rewritten in this inventory PR.
-The six `UNKNOWN / CONFLICT` files remain in place because their useful and stale portions need separate Owner-reviewed follow-up:
+After reclassification, the `UNKNOWN / CONFLICT` count remains six. These files remain in place because their useful and stale portions need separate Owner-reviewed follow-up:
 
 1. `README.md`: early unimplemented-feature statements conflict with current 2.8.0 code/handoff.
 2. `docs/architecture/authentication-and-identities.md`: undecided and implemented OAuth sections coexist.
