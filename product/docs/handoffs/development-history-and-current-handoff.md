@@ -1465,12 +1465,15 @@ Codex / implementation agentは通常のfeature実装やreview対応では変更
 
 1. `AGENTS.md`
 2. `product/docs/handoffs/development-history-and-current-handoff.md`
-3. Item作業なら`product/docs/items/current-item-catalog.md`
+3. documentation guide `docs/README.md`
 4. `docs/open-questions.md`
-5. `main`のcurrent HEAD、open PR、CI、review thread
-6. taskに関係するcurrent Ruleset authoring / architecture / operations docs
-7. taskに関係するADR / decision
+5. guideに従ってtask-specificなcurrent Ruleset authoring / architecture / operations docsとADR / decisionを選ぶ
+6. Item作業ならcurrent index `product/docs/items/current-item-catalog.md`
+7. `main`のcurrent HEAD、open PR、CI、review thread
 8. raw sourceが必要な仕様だけ`_references/`をread-only監査
+
+全documentationを無差別に読むのではなく、`docs/README.md`の探索停止条件に従う。
+historical implementation、audit、future文書は、その経緯・比較・将来案がtask scopeに入る場合だけ読む。
 
 現在の基準点:
 
