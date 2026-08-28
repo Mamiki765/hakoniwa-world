@@ -3,6 +3,7 @@
 namespace Tests\Underground\Unit;
 
 use App\Application\Underground\UndergroundBalanceSimulator;
+use App\Application\Underground\UndergroundReportSourceIdentity;
 use App\Domain\Underground\Combat\BuiltInCombatAi;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
@@ -148,6 +149,25 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('exactly one Secretary actor');
         $this->simulator()->replay($manifest, 'standard_enemy', 0);
+    }
+
+    public function test_report_source_identity_accepts_override_only_without_detectable_git_metadata(): void
+    {
+        $identity = new UndergroundReportSourceIdentity;
+        $sha = str_repeat('a', 40);
+
+        $this->assertSame($sha, $identity->resolve($sha, $sha));
+        $this->assertSame($sha, $identity->resolve($sha, null));
+        $this->assertSame($sha, $identity->resolve(null, $sha));
+        $this->assertSame('unknown', $identity->resolve(null, null));
+    }
+
+    public function test_report_source_identity_rejects_explicit_sha_that_differs_from_detected_head(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('must match the detected Git HEAD');
+
+        (new UndergroundReportSourceIdentity)->resolve(str_repeat('a', 40), str_repeat('b', 40));
     }
 
     /** @return array{string, array<string, mixed>} */

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Application\Underground\UndergroundBalanceSimulator;
+use App\Application\Underground\UndergroundReportSourceIdentity;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
 use JsonException;
@@ -22,8 +23,10 @@ final class UndergroundBalance extends Command
 
     protected $description = 'Run the DB-free Underground combat balance laboratory';
 
-    public function handle(UndergroundBalanceSimulator $simulator): int
-    {
+    public function handle(
+        UndergroundBalanceSimulator $simulator,
+        UndergroundReportSourceIdentity $sourceIdentity,
+    ): int {
         try {
             $manifestOption = $this->option('manifest');
             if (! is_string($manifestOption) || $manifestOption === '') {
@@ -47,7 +50,10 @@ final class UndergroundBalance extends Command
                 }
                 $report = $simulator->replay($manifest, $scenario, $replaySeed);
             } else {
-                [$commitSha, $workingTreeDirty] = $this->gitIdentity($this->optionalString('commit-sha'));
+                [$commitSha, $workingTreeDirty] = $this->gitIdentity(
+                    $sourceIdentity,
+                    $this->optionalString('commit-sha'),
+                );
                 $report = $simulator->run(
                     $manifest,
                     hash('sha256', $contents),
@@ -139,20 +145,15 @@ final class UndergroundBalance extends Command
     }
 
     /** @return array{string, bool|null} */
-    private function gitIdentity(?string $explicitCommitSha): array
-    {
-        if ($explicitCommitSha !== null && preg_match('/\A[0-9a-f]{40}\z/D', $explicitCommitSha) !== 1) {
-            throw new InvalidArgumentException('--commit-sha must be exactly 40 lowercase hexadecimal characters.');
-        }
+    private function gitIdentity(
+        UndergroundReportSourceIdentity $sourceIdentity,
+        ?string $explicitCommitSha,
+    ): array {
         $head = new Process(['git', 'rev-parse', 'HEAD'], base_path());
         $head->setTimeout(5);
         $head->run();
         $detected = $head->isSuccessful() ? trim($head->getOutput()) : null;
-        $commitSha = $explicitCommitSha ?? (
-            is_string($detected) && preg_match('/\A[0-9a-f]{40}\z/D', $detected) === 1
-                ? $detected
-                : 'unknown'
-        );
+        $commitSha = $sourceIdentity->resolve($explicitCommitSha, $detected);
 
         $status = new Process(['git', 'status', '--porcelain'], base_path());
         $status->setTimeout(5);
