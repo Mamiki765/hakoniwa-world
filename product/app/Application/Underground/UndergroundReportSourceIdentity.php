@@ -6,8 +6,11 @@ use InvalidArgumentException;
 
 final class UndergroundReportSourceIdentity
 {
-    public function resolve(?string $explicitCommitSha, ?string $detectedCommitSha): string
-    {
+    public function resolve(
+        ?string $explicitCommitSha,
+        ?string $detectedCommitSha,
+        ?bool $workingTreeDirty,
+    ): string {
         if ($explicitCommitSha !== null && ! $this->validCommitSha($explicitCommitSha)) {
             throw new InvalidArgumentException('--commit-sha must be exactly 40 lowercase hexadecimal characters.');
         }
@@ -20,6 +23,11 @@ final class UndergroundReportSourceIdentity
             throw new InvalidArgumentException(
                 '--commit-sha must match the detected Git HEAD when repository metadata is available.',
             );
+        }
+        if ($detectedCommitSha !== null && $workingTreeDirty !== false) {
+            throw new InvalidArgumentException($workingTreeDirty === true
+                ? 'Underground reports require a clean Git worktree.'
+                : 'Unable to verify a clean Git worktree for the detected source commit.');
         }
 
         $commitSha = $explicitCommitSha ?? $detectedCommitSha;

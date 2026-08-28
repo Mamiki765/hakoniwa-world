@@ -153,12 +153,12 @@ final class UndergroundBalance extends Command
         $head->setTimeout(5);
         $head->run();
         $detected = $head->isSuccessful() ? trim($head->getOutput()) : null;
-        $commitSha = $sourceIdentity->resolve($explicitCommitSha, $detected);
 
         $status = new Process(['git', 'status', '--porcelain'], base_path());
         $status->setTimeout(5);
         $status->run();
         $dirty = $status->isSuccessful() ? trim($status->getOutput()) !== '' : null;
+        $commitSha = $sourceIdentity->resolve($explicitCommitSha, $detected, $dirty);
 
         return [$commitSha, $dirty];
     }

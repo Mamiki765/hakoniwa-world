@@ -156,13 +156,13 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $identity = new UndergroundReportSourceIdentity;
         $sha = str_repeat('a', 40);
 
-        $this->assertSame($sha, $identity->resolve($sha, $sha));
-        $this->assertSame($sha, $identity->resolve($sha, null));
-        $this->assertSame($sha, $identity->resolve(null, $sha));
+        $this->assertSame($sha, $identity->resolve($sha, $sha, false));
+        $this->assertSame($sha, $identity->resolve($sha, null, null));
+        $this->assertSame($sha, $identity->resolve(null, $sha, false));
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('provide --commit-sha when Git metadata is unavailable');
-        $identity->resolve(null, null);
+        $identity->resolve(null, null, null);
     }
 
     public function test_report_source_identity_rejects_explicit_sha_that_differs_from_detected_head(): void
@@ -170,7 +170,22 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('must match the detected Git HEAD');
 
-        (new UndergroundReportSourceIdentity)->resolve(str_repeat('a', 40), str_repeat('b', 40));
+        (new UndergroundReportSourceIdentity)->resolve(str_repeat('a', 40), str_repeat('b', 40), false);
+    }
+
+    public function test_report_source_identity_rejects_dirty_or_unverifiable_detected_git_state(): void
+    {
+        $identity = new UndergroundReportSourceIdentity;
+        $sha = str_repeat('a', 40);
+
+        foreach ([true, null] as $dirty) {
+            try {
+                $identity->resolve(null, $sha, $dirty);
+                $this->fail('Detected Git metadata must have a verified clean worktree.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertStringContainsString('Git worktree', $exception->getMessage());
+            }
+        }
     }
 
     /** @return array{string, array<string, mixed>} */
