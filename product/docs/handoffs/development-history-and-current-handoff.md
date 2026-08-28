@@ -1,6 +1,6 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
-> 更新日: 2026-08-28 JST  
+> 更新日: 2026-08-29 JST
 > 対象リポジトリ: `Mamiki765/hakoniwa-world`  
 > 推奨配置先: `product/docs/handoffs/development-history-and-current-handoff.md`  
 > 用途: 開発経緯、現在も有効な設計判断、廃止・変更された計画、現行作業の引継ぎ  
@@ -68,9 +68,12 @@ c91e66d330cd4f8ae5f5297a794fd27582e4ddcf。
 productionはOwner確認済みのver 2.8.0 / Ruleset v18。
 このhandoff更新ではproductionへ再接続して独立検証せず、Ownerの最新明示確認を運用上の正本とする。
 
-次の開発線はver 2.9.0のItem拡張準備。
-現在実装済みItemの索引は
-product/docs/items/current-item-catalog.md。
+active development lineは`release/3.0.0-alpha`。
+PR #101で、playerから到達できないTurn非依存のUnderground Combat Laboratoryをreview中。
+surface production baselineはapplication 2.8.0 / Ruleset v18のまま。
+
+ver 2.9.0のItem拡張は破棄しておらず、Ownerの具体案待ちとして一時保留。
+現在実装済みItemの索引はproduct/docs/items/current-item-catalog.md。
 ```
 
 ## 1.2 main / ver 2.8.0
@@ -157,13 +160,20 @@ PR #98 final head `d52a415ea22f8cf06be66ccde9f9ea667b743fe1`:
 
 ver 2.8.0 release作業は完了済みです。
 
-現在の次候補はver 2.9.0のSecretary Item拡張です。
-現行実装の索引として`product/docs/items/current-item-catalog.md`を追加済みで、
-ここには実装済みItem / rarity / category / effect / drop / NPC tradingの現在値だけをまとめています。
+active development lineは`release/3.0.0-alpha`です。
+[`3.0.0-alpha Underground roadmap`](../../../docs/roadmap/3.0.0-alpha-underground.md)に従い、
+foundation [PR #101](https://github.com/Mamiki765/hakoniwa-world/pull/101)でplayerから到達できない
+DB-free combat laboratory、専用deterministic RNG、built-in AI、self-contained manifest/report、独立test suiteを追加しています。
+reportのreplay metadataはshell command文字列ではなくargument arrayで保持し、外部manifest pathをshellへ再解釈させません。
 
-High Quality / Artifactなどの将来rarity、新Item、船・港・探索・海賊・宝船などは、
-Ownerが仕様確定するまで現行仕様として扱いません。
-新しいgameplay contractを実装する場合はimmutable v18を書き換えずv19以降を使用します。
+これはTurn非依存のside gameを段階的に試すalphaであり、player-facing地底RPG、schema、API、UI、
+surface benefitは未実装です。application 2.8.0 / immutable surface Ruleset v18 / production contractは変更しません。
+地底testは`Underground` suiteへ分離し、World、Nation、MapCell、TurnRun、DB fixtureを作らず、
+10,000-seed simulationは通常CI外のmanual experimentとします。
+telegraphed threatはfixed seed vectorでもbuilt-in AIが予告へ`defend`で反応し、guarded heavy damageがunguardedより小さいことを直接検証します。
+
+ver 2.9.0のSecretary Item拡張は破棄ではありません。Ownerの具体的なItem案を待つ間の一時保留です。
+現行Itemの索引`product/docs/items/current-item-catalog.md`は引き続き正本として使います。
 
 ---
 
@@ -1261,14 +1271,21 @@ supported migration source:
   checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
 
 next development line:
-  ver 2.9.0 Item拡張準備
+  release/3.0.0-alpha Underground foundation
+  roadmap: docs/roadmap/3.0.0-alpha-underground.md
+  PR: #101 (open; player-inaccessible foundation)
+
+temporarily paused, not discarded:
+  ver 2.9.0 Item拡張（Ownerの具体案待ち）
 
 implemented Item index:
   product/docs/items/current-item-catalog.md
 ```
 
 exact `main` HEADはdocs-only更新でも進むため、作業開始時に必ずGitHubで再確認してください。
-新gameplayはimmutable v18を書き換えずv19以降へ追加します。
+surfaceの新gameplayはimmutable v18を書き換えずv19以降へ追加します。
+Undergroundはsurface Rulesetと分離した`secretary-underground-alpha-v0` laboratory identityを使い、
+UG-02 / UG-03 / UG-04のRequired before gateへ到達するまでpersistence、player access、surface bridgeを実装しません。
 
 ## 5.2 deterministic Turn
 
@@ -1439,11 +1456,28 @@ auctionは2.6.0の交易場として実装されました。
 
 # 7. 現在の残件
 
-## 7.1 ver 2.9.0 Item拡張準備
+## 7.1 release/3.0.0-alpha Underground development line
 
 ver 2.8.0 release / production移行は完了済みです。
 
-次の開発線では、まず現行Itemを`product/docs/items/current-item-catalog.md`で確認し、
+active roadmapは[`3.0.0-alpha Underground`](../../../docs/roadmap/3.0.0-alpha-underground.md)、
+foundationは[PR #101](https://github.com/Mamiki765/hakoniwa-world/pull/101)です。
+PR #101はpure combat laboratoryだけで、player-facing地底、schema、migration、API、UI、探索map、party、market、
+facility、Tutorial、surface rewardを実装しません。surface application 2.8.0 / Ruleset v18 / productionは不変です。
+
+次の実装前に`docs/open-questions.md`のgateを確認してください。
+
+- UG-02: persistence ownership / schema / run / retry / lock / upgrade
+- UG-03: first playable / Tutorial / progression / defeat / API / UI / security / version
+- UG-04: borrowed party / market / facility / surface benefit bridge
+
+first player-facing Tutorialはlaboratory standard benchmarkと分離し、正常操作またはbuilt-in AIで100%勝利する
+deterministic教育encounterとして後続sliceで扱います。alpha-v0の4scenario win rateをTutorial difficultyへ流用しません。
+
+## 7.2 ver 2.9.0 Item拡張の一時保留
+
+ver 2.9.0 Item拡張は破棄していません。Ownerの具体案待ちとして一時保留しています。
+再開時は現行Itemを`product/docs/items/current-item-catalog.md`で確認し、
 新しいItem / rarity / acquisition path / effectのOwner決定を既存実装と混同しないよう整理してください。
 
 現時点でHigh Quality / Artifactなどの将来rarityは未実装です。
@@ -1452,12 +1486,12 @@ ver 2.8.0 release / production移行は完了済みです。
 船、港、探索船、海賊船、宝船、海底財宝、視界、海洋系秘書skillなどは将来候補であり、
 Ownerが改めて仕様を確定するまでver 2.9.0の確定scopeとして扱いません。
 
-## 7.2 handoff maintenance
+## 7.3 handoff maintenance
 
 この文書はOwner / Web版ChatGPT development-advisor workflowが節目で更新します。
 Codex / implementation agentは通常のfeature実装やreview対応では変更しません。
 
-次回更新候補は、ver 2.9.0の正式scope / release branch / Ruleset v19が確定した時、またはOwnerが明示的に引継ぎ更新を求めた時です。
+次回更新候補は、PR #101のmerge、UG-02以降のOwner決定、ver 2.9.0の再開、またはOwnerが明示的に引継ぎ更新を求めた時です。
 
 ---
 
@@ -1468,9 +1502,10 @@ Codex / implementation agentは通常のfeature実装やreview対応では変更
 3. documentation guide `docs/README.md`
 4. `docs/open-questions.md`
 5. guideに従ってtask-specificなcurrent Ruleset authoring / architecture / operations docsとADR / decisionを選ぶ
-6. Item作業ならcurrent index `product/docs/items/current-item-catalog.md`
-7. `main`のcurrent HEAD、open PR、CI、review thread
-8. raw sourceが必要な仕様だけ`_references/`をread-only監査
+6. Underground作業なら`docs/roadmap/3.0.0-alpha-underground.md`と`docs/architecture/underground-combat-laboratory.md`
+7. Item作業ならcurrent index `product/docs/items/current-item-catalog.md`
+8. `main`のcurrent HEAD、open PR、CI、review thread
+9. raw sourceが必要な仕様だけ`_references/`をread-only監査
 
 全documentationを無差別に読むのではなく、`docs/README.md`の探索停止条件に従う。
 historical implementation、audit、future文書は、その経緯・比較・将来案がtask scopeに入る場合だけ読む。
@@ -1496,7 +1531,12 @@ production:
   Owner確認済み 2.8.0 / Ruleset v18
 
 next development direction:
-  ver 2.9.0 Item拡張準備
+  release/3.0.0-alpha Underground development line
+  foundation PR #101 (open; player-inaccessible pure laboratory)
+  roadmap: docs/roadmap/3.0.0-alpha-underground.md
+
+temporarily paused, not discarded:
+  ver 2.9.0 Item拡張（Ownerの具体案待ち）
 ```
 
 exact SHAは作業開始時に必ずGitHubで再確認してください。
@@ -1529,10 +1569,16 @@ productionはOwner確認済みver 2.8.0 / Ruleset v18です。
 この確認をrepository stateから推測で置き換えず、productionの細部が必要ならOwner明示確認または
 許可されたread-only確認を使ってください。
 
-次の開発線はver 2.9.0のItem拡張準備です。
-product/docs/items/current-item-catalog.mdは現在実装済みItemの索引であり、
-High Quality / Artifactなどの将来rarityや未確定Item案は現行仕様ではありません。
-新しいgameplay contractはimmutable v18を書き換えずv19以降へ追加してください。
+active development lineはrelease/3.0.0-alphaです。
+docs/roadmap/3.0.0-alpha-underground.mdとfoundation PR #101を確認してください。
+現時点の地底はplayerから到達できないpure combat laboratoryで、Turn、World、Nation、MapCell、
+surface Ruleset、schema、productionへ依存しません。Underground testは独立suite、10,000-seed runはmanualです。
+UG-02 / UG-03 / UG-04のgateへ到達したらOwner decisionを得てください。
+
+ver 2.9.0 Item拡張は破棄ではなく、Ownerの具体案待ちとして一時保留です。
+再開時はproduct/docs/items/current-item-catalog.mdを正本にし、
+High Quality / Artifactなどの将来rarityや未確定Item案を現行仕様と混同しないでください。
+surfaceの新しいgameplay contractはimmutable v18を書き換えずv19以降へ追加してください。
 
 船、港、探索、海賊、宝船、海底財宝、視界、海洋系秘書skillは将来候補です。
 Ownerが改めてscopeとして確定するまで実装対象に含めないでください。
@@ -1654,9 +1700,14 @@ product/docs/handoffs/
   Owner確認でproduction 2.8.0 / Ruleset v18
 
 next:
-  ver 2.9.0 Item拡張準備
+  active: release/3.0.0-alpha Underground development line
+  foundation: PR #101 / player-inaccessible pure combat laboratory
+  surface production baseline: application 2.8.0 / Ruleset v18 unchanged
+  tests: Underground suite分離、World / Nation / MapCell / TurnRun / DB fixtureなし
+  manual: 10,000-seed balance experimentは通常CI外
+  paused, not discarded: ver 2.9.0 Item拡張（Ownerの具体案待ち）
   implemented Item index: product/docs/items/current-item-catalog.md
-  future gameplayはv19以降
+  future surface gameplayはv19以降
 ```
 
 この文書の役割は、失われた会話を推測で埋めることではありません。
