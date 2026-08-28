@@ -163,12 +163,14 @@ ver 2.8.0 release作業は完了済みです。
 active development lineは`release/3.0.0-alpha`です。
 [`3.0.0-alpha Underground roadmap`](../../../docs/roadmap/3.0.0-alpha-underground.md)に従い、
 foundation [PR #101](https://github.com/Mamiki765/hakoniwa-world/pull/101)でplayerから到達できない
-DB-free combat laboratory、専用deterministic RNG、built-in AI、manifest/report、独立test suiteを追加しています。
+DB-free combat laboratory、専用deterministic RNG、built-in AI、self-contained manifest/report、独立test suiteを追加しています。
+reportのreplay metadataはshell command文字列ではなくargument arrayで保持し、外部manifest pathをshellへ再解釈させません。
 
 これはTurn非依存のside gameを段階的に試すalphaであり、player-facing地底RPG、schema、API、UI、
 surface benefitは未実装です。application 2.8.0 / immutable surface Ruleset v18 / production contractは変更しません。
 地底testは`Underground` suiteへ分離し、World、Nation、MapCell、TurnRun、DB fixtureを作らず、
 10,000-seed simulationは通常CI外のmanual experimentとします。
+telegraphed threatはfixed seed vectorでもbuilt-in AIが予告へ`defend`で反応し、guarded heavy damageがunguardedより小さいことを直接検証します。
 
 ver 2.9.0のSecretary Item拡張は破棄ではありません。Ownerの具体的なItem案を待つ間の一時保留です。
 現行Itemの索引`product/docs/items/current-item-catalog.md`は引き続き正本として使います。
