@@ -16,7 +16,8 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-01、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
+| underground alpha | UG-02、UG-03、UG-04 | E-01/UG-01によりpure combat laboratoryだけ開始済み。persistence/player access/surface bridgeは各gateで停止する。 |
+| post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
 
@@ -254,6 +255,46 @@
 - Implemented: Yes
 - Decision: catalog/rulesetから`industrial_goods`と`minerals`を追加し、PR19時点で双方のunit、capacity、production、sale、overflow契約を実装済みとする。
 - Decision record: `product/docs/resource-profile-audit-pr19.md`、`docs/future-systems/resources.md`
+
+### E-01 地下
+
+- Status: Decided
+- Implemented: Partially; alpha-v0 pure combat laboratory only. Underground layer/runtime is not implemented.
+- Decision: 地下roadmapを`release/3.0.0-alpha`として開始する。Turn非依存の任意side gameをmodular monolith内の独立domainとして育て、PR1は座標、portal、ownership、visibility、schema、API、UI、surface bridgeを実装しない。後続private layerとplayer accessはUG-02〜04で段階的に決める。
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
+
+## Underground RPG gates
+
+### UG-01 pure combat laboratory contract
+
+- Status: Decided
+- Implemented: Yes
+- Decision: `secretary-underground-alpha-v0`はplayer-inaccessible、DB-free、surface-independentな1対1laboratoryとする。恒久gateはdeterminism、same-input/seed replay、合法状態、abnormal=0、max-round/stalemate、report再現性、scenario相対semanticとする。10,000-seed win rateとprovisional rangeは観測値でありbalance targetではない。Tutorialは別fixtureとし、PR1では実装しない。
+- Decision record: `docs/architecture/underground-combat-laboratory.md`、`docs/roadmap/3.0.0-alpha-underground.md`
+
+### UG-02 Underground persistenceとdata ownership
+
+- Status: Open
+- Required before: Underground schema、migration、persistent run、authenticated APIの最初の実装
+- Open decision: User/Secretary/profile/loadout/inventory/run/cellのownership、account survival、request idempotency、transaction/lock、resume、forward migration、production data boundaryを決める。
+- Options: account-owned aggregate、Secretary-owned aggregate、run-owned snapshotを比較し、combat coreへEloquentを持ち込まないadapter boundaryを維持する。
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
+
+### UG-03 first player-accessible alpha
+
+- Status: Open
+- Required before: Tutorialを含むfirst player-accessible alphaのAPI/UI/version更新
+- Open decision: progression、defeat/withdrawal/recovery、security/rate limit、minimum UI、human playtest、release acceptance、application versionを決める。Tutorialはlaboratory standardと分離し、正常操作またはbuilt-in AIで100%勝利するdeterministic教育encounterとする。
+- Options: application `3.0.0-alpha.1`を最初のplayer buildとする案と、`3.0.0-alpha`へ直接更新する案を比較する。PR1は2.8.0を維持する。
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
+
+### UG-04 party・market・facility・surface bridge
+
+- Status: Open
+- Required before: 借用秘書、複数人party、地底market、facility効果、または地上gameへ利益を渡す最初の実装
+- Open decision: party snapshot/同時利用/報酬配分、market transaction、不正対策、facility ownership、地上benefitの上限/逓減/移行、published Rulesetとの関係を決める。
+- Options: 早期頭打ちの段階式、逓減curve、限定utility/cosmetic中心を比較し、非参加playerへ不可逆な不利益を作らない。
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
 
 ## Monster/combat gates
 
@@ -517,12 +558,6 @@
 - Status: Deferred
 - Activation gate: measured map-performance roadmap
 - Boundary: World規模とviewport計測後にaggregation tileとcache契約を決める。
-
-### E-01 地下
-
-- Status: Deferred
-- Activation gate: underground layer roadmap
-- Boundary: 地上との座標関係、portal、ownership、visibilityを決める。
 
 ### E-02 宇宙
 

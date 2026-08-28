@@ -1,6 +1,6 @@
 # Repository documentation inventory
 
-> Baseline: `origin/main` `47b92337afdd6b9fd9a9429ab992274d94cfc377` (2026-08-28)
+> Baseline: `release/3.0.0-alpha` at exact `origin/main` `8e57ef517cf2fcb531231cdf8c6df04a5812ae92` (2026-08-29)
 > Scope: tracked Markdown after this navigation change; `_references/`, dependency/vendor output, build artifacts, and third-party originals are excluded.
 > Current application evidence: `product/config/hakoniwa.php` loads application 2.8.0 and immutable `hakoniwa-2s-plus-v18`; the current entrypoint, authoring guide, Item catalog, integrated handoff, current migrations, ADRs, runtime code, and Git history were cross-checked.
 
@@ -12,16 +12,16 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 
 | Classification | Count |
 |---|---:|
-| CURRENT AUTHORITY | 23 |
+| CURRENT AUTHORITY | 24 |
 | CURRENT INDEX / HANDOFF | 6 |
 | MIXED / PARTIALLY CURRENT | 9 |
 | HISTORICAL IMPLEMENTATION | 48 |
 | AUDIT / REFERENCE ANALYSIS | 44 |
 | OPERATIONS | 7 |
-| FUTURE / ROADMAP | 10 |
+| FUTURE / ROADMAP | 11 |
 | PLAYER-FACING | 12 |
 | UNKNOWN / CONFLICT | 6 |
-| **Total** | **165** |
+| **Total** | **167** |
 
 `Default read` uses only these values:
 
@@ -54,6 +54,7 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 | `docs/architecture/registration-and-world-expansion.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | Pre-implementation design plus MVP/PR19/expansion record | Registration and expansion rationale | Implemented flow is interleaved with “decide before Nation creation”, unimplemented economy, candidate algorithms, and MVP wording. Start with v18 world fragment and current registration/expansion code. |
 | `docs/architecture/roadmap-pr2-systems.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Roadmap PR2 | Command/facility/map checkpoint contract | Explicitly excluded execution later implemented. |
 | `docs/architecture/target-architecture.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Foundational architecture | Domain boundaries and design goals | Not approval to implement named future systems. |
+| `docs/architecture/underground-combat-laboratory.md` | CURRENT AUTHORITY | TASK-SPECIFIC | `secretary-underground-alpha-v0` PR1 | Pure combat laboratory boundary, deterministic RNG, report and semantic contracts | Does not define player-facing balance, Tutorial, persistence, API/UI, or surface bridge. |
 | `docs/architecture/turn-pipeline.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Initial pipeline proposal | Early Turn design rationale | Header says phase table is not implementation authority. |
 | `docs/architecture/turn-randomness.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | T-01 algorithm plus pre-missile/scaffold scope | Deterministic RNG rationale and fixed vector | Core derivation may remain valid, but the document says required phases stay stubs and missile execution is not connected. Start with current Turn/RNG code and Ruleset; use this for algorithm provenance. |
 | `docs/architecture/turn-runner-scaffold.md` | UNKNOWN / CONFLICT | DO NOT USE AS CURRENT AUTHORITY | Mixed PR7 scaffold and later additions | TurnRun schema/lock/retry history | Still states required phases are stubs and production returns non-zero; current runtime implements them. |
@@ -98,6 +99,7 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 | `docs/requirements/initial-game-direction.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | 2026-07-26 initial MVP | Original requirements record | Explicitly historical; many exclusions were later implemented. |
 | `docs/roadmap-pr4-staggered-xy.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Roadmap PR4 | Coordinate migration checkpoint | Current authority is ADR-0003/code. |
 | `docs/roadmap/2.x.md` | FUTURE / ROADMAP | DO NOT USE AS CURRENT AUTHORITY | Mixed completed sequencing and future candidates | 2.x roadmap boundaries | Not automatic approval; handoff/current code determine completed work. |
+| `docs/roadmap/3.0.0-alpha-underground.md` | FUTURE / ROADMAP | TASK-SPECIFIC | Active Underground alpha sequencing | Owner-approved roadmap, reached gates, PR sequence, first-playable conditions | Approval is slice-specific; UG-02〜04 remain blocking gates. |
 | `docs/testing/staggered-xy-test-plan.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | PR4 migration | Coordinate transition test plan | Current test contract is repository tests/policy. |
 
 ### `docs/reference-analysis/`
