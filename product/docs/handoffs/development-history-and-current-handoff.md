@@ -69,7 +69,8 @@ productionはOwner確認済みのver 2.8.0 / Ruleset v18。
 このhandoff更新ではproductionへ再接続して独立検証せず、Ownerの最新明示確認を運用上の正本とする。
 
 active development lineは`release/3.0.0-alpha`。
-PR #101で、playerから到達できないTurn非依存のUnderground Combat Laboratoryをreview中。
+PR #101のplayerから到達できないTurn非依存Underground Combat Laboratoryはmerge済み。
+PR #102でSecretary-owned Underground persistence foundationをreview済み・merge待ち。
 surface production baselineはapplication 2.8.0 / Ruleset v18のまま。
 
 ver 2.9.0のItem拡張は破棄しておらず、Ownerの具体案待ちとして一時保留。
@@ -166,10 +167,15 @@ foundation [PR #101](https://github.com/Mamiki765/hakoniwa-world/pull/101)でpla
 DB-free combat laboratory、専用deterministic RNG、built-in AI、self-contained manifest/report、独立test suiteを追加しています。
 reportのreplay metadataはshell command文字列ではなくargument arrayで保持し、外部manifest pathをshellへ再解釈させません。
 
-これはTurn非依存のside gameを段階的に試すalphaであり、player-facing地底RPG、schema、API、UI、
+PR #101は`release/3.0.0-alpha`へmerge済みです。後続の[PR #102](https://github.com/Mamiki765/hakoniwa-world/pull/102)は、
+Secretaryと1:1の`underground_profiles`、非負・default 0の`unlocked_area_layers`、Secretary row lockによるlazy create、
+`1 layer = 4 derived facility slots`だけを追加します。profileはNation破棄・再作成を越えて残り、Secretaryが正式に削除された時だけcascadeします。
+将来の実配置facilityはNation-ownedで、Nation破棄時に消えますが解禁layer entitlementは残ります。
+
+これはTurn非依存のside gameを段階的に試すalphaであり、player-facing地底RPG、persistent combat run、API、UI、
 surface benefitは未実装です。application 2.8.0 / immutable surface Ruleset v18 / production contractは変更しません。
-地底testは`Underground` suiteへ分離し、World、Nation、MapCell、TurnRun、DB fixtureを作らず、
-10,000-seed simulationは通常CI外のmanual experimentとします。
+pure combat testはDB-freeのまま、PR #102のDB-backed testもUser / Secretary / UndergroundProfileだけを使い、
+World、Nation、MapCell、TurnRun、official Turn fixtureを作りません。10,000-seed simulationは通常CI外のmanual experimentとします。
 telegraphed threatはfixed seed vectorでもbuilt-in AIが予告へ`defend`で反応し、guarded heavy damageがunguardedより小さいことを直接検証します。
 
 ver 2.9.0のSecretary Item拡張は破棄ではありません。Ownerの具体的なItem案を待つ間の一時保留です。
@@ -1273,7 +1279,9 @@ supported migration source:
 next development line:
   release/3.0.0-alpha Underground foundation
   roadmap: docs/roadmap/3.0.0-alpha-underground.md
-  PR: #101 (open; player-inaccessible foundation)
+  PR #101: merged; player-inaccessible pure combat laboratory
+  PR #102: open; Secretary-owned persistence foundation
+  PR #102 implementation head: 42271b0c34ddc977bf85c1dc5721158d7a02c53d
 
 temporarily paused, not discarded:
   ver 2.9.0 Item拡張（Ownerの具体案待ち）
@@ -1285,7 +1293,8 @@ implemented Item index:
 exact `main` HEADはdocs-only更新でも進むため、作業開始時に必ずGitHubで再確認してください。
 surfaceの新gameplayはimmutable v18を書き換えずv19以降へ追加します。
 Undergroundはsurface Rulesetと分離した`secretary-underground-alpha-v0` laboratory identityを使い、
-UG-02 / UG-03 / UG-04のRequired before gateへ到達するまでpersistence、player access、surface bridgeを実装しません。
+UG-02はSecretary-owned entitlementと最小profile schemaとして決定済みです。UG-03 / UG-04のRequired before gateへ到達するまで、
+player access、persistent combat run、facility implementation、surface bridgeを実装しません。
 
 ## 5.2 deterministic Turn
 
@@ -1461,13 +1470,23 @@ auctionは2.6.0の交易場として実装されました。
 ver 2.8.0 release / production移行は完了済みです。
 
 active roadmapは[`3.0.0-alpha Underground`](../../../docs/roadmap/3.0.0-alpha-underground.md)、
-foundationは[PR #101](https://github.com/Mamiki765/hakoniwa-world/pull/101)です。
-PR #101はpure combat laboratoryだけで、player-facing地底、schema、migration、API、UI、探索map、party、market、
-facility、Tutorial、surface rewardを実装しません。surface application 2.8.0 / Ruleset v18 / productionは不変です。
+pure combat foundation [PR #101](https://github.com/Mamiki765/hakoniwa-world/pull/101)はmerge済みです。
+[PR #102](https://github.com/Mamiki765/hakoniwa-world/pull/102)はUG-02を決定し、Secretary-ownedな最小persistence foundationを追加しました。
+
+- migration: `2026_08_29_000000_create_underground_profiles.php`
+- schema: Secretaryと1:1、unique FK、`unlocked_area_layers >= 0`、default 0、timestamps、Secretary正式削除時cascade
+- application: Secretary row lockとtransactionを使うlazy-create service
+- area: `unlocked_area_layers * 4`からfacility slot capacityを派生し、梯子・空slot・地下cellを保存しない
+- ownership: entitlementはSecretary-owned、将来の実配置facilityはNation-owned
+- isolation: World / Nation / MapCell / TurnRun / current Turn / surface Ruleset identityをprofileへ持ち込まない
+
+PR #102 implementation head `42271b0c34ddc977bf85c1dc5721158d7a02c53d`はQuality run
+`33215496401`がgreenで、Codex reviewは同headを明示してmajor issueなし、GraphQL unresolved `reviewThreads`は0でした。
+combat formula、enemy stat、RNG、balance simulator、10,000-seed observationは変更していません。
+surface application 2.8.0 / Ruleset v18 / productionは不変です。
 
 次の実装前に`docs/open-questions.md`のgateを確認してください。
 
-- UG-02: persistence ownership / schema / run / retry / lock / upgrade
 - UG-03: first playable / Tutorial / progression / defeat / API / UI / security / version
 - UG-04: borrowed party / market / facility / surface benefit bridge
 
@@ -1491,7 +1510,7 @@ Ownerが改めて仕様を確定するまでver 2.9.0の確定scopeとして扱�
 この文書はOwner / Web版ChatGPT development-advisor workflowが節目で更新します。
 Codex / implementation agentは通常のfeature実装やreview対応では変更しません。
 
-次回更新候補は、PR #101のmerge、UG-02以降のOwner決定、ver 2.9.0の再開、またはOwnerが明示的に引継ぎ更新を求めた時です。
+次回更新候補は、PR #102のmerge、UG-03以降のOwner決定、ver 2.9.0の再開、またはOwnerが明示的に引継ぎ更新を求めた時です。
 
 ---
 
@@ -1532,7 +1551,9 @@ production:
 
 next development direction:
   release/3.0.0-alpha Underground development line
-  foundation PR #101 (open; player-inaccessible pure laboratory)
+  PR #101 merged: player-inaccessible pure laboratory
+  PR #102 open: Secretary-owned persistence foundation
+  PR #102 implementation head: 42271b0c34ddc977bf85c1dc5721158d7a02c53d
   roadmap: docs/roadmap/3.0.0-alpha-underground.md
 
 temporarily paused, not discarded:
@@ -1570,10 +1591,11 @@ productionはOwner確認済みver 2.8.0 / Ruleset v18です。
 許可されたread-only確認を使ってください。
 
 active development lineはrelease/3.0.0-alphaです。
-docs/roadmap/3.0.0-alpha-underground.mdとfoundation PR #101を確認してください。
-現時点の地底はplayerから到達できないpure combat laboratoryで、Turn、World、Nation、MapCell、
-surface Ruleset、schema、productionへ依存しません。Underground testは独立suite、10,000-seed runはmanualです。
-UG-02 / UG-03 / UG-04のgateへ到達したらOwner decisionを得てください。
+docs/roadmap/3.0.0-alpha-underground.md、merged PR #101、open PR #102を確認してください。
+現時点の地底はplayerから到達できないpure combat laboratoryとSecretary-owned profile foundationです。
+profileはWorld、Nation、MapCell、TurnRun、surface Rulesetへ依存せず、DB-backed testもsurface fixtureを作りません。
+combat progressionと地下箱庭の解禁layerは独立stateです。10,000-seed runはmanualです。
+UG-02は決定済みで、UG-03 / UG-04のgateへ到達したらOwner decisionを得てください。
 
 ver 2.9.0 Item拡張は破棄ではなく、Ownerの具体案待ちとして一時保留です。
 再開時はproduct/docs/items/current-item-catalog.mdを正本にし、
@@ -1701,9 +1723,12 @@ product/docs/handoffs/
 
 next:
   active: release/3.0.0-alpha Underground development line
-  foundation: PR #101 / player-inaccessible pure combat laboratory
+  merged: PR #101 / player-inaccessible pure combat laboratory
+  open: PR #102 / Secretary-owned persistence foundation / UG-02 Decided
+  persistence: 1:1 lazy profile / unlocked layers / 4 derived slots per layer
+  future facility boundary: Nation-owned placement, Secretary-owned entitlement survives Nation lifecycle
   surface production baseline: application 2.8.0 / Ruleset v18 unchanged
-  tests: Underground suite分離、World / Nation / MapCell / TurnRun / DB fixtureなし
+  tests: Underground suite分離、persistence testはUser / Secretary / Profileのみ、surface fixtureなし
   manual: 10,000-seed balance experimentは通常CI外
   paused, not discarded: ver 2.9.0 Item拡張（Ownerの具体案待ち）
   implemented Item index: product/docs/items/current-item-catalog.md
