@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| underground alpha | UG-02、UG-03、UG-04 | E-01/UG-01によりpure combat laboratoryだけ開始済み。persistence/player access/surface bridgeは各gateで停止する。 |
+| underground alpha | UG-03、UG-04 | E-01/UG-01/UG-02によりpure combat laboratoryとSecretary-owned persistence foundationを実装する。player accessとsurface bridgeは各gateで停止する。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
@@ -259,8 +259,8 @@
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; alpha-v0 pure combat laboratory only. Underground layer/runtime is not implemented.
-- Decision: 地下roadmapを`release/3.0.0-alpha`として開始する。Turn非依存の任意side gameをmodular monolith内の独立domainとして育て、PR1は座標、portal、ownership、visibility、schema、API、UI、surface bridgeを実装しない。後続private layerとplayer accessはUG-02〜04で段階的に決める。
+- Implemented: Partially; alpha-v0 pure combat laboratory and Secretary-owned persistence foundation. Underground runtime is not implemented.
+- Decision: 地下roadmapを`release/3.0.0-alpha`として開始する。Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。PR1はpure combat laboratory、PR102はSecretary-ownedな地下箱庭layer entitlementの最小persistenceだけを実装し、player accessとsurface bridgeはUG-03〜04で段階的に決める。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ## Underground RPG gates
@@ -274,17 +274,17 @@
 
 ### UG-02 Underground persistenceとdata ownership
 
-- Status: Open
-- Required before: Underground schema、migration、persistent run、authenticated APIの最初の実装
-- Open decision: User/Secretary/profile/loadout/inventory/run/cellのownership、account survival、request idempotency、transaction/lock、resume、forward migration、production data boundaryを決める。
-- Options: account-owned aggregate、Secretary-owned aggregate、run-owned snapshotを比較し、combat coreへEloquentを持ち込まないadapter boundaryを維持する。
-- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
+- Status: Decided
+- Implemented: Yes; PR102 persistence foundation only.
+- Decision: 地底RPGの恒久進行、将来のcombat/exploration progression、装備、探索基地、地下箱庭の解禁済みarea layer、Secretary固有の地下状態はSecretary-ownedとし、Nationの破棄・再作成を越えて保持する。PR102はSecretaryと1:1のlazy-created profileへ非負の`unlocked_area_layers`だけを保存し、`1 layer = 4 facility slots`をstorageせず派生する。梯子はslotではなく、空slot/cell row、surface World/Nation/MapCell/Turn identity、combat XP/level/checkpointを保存しない。profile初回作成はSecretary row lockとunique FKで直列化し、Secretaryが正式に削除された場合だけcurrent child lifecycleと同じcascadeで削除する。pure combat coreへEloquentを持ち込まない。
+- Future boundary: 実際に解禁slotへ置く地下施設はNation-ownedとする。Nation破棄時に施設は消えるがSecretaryの解禁layer entitlementは残り、同じSecretaryの新Nationでは空配置から同じslot capacityを利用できる。施設、persistent combat run、request idempotency、resume、API/UIはPR102では実装しない。
+- Decision record: `docs/architecture/underground-combat-laboratory.md`、`docs/roadmap/3.0.0-alpha-underground.md`
 
 ### UG-03 first player-accessible alpha
 
 - Status: Open
 - Required before: Tutorialを含むfirst player-accessible alphaのAPI/UI/version更新
-- Open decision: progression、defeat/withdrawal/recovery、security/rate limit、minimum UI、human playtest、release acceptance、application versionを決める。Tutorialはlaboratory standardと分離し、正常操作またはbuilt-in AIで100%勝利するdeterministic教育encounterとする。
+- Open decision: combat progression、persistent runのtransaction/idempotency/resume、defeat/withdrawal/recovery、security/rate limit、minimum UI、human playtest、release acceptance、application versionを決める。Tutorialはlaboratory standardと分離し、正常操作またはbuilt-in AIで100%勝利するdeterministic教育encounterとする。combat level/XP/checkpointと地下箱庭の解禁layerは独立stateを維持する。
 - Options: application `3.0.0-alpha.1`を最初のplayer buildとする案と、`3.0.0-alpha`へ直接更新する案を比較する。PR1は2.8.0を維持する。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
 
@@ -292,7 +292,7 @@
 
 - Status: Open
 - Required before: 借用秘書、複数人party、地底market、facility効果、または地上gameへ利益を渡す最初の実装
-- Open decision: party snapshot/同時利用/報酬配分、market transaction、不正対策、facility ownership、地上benefitの上限/逓減/移行、published Rulesetとの関係を決める。
+- Open decision: party snapshot/同時利用/報酬配分、market transaction、不正対策、Nation-owned地下facilityのplacement/lifecycle、地上benefitの上限/逓減/移行、published Rulesetとの関係を決める。facilityのownerはNation、解禁layer entitlementのownerはSecretaryという境界自体はUG-02で決定済み。
 - Options: 早期頭打ちの段階式、逓減curve、限定utility/cosmetic中心を比較し、非参加playerへ不可逆な不利益を作らない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
 

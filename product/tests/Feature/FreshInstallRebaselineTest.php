@@ -55,7 +55,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(54, DB::table('migrations')->count());
+        $this->assertSame(55, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -79,6 +79,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_27_000000_publish_v18_undersea_city',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_29_000000_create_underground_profiles',
         ]);
         $this->assertDatabaseHas('facility_definitions', [
             'key' => 'undersea_city',
@@ -112,6 +115,8 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('nations', 'population_high_water'));
         $this->assertTrue(Schema::hasTable('auction_listings'));
         $this->assertTrue(Schema::hasTable('auction_bids'));
+        $this->assertTrue(Schema::hasTable('underground_profiles'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'unlocked_area_layers'));
         $this->assertSame(0, DB::table('auction_listings')->count());
         $this->assertSame(0, DB::table('auction_bids')->count());
         $this->assertSame(6, $ruleset->settings['trading_post']['npc']['duration_turns']);
@@ -123,6 +128,8 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'secretaries_monster_experience_non_negative')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'monster_definitions_experience_per_damage_non_negative')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_profiles_unlocked_area_layers_non_negative')->count());
         $auctionIndexes = [
             'auction_bids_bidder_index',
             'auction_bids_one_highest_per_listing',
@@ -458,7 +465,7 @@ SQL);
             'nations', 'nation_capitals', 'nation_memberships',
             'map_spaces', 'map_chunks', 'map_cells',
             'nation_resources', 'nation_resource_sale_policies',
-            'secretaries', 'secretary_skills', 'secretary_item_instances',
+            'secretaries', 'secretary_skills', 'secretary_item_instances', 'underground_profiles',
             'auction_listings', 'auction_bids',
             'nation_command_queues', 'nation_command_queue_items', 'nation_command_queue_bulk_requests',
             'turn_runs', 'audit_events', 'world_generation_runs',

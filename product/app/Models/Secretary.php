@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -24,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property-read User $user
  * @property-read Collection<int, SecretarySkill> $skills
  * @property-read Collection<int, SecretaryItemInstance> $itemInstances
+ * @property-read UndergroundProfile|null $undergroundProfile
  */
 final class Secretary extends Model
 {
@@ -59,5 +61,11 @@ final class Secretary extends Model
     public function itemInstances(): HasMany
     {
         return $this->hasMany(SecretaryItemInstance::class);
+    }
+
+    /** @return HasOne<UndergroundProfile, $this> */
+    public function undergroundProfile(): HasOne
+    {
+        return $this->hasOne(UndergroundProfile::class);
     }
 }

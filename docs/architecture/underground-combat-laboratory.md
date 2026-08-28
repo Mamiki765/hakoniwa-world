@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryのcurrent task-specific architecture authorityである。playerから到達できないalpha-v0実験環境を定義し、将来のplayer-facing combat balance、Tutorial、persistence、API、UI、surface bridgeを定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryとPR102 persistence foundationのcurrent task-specific architecture authorityである。playerから到達できないalpha-v0実験環境とSecretary-ownedな最小area entitlementを定義し、将来のplayer-facing combat balance、Tutorial、persistent run、API、UI、surface bridgeを定義しない。
 
-地上のcurrent baselineはapplication 2.8.0 / `hakoniwa-2s-plus-v18`であり、このlaboratory identityとは独立している。PR1はpublished Ruleset、schema、migration、World、Nation、MapCell、TurnRun、Turn RNG、production dataを変更しない。
+地上のcurrent baselineはapplication 2.8.0 / `hakoniwa-2s-plus-v18`であり、このlaboratory identityとは独立している。PR102はprofile schemaをforward migrationで追加するが、published Ruleset、World、Nation、MapCell、TurnRun、Turn RNG、既存production dataを変更しない。
 
 ## Modular-monolith boundary
 
@@ -12,11 +12,30 @@
 
 - `product/app/Domain/Underground/Combat/`: rules、state、AI、private RNG、engine、result。
 - `product/app/Application/Underground/`: manifest駆動simulationとreport aggregation。
+- `product/app/Application/Underground/UndergroundProfileService.php`: Secretary row lockを使うprofile lazy-create adapter。
+- `product/app/Models/UndergroundProfile.php`: Secretary-owned profileのEloquent persistence model。
+- `product/app/Domain/Underground/Area/`: layerからfacility slot capacityを派生するpure calculator。
 - `product/app/Console/Commands/UndergroundBalance.php`: file I/OとCLI adapter。
 - `product/config/underground/balance/foundation-v0.json`: versioned laboratory inputとinitial observation metadata。
 - `product/tests/Underground/`: surface test suiteと分離したcontract tests。
 
-`Domain/Underground`から`App\Models`、`App\Domain\Turn`、Laravel database、World、Nation、MapCell、TurnRun、surface Ruleset identityへ依存してはならない。将来User/Secretary identityを接続する場合も、coreへEloquent modelを渡さず、明示的application adapterがimmutable inputへ変換する。
+`Domain/Underground`から`App\Models`、`App\Domain\Turn`、Laravel database、World、Nation、MapCell、TurnRun、surface Ruleset identityへ依存してはならない。Secretary接続はApplication/Model境界で扱い、combat coreへEloquent modelを渡さず、将来のruntime adapterがimmutable inputへ変換する。
+
+## Underground persistence boundary
+
+### Ownership and lifecycle
+
+Undergroundの恒久的なplayer progression ownerは`Secretary`である。将来のcombat/exploration progression、地底装備、探索基地、地下箱庭で解禁済みのarea layer、装備特殊化等のSecretary固有状態はNationから独立して保持する。PR102ではこのうち地下箱庭entitlementの`unlocked_area_layers`だけを永続化する。
+
+`underground_profiles`はSecretaryと1:1で、`secretary_id`をunique FKとする。既存Secretaryはbackfillせず、必要になった時にApplication serviceがtransaction内でSecretary rowをlockしてprofileをlazy createする。profileはNationの破棄・再作成では削除しない。Secretaryそのものが正式に削除された場合だけ、Secretary skill/itemと同じcurrent child lifecycleに従ってcascade deleteする。current User→Secretary FKは`RESTRICT`であり、このPRはUser/Secretary lifecycleを変更しない。
+
+### Area and facility boundary
+
+地下箱庭はsurface World/MapCellとは別空間であり、PR102は地下cellを生成しない。`1 unlocked layer = 4 facility slots`とし、slot capacityは`unlocked_area_layers * 4`からpure calculationで派生する。梯子/vertical spineはnavigationであってfacility slotではない。空slotをrowとして保存せず、surface x/y、chunk、MapCellを流用しない。frontend layout、左右の描画順、adjacencyは固定しない。
+
+将来、解禁slotへ配置する地下都市・農場・工場等の施設はNation-ownedとする。Nation破棄時は施設を失うがSecretary-ownedの解禁layer entitlementは残る。同じSecretaryが新しいNationを持つ場合、保持したcapacityを空配置から利用する。このfuture bridgeはPR102では実装しない。
+
+combat level、combat XP、dungeon/checkpoint progress、地下箱庭の解禁layerは独立stateである。combat levelやsimulator scenario progressからlayer数を算出せず、同じfieldへ格納しない。PR102はcombat progress、equipment、base、facility、persistent run、API、UIを追加しない。
 
 ## Alpha-v0 combat model
 
@@ -79,7 +98,7 @@ full manifestを実行したreportはsemantic observationsと`laboratory_contrac
 
 ## Verification boundary
 
-small CI smokeは32程度のseedでdeterminism、legality、abnormal=0、report再現性、semantic behaviorを確認する。10,000-seed runはmanual experimentであり、CIへ常設しない。surface、database、World construction、official Turn、migration、concurrency fixtureを実行しない。
+pure combat CI smokeは32程度のseedでdeterminism、legality、abnormal=0、report再現性、semantic behaviorを確認する。10,000-seed runはmanual experimentであり、CIへ常設しない。pure combat testはsurface/database fixtureを持たず、PR102のDB-backed testは`tests/Underground/Feature`へ分離し、User、Secretary、UndergroundProfileだけを使う。World construction、Nation、MapCell、official Turn、concurrency fixtureは実行しない。
 
 代表command:
 
@@ -99,4 +118,4 @@ reportはmanifest path/hash、raw `manifest_contents`、exact source commit、se
 
 player-facing first Tutorialはlaboratory `standard_enemy`と別物である。正常操作またはbuilt-in AIで100%勝利できるdeterministic教育encounterを別fixtureとしてauthoringし、standardのstat、win rate、provisional rangeをdifficultyへ流用しない。PR1はTutorialを実装しない。
 
-future runtimeはpure engineへidentity/profile snapshot、loadout、encounter、seedを渡し、resultをtransaction内でsettleするadapterを追加する。persistence/lock/idempotencyはUG-02、Tutorial/progression/defeat/API/UI/versionはUG-03、party borrowing/market/facility/surface benefitはUG-04のOwner decision後に限る。variantごとにengineを複製しない。
+future runtimeはpure engineへidentity/profile snapshot、loadout、encounter、seedを渡し、resultをtransaction内でsettleするadapterを追加する。Secretary-owned entitlementとprofile初回作成lockはUG-02で決定済みである。persistent combat runのtransaction/idempotency/resume、Tutorial/progression/defeat/API/UI/versionはUG-03、party borrowing/market/Nation-owned facility placement/surface benefitはUG-04のOwner decision後に限る。variantごとにengineを複製しない。
