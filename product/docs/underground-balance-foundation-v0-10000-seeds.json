@@ -2,7 +2,7 @@
     "schema_version": 1,
     "simulator_version": "underground-balance-v1",
     "rules_identity": "secretary-underground-alpha-v0",
-    "commit_sha": "1308586e83b48fcde7fadb588517fa24fb463ca6",
+    "commit_sha": "f9255ffb30b9ee8fae5908f8d0b1d96c75b41d18",
     "working_tree_dirty": null,
     "manifest_path": "config/underground/balance/foundation-v0.json",
     "manifest_hash": "bd62f60ce219c41f72b03d432bcdee28b92773fc9b6800d82e19b5669b150d27",
