@@ -37,6 +37,21 @@ Owner explicitly requests a handoff update.
 The Owner and the Web ChatGPT development-advisor workflow maintain that document separately
 after implementation, review evidence, and Owner decisions have been examined.
 
+### Documentation navigation
+
+After reading this file, start with
+`product/docs/handoffs/development-history-and-current-handoff.md`, then `docs/README.md`,
+then `docs/open-questions.md`. Follow the guide to select only the current, task-specific
+architecture, operations, ADR, code, and Ruleset sources needed for the work. Do not load all
+documentation indiscriminately.
+
+Historical implementation, audit/reference-analysis, and future/roadmap documents are not
+current authority. Do not judge freshness from filenames or modification dates alone. If a
+document conflicts with current reviewed code, the immutable Ruleset, schema/current
+migration contract, or an accepted active ADR, report the conflict instead of silently
+reconciling it. Keep `docs/README.md` as navigation; do not duplicate gameplay specifications
+there.
+
 ### Player manual
 
 Prioritize information that changes a player's decisions; do not exhaustively document
