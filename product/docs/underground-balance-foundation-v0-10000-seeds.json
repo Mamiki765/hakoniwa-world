@@ -2,7 +2,7 @@
     "schema_version": 1,
     "simulator_version": "underground-balance-v1",
     "rules_identity": "secretary-underground-alpha-v0",
-    "commit_sha": "bf9a10375b44cca9e9a4642e6cfb9ffa927ed7fd",
+    "commit_sha": "9c8a17b7ca6b2e31e7cf0da28951b786826b4715",
     "working_tree_dirty": null,
     "manifest_path": "config/underground/balance/foundation-v0.json",
     "manifest_hash": "bd62f60ce219c41f72b03d432bcdee28b92773fc9b6800d82e19b5669b150d27",
@@ -105,7 +105,14 @@
                 "abnormal_rate": 0
             },
             "abnormal_seeds": [],
-            "reproduction_command_template": "php artisan underground:balance --manifest=config/underground/balance/foundation-v0.json --scenario=standard_enemy --replay-seed=0"
+            "reproduction_arguments": [
+                "php",
+                "artisan",
+                "underground:balance",
+                "--manifest=config/underground/balance/foundation-v0.json",
+                "--scenario=standard_enemy",
+                "--replay-seed=0"
+            ]
         },
         {
             "id": "fast_enemy",
@@ -175,7 +182,14 @@
                 "abnormal_rate": 0
             },
             "abnormal_seeds": [],
-            "reproduction_command_template": "php artisan underground:balance --manifest=config/underground/balance/foundation-v0.json --scenario=fast_enemy --replay-seed=0"
+            "reproduction_arguments": [
+                "php",
+                "artisan",
+                "underground:balance",
+                "--manifest=config/underground/balance/foundation-v0.json",
+                "--scenario=fast_enemy",
+                "--replay-seed=0"
+            ]
         },
         {
             "id": "armored_enemy",
@@ -242,7 +256,14 @@
                 "abnormal_rate": 0
             },
             "abnormal_seeds": [],
-            "reproduction_command_template": "php artisan underground:balance --manifest=config/underground/balance/foundation-v0.json --scenario=armored_enemy --replay-seed=0"
+            "reproduction_arguments": [
+                "php",
+                "artisan",
+                "underground:balance",
+                "--manifest=config/underground/balance/foundation-v0.json",
+                "--scenario=armored_enemy",
+                "--replay-seed=0"
+            ]
         },
         {
             "id": "telegraphed_threat",
@@ -311,7 +332,14 @@
                 "abnormal_rate": 0
             },
             "abnormal_seeds": [],
-            "reproduction_command_template": "php artisan underground:balance --manifest=config/underground/balance/foundation-v0.json --scenario=telegraphed_threat --replay-seed=0"
+            "reproduction_arguments": [
+                "php",
+                "artisan",
+                "underground:balance",
+                "--manifest=config/underground/balance/foundation-v0.json",
+                "--scenario=telegraphed_threat",
+                "--replay-seed=0"
+            ]
         }
     ]
 }
