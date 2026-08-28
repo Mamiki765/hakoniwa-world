@@ -6,6 +6,7 @@ use App\Domain\Underground\Combat\CombatResult;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use InvalidArgumentException;
+use JsonException;
 
 final readonly class UndergroundBalanceSimulator
 {
@@ -20,6 +21,7 @@ final readonly class UndergroundBalanceSimulator
      */
     public function run(
         array $manifest,
+        string $manifestContents,
         string $manifestHash,
         string $manifestPath,
         string $commitSha,
@@ -28,6 +30,7 @@ final readonly class UndergroundBalanceSimulator
         ?int $countOverride = null,
         ?string $scenarioFilter = null,
     ): array {
+        $this->assertManifestContents($manifest, $manifestContents, $manifestHash);
         $normalized = $this->normalizeManifest($manifest);
         $seedStart = $seedStartOverride ?? $normalized['seed_start'];
         $count = $countOverride ?? $normalized['count'];
@@ -79,6 +82,7 @@ final readonly class UndergroundBalanceSimulator
             'working_tree_dirty' => $workingTreeDirty,
             'manifest_path' => $manifestPath,
             'manifest_hash' => $manifestHash,
+            'manifest_contents' => $manifestContents,
             'seed_range' => [
                 'start' => $seedStart,
                 'count' => $count,
@@ -94,6 +98,25 @@ final readonly class UndergroundBalanceSimulator
                 : ! in_array(false, $experimentThresholdResults, true),
             'scenarios' => $scenarioReports,
         ];
+    }
+
+    /** @param array<string, mixed> $manifest */
+    private function assertManifestContents(
+        array $manifest,
+        string $manifestContents,
+        string $manifestHash,
+    ): void {
+        if (! hash_equals($manifestHash, hash('sha256', $manifestContents))) {
+            throw new InvalidArgumentException('Underground manifest hash does not match the embedded contents.');
+        }
+        try {
+            $embeddedManifest = json_decode($manifestContents, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new InvalidArgumentException('Embedded Underground manifest contents must be valid JSON.', 0, $exception);
+        }
+        if ($embeddedManifest !== $manifest) {
+            throw new InvalidArgumentException('Embedded Underground manifest contents do not match the simulation input.');
+        }
     }
 
     /**

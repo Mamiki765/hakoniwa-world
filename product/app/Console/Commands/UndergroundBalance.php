@@ -56,6 +56,7 @@ final class UndergroundBalance extends Command
                 );
                 $report = $simulator->run(
                     $manifest,
+                    $contents,
                     hash('sha256', $contents),
                     str_replace('\\', '/', $manifestOption),
                     $commitSha,

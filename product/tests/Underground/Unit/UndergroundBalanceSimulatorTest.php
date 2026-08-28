@@ -17,6 +17,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         [$contents, $manifest] = $this->manifest();
         $report = $this->simulator()->run(
             $manifest,
+            $contents,
             hash('sha256', $contents),
             'config/underground/balance/foundation-v0.json',
             str_repeat('a', 40),
@@ -26,6 +27,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         );
         $replay = $this->simulator()->run(
             $manifest,
+            $contents,
             hash('sha256', $contents),
             'config/underground/balance/foundation-v0.json',
             str_repeat('a', 40),
@@ -39,6 +41,8 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertTrue($report['semantic_contract_passed']);
         $this->assertNull($report['experiment_thresholds_passed']);
         $this->assertSame(hash('sha256', $contents), $report['manifest_hash']);
+        $this->assertSame($contents, $report['manifest_contents']);
+        $this->assertSame($manifest, json_decode($report['manifest_contents'], true, flags: JSON_THROW_ON_ERROR));
         $this->assertSame(UndergroundCombatRules::SIMULATOR_VERSION, $report['simulator_version']);
         $this->assertCount(4, $report['scenarios']);
         $this->assertCount(3, $report['semantic_observations']);
@@ -114,12 +118,14 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             'stalemate_rate_max' => 1,
             'abnormal_rate_max' => 0,
         ];
+        $manifestContents = json_encode($manifest, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $report = $this->simulator()->run(
             $manifest,
-            'test-hash',
+            $manifestContents,
+            hash('sha256', $manifestContents),
             'manifest.json',
-            'working-tree',
-            true,
+            str_repeat('a', 40),
+            false,
             0,
             16,
             'synthetic_stress',
