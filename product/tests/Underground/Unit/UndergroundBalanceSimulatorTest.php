@@ -159,7 +159,10 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertSame($sha, $identity->resolve($sha, $sha));
         $this->assertSame($sha, $identity->resolve($sha, null));
         $this->assertSame($sha, $identity->resolve(null, $sha));
-        $this->assertSame('unknown', $identity->resolve(null, null));
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('provide --commit-sha when Git metadata is unavailable');
+        $identity->resolve(null, null);
     }
 
     public function test_report_source_identity_rejects_explicit_sha_that_differs_from_detected_head(): void

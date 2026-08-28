@@ -22,7 +22,14 @@ final class UndergroundReportSourceIdentity
             );
         }
 
-        return $explicitCommitSha ?? $detectedCommitSha ?? 'unknown';
+        $commitSha = $explicitCommitSha ?? $detectedCommitSha;
+        if ($commitSha === null) {
+            throw new InvalidArgumentException(
+                'Unable to determine the exact source commit; provide --commit-sha when Git metadata is unavailable.',
+            );
+        }
+
+        return $commitSha;
     }
 
     private function validCommitSha(string $value): bool
