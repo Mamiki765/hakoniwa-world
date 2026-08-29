@@ -115,7 +115,7 @@ uniqueは水平sidegradeである。manual comparisonではアイテムLv40の�
 
 ### Representative observations
 
-同point budget・同アイテムLvのpure attacker、pure tank、pure healer/miracle、balanced buildをclass recordではなくfixtureとしてauthoringする。standardized pressure benchmarkのmanual targetはattacker 100に対してbalanced 88〜92、tank 78〜82、healer 77〜81であり、通常CIのhard gateにはしない。適正帯enemyはmedian 14〜26 rounds、全build solo可能、100-round stalemateなしをinitial targetとする。
+同point budget・同アイテムLvのpure attacker、pure tank、pure healer/miracle、balanced buildをclass recordではなくfixtureとしてauthoringする。standardized pressure benchmarkのmanual targetはattacker 100に対してbalanced 88〜92、tank 82〜84、healer 79〜81であり、tankの平均はhealer以上とする。tankのpressure出力は通常攻撃の基礎値ではなく、実効guard/parry/barrier吸収から闘志を得てcounterへつなぐ護身固有loopの価値で調整する。これらは通常CIのhard gateにはしない。適正帯enemyはmedian 14〜26 rounds、全build solo可能、100-round stalemateなしをinitial targetとする。
 
 seed 0〜9,999のpressure/appropriate実験、各1,000-seedのearly/mid/late、MP sweep、sidegradeを含むsummaryは[`underground-balance-foundation-v1-10000-seeds.json`](../../product/docs/underground-balance-foundation-v1-10000-seeds.json)を正本とする。reportはraw per-seed action logを含めず、observed ratio、round分布、outcome、healing/prevention、status/action usage、MP economy、最大10 abnormal seeds、再現argumentを保持する。数値はalpha-v1の初期観測であり、player-facing contentや永久balance gateではない。
 
