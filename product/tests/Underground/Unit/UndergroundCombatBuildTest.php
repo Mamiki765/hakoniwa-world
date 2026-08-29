@@ -226,6 +226,26 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame([], $bossSkips);
         $this->assertGreaterThan(0, min(array_column($converted, 'amount')));
         $this->assertLessThanOrEqual(10_000, max(array_column($converted, 'amount')));
+
+        $lowAgility = $manifest;
+        $lowAgility['builds']['pure_tank']['base_stats'] = [
+            'vitality' => 40, 'might' => 33, 'finesse' => 10, 'spirit' => 16, 'agility' => 1,
+        ];
+        $highAgility = $manifest;
+        $highAgility['builds']['pure_tank']['base_stats'] = [
+            'vitality' => 40, 'might' => 1, 'finesse' => 10, 'spirit' => 16, 'agility' => 33,
+        ];
+        $skips = function (array $candidate): int {
+            $catalog = new AlphaV1BuildCatalog($candidate);
+
+            return array_sum(array_map(
+                fn (int $seed): int => $this->model()->fight(
+                    $catalog, 'pure_tank', 'crystal_warden', 'early', $seed, 12,
+                )->actionUsage['action_skipped'],
+                range(0, 199),
+            ));
+        };
+        $this->assertGreaterThan($skips($highAgility), $skips($lowAgility));
     }
 
     public function test_fighting_spirit_and_grace_require_effective_defense_or_recovery(): void

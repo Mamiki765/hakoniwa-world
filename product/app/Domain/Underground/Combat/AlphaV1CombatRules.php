@@ -24,6 +24,8 @@ final class AlphaV1CombatRules
 
     public const EVASION_CAP_BPS = 3_500;
 
+    public const ACTION_IMPAIRMENT_RESISTANCE_CAP_BPS = 5_000;
+
     public const CRITICAL_CHANCE_CAP_BPS = 6_000;
 
     public const MP_COST_REDUCTION_CAP_BPS = 4_000;

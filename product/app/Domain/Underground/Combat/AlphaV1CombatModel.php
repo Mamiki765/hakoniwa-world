@@ -923,6 +923,11 @@ final readonly class AlphaV1CombatModel
                     continue;
                 }
                 $chance = min(10_000, max(0, (int) ($effect['skip_chance_bps'] ?? 10_000)));
+                $resistance = min(
+                    AlphaV1CombatRules::ACTION_IMPAIRMENT_RESISTANCE_CAP_BPS,
+                    $this->scaledProbabilityContribution($state, 'agility', 2_000),
+                );
+                $chance = intdiv($chance * (10_000 - $resistance), 10_000);
                 if ($random->integer("alpha-v1:impairment:{$state->key}:{$key}:{$round}", 1, 10_000) <= $chance) {
                     unset($state->statuses[$key]);
 

@@ -101,7 +101,7 @@ skill treeは`martial`（戦技）、`guardianship`（護身）、`miracle`（�
 
 ### Status and boss policy
 
-statusはbuff/debuff disposition、duration、`refresh`または`stack_refresh`、max stacks、typed effectsを持つ。applyされたroundにはperiodic tickとduration decrementを行わず、次のeligible round endからtickして残durationを減らす。refreshはdurationを戻し、stack refreshはcapまで増やしてdurationを戻す。cleanse/dispelは実際に対象statusを除去した時だけeffective actionとして数える。duration、barrier、cooldown、stackはunderflow/overflowをabnormal stateとして検出する。
+statusはbuff/debuff disposition、duration、`refresh`または`stack_refresh`、max stacks、typed effectsを持つ。applyされたroundにはperiodic tickとduration decrementを行わず、次のeligible round endからtickして残durationを減らす。refreshはdurationを戻し、stack refreshはcapまで増やしてdurationを戻す。action impairmentの実効skip chanceは`authored chance × (10,000 - agility resistance) / 10,000`を整数切捨てし、agility resistanceはlevel正規化したreference時2,000 bps係数・5,000 bps capとする。cleanse/dispelは実際に対象statusを除去した時だけeffective actionとして数える。duration、barrier、cooldown、stackはunderflow/overflowをabnormal stateとして検出する。
 
 normal targetのaction impairmentをbossへそのまま適用しない。boss profileはinitiative/damage等のsoft effectへ変換し、同種controlの反復には一時resistanceを積み、round endで減衰させる。permanent controlは許さない。
 
