@@ -259,8 +259,8 @@
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; alpha-v0 pure combat laboratory and Secretary-owned persistence foundation. Underground runtime is not implemented.
-- Decision: 地下roadmapを`release/3.0.0-alpha`として開始する。Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。PR1はpure combat laboratory、PR102はSecretary-ownedな地下箱庭layer entitlementの最小persistenceだけを実装し、player accessとsurface bridgeはUG-03〜04で段階的に決める。
+- Implemented: Partially; alpha-v0 pure combat laboratory、Secretary-owned persistence foundation、PR103のplayer-access前段となるUnderground runtime backend。first-player accessとsurface bridgeは未実装。
+- Decision: 地下roadmapを`release/3.0.0-alpha`として開始する。Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。PR1はpure combat laboratory、PR102はSecretary-ownedな地下箱庭layer entitlementの最小persistence、PR103はcanonical pure combat coreを再利用するatomic auto battle、通常探索・試練run、progression、報酬settlement、履歴、cooldown、idempotencyのbackend foundationを実装する。player-facing API/UI、Tutorial、security/rate-limitのacceptanceとsurface bridgeは各gateで決める。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ## Underground RPG gates
@@ -284,7 +284,9 @@
 
 - Status: Open
 - Required before: Tutorialを含むfirst player-accessible alphaのAPI/UI/version更新
-- Open decision: combat progression、persistent runのtransaction/idempotency/resume、defeat/withdrawal/recovery、security/rate limit、minimum UI、human playtest、release acceptance、application versionを決める。Tutorialはlaboratory standardと分離し、正常操作またはbuilt-in AIで100%勝利するdeterministic教育encounterとする。combat level/XP/checkpointと地下箱庭の解禁layerは独立stateを維持する。
+- Implemented: PR103でplayer-facing導線の前段となるbackend runtime contractを実装。Secretary-ownedのcombat level/XP（開始値`1`/`0`、alpha中にretune可能なversioned curve）、非負の地底通貨「輝石の欠片」、通常探索とsequential trial、atomic built-in-AI auto battle、persistentなtrialの戦闘間progress、結果settlement、battle history、server-authoritative 10秒cooldown、transaction/row-lock/unique idempotencyによる重複・競合保護を追加する。surface World/Nation/MapCell/Turn/Rulesetとは独立し、PR101のpure combat coreへsnapshot・loadout・AI・encounter・private seedを渡す。combatは最大100 roundで、未決着ならstalemate withdrawalとして終了する。通常探索・trialとも欠片loss/rewardなしで通常勝利時base XPの`floor(base XP / 4)`を得て、通常探索は安全撤退、trialはrun失敗としてbattle 1へresetする。
+- Decided backend portion: defeatは輝石の欠片を`floor(balance / 2)`まで減らしてrunを終了する。trialのdefeatまたはbattle後の明示的な帰還は次回battle 1へresetするが、既に解禁したtrialは失わない。browser close/logoutはtrialの戦闘間progressを保持する。trialのfirst clearだけが`unlocked_area_layers`を1増やし、capacityは1 layer = 4 slotsから派生し、次のtrialをsequentialにunlockする。同じtrialの再clearでlayerを重複取得しない。battle詳細logは終了から1000時間保持し、期限後もsummaryとidempotency/audit identityは保持する。
+- Open decision: first-player API/UI、Tutorial（laboratory standardと分離した正常操作またはbuilt-in AIで100%勝利するdeterministic教育encounter）、authenticated ownership adapterを含むsecurity、rate limit、minimum UI、human playtest、release acceptance、application versionを決める。combat level/XP、trial progress、unlocked layerは独立stateとして維持し、manual round combat、equipment、shop、surface bridge、Turn integrationはこのgateの未承認範囲に残す。
 - Options: application `3.0.0-alpha.1`を最初のplayer buildとする案と、`3.0.0-alpha`へ直接更新する案を比較する。PR1は2.8.0を維持する。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
 

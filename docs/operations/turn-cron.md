@@ -45,6 +45,17 @@ The public turn health contract uses the same `Asia/Tokyo` even-hour schedule an
 
 The log destination is owned by the host operator. Laravel also emits command failures through its configured application log. Do not log environment dumps, database URLs, or credentials.
 
+## Daily Underground battle-log prune
+
+Undergroundの1000時間retentionを越えた詳細battle logは、Turnと同じOCI host cron thin-trigger patternから1日1回cleanupする。Laravel schedulerやcron daemonをapplication containerへ追加せず、checked-in wrapperが既存`hakoniwa-web` container内の`underground:prune-battle-logs`を実行する。
+
+```cron
+CRON_TZ=Asia/Tokyo
+15 3 * * * /usr/bin/flock -n /run/lock/hakoniwa-underground-log-prune.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world /opt/hakoniwa-world/product/docker/cron/prune-underground-battle-logs.sh >> /var/log/hakoniwa-underground-log-prune.log 2>&1
+```
+
+このjobは`expires_at <= now`の`underground_battle_logs`だけを削除する。`underground_battles`のsummary、damage/recovery aggregate、request idempotency identityは保持する。03:15 JSTの独立jobであり、Turn command、TurnRun、World lock、failed/blocked Turnのmanual retry contractには触れない。非ゼロ終了時は同じcommandをoperatorが原因確認後に明示実行し、shell側でretry loopを作らない。
+
 ## Pre-registration checks
 
 Before registering production cron:
