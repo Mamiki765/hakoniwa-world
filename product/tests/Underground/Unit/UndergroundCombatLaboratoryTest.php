@@ -167,6 +167,71 @@ final class UndergroundCombatLaboratoryTest extends TestCase
         $this->assertGreaterThan(0, $result->enemyRemainingHp);
     }
 
+    public function test_intro_fixed_snapshots_replay_tutorial_victory_and_scripted_player_defeat(): void
+    {
+        $config = require dirname(__DIR__, 3).'/config/underground-intro.php';
+        $vectors = [
+            'tutorial' => [
+                'winner' => 'player',
+                'rounds' => 1,
+                'player_hp' => 220,
+                'enemy_hp' => 0,
+                'damage_dealt' => 90,
+                'damage_received' => 0,
+                'actions' => [[1, 'player', 'quick_slash', 90]],
+            ],
+            'scripted_loss' => [
+                'winner' => 'enemy',
+                'rounds' => 1,
+                'player_hp' => 0,
+                'enemy_hp' => 999,
+                'damage_dealt' => 0,
+                'damage_received' => 40,
+                'actions' => [[1, 'enemy', 'normal_attack', 40]],
+            ],
+        ];
+        foreach ($vectors as $battleKey => $expected) {
+            $definition = $config['battles'][$battleKey];
+            $first = $this->engine()->fightSnapshots(
+                $definition['actor'],
+                $definition['loadout'],
+                $definition['enemy'],
+                UndergroundCombatRules::AI_PRESET,
+                $definition['seed'],
+                $definition['max_rounds'],
+            );
+            $replay = $this->engine()->fightSnapshots(
+                $definition['actor'],
+                $definition['loadout'],
+                $definition['enemy'],
+                UndergroundCombatRules::AI_PRESET,
+                $definition['seed'],
+                $definition['max_rounds'],
+            );
+
+            $this->assertSame($expected, [
+                'winner' => $first->winner,
+                'rounds' => $first->rounds,
+                'player_hp' => $first->playerRemainingHp,
+                'enemy_hp' => $first->enemyRemainingHp,
+                'damage_dealt' => $first->damageDealt,
+                'damage_received' => $first->damageReceived,
+                'actions' => array_map(
+                    static fn (array $action): array => [
+                        $action['round'],
+                        $action['side'],
+                        $action['action'],
+                        $action['amount'],
+                    ],
+                    $first->actionLog,
+                ),
+            ]);
+            $this->assertSame($first->toArray(), $replay->toArray());
+            $this->assertLessThan(100, $first->rounds);
+            $this->assertSame([], $first->abnormalState);
+        }
+    }
+
     #[DataProvider('prototypeEnemyProvider')]
     public function test_each_prototype_enemy_exposes_its_distinct_laboratory_role(
         string $enemyKey,

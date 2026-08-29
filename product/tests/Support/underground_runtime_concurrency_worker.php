@@ -1,5 +1,7 @@
 <?php
 
+use App\Application\Underground\UndergroundIntroService;
+use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
 use App\Models\UndergroundBattle;
 use App\Models\User;
@@ -28,26 +30,59 @@ try {
     file_put_contents($databasePath, (string) $backend->pid, LOCK_EX);
 
     $user = User::query()->findOrFail((int) $payload['user_id']);
-    $result = app(UndergroundRuntimeService::class)->explore(
-        $user,
-        (string) $payload['hunting_ground'],
-        (string) $payload['request_id'],
-    );
-    $battle = $result['battle'];
-    if (! $battle instanceof UndergroundBattle) {
-        throw new RuntimeException('Underground runtime did not return a battle.');
-    }
+    if (($payload['operation'] ?? 'explore') === 'name_shopkeeper') {
+        $result = app(UndergroundIntroService::class)->nameShopkeeper(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['name'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'shopkeeper_name' => $result['shopkeeper_name'],
+            'stage' => $result['stage'],
+        ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'tutorial') {
+        $result = app(UndergroundIntroService::class)->tutorial(
+            $user,
+            (string) $payload['request_id'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'battle_id' => $result['battle']['id'],
+            'stage' => $result['stage'],
+        ], JSON_THROW_ON_ERROR));
+    } else {
+        $result = app(UndergroundRuntimeService::class)->explore(
+            $user,
+            (string) $payload['hunting_ground'],
+            (string) $payload['request_id'],
+        );
+        $battle = $result['battle'];
+        if (! $battle instanceof UndergroundBattle) {
+            throw new RuntimeException('Underground runtime did not return a battle.');
+        }
 
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'profile_id' => $battle->underground_profile_id,
+            'battle_id' => $battle->id,
+            'request_id' => $battle->request_id,
+            'duplicate' => (bool) $result['duplicate'],
+            'result' => $battle->result,
+            'xp_awarded' => $battle->xp_awarded,
+            'shard_delta' => $battle->shard_delta,
+        ], JSON_THROW_ON_ERROR));
+    }
+} catch (UndergroundRuntimeException $exception) {
     fwrite(STDOUT, json_encode([
-        'status' => 'ok',
-        'user_id' => $user->id,
-        'profile_id' => $battle->underground_profile_id,
-        'battle_id' => $battle->id,
-        'request_id' => $battle->request_id,
-        'duplicate' => (bool) $result['duplicate'],
-        'result' => $battle->result,
-        'xp_awarded' => $battle->xp_awarded,
-        'shard_delta' => $battle->shard_delta,
+        'status' => 'conflict',
+        'error_code' => $exception->errorCode,
+        'message' => $exception->getMessage(),
     ], JSON_THROW_ON_ERROR));
 } catch (Throwable $exception) {
     fwrite(STDOUT, json_encode([

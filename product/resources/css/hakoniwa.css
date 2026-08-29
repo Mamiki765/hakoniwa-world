@@ -313,6 +313,21 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .profile-settings { display: grid; gap: 20px; }
 .profile-settings > p { margin: -8px 0 0; }
 .secretary-panel { max-width: 1080px; }
+.secretary-underground-entry { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-top: 12px; }
+.secretary-underground-entry p { margin: 0; }
+.underground-panel { display: grid; gap: 1rem; max-width: 58rem; margin-inline: auto; }
+.underground-story { min-height: 8rem; display: grid; place-items: center; text-align: center; }
+.underground-name-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: end; }
+.underground-name-form label { grid-column: 1 / -1; }
+.underground-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.underground-summary div { padding: .75rem; border: 1px solid var(--line); border-radius: 8px; }
+.underground-summary dt { font-weight: 700; }
+.underground-summary dd { margin: .25rem 0 0; overflow-wrap: anywhere; }
+.underground-entries { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+.underground-entries button { min-height: 4.5rem; }
+.underground-history ul, .underground-battle-log ol { margin: 0; padding-left: 1.4rem; }
+.underground-history button { overflow-wrap: anywhere; }
+.underground-battle-log { max-height: 22rem; overflow: auto; overflow-wrap: anywhere; }
 .secretary-panel .secretary-page-title { margin: 0 0 14px; font-family: inherit; font-size: 1.5rem; line-height: 1.25; }
 .secretary-name { margin: 0 0 24px; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 1; }
 .secretary-section-title { margin: 0; font-size: 1rem; }
@@ -796,6 +811,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 }
 
 @media (max-width: 820px) {
+    .underground-name-form, .underground-summary, .underground-entries { grid-template-columns: 1fr; }
     .site-header {
         min-height: 58px;
         grid-template-columns: 1fr auto;

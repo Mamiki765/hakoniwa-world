@@ -9,6 +9,7 @@ use App\Application\SecretaryNamingService;
 use App\Application\SecretaryPresenter;
 use App\Application\SecretaryProfilePresenter;
 use App\Application\SecretaryProfileService;
+use App\Application\Underground\UndergroundIntroService;
 use App\Domain\Secretary\SecretaryEquipmentConflictException;
 use App\Domain\Secretary\SecretaryEquipmentValidationException;
 use App\Domain\Secretary\SecretaryNotFoundException;
@@ -33,6 +34,7 @@ final class SecretaryController extends Controller
         Request $request,
         SecretaryPresenter $presenter,
         SecretaryItemEffectContextResolver $effectContexts,
+        UndergroundIntroService $undergroundIntro,
     ): JsonResponse {
         $secretary = Secretary::query()->where('user_id', $request->user()->id)
             ->with(['skills', 'itemInstances'])->first();
@@ -51,7 +53,10 @@ final class SecretaryController extends Controller
             ], 422);
         }
 
-        return response()->json(['data' => $presenter->present($secretary, $projection, $request->user())]);
+        $data = $presenter->present($secretary, $projection, $request->user());
+        $data['underground'] = $undergroundIntro->secretarySummary($request->user());
+
+        return response()->json(['data' => $data]);
     }
 
     public function publicShow(

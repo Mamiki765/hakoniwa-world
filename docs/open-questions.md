@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| underground alpha | UG-03、UG-04 | E-01/UG-01/UG-02によりpure combat laboratoryとSecretary-owned persistence foundationを実装する。player accessとsurface bridgeは各gateで停止する。 |
+| underground alpha | UG-04 | E-01/UG-01〜03によりpure combat、Secretary-owned persistence/runtime、first-player Tutorial導線を実装する。party・facility・surface bridgeはUG-04で停止する。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
@@ -259,8 +259,8 @@
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; alpha-v0 pure combat laboratory、Secretary-owned persistence foundation、PR103のplayer-access前段となるUnderground runtime backend。first-player accessとsurface bridgeは未実装。
-- Decision: 地下roadmapを`release/3.0.0-alpha`として開始する。Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。PR1はpure combat laboratory、PR102はSecretary-ownedな地下箱庭layer entitlementの最小persistence、PR103はcanonical pure combat coreを再利用するatomic auto battle、通常探索・試練run、progression、報酬settlement、履歴、cooldown、idempotencyのbackend foundationを実装する。player-facing API/UI、Tutorial、security/rate-limitのacceptanceとsurface bridgeは各gateで決める。
+- Implemented: Partially; alpha-v0 pure combat laboratory、Secretary-owned persistence/runtime foundation、application `3.0.0-alpha.1`のfirst-player Tutorial導線。surface bridgeは未実装。
+- Decision: 地下roadmapを`release/3.0.0-alpha`として開始する。Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。PR101〜103のpure combat/persistence/runtimeを再利用し、PR104はSecretary画面からのcurrent User専用intro、Tutorial/story battle、戦闘履歴、店員命名、地下メイン解禁だけを接続する。normal hunt、Trial、実shop、equipment、skill tree、status effect、surface bridgeは公開しない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ## Underground RPG gates
@@ -282,13 +282,11 @@
 
 ### UG-03 first player-accessible alpha
 
-- Status: Open
-- Required before: Tutorialを含むfirst player-accessible alphaのAPI/UI/version更新
-- Implemented: PR103でplayer-facing導線の前段となるbackend runtime contractを実装。Secretary-ownedのcombat level/XP（開始値`1`/`0`、alpha中にretune可能なversioned curve）、非負の地底通貨「輝石の欠片」、通常探索とsequential trial、atomic built-in-AI auto battle、persistentなtrialの戦闘間progress、結果settlement、battle history、server-authoritative 10秒cooldown、transaction/row-lock/unique idempotencyによる重複・競合保護を追加する。surface World/Nation/MapCell/Turn/Rulesetとは独立し、PR101のpure combat coreへsnapshot・loadout・AI・encounter・private seedを渡す。combatは最大100 roundで、未決着ならstalemate withdrawalとして終了する。通常探索・trialとも欠片loss/rewardなしで通常勝利時base XPの`floor(base XP / 4)`を得て、通常探索は安全撤退、trialはrun失敗としてbattle 1へresetする。
+- Status: Decided
+- Implemented: Yes; application `3.0.0-alpha.1`。current authenticated User自身のSecretary画面からだけ入れるserver-authoritative finite-state introを実装する。初回はダミーstory、専用snapshotのジャイアントラットTutorial、脱出、Secretary帰還を経て戦闘Lv 1 / XP 5を表示する。2回目は店員命名、通常またはtemporary exact `ダミー` branch、必要時のscripted loss、shop説明を経て地下メインを解禁する。Tutorial rewardはXP +5 / 欠片0で一度だけ、scripted lossはXP・欠片・cooldown・Trialへ影響しない。両戦闘はcanonical pure coreとPR103 battle historyを再利用する。
 - Decided backend portion: defeatは輝石の欠片を`floor(balance / 2)`まで減らしてrunを終了する。trialのdefeatまたはbattle後の明示的な帰還は次回battle 1へresetするが、既に解禁したtrialは失わない。browser close/logoutはtrialの戦闘間progressを保持する。trialのfirst clearだけが`unlocked_area_layers`を1増やし、capacityは1 layer = 4 slotsから派生し、次のtrialをsequentialにunlockする。同じtrialの再clearでlayerを重複取得しない。battle詳細logは終了から1000時間保持し、期限後もsummaryとidempotency/audit identityは保持する。
-- Open decision: first-player API/UI、Tutorial（laboratory standardと分離した正常操作またはbuilt-in AIで100%勝利するdeterministic教育encounter）、authenticated ownership adapterを含むsecurity、rate limit、minimum UI、human playtest、release acceptance、application versionを決める。combat level/XP、trial progress、unlocked layerは独立stateとして維持し、manual round combat、equipment、shop、surface bridge、Turn integrationはこのgateの未承認範囲に残す。
-- Options: application `3.0.0-alpha.1`を最初のplayer buildとする案と、`3.0.0-alpha`へ直接更新する案を比較する。PR1は2.8.0を維持する。
-- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
+- Remaining boundary: story本文、正式trigger、normal hunt/Trialのcontentとbalance、実shop、Item storage/equipment/rarity/affix、skill tree、status effect、manual combat、party、market、facility、surface benefit、production deploy、正式3.0.0 releaseは決定しない。
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ### UG-04 party・market・facility・surface bridge
 

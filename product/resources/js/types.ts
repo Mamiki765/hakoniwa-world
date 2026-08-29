@@ -41,6 +41,13 @@ export interface Secretary {
         slots: Array<{ slot: number; item: SecretaryItem | null }>;
         category_limits: SecretaryEquipmentCategoryLimit[];
     };
+    underground?: {
+        available: boolean;
+        stage: string;
+        combat_level: number | null;
+        combat_xp: number | null;
+        next_level_xp: number | null;
+    } | null;
 }
 
 export interface SecretaryProfile {

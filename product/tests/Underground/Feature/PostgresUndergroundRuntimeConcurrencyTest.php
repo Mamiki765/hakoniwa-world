@@ -2,10 +2,13 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
+use App\Models\UndergroundIntroProgress;
+use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
@@ -96,6 +99,87 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         );
     }
 
+    public function test_concurrent_different_shopkeeper_names_commit_exactly_one_under_secretary_lock(): void
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $secretary->update(['name' => 'ペリドット', 'named_at' => now()]);
+        $introService = app(UndergroundIntroService::class);
+        $introService->enter($user, (string) Str::uuid());
+        $introService->advance($user, (string) Str::uuid(), 'initial_story_complete');
+        $introService->tutorial($user, (string) Str::uuid());
+        $introService->advance($user, (string) Str::uuid(), 'escape_complete');
+        $introService->enter($user, (string) Str::uuid());
+        $introService->advance($user, (string) Str::uuid(), 'shopkeeper_encounter_complete');
+
+        $names = ['最初の店員', 'もう一人の店員'];
+        $results = $this->runConcurrentOperations($user, $secretary, [
+            [
+                'operation' => 'name_shopkeeper',
+                'request_id' => (string) Str::uuid(),
+                'name' => $names[0],
+            ],
+            [
+                'operation' => 'name_shopkeeper',
+                'request_id' => (string) Str::uuid(),
+                'name' => $names[1],
+            ],
+        ]);
+
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        $this->assertSame(['conflict', 'ok'], $statuses);
+        $conflict = collect($results)->firstWhere('status', 'conflict');
+        $success = collect($results)->firstWhere('status', 'ok');
+        $this->assertIsArray($conflict);
+        $this->assertIsArray($success);
+        $this->assertSame('underground_shopkeeper_already_named', $conflict['error_code']);
+
+        $progress = UndergroundIntroProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->sole();
+        $this->assertContains($progress->shopkeeper_name, $names);
+        $this->assertSame($progress->shopkeeper_name, $success['shopkeeper_name']);
+        $this->assertSame('shop_explanation', $progress->stage);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'shopkeeper_name')
+            ->count());
+    }
+
+    public function test_same_request_concurrent_tutorials_settle_one_battle_and_reward_under_secretary_lock(): void
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $secretary->update(['name' => 'ペリドット', 'named_at' => now()]);
+        $introService = app(UndergroundIntroService::class);
+        $introService->enter($user, (string) Str::uuid());
+        $introService->advance($user, (string) Str::uuid(), 'initial_story_complete');
+        $requestId = (string) Str::uuid();
+        $payload = ['operation' => 'tutorial', 'request_id' => $requestId];
+
+        $results = $this->runConcurrentOperations($user, $secretary, [$payload, $payload]);
+
+        $this->assertSame(['ok', 'ok'], array_column($results, 'status'));
+        $this->assertSame([$requestId, $requestId], array_column($results, 'battle_id'));
+        $this->assertSame(['escape_pending', 'escape_pending'], array_column($results, 'stage'));
+        $profile->refresh();
+        $this->assertSame([1, 5, 100, null], [
+            $profile->combat_level,
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->next_battle_at,
+        ]);
+        $this->assertSame(1, UndergroundBattle::query()->count());
+        $this->assertSame(1, UndergroundBattleLog::query()->count());
+        $this->assertDatabaseHas('underground_intro_progress', [
+            'underground_profile_id' => $profile->id,
+            'stage' => 'escape_pending',
+        ]);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'tutorial')
+            ->count());
+    }
+
     /** @return array{User, Secretary, UndergroundProfile} */
     private function undergroundFixture(): array
     {
@@ -110,6 +194,22 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
     /** @return list<array<string, mixed>> */
     private function runConcurrentExplore(User $user, Secretary $secretary, string $requestId): array
     {
+        $payload = [
+            'operation' => 'explore',
+            'hunting_ground' => 'shallow_caves',
+            'request_id' => $requestId,
+        ];
+
+        return $this->runConcurrentOperations($user, $secretary, [$payload, $payload]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $payloads
+     * @return list<array<string, mixed>>
+     */
+    private function runConcurrentOperations(User $user, Secretary $secretary, array $payloads): array
+    {
+        $this->assertCount(2, $payloads);
         $directory = sys_get_temp_dir().'/underground-runtime-'.Str::uuid();
         $this->assertTrue(mkdir($directory, 0700, true));
         $goPath = $directory.'/go';
@@ -127,11 +227,12 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
 
         try {
             foreach ([0, 1] as $index) {
-                $workers[] = $this->startWorker($directory, (string) $index, [
-                    'user_id' => $user->id,
-                    'hunting_ground' => 'shallow_caves',
-                    'request_id' => $requestId,
-                ], $goPath);
+                $workers[] = $this->startWorker(
+                    $directory,
+                    (string) $index,
+                    ['user_id' => $user->id] + $payloads[$index],
+                    $goPath,
+                );
             }
             $this->waitForFiles([
                 $directory.'/ready-0',

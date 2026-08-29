@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, UndergroundTrialProgress> $trialProgresses
  * @property-read UndergroundTrialRun|null $trialRun
  * @property-read Collection<int, UndergroundBattle> $battles
+ * @property-read UndergroundIntroProgress|null $introProgress
+ * @property-read Collection<int, UndergroundIntroRequest> $introRequests
  */
 final class UndergroundProfile extends Model
 {
@@ -64,6 +66,18 @@ final class UndergroundProfile extends Model
     public function battles(): HasMany
     {
         return $this->hasMany(UndergroundBattle::class, 'underground_profile_id');
+    }
+
+    /** @return HasOne<UndergroundIntroProgress, $this> */
+    public function introProgress(): HasOne
+    {
+        return $this->hasOne(UndergroundIntroProgress::class, 'underground_profile_id');
+    }
+
+    /** @return HasMany<UndergroundIntroRequest, $this> */
+    public function introRequests(): HasMany
+    {
+        return $this->hasMany(UndergroundIntroRequest::class, 'underground_profile_id');
     }
 
     public function facilitySlotCapacity(): int

@@ -26,6 +26,7 @@ final readonly class UndergroundRuntimeService
         private UndergroundCombatRules $combatRules,
         private UndergroundCombatProgression $progression,
         private UndergroundBattleSeed $battleSeed,
+        private UndergroundBattleLogProjector $battleLogProjector,
     ) {}
 
     /** @return array{battle: UndergroundBattle, duplicate: bool} */
@@ -418,7 +419,7 @@ final readonly class UndergroundRuntimeService
         ]);
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
-            'actions' => $this->playerFacingActionLog($result),
+            'actions' => $this->battleLogProjector->project($result),
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
 
@@ -590,25 +591,5 @@ final readonly class UndergroundRuntimeService
             'runtime_identity' => $this->catalog->runtimeIdentity(),
             'intent' => $intent,
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
-    }
-
-    /** @return list<array<string, int|string|bool>> */
-    private function playerFacingActionLog(CombatResult $result): array
-    {
-        return array_map(static function (array $row): array {
-            $amount = (int) ($row['amount'] ?? 0);
-
-            return [
-                'round' => (int) ($row['round'] ?? 0),
-                'side' => (string) ($row['side'] ?? ''),
-                'action' => (string) ($row['action'] ?? ''),
-                'effect' => $amount < 0 ? 'recovery' : ($amount > 0 ? 'damage' : 'none'),
-                'amount' => abs($amount),
-                'guarded' => (bool) ($row['guarded'] ?? false),
-                'player_hp' => (int) ($row['player_hp'] ?? 0),
-                'enemy_hp' => (int) ($row['enemy_hp'] ?? 0),
-                'player_resource' => (int) ($row['player_resource'] ?? 0),
-            ];
-        }, $result->actionLog);
     }
 }

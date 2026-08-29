@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backendのcurrent task-specific architecture authorityである。player-facing Tutorial/UIへ進む前のruntime contractまでを定義し、公開API、Tutorial導線、manual combat、equipment/shop、surface bridgeを定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backend、PR104 first-player Tutorial flowのcurrent task-specific architecture authorityである。manual combat、正式equipment/shop、normal hunt/Trial content、surface bridgeは定義しない。
 
-地上のcurrent baselineはapplication 2.8.0 / `hakoniwa-2s-plus-v18`であり、このlaboratory/runtime identityとは独立している。PR102/PR103はUnderground専用のprofile、run、history stateをforward migrationで追加するが、published Ruleset、World、Nation、MapCell、TurnRun、Turn RNG、既存production data、application versionを変更しない。
+PR104のapplication versionは`3.0.0-alpha.1`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。PR102〜104のprofile、run、history、intro stateはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。
 
 ## Modular-monolith boundary
 
@@ -157,4 +157,14 @@ reportはmanifest path/hash、raw `manifest_contents`、exact source commit、se
 
 player-facing first Tutorialはlaboratory `standard_enemy`と別物である。正常操作またはbuilt-in AIで100%勝利できるdeterministic教育encounterを別fixtureとしてauthoringし、standardのstat、win rate、provisional rangeをdifficultyへ流用しない。PR1はTutorialを実装しない。
 
-PR103 runtimeはpure engineへidentity/profile snapshot、loadout、encounter、built-in AI、seedを渡し、resultを一度だけtransaction内でsettleするadapterとして実装する。Secretary-owned entitlementとprofile初回作成lockはUG-02で決定済みである。first-player API/UI、Tutorial、authenticated security、rate limit、human acceptance、versionはUG-03の残るOpen gateであり、party borrowing/market/Nation-owned facility placement/surface benefitはUG-04のOwner decision後に限る。variantごとにengineを複製しない。
+PR103 runtimeはpure engineへidentity/profile snapshot、loadout、encounter、built-in AI、seedを渡し、resultを一度だけtransaction内でsettleするadapterとして実装する。Secretary-owned entitlementとprofile初回作成lockはUG-02で決定済みである。PR104は同じpure engine/historyをcurrent User自身のSecretaryへ接続し、variantごとにengineを複製しない。party borrowing/market/Nation-owned facility placement/surface benefitはUG-04のOwner decision後に限る。
+
+## PR104 first-player intro contract
+
+PR104は汎用visual novel/script engineではなく、Secretary-ownedの一方向finite-state introである。短いダミーscene内のpage番号はfrontend local stateでよいが、Tutorial clear、XP settlement、脱出帰還、店員命名とbranch、scripted loss完了、shop説明、地下メイン解禁はserverで永続化する。mutationはSecretary/profile/intro rowを同じlock順で直列化し、profile単位のUUID fingerprint ledgerとbattle unique identityでduplicate、別payload reuse、stage skip、逆戻りを拒否する。
+
+Tutorialはversioned `tutorial_giant_rat` inputと固定starter-knife projectionをcanonical pure engineへ渡す。starter knifeはinventory Item、weapon instance、rarity/affix/durability schemaを作らない。期待resultは100 round未満のplayer victoryだけであり、contract外ならtransactionをrollbackする。settlementはcombat XP +5、shard +0、combat level 1維持だけで、normal cooldown、Trial、通常探索reward/penaltyを通らない。battle summary/detailはPR103のtable/logと1000時間retentionを再利用する。
+
+脱出完了後は一度Secretaryメインへ戻す。2回目のentryは店員遭遇・一度だけの1〜20 Unicode grapheme plain-text命名へ進む。temporary alpha authoringのexact `ダミー`だけをspecial branchとして命名時に保存し、後から再判定しない。scripted lossも固定snapshotをcanonical coreへ渡し、expected enemy victory以外はrollbackする。XP、shard、level、cooldown、Trialは前後一致を要求する。
+
+shop説明後の地下メインはprogression、店員名、Tutorial/story battle historyをread-only投影する。通常狩場、Trial、実shopはdisabledな準備中entryであり、PR103 application serviceをplayer APIとして公開しない。story本文、正式trigger、equipment、skill tree、status effect、normal hunt/Trial balance、shop economyは引き続きOpen/Deferredである。

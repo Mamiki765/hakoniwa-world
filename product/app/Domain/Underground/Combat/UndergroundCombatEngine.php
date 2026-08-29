@@ -32,6 +32,47 @@ final readonly class UndergroundCombatEngine
             }
         }
         $enemyDefinition = $this->rules->enemy($enemyKey);
+
+        return $this->fightSnapshots(
+            $actorDefinition,
+            $skillKeys,
+            $enemyDefinition,
+            $aiPreset,
+            $seed,
+            $maxRounds,
+        );
+    }
+
+    /**
+     * Execute the canonical combat path with one immutable, context-authored actor/enemy input.
+     *
+     * @param  array<string, mixed>  $actorDefinition
+     * @param  list<string>  $skillKeys
+     * @param  array<string, mixed>  $enemyDefinition
+     */
+    public function fightSnapshots(
+        array $actorDefinition,
+        array $skillKeys,
+        array $enemyDefinition,
+        string $aiPreset,
+        int $seed,
+        int $maxRounds,
+    ): CombatResult {
+        if ($aiPreset !== UndergroundCombatRules::AI_PRESET) {
+            throw new InvalidArgumentException("Unsupported Underground AI preset [{$aiPreset}].");
+        }
+        $this->rules->assertActorSnapshot($actorDefinition);
+        $this->rules->assertEnemySnapshot($enemyDefinition);
+        $this->rules->assertLoadout($skillKeys);
+        $this->rules->assertMaxRounds($maxRounds);
+        foreach ($skillKeys as $skillKey) {
+            if (! in_array($skillKey, $actorDefinition['available_skills'], true)) {
+                throw new InvalidArgumentException(
+                    "Actor [{$actorDefinition['key']}] cannot equip [{$skillKey}].",
+                );
+            }
+        }
+
         $actor = new CombatantState(
             'player',
             $actorDefinition['key'],
@@ -106,8 +147,8 @@ final readonly class UndergroundCombatEngine
         return new CombatResult(
             UndergroundCombatRules::IDENTITY,
             $seed,
-            $actorKey,
-            $enemyKey,
+            $actorDefinition['key'],
+            $enemyDefinition['key'],
             $winner,
             $completedRounds,
             $actor->hp,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api, apiEnvelope } from './api/client';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
@@ -10,6 +10,7 @@ import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
+import UndergroundPanel from './components/UndergroundPanel.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import type {
@@ -100,9 +101,17 @@ const inquiryConfirmation = ref<InquirySubmission | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
 const authoritativeCommandQueue = ref<CommandQueue | null>(null);
-const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'options' | 'account' | 'credits'>(
-    window.location.pathname === '/credits' ? 'credits' : 'home',
+const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
+    window.location.pathname === '/credits'
+        ? 'credits'
+        : (window.location.pathname === '/underground' ? 'underground' : 'home'),
 );
+
+watch(page, (nextPage) => {
+    if (nextPage !== 'underground' && window.location.pathname === '/underground') {
+        window.history.replaceState({ page: nextPage }, '', '/');
+    }
+});
 
 const secretaryTabOrder = computed<SecretarySection[]>(() => viewedSecretaryProfile.value?.is_owner
     ? ['main', 'skills', 'equipment', 'warehouse']
@@ -234,6 +243,7 @@ function matchTurnStatus(status: PublicWorldSummary['turn_status'] | undefined):
 }
 
 onMounted(async () => {
+    window.addEventListener('popstate', syncPageFromHistory);
     clockTimer = setInterval(() => { clockNow.value = Date.now(); }, 1000);
     await loadPublicLobby();
     try {
@@ -243,7 +253,13 @@ onMounted(async () => {
             profileOwnerName.value = nation.value.owner_name;
             profileComment.value = nation.value.comment;
         }
-        if (nation.value !== null) await loadSecretary();
+        try {
+            await loadSecretary();
+        } catch (error) {
+            message.value = error instanceof Error
+                ? error.message
+                : 'Secretaryの状態を取得できませんでした。';
+        }
         if (user.value.can_manage_inquiries) await loadLatestInquiries();
     } catch (error) {
         if (!(error instanceof ApiError && error.status === 401)) {
@@ -255,11 +271,26 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    window.removeEventListener('popstate', syncPageFromHistory);
     if (clockTimer !== null) clearInterval(clockTimer);
     if (summaryDeadlineTimer !== null) clearTimeout(summaryDeadlineTimer);
     if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
     stopSummaryFallbackPolling();
 });
+
+function syncPageFromHistory(event: PopStateEvent): void {
+    const historicPage = event.state && typeof event.state === 'object'
+        ? (event.state as { page?: unknown }).page
+        : null;
+    if (historicPage === 'secretary' && secretary.value?.name) {
+        secretarySection.value = 'main';
+        page.value = 'secretary';
+        return;
+    }
+    page.value = window.location.pathname === '/credits'
+        ? 'credits'
+        : (window.location.pathname === '/underground' ? 'underground' : 'home');
+}
 
 function stopSummaryFallbackPolling(): void {
     if (summaryFallbackTimer !== null) clearInterval(summaryFallbackTimer);
@@ -1013,7 +1044,7 @@ async function sellSecretaryItem(item: Secretary['inventory']['items'][number]):
 }
 
 async function openSecretary(): Promise<void> {
-    if (user.value === null || nation.value === null) return;
+    if (user.value === null) return;
     busy.value = true;
     message.value = '';
     secretaryErrors.value = {};
@@ -1027,6 +1058,25 @@ async function openSecretary(): Promise<void> {
         message.value = error instanceof Error ? error.message : 'Secretaryを読み込めませんでした。';
     } finally {
         busy.value = false;
+    }
+}
+
+function openUnderground(): void {
+    if (user.value === null || secretary.value?.name === null) return;
+    message.value = '';
+    window.history.replaceState({ page: page.value }, '', window.location.href);
+    page.value = 'underground';
+    if (window.location.pathname !== '/underground') window.history.pushState({ page: 'underground' }, '', '/underground');
+}
+
+async function returnFromUnderground(): Promise<void> {
+    secretarySection.value = 'main';
+    page.value = 'secretary';
+    window.history.replaceState({ page: 'secretary' }, '', '/');
+    try {
+        await loadSecretary();
+    } catch {
+        message.value = '戦闘Lvを読み込めませんでした。画面を開き直してください。';
     }
 }
 
@@ -1292,7 +1342,7 @@ async function abandonNation(): Promise<void> {
         <nav aria-label="主要ナビゲーション">
             <button type="button" @click="page = 'home'">TOP</button>
             <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
-            <button v-if="nation" type="button" @click="openSecretary">{{ secretary?.header_label ?? '？？？' }}</button>
+            <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
             <button v-if="nation" type="button" @click="page = 'resources'">資源売却</button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
             <button type="button" @click="openOptions">オプション</button>
@@ -1837,6 +1887,11 @@ async function abandonNation(): Promise<void> {
 
         <TradingPostPanel v-else-if="user && nation && page === 'trading-post'" :nation-id="nation.id" :world-id="nation.world_id" />
 
+        <UndergroundPanel
+            v-else-if="page === 'underground' && user && secretary?.name"
+            @return-to-secretary="returnFromUnderground"
+        />
+
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
             <h1 class="secretary-page-title">秘書</h1>
             <template v-if="viewedSecretaryProfile?.is_owner && secretary?.name === null">
@@ -1912,6 +1967,12 @@ async function abandonNation(): Promise<void> {
                             >
                                 画像設定
                             </button>
+                            <div v-if="viewedSecretaryProfile.is_owner && secretary?.name" class="secretary-underground-entry">
+                                <p v-if="secretary.underground?.combat_level !== null && secretary.underground?.combat_level !== undefined">
+                                    戦闘Lv {{ secretary.underground.combat_level }}
+                                </p>
+                                <button class="button primary" type="button" @click="openUnderground">地下へ</button>
+                            </div>
                         </section>
                         <section class="secretary-biography" aria-labelledby="secretary-biography-title">
                             <h3 id="secretary-biography-title">経歴</h3>

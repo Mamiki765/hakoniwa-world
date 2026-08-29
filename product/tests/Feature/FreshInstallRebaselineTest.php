@@ -48,14 +48,14 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v18')->sole();
 
-        $this->assertSame('2.8.0', config('hakoniwa.application_version'));
+        $this->assertSame('3.0.0-alpha.1', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v18'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v18', $ruleset->key);
         $this->assertSame(18, $ruleset->version);
         $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(56, DB::table('migrations')->count());
+        $this->assertSame(57, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -85,6 +85,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_29_010000_add_underground_runtime_foundation',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_29_020000_add_underground_intro_progress',
         ]);
         $this->assertDatabaseHas('facility_definitions', [
             'key' => 'undersea_city',
@@ -128,6 +131,8 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasTable('underground_trial_runs'));
         $this->assertTrue(Schema::hasTable('underground_battles'));
         $this->assertTrue(Schema::hasTable('underground_battle_logs'));
+        $this->assertTrue(Schema::hasTable('underground_intro_progress'));
+        $this->assertTrue(Schema::hasTable('underground_intro_requests'));
         $this->assertSame(0, DB::table('auction_listings')->count());
         $this->assertSame(0, DB::table('auction_bids')->count());
         $this->assertSame(6, $ruleset->settings['trading_post']['npc']['duration_turns']);

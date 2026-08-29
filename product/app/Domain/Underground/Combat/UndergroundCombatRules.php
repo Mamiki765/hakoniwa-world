@@ -206,6 +206,58 @@ final class UndergroundCombatRules
         return ['cave_crawler', 'needle_bat', 'stone_shell', 'gloom_herald'];
     }
 
+    /** @param array<string, mixed> $actor */
+    public function assertActorSnapshot(array $actor): void
+    {
+        if (! is_string($actor['key'] ?? null)
+            || $actor['key'] === ''
+            || ! is_string($actor['label'] ?? null)
+            || $actor['label'] === ''
+            || ! is_string($actor['weapon_key'] ?? null)
+            || $actor['weapon_key'] === ''
+            || ! is_int($actor['max_hp'] ?? null)
+            || $actor['max_hp'] < 1
+            || ! is_int($actor['attack'] ?? null)
+            || $actor['attack'] < 1
+            || ! is_int($actor['defense'] ?? null)
+            || $actor['defense'] < 0
+            || ! is_int($actor['speed'] ?? null)
+            || $actor['speed'] < 0
+            || ! is_array($actor['available_skills'] ?? null)
+            || ! array_is_list($actor['available_skills'])) {
+            throw new InvalidArgumentException('Underground actor snapshot is invalid.');
+        }
+
+        foreach ($actor['available_skills'] as $skillKey) {
+            if (! is_string($skillKey) || ! in_array($skillKey, self::KNIFE_SKILLS, true)) {
+                throw new InvalidArgumentException('Underground actor snapshot contains an unsupported skill.');
+            }
+        }
+    }
+
+    /** @param array<string, mixed> $enemy */
+    public function assertEnemySnapshot(array $enemy): void
+    {
+        if (! is_string($enemy['key'] ?? null)
+            || $enemy['key'] === ''
+            || ! is_string($enemy['label'] ?? null)
+            || $enemy['label'] === ''
+            || ! is_string($enemy['role'] ?? null)
+            || $enemy['role'] === ''
+            || ! is_string($enemy['behavior'] ?? null)
+            || ! in_array($enemy['behavior'], ['standard', 'fast', 'armored', 'telegraph'], true)
+            || ! is_int($enemy['max_hp'] ?? null)
+            || $enemy['max_hp'] < 1
+            || ! is_int($enemy['attack'] ?? null)
+            || $enemy['attack'] < 1
+            || ! is_int($enemy['defense'] ?? null)
+            || $enemy['defense'] < 0
+            || ! is_int($enemy['speed'] ?? null)
+            || $enemy['speed'] < 0) {
+            throw new InvalidArgumentException('Underground enemy snapshot is invalid.');
+        }
+    }
+
     /** @param array<int, mixed> $skillKeys */
     public function assertLoadout(array $skillKeys): void
     {
