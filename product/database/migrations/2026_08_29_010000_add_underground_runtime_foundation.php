@@ -81,6 +81,9 @@ SQL);
             $table->unsignedSmallInteger('trial_battle_index')->nullable();
             $table->string('result', 16);
             $table->unsignedSmallInteger('rounds');
+            $table->bigInteger('damage_dealt');
+            $table->bigInteger('damage_received');
+            $table->bigInteger('healing_done');
             $table->unsignedInteger('xp_awarded')->default(0);
             $table->bigInteger('shard_delta')->default(0);
             $table->integer('combat_level_before');
@@ -114,6 +117,12 @@ ALTER TABLE underground_battles
   CHECK (result IN ('victory', 'defeat', 'withdrawal')),
   ADD CONSTRAINT underground_battles_rounds_range
   CHECK (rounds >= 1 AND rounds <= 100),
+  ADD CONSTRAINT underground_battles_damage_dealt_non_negative
+  CHECK (damage_dealt >= 0),
+  ADD CONSTRAINT underground_battles_damage_received_non_negative
+  CHECK (damage_received >= 0),
+  ADD CONSTRAINT underground_battles_healing_done_non_negative
+  CHECK (healing_done >= 0),
   ADD CONSTRAINT underground_battles_xp_awarded_non_negative
   CHECK (xp_awarded >= 0),
   ADD CONSTRAINT underground_battles_private_seed_range

@@ -200,6 +200,12 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(1, $runtime->pruneExpiredBattleLogs());
         $this->assertDatabaseMissing('underground_battle_logs', ['underground_battle_id' => $first->id]);
         $this->assertDatabaseHas('underground_battles', ['id' => $first->id, 'request_id' => $requestId]);
+        $summary = $first->refresh();
+        $this->assertSame([7, 3, 0], [
+            $summary->damage_dealt,
+            $summary->damage_received,
+            $summary->healing_done,
+        ]);
 
         $duplicate = $runtime->explore($owner, 'shallow_caves', $requestId);
         $this->assertTrue($duplicate['duplicate']);

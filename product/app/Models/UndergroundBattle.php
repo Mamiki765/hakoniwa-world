@@ -22,6 +22,9 @@ use Illuminate\Support\Carbon;
  * @property int|null $trial_battle_index
  * @property string $result
  * @property int $rounds
+ * @property int $damage_dealt
+ * @property int $damage_received
+ * @property int $healing_done
  * @property int $xp_awarded
  * @property int $shard_delta
  * @property int $combat_level_before
@@ -53,7 +56,8 @@ final class UndergroundBattle extends Model
 
     protected $fillable = [
         'underground_profile_id', 'request_id', 'request_fingerprint', 'runtime_identity', 'activity_type', 'activity_key',
-        'encounter_key', 'trial_run_key', 'trial_battle_index', 'result', 'rounds', 'xp_awarded', 'shard_delta',
+        'encounter_key', 'trial_run_key', 'trial_battle_index', 'result', 'rounds',
+        'damage_dealt', 'damage_received', 'healing_done', 'xp_awarded', 'shard_delta',
         'combat_level_before', 'combat_level_after', 'combat_xp_before', 'combat_xp_after',
         'shard_balance_before', 'shard_balance_after', 'private_seed', 'snapshot', 'started_at', 'finished_at',
     ];
@@ -67,6 +71,9 @@ final class UndergroundBattle extends Model
             'underground_profile_id' => 'integer',
             'trial_battle_index' => 'integer',
             'rounds' => 'integer',
+            'damage_dealt' => 'integer',
+            'damage_received' => 'integer',
+            'healing_done' => 'integer',
             'xp_awarded' => 'integer',
             'shard_delta' => 'integer',
             'combat_level_before' => 'integer',
