@@ -98,6 +98,24 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertGreaterThanOrEqual((int) floor($low->damageDealt * 0.24), $high->damageDealt);
         $this->assertSame([], $high->abnormalState);
 
+        $unreducedCounter = $manifest;
+        $unreducedCounter['enemies']['crystal_warden']['modifiers']['damage_taken_reduction_bps'] = 0;
+        $reducedCounter = $manifest;
+        $reducedCounter['enemies']['crystal_warden']['modifiers']['damage_taken_reduction_bps'] = 5_000;
+        $counterDamage = function (array $candidate): int {
+            $result = $this->model()->fight(
+                new AlphaV1BuildCatalog($candidate), 'pure_tank', 'crystal_warden', 'early', 6, 30,
+            );
+            $counters = array_values(array_filter(
+                $result->actionLog,
+                static fn (array $row): bool => $row['action'] === 'counter',
+            ));
+            $this->assertNotEmpty($counters);
+
+            return $counters[0]['amount'];
+        };
+        $this->assertGreaterThan($counterDamage($reducedCounter), $counterDamage($unreducedCounter));
+
         $lethal = $manifest;
         $lethal['builds']['pure_attacker']['ai_rules'] = [[
             'conditions' => [['type' => 'always']], 'action' => 'normal_attack',

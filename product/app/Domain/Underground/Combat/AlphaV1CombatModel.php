@@ -565,15 +565,6 @@ final readonly class AlphaV1CombatModel
                 continue;
             }
 
-            $defense = $category === 'miracle' ? $target->magicalDefense : $target->physicalDefense;
-            $defense += $this->defenseStatusDelta($target, $category, $defense);
-            $mitigationBps = max(
-                10_000 - AlphaV1CombatRules::DAMAGE_REDUCTION_CAP_BPS,
-                intdiv($target->defenseReference * 10_000, $target->defenseReference + max(0, $defense)),
-            );
-            $takenBps = 10_000
-                - max(0, (int) ($target->modifiers['damage_taken_reduction_bps'] ?? 0))
-                + $this->statusModifier($target, 'damage_taken_modifier', $category);
             $guarded = $target->guarding;
             $parried = false;
             $guardBps = 10_000;
@@ -589,7 +580,7 @@ final readonly class AlphaV1CombatModel
                 }
                 $target->guarding = false;
             }
-            $combinedBps = intdiv($mitigationBps * max(1, $takenBps), 10_000);
+            $combinedBps = $this->targetDamageBps($target, $category);
             $combinedBps = intdiv($combinedBps * $guardBps, 10_000);
             $combinedBps = max(10_000 - AlphaV1CombatRules::DAMAGE_REDUCTION_CAP_BPS, min(20_000, $combinedBps));
             $postMitigation = max(1, intdiv($preMitigation * $combinedBps, 10_000));
@@ -961,11 +952,11 @@ final readonly class AlphaV1CombatModel
             (($defender->stat('vitality') * 6) + ($defender->stat('might') * 4)) * $powerBps,
             10_000,
         );
-        $mitigationBps = max(
+        $damageBps = max(
             10_000 - AlphaV1CombatRules::DAMAGE_REDUCTION_CAP_BPS,
-            intdiv($attacker->defenseReference * 10_000, $attacker->defenseReference + $attacker->physicalDefense),
+            min(20_000, $this->targetDamageBps($attacker, 'physical')),
         );
-        $damage = min($attacker->hp, max(1, intdiv($effectivePower * $mitigationBps, 10_000)));
+        $damage = min($attacker->hp, max(1, intdiv($effectivePower * $damageBps, 10_000)));
         $attacker->hp -= $damage;
         if ($defender->side === 'player') {
             $metrics['damage_dealt'] += $damage;
@@ -974,6 +965,21 @@ final readonly class AlphaV1CombatModel
             $actionUsage['counter']++;
         }
         $actionLog[] = $this->logRow($round, $defender, 'counter', $damage, false, false);
+    }
+
+    private function targetDamageBps(BuildCombatState $target, string $category): int
+    {
+        $defense = $category === 'miracle' ? $target->magicalDefense : $target->physicalDefense;
+        $defense += $this->defenseStatusDelta($target, $category, $defense);
+        $mitigationBps = max(
+            10_000 - AlphaV1CombatRules::DAMAGE_REDUCTION_CAP_BPS,
+            intdiv($target->defenseReference * 10_000, $target->defenseReference + max(0, $defense)),
+        );
+        $takenBps = 10_000
+            - max(0, (int) ($target->modifiers['damage_taken_reduction_bps'] ?? 0))
+            + $this->statusModifier($target, 'damage_taken_modifier', $category);
+
+        return intdiv($mitigationBps * max(1, $takenBps), 10_000);
     }
 
     /** @param array<string, int|null> $metrics */
