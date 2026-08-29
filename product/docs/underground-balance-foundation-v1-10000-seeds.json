@@ -3,7 +3,7 @@
     "simulator_version": "underground-build-balance-alpha-v1",
     "combat_identity": "secretary-underground-alpha-v1",
     "generator_identity": "secretary-underground-equipment-alpha-v1",
-    "commit_sha": "3edb2de264402714bb851da2e2b625c9accdc105",
+    "commit_sha": "a4a7324d713b878b0c882f4e1ba1b839cb756246",
     "working_tree_dirty": null,
     "manifest_path": "config/underground/balance/foundation-v1.json",
     "manifest_hash": "94e2c4ff137a1f4c93e9d4b79199edb8fe4533e10bcf56a47b5038287cd4334c",
