@@ -49,6 +49,9 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->actingAs($user)->postJson('/api/v1/me/underground/entry', [
             'request_id' => $entryRequest,
         ])->assertOk()->assertJsonPath('data.stage', 'initial_descent');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/entry', [
+            'request_id' => (string) Str::uuid(),
+        ])->assertConflict()->assertJsonPath('code', 'underground_intro_stage_conflict');
         $this->actingAs($user)->postJson('/api/v1/me/underground/story/advance', [
             'request_id' => (string) Str::uuid(),
             'action' => 'escape_complete',
@@ -189,7 +192,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $requestCount = UndergroundIntroRequest::query()->count();
         $this->actingAs($user)->postJson('/api/v1/me/underground/entry', [
             'request_id' => (string) Str::uuid(),
-        ])->assertOk()->assertJsonPath('data.stage', 'underground_open');
+        ])->assertConflict()->assertJsonPath('code', 'underground_intro_stage_conflict');
         $this->assertSame($requestCount, UndergroundIntroRequest::query()->count());
         $this->assertSame(1, UndergroundBattle::query()->count());
     }

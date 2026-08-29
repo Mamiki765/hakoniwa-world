@@ -77,10 +77,13 @@ final readonly class UndergroundIntroService
             $intro->stage = match ($intro->stage) {
                 UndergroundIntroStage::NOT_STARTED => UndergroundIntroStage::INITIAL_DESCENT,
                 UndergroundIntroStage::RETURNED_AFTER_TUTORIAL => UndergroundIntroStage::SHOPKEEPER_ENCOUNTER,
-                default => $intro->stage,
+                default => throw new UndergroundRuntimeException(
+                    'underground_intro_stage_conflict',
+                    '現在の進行状態では地下への入口を使用できません。',
+                ),
             };
             $intro->save();
-        }, false);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -275,7 +278,6 @@ final readonly class UndergroundIntroService
         string $operationName,
         array $payload,
         callable $operation,
-        bool $recordUnchanged = true,
     ): array {
         if (! Str::isUuid($requestId)) {
             throw new UndergroundRuntimeException('underground_request_id_invalid', 'request IDを確認してください。');
@@ -288,7 +290,6 @@ final readonly class UndergroundIntroService
             $operationName,
             $fingerprint,
             $operation,
-            $recordUnchanged,
         ): array {
             [$secretary, $profile, $intro] = $this->lockedState($user);
             $previous = UndergroundIntroRequest::query()
@@ -318,15 +319,7 @@ final readonly class UndergroundIntroService
                 );
             }
 
-            $stageBefore = $intro->stage;
             $battle = $operation($secretary, $profile, $intro);
-            if (! $recordUnchanged && $intro->stage === $stageBefore) {
-                return $this->projectState(
-                    $secretary,
-                    $profile->refresh(),
-                    $intro->refresh()->load(['tutorialBattle.log', 'scriptedLossBattle.log']),
-                );
-            }
             UndergroundIntroRequest::query()->create([
                 'underground_profile_id' => $profile->id,
                 'request_id' => $requestId,
