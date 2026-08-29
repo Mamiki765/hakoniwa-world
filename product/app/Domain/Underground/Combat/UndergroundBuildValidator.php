@@ -43,6 +43,16 @@ final class UndergroundBuildValidator
         }
         $this->rules->assertFiveStats($baseStats);
 
+        $equipmentSlots = [];
+        foreach ($equipment as $request) {
+            $slot = is_array($request) ? ($request['slot'] ?? null) : null;
+            if (! is_string($slot) || ! in_array($slot, AlphaV1CombatRules::EQUIPMENT_SLOTS, true)
+                || isset($equipmentSlots[$slot])) {
+                throw new InvalidArgumentException("Underground alpha-v1 build [{$buildKey}] equipment loadout is invalid.");
+            }
+            $equipmentSlots[$slot] = true;
+        }
+
         $treePoints = array_fill_keys(AlphaV1CombatRules::TREES, 0);
         $passiveNodes = [];
         $nodeDetails = [];
@@ -69,14 +79,29 @@ final class UndergroundBuildValidator
             throw new InvalidArgumentException("Underground alpha-v1 build [{$buildKey}] exceeds the point budget.");
         }
 
-        foreach ($nodeDetails as $nodeKey => $detail) {
+        foreach ($nodeDetails as $nodeKey => &$detail) {
             $node = $detail['node'];
             $requiredInvestment = $node['invested_points_required'] ?? null;
-            $prerequisite = $node['prerequisite'] ?? null;
-            if (! is_int($requiredInvestment) || $requiredInvestment < 0
-                || ($treePoints[$detail['tree']] - $detail['points']) < $requiredInvestment) {
+            if (! is_int($requiredInvestment) || $requiredInvestment < 0) {
                 throw new InvalidArgumentException("Underground alpha-v1 node [{$nodeKey}] tier gate is not met.");
             }
+            $detail['required_investment'] = $requiredInvestment;
+        }
+        unset($detail);
+
+        foreach ($nodeDetails as $nodeKey => $detail) {
+            $requiredInvestment = $detail['required_investment'];
+            $accessiblePoints = array_sum(array_map(
+                static fn (array $candidate): int => $candidate['tree'] === $detail['tree']
+                    && $candidate['required_investment'] < $requiredInvestment
+                        ? $candidate['points']
+                        : 0,
+                $nodeDetails,
+            ));
+            if ($accessiblePoints < $requiredInvestment) {
+                throw new InvalidArgumentException("Underground alpha-v1 node [{$nodeKey}] tier gate is not met.");
+            }
+            $prerequisite = $detail['node']['prerequisite'] ?? null;
             if ($prerequisite !== null
                 && (! is_string($prerequisite) || ! isset($allocations[$prerequisite]))) {
                 throw new InvalidArgumentException("Underground alpha-v1 node [{$nodeKey}] prerequisite is not met.");

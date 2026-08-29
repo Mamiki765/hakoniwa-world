@@ -44,6 +44,32 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertGreaterThan($manifest['balance']['build_point_budget'], $allTreePoints);
         $this->assertSame('rapier', $validator->validate($catalog, 'balanced')['weapon_style']);
         $this->assertContains('mending_prayer', $validator->validate($catalog, 'balanced')['active_skills']);
+
+        $mutualTierBootstrap = $manifest;
+        $mutualTierBootstrap['builds']['pure_attacker']['allocations'] = [
+            'martial_precision_cut' => 1,
+            'martial_weapon_mastery' => 5,
+            'martial_critical_training' => 5,
+            'martial_dagger_flurry' => 1,
+            'martial_armor_break' => 1,
+            'martial_blood_return' => 3,
+        ];
+        try {
+            $validator->validate(new AlphaV1BuildCatalog($mutualTierBootstrap), 'pure_attacker');
+            $this->fail('Nodes behind one tier gate must not unlock each other.');
+        } catch (InvalidArgumentException $exception) {
+            $this->assertStringContainsString('tier gate is not met', $exception->getMessage());
+        }
+
+        $duplicateEquipment = $manifest;
+        $duplicateEquipment['builds']['pure_attacker']['equipment'][] =
+            $duplicateEquipment['builds']['pure_attacker']['equipment'][0];
+        try {
+            $validator->validate(new AlphaV1BuildCatalog($duplicateEquipment), 'pure_attacker');
+            $this->fail('One build must not equip the same single-capacity slot twice.');
+        } catch (InvalidArgumentException $exception) {
+            $this->assertStringContainsString('equipment loadout is invalid', $exception->getMessage());
+        }
     }
 
     public function test_same_build_equipment_and_seed_replay_exactly(): void
@@ -147,6 +173,31 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(0, $overkill->playerRemainingHp);
         $this->assertGreaterThan(0, $nonlethal->playerRemainingHp);
         $this->assertSame($nonlethal->damagePrevented, $overkill->damagePrevented);
+
+        $retaliation = $manifest;
+        $retaliation['builds']['pure_tank']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'defend',
+        ]];
+        $retaliation['enemies']['pressure_construct']['max_hp'] = 1;
+        $retaliation['enemies']['pressure_construct']['base_stats'] = [
+            'vitality' => 25, 'might' => 25, 'finesse' => 24, 'spirit' => 25, 'agility' => 1,
+        ];
+        $retaliation['enemies']['pressure_construct']['skills'] = [];
+        $retaliation['enemies']['pressure_construct']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'normal_attack',
+        ]];
+        $retaliation['enemies']['pressure_construct']['normal_attack']['fixed'] = 1;
+        $retaliation['enemies']['pressure_construct']['normal_attack']['dodgeable'] = false;
+        $retaliation['enemies']['pressure_construct']['normal_attack']['hits'] = 3;
+        $retaliated = $this->model()->fight(
+            new AlphaV1BuildCatalog($retaliation), 'pure_tank', 'pressure_construct', 'early', 9, 1,
+        );
+        $enemyHits = array_values(array_filter(
+            $retaliated->actionLog,
+            static fn (array $row): bool => $row['side'] === 'enemy' && $row['action'] === 'normal_attack',
+        ));
+        $this->assertSame('player', $retaliated->winner);
+        $this->assertCount(1, $enemyHits);
     }
 
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void
@@ -199,6 +250,97 @@ final class UndergroundCombatBuildTest extends TestCase
             $periodicDamage($withoutPeriodicAffix),
             $periodicDamage($withPeriodicAffix),
         );
+
+        $barrierSettlement = $manifest;
+        $barrierSettlement['builds']['pure_tank']['base_stats'] = [
+            'vitality' => 1, 'might' => 33, 'finesse' => 32, 'spirit' => 1, 'agility' => 33,
+        ];
+        $barrierSettlement['builds']['pure_tank']['equipment'] = [];
+        $barrierSettlement['builds']['pure_tank']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'skill:counter_stance',
+        ]];
+        $barrierSettlement['skills']['counter_stance']['effects'][0]['fixed'] = 10_000;
+        $barrierSettlement['statuses']['settlement_dot'] = [
+            'label' => '決済試験',
+            'disposition' => 'debuff',
+            'duration_rounds' => 2,
+            'stack_policy' => 'refresh',
+            'max_stacks' => 1,
+            'application_chance_bps' => 10_000,
+            'effects' => [[
+                'type' => 'periodic_damage',
+                'target_max_hp_bps' => 3_000,
+                'source_stat_coefficients' => ['might' => 10_000],
+                'source_cap_multiplier_bps' => 1_000_000,
+            ]],
+        ];
+        $barrierSettlement['skills']['barrier_dot_strike'] = [
+            'label' => '障壁継続試験',
+            'node_key' => null,
+            'mp_cost' => 0,
+            'cooldown' => 100,
+            'required_weapon_styles' => [],
+            'effects' => [[
+                'type' => 'barrier',
+                'target' => 'self',
+                'source_stat_coefficients' => [],
+                'target_max_hp_bps' => 0,
+                'fixed' => 10_000,
+            ], [
+                'type' => 'damage',
+                'target' => 'enemy',
+                'category' => 'physical',
+                'potency_bps' => 10_000,
+                'stat_coefficients' => [],
+                'weapon_coefficient_bps' => 0,
+                'fixed' => 400,
+                'target_max_hp_bps' => 0,
+                'can_crit' => false,
+                'dodgeable' => false,
+                'hits' => 1,
+            ], [
+                'type' => 'apply_status',
+                'target' => 'enemy',
+                'status' => 'settlement_dot',
+            ]],
+        ];
+        $barrierSettlement['enemies']['pressure_construct']['max_hp'] = 100_000;
+        $barrierSettlement['enemies']['pressure_construct']['base_stats'] = [
+            'vitality' => 1, 'might' => 10, 'finesse' => 1, 'spirit' => 1, 'agility' => 87,
+        ];
+        $barrierSettlement['enemies']['pressure_construct']['skills'] = ['barrier_dot_strike'];
+        $barrierSettlement['enemies']['pressure_construct']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'skill:barrier_dot_strike',
+        ]];
+        $barrierSettlement['enemies']['pressure_construct']['normal_attack'] = [
+            'type' => 'damage',
+            'category' => 'physical',
+            'potency_bps' => 10_000,
+            'stat_coefficients' => [],
+            'weapon_coefficient_bps' => 0,
+            'fixed' => 1,
+            'target_max_hp_bps' => 0,
+            'can_crit' => false,
+            'dodgeable' => false,
+            'hits' => 1,
+        ];
+        $settled = $this->model()->fight(
+            new AlphaV1BuildCatalog($barrierSettlement), 'pure_tank', 'pressure_construct', 'early', 1, 2,
+        );
+        $counterRows = array_values(array_filter(
+            $settled->actionLog,
+            static fn (array $row): bool => $row['action'] === 'counter',
+        ));
+        $periodicRows = array_values(array_filter(
+            $settled->actionLog,
+            static fn (array $row): bool => $row['action'] === 'periodic_damage:settlement_dot',
+        ));
+        $this->assertNotEmpty($counterRows, json_encode($settled->actionLog, JSON_THROW_ON_ERROR));
+        $this->assertSame(0, $counterRows[0]['amount']);
+        $this->assertGreaterThan(0, $counterRows[0]['barrier_absorbed']);
+        $this->assertNotEmpty($periodicRows, json_encode($settled->actionLog, JSON_THROW_ON_ERROR));
+        $this->assertSame(0, $periodicRows[0]['amount']);
+        $this->assertGreaterThan($periodicRows[0]['actor_hp'], $periodicRows[0]['barrier_absorbed']);
     }
 
     public function test_status_stack_refresh_cleanse_and_boss_control_conversion_never_create_permanent_lock(): void

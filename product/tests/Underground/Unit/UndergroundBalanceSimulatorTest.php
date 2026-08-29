@@ -61,6 +61,16 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertCount(4, $report['pressure_benchmark']);
         $this->assertNull($report['appropriate_encounter']);
         $this->assertNull($report['mp_economy_sweep']);
+        $this->assertSame([
+            'php',
+            'artisan',
+            'underground:balance',
+            '--manifest=config/underground/balance/foundation-v1.json',
+            '--seed-start=0',
+            '--count=8',
+            '--commit-sha='.str_repeat('b', 40),
+            '--scenario=pressure',
+        ], $report['reproduction_arguments']);
 
         $sidegrade = $simulator->run(
             $manifest,

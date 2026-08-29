@@ -19,7 +19,7 @@ final class DeterministicEquipmentGenerator
         $weaponStyle = $request['weapon_style'] ?? null;
         $rarityKey = $request['rarity'] ?? null;
         $seed = $request['seed'] ?? null;
-        if (! is_string($slot) || ! in_array($slot, ['weapon', 'armor', 'charm'], true)
+        if (! is_string($slot) || ! in_array($slot, AlphaV1CombatRules::EQUIPMENT_SLOTS, true)
             || ! is_string($weaponStyle) || ! in_array($weaponStyle, AlphaV1CombatRules::WEAPON_STYLES, true)
             || ! is_string($rarityKey) || ! is_int($seed)) {
             throw new InvalidArgumentException('Underground alpha-v1 equipment request is invalid.');

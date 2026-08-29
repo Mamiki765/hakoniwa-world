@@ -40,6 +40,9 @@ final class AlphaV1CombatRules
     public const WEAPON_STYLES = ['dagger', 'rapier', 'shield', 'crystal_staff'];
 
     /** @var list<string> */
+    public const EQUIPMENT_SLOTS = ['weapon', 'armor', 'charm'];
+
+    /** @var list<string> */
     public const STATUS_EFFECT_TYPES = [
         'periodic_damage',
         'periodic_heal',

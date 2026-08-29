@@ -158,6 +158,13 @@ final readonly class UndergroundBuildBalanceSimulator
                 $skillCosts[$key] = $skill['mp_cost'];
             }
         }
+        $reproductionArguments = [
+            'php', 'artisan', 'underground:balance', "--manifest={$manifestPath}",
+            "--seed-start={$seedStart}", "--count={$count}", "--commit-sha={$commitSha}",
+        ];
+        if ($scenarioFilter !== null) {
+            $reproductionArguments[] = "--scenario={$scenarioFilter}";
+        }
 
         return [
             'schema_version' => 2,
@@ -189,10 +196,7 @@ final readonly class UndergroundBuildBalanceSimulator
             'laboratory_contract_passed' => $abnormalSeeds === [],
             'experiment_thresholds_passed' => null,
             'balance_targets_are_observations' => true,
-            'reproduction_arguments' => [
-                'php', 'artisan', 'underground:balance', "--manifest={$manifestPath}",
-                "--seed-start={$seedStart}", "--count={$count}",
-            ],
+            'reproduction_arguments' => $reproductionArguments,
         ];
     }
 

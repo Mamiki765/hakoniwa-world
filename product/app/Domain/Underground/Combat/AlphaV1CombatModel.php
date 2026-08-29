@@ -485,7 +485,7 @@ final readonly class AlphaV1CombatModel
         array &$actionLog,
     ): void {
         $hits = max(1, (int) ($effect['hits'] ?? 1));
-        for ($hit = 1; $hit <= $hits && $target->alive(); $hit++) {
+        for ($hit = 1; $hit <= $hits && $actor->alive() && $target->alive(); $hit++) {
             $coefficients = is_array($effect['stat_coefficients'] ?? null) ? $effect['stat_coefficients'] : [];
             $effectivePower = $this->rules->weightedStats($this->currentStats($actor), $coefficients);
             $effectivePower += intdiv($actor->weaponPower * (int) ($effect['weapon_coefficient_bps'] ?? 0), 10_000);
@@ -584,21 +584,16 @@ final readonly class AlphaV1CombatModel
             $combinedBps = intdiv($combinedBps * $guardBps, 10_000);
             $combinedBps = max(10_000 - AlphaV1CombatRules::DAMAGE_REDUCTION_CAP_BPS, min(20_000, $combinedBps));
             $postMitigation = max(1, intdiv($preMitigation * $combinedBps, 10_000));
-            $barrierAbsorbed = min($target->barrier, $postMitigation);
-            $target->barrier -= $barrierAbsorbed;
-            $hpDamage = min($target->hp, $postMitigation - $barrierAbsorbed);
-            $target->hp -= $hpDamage;
-
-            if ($actor->side === 'player') {
-                $metrics['damage_dealt'] += $hpDamage + $barrierAbsorbed;
-            } else {
-                $metrics['damage_received'] += $hpDamage;
-            }
+            $settled = $this->settlePostMitigationDamage(
+                $target,
+                $postMitigation,
+                $actor->side === 'player',
+                $metrics,
+            );
+            $hpDamage = $settled['hp_damage'];
+            $barrierAbsorbed = $settled['barrier_absorbed'];
             if ($target->side === 'player') {
-                $metrics['damage_prevented'] += max(
-                    0,
-                    $preMitigation - ($postMitigation - $barrierAbsorbed),
-                );
+                $metrics['damage_prevented'] += max(0, $preMitigation - $postMitigation);
             }
             if ($target->side === 'player' && ($guarded || $barrierAbsorbed > 0)) {
                 if (($target->modifiers['fighting_spirit_enabled'] ?? false) === true) {
@@ -854,20 +849,21 @@ final readonly class AlphaV1CombatModel
                             + 5_000,
                         10_000,
                     ));
-                    $amount = min($state->hp, $amount);
-                    $absorbed = min($state->barrier, $amount);
-                    $state->barrier -= $absorbed;
-                    $hpDamage = min($state->hp, $amount - $absorbed);
-                    $state->hp -= $hpDamage;
-                    if (($effect['source_side'] ?? null) === 'player') {
-                        $metrics['damage_dealt'] += $hpDamage + $absorbed;
-                    } elseif ($state->side === 'player') {
-                        $metrics['damage_received'] += $hpDamage;
-                    }
-                    if ($state->side === 'player') {
-                        $metrics['damage_prevented'] += $absorbed;
-                    }
-                    $actionLog[] = $this->logRow($round, $state, 'periodic_damage:'.$key, $hpDamage, false, false);
+                    $settled = $this->settlePostMitigationDamage(
+                        $state,
+                        $amount,
+                        ($effect['source_side'] ?? null) === 'player',
+                        $metrics,
+                    );
+                    $actionLog[] = $this->logRow(
+                        $round,
+                        $state,
+                        'periodic_damage:'.$key,
+                        $settled['hp_damage'],
+                        false,
+                        false,
+                        barrierAbsorbed: $settled['barrier_absorbed'],
+                    );
                 } elseif (($effect['type'] ?? null) === 'periodic_heal' && $state->alive()) {
                     $amount = max(1, intdiv(
                         max(1, (int) ($effect['tick_value'] ?? 1))
@@ -944,7 +940,8 @@ final readonly class AlphaV1CombatModel
         array &$actionLog,
     ): void {
         $powerBps = max(0, (int) ($defender->modifiers['counter_power_bps'] ?? 0));
-        if ($powerBps === 0 || ($defender->flags['counter_round'] ?? null) === $round || ! $attacker->alive()) {
+        if ($powerBps === 0 || ($defender->flags['counter_round'] ?? null) === $round
+            || ! $defender->alive() || ! $attacker->alive()) {
             return;
         }
         $defender->flags['counter_round'] = $round;
@@ -956,15 +953,52 @@ final readonly class AlphaV1CombatModel
             10_000 - AlphaV1CombatRules::DAMAGE_REDUCTION_CAP_BPS,
             min(20_000, $this->targetDamageBps($attacker, 'physical')),
         );
-        $damage = min($attacker->hp, max(1, intdiv($effectivePower * $damageBps, 10_000)));
-        $attacker->hp -= $damage;
-        if ($defender->side === 'player') {
-            $metrics['damage_dealt'] += $damage;
-        }
+        $settled = $this->settlePostMitigationDamage(
+            $attacker,
+            max(1, intdiv($effectivePower * $damageBps, 10_000)),
+            $defender->side === 'player',
+            $metrics,
+        );
         if ($defender->side === 'player') {
             $actionUsage['counter']++;
         }
-        $actionLog[] = $this->logRow($round, $defender, 'counter', $damage, false, false);
+        $actionLog[] = $this->logRow(
+            $round,
+            $defender,
+            'counter',
+            $settled['hp_damage'],
+            false,
+            false,
+            barrierAbsorbed: $settled['barrier_absorbed'],
+        );
+    }
+
+    /**
+     * @param  array<string, int|null>  $metrics
+     * @return array{hp_damage: int, barrier_absorbed: int}
+     */
+    private function settlePostMitigationDamage(
+        BuildCombatState $target,
+        int $damage,
+        bool $sourceIsPlayer,
+        array &$metrics,
+    ): array {
+        $damage = max(0, $damage);
+        $barrierAbsorbed = min($target->barrier, $damage);
+        $target->barrier -= $barrierAbsorbed;
+        $hpDamage = min($target->hp, $damage - $barrierAbsorbed);
+        $target->hp -= $hpDamage;
+
+        if ($sourceIsPlayer) {
+            $metrics['damage_dealt'] += $hpDamage + $barrierAbsorbed;
+        } elseif ($target->side === 'player') {
+            $metrics['damage_received'] += $hpDamage;
+        }
+        if ($target->side === 'player') {
+            $metrics['damage_prevented'] += $barrierAbsorbed;
+        }
+
+        return ['hp_damage' => $hpDamage, 'barrier_absorbed' => $barrierAbsorbed];
     }
 
     private function targetDamageBps(BuildCombatState $target, string $category): int
