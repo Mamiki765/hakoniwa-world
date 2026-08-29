@@ -341,11 +341,18 @@ final readonly class UndergroundRuntimeService
         $xpAwarded = 0;
         $shardDelta = 0;
 
-        if ($resultType === UndergroundBattle::RESULT_VICTORY) {
-            $xpAwarded = $encounter['xp'];
-            $shardDelta = $encounter['shards'];
+        if ($resultType === UndergroundBattle::RESULT_VICTORY
+            || $resultType === UndergroundBattle::RESULT_WITHDRAWAL) {
+            $xpAwarded = $resultType === UndergroundBattle::RESULT_VICTORY
+                ? $encounter['xp']
+                : intdiv($encounter['xp'], 4);
             $profile->combat_xp += $xpAwarded;
-            $profile->shard_balance += $shardDelta;
+
+            if ($resultType === UndergroundBattle::RESULT_VICTORY) {
+                $shardDelta = $encounter['shards'];
+                $profile->shard_balance += $shardDelta;
+            }
+
             $curve = $this->catalog->xpCurve();
             $profile->combat_level = $this->progression->levelAfterXp(
                 $profile->combat_level,
@@ -426,6 +433,11 @@ final readonly class UndergroundRuntimeService
         Carbon $finishedAt,
     ): void {
         if ($resultType === UndergroundBattle::RESULT_WITHDRAWAL) {
+            $run->status = UndergroundTrialRun::STATUS_WITHDRAWN;
+            $run->next_battle_index = 1;
+            $run->ended_at = $finishedAt;
+            $run->save();
+
             return;
         }
         if ($resultType === UndergroundBattle::RESULT_DEFEAT) {

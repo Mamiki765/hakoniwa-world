@@ -85,7 +85,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 - 通常探索はserverが選択された狩場に対応するencounter identityを解決し、試練はstableなsequential trial identityと次回battle indexを解決する。combat encounter以外（将来のtreasure等）を追加できるlocal result boundaryだけを残し、汎用event engineは導入しない。
 - battle開始時にSecretary-owned stateからimmutable combat snapshot、loadout、built-in AI設定、enemy/encounter、Underground専用deterministic private seedを構成し、PR101のcanonical pure engineへ渡す。Eloquent modelやDB transactionをpure coreへ渡さない。
 - 通常combatはbuilt-in AIによるatomic auto battleであり、round途中のresume、persistent round session、battle途中の帰還を提供しない。将来manual combatを追加する場合は別runtimeとして接続できる境界だけを保ち、canonical auto pathを変更しない。
-- player-facing runtimeの`max_rounds`は100に固定する。100 roundを終えても未決着ならcanonical resultの`stalemate`をwithdrawalとして扱い、battleを正常終了する。stalemateでは輝石の欠片loss・defeat penalty・trial progress advanceを行わず、trialの既存progressを保持する。
+- player-facing runtimeの`max_rounds`は100に固定する。100 roundを終えても未決着ならcanonical resultの`stalemate`をwithdrawalとして扱い、battleを正常終了する。通常探索・trialとも輝石の欠片loss/rewardはなく、通常勝利時base XPの`floor(base XP / 4)`を得る。通常探索は安全な撤退、trialはrun失敗としてprogressをbattle 1へresetし、HP 0 defeatの欠片50% lossとは区別する。
 
 ### Settlement and progression
 
@@ -97,7 +97,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 
 - trialのbattle間progressはSecretary-ownedで永続化し、browser close、logout、単なる離席では失わない。defeat、またはbattle終了後の明示的な帰還ではactive runを終了し、次回trial battleを1へresetする。ただしtrialのunlock済みidentityは保持する。
 - 各trialのfirst clearだけが`unlocked_area_layers`を1増やす。capacityは`unlocked_area_layers * 4`から派生し、1 trial = 1 layer = 4 facility slotsである。同じtrialを再clearしてもlayerを重複取得せず、first clear後に次のtrialをsequentialにunlockする。
-- stalemate withdrawalは明示的な帰還やdefeatとは異なり、no-lossでtrial progressを保持する。trialの正確な戦闘数、enemy、boss、balanceはversioned content decisionへ残す。
+- stalemate withdrawalはHP 0 defeatと異なり欠片を失わないが、trial runは終了してprogressをbattle 1へresetする。通常探索・trialとも欠片rewardはなく、base XPの1/4だけを整数切り捨てでsettleする。trialの正確な戦闘数、enemy、boss、balanceはversioned content decisionへ残す。
 
 ### Cooldown, idempotency, and concurrency
 
@@ -107,7 +107,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 
 ### Battle history retention
 
-battle historyにはencounter identity、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、ordered action/round sequence、damage/recovery等のplayer-facing summary、battle timestamp、retention expiryを保存する。内部debug objectやraw simulation payload全体は永続化しない。詳細logのretention windowはbattle終了から1000時間とし、期限後は`underground:prune-battle-logs`の最小cleanup commandで削除可能にするが、battle summaryとidempotency/audit identityは保持する。巨大なscheduler/workflow subsystemは追加しない。
+battle historyにはencounter identity、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、ordered action/round sequence、damage/recovery等のplayer-facing summary、battle timestamp、retention expiryを保存する。内部debug objectやraw simulation payload全体は永続化しない。詳細logのretention windowはbattle終了から1000時間とし、期限後は`underground:prune-battle-logs`で削除する。productionでは既存のOCI host cron thin-trigger patternから日次実行し、battle summary、aggregate、idempotency/audit identityは保持する。Laravel schedulerや巨大なworkflow subsystemは追加しない。
 
 ## Permanent contracts and experiment observations
 
