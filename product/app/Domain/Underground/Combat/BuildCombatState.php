@@ -95,6 +95,11 @@ final class BuildCombatState
         return $this->statuses[$key]['stacks'] ?? 0;
     }
 
+    public function roleStack(string $key): int
+    {
+        return $this->roleStacks[$key] ?? 0;
+    }
+
     public function stat(string $key): int
     {
         $base = $this->stats[$key] ?? 0;

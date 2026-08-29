@@ -153,7 +153,7 @@ final class UndergroundBuildValidator
         $conditionTypes = [
             'always', 'own_hp_lte', 'own_hp_gte', 'own_mp_lte', 'own_mp_gte',
             'enemy_hp_lte', 'self_has_status', 'self_lacks_status', 'enemy_has_status',
-            'enemy_lacks_status', 'status_stacks_gte', 'enemy_telegraph', 'skill_ready',
+            'enemy_lacks_status', 'status_stacks_gte', 'role_stacks_gte', 'enemy_telegraph', 'skill_ready',
             'round_gte', 'round_modulo',
         ];
         foreach ($aiRules as $rule) {
@@ -167,6 +167,12 @@ final class UndergroundBuildValidator
             foreach ($conditions as $condition) {
                 if (! is_array($condition) || ! in_array($condition['type'] ?? null, $conditionTypes, true)) {
                     throw new InvalidArgumentException("Underground alpha-v1 build [{$buildKey}] AI condition is invalid.");
+                }
+                if (in_array($condition['type'], ['status_stacks_gte', 'role_stacks_gte'], true)
+                    && (! is_string($condition['status'] ?? null)
+                        || ! is_int($condition['stacks'] ?? null)
+                        || $condition['stacks'] < 1)) {
+                    throw new InvalidArgumentException("Underground alpha-v1 build [{$buildKey}] AI stack condition is invalid.");
                 }
             }
             if (str_starts_with($action, 'skill:')) {

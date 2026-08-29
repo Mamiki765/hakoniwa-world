@@ -89,7 +89,7 @@ alpha-v1は`attack - defense`を使わず、次の順序を固定する。
 7. damage-taken modifier、guard、parryを適用し、合成後の軽減は75% capを越えない。
 8. barrierを先に消費し、残りをHPへ適用する。HPを越えるdamageはclampし、合法なhitは最低1 damageとする。
 
-回復、barrier、periodic effectはsource stat coefficient、target max-HP coefficient、fixed componentの必要な組合せだけをtyped effectとして持つ。percentage damageはsource stat由来capを必須とし、boss/大HP targetをpercentageだけで倒さない。巨大な式DSLは導入しない。
+回復、barrier、periodic effectはsource stat coefficient、target max-HP coefficient、fixed componentの必要な組合せだけをtyped effectとして持つ。percentage damageはsource stat由来capを必須とし、boss/大HP targetをpercentageだけで倒さない。periodic tickは適用時にbaseをsnapshotし、round endで`base × status stack数 × periodic equipment倍率`を計算して最後に1回だけhalf-upで整数へ丸める。巨大な式DSLは導入しない。
 
 ### Trees, points, active slots, and role stacks
 

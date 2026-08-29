@@ -166,6 +166,9 @@ final class PriorityCombatAi
             'status_stacks_gte' => is_string($status)
                 && is_int($condition['stacks'] ?? null)
                 && $actor->statusStacks($status) >= $condition['stacks'],
+            'role_stacks_gte' => is_string($status)
+                && is_int($condition['stacks'] ?? null)
+                && $actor->roleStack($status) >= $condition['stacks'],
             'enemy_telegraph' => $enemy->hasStatus('telegraph'),
             'skill_ready' => is_string($skill) && $this->skillAvailable($actor, $catalog, $skill),
             'round_gte' => is_int($condition['round'] ?? null) && $round >= $condition['round'],

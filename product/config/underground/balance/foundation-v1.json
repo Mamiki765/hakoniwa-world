@@ -190,7 +190,7 @@
             "ai_rules": [
                 {"conditions": [{"type": "enemy_telegraph"}], "action": "defend"},
                 {"conditions": [{"type": "own_hp_lte", "percent": 65}, {"type": "skill_ready", "skill": "renewing_guard"}], "action": "skill:renewing_guard"},
-                {"conditions": [{"type": "status_stacks_gte", "status": "fighting_spirit"}, {"type": "skill_ready", "skill": "unbroken_retort"}], "action": "skill:unbroken_retort"},
+                {"conditions": [{"type": "role_stacks_gte", "status": "fighting_spirit", "stacks": 1}, {"type": "skill_ready", "skill": "unbroken_retort"}], "action": "skill:unbroken_retort"},
                 {"conditions": [{"type": "self_lacks_status", "status": "aegis"}, {"type": "skill_ready", "skill": "counter_stance"}], "action": "skill:counter_stance"},
                 {"conditions": [{"type": "skill_ready", "skill": "bulwark_strike"}], "action": "skill:bulwark_strike"},
                 {"conditions": [{"type": "skill_ready", "skill": "shield_bash"}], "action": "skill:shield_bash"},

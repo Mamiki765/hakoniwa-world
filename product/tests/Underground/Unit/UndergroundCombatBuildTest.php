@@ -5,6 +5,7 @@ namespace Tests\Underground\Unit;
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\BuildCombatResult;
 use App\Domain\Underground\Combat\CanonicalCombatOrchestrator;
 use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
@@ -100,10 +101,11 @@ final class UndergroundCombatBuildTest extends TestCase
 
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void
     {
-        [, $catalog] = $this->catalog();
+        [$manifest, $catalog] = $this->catalog();
         $tank = $this->model()->fight($catalog, 'pure_tank', 'pressure_construct', 'early', 4, 20);
         $this->assertGreaterThan(0, $tank->effectiveHealing);
         $this->assertGreaterThan(0, $tank->damagePrevented);
+        $this->assertGreaterThan(0, $tank->actionUsage['unbroken_retort']);
 
         $attacker = $this->model()->fight($catalog, 'pure_attacker', 'crystal_warden', 'early', 2, 30);
         $appliedRounds = array_column(array_filter(
@@ -118,6 +120,35 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertNotEmpty($tickRows);
         $this->assertGreaterThan(min($appliedRounds), $tickRows[0]['round']);
         $this->assertLessThanOrEqual(60, max(array_column($tickRows, 'amount')));
+
+        $withPeriodicAffix = $this->model()->fight($catalog, 'balanced', 'crystal_warden', 'early', 2, 30);
+        $withoutPeriodicAffix = $manifest;
+        $withoutPeriodicAffix['equipment']['affixes']['periodic_effect']['minimum'] = 0;
+        $withoutPeriodicAffix['equipment']['affixes']['periodic_effect']['maximum'] = 0;
+        $withoutPeriodicAffix = $this->model()->fight(
+            new AlphaV1BuildCatalog($withoutPeriodicAffix),
+            'balanced',
+            'crystal_warden',
+            'early',
+            2,
+            30,
+        );
+        $periodicAffixes = array_merge(...array_map(
+            static fn (array $item): array => array_values(array_filter(
+                $item['affixes'],
+                static fn (array $affix): bool => ($affix['target'] ?? null) === 'periodic_bps',
+            )),
+            $withPeriodicAffix->generatedEquipment,
+        ));
+        $periodicDamage = static fn (BuildCombatResult $result): int => array_sum(array_column(array_filter(
+            $result->actionLog,
+            static fn (array $row): bool => $row['action'] === 'periodic_damage:bleed',
+        ), 'amount'));
+        $this->assertNotEmpty($periodicAffixes);
+        $this->assertGreaterThan(
+            $periodicDamage($withoutPeriodicAffix),
+            $periodicDamage($withPeriodicAffix),
+        );
     }
 
     public function test_status_stack_refresh_cleanse_and_boss_control_conversion_never_create_permanent_lock(): void

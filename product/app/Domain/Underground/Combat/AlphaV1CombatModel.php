@@ -772,6 +772,7 @@ final readonly class AlphaV1CombatModel
         BuildCombatState $target,
         array $effects,
     ): array {
+        $periodicMultiplierBps = max(0, 10_000 + (int) ($source->modifiers['periodic_bps'] ?? 0));
         foreach ($effects as &$effect) {
             if (($effect['type'] ?? null) === 'periodic_damage') {
                 $percentage = intdiv($target->maxHp * max(0, (int) ($effect['target_max_hp_bps'] ?? 0)), 10_000);
@@ -781,6 +782,7 @@ final readonly class AlphaV1CombatModel
                 );
                 $cap = intdiv($cap * (int) ($effect['source_cap_multiplier_bps'] ?? 10_000), 10_000);
                 $effect['tick_value'] = max(1, min($percentage, max(1, $cap)));
+                $effect['periodic_multiplier_bps'] = $periodicMultiplierBps;
                 $effect['source_side'] = $source->side;
             } elseif (($effect['type'] ?? null) === 'periodic_heal') {
                 $effect['tick_value'] = max(1,
@@ -789,6 +791,7 @@ final readonly class AlphaV1CombatModel
                         is_array($effect['source_stat_coefficients'] ?? null) ? $effect['source_stat_coefficients'] : [],
                     ) + intdiv($target->maxHp * max(0, (int) ($effect['target_max_hp_bps'] ?? 0)), 10_000),
                 );
+                $effect['periodic_multiplier_bps'] = $periodicMultiplierBps;
                 $effect['source_side'] = $source->side;
             }
         }
@@ -850,7 +853,14 @@ final readonly class AlphaV1CombatModel
             foreach ($status['effects'] as $effect) {
                 $ticks = max(1, $status['stacks']);
                 if (($effect['type'] ?? null) === 'periodic_damage' && $state->alive()) {
-                    $amount = min($state->hp, max(1, (int) ($effect['tick_value'] ?? 1)) * $ticks);
+                    $amount = max(1, intdiv(
+                        max(1, (int) ($effect['tick_value'] ?? 1))
+                            * $ticks
+                            * max(0, (int) ($effect['periodic_multiplier_bps'] ?? 10_000))
+                            + 5_000,
+                        10_000,
+                    ));
+                    $amount = min($state->hp, $amount);
                     $absorbed = min($state->barrier, $amount);
                     $state->barrier -= $absorbed;
                     $hpDamage = min($state->hp, $amount - $absorbed);
@@ -865,7 +875,14 @@ final readonly class AlphaV1CombatModel
                     }
                     $actionLog[] = $this->logRow($round, $state, 'periodic_damage:'.$key, $hpDamage, false, false);
                 } elseif (($effect['type'] ?? null) === 'periodic_heal' && $state->alive()) {
-                    $effective = $this->healExact($state, max(1, (int) ($effect['tick_value'] ?? 1)) * $ticks, $metrics);
+                    $amount = max(1, intdiv(
+                        max(1, (int) ($effect['tick_value'] ?? 1))
+                            * $ticks
+                            * max(0, (int) ($effect['periodic_multiplier_bps'] ?? 10_000))
+                            + 5_000,
+                        10_000,
+                    ));
+                    $effective = $this->healExact($state, $amount, $metrics);
                     $actionLog[] = $this->logRow($round, $state, 'periodic_heal:'.$key, -$effective, false, false);
                 }
             }
