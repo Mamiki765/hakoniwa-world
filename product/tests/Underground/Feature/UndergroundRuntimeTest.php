@@ -305,6 +305,14 @@ final class UndergroundRuntimeTest extends TestCase
 
         $this->assertSame($first->id, $runtime->recentBattles($owner)->sole()->id);
         $this->assertTrue($runtime->recentBattles($other)->isEmpty());
+        $first->log()->update(['expires_at' => $first->finished_at->addHours(1000)]);
+        $retentionMigration = require database_path(
+            'migrations/2026_08_29_040000_cap_underground_battle_log_retention.php',
+        );
+        $retentionMigration->up();
+        $this->assertTrue(
+            $first->log()->sole()->expires_at->equalTo($first->finished_at->addHours(100)),
+        );
         Carbon::setTestNow(Carbon::now()->addHour());
         $future = $runtime->explore($other, 'shallow_caves', (string) Str::uuid())['battle'];
         Carbon::setTestNow($first->finished_at->addHours(100));

@@ -55,7 +55,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(58, DB::table('migrations')->count());
+        $this->assertSame(59, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -91,6 +91,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_29_030000_pin_underground_trial_content_identity',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_29_040000_cap_underground_battle_log_retention',
         ]);
         $this->assertDatabaseHas('facility_definitions', [
             'key' => 'undersea_city',
