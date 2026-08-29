@@ -55,7 +55,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(55, DB::table('migrations')->count());
+        $this->assertSame(56, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -82,6 +82,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_29_000000_create_underground_profiles',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_29_010000_add_underground_runtime_foundation',
         ]);
         $this->assertDatabaseHas('facility_definitions', [
             'key' => 'undersea_city',
@@ -117,6 +120,14 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasTable('auction_bids'));
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'unlocked_area_layers'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'combat_level'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'combat_xp'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'shard_balance'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'next_battle_at'));
+        $this->assertTrue(Schema::hasTable('underground_trial_progress'));
+        $this->assertTrue(Schema::hasTable('underground_trial_runs'));
+        $this->assertTrue(Schema::hasTable('underground_battles'));
+        $this->assertTrue(Schema::hasTable('underground_battle_logs'));
         $this->assertSame(0, DB::table('auction_listings')->count());
         $this->assertSame(0, DB::table('auction_bids')->count());
         $this->assertSame(6, $ruleset->settings['trading_post']['npc']['duration_turns']);
@@ -130,6 +141,10 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'monster_definitions_experience_per_damage_non_negative')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_profiles_unlocked_area_layers_non_negative')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_profiles_combat_level_positive')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_battles_profile_request_unique')->count());
         $auctionIndexes = [
             'auction_bids_bidder_index',
             'auction_bids_one_highest_per_listing',

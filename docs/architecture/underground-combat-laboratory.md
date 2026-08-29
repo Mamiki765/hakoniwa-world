@@ -1,10 +1,10 @@
-# Underground Combat Laboratory architecture
+# Underground Combat Laboratory and runtime architecture
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryとPR102 persistence foundationのcurrent task-specific architecture authorityである。playerから到達できないalpha-v0実験環境とSecretary-ownedな最小area entitlementを定義し、将来のplayer-facing combat balance、Tutorial、persistent run、API、UI、surface bridgeを定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backendのcurrent task-specific architecture authorityである。player-facing Tutorial/UIへ進む前のruntime contractまでを定義し、公開API、Tutorial導線、manual combat、equipment/shop、surface bridgeを定義しない。
 
-地上のcurrent baselineはapplication 2.8.0 / `hakoniwa-2s-plus-v18`であり、このlaboratory identityとは独立している。PR102はprofile schemaをforward migrationで追加するが、published Ruleset、World、Nation、MapCell、TurnRun、Turn RNG、既存production dataを変更しない。
+地上のcurrent baselineはapplication 2.8.0 / `hakoniwa-2s-plus-v18`であり、このlaboratory/runtime identityとは独立している。PR102/PR103はUnderground専用のprofile、run、history stateをforward migrationで追加するが、published Ruleset、World、Nation、MapCell、TurnRun、Turn RNG、既存production data、application versionを変更しない。
 
 ## Modular-monolith boundary
 
@@ -15,17 +15,19 @@
 - `product/app/Application/Underground/UndergroundProfileService.php`: Secretary row lockを使うprofile lazy-create adapter。
 - `product/app/Models/UndergroundProfile.php`: Secretary-owned profileのEloquent persistence model。
 - `product/app/Domain/Underground/Area/`: layerからfacility slot capacityを派生するpure calculator。
+- Underground runtime adapter/orchestrator: Secretary snapshot、狩場/encounter、trial run、cooldown、canonical engine実行、settlementを接続する。pure engineの複製やround途中のpersistent sessionは作らない。
+- runtime persistence models/tables: Secretary-owned permanent progression、active trial/run、battle summary/detail log/idempotencyをlifecycleごとに分離する。具体的なtableはcurrent migration/codeを正本とし、将来contentのための空tableを先回りして作らない。
 - `product/app/Console/Commands/UndergroundBalance.php`: file I/OとCLI adapter。
 - `product/config/underground/balance/foundation-v0.json`: versioned laboratory inputとinitial observation metadata。
 - `product/tests/Underground/`: surface test suiteと分離したcontract tests。
 
-`Domain/Underground`から`App\Models`、`App\Domain\Turn`、Laravel database、World、Nation、MapCell、TurnRun、surface Ruleset identityへ依存してはならない。Secretary接続はApplication/Model境界で扱い、combat coreへEloquent modelを渡さず、将来のruntime adapterがimmutable inputへ変換する。
+`Domain/Underground`から`App\Models`、`App\Domain\Turn`、Laravel database、World、Nation、MapCell、TurnRun、surface Ruleset identityへ依存してはならない。Secretary接続とtransactionはApplication/Model境界で扱い、combat coreへEloquent modelを渡さず、runtime adapterがimmutable inputへ変換する。
 
 ## Underground persistence boundary
 
 ### Ownership and lifecycle
 
-Undergroundの恒久的なplayer progression ownerは`Secretary`である。将来のcombat/exploration progression、地底装備、探索基地、地下箱庭で解禁済みのarea layer、装備特殊化等のSecretary固有状態はNationから独立して保持する。PR102ではこのうち地下箱庭entitlementの`unlocked_area_layers`だけを永続化する。
+Undergroundの恒久的なplayer progression ownerは`Secretary`である。combat level/XP、輝石の欠片、trial unlock/progress、地下箱庭で解禁済みのarea layer等のSecretary固有状態はNationから独立して保持する。PR102では地下箱庭entitlementを、PR103ではcombat progressionとruntime stateを追加する。equipment、skill、探索基地等の将来状態はこのowner境界を継承するが、今回のPRで先回りして永続化しない。
 
 `underground_profiles`はSecretaryと1:1で、`secretary_id`をunique FKとする。既存Secretaryはbackfillせず、必要になった時にApplication serviceがtransaction内でSecretary rowをlockしてprofileをlazy createする。profileはNationの破棄・再作成では削除しない。Secretaryそのものが正式に削除された場合だけ、Secretary skill/itemと同じcurrent child lifecycleに従ってcascade deleteする。current User→Secretary FKは`RESTRICT`であり、このPRはUser/Secretary lifecycleを変更しない。
 
@@ -35,7 +37,11 @@ Undergroundの恒久的なplayer progression ownerは`Secretary`である。将�
 
 将来、解禁slotへ配置する地下都市・農場・工場等の施設はNation-ownedとする。Nation破棄時は施設を失うがSecretary-ownedの解禁layer entitlementは残る。同じSecretaryが新しいNationを持つ場合、保持したcapacityを空配置から利用する。このfuture bridgeはPR102では実装しない。
 
-combat level、combat XP、dungeon/checkpoint progress、地下箱庭の解禁layerは独立stateである。combat levelやsimulator scenario progressからlayer数を算出せず、同じfieldへ格納しない。PR102はcombat progress、equipment、base、facility、persistent run、API、UIを追加しない。
+combat level、combat XP、trial progress、地下箱庭の解禁layerは独立stateである。combat levelやXPからlayer数を算出せず、同じfieldへ格納しない。`combat_level`と`combat_xp`は`1`/`0`から開始し、XP curveはUnderground側のversioned alpha balance inputとする。輝石の欠片はsurface moneyと別のSecretary-owned非負整数balanceである。
+
+PR103のruntime stateはlifecycleを混ぜない。恒久progression（level/XP、shard balance、trial unlock、unlocked layers）、active trial/run（trial identity、次回battle index、status）、battle history（summary、詳細log、timestamp、retention expiry、request/battle idempotency identity）をそれぞれの責務として保存する。既存の`underground_profiles`を無秩序に拡張せず、current migration/codeで必要なsmall dedicated model/tableへ分離する。profile/run/historyの全FKはSecretary ownershipを越えず、Nation、World、MapCell、TurnRunを参照しない。
+
+`1 unlocked layer = 4 facility slots`はcapacityの派生規則である。trialのfirst clearだけがlayer entitlementを1増やし、同じtrialの再clearでは増やさない。combat level/XP、探索回数、stalemateではlayerを増やさない。
 
 ## Alpha-v0 combat model
 
@@ -70,6 +76,39 @@ PR1のsemantic contractはabsolute win rateではなく、次の相対観測で�
 
 telegraph guardはaction logに`guarded`を残し、unit testでunmitigated上限より45%軽減された上限内にあることを確認する。
 
+## PR103 expedition runtime contract
+
+PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続するruntime adapterである。runtimeはsurfaceのWorld、Nation、MapCell、Turn、TurnRunner、surface Rulesetを参照せず、将来のplayer-facing API/UIへ渡す前のapplication service境界に留める。
+
+### Atomic auto battle
+
+- 通常探索はserverが選択された狩場に対応するencounter identityを解決し、試練はstableなsequential trial identityと次回battle indexを解決する。combat encounter以外（将来のtreasure等）を追加できるlocal result boundaryだけを残し、汎用event engineは導入しない。
+- battle開始時にSecretary-owned stateからimmutable combat snapshot、loadout、built-in AI設定、enemy/encounter、Underground専用deterministic private seedを構成し、PR101のcanonical pure engineへ渡す。Eloquent modelやDB transactionをpure coreへ渡さない。
+- 通常combatはbuilt-in AIによるatomic auto battleであり、round途中のresume、persistent round session、battle途中の帰還を提供しない。将来manual combatを追加する場合は別runtimeとして接続できる境界だけを保ち、canonical auto pathを変更しない。
+- player-facing runtimeの`max_rounds`は100に固定する。100 roundを終えても未決着ならcanonical resultの`stalemate`をwithdrawalとして扱い、battleを正常終了する。stalemateでは輝石の欠片loss・defeat penalty・trial progress advanceを行わず、trialの既存progressを保持する。
+
+### Settlement and progression
+
+- `BattleResult`とcompactなplayer-facing action/round logを受け取った後、result settlement、XP付与、level-up、輝石の欠片報酬または敗北loss、trial progress、first-clear layer unlock、battle history、cooldownを一つのtransactionで一度だけ確定する。
+- `combat_level`は`1`、`combat_xp`は`0`から開始する。XP curveはUnderground側のversioned alpha balance inputとしてretune可能にし、combat level/XPから`unlocked_area_layers`を算出しない。
+- 輝石の欠片はsurface money/resourceと交換しないSecretary-owned非負整数balanceである。通常敗北時のsettlement前balanceを`floor(balance / 2)`へ減らし、runを終了して安全地点へ帰還する。追加の未鑑定Item lossやequipment penaltyはこのruntimeにない。
+
+### Trial lifecycle and ownership
+
+- trialのbattle間progressはSecretary-ownedで永続化し、browser close、logout、単なる離席では失わない。defeat、またはbattle終了後の明示的な帰還ではactive runを終了し、次回trial battleを1へresetする。ただしtrialのunlock済みidentityは保持する。
+- 各trialのfirst clearだけが`unlocked_area_layers`を1増やす。capacityは`unlocked_area_layers * 4`から派生し、1 trial = 1 layer = 4 facility slotsである。同じtrialを再clearしてもlayerを重複取得せず、first clear後に次のtrialをsequentialにunlockする。
+- stalemate withdrawalは明示的な帰還やdefeatとは異なり、no-lossでtrial progressを保持する。trialの正確な戦闘数、enemy、boss、balanceはversioned content decisionへ残す。
+
+### Cooldown, idempotency, and concurrency
+
+- battle終了後の次回battle開始可能時刻をserver-authoritativeな`next_battle_at`で管理し、10秒未満のstart requestを拒否する。cooldown待ちでrequest/processをsleepまたはblockしない。
+- runtimeはauthenticated adapterが解決したcurrent User→own Secretaryのcontextだけを受け取り、player-controlled Secretary IDをownershipの根拠にしない。profile、active run、battle/request identityをrow lockとunique identityで直列化する。
+- duplicate request/retryは保存済みidempotency identityにより同じsettled resultを返すか再適用せずに拒否する。concurrent requestも同時battle、cooldown突破、XP/欠片の二重付与、trial progress/layer unlockの二重進行を許さない。idempotency/audit identityは詳細logのretention後も保持する。
+
+### Battle history retention
+
+battle historyにはencounter identity、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、ordered action/round sequence、damage/recovery等のplayer-facing summary、battle timestamp、retention expiryを保存する。内部debug objectやraw simulation payload全体は永続化しない。詳細logのretention windowはbattle終了から1000時間とし、期限後は`underground:prune-battle-logs`の最小cleanup commandで削除可能にするが、battle summaryとidempotency/audit identityは保持する。巨大なscheduler/workflow subsystemは追加しない。
+
 ## Permanent contracts and experiment observations
 
 恒久的に保護するものは次である。
@@ -98,7 +137,7 @@ full manifestを実行したreportはsemantic observationsと`laboratory_contrac
 
 ## Verification boundary
 
-pure combat CI smokeは32程度のseedでdeterminism、legality、abnormal=0、report再現性、semantic behaviorを確認する。10,000-seed runはmanual experimentであり、CIへ常設しない。pure combat testはsurface/database fixtureを持たず、PR102のDB-backed testは`tests/Underground/Feature`へ分離し、User、Secretary、UndergroundProfileだけを使う。World construction、Nation、MapCell、official Turn、concurrency fixtureは実行しない。
+pure combat CI smokeは32程度のseedでdeterminism、legality、abnormal=0、report再現性、semantic behaviorを確認する。10,000-seed runはmanual experimentであり、CIへ常設しない。pure combat testはsurface/database fixtureを持たず、PR102/PR103のDB-backed testは`tests/Underground/Feature`へ分離し、User、Secretary、Underground専用profile/run/history tableだけを使う。transaction、row lock、unique idempotencyの代表的な競合テストはこの境界で実行できるが、World construction、Nation、MapCell、official Turn、surface bridge fixtureは実行しない。
 
 代表command:
 
@@ -118,4 +157,4 @@ reportはmanifest path/hash、raw `manifest_contents`、exact source commit、se
 
 player-facing first Tutorialはlaboratory `standard_enemy`と別物である。正常操作またはbuilt-in AIで100%勝利できるdeterministic教育encounterを別fixtureとしてauthoringし、standardのstat、win rate、provisional rangeをdifficultyへ流用しない。PR1はTutorialを実装しない。
 
-future runtimeはpure engineへidentity/profile snapshot、loadout、encounter、seedを渡し、resultをtransaction内でsettleするadapterを追加する。Secretary-owned entitlementとprofile初回作成lockはUG-02で決定済みである。persistent combat runのtransaction/idempotency/resume、Tutorial/progression/defeat/API/UI/versionはUG-03、party borrowing/market/Nation-owned facility placement/surface benefitはUG-04のOwner decision後に限る。variantごとにengineを複製しない。
+PR103 runtimeはpure engineへidentity/profile snapshot、loadout、encounter、built-in AI、seedを渡し、resultを一度だけtransaction内でsettleするadapterとして実装する。Secretary-owned entitlementとprofile初回作成lockはUG-02で決定済みである。first-player API/UI、Tutorial、authenticated security、rate limit、human acceptance、versionはUG-03の残るOpen gateであり、party borrowing/market/Nation-owned facility placement/surface benefitはUG-04のOwner decision後に限る。variantごとにengineを複製しない。

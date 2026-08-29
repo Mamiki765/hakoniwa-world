@@ -25,19 +25,39 @@ final class UndergroundPersistenceTest extends TestCase
         $second = $service->ensureForSecretary($secretary);
 
         $this->assertSame($first->id, $second->id);
-        $this->assertSame(0, $first->unlocked_area_layers);
+        $this->assertSame([0, 1, 0, 0, null], [
+            $first->unlocked_area_layers,
+            $first->combat_level,
+            $first->combat_xp,
+            $first->shard_balance,
+            $first->next_battle_at,
+        ]);
         $this->assertSame($first->id, $secretary->undergroundProfile()->sole()->id);
         $this->assertSame(1, UndergroundProfile::query()->where('secretary_id', $secretary->id)->count());
 
         $columns = Schema::getColumnListing('underground_profiles');
         sort($columns);
         $this->assertSame([
+            'combat_level',
+            'combat_xp',
             'created_at',
             'id',
+            'next_battle_at',
             'secretary_id',
+            'shard_balance',
             'unlocked_area_layers',
             'updated_at',
         ], $columns);
+        $this->assertTrue(Schema::hasTable('underground_trial_progress'));
+        $this->assertTrue(Schema::hasTable('underground_trial_runs'));
+        $this->assertTrue(Schema::hasTable('underground_battles'));
+        $this->assertTrue(Schema::hasTable('underground_battle_logs'));
+        foreach (['underground_trial_progress', 'underground_trial_runs', 'underground_battles'] as $table) {
+            $this->assertNotContains('user_id', Schema::getColumnListing($table));
+            $this->assertNotContains('world_id', Schema::getColumnListing($table));
+            $this->assertNotContains('nation_id', Schema::getColumnListing($table));
+            $this->assertNotContains('turn_run_id', Schema::getColumnListing($table));
+        }
     }
 
     public function test_unlocked_layers_persist_and_derive_four_facility_slots_per_layer(): void
@@ -62,6 +82,9 @@ final class UndergroundPersistenceTest extends TestCase
         foreach ([
             static fn () => UndergroundProfile::query()->create(['secretary_id' => $secretary->id]),
             static fn () => $profile->update(['unlocked_area_layers' => -1]),
+            static fn () => $profile->update(['combat_level' => 0]),
+            static fn () => $profile->update(['combat_xp' => -1]),
+            static fn () => $profile->update(['shard_balance' => -1]),
         ] as $mutation) {
             try {
                 DB::transaction($mutation);
@@ -71,7 +94,13 @@ final class UndergroundPersistenceTest extends TestCase
             }
         }
 
-        $this->assertSame(0, $profile->fresh()?->unlocked_area_layers);
+        $persisted = $profile->fresh();
+        $this->assertSame([0, 1, 0, 0], [
+            $persisted?->unlocked_area_layers,
+            $persisted?->combat_level,
+            $persisted?->combat_xp,
+            $persisted?->shard_balance,
+        ]);
         $secretary->delete();
         $this->assertDatabaseMissing('underground_profiles', ['id' => $profile->id]);
     }
