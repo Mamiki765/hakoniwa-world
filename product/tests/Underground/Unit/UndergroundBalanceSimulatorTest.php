@@ -3,8 +3,15 @@
 namespace Tests\Underground\Unit;
 
 use App\Application\Underground\UndergroundBalanceSimulator;
+use App\Application\Underground\UndergroundBuildBalanceSimulator;
 use App\Application\Underground\UndergroundReportSourceIdentity;
+use App\Domain\Underground\Combat\AlphaV1CombatModel;
+use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuiltInCombatAi;
+use App\Domain\Underground\Combat\CanonicalCombatOrchestrator;
+use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
+use App\Domain\Underground\Combat\PriorityCombatAi;
+use App\Domain\Underground\Combat\UndergroundBuildValidator;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use InvalidArgumentException;
@@ -12,6 +19,71 @@ use PHPUnit\Framework\TestCase;
 
 final class UndergroundBalanceSimulatorTest extends TestCase
 {
+    public function test_alpha_v1_small_smoke_reports_build_damage_mp_scale_and_zero_abnormal_states(): void
+    {
+        $path = dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json';
+        $contents = file_get_contents($path);
+        $this->assertIsString($contents);
+        $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($manifest);
+        $rules = new AlphaV1CombatRules;
+        $generator = new DeterministicEquipmentGenerator($rules);
+        $simulator = new UndergroundBuildBalanceSimulator(
+            new AlphaV1CombatModel(
+                $rules,
+                new UndergroundBuildValidator($rules),
+                $generator,
+                new PriorityCombatAi,
+                new CanonicalCombatOrchestrator,
+            ),
+            new UndergroundBuildValidator($rules),
+            $generator,
+        );
+        $report = $simulator->run(
+            $manifest,
+            $contents,
+            hash('sha256', $contents),
+            'config/underground/balance/foundation-v1.json',
+            str_repeat('b', 40),
+            false,
+            0,
+            8,
+            'pressure',
+        );
+
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $report['combat_identity']);
+        $this->assertSame(AlphaV1CombatRules::GENERATOR_IDENTITY, $report['generator_identity']);
+        $this->assertSame(300, $report['selected_mp_natural_recovery']);
+        $this->assertTrue($report['laboratory_contract_passed']);
+        $this->assertSame([], $report['abnormal_seeds']);
+        $this->assertSame(100.0, $report['role_damage_ratios']['pure_attacker']);
+        $this->assertCount(4, $report['pressure_benchmark']);
+        $this->assertNull($report['appropriate_encounter']);
+        $this->assertNull($report['mp_economy_sweep']);
+
+        $sidegrade = $simulator->run(
+            $manifest,
+            $contents,
+            hash('sha256', $contents),
+            'config/underground/balance/foundation-v1.json',
+            str_repeat('b', 40),
+            false,
+            0,
+            8,
+            'sidegrade',
+        )['sidegrade_observation'];
+        $this->assertSame(8, $sidegrade['combat_observation']['low_item_level_unique']['iterations']);
+        $this->assertGreaterThan(
+            $sidegrade['combat_observation']['low_item_level_unique']['mean_damage_per_round'],
+            $sidegrade['combat_observation']['higher_item_level_epic']['mean_damage_per_round'],
+        );
+        $this->assertGreaterThan(
+            $sidegrade['combat_observation']['higher_item_level_epic']['effective_healing_average'],
+            $sidegrade['combat_observation']['low_item_level_unique']['effective_healing_average'],
+        );
+        $this->assertSame([], $sidegrade['combat_observation']['low_item_level_unique']['abnormal_seeds']);
+    }
+
     public function test_small_smoke_generates_a_reproducible_laboratory_summary_without_raw_logs(): void
     {
         [$contents, $manifest] = $this->manifest();

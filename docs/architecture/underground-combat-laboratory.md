@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backend、PR104 first-player Tutorial flowのcurrent task-specific architecture authorityである。manual combat、正式equipment/shop、normal hunt/Trial content、surface bridgeは定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backend、PR104 first-player Tutorial flow、PR105のplayer-inaccessibleな`secretary-underground-alpha-v1` combat/build laboratoryのcurrent task-specific architecture authorityである。manual combat、playerのskill/equipment persistenceとUI、正式shop、normal hunt/Trial content、surface bridgeは定義しない。
 
-PR104のapplication versionは`3.0.0-alpha.1`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。PR102〜104のprofile、run、history、intro stateはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。
+application versionは`3.0.0-alpha.1`のままである。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。PR102〜104のprofile、run、history、intro stateとPR105のpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR105は通常探索、Trial、Shopの`準備中`を解除せず、alpha-v1をexisting runtime/Tutorialへ接続しない。
 
 ## Modular-monolith boundary
 
@@ -18,7 +18,9 @@ PR104のapplication versionは`3.0.0-alpha.1`である。surface Ruleset `hakoni
 - Underground runtime adapter/orchestrator: Secretary snapshot、狩場/encounter、trial run、cooldown、canonical engine実行、settlementを接続する。pure engineの複製やround途中のpersistent sessionは作らない。
 - runtime persistence models/tables: Secretary-owned permanent progression、active trial/run、battle summary/detail log/idempotencyをlifecycleごとに分離する。具体的なtableはcurrent migration/codeを正本とし、将来contentのための空tableを先回りして作らない。
 - `product/app/Console/Commands/UndergroundBalance.php`: file I/OとCLI adapter。
-- `product/config/underground/balance/foundation-v0.json`: versioned laboratory inputとinitial observation metadata。
+- `product/config/underground/balance/foundation-v0.json`: immutableなalpha-v0 laboratory inputとinitial observation metadata。
+- `product/config/underground/balance/foundation-v1.json`: alpha-v1の数値、build fixture、skill/status/equipment catalog、experiment定義の正本。
+- `product/docs/underground-balance-foundation-v1-10000-seeds.json`: raw action logを除くalpha-v1 manual experiment summary。
 - `product/tests/Underground/`: surface test suiteと分離したcontract tests。
 
 `Domain/Underground`から`App\Models`、`App\Domain\Turn`、Laravel database、World、Nation、MapCell、TurnRun、surface Ruleset identityへ依存してはならない。Secretary接続とtransactionはApplication/Model境界で扱い、combat coreへEloquent modelを渡さず、runtime adapterがimmutable inputへ変換する。
@@ -57,6 +59,63 @@ damageはalpha-v0 laboratory専用の次式を使う。
 6. 残HPを超えるdamageは残HPへclampする。
 
 このformulaと現在のstatはfirst playable contractではない。human playtestと新しいsimulationによりversioned identityまたは明示的migration boundaryのもとで再調整できる。
+
+## Alpha-v1 combat and build laboratory
+
+### Identity and reuse boundary
+
+PR105は`secretary-underground-alpha-v1`とdeterministic equipment generator `secretary-underground-equipment-alpha-v1`を追加する。alpha-v0 engineを複製せず、1 actor / 1 round / 1 actionのround envelopeだけを`CanonicalCombatOrchestrator`へ抽出する。alpha-v0とalpha-v1は同じenvelopeを使い、formula、AI、status timing、result projectionは各versioned modelが所有する。alpha-v0 manifest、fixed replay、report、Tutorial starter knife、scripted loss、XP +5 / 欠片0 / Lv1のcontractは変更しない。
+
+alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、Eloquent、World、Nation、Turn、surface Rulesetへ依存しない。skill allocation、equipment、priority AIはrepresentative simulation fixtureであり、player recordやclass recordではない。
+
+### Five stats, HP, and MP
+
+基礎能力のstable keyは`vitality`（生命）、`might`（武力）、`finesse`（技巧）、`spirit`（精神）、`agility`（敏捷）の5つである。representative base allocationは合計100とし、combat levelとアイテムLvのbenchmark倍率で成長する。PR105のprovisional倍率は`10,000 + 900 × (max(combat level, item level) - 1)` basis pointsであり、level 1〜1,000だけを受理する。
+
+標準Lv1の各能力20・装備補正0では最大HPをexactly 500とする。最大HPは同倍率で伸びる500の基準、基準生命との差分、装備HPから導出する。最大MPは常に10,000であり、combat level、基礎能力、アイテムLvでは増えない。通常攻撃と防御はMP 0、戦闘開始時は10,000、自然回復はalpha-v1 balance dataの300 MP / roundである。150 / 200 / 250 / 300 / 400を100-round持久fixtureで比較し、20-round帯のrotationを維持しながら長期戦では通常攻撃へfallbackし、400のほぼ無制限rotationを避ける値として300を選んだ。skill recovery、overflow、MP不足action、最初の枯渇roundは別metricとして集計する。
+
+敏捷はinitiative、evasion、interrupt/action-delay resistanceへ使うが、追加行動を作らない。critical/evasionのstat contributionは進行倍率のreferenceで正規化し、level上昇だけで確率capへ近づかない。
+
+### Alpha-v1 damage and recovery order
+
+alpha-v1は`attack - defense`を使わず、次の順序を固定する。
+
+1. 複数能力のweighted numeratorを合計し、一度だけ整数切捨てする。
+2. weapon coefficient、fixed componentを加え、skill potencyを掛けて整数切捨てする。
+3. target max-HP componentがあればsource stat由来capを先に適用する。
+4. category/all/status modifierと消費stack bonusを適用する。
+5. critical判定と倍率、95〜105% variance、evasion判定の順に専用label RNGを消費する。
+6. `defense reference / (defense reference + effective defense)`でphysical/magical mitigationを算出する。referenceはlevel/item-level benchmarkと同じcurveで伸びる。
+7. damage-taken modifier、guard、parryを適用し、合成後の軽減は75% capを越えない。
+8. barrierを先に消費し、残りをHPへ適用する。HPを越えるdamageはclampし、合法なhitは最低1 damageとする。
+
+回復、barrier、periodic effectはsource stat coefficient、target max-HP coefficient、fixed componentの必要な組合せだけをtyped effectとして持つ。percentage damageはsource stat由来capを必須とし、boss/大HP targetをpercentageだけで倒さない。巨大な式DSLは導入しない。
+
+### Trees, points, active slots, and role stacks
+
+skill treeは`martial`（戦技）、`guardianship`（護身）、`miracle`（奇跡）の3つで、固定classやbalanced専用treeはない。各treeの全node最大rankはexactly 100 points、全treeは300 points、representative final budgetは120 pointsである。同tree内prerequisite、max rank、tree投資済み15 / 35 / 60 / 85 points gateをvalidatorが確認する。最大5 active skillに加え、通常攻撃と防御はslot外である。weapon styleはdagger、rapier、shield、crystal staffをauthoringし、styleとtreeを固定classとして結合しない。
+
+`fighting_spirit`（闘志）は実際にguard/parry/barrier吸収が発生した時だけ最大5 stackまで得る。攻撃されていない防御では増えない。`grace`（恩寵）はeffective healing、実際のcleanse、barrier吸収、または明示されたholy actionだけから得る。overhealだけでは増えない。いずれも通常combat flow内のstatus/role stackであり、variant専用engineを持たない。
+
+### Status and boss policy
+
+statusはbuff/debuff disposition、duration、`refresh`または`stack_refresh`、max stacks、typed effectsを持つ。applyされたroundにはperiodic tickとduration decrementを行わず、次のeligible round endからtickして残durationを減らす。refreshはdurationを戻し、stack refreshはcapまで増やしてdurationを戻す。cleanse/dispelは実際に対象statusを除去した時だけeffective actionとして数える。duration、barrier、cooldown、stackはunderflow/overflowをabnormal stateとして検出する。
+
+normal targetのaction impairmentをbossへそのまま適用しない。boss profileはinitiative/damage等のsoft effectへ変換し、同種controlの反復には一時resistanceを積み、round endで減衰させる。permanent controlは許さない。
+
+### Priority AI and deterministic equipment
+
+priority AIは上から最初に成立したruleを使い、最大16 rules・各rule最大2 conditionsである。vocabularyは`always`、own HP/MP threshold、enemy HP threshold、self/enemy status present/absent、role stack threshold、enemy telegraph、skill ready、round threshold/moduloである。cooldownまたはMP不足のskillを実行せず、合法な下位ruleまたは通常攻撃へfallbackする。MP不足で上位skillを選べなかったturnはreportへ別集計する。
+
+equipment generationはgenerator identity、アイテムLv、slot / weapon style、rarity、seedが同じなら同じidentity・base・affix・unique effect・display projectionを返す。アイテムLvはbase budget、affix tier、roll rangeを、rarityはaffix数、roll quality、unique eligibilityを決める。common / uncommon / rare / epic / uniqueを区別し、能力、damage/healing/status、critical、MP cost、guard/barrier、periodic effectの少数affixだけを持つ。evasion、軽減、MP cost reduction等に明示capを置き、`max_mp` affixは作らない。
+
+uniqueは水平sidegradeである。manual comparisonではアイテムLv40の吸収UniqueはアイテムLv45 Epicよりdamageが低い一方、effective healingが高く、低Lv Uniqueが絶対上位にならないtrade-offを確認する。inventory、drop、unidentified Item、settlement、Shop、売却/分解はPR105に含めない。
+
+### Representative observations
+
+同point budget・同アイテムLvのpure attacker、pure tank、pure healer/miracle、balanced buildをclass recordではなくfixtureとしてauthoringする。standardized pressure benchmarkのmanual targetはattacker 100に対してbalanced 88〜92、tank 78〜82、healer 77〜81であり、通常CIのhard gateにはしない。適正帯enemyはmedian 14〜26 rounds、全build solo可能、100-round stalemateなしをinitial targetとする。
+
+seed 0〜9,999のpressure/appropriate実験、各1,000-seedのearly/mid/late、MP sweep、sidegradeを含むsummaryは[`underground-balance-foundation-v1-10000-seeds.json`](../../product/docs/underground-balance-foundation-v1-10000-seeds.json)を正本とする。reportはraw per-seed action logを含めず、observed ratio、round分布、outcome、healing/prevention、status/action usage、MP economy、最大10 abnormal seeds、再現argumentを保持する。数値はalpha-v1の初期観測であり、player-facing contentや永久balance gateではない。
 
 ## Dedicated deterministic RNG
 
@@ -119,6 +178,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 - abnormal stateゼロ。
 - max-round到達を明示的`stalemate`として返すこと。
 - manifest hash、source commit、seed range、simulator versionを含む再現可能なreport。
+- alpha-v1では5 stats、HP 500、fixed MP 10,000、point/slot/AI cap、status timing、deterministic equipment identityも保護する。
 - 上記scenario semantics。
 - surface/domain/database dependencyゼロ。
 
@@ -130,7 +190,7 @@ manifestの通常4scenarioには`acceptance`を設定しない。simulatorは別
 
 ## Report contract
 
-summary reportはraw action logを全seed分保存せず、scenarioごとにwin/loss/stalemate、round percentiles、damage、skill/action/resource usage、initiative、telegraph/heavy/guarded-heavy、abnormal seeds最大10件とreproduction commandを持つ。
+summary reportはraw action logを全seed分保存しない。alpha-v0はscenarioごとにwin/loss/stalemate、round percentiles、damage、skill/action/resource usage、initiative、telegraph/heavy/guarded-heavyを持つ。alpha-v1はbuild definition、item-level/point budget、selected MP recovery、skill cost、role damage ratio、appropriate round/outcome、healing/prevention、status/action usage、MP sweep、scale/sidegrade observationを追加する。どちらもabnormal seeds最大10件とreproduction argumentを持つ。
 
 `resource_overflow_units`はcapを越えて破棄されたgain量であり、不正なout-of-range stateではない。`abnormal_rate`は実際にHP/resource invariantを破ったfightだけを数える。
 
@@ -146,17 +206,29 @@ pure combat CI smokeは32程度のseedでdeterminism、legality、abnormal=0、r
 php artisan underground:balance --manifest=config/underground/balance/foundation-v0.json --seed-start=0 --count=10000 --commit-sha=<40-hex-sha> --output=<report.json>
 ```
 
+alpha-v1 full summary:
+
+```text
+php artisan underground:balance --manifest=config/underground/balance/foundation-v1.json --seed-start=0 --count=10000 --commit-sha=<40-hex-sha> --output=docs/underground-balance-foundation-v1-10000-seeds.json
+```
+
 異常seedまたは任意seedのreplay:
 
 ```text
 php artisan underground:balance --manifest=config/underground/balance/foundation-v0.json --scenario=telegraphed_threat --replay-seed=41
 ```
 
+alpha-v1 replayは`experiment:build:tier`を指定する。
+
+```text
+php artisan underground:balance --manifest=config/underground/balance/foundation-v1.json --scenario=pressure:pure_attacker:early --replay-seed=41
+```
+
 reportはmanifest path/hash、raw `manifest_contents`、exact source commit、seed rangeを必ず記録する。外部またはignored experiment manifestもreportから復元でき、embedded contentsとhash/decoded inputが一致しなければ生成を拒否する。replay情報はshell command文字列ではなくargument arrayとして記録し、pathをshellへ再解釈させない。Git metadataがimage内にない場合は`--commit-sha`を明示する。Git HEADを検出した場合はclean worktreeを必須とし、dirtyまたはclean確認不能ならsummary生成をfail closedする。
 
 ## Tutorial and future runtime adapters
 
-player-facing first Tutorialはlaboratory `standard_enemy`と別物である。正常操作またはbuilt-in AIで100%勝利できるdeterministic教育encounterを別fixtureとしてauthoringし、standardのstat、win rate、provisional rangeをdifficultyへ流用しない。PR1はTutorialを実装しない。
+player-facing first Tutorialはlaboratory `standard_enemy`とalpha-v1 build fixtureのどちらとも別物である。正常操作またはbuilt-in AIで100%勝利できるdeterministic教育encounterを別fixtureとしてauthoringし、laboratoryのstat、win rate、provisional rangeをdifficultyへ流用しない。PR105はTutorial/runtime adapterをalpha-v1へ切り替えない。
 
 PR103 runtimeはpure engineへidentity/profile snapshot、loadout、encounter、built-in AI、seedを渡し、resultを一度だけtransaction内でsettleするadapterとして実装する。Secretary-owned entitlementとprofile初回作成lockはUG-02で決定済みである。PR104は同じpure engine/historyをcurrent User自身のSecretaryへ接続し、variantごとにengineを複製しない。party borrowing/market/Nation-owned facility placement/surface benefitはUG-04のOwner decision後に限る。
 
