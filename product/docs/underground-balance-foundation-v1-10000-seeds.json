@@ -3,7 +3,7 @@
     "simulator_version": "underground-build-balance-alpha-v1",
     "combat_identity": "secretary-underground-alpha-v1",
     "generator_identity": "secretary-underground-equipment-alpha-v1",
-    "commit_sha": "028738cfb7c954a7b6c3d46ac45b0ff5d537549c",
+    "commit_sha": "647cc67870eda3abe07bc6d32ef3f6497d3d6966",
     "working_tree_dirty": null,
     "manifest_path": "config/underground/balance/foundation-v1.json",
     "manifest_hash": "d8fd926aa7aa8b395b6be7568e2ab77aa636c400d68f5eec813696935adbe4ed",
@@ -2877,6 +2877,7 @@
         "underground:balance",
         "--manifest=config/underground/balance/foundation-v1.json",
         "--seed-start=0",
-        "--count=10000"
+        "--count=10000",
+        "--commit-sha=647cc67870eda3abe07bc6d32ef3f6497d3d6966"
     ]
 }
