@@ -52,7 +52,12 @@ final class UndergroundPersistenceTest extends TestCase
         $this->assertTrue(Schema::hasTable('underground_trial_runs'));
         $this->assertTrue(Schema::hasTable('underground_battles'));
         $this->assertTrue(Schema::hasTable('underground_battle_logs'));
-        foreach (['underground_trial_progress', 'underground_trial_runs', 'underground_battles'] as $table) {
+        $this->assertTrue(Schema::hasTable('underground_intro_progress'));
+        $this->assertTrue(Schema::hasTable('underground_intro_requests'));
+        foreach ([
+            'underground_trial_progress', 'underground_trial_runs', 'underground_battles',
+            'underground_intro_progress', 'underground_intro_requests',
+        ] as $table) {
             $this->assertNotContains('user_id', Schema::getColumnListing($table));
             $this->assertNotContains('world_id', Schema::getColumnListing($table));
             $this->assertNotContains('nation_id', Schema::getColumnListing($table));

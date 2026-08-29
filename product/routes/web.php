@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
 use App\Http\Controllers\Api\TradingPostController;
+use App\Http\Controllers\Api\UndergroundIntroController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\CommunityGuidelinesController;
@@ -83,6 +84,18 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/me/secretary/main-image', [SecretaryController::class, 'storeMainImage']);
     Route::patch('/me/secretary/main-image', [SecretaryController::class, 'updateMainImageMetadata']);
     Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
+    Route::prefix('/me/underground')->middleware('throttle:60,1')->group(function (): void {
+        Route::get('/', [UndergroundIntroController::class, 'show']);
+        Route::post('/entry', [UndergroundIntroController::class, 'enter']);
+        Route::post('/story/advance', [UndergroundIntroController::class, 'advance']);
+        Route::post('/tutorial', [UndergroundIntroController::class, 'tutorial']);
+        Route::post('/shopkeeper/name', [UndergroundIntroController::class, 'nameShopkeeper']);
+        Route::post('/scripted-loss', [UndergroundIntroController::class, 'scriptedLoss']);
+        Route::get('/main', [UndergroundIntroController::class, 'main']);
+        Route::get('/battles', [UndergroundIntroController::class, 'battles']);
+        Route::get('/battles/{battleRequestId}', [UndergroundIntroController::class, 'battle'])
+            ->whereUuid('battleRequestId');
+    });
     Route::get('/me/secretary/equipment/{slot}/options', [SecretaryController::class, 'equipmentOptions'])
         ->where('slot', '-?\d+');
     Route::put('/me/secretary/equipment/{slot}', [SecretaryController::class, 'updateEquipment'])

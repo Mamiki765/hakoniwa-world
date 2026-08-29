@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backendのcurrent task-specific architecture authorityである。player-facing Tutorial/UIへ進む前のruntime contractまでを定義し、公開API、Tutorial導線、manual combat、equipment/shop、surface bridgeを定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backend、PR104 first-player Tutorial flowのcurrent task-specific architecture authorityである。manual combat、正式equipment/shop、normal hunt/Trial content、surface bridgeは定義しない。
 
-地上のcurrent baselineはapplication 2.8.0 / `hakoniwa-2s-plus-v18`であり、このlaboratory/runtime identityとは独立している。PR102/PR103はUnderground専用のprofile、run、history stateをforward migrationで追加するが、published Ruleset、World、Nation、MapCell、TurnRun、Turn RNG、既存production data、application versionを変更しない。
+PR104のapplication versionは`3.0.0-alpha.1`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。PR102〜104のprofile、run、history、intro stateはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。
 
 ## Modular-monolith boundary
 
@@ -96,6 +96,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 ### Trial lifecycle and ownership
 
 - trialのbattle間progressはSecretary-ownedで永続化し、browser close、logout、単なる離席では失わない。defeat、またはbattle終了後の明示的な帰還ではactive runを終了し、次回trial battleを1へresetする。ただしtrialのunlock済みidentityは保持する。
+- 各trial authoringはそのtrial固有の明示的`content_identity`を持ち、active runは開始時identityを保存する。同じtrial自身のencounter順・数、enemy/boss identity・位置、battle reward、completion判定等を変えてidentityが不一致になった時だけ、row lock内でそのrunをcurrent identity / battle 1へresetする。このresetはdefeatではなく、欠片・XP、trial unlock、first clear、`unlocked_area_layers`、他trialのprogressを変更しない。application version、Underground runtime identity、別trialのidentity変更ではresetしない。表示名等のFlavorだけならidentity更新を要しない。
 - 各trialのfirst clearだけが`unlocked_area_layers`を1増やす。capacityは`unlocked_area_layers * 4`から派生し、1 trial = 1 layer = 4 facility slotsである。同じtrialを再clearしてもlayerを重複取得せず、first clear後に次のtrialをsequentialにunlockする。
 - stalemate withdrawalはHP 0 defeatと異なり欠片を失わないが、trial runは終了してprogressをbattle 1へresetする。通常探索・trialとも欠片rewardはなく、base XPの1/4だけを整数切り捨てでsettleする。trialの正確な戦闘数、enemy、boss、balanceはversioned content decisionへ残す。
 
@@ -107,7 +108,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 
 ### Battle history retention
 
-battle historyにはencounter identity、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、ordered action/round sequence、damage/recovery等のplayer-facing summary、battle timestamp、retention expiryを保存する。内部debug objectやraw simulation payload全体は永続化しない。詳細logのretention windowはbattle終了から1000時間とし、期限後は`underground:prune-battle-logs`で削除する。productionでは既存のOCI host cron thin-trigger patternから日次実行し、battle summary、aggregate、idempotency/audit identityは保持する。Laravel schedulerや巨大なworkflow subsystemは追加しない。
+`underground_battle_logs`にはordered action/round sequenceを保存し、retention windowはbattle終了から100時間とする。期限後は`underground:prune-battle-logs`で削除する。`underground_battles`にはencounter identity、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、damage/recovery aggregate、XP/欠片delta、timestamp、request/idempotency identity等のcompact recordを引き続き保持する。内部debug objectやraw simulation payload全体は永続化しない。retention後の古い戦闘についてplayer-facingな詳細またはdamage/recovery summaryの表示は保証しない。productionでは既存のOCI host cron thin-trigger patternから日次実行し、Laravel schedulerや巨大なworkflow subsystemは追加しない。
 
 ## Permanent contracts and experiment observations
 
@@ -157,4 +158,14 @@ reportはmanifest path/hash、raw `manifest_contents`、exact source commit、se
 
 player-facing first Tutorialはlaboratory `standard_enemy`と別物である。正常操作またはbuilt-in AIで100%勝利できるdeterministic教育encounterを別fixtureとしてauthoringし、standardのstat、win rate、provisional rangeをdifficultyへ流用しない。PR1はTutorialを実装しない。
 
-PR103 runtimeはpure engineへidentity/profile snapshot、loadout、encounter、built-in AI、seedを渡し、resultを一度だけtransaction内でsettleするadapterとして実装する。Secretary-owned entitlementとprofile初回作成lockはUG-02で決定済みである。first-player API/UI、Tutorial、authenticated security、rate limit、human acceptance、versionはUG-03の残るOpen gateであり、party borrowing/market/Nation-owned facility placement/surface benefitはUG-04のOwner decision後に限る。variantごとにengineを複製しない。
+PR103 runtimeはpure engineへidentity/profile snapshot、loadout、encounter、built-in AI、seedを渡し、resultを一度だけtransaction内でsettleするadapterとして実装する。Secretary-owned entitlementとprofile初回作成lockはUG-02で決定済みである。PR104は同じpure engine/historyをcurrent User自身のSecretaryへ接続し、variantごとにengineを複製しない。party borrowing/market/Nation-owned facility placement/surface benefitはUG-04のOwner decision後に限る。
+
+## PR104 first-player intro contract
+
+PR104は汎用visual novel/script engineではなく、Secretary-ownedの一方向finite-state introである。短いダミーscene内のpage番号はfrontend local stateでよいが、Tutorial clear、XP settlement、脱出帰還、店員命名とbranch、scripted loss完了、shop説明、地下メイン解禁はserverで永続化する。mutationはSecretary/profile/intro rowを同じlock順で直列化し、profile単位のUUID fingerprint ledgerとbattle unique identityでduplicate、別payload reuse、stage skip、逆戻りを拒否する。
+
+Tutorialはversioned `tutorial_giant_rat` inputと固定starter-knife projectionをcanonical pure engineへ渡す。starter knifeはinventory Item、weapon instance、rarity/affix/durability schemaを作らない。期待resultは100 round未満のplayer victoryだけであり、contract外ならtransactionをrollbackする。settlementはcombat XP +5、shard +0、combat level 1維持だけで、normal cooldown、Trial、通常探索reward/penaltyを通らない。battle compact record/detailはPR103のtable/logを再利用し、詳細action logには共通の100時間retentionを適用する。
+
+脱出完了後は一度Secretaryメインへ戻す。2回目のentryは店員遭遇・一度だけの1〜20 Unicode grapheme plain-text命名へ進む。temporary alpha authoringのexact `ダミー`だけをspecial branchとして命名時に保存し、後から再判定しない。scripted lossも固定snapshotをcanonical coreへ渡し、expected enemy victory以外はrollbackする。XP、shard、level、cooldown、Trialは前後一致を要求する。
+
+shop説明後の地下メインはprogression、店員名、Tutorial/story battle historyをread-only投影する。通常狩場、Trial、実shopはdisabledな準備中entryであり、PR103 application serviceをplayer APIとして公開しない。story本文、正式trigger、equipment、skill tree、status effect、normal hunt/Trial balance、shop economyは引き続きOpen/Deferredである。

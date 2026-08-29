@@ -26,6 +26,7 @@ final readonly class UndergroundRuntimeService
         private UndergroundCombatRules $combatRules,
         private UndergroundCombatProgression $progression,
         private UndergroundBattleSeed $battleSeed,
+        private UndergroundBattleLogProjector $battleLogProjector,
     ) {}
 
     /** @return array{battle: UndergroundBattle, duplicate: bool} */
@@ -92,9 +93,9 @@ final readonly class UndergroundRuntimeService
 
     public function startTrial(User $user, string $trialKey): UndergroundTrialRun
     {
-        $this->catalog->trial($trialKey);
+        $trial = $this->catalog->trial($trialKey);
 
-        return DB::transaction(function () use ($user, $trialKey): UndergroundTrialRun {
+        return DB::transaction(function () use ($user, $trialKey, $trial): UndergroundTrialRun {
             $profile = $this->lockedProfileForUser($user);
             $progress = UndergroundTrialProgress::query()
                 ->where('underground_profile_id', $profile->id)
@@ -120,7 +121,7 @@ final readonly class UndergroundRuntimeService
                     );
                 }
 
-                return $run;
+                return $this->reconcileActiveTrialContent($run, $trial['content_identity']);
             }
 
             $now = Carbon::now();
@@ -130,6 +131,7 @@ final readonly class UndergroundRuntimeService
             }
             $run->run_key = (string) Str::uuid();
             $run->trial_key = $trialKey;
+            $run->trial_content_identity = $trial['content_identity'];
             $run->next_battle_index = 1;
             $run->status = UndergroundTrialRun::STATUS_ACTIVE;
             $run->started_at = $now;
@@ -169,8 +171,9 @@ final readonly class UndergroundRuntimeService
                     '試練の進行状態が更新されています。',
                 );
             }
-            $this->assertCooldownElapsed($profile);
             $trial = $this->catalog->trial($run->trial_key);
+            $run = $this->reconcileActiveTrialContent($run, $trial['content_identity']);
+            $this->assertCooldownElapsed($profile);
             $battleIndex = $run->next_battle_index;
             $encounterKey = $trial['encounters'][$battleIndex - 1] ?? null;
             if (! is_string($encounterKey)) {
@@ -224,6 +227,8 @@ final readonly class UndergroundRuntimeService
                     'この試練runはすでに終了しています。',
                 );
             }
+            $trial = $this->catalog->trial($run->trial_key);
+            $run = $this->reconcileActiveTrialContent($run, $trial['content_identity']);
 
             $run->status = UndergroundTrialRun::STATUS_WITHDRAWN;
             $run->next_battle_index = 1;
@@ -236,19 +241,24 @@ final readonly class UndergroundRuntimeService
 
     public function activeTrial(User $user): ?UndergroundTrialRun
     {
-        $secretary = Secretary::query()->where('user_id', $user->id)->first();
-        if (! $secretary instanceof Secretary) {
-            return null;
-        }
-        $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->first();
-        if (! $profile instanceof UndergroundProfile) {
-            return null;
-        }
+        return DB::transaction(function () use ($user): ?UndergroundTrialRun {
+            $secretary = Secretary::query()
+                ->where('user_id', $user->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $secretary instanceof Secretary) {
+                return null;
+            }
+            $profile = UndergroundProfile::query()
+                ->where('secretary_id', $secretary->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $profile instanceof UndergroundProfile) {
+                return null;
+            }
 
-        return UndergroundTrialRun::query()
-            ->where('underground_profile_id', $profile->id)
-            ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
-            ->first();
+            return $this->lockedActiveTrialRun($profile);
+        }, 3);
     }
 
     /** @return Collection<int, UndergroundBattle> */
@@ -418,7 +428,7 @@ final readonly class UndergroundRuntimeService
         ]);
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
-            'actions' => $this->playerFacingActionLog($result),
+            'actions' => $this->battleLogProjector->project($result),
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
 
@@ -511,11 +521,36 @@ final readonly class UndergroundRuntimeService
 
     private function lockedActiveTrialRun(UndergroundProfile $profile): ?UndergroundTrialRun
     {
-        return UndergroundTrialRun::query()
+        $run = UndergroundTrialRun::query()
             ->where('underground_profile_id', $profile->id)
             ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
             ->lockForUpdate()
             ->first();
+        if (! $run instanceof UndergroundTrialRun) {
+            return null;
+        }
+
+        $trial = $this->catalog->trial($run->trial_key);
+
+        return $this->reconcileActiveTrialContent($run, $trial['content_identity']);
+    }
+
+    private function reconcileActiveTrialContent(
+        UndergroundTrialRun $run,
+        string $currentContentIdentity,
+    ): UndergroundTrialRun {
+        if ($run->trial_content_identity === $currentContentIdentity) {
+            return $run;
+        }
+
+        $run->trial_content_identity = $currentContentIdentity;
+        $run->next_battle_index = 1;
+        $run->status = UndergroundTrialRun::STATUS_ACTIVE;
+        $run->started_at = Carbon::now();
+        $run->ended_at = null;
+        $run->save();
+
+        return $run;
     }
 
     private function duplicateBattle(
@@ -590,25 +625,5 @@ final readonly class UndergroundRuntimeService
             'runtime_identity' => $this->catalog->runtimeIdentity(),
             'intent' => $intent,
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
-    }
-
-    /** @return list<array<string, int|string|bool>> */
-    private function playerFacingActionLog(CombatResult $result): array
-    {
-        return array_map(static function (array $row): array {
-            $amount = (int) ($row['amount'] ?? 0);
-
-            return [
-                'round' => (int) ($row['round'] ?? 0),
-                'side' => (string) ($row['side'] ?? ''),
-                'action' => (string) ($row['action'] ?? ''),
-                'effect' => $amount < 0 ? 'recovery' : ($amount > 0 ? 'damage' : 'none'),
-                'amount' => abs($amount),
-                'guarded' => (bool) ($row['guarded'] ?? false),
-                'player_hp' => (int) ($row['player_hp'] ?? 0),
-                'enemy_hp' => (int) ($row['enemy_hp'] ?? 0),
-                'player_resource' => (int) ($row['player_resource'] ?? 0),
-            ];
-        }, $result->actionLog);
     }
 }

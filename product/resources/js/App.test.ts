@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import HexMap from './components/HexMap.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
+import UndergroundPanel from './components/UndergroundPanel.vue';
 import type { MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
@@ -202,7 +203,7 @@ beforeEach(() => {
     document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
     const meta = document.createElement('meta');
     meta.name = 'hakoniwa-application-version';
-    meta.content = '2.4.0';
+    meta.content = '3.0.0-alpha.1';
     document.head.append(meta);
 });
 
@@ -212,6 +213,7 @@ afterEach(() => {
     document.querySelector('meta[name="hakoniwa-application-version"]')?.remove();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    window.history.replaceState({}, '', '/');
 });
 
 describe('application lobby and island entry', () => {
@@ -284,6 +286,7 @@ describe('application lobby and island entry', () => {
     });
 
     it('continues rendering the public lobby after the normal guest /me 401', async () => {
+        window.history.replaceState({}, '', '/underground');
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             return publicResponse(path) ?? response(null, 401);
@@ -291,6 +294,8 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
+        expect(window.location.pathname).toBe('/');
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
         expect(wrapper.text()).toContain('HAKONIWA ISLANDS');
         expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
@@ -310,7 +315,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 2.4.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 3.0.0-alpha.1');
         expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');
@@ -1320,6 +1325,7 @@ describe('application lobby and island entry', () => {
     });
 
     it('shows the unnamed Secretary story with the default name and switches permanently to the skill view after naming', async () => {
+        window.history.replaceState({}, '', '/underground');
         let secretary = unnamedSecretaryFixture;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -1380,6 +1386,20 @@ describe('application lobby and island entry', () => {
                 return response({ ...secretary.profile, name: secretary.name, is_owner: true });
             }
             if (path === '/api/v1/me/secretary?world_id=1') return response(secretary);
+            if (path === '/api/v1/me/underground') {
+                return response({
+                    stage: 'not_started', secretary_name: 'エメラルド', combat_level: 1,
+                    combat_xp: 0, next_level_xp: 100, shard_balance: 0,
+                    shopkeeper_name: null, battle: null,
+                });
+            }
+            if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') {
+                return response({
+                    stage: 'initial_descent', secretary_name: secretary.name,
+                    combat_level: 1, combat_xp: 0, next_level_xp: 100,
+                    shard_balance: 0, shopkeeper_name: null, battle: null,
+                });
+            }
 
             return response(null, 404);
         });
@@ -1387,11 +1407,12 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
+        expect(window.location.pathname).toBe('/');
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
+        expect(wrapper.find('.secretary-panel').exists()).toBe(true);
         const secretaryButton = wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === '？？？')!;
         expect(secretaryButton.exists()).toBe(true);
-        await secretaryButton.trigger('click');
-        await flushPromises();
 
         expect(wrapper.get('.secretary-story').text()).toContain('怪獣に踏み荒らされた地から妙な施設が見つかった');
         expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
@@ -1484,6 +1505,356 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(renameRequest?.[1]?.body))).toEqual({ name: 'エメラルド' });
         expect(wrapper.text()).toContain('秘書の名前を「エメラルド」に変更しました。');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'エメラルド')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.secretary-underground-entry button').text()).toBe('地下へ');
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-story').text()).toBe('（ダミー）');
+        const undergroundRequest = fetchMock.mock.calls.find(([path]) => (
+            String(path) === '/api/v1/me/underground/entry'
+        ));
+        expect(JSON.parse(String(undergroundRequest?.[1]?.body))).toEqual({
+            request_id: expect.any(String),
+        });
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'TOP')!.trigger('click');
+        await flushPromises();
+        expect(window.location.pathname).toBe('/');
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'エメラルド')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+        window.history.pushState({ page: 'secretary' }, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate', { state: { page: 'secretary' } }));
+        await flushPromises();
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
+        expect(wrapper.find('.secretary-panel').exists()).toBe(true);
+    });
+
+    it('replaces the Underground history entry when escape completion redirects to Secretary', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        const returnedState = {
+            stage: 'returned_after_tutorial', secretary_name: 'ペリドット', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100, shard_balance: 0,
+            shopkeeper_name: null, battle: null,
+        };
+        const escapeState = { ...returnedState, stage: 'escape_pending' };
+        const replaceSpy = vi.spyOn(window.history, 'replaceState');
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false,
+                can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
+            if (path === '/api/v1/me/underground') return response(escapeState);
+            if (path === '/api/v1/me/underground/story/advance' && init?.method === 'POST') return response(returnedState);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+
+        expect(window.location.pathname).toBe('/');
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
+        expect(wrapper.find('.secretary-panel').exists()).toBe(true);
+        expect(replaceSpy).toHaveBeenCalledWith({ page: 'secretary' }, '', '/');
+        expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/story/advance')).toHaveLength(1);
+    });
+
+    it('shows the unlocked Underground projection with disabled future entries and escaped battle history', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        serverSecretary.underground = {
+            available: true, stage: 'underground_open', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100,
+        };
+        const openState = {
+            stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100, shard_balance: 0,
+            shopkeeper_name: '<b>店員</b>', battle: null,
+        };
+        const summary = {
+            id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+            encounter_name: '<b>ジャイアントラット</b>', result: 'victory', rounds: 2,
+            xp_awarded: 5, shard_delta: 0, detail_available: true, actions: null,
+        };
+        let battleDetailGets = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false,
+                can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
+            if (path === '/api/v1/me/underground') return response(openState);
+            if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') return response(openState);
+            if (path === '/api/v1/me/underground/battles') return response([summary]);
+            if (path === `/api/v1/me/underground/battles/${summary.id}`) {
+                battleDetailGets++;
+                if (battleDetailGets > 1) {
+                    return new Response(JSON.stringify({ message: '戦闘ログを読み込めませんでした。' }), {
+                        status: 500,
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                }
+                return response({
+                    ...summary,
+                    actions: [{ round: 1, side: 'player', action: 'quick_slash', amount: 90 }],
+                });
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.underground-summary').text()).toContain('戦闘Lv1');
+        expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
+        expect(wrapper.get('.underground-summary').text()).toContain('<b>店員</b>');
+        expect(wrapper.find('.underground-summary b').exists()).toBe(false);
+        expect(wrapper.findAll('.underground-entries button')).toHaveLength(3);
+        expect(wrapper.findAll('.underground-entries button').every((button) => (
+            button.attributes('disabled') !== undefined && button.text().includes('準備中')
+        ))).toBe(true);
+        const historyButton = wrapper.get('.underground-history li button');
+        expect(historyButton.text()).toContain('<b>ジャイアントラット</b>');
+        expect(historyButton.find('b').exists()).toBe(false);
+        await historyButton.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-battle-log').text()).toContain('quick_slash');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 勝利');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('経験値 +5 / 輝石の欠片 +0');
+        await historyButton.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('戦闘ログを読み込めませんでした。');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('<b>ジャイアントラット</b>');
+    });
+
+    it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {
+        const battle = {
+            id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+            encounter_name: 'ジャイアントラット', result: 'victory', rounds: 2,
+            xp_awarded: 5, shard_delta: 0, detail_available: true,
+            actions: [{ round: 1, side: 'player', action: 'quick_slash', amount: 90 }],
+        };
+        const escapeState = {
+            stage: 'escape_pending', secretary_name: 'ペリドット', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100, shard_balance: 0,
+            shopkeeper_name: null, battle,
+        };
+        const returnedState = { ...escapeState, stage: 'returned_after_tutorial', battle: null };
+        let stateGets = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') {
+                stateGets++;
+                return response(stateGets === 1 ? escapeState : returnedState);
+            }
+            if (path === '/api/v1/me/underground/story/advance' && init?.method === 'POST') return response(null, 409);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.emitted('returnToSecretary')).toHaveLength(1);
+    });
+
+    it('renders the story battle outcome as a penalty-free player defeat', async () => {
+        const lossState = {
+            stage: 'special_loss_complete', secretary_name: 'ペリドット', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100, shard_balance: 9,
+            shopkeeper_name: 'ダミー',
+            battle: {
+                id: '22222222-2222-4222-8222-222222222222', context: 'scripted_loss',
+                encounter_name: '（ダミー）', result: 'defeat', rounds: 1,
+                xp_awarded: 0, shard_delta: 0, detail_available: true,
+                actions: [{ round: 1, side: 'enemy', action: 'heavy_strike', amount: 999 }],
+            },
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            if (String(input) === '/api/v1/me/underground') return response(lossState);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 敗北');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('経験値 +0 / 輝石の欠片 +0');
+    });
+
+    it('completes the normal first-player flow from tutorial through shop explanation and main unlock', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        let stage = 'not_started';
+        let combatXp = 0;
+        let shopkeeperName: string | null = null;
+        let battle: Record<string, unknown> | null = null;
+        const projection = () => ({
+            stage,
+            secretary_name: 'ペリドット',
+            combat_level: 1,
+            combat_xp: combatXp,
+            next_level_xp: 100,
+            shard_balance: 0,
+            shopkeeper_name: shopkeeperName,
+            battle,
+        });
+        const tutorialBattle = {
+            id: '33333333-3333-4333-8333-333333333333', context: 'tutorial',
+            encounter_name: 'ジャイアントラット', result: 'victory', rounds: 1,
+            xp_awarded: 5, shard_delta: 0, detail_available: true,
+            actions: [{ round: 1, side: 'player', action: 'quick_slash', amount: 90 }],
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false,
+                can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') {
+                serverSecretary.underground = {
+                    available: true, stage, combat_level: 1,
+                    combat_xp: combatXp, next_level_xp: 100,
+                };
+                return response(serverSecretary);
+            }
+            if (path === '/api/v1/me/underground' && init?.method === undefined) return response(projection());
+            if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') {
+                stage = stage === 'not_started' ? 'initial_descent' : 'shopkeeper_encounter';
+                battle = null;
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/tutorial' && init?.method === 'POST') {
+                stage = 'escape_pending';
+                combatXp = 5;
+                battle = tutorialBattle;
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/story/advance' && init?.method === 'POST') {
+                const action = String(JSON.parse(String(init.body)).action);
+                const transitions: Record<string, string> = {
+                    initial_story_complete: 'tutorial_ready',
+                    escape_complete: 'returned_after_tutorial',
+                    shopkeeper_encounter_complete: 'shopkeeper_naming',
+                    shop_explanation_complete: 'underground_open',
+                };
+                stage = transitions[action] ?? stage;
+                if (stage !== 'escape_pending') battle = null;
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/shopkeeper/name' && init?.method === 'POST') {
+                shopkeeperName = String(JSON.parse(String(init.body)).name).trim();
+                stage = 'shop_explanation';
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/battles') return response([tutorialBattle]);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+
+        for (let index = 0; index < 4; index++) {
+            await wrapper.get('.underground-panel > .button').trigger('click');
+            await flushPromises();
+        }
+        expect(wrapper.get('.underground-panel h1').text()).toBe('ジャイアントラット');
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 勝利');
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.secretary-underground-entry').text()).toContain('戦闘Lv 1');
+
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+        for (let index = 0; index < 2; index++) {
+            await wrapper.get('.underground-panel > .button').trigger('click');
+            await flushPromises();
+        }
+        await wrapper.get('#underground-shopkeeper-name').setValue('通常店員');
+        await wrapper.get('.underground-name-form').trigger('submit');
+        await flushPromises();
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.underground-summary').text()).toContain('通常店員');
+        expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
+        expect(wrapper.findAll('.underground-entries button').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
+        expect(stage).toBe('underground_open');
+    });
+
+    it('keeps a Secretary load failure visible instead of treating it as an absent Secretary', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false,
+                can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') {
+                return new Response(JSON.stringify({ message: 'Secretaryを読み込めませんでした。' }), {
+                    status: 500,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('Secretaryを読み込めませんでした。');
+        expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === '？？？')).toBe(false);
     });
 
     it('keeps a committed equipment mutation when the scoped projection refresh fails', async () => {

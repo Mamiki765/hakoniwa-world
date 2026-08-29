@@ -7,7 +7,7 @@ return [
     'combat' => [
         'max_rounds' => 100,
         'cooldown_seconds' => 10,
-        'battle_log_retention_hours' => 1000,
+        'battle_log_retention_hours' => 100,
         'actor_key' => 'knife_initiate',
         'loadout' => [
             'quick_slash',
@@ -39,12 +39,14 @@ return [
     ],
     'trials' => [
         'trial_01' => [
+            'content_identity' => 'trial-01-v1',
             'encounters' => [
                 'cave_crawler', 'needle_bat', 'cave_crawler', 'stone_shell', 'needle_bat',
                 'cave_crawler', 'stone_shell', 'needle_bat', 'gloom_herald', 'gloom_herald',
             ],
         ],
         'trial_02' => [
+            'content_identity' => 'trial-02-v1',
             'encounters' => [
                 'needle_bat', 'stone_shell', 'needle_bat', 'gloom_herald', 'stone_shell',
                 'gloom_herald', 'stone_shell', 'gloom_herald', 'stone_shell', 'gloom_herald',

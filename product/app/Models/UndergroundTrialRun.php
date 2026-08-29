@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
  * @property int $underground_profile_id
  * @property string $run_key
  * @property string $trial_key
+ * @property string $trial_content_identity
  * @property int $next_battle_index
  * @property string $status
  * @property Carbon $started_at
@@ -32,7 +33,8 @@ final class UndergroundTrialRun extends Model
     public const STATUS_CLEARED = 'cleared';
 
     protected $fillable = [
-        'underground_profile_id', 'run_key', 'trial_key', 'next_battle_index', 'status', 'started_at', 'ended_at',
+        'underground_profile_id', 'run_key', 'trial_key', 'trial_content_identity',
+        'next_battle_index', 'status', 'started_at', 'ended_at',
     ];
 
     /** @return array<string, string> */

@@ -140,12 +140,15 @@ final class UndergroundRuntimeCatalog
         return ['minimum_combat_level' => $ground['minimum_combat_level'], 'encounters' => $encounters];
     }
 
-    /** @return array{encounters: list<string>} */
+    /** @return array{content_identity: string, encounters: list<string>} */
     public function trial(string $key): array
     {
         $trials = $this->data()['trials'] ?? null;
         $trial = is_array($trials) ? ($trials[$key] ?? null) : null;
-        if (! is_array($trial)) {
+        if (! is_array($trial)
+            || ! is_string($trial['content_identity'] ?? null)
+            || $trial['content_identity'] === ''
+            || mb_strlen($trial['content_identity']) > 128) {
             throw new InvalidArgumentException("Unknown Underground trial [{$key}].");
         }
         $encounters = $this->stringList($trial['encounters'] ?? null, 'trial encounters');
@@ -153,7 +156,10 @@ final class UndergroundRuntimeCatalog
             throw new RuntimeException('Underground trial must contain an encounter.');
         }
 
-        return ['encounters' => $encounters];
+        return [
+            'content_identity' => $trial['content_identity'],
+            'encounters' => $encounters,
+        ];
     }
 
     public function firstTrialKey(): string
