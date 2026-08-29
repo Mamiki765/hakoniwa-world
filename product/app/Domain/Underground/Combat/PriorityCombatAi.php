@@ -56,8 +56,9 @@ final class PriorityCombatAi
                 $skill = $catalog->skill($skillKey);
                 $blockedByMp = $actor->skillReady($skillKey)
                     && $actor->mp < $this->effectiveCost($actor, (int) ($skill['mp_cost'] ?? 0));
+                $mpBlocked = $mpBlocked || $blockedByMp;
 
-                return $this->fallback('matched_skill_unavailable', $mpBlocked || $blockedByMp);
+                continue;
             }
 
             return $this->fallback('invalid_action', $mpBlocked);

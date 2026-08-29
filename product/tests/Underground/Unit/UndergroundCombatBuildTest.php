@@ -97,6 +97,38 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertGreaterThan($high->damageDealt, $low->damageDealt);
         $this->assertGreaterThanOrEqual((int) floor($low->damageDealt * 0.24), $high->damageDealt);
         $this->assertSame([], $high->abnormalState);
+
+        $lethal = $manifest;
+        $lethal['builds']['pure_attacker']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'normal_attack',
+        ]];
+        $lethal['skills']['pressure_strike']['effects'] = [[
+            'type' => 'damage',
+            'target' => 'enemy',
+            'category' => 'physical',
+            'potency_bps' => 10_000,
+            'stat_coefficients' => [],
+            'weapon_coefficient_bps' => 0,
+            'fixed' => 10_000,
+            'target_max_hp_bps' => 0,
+            'can_crit' => false,
+            'dodgeable' => false,
+            'hits' => 1,
+        ]];
+        $lethal['enemies']['pressure_construct']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'skill:pressure_strike',
+        ]];
+        $survivable = $lethal;
+        $survivable['equipment']['slots']['armor']['max_hp'] = 20_000;
+        $overkill = $this->model()->fight(
+            new AlphaV1BuildCatalog($lethal), 'pure_attacker', 'pressure_construct', 'early', 7, 1,
+        );
+        $nonlethal = $this->model()->fight(
+            new AlphaV1BuildCatalog($survivable), 'pure_attacker', 'pressure_construct', 'early', 7, 1,
+        );
+        $this->assertSame(0, $overkill->playerRemainingHp);
+        $this->assertGreaterThan(0, $nonlethal->playerRemainingHp);
+        $this->assertSame($nonlethal->damagePrevented, $overkill->damagePrevented);
     }
 
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void
@@ -235,6 +267,19 @@ final class UndergroundCombatBuildTest extends TestCase
     {
         [$manifest] = $this->catalog();
         $manifest['skills']['executioner_cut']['mp_cost'] = 20_000;
+        $manifest['builds']['pure_attacker']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'skill:executioner_cut',
+        ], [
+            'conditions' => [['type' => 'always']], 'action' => 'skill:precision_cut',
+        ]];
+        $lowerRule = $this->model()->fight(
+            new AlphaV1BuildCatalog($manifest), 'pure_attacker', 'pressure_construct', 'early', 2, 1,
+        );
+        $this->assertSame(1, $lowerRule->actionUsage['precision_cut']);
+        $this->assertSame(0, $lowerRule->actionUsage['normal_attack']);
+        $this->assertSame(0, $lowerRule->actionUsage['ai_fallback']);
+        $this->assertSame(1, $lowerRule->skillUnavailableDueToMp);
+
         $manifest['builds']['pure_attacker']['ai_rules'] = [[
             'conditions' => [['type' => 'always']], 'action' => 'skill:executioner_cut',
         ]];

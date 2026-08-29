@@ -604,7 +604,10 @@ final readonly class AlphaV1CombatModel
                 $metrics['damage_received'] += $hpDamage;
             }
             if ($target->side === 'player') {
-                $metrics['damage_prevented'] += max(0, $preMitigation - $hpDamage);
+                $metrics['damage_prevented'] += max(
+                    0,
+                    $preMitigation - ($postMitigation - $barrierAbsorbed),
+                );
             }
             if ($target->side === 'player' && ($guarded || $barrierAbsorbed > 0)) {
                 if (($target->modifiers['fighting_spirit_enabled'] ?? false) === true) {
