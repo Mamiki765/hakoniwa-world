@@ -276,6 +276,18 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.encounter_name', 'ジャイアントラット')
             ->assertJsonStructure(['data' => ['actions']])
             ->assertJsonMissingPath('data.snapshot');
+        $battle = UndergroundBattle::query()->where('request_id', $tutorialId)->sole();
+        $battle->log()->update(['expires_at' => Carbon::now()->subSecond()]);
+        $this->artisan('underground:prune-battle-logs')->assertSuccessful();
+        $this->actingAs($owner)->getJson('/api/v1/me/underground/battles')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $tutorialId)
+            ->assertJsonPath('data.0.detail_available', false)
+            ->assertJsonPath('data.0.actions', null);
+        $this->actingAs($owner)->getJson("/api/v1/me/underground/battles/{$tutorialId}")
+            ->assertOk()
+            ->assertJsonPath('data.detail_available', false)
+            ->assertJsonPath('data.actions', null);
         $this->actingAs($other)->getJson("/api/v1/me/underground/battles/{$tutorialId}")
             ->assertNotFound();
         $ownerSecretary->delete();
