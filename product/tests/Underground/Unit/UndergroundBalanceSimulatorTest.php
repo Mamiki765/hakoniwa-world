@@ -55,6 +55,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertSame(AlphaV1CombatRules::GENERATOR_IDENTITY, $report['generator_identity']);
         $this->assertSame(300, $report['selected_mp_natural_recovery']);
         $this->assertTrue($report['laboratory_contract_passed']);
+        $this->assertNull($report['experiment_thresholds_passed']);
         $this->assertSame([], $report['abnormal_seeds']);
         $this->assertSame(100.0, $report['role_damage_ratios']['pure_attacker']);
         $this->assertCount(4, $report['pressure_benchmark']);

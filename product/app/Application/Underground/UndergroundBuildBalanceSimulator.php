@@ -187,6 +187,7 @@ final readonly class UndergroundBuildBalanceSimulator
             'sidegrade_observation' => $sidegrade,
             'abnormal_seeds' => $abnormalSeeds,
             'laboratory_contract_passed' => $abnormalSeeds === [],
+            'experiment_thresholds_passed' => null,
             'balance_targets_are_observations' => true,
             'reproduction_arguments' => [
                 'php', 'artisan', 'underground:balance', "--manifest={$manifestPath}",
