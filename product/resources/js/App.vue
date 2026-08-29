@@ -113,6 +113,20 @@ watch(page, (nextPage) => {
     }
 });
 
+function canOpenUnderground(): boolean {
+    return user.value !== null && secretary.value !== null && secretary.value.name !== null;
+}
+
+function redirectFromUnavailableUnderground(): void {
+    if (user.value !== null && secretary.value !== null) {
+        secretarySection.value = 'main';
+        page.value = 'secretary';
+        return;
+    }
+
+    page.value = 'home';
+}
+
 const secretaryTabOrder = computed<SecretarySection[]>(() => viewedSecretaryProfile.value?.is_owner
     ? ['main', 'skills', 'equipment', 'warehouse']
     : ['main']);
@@ -266,6 +280,9 @@ onMounted(async () => {
             message.value = 'ログイン状態を取得できませんでした。公開ロビーは引き続き閲覧できます。';
         }
     } finally {
+        if (page.value === 'underground' && !canOpenUnderground()) {
+            redirectFromUnavailableUnderground();
+        }
         busy.value = false;
     }
 });
@@ -285,6 +302,10 @@ function syncPageFromHistory(event: PopStateEvent): void {
     if (historicPage === 'secretary' && secretary.value?.name) {
         secretarySection.value = 'main';
         page.value = 'secretary';
+        return;
+    }
+    if (window.location.pathname === '/underground' && !canOpenUnderground()) {
+        redirectFromUnavailableUnderground();
         return;
     }
     page.value = window.location.pathname === '/credits'

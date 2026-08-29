@@ -286,6 +286,7 @@ describe('application lobby and island entry', () => {
     });
 
     it('continues rendering the public lobby after the normal guest /me 401', async () => {
+        window.history.replaceState({}, '', '/underground');
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             return publicResponse(path) ?? response(null, 401);
@@ -293,6 +294,8 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
+        expect(window.location.pathname).toBe('/');
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
         expect(wrapper.text()).toContain('HAKONIWA ISLANDS');
         expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
@@ -1322,6 +1325,7 @@ describe('application lobby and island entry', () => {
     });
 
     it('shows the unnamed Secretary story with the default name and switches permanently to the skill view after naming', async () => {
+        window.history.replaceState({}, '', '/underground');
         let secretary = unnamedSecretaryFixture;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -1403,11 +1407,12 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
+        expect(window.location.pathname).toBe('/');
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
+        expect(wrapper.find('.secretary-panel').exists()).toBe(true);
         const secretaryButton = wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === '？？？')!;
         expect(secretaryButton.exists()).toBe(true);
-        await secretaryButton.trigger('click');
-        await flushPromises();
 
         expect(wrapper.get('.secretary-story').text()).toContain('怪獣に踏み荒らされた地から妙な施設が見つかった');
         expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
