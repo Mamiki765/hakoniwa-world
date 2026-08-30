@@ -59,6 +59,8 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertSame([], $report['abnormal_seeds']);
         $this->assertSame(100.0, $report['role_damage_ratios']['pure_attacker']);
         $this->assertCount(4, $report['pressure_benchmark']);
+        $this->assertArrayHasKey('emergency_heal_available_rate', $report['pressure_benchmark']['pure_healer']['healer_mp_observation']);
+        $this->assertArrayHasKey('crystal_cycle_restored_mp', $report['pressure_benchmark']['pure_healer']['healer_mp_observation']);
         $this->assertNull($report['appropriate_encounter']);
         $this->assertNull($report['mp_economy_sweep']);
         $this->assertSame([

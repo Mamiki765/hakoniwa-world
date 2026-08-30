@@ -388,6 +388,38 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-playtest { display: grid; gap: .75rem; }
 .underground-playtest h2, .underground-playtest p { margin: 0; }
 .underground-playtest select { width: 100%; }
+.underground-progression-panel { display: grid; gap: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--input-surface); }
+.underground-progression-panel > header, .underground-skill-tree > header, .underground-active-loadout > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.underground-progression-panel h2, .underground-progression-panel h3, .underground-progression-panel p { margin: 0; }
+.underground-progression-note { padding: .7rem .8rem; border-left: 4px solid var(--coral); background: var(--paper-deep); color: var(--muted); }
+.underground-inn-result { color: var(--coral-dark); font-weight: 800; }
+.underground-table-scroll { overflow-x: auto; }
+.underground-status-table { width: 100%; min-width: 46rem; border-collapse: collapse; text-align: center; }
+.underground-status-table th, .underground-status-table td { padding: .55rem .65rem; border: 1px solid var(--line); }
+.underground-status-table thead th, .underground-status-table tbody th { background: var(--paper-deep); font-weight: 800; }
+.underground-stp-control { display: grid; grid-template-columns: 2.3rem minmax(2rem, 1fr) 2.3rem; align-items: center; gap: .3rem; }
+.underground-stp-control button { min-height: 2.3rem; padding: .2rem; }
+.underground-stp-control output { font-variant-numeric: tabular-nums; font-weight: 800; }
+.underground-tree-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: .8rem; }
+.underground-tree-tabs { display: none; }
+.underground-skill-tree { display: grid; gap: .7rem; min-width: 0; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-deep); }
+.underground-skill-tree > header span { color: var(--muted); white-space: nowrap; }
+.underground-skill-tree ol { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
+.underground-skill-node { display: grid; gap: .55rem; padding: .7rem; border: 1px solid var(--line); border-radius: 8px; background: var(--input-surface); }
+.underground-skill-node[data-acquired="true"] { border-color: var(--coral); }
+.underground-skill-node-heading { display: flex; align-items: start; justify-content: space-between; gap: .5rem; }
+.underground-skill-node-heading span { color: var(--muted); font-size: .8rem; white-space: nowrap; }
+.underground-skill-node dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem .55rem; margin: 0; font-size: .82rem; }
+.underground-skill-node dl div { min-width: 0; }
+.underground-skill-node dt { color: var(--muted); font-weight: 700; }
+.underground-skill-node dd { margin: .1rem 0 0; overflow-wrap: anywhere; }
+.underground-node-unavailable { color: var(--coral-dark); font-weight: 700; }
+.underground-node-complete { color: #398258; font-weight: 800; }
+.underground-active-loadout { display: grid; gap: .8rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.underground-loadout-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .55rem; }
+.underground-loadout-grid label { display: grid; gap: .3rem; min-width: 0; font-weight: 800; }
+.underground-loadout-grid select { width: 100%; min-width: 0; }
+.underground-active-skill-notes { display: grid; gap: .3rem; margin: 0; padding-left: 1.3rem; color: var(--muted); }
 .underground-shop { display: grid; gap: .75rem; }
 .underground-shop h2, .underground-shop p { margin: 0; }
 .secretary-panel .secretary-page-title { margin: 0 0 14px; font-family: inherit; font-size: 1.5rem; line-height: 1.25; }
@@ -873,7 +905,13 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 }
 
 @media (max-width: 820px) {
-    .underground-main-layout, .underground-name-form, .underground-summary, .underground-combat-summary, .underground-growth-grid { grid-template-columns: 1fr; }
+    .underground-main-layout, .underground-name-form, .underground-summary, .underground-combat-summary, .underground-growth-grid, .underground-tree-grid, .underground-loadout-grid { grid-template-columns: 1fr; }
+    .underground-tree-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; }
+    .underground-tree-tabs button { min-width: 0; min-height: 44px; padding: .45rem .35rem; border: 1px solid var(--line); background: var(--paper-deep); color: var(--muted); font: inherit; font-weight: 800; cursor: pointer; }
+    .underground-tree-tabs button[aria-selected="true"] { border-color: var(--coral); background: var(--input-surface); color: var(--ink); }
+    .underground-tree-tabs button:focus-visible { outline: 3px solid color-mix(in srgb, var(--coral) 35%, transparent); outline-offset: 1px; }
+    .underground-skill-tree[data-mobile-active="false"] { display: none; }
+    .underground-progression-panel > header, .underground-active-loadout > header { align-items: stretch; flex-direction: column; }
     .underground-character-pane, .underground-action-pane { padding: .8rem; }
     .underground-character-header { grid-template-columns: 5.5rem minmax(0, 1fr); }
     .underground-character-header img, .underground-portrait-placeholder { width: 5.5rem; height: 6.5rem; }

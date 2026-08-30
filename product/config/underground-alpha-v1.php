@@ -3,6 +3,8 @@
 return [
     'schema_version' => 1,
     'growth_identity' => 'secretary-underground-growth-alpha-v1',
+    'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+    'initial_skill_points' => 20,
     'growth_paths' => [
         'martial_red' => [
             'label' => '戦技',
@@ -81,6 +83,24 @@ return [
             ['conditions' => [['type' => 'own_hp_lte', 'percent' => 20]], 'action' => 'defend'],
             ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
         ],
+        'player_skill_ai_rules' => [
+            ['conditions' => [['type' => 'own_hp_lte', 'percent' => 55], ['type' => 'skill_ready', 'skill' => 'mending_prayer']], 'action' => 'skill:mending_prayer'],
+            ['conditions' => [['type' => 'own_hp_lte', 'percent' => 55], ['type' => 'skill_ready', 'skill' => 'renewing_guard']], 'action' => 'skill:renewing_guard'],
+            ['conditions' => [['type' => 'own_mp_lte', 'percent' => 35], ['type' => 'skill_ready', 'skill' => 'crystal_cycle']], 'action' => 'skill:crystal_cycle'],
+            ['conditions' => [['type' => 'own_hp_lte', 'percent' => 70], ['type' => 'skill_ready', 'skill' => 'crystal_aegis']], 'action' => 'skill:crystal_aegis'],
+            ['conditions' => [['type' => 'self_has_status', 'status' => 'armor_break'], ['type' => 'skill_ready', 'skill' => 'cleansing_wave']], 'action' => 'skill:cleansing_wave'],
+            ['conditions' => [['type' => 'role_stacks_gte', 'status' => 'fighting_spirit', 'stacks' => 1], ['type' => 'skill_ready', 'skill' => 'unbroken_retort']], 'action' => 'skill:unbroken_retort'],
+            ['conditions' => [['type' => 'self_lacks_status', 'status' => 'aegis'], ['type' => 'skill_ready', 'skill' => 'counter_stance']], 'action' => 'skill:counter_stance'],
+            ['conditions' => [['type' => 'enemy_hp_lte', 'percent' => 35], ['type' => 'skill_ready', 'skill' => 'executioner_cut']], 'action' => 'skill:executioner_cut'],
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'armor_break_strike']], 'action' => 'skill:armor_break_strike'],
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'severing_bleed']], 'action' => 'skill:severing_bleed'],
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'dagger_flurry']], 'action' => 'skill:dagger_flurry'],
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'radiant_judgment']], 'action' => 'skill:radiant_judgment'],
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'bulwark_strike']], 'action' => 'skill:bulwark_strike'],
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'shield_bash']], 'action' => 'skill:shield_bash'],
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'precision_cut']], 'action' => 'skill:precision_cut'],
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'holy_bolt']], 'action' => 'skill:holy_bolt'],
+        ],
         'encounters' => [
             'subterranean_rat' => [
                 'label' => '地底鼠', 'weight' => 2500, 'xp' => 36, 'shards' => 10,
@@ -116,20 +136,20 @@ return [
                 'label' => '再生肉塊', 'weight' => 1000, 'xp' => 52, 'shards' => 16,
                 'enemy' => [
                     'label' => '再生肉塊', 'boss' => false,
-                    'base_stats' => ['vitality' => 32, 'might' => 22, 'finesse' => 14, 'spirit' => 22, 'agility' => 10],
-                    'max_hp' => 360, 'physical_defense' => 45, 'magical_defense' => 45, 'weapon_power' => 15,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                    'base_stats' => ['vitality' => 34, 'might' => 26, 'finesse' => 14, 'spirit' => 16, 'agility' => 10],
+                    'max_hp' => 500, 'physical_defense' => 60, 'magical_defense' => 55, 'weapon_power' => 25,
+                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 7000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
                     'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
-                    'modifiers' => ['self_regeneration_target_hp_bps' => 100],
+                    'modifiers' => ['self_regeneration_target_hp_bps' => 150],
                 ],
             ],
             'fanatic' => [
                 'label' => '狂信者', 'weight' => 1000, 'xp' => 58, 'shards' => 18,
                 'enemy' => [
                     'label' => '狂信者', 'boss' => false,
-                    'base_stats' => ['vitality' => 24, 'might' => 28, 'finesse' => 18, 'spirit' => 18, 'agility' => 12],
-                    'max_hp' => 380, 'physical_defense' => 55, 'magical_defense' => 50, 'weapon_power' => 24,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 5500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                    'base_stats' => ['vitality' => 24, 'might' => 34, 'finesse' => 18, 'spirit' => 12, 'agility' => 12],
+                    'max_hp' => 450, 'physical_defense' => 60, 'magical_defense' => 55, 'weapon_power' => 28,
+                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
                     'skills' => ['pressure_heavy', 'enemy_telegraph'],
                     'ai_rules' => [
                         ['conditions' => [['type' => 'self_has_status', 'status' => 'telegraph']], 'action' => 'skill:pressure_heavy'],
@@ -143,9 +163,9 @@ return [
                 'label' => '迷い人の影', 'weight' => 900, 'xp' => 72, 'shards' => 22,
                 'enemy' => [
                     'label' => '迷い人の影', 'boss' => false,
-                    'base_stats' => ['vitality' => 28, 'might' => 30, 'finesse' => 22, 'spirit' => 10, 'agility' => 10],
-                    'max_hp' => 420, 'physical_defense' => 55, 'magical_defense' => 45, 'weapon_power' => 17,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => true, 'dodgeable' => true, 'hits' => 1],
+                    'base_stats' => ['vitality' => 28, 'might' => 34, 'finesse' => 20, 'spirit' => 2, 'agility' => 16],
+                    'max_hp' => 620, 'physical_defense' => 70, 'magical_defense' => 60, 'weapon_power' => 34,
+                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 9500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => true, 'dodgeable' => true, 'hits' => 1],
                     'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
                 ],
             ],
@@ -173,8 +193,8 @@ return [
         'builds' => [
             'pure_attacker' => ['description' => '戦技を中心に、短い戦闘で敵を倒す完成形ビルド。'],
             'pure_tank' => ['description' => 'guard・barrier・闘志・counterを組み合わせる護身型ビルド。'],
-            'pure_healer' => ['description' => '回復・障壁・恩寵を使って長く戦う奇跡型ビルド。'],
-            'balanced' => ['description' => '戦技・護身・奇跡を混ぜて対応する混成ビルド。'],
+            'pure_healer' => ['description' => '回復・障壁・恩寵を使って長く戦う祝福型ビルド。'],
+            'balanced' => ['description' => '戦技・護身・祝福を混ぜて対応する混成ビルド。'],
         ],
         'enemies' => [
             'depth_stalker' => [

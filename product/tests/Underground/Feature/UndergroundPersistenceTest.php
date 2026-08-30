@@ -5,6 +5,7 @@ namespace Tests\Underground\Feature;
 use App\Application\Underground\UndergroundProfileService;
 use App\Models\Secretary;
 use App\Models\UndergroundProfile;
+use App\Models\UndergroundSkillAllocation;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,7 +26,7 @@ final class UndergroundPersistenceTest extends TestCase
         $second = $service->ensureForSecretary($secretary);
 
         $this->assertSame($first->id, $second->id);
-        $this->assertSame([0, 1, 0, 0, 0, null, null, null, null, null, null, 0, 0, 0, 0, 0, 0], [
+        $this->assertSame([0, 1, 0, 0, 0, null, null, null, null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, null], [
             $first->unlocked_area_layers,
             $first->combat_level,
             $first->combat_xp,
@@ -43,6 +44,9 @@ final class UndergroundPersistenceTest extends TestCase
             $first->allocated_finesse_stp,
             $first->allocated_spirit_stp,
             $first->allocated_agility_stp,
+            $first->skill_points_total,
+            $first->skill_points_unspent,
+            $first->skill_tree_identity,
         ]);
         $this->assertSame($first->id, $secretary->undergroundProfile()->sole()->id);
         $this->assertSame(1, UndergroundProfile::query()->where('secretary_id', $secretary->id)->count());
@@ -67,6 +71,9 @@ final class UndergroundPersistenceTest extends TestCase
             'next_battle_at',
             'secretary_id',
             'shard_balance',
+            'skill_points_total',
+            'skill_points_unspent',
+            'skill_tree_identity',
             'underground_contract_completed_at',
             'unlocked_area_layers',
             'unspent_stp',
@@ -79,6 +86,7 @@ final class UndergroundPersistenceTest extends TestCase
         $this->assertTrue(Schema::hasTable('underground_battle_logs'));
         $this->assertTrue(Schema::hasTable('underground_intro_progress'));
         $this->assertTrue(Schema::hasTable('underground_intro_requests'));
+        $this->assertTrue(Schema::hasTable('underground_skill_allocations'));
         foreach ([
             'underground_trial_progress', 'underground_trial_runs', 'underground_battles',
             'underground_intro_progress', 'underground_intro_requests',
@@ -118,6 +126,7 @@ final class UndergroundPersistenceTest extends TestCase
             static fn () => $profile->update(['banked_shard_balance' => -1]),
             static fn () => $profile->update(['current_hp' => 0]),
             static fn () => $profile->update(['unspent_stp' => 1]),
+            static fn () => $profile->update(['skill_points_total' => 1, 'skill_points_unspent' => 1]),
         ] as $mutation) {
             try {
                 DB::transaction($mutation);
@@ -136,8 +145,53 @@ final class UndergroundPersistenceTest extends TestCase
             $persisted?->banked_shard_balance,
             $persisted?->current_hp,
         ]);
+        $profile->refresh();
+        $profile->update([
+            'underground_contract_completed_at' => now(),
+            'growth_path_key' => 'martial_red',
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'growth_path_selected_at' => now(),
+            'skill_points_total' => 20,
+            'skill_points_unspent' => 15,
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'current_hp' => 492,
+        ]);
+        UndergroundSkillAllocation::query()->create([
+            'underground_profile_id' => $profile->id,
+            'node_key' => 'miracle_holy_bolt',
+            'rank' => 1,
+            'active_slot' => 1,
+        ]);
+        foreach ([
+            static fn () => UndergroundSkillAllocation::query()->create([
+                'underground_profile_id' => $profile->id,
+                'node_key' => 'miracle_mending_prayer',
+                'rank' => 1,
+                'active_slot' => 1,
+            ]),
+            static fn () => UndergroundSkillAllocation::query()->create([
+                'underground_profile_id' => $profile->id,
+                'node_key' => 'invalid_rank',
+                'rank' => 0,
+                'active_slot' => null,
+            ]),
+            static fn () => UndergroundSkillAllocation::query()->create([
+                'underground_profile_id' => $profile->id,
+                'node_key' => 'invalid_slot',
+                'rank' => 1,
+                'active_slot' => 6,
+            ]),
+        ] as $mutation) {
+            try {
+                DB::transaction($mutation);
+                $this->fail('Expected the Underground skill allocation constraint to reject the mutation.');
+            } catch (QueryException) {
+                $this->addToAssertionCount(1);
+            }
+        }
         $secretary->delete();
         $this->assertDatabaseMissing('underground_profiles', ['id' => $profile->id]);
+        $this->assertSame(0, UndergroundSkillAllocation::query()->count());
     }
 
     private function secretary(): Secretary

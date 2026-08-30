@@ -313,6 +313,8 @@ final readonly class UndergroundBuildBalanceSimulator
         $rounds = [];
         $healing = $prevented = $mpEnd = $mpSpent = $mpNatural = $mpSkill = $mpOverflow = 0;
         $skillUnavailable = 0;
+        $emergencyHealOpportunities = $emergencyHealAvailable = $emergencyHealBlockedByMp = 0;
+        $crystalCycleRecovery = 0;
         $exhaustions = [];
         $actions = [];
         $statusUptime = [];
@@ -346,6 +348,10 @@ final readonly class UndergroundBuildBalanceSimulator
             $mpSkill += $result->mpSkillRecovery;
             $mpOverflow += $result->mpOverflow;
             $skillUnavailable += $result->skillUnavailableDueToMp;
+            $emergencyHealOpportunities += $result->emergencyHealOpportunities;
+            $emergencyHealAvailable += $result->emergencyHealAvailable;
+            $emergencyHealBlockedByMp += $result->emergencyHealBlockedByMp;
+            $crystalCycleRecovery += $result->crystalCycleRecovery;
             if ($result->mpExhaustionRound !== null) {
                 $exhaustions[] = $result->mpExhaustionRound;
             }
@@ -425,6 +431,19 @@ final readonly class UndergroundBuildBalanceSimulator
                 'median_exhaustion_round' => $exhaustions === [] ? null : (int) $this->percentile($exhaustions, 50),
                 'skill_unavailable_due_to_mp' => $skillUnavailable,
                 'average_by_round' => $averageMpByRound,
+            ],
+            'healer_mp_observation' => [
+                'emergency_heal_opportunities' => $emergencyHealOpportunities,
+                'emergency_heal_available' => $emergencyHealAvailable,
+                'emergency_heal_available_rate' => $this->ratio(
+                    $emergencyHealAvailable,
+                    max(1, $emergencyHealOpportunities),
+                ),
+                'emergency_heal_blocked_by_mp' => $emergencyHealBlockedByMp,
+                'crystal_cycle_uses' => $actions['crystal_cycle'] ?? 0,
+                'crystal_cycle_restored_mp' => $crystalCycleRecovery,
+                'average_rounds' => round(array_sum($rounds) / $count, 3),
+                'median_rounds' => (int) $this->percentile($rounds, 50),
             ],
             'action_usage' => $actions,
             'action_rates' => $actionRates,

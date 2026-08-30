@@ -12,6 +12,9 @@ final class BuildCombatState
 
     public bool $guarding = false;
 
+    /** @var array{source_side: 'player'|'enemy', source_key: string, applied_round: int}|null */
+    public ?array $taunt = null;
+
     /** @var array<string, int> */
     public array $cooldowns = [];
 

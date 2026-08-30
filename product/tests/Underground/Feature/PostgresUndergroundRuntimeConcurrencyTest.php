@@ -386,6 +386,28 @@ SQL);
                 $this->assertSame(0, $profile->allocated_spirit_stp);
                 $this->assertSame(0, $profile->allocated_agility_stp);
             }
+            $skillMigration = require database_path(
+                'migrations/2026_08_30_030000_add_underground_status_and_skill_progression.php',
+            );
+            $skillMigration->up();
+            $skillReconciled = $connection->table('underground_profiles')->orderBy('id')->get();
+            $this->assertSame([20, 0], [
+                $skillReconciled[0]->skill_points_total,
+                $skillReconciled[1]->skill_points_total,
+            ]);
+            $this->assertSame([20, 0], [
+                $skillReconciled[0]->skill_points_unspent,
+                $skillReconciled[1]->skill_points_unspent,
+            ]);
+            $this->assertSame('secretary-underground-skill-tree-alpha-v1', $skillReconciled[0]->skill_tree_identity);
+            $this->assertNull($skillReconciled[1]->skill_tree_identity);
+            $this->assertTrue($connection->getSchemaBuilder()->hasTable('underground_skill_allocations'));
+            $this->assertSame(1, $connection->table('pg_constraint')
+                ->join('pg_class', 'pg_constraint.conrelid', '=', 'pg_class.oid')
+                ->join('pg_namespace', 'pg_class.relnamespace', '=', 'pg_namespace.oid')
+                ->where('pg_constraint.conname', 'underground_profiles_skill_points_check')
+                ->where('pg_namespace.nspname', $schema)
+                ->count());
             $this->assertSame(1, $connection->table('pg_constraint')
                 ->join('pg_class', 'pg_constraint.conrelid', '=', 'pg_class.oid')
                 ->join('pg_namespace', 'pg_class.relnamespace', '=', 'pg_namespace.oid')
@@ -402,6 +424,46 @@ SQL);
             $connection->unprepared('SET search_path TO public');
             $connection->unprepared("DROP SCHEMA {$schema} CASCADE");
         }
+    }
+
+    public function test_concurrent_stp_and_sp_mutations_serialize_without_duplicate_resources(): void
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $this->openExploration($user, $secretary);
+        $profile->refresh();
+        $profile->update(['combat_level' => 2, 'combat_xp' => 100, 'unspent_stp' => 5]);
+
+        $stpResults = $this->runConcurrentOperations($user, $secretary, [[
+            'operation' => 'stp_allocate',
+            'request_id' => (string) Str::uuid(),
+            'allocations' => ['vitality' => 4],
+        ], [
+            'operation' => 'stp_allocate',
+            'request_id' => (string) Str::uuid(),
+            'allocations' => ['might' => 4],
+        ]]);
+        $stpStatuses = array_column($stpResults, 'status');
+        sort($stpStatuses);
+        $this->assertSame(['conflict', 'ok'], $stpStatuses);
+        $profile->refresh();
+        $this->assertSame(1, $profile->unspent_stp);
+        $this->assertSame(4, $profile->allocated_vitality_stp + $profile->allocated_might_stp);
+
+        $skillResults = $this->runConcurrentOperations($user, $secretary, [[
+            'operation' => 'skill_acquire',
+            'request_id' => (string) Str::uuid(),
+            'node_key' => 'miracle_holy_bolt',
+        ], [
+            'operation' => 'skill_acquire',
+            'request_id' => (string) Str::uuid(),
+            'node_key' => 'miracle_holy_bolt',
+        ]]);
+        $skillStatuses = array_column($skillResults, 'status');
+        sort($skillStatuses);
+        $this->assertSame(['conflict', 'ok'], $skillStatuses);
+        $profile->refresh();
+        $this->assertSame(15, $profile->skill_points_unspent);
+        $this->assertSame(1, $profile->skillAllocations()->where('node_key', 'miracle_holy_bolt')->sole()->rank);
     }
 
     /** @return array{User, Secretary, UndergroundProfile} */

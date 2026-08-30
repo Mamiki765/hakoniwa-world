@@ -30,6 +30,9 @@ use Illuminate\Support\Carbon;
  * @property int $allocated_finesse_stp
  * @property int $allocated_spirit_stp
  * @property int $allocated_agility_stp
+ * @property int $skill_points_total
+ * @property int $skill_points_unspent
+ * @property string|null $skill_tree_identity
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Secretary $secretary
@@ -38,6 +41,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, UndergroundBattle> $battles
  * @property-read UndergroundIntroProgress|null $introProgress
  * @property-read Collection<int, UndergroundIntroRequest> $introRequests
+ * @property-read Collection<int, UndergroundSkillAllocation> $skillAllocations
  */
 final class UndergroundProfile extends Model
 {
@@ -47,6 +51,7 @@ final class UndergroundProfile extends Model
         'underground_contract_completed_at', 'growth_path_key', 'growth_path_identity', 'growth_path_selected_at',
         'unspent_stp', 'allocated_vitality_stp', 'allocated_might_stp', 'allocated_finesse_stp',
         'allocated_spirit_stp', 'allocated_agility_stp',
+        'skill_points_total', 'skill_points_unspent', 'skill_tree_identity',
     ];
 
     protected function casts(): array
@@ -67,6 +72,8 @@ final class UndergroundProfile extends Model
             'allocated_finesse_stp' => 'integer',
             'allocated_spirit_stp' => 'integer',
             'allocated_agility_stp' => 'integer',
+            'skill_points_total' => 'integer',
+            'skill_points_unspent' => 'integer',
         ];
     }
 
@@ -106,6 +113,12 @@ final class UndergroundProfile extends Model
         return $this->hasMany(UndergroundIntroRequest::class, 'underground_profile_id');
     }
 
+    /** @return HasMany<UndergroundSkillAllocation, $this> */
+    public function skillAllocations(): HasMany
+    {
+        return $this->hasMany(UndergroundSkillAllocation::class, 'underground_profile_id');
+    }
+
     public function facilitySlotCapacity(): int
     {
         return UndergroundAreaCapacity::forUnlockedLayers($this->unlocked_area_layers);
@@ -121,5 +134,29 @@ final class UndergroundProfile extends Model
             'spirit' => $this->allocated_spirit_stp,
             'agility' => $this->allocated_agility_stp,
         ];
+    }
+
+    /** @return array<string, array{rank: int, active_slot: int|null}> */
+    public function skillAllocationMap(): array
+    {
+        $allocations = $this->relationLoaded('skillAllocations')
+            ? $this->getRelation('skillAllocations')
+            : $this->skillAllocations()->get();
+        if (! $allocations instanceof Collection) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($allocations as $allocation) {
+            if (! $allocation instanceof UndergroundSkillAllocation) {
+                continue;
+            }
+            $result[$allocation->node_key] = [
+                'rank' => $allocation->rank,
+                'active_slot' => $allocation->active_slot,
+            ];
+        }
+
+        return $result;
     }
 }

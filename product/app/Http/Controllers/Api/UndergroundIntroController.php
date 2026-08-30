@@ -7,12 +7,15 @@ use App\Application\Underground\UndergroundPlaytestService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AcquireUndergroundSkillRequest;
 use App\Http\Requests\AdvanceUndergroundIntroRequest;
+use App\Http\Requests\AllocateUndergroundStpRequest;
 use App\Http\Requests\NameUndergroundShopkeeperRequest;
 use App\Http\Requests\SelectUndergroundGrowthPathRequest;
 use App\Http\Requests\UndergroundBankTransferRequest;
 use App\Http\Requests\UndergroundIntroMutationRequest;
 use App\Http\Requests\UndergroundPlaytestRequest;
+use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -156,6 +159,45 @@ final class UndergroundIntroController extends Controller
             array_key_exists('amount', $validated) && $validated['amount'] !== null
                 ? (int) $validated['amount']
                 : null,
+        ));
+    }
+
+    public function allocateStp(
+        AllocateUndergroundStpRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        /** @var array<string, int> $allocations */
+        $allocations = $request->validated('allocations');
+
+        return $this->respond(fn (): array => $service->allocateStp(
+            $request->user(),
+            $request->string('request_id')->value(),
+            $allocations,
+        ));
+    }
+
+    public function acquireSkill(
+        AcquireUndergroundSkillRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->acquireSkillNode(
+            $request->user(),
+            $request->string('request_id')->value(),
+            $request->string('node_key')->value(),
+        ));
+    }
+
+    public function updateActiveLoadout(
+        UpdateUndergroundActiveLoadoutRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        /** @var list<string|null> $slots */
+        $slots = $request->validated('slots');
+
+        return $this->respond(fn (): array => $service->updateActiveLoadout(
+            $request->user(),
+            $request->string('request_id')->value(),
+            $slots,
         ));
     }
 

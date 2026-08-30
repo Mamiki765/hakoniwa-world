@@ -14,7 +14,7 @@ final readonly class AlphaV1BuildCatalog
             || ($manifest['generator_identity'] ?? null) !== AlphaV1CombatRules::GENERATOR_IDENTITY) {
             throw new InvalidArgumentException('Underground alpha-v1 manifest identity is invalid.');
         }
-        foreach (['balance', 'tiers', 'skill_trees', 'skills', 'statuses', 'equipment', 'builds', 'enemies', 'experiments'] as $key) {
+        foreach (['balance', 'targeting_contract', 'tiers', 'skill_trees', 'skills', 'statuses', 'equipment', 'builds', 'enemies', 'experiments'] as $key) {
             if (! is_array($manifest[$key] ?? null)) {
                 throw new InvalidArgumentException("Underground alpha-v1 manifest [{$key}] is invalid.");
             }
@@ -31,6 +31,7 @@ final readonly class AlphaV1BuildCatalog
             throw new InvalidArgumentException('Underground alpha-v1 stable key lists are invalid.');
         }
 
+        $this->assertTargetingContract();
         $this->assertStatusDefinitions();
         $this->assertSkillDefinitions();
     }
@@ -87,6 +88,12 @@ final readonly class AlphaV1BuildCatalog
         return $this->manifest['experiments'];
     }
 
+    /** @return array<string, mixed> */
+    public function targetingContract(): array
+    {
+        return $this->manifest['targeting_contract'];
+    }
+
     /** @return list<string> */
     public function buildKeys(): array
     {
@@ -136,6 +143,23 @@ final readonly class AlphaV1BuildCatalog
         return $value;
     }
 
+    private function assertTargetingContract(): void
+    {
+        $contract = $this->manifest['targeting_contract'];
+        $taunt = $contract['taunt'] ?? null;
+        if (($contract['identity'] ?? null) !== AlphaV1CombatRules::TARGETING_IDENTITY
+            || ! is_array($taunt)
+            || ($taunt['key'] ?? null) !== AlphaV1CombatRules::TAUNT_KEY
+            || ($taunt['label'] ?? null) !== '挑発'
+            || ($taunt['duration'] ?? null) !== 'battle'
+            || ($taunt['targeting_scope'] ?? null) !== AlphaV1CombatRules::TAUNT_TARGETING_SCOPE
+            || ($taunt['overrides_explicit_targeting'] ?? null) !== false
+            || ($taunt['latest_source_wins'] ?? null) !== true
+            || ($taunt['invalid_source_fallback'] ?? null) !== 'normal_target_selection') {
+            throw new InvalidArgumentException('Underground alpha-v1 targeting contract is invalid.');
+        }
+    }
+
     private function assertStatusDefinitions(): void
     {
         foreach ($this->manifest['statuses'] as $key => $status) {
@@ -158,7 +182,7 @@ final readonly class AlphaV1BuildCatalog
 
     private function assertSkillDefinitions(): void
     {
-        $effectTypes = ['damage', 'heal', 'barrier', 'apply_status', 'cleanse', 'dispel', 'mp_restore', 'telegraph'];
+        $effectTypes = ['damage', 'heal', 'barrier', 'apply_status', 'cleanse', 'dispel', 'mp_restore', 'telegraph', 'taunt'];
         foreach ($this->manifest['skills'] as $key => $skill) {
             if (! is_string($key) || ! is_array($skill)
                 || ! is_int($skill['mp_cost'] ?? null) || $skill['mp_cost'] < 0
@@ -177,6 +201,9 @@ final readonly class AlphaV1BuildCatalog
                     throw new InvalidArgumentException(
                         "Underground alpha-v1 percentage damage [{$key}] requires a source-derived cap.",
                     );
+                }
+                if ($effect['type'] === 'taunt' && ($effect['target'] ?? null) !== 'enemy') {
+                    throw new InvalidArgumentException("Underground alpha-v1 taunt [{$key}] must target the enemy.");
                 }
             }
         }
