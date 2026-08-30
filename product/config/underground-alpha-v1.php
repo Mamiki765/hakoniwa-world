@@ -5,6 +5,25 @@ return [
     'growth_identity' => 'secretary-underground-growth-alpha-v1',
     'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
     'initial_skill_points' => 20,
+    // Player-facing build guidance only. Combat, healing, AI, requirements, and simulation must not read it.
+    'player_skill_guidance' => [
+        'precision_cut' => ['recommended_stats' => ['might']],
+        'dagger_flurry' => ['recommended_stats' => ['might', 'finesse']],
+        'armor_break_strike' => ['recommended_stats' => ['might', 'finesse']],
+        'severing_bleed' => ['recommended_stats' => ['might', 'finesse']],
+        'executioner_cut' => ['recommended_stats' => ['might', 'finesse']],
+        'shield_bash' => ['recommended_stats' => ['vitality', 'might']],
+        'counter_stance' => ['recommended_stats' => ['vitality', 'spirit']],
+        'bulwark_strike' => ['recommended_stats' => ['vitality', 'might']],
+        'renewing_guard' => ['recommended_stats' => ['vitality', 'spirit']],
+        'unbroken_retort' => ['recommended_stats' => ['vitality', 'might']],
+        'holy_bolt' => ['recommended_stats' => ['spirit', 'finesse']],
+        'mending_prayer' => ['recommended_stats' => ['spirit']],
+        'crystal_cycle' => ['recommended_stats' => []],
+        'crystal_aegis' => ['recommended_stats' => ['spirit', 'vitality']],
+        'cleansing_wave' => ['recommended_stats' => ['spirit']],
+        'radiant_judgment' => ['recommended_stats' => ['spirit', 'finesse']],
+    ],
     'growth_paths' => [
         'martial_red' => [
             'label' => '戦技',

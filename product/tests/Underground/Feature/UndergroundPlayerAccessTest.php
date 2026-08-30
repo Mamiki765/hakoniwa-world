@@ -244,8 +244,22 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.skill_points_unspent', 20)
             ->assertJsonPath('data.skill_tree_identity', 'secretary-underground-skill-tree-alpha-v1')
             ->assertJsonPath('data.skill_trees.0.label', '戦技')
+            ->assertJsonPath('data.skill_trees.0.nodes.0.recommended_stats', ['might'])
             ->assertJsonPath('data.skill_trees.1.label', '護身')
-            ->assertJsonPath('data.skill_trees.2.label', '祝福');
+            ->assertJsonPath('data.skill_trees.2.label', '祝福')
+            ->assertJsonPath('data.skill_trees.2.nodes.0.recommended_stats', ['spirit', 'finesse'])
+            ->assertJsonPath('data.skill_trees.2.nodes.1.recommended_stats', null)
+            ->assertJsonPath('data.skill_trees.2.nodes.5.recommended_stats', []);
+        $playerCatalog = app(UndergroundAlphaV1PlayerCatalog::class);
+        $skillAllocation = ['martial_precision_cut' => ['rank' => 1, 'active_slot' => 1]];
+        $combatBuildBeforeGuidanceChange = $playerCatalog->playerSkillBuild($skillAllocation, 'dagger');
+        $originalGuidance = config('underground-alpha-v1.player_skill_guidance.precision_cut.recommended_stats');
+        config(['underground-alpha-v1.player_skill_guidance.precision_cut.recommended_stats' => ['spirit']]);
+        $this->assertSame(
+            $combatBuildBeforeGuidanceChange,
+            $playerCatalog->playerSkillBuild($skillAllocation, 'dagger'),
+        );
+        config(['underground-alpha-v1.player_skill_guidance.precision_cut.recommended_stats' => $originalGuidance]);
         $selectedProfile = UndergroundProfile::query()->sole();
         $this->assertDatabaseHas('underground_owned_equipment', [
             'underground_profile_id' => $selectedProfile->id,

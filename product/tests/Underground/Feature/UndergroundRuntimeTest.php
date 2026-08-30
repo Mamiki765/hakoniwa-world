@@ -453,11 +453,6 @@ final class UndergroundRuntimeTest extends TestCase
 
         $this->assertSame($first->id, $runtime->recentBattles($owner)->first()->id);
         $this->assertFalse($runtime->recentBattles($other)->contains('id', $first->id));
-        $first->log()->update(['expires_at' => $first->finished_at->addHours(1000)]);
-        $retentionMigration = require database_path(
-            'migrations/2026_08_30_010000_cap_underground_battle_log_retention_to_one_hour.php',
-        );
-        $retentionMigration->up();
         $this->assertTrue(
             $first->log()->sole()->expires_at->equalTo($first->finished_at->addHour()),
         );

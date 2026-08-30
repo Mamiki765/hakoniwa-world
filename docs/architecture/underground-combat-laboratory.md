@@ -4,7 +4,7 @@
 
 この文書は`secretary-underground-alpha-v0` combat laboratoryからPR109の正式equipment、装備Shop、宝物庫、通常探索までを扱うcurrent task-specific architecture authorityである。manual combat、AI editor、Trial content、random equipment/drop、affix、unique、enhancement、enchant、party、market、facility、surface bridgeは定義しない。
 
-application versionは`3.0.0-alpha.5`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth/skill/equipment stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR107は通常探索とgrowth settlement、PR108はstatus/STP/SP/Skill Tree、PR109はSecretary-owned equipment、装備Shop、宝物庫とactual equipmentを用いる通常探索をalpha-v1 canonical pathへ接続する。Trial、party、market、facility、surface bridgeは解禁しない。
+application versionは`3.0.0`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth/skill/equipment stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR107は通常探索とgrowth settlement、PR108はstatus/STP/SP/Skill Tree、PR109はSecretary-owned equipment、装備Shop、宝物庫とactual equipmentを用いる通常探索をalpha-v1 canonical pathへ接続する。Trial、party、market、facility、surface bridgeは解禁しない。
 
 ## Modular-monolith boundary
 

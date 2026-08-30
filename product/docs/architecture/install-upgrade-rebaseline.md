@@ -20,6 +20,14 @@
 > production upgrades only from exact v17 through the single forward-only v17-to-v18
 > migration. Published v17 remains unchanged; queued definitions and current live references
 > are rebound by stable key while provenance and historical records are preserved.
+>
+> **Current ver 3.0.0 boundary:** the schema dump is the canonical final 3.0.0 schema with
+> immutable surface Ruleset v18 and the Underground tables already present. The only supported
+> production source is exact ver 2.8.0 / v18 with no Underground alpha migration ledger or
+> tables. One forward-only migration verifies that source and adds the final Underground schema
+> directly. The ten never-deployed alpha-only Underground migrations were retired rather than
+> replayed in production. Existing World, Nation, player, Turn, audit, and surface Ruleset data
+> are preserved; recovery is restore of the verified 2.8.0 backup followed by re-upgrade.
 
 ## Historical v11 rebaseline identity
 

@@ -1640,24 +1640,29 @@ describe('application lobby and island entry', () => {
                     key: 'martial_dagger_flurry', label: '短剣乱舞', summary: '短剣・細剣で3回攻撃し、出血を狙う。',
                     type: 'active', rank: 1, max_rank: 1, point_cost: 6, invested_points_required: 15,
                     prerequisite: 'martial_precision_cut', can_acquire: false, unavailable_reason: '最大rankです',
-                    skill_key: 'dagger_flurry', mp_cost: 1200, cooldown: 2, required_weapon_styles: ['dagger', 'rapier'] as string[], active_slot: null,
+                    skill_key: 'dagger_flurry', mp_cost: 1200, cooldown: 2, required_weapon_styles: ['dagger', 'rapier'] as string[], recommended_stats: ['might', 'finesse'] as string[], active_slot: null,
                 }] },
                 { key: 'guardianship', label: '護身', invested_points: 0, full_points: 100, nodes: [] },
                 { key: 'miracle', label: '祝福', invested_points: 0, full_points: 100, nodes: [{
                     key: 'miracle_holy_bolt', label: '聖晶弾', summary: '精神を活かす祝福の単体攻撃。',
                     type: 'active', rank: 0, max_rank: 1, point_cost: 5, invested_points_required: 0,
                     prerequisite: null, can_acquire: true, unavailable_reason: null as string | null,
-                    skill_key: 'holy_bolt', mp_cost: 700, cooldown: 0, required_weapon_styles: [] as string[], active_slot: null,
+                    skill_key: 'holy_bolt', mp_cost: 700, cooldown: 0, required_weapon_styles: [] as string[], recommended_stats: ['spirit', 'finesse'] as string[], active_slot: null,
                 }, {
                     key: 'miracle_spirit_channel', label: '精神導路', summary: '祝福与ダメージを強化する。',
                     type: 'passive', rank: 0, max_rank: 5, point_cost: 1, invested_points_required: 15,
                     prerequisite: null, can_acquire: false, unavailable_reason: '祝福へあと15SP必要',
-                    skill_key: null, mp_cost: null, cooldown: null, required_weapon_styles: [] as string[], active_slot: null,
+                    skill_key: null, mp_cost: null, cooldown: null, required_weapon_styles: [] as string[], recommended_stats: null, active_slot: null,
                 }, {
                     key: 'miracle_mending_prayer', label: '治癒祈祷', summary: '自身のHPを回復する。',
                     type: 'active', rank: 0, max_rank: 1, point_cost: 6, invested_points_required: 0,
                     prerequisite: 'miracle_holy_bolt', can_acquire: false, unavailable_reason: '前提skill未取得',
-                    skill_key: 'mending_prayer', mp_cost: 1200, cooldown: 2, required_weapon_styles: [] as string[], active_slot: null,
+                    skill_key: 'mending_prayer', mp_cost: 1200, cooldown: 2, required_weapon_styles: [] as string[], recommended_stats: ['spirit'] as string[], active_slot: null,
+                }, {
+                    key: 'miracle_crystal_cycle', label: '輝石循環', summary: '1 actionを使って自身のMPを3000回復する。',
+                    type: 'active', rank: 0, max_rank: 1, point_cost: 6, invested_points_required: 35,
+                    prerequisite: 'miracle_mending_prayer', can_acquire: false, unavailable_reason: '祝福へあと35SP必要',
+                    skill_key: 'crystal_cycle', mp_cost: 0, cooldown: 3, required_weapon_styles: [] as string[], recommended_stats: [] as string[], active_slot: null,
                 }] }],
             active_slots: [null, null, null, null, null] as Array<{
                 key: string; label: string; summary: string; mp_cost: number; cooldown: number; required_weapon_styles: string[];
@@ -1911,8 +1916,12 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-tree-grid').text()).toContain('祝福');
         expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-node')
             .map((node) => node.get('strong').text()))
-            .toEqual(['聖晶弾', '治癒祈祷', '精神導路']);
+            .toEqual(['聖晶弾', '治癒祈祷', '精神導路', '輝石循環']);
         expect(wrapper.get('#underground-tree-panel-miracle .underground-skill-node').text()).toContain('聖晶弾');
+        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-dependency').map((node) => node.text()))
+            .toEqual(['依存： 精神 / 技巧', '依存： 精神', '依存： ー']);
+        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-node')[2]!
+            .find('.underground-skill-dependency').exists()).toBe(false);
         await wrapper.get('#underground-tree-panel-miracle .underground-skill-node button').trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-active-skill-notes').text()).toContain('必要武器: 短剣 / 細身剣');
@@ -1945,7 +1954,10 @@ describe('application lobby and island entry', () => {
         expect(explorationLog).toContain('輝石虫は完全防御し、HPダメージは0。');
         expect(explorationLog.indexOf('Round 1')).toBeLessThan(explorationLog.indexOf('戦闘終了'));
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +1150・輝石の欠片 +0G');
-        expect(wrapper.get('.underground-battle-result').text()).toContain('戦闘Lv 1 → 6・未使用STP +25（合計 25）');
+        expect(wrapper.get('.underground-level-up').attributes('role')).toBe('status');
+        expect(wrapper.get('.underground-level-up strong').text()).toBe('LEVEL UP！');
+        expect(wrapper.get('.underground-level-up').text()).toContain('戦闘Lv 1 → 6');
+        expect(wrapper.get('.underground-level-up').text()).toContain('未使用STP +25（合計 25）');
         await wrapper.get('.underground-battle-back').trigger('click');
         const exploreButton = wrapper.findAll('.underground-entries button')[0]!;
         expect(exploreButton.attributes('disabled')).toBeDefined();

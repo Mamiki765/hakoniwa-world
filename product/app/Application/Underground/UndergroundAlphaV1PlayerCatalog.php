@@ -181,6 +181,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                     'mp_cost' => $skill['mp_cost'] ?? null,
                     'cooldown' => $skill['cooldown'] ?? null,
                     'required_weapon_styles' => $skill['required_weapon_styles'] ?? [],
+                    'recommended_stats' => $skill === null
+                        ? null
+                        : $this->recommendedStats((string) $node['skill_key']),
                     'active_slot' => $allocations[$nodeKey]['active_slot'] ?? null,
                 ];
             }
@@ -741,6 +744,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             || ! is_array($data['growth_paths'] ?? null)
             || ! is_string($data['skill_tree_identity'] ?? null)
             || ! is_int($data['initial_skill_points'] ?? null)
+            || ! is_array($data['player_skill_guidance'] ?? null)
             || ! is_array($data['exploration'] ?? null)
             || ! is_array($data['shop'] ?? null)
             || ! is_array($data['playtest'] ?? null)
@@ -749,6 +753,24 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         }
 
         return $data;
+    }
+
+    /** @return list<string> */
+    private function recommendedStats(string $skillKey): array
+    {
+        $guidance = $this->data()['player_skill_guidance'][$skillKey] ?? null;
+        $stats = is_array($guidance) ? ($guidance['recommended_stats'] ?? null) : null;
+        if (! is_array($stats) || ! array_is_list($stats)
+            || count(array_unique($stats)) !== count($stats)) {
+            throw new RuntimeException("Underground player skill guidance [{$skillKey}] is invalid.");
+        }
+        foreach ($stats as $stat) {
+            if (! is_string($stat) || ! in_array($stat, AlphaV1CombatRules::STATS, true)) {
+                throw new RuntimeException("Underground player skill guidance [{$skillKey}] is invalid.");
+            }
+        }
+
+        return $stats;
     }
 
     /** @param array<string, mixed> $values */
