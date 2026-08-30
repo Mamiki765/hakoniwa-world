@@ -103,7 +103,13 @@
             ]
         }
     },
-    "statuses": {},
+    "statuses": {
+        "wyvern_airborne": {
+            "label": "飛翔", "disposition": "buff", "duration_rounds": 100,
+            "stack_policy": "refresh", "max_stacks": 1, "application_chance_bps": 10000,
+            "effects": [{"type": "damage_dealt_modifier", "category": "all", "value_bps": 10000}]
+        }
+    },
     "enemies": {
         "trial_rat_vanguard": {
             "label": "試練の地底鼠", "boss": false,
@@ -171,7 +177,7 @@
         "trial_wyvern": {
             "label": "ワイバーン", "boss": true,
             "base_stats": {"vitality": 30, "might": 34, "finesse": 16, "spirit": 12, "agility": 8},
-            "max_hp": 1600, "physical_defense": 60, "magical_defense": 300, "weapon_power": 180,
+            "max_hp": 1600, "physical_defense": 60, "magical_defense": 229, "weapon_power": 180,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7600, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": ["enemy_telegraph", "trial_wyvern_breath", "trial_wyvern_tail", "trial_razor_flurry"],
             "ai_rules": [
@@ -181,6 +187,11 @@
                 {"conditions": [{"type": "skill_ready", "skill": "trial_razor_flurry"}], "action": "skill:trial_razor_flurry"},
                 {"conditions": [{"type": "always"}], "action": "normal_attack"}
             ],
+            "phase_transition": {
+                "round": 40,
+                "status": "wyvern_airborne",
+                "message": "天井が崩落し、ワイバーンは宙に舞い上がる……！"
+            },
             "modifiers": {"damage_taken_reduction_bps": 100, "self_regeneration_target_hp_bps": 110}
         }
     },
@@ -188,6 +199,6 @@
         "scope": "simulation_only_trial_01",
         "primary_target": "Lv30 Rank3 four-build clear rate observation near 30-70 percent",
         "non_targets": ["player-facing release", "persistence", "Surface Ruleset", "production migration"],
-        "adjustable": ["enemy max_hp", "enemy defenses", "enemy weapon_power", "enemy attack potency", "enemy regeneration", "boss damage reduction"]
+        "adjustable": ["enemy max_hp", "enemy defenses", "enemy weapon_power", "enemy attack potency", "enemy regeneration", "boss damage reduction", "boss phase transition round", "boss phase damage bonus"]
     }
 }

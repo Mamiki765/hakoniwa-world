@@ -80,6 +80,69 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertArrayNotHasKey('battles', $report['scenarios'][0]);
     }
 
+    public function test_trial_wyvern_enters_its_healer_pressure_phase_at_round_40_without_losing_its_action(): void
+    {
+        [, $manifest] = $this->trialManifest();
+        $this->assertSame(229, $manifest['enemies']['trial_wyvern']['magical_defense']);
+        $this->assertSame(10_000, $manifest['statuses']['wyvern_airborne']['effects'][0]['value_bps']);
+        foreach ($manifest['enemies'] as &$enemy) {
+            $enemy['max_hp'] = 1;
+            $enemy['physical_defense'] = 0;
+            $enemy['magical_defense'] = 0;
+            $enemy['weapon_power'] = 1;
+            $enemy['skills'] = [];
+            $enemy['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']];
+            $enemy['modifiers'] = [];
+        }
+        unset($enemy);
+        $wyvern = &$manifest['enemies']['trial_wyvern'];
+        $wyvern['base_stats'] = ['vitality' => 96, 'might' => 1, 'finesse' => 1, 'spirit' => 1, 'agility' => 1];
+        $wyvern['max_hp'] = 1_000_000;
+        $wyvern['normal_attack'] = [
+            'type' => 'damage', 'category' => 'physical', 'potency_bps' => 0,
+            'stat_coefficients' => [], 'weapon_coefficient_bps' => 0, 'fixed' => 1,
+            'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => false, 'hits' => 1,
+        ];
+        unset($wyvern);
+
+        $result = $this->trialSimulator()
+            ->replay($manifest, 'martial_red:lv30:heal2000', 41)['result'];
+        $boss = $result['battles'][9];
+        $transitionRows = array_values(array_filter(
+            $boss['action_log'],
+            static fn (array $row): bool => ($row['effect_type'] ?? null) === 'phase_transition',
+        ));
+        $enemyDecisions = array_values(array_filter(
+            $boss['action_log'],
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
+                && ($row['side'] ?? null) === 'enemy'
+                && ($row['round'] ?? null) === 40,
+        ));
+        $round39 = array_values(array_filter(
+            $boss['action_log'],
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end'
+                && ($row['round'] ?? null) === 39,
+        ))[0];
+        $round40 = array_values(array_filter(
+            $boss['action_log'],
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end'
+                && ($row['round'] ?? null) === 40,
+        ))[0];
+
+        $this->assertSame('stalemate', $boss['winner']);
+        $this->assertSame(1, $boss['phase_transition_count']);
+        $this->assertCount(1, $transitionRows);
+        $this->assertSame(40, $transitionRows[0]['round']);
+        $this->assertSame('wyvern_airborne', $transitionRows[0]['status']);
+        $this->assertSame(
+            '天井が崩落し、ワイバーンは宙に舞い上がる……！',
+            $transitionRows[0]['message'],
+        );
+        $this->assertCount(1, $enemyDecisions);
+        $this->assertNotContains('wyvern_airborne', array_column($round39['enemy']['statuses'], 'key'));
+        $this->assertContains('wyvern_airborne', array_column($round40['enemy']['statuses'], 'key'));
+    }
+
     public function test_trial_sequence_stops_immediately_after_the_first_failed_battle(): void
     {
         [, $manifest] = $this->trialManifest();

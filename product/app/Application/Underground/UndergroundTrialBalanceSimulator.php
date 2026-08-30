@@ -165,6 +165,7 @@ final readonly class UndergroundTrialBalanceSimulator
             'damage_received' => 0,
             'effective_healing' => 0,
             'damage_prevented' => 0,
+            'phase_transitions' => 0,
         ]);
         $actionUsage = [];
         $damageDealt = 0;
@@ -218,6 +219,7 @@ final readonly class UndergroundTrialBalanceSimulator
                 $battleMetrics[$index]['damage_received'] += $battle['damage_received'];
                 $battleMetrics[$index]['effective_healing'] += $battle['effective_healing'];
                 $battleMetrics[$index]['damage_prevented'] += $battle['damage_prevented'];
+                $battleMetrics[$index]['phase_transitions'] += $battle['phase_transition_count'];
                 $damageDealt += $battle['damage_dealt'];
                 $damageReceived += $battle['damage_received'];
                 $effectiveHealing += $battle['effective_healing'];
@@ -253,6 +255,7 @@ final readonly class UndergroundTrialBalanceSimulator
                 'average_damage_received' => $this->average($metrics['damage_received'], $entered),
                 'average_effective_healing' => $this->average($metrics['effective_healing'], $entered),
                 'average_damage_prevented' => $this->average($metrics['damage_prevented'], $entered),
+                'phase_transition_count' => $metrics['phase_transitions'],
             ];
         }
         $battleCount = array_sum(array_column($battleMetrics, 'entered'));
@@ -361,6 +364,10 @@ final readonly class UndergroundTrialBalanceSimulator
                 'mp_exhausted' => $result->mpExhaustionRound !== null,
                 'skill_unavailable_due_to_mp' => $result->skillUnavailableDueToMp,
                 'final_mp' => $result->finalMp,
+                'phase_transition_count' => count(array_filter(
+                    $result->actionLog,
+                    static fn (array $row): bool => ($row['effect_type'] ?? null) === 'phase_transition',
+                )),
                 'abnormal_state' => $result->abnormalState,
             ];
             if ($includeActionLogs) {
@@ -711,6 +718,7 @@ final readonly class UndergroundTrialBalanceSimulator
                 'skills' => $enemy['skills'],
                 'ai_rules' => $enemy['ai_rules'],
                 'modifiers' => $enemy['modifiers'],
+                'phase_transition' => $enemy['phase_transition'] ?? null,
             ];
         }
 

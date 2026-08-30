@@ -104,13 +104,18 @@ final class UndergroundAlphaV1BattleProjector
 
         $side = (string) ($row['side'] ?? '');
         $targetSide = is_string($row['target_side'] ?? null) ? $row['target_side'] : $side;
+        $message = is_string($row['message'] ?? null) && $row['message'] !== ''
+            ? $row['message']
+            : null;
 
         return [
             'type' => $type,
             'side' => $this->side($side),
             'actor_name' => $this->displayName($side, $playerDisplayName, $enemyDisplayName),
             'target_name' => $this->displayName($targetSide, $playerDisplayName, $enemyDisplayName),
-            'label' => $this->actionLabel($action, $catalog),
+            'label' => $type === 'phase_transition' && $message !== null
+                ? $message
+                : $this->actionLabel($action, $catalog),
             'amount' => abs($amount),
             'critical' => (bool) ($row['critical'] ?? false),
             'evaded' => (bool) ($row['evaded'] ?? false),
