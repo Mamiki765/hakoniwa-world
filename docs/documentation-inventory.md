@@ -1,8 +1,8 @@
 # Repository documentation inventory
 
-> Baseline: `release/3.0.0-alpha` at exact `origin/main` `8e57ef517cf2fcb531231cdf8c6df04a5812ae92` (2026-08-29)
+> Baseline: PR109 merge `0e8725be2f96c4af46190fcefb602af1fc6246ba` plus the current 3.0.0 release-stabilization branch (2026-08-30)
 > Scope: tracked Markdown after this navigation change; `_references/`, dependency/vendor output, build artifacts, and third-party originals are excluded.
-> Current application evidence: `product/config/hakoniwa.php` loads application `3.0.0-alpha.1` and immutable surface Ruleset `hakoniwa-2s-plus-v18`; the current entrypoint, authoring guide, Item catalog, integrated handoff, current migrations, ADRs, runtime code, and Git history were cross-checked.
+> Current application evidence: `product/config/hakoniwa.php` loads application `3.0.0` and immutable surface Ruleset `hakoniwa-2s-plus-v18`; the current entrypoint, authoring guide, Item catalog, current migrations, ADRs, runtime code, and Git history were cross-checked. The development handoff remains read-only and may still describe the preceding integration point.
 
 This file is a **navigation inventory, not a gameplay, Ruleset, schema, migration, or operations authority**.
 Classification does not promote a Markdown file above current reviewed code or the immutable Ruleset.
@@ -19,9 +19,9 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 | AUDIT / REFERENCE ANALYSIS | 44 |
 | OPERATIONS | 7 |
 | FUTURE / ROADMAP | 11 |
-| PLAYER-FACING | 12 |
+| PLAYER-FACING | 13 |
 | UNKNOWN / CONFLICT | 6 |
-| **Total** | **167** |
+| **Total** | **168** |
 
 `Default read` uses only these values:
 
@@ -54,7 +54,7 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 | `docs/architecture/registration-and-world-expansion.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | Pre-implementation design plus MVP/PR19/expansion record | Registration and expansion rationale | Implemented flow is interleaved with “decide before Nation creation”, unimplemented economy, candidate algorithms, and MVP wording. Start with v18 world fragment and current registration/expansion code. |
 | `docs/architecture/roadmap-pr2-systems.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Roadmap PR2 | Command/facility/map checkpoint contract | Explicitly excluded execution later implemented. |
 | `docs/architecture/target-architecture.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Foundational architecture | Domain boundaries and design goals | Not approval to implement named future systems. |
-| `docs/architecture/underground-combat-laboratory.md` | CURRENT AUTHORITY | TASK-SPECIFIC | `secretary-underground-alpha-v0`からPR109 / application `3.0.0-alpha.5`まで | Pure combat/build laboratory、Secretary-owned persistence/runtime、Tutorial・intro・growth・Skill Tree、正式equipment・装備Shop・500枠宝物庫、actual equipmentを用いる通常探索 | Does not define manual combat、AI editor、Trial content、random equipment/drop、affix、unique、enhancement、enchant、party、market、facility implementation/effects、surface bridge. |
+| `docs/architecture/underground-combat-laboratory.md` | CURRENT AUTHORITY | TASK-SPECIFIC | `secretary-underground-alpha-v0`からapplication `3.0.0`まで | Pure combat/build laboratory、Secretary-owned persistence/runtime、Tutorial・intro・growth・Skill Tree、正式equipment・装備Shop・500枠宝物庫、actual equipmentを用いる通常探索 | Does not define manual combat、AI editor、Trial content、random equipment/drop、affix、unique、enhancement、enchant、party、market、facility implementation/effects、surface bridge. |
 | `docs/architecture/turn-pipeline.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Initial pipeline proposal | Early Turn design rationale | Header says phase table is not implementation authority. |
 | `docs/architecture/turn-randomness.md` | MIXED / PARTIALLY CURRENT | DO NOT USE AS CURRENT AUTHORITY | T-01 algorithm plus pre-missile/scaffold scope | Deterministic RNG rationale and fixed vector | Core derivation may remain valid, but the document says required phases stay stubs and missile execution is not connected. Start with current Turn/RNG code and Ruleset; use this for algorithm provenance. |
 | `docs/architecture/turn-runner-scaffold.md` | UNKNOWN / CONFLICT | DO NOT USE AS CURRENT AUTHORITY | Mixed PR7 scaffold and later additions | TurnRun schema/lock/retry history | Still states required phases are stubs and production returns non-zero; current runtime implements them. |
@@ -99,7 +99,7 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 | `docs/requirements/initial-game-direction.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | 2026-07-26 initial MVP | Original requirements record | Explicitly historical; many exclusions were later implemented. |
 | `docs/roadmap-pr4-staggered-xy.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | Roadmap PR4 | Coordinate migration checkpoint | Current authority is ADR-0003/code. |
 | `docs/roadmap/2.x.md` | FUTURE / ROADMAP | DO NOT USE AS CURRENT AUTHORITY | Mixed completed sequencing and future candidates | 2.x roadmap boundaries | Not automatic approval; handoff/current code determine completed work. |
-| `docs/roadmap/3.0.0-alpha-underground.md` | FUTURE / ROADMAP | TASK-SPECIFIC | Active Underground alpha sequencing | Owner-approved roadmap、PR101〜PR109 scope、reached gates、PR sequence、first-playable conditions | Approval is slice-specific; PR109までのnormal exploration・Skill Tree・正式equipment・装備Shop・宝物庫はcurrent scope。Trial、random equipment/dropとUG-04のparty・market・facility・surface bridgeは引き続きgated。 |
+| `docs/roadmap/3.0.0-alpha-underground.md` | FUTURE / ROADMAP | TASK-SPECIFIC | Completed 3.0.0 sequencing and gated follow-ups | Owner-approved roadmap、PR101〜PR109 scope、reached gates、PR sequence、first-playable conditions | 3.0.0までのnormal exploration・Skill Tree・正式equipment・装備Shop・宝物庫は実装済み。Trial、random equipment/dropとUG-04のparty・market・facility・surface bridgeは引き続きgated。 |
 | `docs/testing/staggered-xy-test-plan.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | PR4 migration | Coordinate transition test plan | Current test contract is repository tests/policy. |
 
 ### `docs/reference-analysis/`
@@ -171,6 +171,7 @@ All entries in this table are read-only analysis inputs. They are never current 
 | `product/docs/manual/intermediate.md` | PLAYER-FACING | TASK-SPECIFIC | Current served manual | Intermediate guidance | Player-facing. |
 | `product/docs/manual/secretary.md` | PLAYER-FACING | TASK-SPECIFIC | Current served manual | Secretary player guidance | Use Item catalog/code for internal contract. |
 | `product/docs/manual/trading-post.md` | PLAYER-FACING | TASK-SPECIFIC | Current served manual | Trading Post player guidance | Internal settlement authority remains code/Ruleset. |
+| `product/docs/manual/underground.md` | PLAYER-FACING | TASK-SPECIFIC | Current served manual | 箱庭ダンジョンの探索、成長、Skill Tree、装備、Shop、宝物庫案内 | Internal combat formulas and hidden story data are intentionally excluded. |
 | `product/docs/message-board-secret-communication-ver-1.4.0.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | ver 1.4.0 | Message board/secret communication release contract | Use for design history/regression only. |
 | `product/docs/missile-scorch-ver-1.4.0.md` | HISTORICAL IMPLEMENTATION | DO NOT USE AS CURRENT AUTHORITY | ver 1.4.0 | Missile scorch release contract | Current missile code/Ruleset wins. |
 | `product/docs/monster-audit-pr21.md` | AUDIT / REFERENCE ANALYSIS | DO NOT USE AS CURRENT AUTHORITY | PR21 | Monster source audit and implementation evidence | Current monster architecture/code/Ruleset first. |

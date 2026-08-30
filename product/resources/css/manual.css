@@ -67,11 +67,17 @@ h1 { margin-top: 0; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2
 h2 { margin-top: 2.4rem; padding-bottom: .35rem; border-bottom: 2px solid var(--heading-line); }
 h3 { margin-top: 1.8rem; }
 li + li { margin-top: .25rem; }
+.manual-content table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.manual-content th, .manual-content td { padding: .65rem .75rem; border: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.manual-content th { background: var(--paper-deep); }
+.manual-content th:first-child, .manual-content td:first-child { width: 6.5rem; }
 .contact-action a { display: inline-block; padding: .75rem 1rem; color: var(--on-solid); background: var(--navy-solid); font-weight: 800; text-decoration: none; }
 .contact-unavailable { padding: .75rem 1rem; background: var(--warning-surface); }
 
 @media (max-width: 720px) {
     .manual-layout { grid-template-columns: 1fr; }
     .manual-layout nav { position: static; grid-template-columns: repeat(2, 1fr); }
+    .manual-content th, .manual-content td { padding: .55rem; }
+    .manual-content th:first-child, .manual-content td:first-child { width: 5rem; }
     .standalone-content { margin: 1rem; }
 }

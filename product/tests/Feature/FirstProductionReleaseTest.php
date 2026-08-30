@@ -32,7 +32,7 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertSame('hakoniwa-2s-plus-v18', config('hakoniwa.ruleset.key'));
         $this->assertSame(['hakoniwa-2s-plus-v18'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame(
-            ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18'],
+            ['hakoniwa-2s-plus-v18'],
             RulesetVersion::query()->orderBy('version')->pluck('key')->all(),
         );
         $this->assertSame($published->id, $this->lightweightWorld()->ruleset_version_id);
@@ -184,6 +184,8 @@ final class FirstProductionReleaseTest extends TestCase
                 '>交易場</a>',
                 'href="/manual/secretary"',
                 '>秘書について</a>',
+                'href="/manual/underground"',
+                '>箱庭ダンジョン</a>',
             ], false)
             ->assertSee('href="/credits"', false)
             ->assertSee('href="/community-guidelines"', false);
@@ -252,6 +254,17 @@ final class FirstProductionReleaseTest extends TestCase
             ->assertDontSee('<h2>指輪</h2>', false)
             ->assertDontSee('現在活動中の島がない間は、装備を変えることはできます')
             ->assertDontSee('複数の海域や島を持っていても、装備セットは一つです');
+        $this->get('/manual/underground')->assertOk()
+            ->assertSee('<title>箱庭ダンジョン | 箱庭諸島２S＋</title>', false)
+            ->assertSee('<h1>箱庭ダンジョン</h1>', false)
+            ->assertSee('<table>', false)
+            ->assertSee('精神を増やしても最大MPは増えません')
+            ->assertSee('アクティブスキルは最大5つ')
+            ->assertSee('宝物庫の上限は500個')
+            ->assertSee('探索後は10秒間')
+            ->assertSee('銀行へ預けたGは失いません')
+            ->assertDontSee('輝石虫')
+            ->assertDontSee('secretary-underground');
         $this->get('/community-guidelines')->assertOk()
             ->assertSee('利用ルール')
             ->assertSee('通報・異議申立て窓口を開く');

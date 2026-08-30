@@ -122,6 +122,7 @@ interface SkillNode {
     mp_cost: number | null;
     cooldown: number | null;
     required_weapon_styles: string[];
+    recommended_stats: StatKey[] | null;
     active_slot: number | null;
 }
 
@@ -620,6 +621,10 @@ function requiredWeaponText(styles: string[]): string {
     return `必要武器: ${styles.map(weaponStyleLabel).join(' / ')}`;
 }
 
+function recommendedStatsText(stats: StatKey[]): string {
+    return stats.length === 0 ? 'ー' : stats.map((stat) => statLabels[stat]).join(' / ');
+}
+
 function activeSkillWeaponIncompatible(skill: Pick<ActiveSkill, 'required_weapon_styles'>): boolean {
     const current = currentWeaponStyle.value;
     return current !== null
@@ -830,9 +835,16 @@ onUnmounted(() => {
                     <h2>{{ battleResultLabel(currentBattle.result) }}</h2>
                     <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
                     <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
-                    <p v-if="currentBattle.combat_level_after !== undefined && currentBattle.combat_level_after !== currentBattle.combat_level_before">
-                        戦闘Lv {{ currentBattle.combat_level_before }} → {{ currentBattle.combat_level_after }}・未使用STP +{{ currentBattle.stp_awarded ?? 0 }}（合計 {{ currentBattle.unspent_stp_after ?? 0 }}）
-                    </p>
+                    <div
+                        v-if="currentBattle.combat_level_after !== undefined && currentBattle.combat_level_after !== currentBattle.combat_level_before"
+                        class="underground-level-up"
+                        role="status"
+                        aria-label="レベルアップ"
+                    >
+                        <strong>LEVEL UP！</strong>
+                        <span>戦闘Lv {{ currentBattle.combat_level_before }} → {{ currentBattle.combat_level_after }}</span>
+                        <span>未使用STP +{{ currentBattle.stp_awarded ?? 0 }}（合計 {{ currentBattle.unspent_stp_after ?? 0 }}）</span>
+                    </div>
                     <dl v-if="currentBattle.summary" class="underground-combat-summary">
                         <div v-for="(value, key) in visibleSummary(currentBattle.summary)" :key="key"><dt>{{ summaryLabel(key) }}</dt><dd>{{ summaryValue(key, value) }}</dd></div>
                     </dl>
@@ -1076,6 +1088,7 @@ onUnmounted(() => {
                                     <div v-if="node.type === 'active'"><dt>MP / CD</dt><dd>{{ node.mp_cost }} / {{ node.cooldown }}R</dd></div>
                                     <div v-if="node.required_weapon_styles.length > 0"><dt>武器条件</dt><dd>{{ node.required_weapon_styles.join('・') }}</dd></div>
                                 </dl>
+                                <p v-if="node.type === 'active' && node.recommended_stats !== null" class="underground-skill-dependency">依存： {{ recommendedStatsText(node.recommended_stats) }}</p>
                                 <p v-if="!node.can_acquire && node.rank < node.max_rank" class="underground-node-unavailable">{{ node.unavailable_reason }}</p>
                                 <p v-else-if="node.rank >= node.max_rank" class="underground-node-complete">取得済み</p>
                                 <button v-else type="button" :disabled="busy" @click="acquireSkill(node.key)">取得する</button>

@@ -373,6 +373,9 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-round-state .underground-ko { grid-column: 1 / -1; color: var(--coral-dark); font-weight: 900; }
 .underground-battle-result { display: grid; gap: .6rem; padding: 1.4rem 0 .5rem; border-top: 3px double var(--line); }
 .underground-battle-result h2, .underground-battle-result p { margin: 0; }
+.underground-level-up { display: grid; gap: .15rem; max-width: 100%; padding: .8rem 1rem; border: 2px solid var(--danger); background: var(--danger-surface); color: var(--danger-strong); overflow-wrap: anywhere; }
+.underground-level-up strong { font-size: clamp(1.9rem, 8vw, 3.6rem); font-weight: 950; line-height: 1; letter-spacing: .04em; }
+.underground-level-up span { color: var(--ink); font-weight: 850; }
 .underground-battle-result .underground-combat-summary { margin: .5rem 0; }
 .underground-battle-back { justify-self: center; }
 .underground-growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
@@ -419,6 +422,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-skill-node dl div { min-width: 0; }
 .underground-skill-node dt { color: var(--muted); font-weight: 700; }
 .underground-skill-node dd { margin: .1rem 0 0; overflow-wrap: anywhere; }
+.underground-skill-dependency { margin: 0; color: var(--muted); font-size: .84rem; font-weight: 750; overflow-wrap: anywhere; }
 .underground-node-unavailable { color: var(--coral-dark); font-weight: 700; }
 .underground-node-complete { color: #398258; font-weight: 800; }
 .underground-active-loadout { display: grid; gap: .8rem; padding-top: 1rem; border-top: 1px solid var(--line); }

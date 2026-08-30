@@ -53,18 +53,22 @@ Ruleset and command-definition snapshots rather than historical PHP.
 
 ## Installation and forward migration
 
-The schema dump remains the canonical final-v16 dump and is not rewritten for this release.
-Fresh installation applies the forward migrations, installs the current catalogs, and
-publishes v18 without rewriting v17.
+The schema dump is the canonical final 3.0.0 schema and migration ledger. A fresh install
+loads that schema directly, then current bootstrap installs and publishes only immutable v18.
 
-The only supported production upgrade is exact v17 to v18. The forward-only migration
-requires the exact v17 key, version, and checksum, locks the mutable World, rejects an
-unresolved next non-dry TurnRun, installs the `undersea_city` catalog row, publishes v18
-transactionally, and rebinds queued command definitions, living monsters, and current kill
-statistics by stable key. It preserves historical records and request provenance/fingerprints.
-A rerun against exact current v18 is idempotent; a failure rolls back publication and all
-rebind work.
+The only supported production application upgrade is exact ver 2.8.0 / v18 to 3.0.0. The
+forward-only 3.0.0 migration rejects an absent v18 ledger, any retired Underground alpha
+migration ledger, or any pre-existing Underground table. It verifies the current immutable
+v18 state without changing its payload, then creates the final Underground profile,
+intro/progression, battle/history, STP/SP/Skill Tree, equipment ownership, request-idempotency,
+constraint, index, and foreign-key schema directly. Existing World, Nation, player, command,
+Turn, event, audit, and surface Ruleset data are not reset or reinterpreted.
+
+The ten Underground migrations authored during the 3.0.0-alpha branch were never deployed to
+production and are retired from the final release. Their final schema is represented by the
+single 3.0.0 upgrade migration and the current schema dump; alpha database state is not a
+supported production source.
 
 Historical Worlds and records remain readable and fail closed for mutation under the current
-Ruleset guard. A v16-or-earlier database must first use its supported historical release to
-reach exact v17; this tree does not directly upgrade it.
+Ruleset guard. A v17-or-earlier database must first use ver 2.8.0 to reach exact v18; this tree
+does not directly upgrade it.
