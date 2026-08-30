@@ -55,8 +55,11 @@ final readonly class UndergroundAlphaV1PlayerCatalog
      *     tree_points: array<string, int>
      * }
      */
-    public function playerSkillBuild(array $allocations): array
+    public function playerSkillBuild(array $allocations, ?string $weaponStyle = null): array
     {
+        if ($weaponStyle !== null && $weaponStyle === '') {
+            throw new RuntimeException('Underground player weapon style is invalid.');
+        }
         $catalog = $this->laboratoryCatalog();
         $acquired = [];
         $passives = [];
@@ -100,7 +103,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 if ($slot < 1 || $slot > AlphaV1CombatRules::ACTIVE_SKILL_LIMIT || isset($activeBySlot[$slot])) {
                     throw new RuntimeException('Underground active skill loadout is invalid.');
                 }
-                $activeBySlot[$slot] = $skillKey;
+                if ($weaponStyle === null || $this->skillSupportsWeaponStyle($skill, $weaponStyle)) {
+                    $activeBySlot[$slot] = $skillKey;
+                }
             }
         }
         ksort($activeBySlot);
@@ -547,7 +552,11 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             throw new RuntimeException('Underground current HP is invalid.');
         }
 
-        $skillBuild = $this->playerSkillBuild($skillAllocations);
+        $weaponStyle = $equipment['weapon_style'] ?? null;
+        if (! is_string($weaponStyle) || $weaponStyle === '') {
+            throw new RuntimeException('Underground player weapon style is invalid.');
+        }
+        $skillBuild = $this->playerSkillBuild($skillAllocations, $weaponStyle);
 
         return [
             'catalog' => $this->explorationCatalog(),
@@ -783,5 +792,21 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         }
 
         return [...$emergency, ...$base, ...$remaining, $fallback];
+    }
+
+    /** @param array<string, mixed> $skill */
+    private function skillSupportsWeaponStyle(array $skill, string $weaponStyle): bool
+    {
+        $required = $skill['required_weapon_styles'] ?? [];
+        if (! is_array($required) || ! array_is_list($required)) {
+            throw new RuntimeException('Underground active skill weapon requirement is invalid.');
+        }
+        foreach ($required as $style) {
+            if (! is_string($style) || $style === '') {
+                throw new RuntimeException('Underground active skill weapon requirement is invalid.');
+            }
+        }
+
+        return $required === [] || in_array($weaponStyle, $required, true);
     }
 }

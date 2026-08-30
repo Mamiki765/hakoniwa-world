@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
@@ -314,6 +314,7 @@ const busy = ref(false);
 const error = ref('');
 const shopkeeperName = ref('');
 const battles = ref<Battle[]>([]);
+const recentBattles = computed(() => battles.value.slice(0, 5));
 const selectedBattle = ref<Battle | null>(null);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
@@ -368,6 +369,13 @@ const acquiredActiveSkills = computed<ActiveSkill[]>(() => (state.value?.skill_t
         cooldown: node.cooldown ?? 0,
         required_weapon_styles: node.required_weapon_styles,
     })));
+const currentWeaponStyle = computed(() => state.value?.equipment_summary?.equipped.weapon?.weapon_style ?? null);
+const weaponStyleLabels: Record<string, string> = {
+    dagger: '短剣',
+    rapier: '細身剣',
+    longsword: '長剣',
+    crystal_staff: '輝石杖',
+};
 const summaryLabels: Record<string, string> = {
     result: '結果',
     damage_dealt: '与ダメージ',
@@ -402,6 +410,7 @@ function requestId(): string {
 }
 
 async function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
+    innRested.value = false;
     state.value = await api<UndergroundState>('/api/v1/me/underground');
     cooldownNowMs.value = Date.now();
     if (returnIfTutorialAlreadyFinished && state.value.stage === 'returned_after_tutorial') {
@@ -420,6 +429,7 @@ async function mutate(
     if (busy.value) return false;
     busy.value = true;
     error.value = '';
+    innRested.value = false;
     try {
         state.value = await api<UndergroundState>(path, {
             method,
@@ -455,6 +465,7 @@ async function loadBattles(): Promise<void> {
 }
 
 async function showBattle(battle: Battle): Promise<void> {
+    innRested.value = false;
     error.value = '';
     try {
         selectedBattle.value = battle.detail_available
@@ -468,6 +479,7 @@ async function showBattle(battle: Battle): Promise<void> {
 
 async function runPlaytest(): Promise<void> {
     if (busy.value || !selectedBuild.value || !selectedEnemy.value) return;
+    innRested.value = false;
     busy.value = true;
     error.value = '';
     try {
@@ -489,6 +501,7 @@ async function runPlaytest(): Promise<void> {
 
 async function runExplore(): Promise<void> {
     if (busy.value) return;
+    innRested.value = false;
     const explorationRequestId = pendingExplorationRequestId.value ?? requestId();
     pendingExplorationRequestId.value = explorationRequestId;
     busy.value = true;
@@ -597,6 +610,29 @@ function orderedSkillNodes(nodes: SkillNode[]): SkillNode[] {
 
 function loadoutChoiceDisabled(skillKey: string, slotIndex: number): boolean {
     return loadoutDraft.value.some((equipped, index) => index !== slotIndex && equipped === skillKey);
+}
+
+function weaponStyleLabel(style: string): string {
+    return weaponStyleLabels[style] ?? style;
+}
+
+function requiredWeaponText(styles: string[]): string {
+    return `必要武器: ${styles.map(weaponStyleLabel).join(' / ')}`;
+}
+
+function activeSkillWeaponIncompatible(skill: Pick<ActiveSkill, 'required_weapon_styles'>): boolean {
+    const current = currentWeaponStyle.value;
+    return current !== null
+        && skill.required_weapon_styles.length > 0
+        && !skill.required_weapon_styles.includes(current);
+}
+
+async function focusActiveLoadout(): Promise<void> {
+    await nextTick();
+    const heading = document.getElementById('underground-loadout-title');
+    if (!heading) return;
+    heading.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    heading.focus({ preventScroll: true });
 }
 
 async function enter(): Promise<void> {
@@ -713,6 +749,7 @@ function simpleActionNarrative(action: SimpleAction, battle: Battle): string {
 
 function closeBattle(): void {
     selectedBattle.value = null;
+    innRested.value = false;
 }
 
 async function applyEquipmentMutation(result: EquipmentMutationState): Promise<void> {
@@ -965,7 +1002,7 @@ onUnmounted(() => {
                     </section>
                     <section class="underground-history" aria-labelledby="underground-history-title">
                         <h2 id="underground-history-title">戦闘履歴</h2>
-                        <ul><li v-for="battle in battles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
+                        <ul><li v-for="battle in recentBattles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
                     </section>
                 </section>
             </div>
@@ -998,7 +1035,10 @@ onUnmounted(() => {
             <section v-if="skillsOpen && state.skill_trees" class="underground-progression-panel" aria-labelledby="underground-skills-title">
                 <header>
                     <div><p class="eyebrow">Finite Skill Points</p><h2 id="underground-skills-title">Skill Tree</h2></div>
-                    <p>SP {{ state.skill_points_unspent }} / {{ state.skill_points_total }}（使用済み {{ state.skill_points_spent }}）</p>
+                    <div class="underground-skill-header-actions">
+                        <p>SP {{ state.skill_points_unspent }} / {{ state.skill_points_total }}（使用済み {{ state.skill_points_spent }}）</p>
+                        <button class="underground-skill-jump" type="button" @click="focusActiveLoadout">アクティブスキル設定へ</button>
+                    </div>
                 </header>
                 <p class="underground-progression-note">SPを消費することでスキルを習得できます。</p>
                 <div class="underground-tree-tabs" role="tablist" aria-label="Skill Tree系統">
@@ -1044,8 +1084,8 @@ onUnmounted(() => {
                     </article>
                 </div>
 
-                <section class="underground-active-loadout" aria-labelledby="underground-loadout-title">
-                    <header><div><h3 id="underground-loadout-title">Active Skill</h3><p>取得済みskillを最大5個まで装備します。</p></div><p>基本行動: 通常攻撃 / 防御（常時利用可能）</p></header>
+                <section id="underground-active-loadout" class="underground-active-loadout" aria-labelledby="underground-loadout-title">
+                    <header><div><h3 id="underground-loadout-title" tabindex="-1">Active Skill</h3><p>取得済みskillを最大5個まで装備します。</p></div><p>基本行動: 通常攻撃 / 防御（常時利用可能）</p></header>
                     <div class="underground-loadout-grid">
                         <label v-for="(_, index) in loadoutDraft" :key="index">slot {{ index + 1 }}
                             <select v-model="loadoutDraft[index]" :disabled="busy">
@@ -1055,7 +1095,11 @@ onUnmounted(() => {
                         </label>
                     </div>
                     <ul class="underground-active-skill-notes">
-                        <li v-for="skill in acquiredActiveSkills" :key="skill.key"><strong>{{ skill.label }}</strong>: {{ skill.summary }} / MP {{ skill.mp_cost }} / cooldown {{ skill.cooldown }}R<span v-if="skill.required_weapon_styles.length > 0"> / {{ skill.required_weapon_styles.join('・') }}専用</span></li>
+                        <li v-for="skill in acquiredActiveSkills" :key="skill.key" :class="{ 'underground-skill-incompatible': activeSkillWeaponIncompatible(skill) }">
+                            <strong>{{ skill.label }}</strong>: {{ skill.summary }} / MP {{ skill.mp_cost }} / cooldown {{ skill.cooldown }}R
+                            <span v-if="skill.required_weapon_styles.length > 0"> / {{ requiredWeaponText(skill.required_weapon_styles) }}</span>
+                            <span v-if="activeSkillWeaponIncompatible(skill)" class="underground-node-unavailable">現在の武器では使用できません</span>
+                        </li>
                     </ul>
                     <button class="button primary" type="button" :disabled="busy" @click="saveLoadout">slot 1～5を保存</button>
                 </section>

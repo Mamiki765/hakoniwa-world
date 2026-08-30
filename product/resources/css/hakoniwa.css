@@ -390,6 +390,12 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-playtest select { width: 100%; }
 .underground-progression-panel { display: grid; gap: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--input-surface); }
 .underground-progression-panel > header, .underground-skill-tree > header, .underground-active-loadout > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.underground-skill-header-actions { display: grid; justify-items: end; gap: .4rem; min-width: 0; }
+.underground-skill-header-actions p { text-align: right; }
+.underground-skill-jump { min-height: 2.55rem; padding: .4rem .75rem; border: 1px solid var(--coral); background: var(--paper); color: var(--coral-dark); font: inherit; font-weight: 850; cursor: pointer; }
+.underground-skill-jump:hover, .underground-skill-jump:focus-visible { background: var(--coral); color: white; outline: 3px solid color-mix(in srgb, var(--coral) 28%, transparent); outline-offset: 1px; }
+.underground-skill-incompatible { color: var(--ink); }
+.underground-skill-incompatible .underground-node-unavailable { display: block; margin-top: .2rem; }
 .underground-progression-panel h2, .underground-progression-panel h3, .underground-progression-panel p { margin: 0; }
 .underground-progression-note { padding: .7rem .8rem; border-left: 4px solid var(--coral); background: var(--paper-deep); color: var(--muted); }
 .underground-inn-result { color: var(--coral-dark); font-weight: 800; }
@@ -968,6 +974,9 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .underground-tree-tabs button:focus-visible { outline: 3px solid color-mix(in srgb, var(--coral) 35%, transparent); outline-offset: 1px; }
     .underground-skill-tree[data-mobile-active="false"] { display: none; }
     .underground-progression-panel > header, .underground-active-loadout > header { align-items: stretch; flex-direction: column; }
+    .underground-skill-header-actions { justify-items: stretch; }
+    .underground-skill-header-actions p { text-align: left; }
+    .underground-skill-jump { width: 100%; min-height: 2.8rem; }
     .underground-character-pane, .underground-action-pane { padding: .8rem; }
     .underground-character-header { grid-template-columns: 5.5rem minmax(0, 1fr); }
     .underground-character-header img, .underground-portrait-placeholder { width: 5.5rem; height: 6.5rem; }

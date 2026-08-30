@@ -1636,32 +1636,37 @@ describe('application lobby and island entry', () => {
             },
             skill_points_total: 20, skill_points_unspent: 20, skill_points_spent: 0,
             skill_tree_identity: 'secretary-underground-skill-tree-alpha-v1',
-            skill_trees: [{ key: 'martial', label: '戦技', invested_points: 0, full_points: 100, nodes: [] },
+            skill_trees: [{ key: 'martial', label: '戦技', invested_points: 6, full_points: 100, nodes: [{
+                    key: 'martial_dagger_flurry', label: '短剣乱舞', summary: '短剣・細剣で3回攻撃し、出血を狙う。',
+                    type: 'active', rank: 1, max_rank: 1, point_cost: 6, invested_points_required: 15,
+                    prerequisite: 'martial_precision_cut', can_acquire: false, unavailable_reason: '最大rankです',
+                    skill_key: 'dagger_flurry', mp_cost: 1200, cooldown: 2, required_weapon_styles: ['dagger', 'rapier'] as string[], active_slot: null,
+                }] },
                 { key: 'guardianship', label: '護身', invested_points: 0, full_points: 100, nodes: [] },
                 { key: 'miracle', label: '祝福', invested_points: 0, full_points: 100, nodes: [{
                     key: 'miracle_holy_bolt', label: '聖晶弾', summary: '精神を活かす祝福の単体攻撃。',
                     type: 'active', rank: 0, max_rank: 1, point_cost: 5, invested_points_required: 0,
                     prerequisite: null, can_acquire: true, unavailable_reason: null as string | null,
-                    skill_key: 'holy_bolt', mp_cost: 700, cooldown: 0, required_weapon_styles: [], active_slot: null,
+                    skill_key: 'holy_bolt', mp_cost: 700, cooldown: 0, required_weapon_styles: [] as string[], active_slot: null,
                 }, {
                     key: 'miracle_spirit_channel', label: '精神導路', summary: '祝福与ダメージを強化する。',
                     type: 'passive', rank: 0, max_rank: 5, point_cost: 1, invested_points_required: 15,
                     prerequisite: null, can_acquire: false, unavailable_reason: '祝福へあと15SP必要',
-                    skill_key: null, mp_cost: null, cooldown: null, required_weapon_styles: [], active_slot: null,
+                    skill_key: null, mp_cost: null, cooldown: null, required_weapon_styles: [] as string[], active_slot: null,
                 }, {
                     key: 'miracle_mending_prayer', label: '治癒祈祷', summary: '自身のHPを回復する。',
                     type: 'active', rank: 0, max_rank: 1, point_cost: 6, invested_points_required: 0,
                     prerequisite: 'miracle_holy_bolt', can_acquire: false, unavailable_reason: '前提skill未取得',
-                    skill_key: 'mending_prayer', mp_cost: 1200, cooldown: 2, required_weapon_styles: [], active_slot: null,
+                    skill_key: 'mending_prayer', mp_cost: 1200, cooldown: 2, required_weapon_styles: [] as string[], active_slot: null,
                 }] }],
             active_slots: [null, null, null, null, null] as Array<{
                 key: string; label: string; summary: string; mp_cost: number; cooldown: number; required_weapon_styles: string[];
             } | null>, passive_modifiers: {},
-            equipment_summary: { used: 1, capacity: 500, equipped: { weapon: {
-                id: 1, key: 'starter_knife', name: '護身用ナイフ', category: 'weapon', weapon_style: 'dagger',
-                rank: 0, item_level: 1, rarity: 'common', buy_price: null, sell_price: 0, equipped_slot: 'weapon',
-                weapon_power: 24, physical_defense: 0, magical_defense: 0, max_hp: 0,
-                stats: { vitality: 1, might: 1, finesse: 1, spirit: 1, agility: 1 },
+            equipment_summary: { used: 2, capacity: 500, equipped: { weapon: {
+                id: 2, key: 'iron_longsword', name: '鉄の長剣', category: 'weapon', weapon_style: 'longsword',
+                rank: 1, item_level: 1, rarity: 'common', buy_price: 120, sell_price: 60, equipped_slot: 'weapon',
+                weapon_power: 31, physical_defense: 4, magical_defense: 0, max_hp: 0,
+                stats: { vitality: 3, might: 2, finesse: 0, spirit: 0, agility: 0 },
             }, armor: null, accessory: null } },
             shopkeeper_name: '<b>店員</b>', true_name_branch: false,
             tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
@@ -1674,6 +1679,11 @@ describe('application lobby and island entry', () => {
             encounter_name: '<b>ジャイアントラット</b>', result: 'victory', rounds: 2,
             xp_awarded: 5, shard_delta: 0, detail_available: true, actions: null,
         };
+        const historyBattles = [summary, ...Array.from({ length: 5 }, (_, index) => ({
+            ...summary,
+            id: `66666666-6666-4666-8666-66666666666${index + 2}`,
+            encounter_name: `履歴${index + 2}`,
+        }))];
         const playtestBattle = {
             id: '44444444-4444-4444-8444-444444444444', context: 'playtest',
             player_display_name: '過去のペリドット',
@@ -1833,7 +1843,7 @@ describe('application lobby and island entry', () => {
                 return response(openState);
             }
             if (path === '/api/v1/me/underground/playtest' && init?.method === 'POST') return response(playtestBattle);
-            if (path === '/api/v1/me/underground/battles') return response([summary]);
+            if (path === '/api/v1/me/underground/battles') return response(historyBattles);
             if (path === `/api/v1/me/underground/battles/${summary.id}`) {
                 battleDetailGets++;
                 if (battleDetailGets > 1) {
@@ -1850,7 +1860,7 @@ describe('application lobby and island entry', () => {
             return response(null, 404);
         });
         vi.stubGlobal('fetch', fetchMock);
-        const wrapper = mount(App);
+        const wrapper = mount(App, { attachTo: document.body });
         await flushPromises();
         await wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'ペリドット')!.trigger('click');
@@ -1869,12 +1879,15 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-summary').text()).toContain('戦闘開始MP10000 / 10000');
         expect(wrapper.get('.underground-summary').text()).toContain('銀行預金5000 G');
         expect(wrapper.get('.underground-summary').text()).toContain('未使用STP3');
-        expect(wrapper.get('.underground-equipment').text()).toContain('武器護身用ナイフ');
+        expect(wrapper.get('.underground-equipment').text()).toContain('武器鉄の長剣');
         expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
         expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
         expect(wrapper.findAll('.underground-entries button')[0]!.attributes('disabled')).toBeUndefined();
         expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeDefined();
+        expect(wrapper.findAll('.underground-history li')).toHaveLength(5);
+        expect(wrapper.get('.underground-history').text()).toContain('履歴5');
+        expect(wrapper.get('.underground-history').text()).not.toContain('履歴6');
         await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
         expect(wrapper.get('.underground-status-table').text()).toContain('初期値');
         await wrapper.findAll('.underground-stp-control button')[1]!.trigger('click');
@@ -1884,6 +1897,10 @@ describe('application lobby and island entry', () => {
         await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
         expect(wrapper.findAll('.underground-progression-note').map((note) => note.text()).join(' '))
             .toContain('SPを消費することでスキルを習得できます');
+        expect(wrapper.get('.underground-skill-jump').text()).toBe('アクティブスキル設定へ');
+        expect(wrapper.find('#underground-active-loadout').exists()).toBe(true);
+        await wrapper.get('.underground-skill-jump').trigger('click');
+        expect(document.activeElement).toBe(wrapper.get('#underground-loadout-title').element);
         expect(wrapper.findAll('.underground-tree-tabs [role="tab"]')).toHaveLength(3);
         expect(wrapper.get('#underground-tree-panel-martial').attributes('data-mobile-active')).toBe('true');
         await wrapper.get('#underground-tree-tab-miracle').trigger('click');
@@ -1895,9 +1912,11 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-node')
             .map((node) => node.get('strong').text()))
             .toEqual(['聖晶弾', '治癒祈祷', '精神導路']);
-        expect(wrapper.get('.underground-skill-node').text()).toContain('聖晶弾');
-        await wrapper.get('.underground-skill-node button').trigger('click');
+        expect(wrapper.get('#underground-tree-panel-miracle .underground-skill-node').text()).toContain('聖晶弾');
+        await wrapper.get('#underground-tree-panel-miracle .underground-skill-node button').trigger('click');
         await flushPromises();
+        expect(wrapper.get('.underground-active-skill-notes').text()).toContain('必要武器: 短剣 / 細身剣');
+        expect(wrapper.get('.underground-active-skill-notes').text()).toContain('現在の武器では使用できません');
         await wrapper.get('.underground-loadout-grid select').setValue('holy_bolt');
         await wrapper.get('.underground-active-loadout .button.primary').trigger('click');
         await flushPromises();
@@ -1952,6 +1971,11 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
         expect(wrapper.get('.underground-shop').text()).toContain('いい夢は見られましたか？　それじゃ、頑張ってくださいね！');
         expect(wrapper.get('.underground-inn-result').text()).toBe('（HPが全回復しました）');
+        await wrapper.get('.underground-playtest .button').trigger('click');
+        await flushPromises();
+        await wrapper.get('.underground-battle-back').trigger('click');
+        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        expect(wrapper.find('.underground-inn-result').exists()).toBe(false);
         const innRequests = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/inn/rest');
         expect(innRequests).toHaveLength(2);
         expect(JSON.parse(String(innRequests[1]?.[1]?.body))).toEqual({
@@ -2000,6 +2024,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +5・輝石の欠片 +0');
         expect(wrapper.get('.underground-log-jump').text()).toBe('末尾へ');
         await wrapper.get('.underground-battle-back').trigger('click');
+        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        expect(wrapper.find('.underground-inn-result').exists()).toBe(false);
         await wrapper.get('.underground-history li button').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('戦闘ログを読み込めませんでした。');
@@ -2033,6 +2059,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('闘志 2・恩寵 1');
         expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0G・ドロップなし');
+        wrapper.unmount();
     });
 
     it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {

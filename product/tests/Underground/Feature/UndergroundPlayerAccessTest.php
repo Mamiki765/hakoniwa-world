@@ -884,6 +884,18 @@ final class UndergroundPlayerAccessTest extends TestCase
         [$otherUser, $otherSecretary] = $this->secretaryUser('Other equipment secretary');
         $profile = $this->openEquipmentProfile($secretary);
         $otherProfile = $this->openEquipmentProfile($otherSecretary, 0, 0);
+        $profile->update(['skill_points_total' => 22, 'skill_points_unspent' => 0]);
+        foreach ([
+            'martial_precision_cut' => ['rank' => 1, 'active_slot' => null],
+            'martial_weapon_mastery' => ['rank' => 5, 'active_slot' => null],
+            'martial_dagger_flurry' => ['rank' => 1, 'active_slot' => 1],
+        ] as $nodeKey => $allocation) {
+            UndergroundSkillAllocation::query()->create([
+                'underground_profile_id' => $profile->id,
+                'node_key' => $nodeKey,
+                ...$allocation,
+            ]);
+        }
 
         $main = $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
@@ -946,6 +958,12 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => $purchaseRequest,
             'definition_key' => 'bronze_rapier',
         ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
+            'request_id' => (string) Str::uuid(),
+            'definition_key' => 'iron_longsword',
+        ])->assertOk()
+            ->assertJsonPath('data.shard_balance', 4_760)
+            ->assertJsonPath('data.vault.used', 3);
 
         $profile->update(['shard_balance' => 0]);
         $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
@@ -968,6 +986,9 @@ final class UndergroundPlayerAccessTest extends TestCase
         $ironDagger = UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $profile->id)
             ->where('definition_key', 'iron_dagger')->sole();
+        $ironLongsword = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('definition_key', 'iron_longsword')->sole();
         $armor = UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $profile->id)
             ->where('definition_key', 'leather_armor')->sole();
@@ -985,6 +1006,22 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => $equipWeaponRequest,
             'item_id' => $ironDagger->id,
         ])->assertOk()->assertJsonPath('data.vault.equipped.weapon.key', 'iron_dagger');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/equipment/equipped', [
+            'request_id' => (string) Str::uuid(),
+            'item_id' => $ironLongsword->id,
+        ])->assertOk()->assertJsonPath('data.vault.equipped.weapon.key', 'iron_longsword');
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.equipment_summary.equipped.weapon.key', 'iron_longsword')
+            ->assertJsonPath('data.active_slots.0.key', 'dagger_flurry');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/equipment/equipped', [
+            'request_id' => (string) Str::uuid(),
+            'item_id' => $ironDagger->id,
+        ])->assertOk()->assertJsonPath('data.vault.equipped.weapon.key', 'iron_dagger');
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.equipment_summary.equipped.weapon.key', 'iron_dagger')
+            ->assertJsonPath('data.active_slots.0.key', 'dagger_flurry');
         $this->actingAs($user)->deleteJson('/api/v1/me/underground/equipment/equipped/weapon', [
             'request_id' => (string) Str::uuid(),
         ])->assertConflict()->assertJsonPath('code', 'underground_equipment_slot_invalid');
@@ -1021,6 +1058,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $equipmentBattle = UndergroundBattle::query()
             ->where('request_id', $explorationRequest)->sole();
         $this->assertSame('iron_dagger', $equipmentBattle->snapshot['equipment']['key']);
+        $this->assertSame(['dagger_flurry'], $equipmentBattle->snapshot['equipped_active_skills']);
         $this->assertSame(30, $equipmentBattle->snapshot['equipment']['weapon_power']);
         $this->assertSame([12, 9, 20], [
             $equipmentBattle->snapshot['equipment']['physical_defense'],
@@ -1068,7 +1106,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('data.shard_balance', $balanceBeforeSale + 50)
             ->assertJsonPath('data.banked_shard_balance', 5_000)
-            ->assertJsonPath('data.vault.used', 3);
+            ->assertJsonPath('data.vault.used', 4);
         $this->actingAs($user)->postJson("/api/v1/me/underground/equipment/items/{$armor->id}/sell", [
             'request_id' => $saleRequest,
         ])->assertOk()->assertExactJson($sale->json());
@@ -1134,6 +1172,46 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertOk()->assertJsonCount(50, 'data.items');
         $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?page=11')
             ->assertConflict()->assertJsonPath('code', 'underground_vault_page_invalid');
+    }
+
+    public function test_player_runtime_filters_active_skills_by_actual_weapon_without_clearing_the_saved_slot(): void
+    {
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+        $equipment = config('underground-alpha-v1.exploration.starter_weapon');
+        $this->assertIsArray($equipment);
+        $allocations = [
+            'martial_precision_cut' => ['rank' => 1, 'active_slot' => null],
+            'martial_weapon_mastery' => ['rank' => 5, 'active_slot' => null],
+            'martial_dagger_flurry' => ['rank' => 1, 'active_slot' => 1],
+            'miracle_holy_bolt' => ['rank' => 1, 'active_slot' => 2],
+            'miracle_mending_prayer' => ['rank' => 1, 'active_slot' => 3],
+        ];
+
+        foreach (['dagger', 'rapier', 'longsword', 'crystal_staff', 'dagger'] as $weaponStyle) {
+            $equipment['weapon_style'] = $weaponStyle;
+            $definition = $catalog->explorationCombatDefinition(
+                'free_black',
+                1,
+                ['vitality' => 0, 'might' => 0, 'finesse' => 0, 'spirit' => 0, 'agility' => 0],
+                $equipment,
+                '装備条件試験の秘書',
+                skillAllocations: $allocations,
+            );
+            $supportsFlurry = in_array($weaponStyle, ['dagger', 'rapier'], true);
+            $this->assertSame(
+                $supportsFlurry
+                    ? ['dagger_flurry', 'holy_bolt', 'mending_prayer']
+                    : ['holy_bolt', 'mending_prayer'],
+                $definition['active_skills'],
+                $weaponStyle,
+            );
+            $actions = array_column($definition['player_snapshot']['ai_rules'], 'action');
+            $this->assertSame($supportsFlurry, in_array('skill:dagger_flurry', $actions, true), $weaponStyle);
+            $this->assertContains('skill:holy_bolt', $actions, $weaponStyle);
+            $this->assertContains('skill:mending_prayer', $actions, $weaponStyle);
+            $this->assertSame('normal_attack', $actions[array_key_last($actions)], $weaponStyle);
+            $this->assertSame(1, $allocations['martial_dagger_flurry']['active_slot'], $weaponStyle);
+        }
     }
 
     public function test_normal_exploration_uses_owned_growth_snapshot_rewards_history_and_cross_operation_idempotency(): void
