@@ -1666,6 +1666,7 @@ describe('application lobby and island entry', () => {
             shopkeeper_name: '<b>店員</b>', true_name_branch: false,
             tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
             contract_completed: true, growth_paths: null, growth_path: growthPath, playtest, battle: null,
+            next_battle_at: null as string | null,
         };
         const summary = {
             id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
@@ -1754,6 +1755,7 @@ describe('application lobby and island entry', () => {
                 if (duplicate) return response(duplicate);
                 explorationResults.set(payload.request_id, explorationBattle);
                 explorationAttempts++;
+                openState = { ...openState, next_battle_at: new Date(Date.now() + 10_000).toISOString() };
                 if (explorationAttempts === 1) throw new TypeError('Explore response lost');
                 return response(explorationBattle);
             }
@@ -1926,6 +1928,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +1150・輝石の欠片 +0G');
         expect(wrapper.get('.underground-battle-result').text()).toContain('戦闘Lv 1 → 6・未使用STP +25（合計 25）');
         await wrapper.get('.underground-battle-back').trigger('click');
+        const exploreButton = wrapper.findAll('.underground-entries button')[0]!;
+        expect(exploreButton.attributes('disabled')).toBeDefined();
+        expect(exploreButton.text()).toMatch(/あと(?:9|10)秒/);
         expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
         expect(wrapper.findAll('.underground-shop-entries button')).toHaveLength(4);
         expect(wrapper.findAll('.underground-shop-entries button').map((button) => button.attributes('disabled') !== undefined))

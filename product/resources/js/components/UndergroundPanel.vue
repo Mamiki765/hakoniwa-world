@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
@@ -157,6 +157,7 @@ interface UndergroundState {
     xp_to_next_level: number;
     shard_balance: number;
     banked_shard_balance: number;
+    next_battle_at: string | null;
     current_hp: number | null;
     unspent_stp: number;
     allocated_stp: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
@@ -332,7 +333,16 @@ const pendingStpMutation = ref<PendingMutation | null>(null);
 const pendingSkillAcquire = ref<PendingMutation | null>(null);
 const pendingLoadoutMutation = ref<PendingMutation | null>(null);
 const equipmentView = ref<'main' | 'shop' | 'vault'>('main');
+const cooldownNowMs = ref(Date.now());
+let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const exploreCooldownSeconds = computed(() => {
+    const nextBattleAt = state.value?.next_battle_at;
+    if (!nextBattleAt) return 0;
+    const timestamp = Date.parse(nextBattleAt);
+    if (!Number.isFinite(timestamp)) return 0;
+    return Math.max(0, Math.ceil((timestamp - cooldownNowMs.value) / 1_000));
+});
 const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
     : state.value?.secretary_name ?? '秘書');
@@ -393,6 +403,7 @@ function requestId(): string {
 
 async function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
     state.value = await api<UndergroundState>('/api/v1/me/underground');
+    cooldownNowMs.value = Date.now();
     if (returnIfTutorialAlreadyFinished && state.value.stage === 'returned_after_tutorial') {
         emit('returnToSecretary');
         return;
@@ -414,6 +425,7 @@ async function mutate(
             method,
             body: JSON.stringify({ request_id: mutationRequestId, ...body }),
         });
+        cooldownNowMs.value = Date.now();
         selectedBattle.value = null;
         if (state.value.stage === 'returned_after_tutorial') {
             emit('returnToSecretary');
@@ -715,7 +727,13 @@ async function applyEquipmentMutation(result: EquipmentMutationState): Promise<v
     }
 }
 
-onMounted(() => { void enter(); });
+onMounted(() => {
+    cooldownTimer = window.setInterval(() => { cooldownNowMs.value = Date.now(); }, 1_000);
+    void enter();
+});
+onUnmounted(() => {
+    if (cooldownTimer !== null) window.clearInterval(cooldownTimer);
+});
 </script>
 
 <template>
@@ -933,7 +951,7 @@ onMounted(() => { void enter(); });
                     </section>
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <h2 id="underground-adventure-title">冒険</h2>
-                        <div class="underground-entries"><button type="button" :disabled="busy" @click="runExplore">周囲を探索<small>浅い洞窟</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
+                        <div class="underground-entries"><button type="button" :disabled="busy || exploreCooldownSeconds > 0" @click="runExplore">周囲を探索<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : '浅い洞窟' }}</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
                     </section>
                     <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
                         <h2 id="underground-playtest-title">力試し（α）</h2>

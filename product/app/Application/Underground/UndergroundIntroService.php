@@ -1164,6 +1164,7 @@ final readonly class UndergroundIntroService
             'banked_shard_balance' => $profile instanceof UndergroundProfile
                 ? $profile->banked_shard_balance
                 : 0,
+            'next_battle_at' => $profile?->next_battle_at?->toAtomString(),
             'current_hp' => $currentHp,
             'unspent_stp' => $profile instanceof UndergroundProfile ? $profile->unspent_stp : 0,
             'allocated_stp' => $profile instanceof UndergroundProfile
@@ -1196,6 +1197,7 @@ final readonly class UndergroundIntroService
             'growth_path' => $growthPath,
             'playtest' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
                 && $profile?->growth_path_key !== null
+                && config('app.env') !== 'production'
                     ? $this->alphaV1Catalog->playtestOptions($profile->growth_path_key)
                     : null,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
