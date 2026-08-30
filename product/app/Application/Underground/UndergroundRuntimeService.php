@@ -416,14 +416,11 @@ final readonly class UndergroundRuntimeService
         $profile->combat_xp += $xpAwarded;
         $profile->shard_balance += $shardDelta;
         $curve = $this->catalog->xpCurve();
-        $profile->combat_level = min(
-            $this->alphaV1Catalog->explorationMaxLevel(),
-            $this->progression->levelAfterXp(
-                $profile->combat_level,
-                $profile->combat_xp,
-                $curve['first_level_cost'],
-                $curve['cost_increment_per_level'],
-            ),
+        $profile->combat_level = $this->progression->levelAfterXp(
+            $profile->combat_level,
+            $profile->combat_xp,
+            $curve['first_level_cost'],
+            $curve['cost_increment_per_level'],
         );
         $stpAwarded = $this->settleLevelStp($profile, $levelBefore);
         $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
@@ -583,14 +580,11 @@ final readonly class UndergroundRuntimeService
             }
 
             $curve = $this->catalog->xpCurve();
-            $profile->combat_level = min(
-                $this->alphaV1Catalog->explorationMaxLevel(),
-                $this->progression->levelAfterXp(
-                    $profile->combat_level,
-                    $profile->combat_xp,
-                    $curve['first_level_cost'],
-                    $curve['cost_increment_per_level'],
-                ),
+            $profile->combat_level = $this->progression->levelAfterXp(
+                $profile->combat_level,
+                $profile->combat_xp,
+                $curve['first_level_cost'],
+                $curve['cost_increment_per_level'],
             );
             $this->settleLevelStp($profile, $levelBefore);
         } elseif ($resultType === UndergroundBattle::RESULT_DEFEAT) {
@@ -805,8 +799,7 @@ final readonly class UndergroundRuntimeService
             || $profile->growth_path_key === null
             || $profile->growth_path_identity !== $this->alphaV1Catalog->growthIdentity()
             || $profile->growth_path_selected_at === null
-            || $profile->combat_level < 1
-            || $profile->combat_level > $this->alphaV1Catalog->explorationMaxLevel()) {
+            || $profile->combat_level < 1) {
             throw new UndergroundRuntimeException(
                 'underground_exploration_locked',
                 '周囲の探索はまだ解禁されていません。',

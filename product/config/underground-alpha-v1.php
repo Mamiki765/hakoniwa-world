@@ -61,7 +61,6 @@ return [
         'identity' => 'secretary-underground-exploration-alpha-v1',
         'hunting_ground_key' => 'shallow_caves',
         'max_rounds' => 100,
-        'max_combat_level' => 100,
         'starter_weapon' => [
             'key' => 'starter_knife',
             'label' => '護身用ナイフ',

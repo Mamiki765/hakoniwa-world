@@ -182,7 +182,7 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'underground_battles_profile_request_unique')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_profiles_growth_path_check')->count());
-        $this->assertSame(1, DB::table('pg_constraint')
+        $this->assertSame(0, DB::table('pg_constraint')
             ->where('conname', 'underground_profiles_combat_level_max_check')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_profiles_stp_entitlement_check')->count());

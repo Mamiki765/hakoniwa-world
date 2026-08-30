@@ -115,6 +115,8 @@ final class UndergroundRuntimeTest extends TestCase
             ['winner' => 'player', 'remaining_hp' => 250, 'final_mp' => 123],
             ['winner' => 'stalemate', 'remaining_hp' => 200, 'final_mp' => 456],
             ['winner' => 'enemy', 'remaining_hp' => 0, 'final_mp' => 789],
+            ['winner' => 'player', 'remaining_hp' => 250, 'final_mp' => 123],
+            ['winner' => 'player', 'remaining_hp' => 225, 'final_mp' => 456],
         ]);
 
         $victory = $runtime->explore($user, (string) Str::uuid())['battle'];
@@ -195,6 +197,40 @@ final class UndergroundRuntimeTest extends TestCase
             $profile->unspent_stp,
         ]);
         $this->assertSame([300, 250, 200], array_column($combat->calls, 'current_hp'));
+
+        $level100MaxHp = app(UndergroundAlphaV1PlayerCatalog::class)->currentMaxHp(
+            'martial_red',
+            100,
+            $profile->allocatedStp(),
+        );
+        $profile->update([
+            'combat_level' => 100,
+            'combat_xp' => 256_350,
+            'unspent_stp' => 495,
+            'current_hp' => $level100MaxHp,
+        ]);
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $levelUp = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $this->assertSame([100, 101, 257_500, 5, 500, $level100MaxHp, 250], [
+            $levelUp->combat_level_before,
+            $levelUp->combat_level_after,
+            $levelUp->combat_xp_after,
+            $levelUp->snapshot['stp_awarded'],
+            $levelUp->snapshot['unspent_stp_after'],
+            $levelUp->snapshot['current_hp_before'],
+            $levelUp->snapshot['current_hp_after'],
+        ]);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $aboveLevel100 = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $this->assertSame([101, 101, 258_650, 500, 250, 225], [
+            $aboveLevel100->combat_level_before,
+            $aboveLevel100->combat_level_after,
+            $aboveLevel100->combat_xp_after,
+            $aboveLevel100->snapshot['unspent_stp_after'],
+            $aboveLevel100->snapshot['current_hp_before'],
+            $aboveLevel100->snapshot['current_hp_after'],
+        ]);
         foreach ($combat->calls as $call) {
             $this->assertArrayNotHasKey('current_mp', $call['player_snapshot']);
         }

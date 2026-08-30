@@ -35,15 +35,6 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             : throw new RuntimeException('Underground exploration max rounds must be exactly 100.');
     }
 
-    public function explorationMaxLevel(): int
-    {
-        $value = $this->explorationConfig()['max_combat_level'] ?? null;
-
-        return $value === 100
-            ? $value
-            : throw new RuntimeException('Underground exploration max combat level must be exactly 100.');
-    }
-
     public function innCost(): int
     {
         $cost = $this->shopConfig()['inn']['cost_shards'] ?? null;

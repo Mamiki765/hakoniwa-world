@@ -50,8 +50,6 @@ SQL);
 
         DB::statement(<<<'SQL'
 ALTER TABLE underground_profiles
-  ADD CONSTRAINT underground_profiles_combat_level_max_check
-  CHECK (combat_level <= 100),
   ADD CONSTRAINT underground_profiles_banked_shard_balance_non_negative
   CHECK (banked_shard_balance >= 0),
   ADD CONSTRAINT underground_profiles_current_hp_positive

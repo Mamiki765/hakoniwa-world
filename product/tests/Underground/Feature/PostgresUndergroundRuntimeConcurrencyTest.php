@@ -392,6 +392,12 @@ SQL);
                 ->where('pg_constraint.conname', 'underground_profiles_stp_entitlement_check')
                 ->where('pg_namespace.nspname', $schema)
                 ->count());
+            $this->assertSame(0, $connection->table('pg_constraint')
+                ->join('pg_class', 'pg_constraint.conrelid', '=', 'pg_class.oid')
+                ->join('pg_namespace', 'pg_class.relnamespace', '=', 'pg_namespace.oid')
+                ->where('pg_constraint.conname', 'underground_profiles_combat_level_max_check')
+                ->where('pg_namespace.nspname', $schema)
+                ->count());
         } finally {
             $connection->unprepared('SET search_path TO public');
             $connection->unprepared("DROP SCHEMA {$schema} CASCADE");
