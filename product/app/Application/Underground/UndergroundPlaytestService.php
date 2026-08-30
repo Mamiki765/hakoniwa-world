@@ -203,10 +203,14 @@ final readonly class UndergroundPlaytestService
         $encounterName = is_string($snapshot['encounter_display_name'] ?? null)
             ? $snapshot['encounter_display_name']
             : '力試しの対戦相手';
+        $playerDisplayName = is_string($snapshot['player_display_name'] ?? null)
+            ? $snapshot['player_display_name']
+            : '秘書';
 
         return [
             'id' => $battle->request_id,
             'context' => 'playtest',
+            'player_display_name' => $playerDisplayName,
             'build_key' => $buildKey,
             'enemy_key' => $enemyKey,
             'build_name' => $buildName,

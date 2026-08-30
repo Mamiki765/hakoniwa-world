@@ -252,6 +252,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('data.stage', 'special_loss_complete')
             ->assertJsonPath('data.battle.context', 'scripted_loss')
+            ->assertJsonPath('data.battle.player_display_name', 'Special secretary')
             ->assertJsonPath('data.battle.encounter_name', 'リカ')
             ->assertJsonPath('data.battle.result', 'defeat')
             ->assertJsonPath('data.battle.rounds', 1)
@@ -395,6 +396,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $first = $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', $payload)
             ->assertOk()
             ->assertJsonPath('data.context', 'playtest')
+            ->assertJsonPath('data.player_display_name', 'Playtest secretary')
             ->assertJsonPath('data.summary.result', 'victory')
             ->assertJsonPath('data.rewards.xp', 0)
             ->assertJsonPath('data.rewards.shards', 0)
@@ -411,14 +413,18 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonMissingPath('data.manifest');
         $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', $payload)
             ->assertOk()->assertExactJson($first->json());
+        $secretary->name = 'Renamed secretary';
+        $secretary->save();
         $this->actingAs($user)->getJson('/api/v1/me/underground/battles')
             ->assertOk()
             ->assertJsonPath('data.0.context', 'playtest')
+            ->assertJsonPath('data.0.player_display_name', 'Playtest secretary')
             ->assertJsonPath('data.0.rounds', null)
             ->assertJsonPath('data.0.detail_available', true);
         $detail = $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
             ->assertOk()
             ->assertJsonPath('data.context', 'playtest')
+            ->assertJsonPath('data.player_display_name', 'Playtest secretary')
             ->assertJsonPath('data.build_name', '護身特化')
             ->assertJsonPath('data.encounter_name', '深層追跡者')
             ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');

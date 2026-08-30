@@ -766,11 +766,13 @@ final readonly class UndergroundIntroService
         }
         $snapshot = $battle->snapshot;
         $displayName = $snapshot['encounter_display_name'] ?? null;
+        $playerDisplayName = $snapshot['player_display_name'] ?? null;
         $log = $this->loadedLog($battle);
 
         return [
             'id' => $battle->request_id,
             'context' => $battle->activity_type === UndergroundBattle::ACTIVITY_TUTORIAL ? 'tutorial' : 'scripted_loss',
+            'player_display_name' => is_string($playerDisplayName) ? $playerDisplayName : '秘書',
             'encounter_name' => is_string($displayName) ? $displayName : '（ダミー）',
             'result' => $battle->result,
             'rounds' => $battle->rounds,

@@ -1629,11 +1629,13 @@ describe('application lobby and island entry', () => {
         };
         const summary = {
             id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+            player_display_name: '過去のペリドット',
             encounter_name: '<b>ジャイアントラット</b>', result: 'victory', rounds: 2,
             xp_awarded: 5, shard_delta: 0, detail_available: true, actions: null,
         };
         const playtestBattle = {
             id: '44444444-4444-4444-8444-444444444444', context: 'playtest',
+            player_display_name: '過去のペリドット',
             build_name: '護身特化', encounter_name: '深層追跡者', result: 'victory', rounds_count: 2,
             xp_awarded: 0, shard_delta: 0, detail_available: true,
             summary: { damage_prevented: 120, final_mp: 9700 },
@@ -1650,12 +1652,12 @@ describe('application lobby and island entry', () => {
                     round: 2,
                     actions: [
                         {
-                            type: 'status_applied', side: '秘書', actor_name: 'ペリドット',
+                            type: 'status_applied', side: '秘書', actor_name: '過去のペリドット',
                             target_name: '深層追跡者', label: '付与: 出血', amount: 0,
                         },
                         {
                             type: 'status_resisted', side: '対戦相手', actor_name: '深層追跡者',
-                            target_name: 'ペリドット', label: '抵抗: 鈍足', amount: 0,
+                            target_name: '過去のペリドット', label: '抵抗: 鈍足', amount: 0,
                         },
                     ],
                     end_state: {
@@ -1727,6 +1729,7 @@ describe('application lobby and island entry', () => {
         await historyButton.trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-battle-opening').text()).toContain('<b>ジャイアントラット</b>');
+        expect(wrapper.get('.underground-battle-opening').text()).toContain('過去のペリドットは戦闘を開始した。');
         expect(wrapper.get('.underground-battle-opening').text()).not.toContain('勝利');
         expect(wrapper.get('.underground-battle-log').text()).toContain('連続斬り');
         expect(wrapper.get('.underground-battle-log').text()).not.toContain('quick_slash');
@@ -1749,7 +1752,7 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(playtestRequest?.[1]?.body))).toEqual({
             request_id: expect.any(String), build_key: 'pure_tank', enemy_key: 'depth_stalker',
         });
-        expect(wrapper.get('.underground-battle-log').text()).toContain('ペリドットは「防御」を使用した。');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('過去のペリドットは「防御」を使用した。');
         expect(wrapper.get('.underground-battle-log').text()).not.toContain('priority_rule_0');
         expect(wrapper.get('.underground-combat-summary').text()).toContain('防いだダメージ120');
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('ラウンド数');
@@ -1761,7 +1764,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('Round 1');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('Round 2');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('深層追跡者に出血が付与された。');
-        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('ペリドットは鈍足を防いだ。');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('過去のペリドットは鈍足を防いだ。');
+        expect(wrapper.findAll('.underground-combatant-state')[0]!.get('strong').text()).toBe('過去のペリドット');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('出血 残1・1段階');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('闘志 2・恩寵 1');
         expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);

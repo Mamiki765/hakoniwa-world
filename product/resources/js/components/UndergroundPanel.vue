@@ -48,6 +48,7 @@ interface CombatRound {
 interface Battle {
     id: string;
     context: 'tutorial' | 'scripted_loss' | 'playtest';
+    player_display_name?: string;
     encounter_name: string;
     build_name?: string;
     result: 'victory' | 'defeat' | 'withdrawal' | 'stalemate';
@@ -221,6 +222,9 @@ const selectedBattle = ref<Battle | null>(null);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const currentPlayerDisplayName = computed(() => currentBattle.value
+    ? playerDisplayName(currentBattle.value)
+    : state.value?.secretary_name ?? '秘書');
 const currentStructuredRounds = computed(() => currentBattle.value ? structuredRounds(currentBattle.value) : []);
 const growthEnding = computed(() => state.value?.growth_path?.key === 'free_black'
     ? '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」'
@@ -384,9 +388,13 @@ function simpleRoundNumbers(battle: Battle): number[] {
     return [...new Set(simpleActions(battle).map((action) => action.round))];
 }
 
+function playerDisplayName(battle: Battle): string {
+    return battle.player_display_name ?? state.value?.secretary_name ?? '秘書';
+}
+
 function actorName(side: string, battle: Battle): string {
     return side === '秘書' || side === 'player'
-        ? state.value?.secretary_name ?? '秘書'
+        ? playerDisplayName(battle)
         : side === '対戦相手' || side === 'enemy'
             ? battle.encounter_name
             : '戦闘';
@@ -395,7 +403,7 @@ function actorName(side: string, battle: Battle): string {
 function targetName(side: string, battle: Battle): string {
     return side === '秘書' || side === 'player'
         ? battle.encounter_name
-        : state.value?.secretary_name ?? '秘書';
+        : playerDisplayName(battle);
 }
 
 function actionNarrative(action: RoundAction, battle: Battle): string {
@@ -455,7 +463,7 @@ onMounted(() => { void enter(); });
                     <p class="eyebrow">遭遇</p>
                     <h1>{{ currentBattle.encounter_name }}</h1>
                     <p v-if="currentBattle.build_name">{{ currentBattle.build_name }}で戦闘を開始した。</p>
-                    <p v-else>{{ state.secretary_name }}は戦闘を開始した。</p>
+                    <p v-else>{{ currentPlayerDisplayName }}は戦闘を開始した。</p>
                     <a class="underground-log-jump" href="#underground-battle-result">末尾へ</a>
                 </header>
 
@@ -468,7 +476,7 @@ onMounted(() => { void enter(); });
                         </ol>
                         <div v-if="round.end_state" class="underground-round-state">
                             <section class="underground-combatant-state">
-                                <strong>{{ state.secretary_name }}</strong>
+                                <strong>{{ currentPlayerDisplayName }}</strong>
                                 <div class="underground-vitals">
                                     <label><span>HP {{ round.end_state.player.hp }}/{{ round.end_state.player.max_hp }}</span><progress class="hp" :max="round.end_state.player.max_hp" :value="round.end_state.player.hp" /></label>
                                     <label><span>MP {{ round.end_state.player.mp }}/10000</span><progress class="mp" max="10000" :value="round.end_state.player.mp" /></label>
@@ -483,7 +491,7 @@ onMounted(() => { void enter(); });
                                 </div>
                                 <p>障壁 {{ round.end_state.enemy.barrier }}・状態 {{ statusSummary(round.end_state.enemy) }}・闘志 {{ round.end_state.enemy.role_stacks.fighting_spirit }}・恩寵 {{ round.end_state.enemy.role_stacks.grace }}</p>
                             </section>
-                            <p v-if="round.end_state.player.hp === 0" class="underground-ko">{{ state.secretary_name }}は戦闘不能になった。</p>
+                            <p v-if="round.end_state.player.hp === 0" class="underground-ko">{{ currentPlayerDisplayName }}は戦闘不能になった。</p>
                             <p v-if="round.end_state.enemy.hp === 0" class="underground-ko">{{ currentBattle.encounter_name }}は戦闘不能になった。</p>
                         </div>
                     </article>
