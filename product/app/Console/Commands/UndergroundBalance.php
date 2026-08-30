@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Application\Underground\UndergroundBalanceSimulator;
+use App\Application\Underground\UndergroundBuildBalanceSimulator;
 use App\Application\Underground\UndergroundReportSourceIdentity;
+use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
 use JsonException;
@@ -25,6 +27,7 @@ final class UndergroundBalance extends Command
 
     public function handle(
         UndergroundBalanceSimulator $simulator,
+        UndergroundBuildBalanceSimulator $buildSimulator,
         UndergroundReportSourceIdentity $sourceIdentity,
     ): int {
         try {
@@ -44,17 +47,20 @@ final class UndergroundBalance extends Command
 
             $scenario = $this->optionalString('scenario');
             $replaySeed = $this->optionalInteger('replay-seed');
+            $selectedSimulator = ($manifest['combat_identity'] ?? null) === AlphaV1CombatRules::IDENTITY
+                ? $buildSimulator
+                : $simulator;
             if ($replaySeed !== null) {
                 if ($scenario === null) {
                     throw new InvalidArgumentException('--scenario is required with --replay-seed.');
                 }
-                $report = $simulator->replay($manifest, $scenario, $replaySeed);
+                $report = $selectedSimulator->replay($manifest, $scenario, $replaySeed);
             } else {
                 [$commitSha, $workingTreeDirty] = $this->gitIdentity(
                     $sourceIdentity,
                     $this->optionalString('commit-sha'),
                 );
-                $report = $simulator->run(
+                $report = $selectedSimulator->run(
                     $manifest,
                     $contents,
                     hash('sha256', $contents),

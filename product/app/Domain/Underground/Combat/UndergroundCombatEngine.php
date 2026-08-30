@@ -4,12 +4,17 @@ namespace App\Domain\Underground\Combat;
 
 use InvalidArgumentException;
 
-final readonly class UndergroundCombatEngine
+final class UndergroundCombatEngine
 {
+    private readonly CanonicalCombatOrchestrator $orchestrator;
+
     public function __construct(
-        private UndergroundCombatRules $rules,
-        private BuiltInCombatAi $ai,
-    ) {}
+        private readonly UndergroundCombatRules $rules,
+        private readonly BuiltInCombatAi $ai,
+        ?CanonicalCombatOrchestrator $orchestrator = null,
+    ) {
+        $this->orchestrator = $orchestrator ?? new CanonicalCombatOrchestrator;
+    }
 
     /** @param list<string> $skillKeys */
     public function fight(
@@ -108,19 +113,23 @@ final readonly class UndergroundCombatEngine
         $skillUsage = array_fill_keys($skillKeys, 0);
         $resourceHistory = [];
         $actionLog = [];
-        $completedRounds = 0;
-
-        for ($round = 1; $round <= $maxRounds && $actor->alive() && $enemy->alive(); $round++) {
-            $completedRounds = $round;
-            $actor->tickCooldowns();
-            $enemy->tickCooldowns();
-            $turnOrder = $this->turnOrder($actor, $enemy, $random, $round);
-
-            foreach ($turnOrder as $actingSide) {
-                if (! $actor->alive() || ! $enemy->alive()) {
-                    break;
-                }
-
+        $completedRounds = $this->orchestrator->run(
+            $maxRounds,
+            static fn (): bool => $actor->alive() && $enemy->alive(),
+            static function () use ($actor, $enemy): void {
+                $actor->tickCooldowns();
+                $enemy->tickCooldowns();
+            },
+            fn (int $round): array => $this->turnOrder($actor, $enemy, $random, $round),
+            function (string $actingSide, int $round) use (
+                $actor,
+                $enemy,
+                $random,
+                &$metrics,
+                &$skillUsage,
+                &$resourceHistory,
+                &$actionLog,
+            ): void {
                 if ($actingSide === 'player') {
                     $action = $this->ai->playerAction($actor, $enemy);
                     $this->executePlayerAction(
@@ -138,8 +147,9 @@ final readonly class UndergroundCombatEngine
                     $action = $this->ai->enemyAction($enemy, $round);
                     $this->executeEnemyAction($enemy, $actor, $action, $random, $round, $metrics, $actionLog);
                 }
-            }
-        }
+            },
+            static function (): void {},
+        );
 
         $abnormal = $this->abnormalState($actor, $enemy);
         $winner = ! $actor->alive() ? 'enemy' : (! $enemy->alive() ? 'player' : 'stalemate');
