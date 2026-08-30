@@ -1,0 +1,193 @@
+{
+    "schema_version": 1,
+    "simulation_type": "trial_sequence",
+    "trial_identity": "underground-trial-01-simulation-v1",
+    "combat_identity": "secretary-underground-alpha-v1",
+    "seed_strategy_identity": "trial-sequence-common-random-v1",
+    "seed_range": {"start": 0, "count": 1000},
+    "max_rounds": 100,
+    "mp_natural_recovery": 300,
+    "checkpoints": [25, 30, 35],
+    "interbattle_healing": {
+        "primary_bps": 2000,
+        "comparison_bps": [1000, 2000, 3000],
+        "comparison_levels": [30]
+    },
+    "builds": {
+        "martial_red": {
+            "label": "戦技型（赤）",
+            "growth_path": "martial_red",
+            "stp_weights_bps": {"vitality": 1500, "might": 5500, "finesse": 2000, "spirit": 0, "agility": 1000},
+            "skill_allocations": {
+                "martial_precision_cut": {"rank": 1, "active_slot": 1},
+                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
+                "martial_critical_training": {"rank": 2, "active_slot": null}
+            },
+            "equipment_keys": ["polished_steel_dagger", "iron_breastplate", "might_accessory_rank_3"]
+        },
+        "guardianship_blue": {
+            "label": "護身型（青）",
+            "growth_path": "guardianship_blue",
+            "stp_weights_bps": {"vitality": 500, "might": 7000, "finesse": 1500, "spirit": 0, "agility": 1000},
+            "skill_allocations": {
+                "guardianship_shield_bash": {"rank": 1, "active_slot": 1},
+                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
+                "martial_critical_training": {"rank": 2, "active_slot": null}
+            },
+            "equipment_keys": ["reinforced_longsword", "iron_breastplate", "might_accessory_rank_3"]
+        },
+        "blessing_green": {
+            "label": "祝福型（緑）",
+            "growth_path": "blessing_green",
+            "stp_weights_bps": {"vitality": 1000, "might": 0, "finesse": 3500, "spirit": 4500, "agility": 1000},
+            "skill_allocations": {
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
+                "miracle_healing_study": {"rank": 4, "active_slot": null}
+            },
+            "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
+        },
+        "free_black": {
+            "label": "自由型（黒）",
+            "growth_path": "free_black",
+            "stp_weights_bps": {"vitality": 0, "might": 5000, "finesse": 4000, "spirit": 0, "agility": 1000},
+            "skill_allocations": {
+                "martial_precision_cut": {"rank": 1, "active_slot": 1},
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 3},
+                "miracle_healing_study": {"rank": 1, "active_slot": null}
+            },
+            "equipment_keys": ["steel_rapier", "iron_breastplate", "finesse_accessory_rank_3"]
+        }
+    },
+    "battle_sequence": [
+        "trial_rat_vanguard",
+        "trial_cave_hunter",
+        "trial_corrosive_guard",
+        "trial_regenerating_hulk",
+        "trial_crystal_adept",
+        "trial_fanatic_captain",
+        "trial_razor_bat",
+        "trial_ash_knight",
+        "trial_gate_golem",
+        "trial_wyvern"
+    ],
+    "skills": {
+        "trial_corrosive_slam": {
+            "label": "腐食殴打", "node_key": null, "mp_cost": 0, "cooldown": 2, "required_weapon_styles": [],
+            "effects": [
+                {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 7600, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 9000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+                {"type": "apply_status", "target": "enemy", "status": "armor_break"}
+            ]
+        },
+        "trial_arcane_burst": {
+            "label": "晶力弾", "node_key": null, "mp_cost": 0, "cooldown": 2, "required_weapon_styles": [],
+            "effects": [{"type": "damage", "target": "enemy", "category": "miracle", "potency_bps": 8200, "stat_coefficients": {"spirit": 10000}, "weapon_coefficient_bps": 10500, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}]
+        },
+        "trial_razor_flurry": {
+            "label": "裂翼連撃", "node_key": null, "mp_cost": 0, "cooldown": 1, "required_weapon_styles": [],
+            "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 3300, "stat_coefficients": {"might": 6000, "finesse": 4000}, "weapon_coefficient_bps": 6500, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 3}]
+        },
+        "trial_wyvern_breath": {
+            "label": "灼熱の息吹", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "consume_status": "telegraph",
+            "effects": [
+                {"type": "damage", "target": "enemy", "category": "miracle", "potency_bps": 11800, "stat_coefficients": {"might": 4000, "spirit": 6000}, "weapon_coefficient_bps": 12000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": false, "hits": 1},
+                {"type": "apply_status", "target": "enemy", "status": "weakened"}
+            ]
+        },
+        "trial_wyvern_tail": {
+            "label": "裂傷尾撃", "node_key": null, "mp_cost": 0, "cooldown": 2, "required_weapon_styles": [],
+            "effects": [
+                {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 8500, "stat_coefficients": {"might": 7000, "finesse": 3000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
+                {"type": "apply_status", "target": "enemy", "status": "bleed"}
+            ]
+        }
+    },
+    "statuses": {},
+    "enemies": {
+        "trial_rat_vanguard": {
+            "label": "試練の地底鼠", "boss": false,
+            "base_stats": {"vitality": 18, "might": 24, "finesse": 18, "spirit": 10, "agility": 30},
+            "max_hp": 700, "physical_defense": 70, "magical_defense": 65, "weapon_power": 82,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6600, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
+            "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
+        },
+        "trial_cave_hunter": {
+            "label": "洞窟狩人", "boss": false,
+            "base_stats": {"vitality": 24, "might": 28, "finesse": 18, "spirit": 14, "agility": 16},
+            "max_hp": 850, "physical_defense": 80, "magical_defense": 75, "weapon_power": 92,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7000, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
+            "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
+        },
+        "trial_corrosive_guard": {
+            "label": "腐食鎧兵", "boss": false,
+            "base_stats": {"vitality": 36, "might": 20, "finesse": 12, "spirit": 22, "agility": 10},
+            "max_hp": 1000, "physical_defense": 120, "magical_defense": 85, "weapon_power": 95,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6600, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "skills": ["trial_corrosive_slam"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial_corrosive_slam"}], "action": "skill:trial_corrosive_slam"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
+        },
+        "trial_regenerating_hulk": {
+            "label": "再生する巨躯", "boss": false,
+            "base_stats": {"vitality": 38, "might": 28, "finesse": 10, "spirit": 14, "agility": 10},
+            "max_hp": 1150, "physical_defense": 95, "magical_defense": 85, "weapon_power": 102,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6600, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {"self_regeneration_target_hp_bps": 25}
+        },
+        "trial_crystal_adept": {
+            "label": "晶術士", "boss": false,
+            "base_stats": {"vitality": 18, "might": 12, "finesse": 20, "spirit": 38, "agility": 12},
+            "max_hp": 1000, "physical_defense": 75, "magical_defense": 120, "weapon_power": 95,
+            "normal_attack": {"type": "damage", "category": "miracle", "potency_bps": 6800, "stat_coefficients": {"spirit": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "skills": ["trial_arcane_burst"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial_arcane_burst"}], "action": "skill:trial_arcane_burst"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
+        },
+        "trial_fanatic_captain": {
+            "label": "狂信隊長", "boss": false,
+            "base_stats": {"vitality": 24, "might": 38, "finesse": 16, "spirit": 10, "agility": 12},
+            "max_hp": 1200, "physical_defense": 100, "magical_defense": 85, "weapon_power": 95,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7000, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
+            "skills": ["enemy_telegraph", "pressure_heavy"], "ai_rules": [{"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:pressure_heavy"}, {"conditions": [{"type": "round_modulo", "modulo": 4, "equals": 3}], "action": "skill:enemy_telegraph"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
+        },
+        "trial_razor_bat": {
+            "label": "刃翼蝙蝠", "boss": false,
+            "base_stats": {"vitality": 18, "might": 28, "finesse": 24, "spirit": 10, "agility": 20},
+            "max_hp": 1050, "physical_defense": 80, "magical_defense": 75, "weapon_power": 100,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6200, "stat_coefficients": {"might": 6000, "finesse": 4000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
+            "skills": ["trial_razor_flurry"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial_razor_flurry"}], "action": "skill:trial_razor_flurry"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
+        },
+        "trial_ash_knight": {
+            "label": "灰晶騎士", "boss": false,
+            "base_stats": {"vitality": 30, "might": 28, "finesse": 12, "spirit": 20, "agility": 10},
+            "max_hp": 1400, "physical_defense": 120, "magical_defense": 110, "weapon_power": 100,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7200, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "skills": ["trial_arcane_burst"], "ai_rules": [{"conditions": [{"type": "round_modulo", "modulo": 3, "equals": 0}, {"type": "skill_ready", "skill": "trial_arcane_burst"}], "action": "skill:trial_arcane_burst"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
+        },
+        "trial_gate_golem": {
+            "label": "門衛石像", "boss": false,
+            "base_stats": {"vitality": 42, "might": 28, "finesse": 8, "spirit": 12, "agility": 10},
+            "max_hp": 1200, "physical_defense": 125, "magical_defense": 115, "weapon_power": 100,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6500, "stat_coefficients": {"vitality": 3000, "might": 7000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {"self_regeneration_target_hp_bps": 10, "damage_taken_reduction_bps": 50}
+        },
+        "trial_wyvern": {
+            "label": "ワイバーン", "boss": true,
+            "base_stats": {"vitality": 30, "might": 34, "finesse": 16, "spirit": 12, "agility": 8},
+            "max_hp": 1600, "physical_defense": 60, "magical_defense": 300, "weapon_power": 180,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7600, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
+            "skills": ["enemy_telegraph", "trial_wyvern_breath", "trial_wyvern_tail", "trial_razor_flurry"],
+            "ai_rules": [
+                {"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:trial_wyvern_breath"},
+                {"conditions": [{"type": "round_modulo", "modulo": 5, "equals": 4}], "action": "skill:enemy_telegraph"},
+                {"conditions": [{"type": "round_modulo", "modulo": 3, "equals": 0}, {"type": "skill_ready", "skill": "trial_wyvern_tail"}], "action": "skill:trial_wyvern_tail"},
+                {"conditions": [{"type": "skill_ready", "skill": "trial_razor_flurry"}], "action": "skill:trial_razor_flurry"},
+                {"conditions": [{"type": "always"}], "action": "normal_attack"}
+            ],
+            "modifiers": {"damage_taken_reduction_bps": 100, "self_regeneration_target_hp_bps": 110}
+        }
+    },
+    "tuning_parameters": {
+        "scope": "simulation_only_trial_01",
+        "primary_target": "Lv30 Rank3 four-build clear rate observation near 30-70 percent",
+        "non_targets": ["player-facing release", "persistence", "Surface Ruleset", "production migration"],
+        "adjustable": ["enemy max_hp", "enemy defenses", "enemy weapon_power", "enemy attack potency", "enemy regeneration", "boss damage reduction"]
+    }
+}
