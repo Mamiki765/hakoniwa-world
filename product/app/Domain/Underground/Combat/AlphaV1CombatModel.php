@@ -136,6 +136,14 @@ final readonly class AlphaV1CombatModel
             ): void {
                 $this->processRoundEnd($catalog, $player, $enemy, $round, $metrics, $statusUptime, $actionLog);
                 $this->processRoundEnd($catalog, $enemy, $player, $round, $metrics, $statusUptime, $actionLog);
+                $actionLog[] = [
+                    'kind' => 'round_end',
+                    'round' => $round,
+                    'side' => 'system',
+                    'action' => 'round_end',
+                    'player' => $this->stateSnapshot($player),
+                    'enemy' => $this->stateSnapshot($enemy),
+                ];
             },
         );
 
@@ -300,7 +308,7 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, int>>  $mpHistory
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function executeTurn(
         AlphaV1BuildCatalog $catalog,
@@ -323,6 +331,16 @@ final readonly class AlphaV1CombatModel
         }
 
         $action = $this->ai->select($actor, $target, $catalog, $round);
+        $actionLog[] = [
+            'kind' => 'decision',
+            'round' => $round,
+            'side' => $actor->side,
+            'action' => 'decision',
+            'action_key' => $action['type'] === 'skill' ? $action['key'] : $action['type'],
+            'reason' => $action['reason'],
+            'fallback' => $action['fallback'],
+            'mp_blocked' => $action['mp_blocked'],
+        ];
         if ($actor->side === 'player' && $action['mp_blocked']) {
             $metrics['skill_unavailable_due_to_mp']++;
         }
@@ -334,7 +352,7 @@ final readonly class AlphaV1CombatModel
             if ($actor->side === 'player') {
                 $actionUsage['defend']++;
             }
-            $actionLog[] = $this->logRow($round, $actor, 'defend', 0, false, false);
+            $actionLog[] = $this->logRow($round, $actor, 'defend', 0, false, false, effectType: 'guard');
 
             return;
         }
@@ -400,7 +418,7 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, int>>  $mpHistory
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function applySkillEffect(
         AlphaV1BuildCatalog $catalog,
@@ -471,7 +489,7 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, mixed>  $effect
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function applyDamage(
         BuildCombatState $actor,
@@ -560,7 +578,7 @@ final readonly class AlphaV1CombatModel
                 if ($target->side === 'player') {
                     $metrics['damage_prevented'] += $preMitigation;
                 }
-                $actionLog[] = $this->logRow($round, $actor, $actionKey, 0, $critical, true);
+                $actionLog[] = $this->logRow($round, $actor, $actionKey, 0, $critical, true, effectType: 'damage');
 
                 continue;
             }
@@ -595,7 +613,7 @@ final readonly class AlphaV1CombatModel
             if ($target->side === 'player') {
                 $metrics['damage_prevented'] += max(0, $preMitigation - $postMitigation);
             }
-            if ($target->side === 'player' && ($guarded || $barrierAbsorbed > 0)) {
+            if ($guarded || $barrierAbsorbed > 0) {
                 if (($target->modifiers['fighting_spirit_enabled'] ?? false) === true) {
                     $this->grantRoleStack($target, 'fighting_spirit', 5);
                 }
@@ -613,14 +631,14 @@ final readonly class AlphaV1CombatModel
                     $this->healExact($actor, intdiv($hpDamage * $lifestealBps, 10_000), $metrics);
                 }
             }
-            $actionLog[] = $this->logRow($round, $actor, $actionKey, $hpDamage, $critical, false, $guarded, $parried, $barrierAbsorbed);
+            $actionLog[] = $this->logRow($round, $actor, $actionKey, $hpDamage, $critical, false, $guarded, $parried, $barrierAbsorbed, 'damage');
         }
     }
 
     /**
      * @param  array<string, mixed>  $effect
      * @param  array<string, int|null>  $metrics
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function applyHeal(
         BuildCombatState $source,
@@ -640,12 +658,12 @@ final readonly class AlphaV1CombatModel
                 $source->flags['graceful_focus'] = true;
             }
         }
-        $actionLog[] = $this->logRow($round, $source, $actionKey, -$effective, false, false);
+        $actionLog[] = $this->logRow($round, $source, $actionKey, -$effective, false, false, effectType: 'recovery');
     }
 
     /**
      * @param  array<string, mixed>  $effect
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function applyBarrier(
         BuildCombatState $source,
@@ -660,7 +678,7 @@ final readonly class AlphaV1CombatModel
         $cap = intdiv($target->maxHp * 3_500, 10_000);
         $before = $target->barrier;
         $target->barrier = min($cap, $target->barrier + max(0, $amount));
-        $actionLog[] = $this->logRow($round, $source, $actionKey, -($target->barrier - $before), false, false);
+        $actionLog[] = $this->logRow($round, $source, $actionKey, -($target->barrier - $before), false, false, effectType: 'barrier');
     }
 
     /** @param array<string, mixed> $effect */
@@ -677,7 +695,7 @@ final readonly class AlphaV1CombatModel
     }
 
     /**
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function applyStatus(
         AlphaV1BuildCatalog $catalog,
@@ -696,7 +714,7 @@ final readonly class AlphaV1CombatModel
             + (int) ($source->modifiers['status_potency_bps'] ?? 0),
         ));
         if (! $force && $random->integer("alpha-v1:status:{$source->key}:{$actionKey}:{$statusKey}", 1, 10_000) > $chance) {
-            $actionLog[] = $this->logRow($round, $source, 'status_resisted:'.$statusKey, 0, false, false);
+            $actionLog[] = $this->logRow($round, $source, 'status_resisted:'.$statusKey, 0, false, false, effectType: 'status_resisted');
 
             return;
         }
@@ -749,6 +767,7 @@ final readonly class AlphaV1CombatModel
             $bossConverted ? $bossFactorBps : $stacks,
             false,
             false,
+            effectType: 'status_applied',
         );
     }
 
@@ -791,7 +810,7 @@ final readonly class AlphaV1CombatModel
 
     /**
      * @param  array<string, mixed>  $effect
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function removeStatuses(
         BuildCombatState $source,
@@ -817,13 +836,13 @@ final readonly class AlphaV1CombatModel
             && ($source->modifiers['grace_enabled'] ?? false) === true) {
             $this->grantRoleStack($source, 'grace', 5);
         }
-        $actionLog[] = $this->logRow($round, $source, $actionKey, -$removed, false, false);
+        $actionLog[] = $this->logRow($round, $source, $actionKey, -$removed, false, false, effectType: 'status_removed');
     }
 
     /**
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $statusUptime
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function processRoundEnd(
         AlphaV1BuildCatalog $catalog,
@@ -863,6 +882,7 @@ final readonly class AlphaV1CombatModel
                         false,
                         false,
                         barrierAbsorbed: $settled['barrier_absorbed'],
+                        effectType: 'damage',
                     );
                 } elseif (($effect['type'] ?? null) === 'periodic_heal' && $state->alive()) {
                     $amount = max(1, intdiv(
@@ -873,11 +893,12 @@ final readonly class AlphaV1CombatModel
                         10_000,
                     ));
                     $effective = $this->healExact($state, $amount, $metrics);
-                    $actionLog[] = $this->logRow($round, $state, 'periodic_heal:'.$key, -$effective, false, false);
+                    $actionLog[] = $this->logRow($round, $state, 'periodic_heal:'.$key, -$effective, false, false, effectType: 'recovery');
                 }
             }
             $status['remaining']--;
             if ($status['remaining'] <= 0) {
+                $actionLog[] = $this->logRow($round, $state, 'status_expired:'.$key, 0, false, false, effectType: 'status_expired');
                 unset($state->statuses[$key]);
             }
         }
@@ -890,7 +911,7 @@ final readonly class AlphaV1CombatModel
                 $amount = min(intdiv($state->maxHp * $regenerationBps, 10_000), $cap);
                 $effective = $this->healExact($state, $amount, $metrics);
                 if ($effective > 0) {
-                    $actionLog[] = $this->logRow($round, $state, 'self_regeneration', -$effective, false, false);
+                    $actionLog[] = $this->logRow($round, $state, 'self_regeneration', -$effective, false, false, effectType: 'recovery');
                 }
             }
         }
@@ -929,7 +950,7 @@ final readonly class AlphaV1CombatModel
     /**
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      */
     private function counter(
         BuildCombatState $defender,
@@ -970,6 +991,7 @@ final readonly class AlphaV1CombatModel
             false,
             false,
             barrierAbsorbed: $settled['barrier_absorbed'],
+            effectType: 'counter',
         );
     }
 
@@ -1124,6 +1146,28 @@ final readonly class AlphaV1CombatModel
         return $stats;
     }
 
+    /** @return array<string, mixed> */
+    private function stateSnapshot(BuildCombatState $state): array
+    {
+        $statuses = [];
+        foreach ($state->statuses as $key => $status) {
+            $statuses[] = [
+                'key' => $key,
+                'remaining' => $status['remaining'],
+                'stacks' => $status['stacks'],
+            ];
+        }
+
+        return [
+            'hp' => $state->hp,
+            'max_hp' => $state->maxHp,
+            'mp' => $state->mp,
+            'barrier' => $state->barrier,
+            'statuses' => $statuses,
+            'role_stacks' => $state->roleStacks,
+        ];
+    }
+
     private function scaledProbabilityContribution(
         BuildCombatState $state,
         string $stat,
@@ -1226,7 +1270,7 @@ final readonly class AlphaV1CombatModel
     }
 
     /**
-     * @return array<string, int|string|bool|null>
+     * @return array<string, mixed>
      */
     private function logRow(
         int $round,
@@ -1238,8 +1282,11 @@ final readonly class AlphaV1CombatModel
         bool $guarded = false,
         bool $parried = false,
         int $barrierAbsorbed = 0,
+        string $effectType = 'state',
     ): array {
         return [
+            'kind' => 'effect',
+            'effect_type' => $effectType,
             'round' => $round,
             'side' => $actor->side,
             'action' => $action,

@@ -52,6 +52,8 @@ final class UndergroundBattle extends Model
 
     public const ACTIVITY_STORY = 'story';
 
+    public const ACTIVITY_PLAYTEST = 'playtest';
+
     public const RESULT_VICTORY = 'victory';
 
     public const RESULT_DEFEAT = 'defeat';

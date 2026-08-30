@@ -26,11 +26,13 @@ final class TestShardPlannerTest extends TestCase
         $this->write($root.'/tests/Unit/ZedTest.php');
         $this->write($root.'/tests/Feature/ShipSystemTest.php');
         $this->write($root.'/tests/Feature/Helper.php');
+        $this->write($root.'/tests/Underground/CrystalPathTest.php');
 
         $planner = new TestShardPlanner($root);
 
         $this->assertSame([
             'tests/Feature/ShipSystemTest.php',
+            'tests/Underground/CrystalPathTest.php',
             'tests/Unit/ZedTest.php',
         ], $planner->discover());
     }
@@ -137,11 +139,40 @@ final class TestShardPlannerTest extends TestCase
         $this->assertSame(0, $report['unexpected_count']);
     }
 
+    public function test_repository_composer_commands_define_non_overlapping_surface_underground_and_all_suites(): void
+    {
+        $composer = json_decode(
+            file_get_contents(dirname(__DIR__, 2).'/composer.json') ?: '',
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+        $this->assertIsArray($composer);
+        $scripts = $composer['scripts'] ?? [];
+
+        $this->assertSame(['@test:all'], $scripts['test']);
+        $this->assertSame(
+            '@php -d memory_limit=512M vendor/bin/phpunit tests/Unit tests/Feature',
+            $scripts['test:surface'][1],
+        );
+        $this->assertSame(
+            '@php -d memory_limit=512M vendor/bin/phpunit tests/Underground',
+            $scripts['test:underground'][1],
+        );
+        $this->assertSame(
+            '@php -d memory_limit=512M vendor/bin/phpunit',
+            $scripts['test:all'][1],
+        );
+        $this->assertStringNotContainsString('Underground', $scripts['test:surface'][1]);
+        $this->assertStringNotContainsString('tests/Unit', $scripts['test:underground'][1]);
+        $this->assertStringNotContainsString('tests/Feature', $scripts['test:underground'][1]);
+    }
+
     private function createFixtureProject(): string
     {
         $root = sys_get_temp_dir().'/hakoniwa-shard-planner-'.bin2hex(random_bytes(8));
         mkdir($root.'/tests/Unit', 0777, true);
         mkdir($root.'/tests/Feature', 0777, true);
+        mkdir($root.'/tests/Underground', 0777, true);
         file_put_contents($root.'/phpunit.xml', <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit>
@@ -151,6 +182,9 @@ final class TestShardPlannerTest extends TestCase
         </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Underground">
+            <directory>tests/Underground</directory>
         </testsuite>
     </testsuites>
 </phpunit>

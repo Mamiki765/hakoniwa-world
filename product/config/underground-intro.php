@@ -1,11 +1,17 @@
 <?php
 
 return [
-    'schema_version' => 1,
-    'story_identity' => 'secretary-underground-intro-alpha-v1',
+    'schema_version' => 2,
+    'story_identity' => 'secretary-underground-intro-alpha-v2',
     'shopkeeper_name' => [
         'maximum_graphemes' => 20,
-        'special_trigger' => 'ダミー',
+        'true_name_aliases' => [
+            'リカ',
+            '雨宮利香',
+            '雨宮 利香',
+            '雨宮　利香',
+            'リカ・サキュバス',
+        ],
     ],
     'battles' => [
         'tutorial' => [
@@ -21,6 +27,7 @@ return [
             'actor' => [
                 'key' => 'tutorial_secretary',
                 'label' => '秘書',
+                'stats' => ['vitality' => 10, 'might' => 10, 'finesse' => 10, 'spirit' => 10, 'agility' => 10],
                 'weapon_key' => 'tutorial_starter_knife',
                 'max_hp' => 220,
                 'attack' => 105,

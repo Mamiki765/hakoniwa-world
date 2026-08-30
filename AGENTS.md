@@ -345,6 +345,16 @@ constraint is not missing compatibility.
 
 ## Verification policy
 
+Local backend full suites are separate verification units:
+
+- Surface full is `composer test:surface` and contains `tests/Unit` plus `tests/Feature`; it does not contain `tests/Underground`.
+- Underground full is `composer test:underground` and contains only `tests/Underground`.
+- Repository-wide verification is `composer test:all`; `composer test` remains its compatibility alias.
+
+For an Underground-only feature or fix, run focused tests, Underground full, relevant static/frontend checks, and exact-head Quality CI. Do not add a local Surface full run. For a Surface-only feature or fix, run focused tests, Surface full, relevant static/frontend checks, and exact-head Quality CI. Do not add a local Underground full run.
+
+Run both local full suites or `composer test:all` only for a release, rebaseline, test-infrastructure change, Surface/Underground shared-runtime cross-cutting change, or explicit Owner request, and only when there is a concrete reason. Exact-head Quality CI remains repository-wide and must cover both suites with complete shard coverage, duplicate zero, missing zero, and serial/shard identifier equivalence. A test-infrastructure change may prove the separation contract with focused script/config tests and exact-head CI without adding an otherwise unnecessary long local repository-wide serial run.
+
 For an ordinary feature or fix PR, exact-head sharded Quality CI plus appropriate focused
 local tests and static checks may provide complete verification. A 30-minute-class local
 full serial run is not automatically required. Require local full serial primarily for a

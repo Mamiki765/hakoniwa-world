@@ -48,6 +48,17 @@
             "npx concurrently -c \"#93c5fd,#c4b5fd\" \"php artisan serve\" \"npm run dev\" --names=server,vite --kill-others"
         ],
         "test": [
+            "@test:all"
+        ],
+        "test:surface": [
+            "@php artisan config:clear --ansi @no_additional_args",
+            "@php -d memory_limit=512M vendor/bin/phpunit tests/Unit tests/Feature"
+        ],
+        "test:underground": [
+            "@php artisan config:clear --ansi @no_additional_args",
+            "@php -d memory_limit=512M vendor/bin/phpunit tests/Underground"
+        ],
+        "test:all": [
             "@php artisan config:clear --ansi @no_additional_args",
             "@php -d memory_limit=512M vendor/bin/phpunit"
         ],

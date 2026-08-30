@@ -24,6 +24,12 @@ final class UndergroundIntroStage
 
     public const SHOP_EXPLANATION = 'shop_explanation';
 
+    public const CONTRACT_READY = 'contract_ready';
+
+    public const CRYSTAL_SELECTION = 'crystal_selection';
+
+    public const GROWTH_PATH_SELECTED = 'growth_path_selected';
+
     public const UNDERGROUND_OPEN = 'underground_open';
 
     /** @return list<string> */
@@ -40,6 +46,9 @@ final class UndergroundIntroStage
             self::SPECIAL_LOSS_PENDING,
             self::SPECIAL_LOSS_COMPLETE,
             self::SHOP_EXPLANATION,
+            self::CONTRACT_READY,
+            self::CRYSTAL_SELECTION,
+            self::GROWTH_PATH_SELECTED,
             self::UNDERGROUND_OPEN,
         ];
     }

@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backend、PR104 first-player Tutorial flow、PR105のplayer-inaccessibleな`secretary-underground-alpha-v1` combat/build laboratoryのcurrent task-specific architecture authorityである。manual combat、playerのskill/equipment persistenceとUI、正式shop、normal hunt/Trial content、surface bridgeは定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backend、PR104 first-player Tutorial flow、PR105の`secretary-underground-alpha-v1` combat/build laboratory、PR106の正式intro・契約・初期成長方針・報酬なしalpha-v1 playtestのcurrent task-specific architecture authorityである。manual combat、playerのskill/equipment persistenceと育成UI、正式shop economy、normal hunt/Trial content、surface bridgeは定義しない。
 
-application versionは`3.0.0-alpha.1`のままである。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。PR102〜104のprofile、run、history、intro stateとPR105のpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR105は通常探索、Trial、Shopの`準備中`を解除せず、alpha-v1をexisting runtime/Tutorialへ接続しない。
+application versionは`3.0.0-alpha.2`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR106はalpha-v1を報酬なしplaytestと特別branchのstory戦闘にだけ接続し、通常探索、Trial、正式equipment/skill育成、実Shopは解禁しない。
 
 ## Modular-monolith boundary
 
@@ -200,7 +200,7 @@ full manifestを実行したreportはsemantic observationsと`laboratory_contrac
 
 ## Verification boundary
 
-pure combat CI smokeは32程度のseedでdeterminism、legality、abnormal=0、report再現性、semantic behaviorを確認する。10,000-seed runはmanual experimentであり、CIへ常設しない。pure combat testはsurface/database fixtureを持たず、PR102/PR103のDB-backed testは`tests/Underground/Feature`へ分離し、User、Secretary、Underground専用profile/run/history tableだけを使う。transaction、row lock、unique idempotencyの代表的な競合テストはこの境界で実行できるが、World construction、Nation、MapCell、official Turn、surface bridge fixtureは実行しない。
+pure combat CI smokeは32程度のseedでdeterminism、legality、abnormal=0、report再現性、semantic behaviorを確認する。10,000-seed runはmanual experimentであり、CIへ常設しない。pure combat testはsurface/database fixtureを持たず、PR102以降のDB-backed testは`tests/Underground/Feature`へ分離し、User、Secretary、Underground専用profile/run/history tableだけを使う。transaction、row lock、unique idempotencyの代表的な競合テストはこの境界で実行できるが、World construction、Nation、MapCell、official Turn、surface bridge fixtureは実行しない。local fullは`composer test:underground`、Surface fullは`composer test:surface`、repository-wide verificationは`composer test:all`を使用し、通常の片側作業で他方のlocal fullを追加しない。Quality CIは両側の全test fileをshardしてcoverする。
 
 代表command:
 
@@ -240,6 +240,18 @@ PR104は汎用visual novel/script engineではなく、Secretary-ownedの一方�
 
 Tutorialはversioned `tutorial_giant_rat` inputと固定starter-knife projectionをcanonical pure engineへ渡す。starter knifeはinventory Item、weapon instance、rarity/affix/durability schemaを作らない。期待resultは100 round未満のplayer victoryだけであり、contract外ならtransactionをrollbackする。settlementはcombat XP +5、shard +0、combat level 1維持だけで、normal cooldown、Trial、通常探索reward/penaltyを通らない。battle compact record/detailはPR103のtable/logを再利用し、詳細action logには共通の100時間retentionを適用する。
 
-脱出完了後は一度Secretaryメインへ戻す。2回目のentryは店員遭遇・一度だけの1〜20 Unicode grapheme plain-text命名へ進む。temporary alpha authoringのexact `ダミー`だけをspecial branchとして命名時に保存し、後から再判定しない。scripted lossも固定snapshotをcanonical coreへ渡し、expected enemy victory以外はrollbackする。XP、shard、level、cooldown、Trialは前後一致を要求する。
+PR104時点では、脱出完了後に一度Secretaryメインへ戻し、2回目のentryを店員遭遇・一度だけの1〜20 Unicode grapheme plain-text命名へ進めた。temporary placeholder branchは命名時に保存して後から再判定せず、scripted lossも固定snapshotをcanonical coreへ渡してexpected enemy victory以外をrollbackする。XP、shard、level、cooldown、Trialは前後一致を要求する。このplaceholder branchはPR106以降も既存profileのlegacy identityとしてだけ維持する。
 
-shop説明後の地下メインはprogression、店員名、Tutorial/story battle historyをread-only投影する。通常狩場、Trial、実shopはdisabledな準備中entryであり、PR103 application serviceをplayer APIとして公開しない。story本文、正式trigger、equipment、skill tree、status effect、normal hunt/Trial balance、shop economyは引き続きOpen/Deferredである。
+PR104の地下メインはprogression、店員名、Tutorial/story battle historyをread-only投影した。通常狩場、Trial、実shopはdisabledな準備中entryであり、PR103 expedition serviceをplayer APIとして公開しない。この非公開境界はPR106でも維持する。
+
+## PR106 formal intro and alpha-v1 player adapter
+
+PR106はPR104のfinite-state introを拡張し、正式本文、案内人との契約、4 growth pathの一度だけの選択、選択後story、main unlockを明示stageとして保存する。clientはstage keyを指定せず、現在stageで合法なoperationだけをserverが受理する。contract timestamp、growth key、versioned identity、selected timestampはSecretary-owned profileへ保存し、同じprofileのrow lock、UUID fingerprint、database constraintで二重契約、二重選択、別payload reuseを拒否する。
+
+growth catalogは戦技・護身・祝福・自由の固定Lv1能力、derived HP、MP 10,000、自然回復300、default playtest build、Lv2以降の自然成長と未使用STP予定を持つ。全pathのLv1能力は合計100で固定し、自由にも手動割り振り特例を作らない。identityを変えずに既存profileが解釈する初期能力や成長定義を書き換えない。実際のlevel-up stat settlement、STP persistence/配分/reset、growth path変更はこのadapterに含めない。
+
+特別branchのstory戦闘はalpha-v1 canonical combat modelへlocal story build/enemy deltaを渡す。案内人は通常のalpha-v1 Tank action、guard、barrier、闘志、counter、damage/result projectionを使い、別engineを作らない。expected resultは短いdeterministic player defeatで、progression、currency、cooldown、Trial、growth stateの前後一致を要求する。具体的なhidden aliasと背景設定はimplementation-onlyである。
+
+player-facing「力試し（α）」はPR105 immutable manifestのrepresentative 4 buildと3 opponentだけをallowlistし、request-derived private seedでcanonical alpha-v1 modelを実行する。current authenticated User自身のSecretaryかつ契約・growth選択・main unlock済みの場合だけ利用できる。compact battle historyと100時間detail logを再利用するが、XP、輝石の欠片、G、drop、Trial、Combat Lv、cooldown、surface economyのmutationはない。responseはbuild/enemy label、summary、roundごとのAI判断理由・action/status・終了HP/MP/barrierを投影し、private seed、raw manifest、internal database identityを公開しない。
+
+PR104までにmainへ到達したprofileはforward migrationで正式Shop説明へ戻すが、命名や旧scripted lossを再実行せず、growth pathを自動付与しない。既存のplaceholder branch resultはlegacy identityとして保持し、新しいhidden判定で再分類しない。forward migration後もalpha-v0 Tutorial/historyのXP +5、欠片0、Lv1契約を維持する。

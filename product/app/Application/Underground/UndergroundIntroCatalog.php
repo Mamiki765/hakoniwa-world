@@ -89,12 +89,27 @@ final class UndergroundIntroCatalog
         return $value;
     }
 
-    public function isSpecialName(string $name): bool
+    public function branchIdentity(string $name): string
     {
         $nameConfig = $this->data()['shopkeeper_name'] ?? null;
-        $trigger = is_array($nameConfig) ? ($nameConfig['special_trigger'] ?? null) : null;
+        $aliases = is_array($nameConfig) ? ($nameConfig['true_name_aliases'] ?? null) : null;
+        if (! is_array($aliases) || ! array_is_list($aliases)) {
+            throw new RuntimeException('Underground hidden naming contract is invalid.');
+        }
+        foreach ($aliases as $alias) {
+            if (! is_string($alias) || $alias === '') {
+                throw new RuntimeException('Underground hidden naming contract is invalid.');
+            }
+            if (hash_equals($alias, $name)) {
+                return 'true_name';
+            }
+        }
 
-        return is_string($trigger) && hash_equals($trigger, $name);
+        if (preg_match('/\A雨宮[ \x{3000}]+利香\z/u', $name) === 1) {
+            return 'true_name';
+        }
+
+        return 'normal';
     }
 
     private function maximumNameGraphemes(): int
@@ -111,7 +126,7 @@ final class UndergroundIntroCatalog
     private function data(): array
     {
         $data = config('underground-intro');
-        if (! is_array($data) || ($data['schema_version'] ?? null) !== 1) {
+        if (! is_array($data) || ($data['schema_version'] ?? null) !== 2) {
             throw new RuntimeException('Underground intro configuration is invalid.');
         }
 
