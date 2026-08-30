@@ -1648,10 +1648,19 @@ describe('application lobby and island entry', () => {
                 },
                 {
                     round: 2,
-                    actions: [{ type: 'status_applied', side: '秘書', label: '付与: 加護', amount: 0 }],
+                    actions: [
+                        {
+                            type: 'status_applied', side: '秘書', actor_name: 'ペリドット',
+                            target_name: '深層追跡者', label: '付与: 出血', amount: 0,
+                        },
+                        {
+                            type: 'status_resisted', side: '対戦相手', actor_name: '深層追跡者',
+                            target_name: 'ペリドット', label: '抵抗: 鈍足', amount: 0,
+                        },
+                    ],
                     end_state: {
-                        player: { hp: 640, max_hp: 660, mp: 9700, barrier: 20, statuses: [{ label: '加護', remaining: 1, stacks: 1 }], role_stacks: { fighting_spirit: 2, grace: 1 } },
-                        enemy: { hp: 0, max_hp: 200, mp: 0, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                        player: { hp: 640, max_hp: 660, mp: 9700, barrier: 20, statuses: [], role_stacks: { fighting_spirit: 2, grace: 1 } },
+                        enemy: { hp: 0, max_hp: 200, mp: 0, barrier: 0, statuses: [{ label: '出血', remaining: 1, stacks: 1 }], role_stacks: { fighting_spirit: 0, grace: 0 } },
                     },
                 },
             ],
@@ -1751,8 +1760,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-round')).toHaveLength(2);
         expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('Round 1');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('Round 2');
-        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('ペリドットに加護が付与された。');
-        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('加護 残1・1段階');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('深層追跡者に出血が付与された。');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('ペリドットは鈍足を防いだ。');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('出血 残1・1段階');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('闘志 2・恩寵 1');
         expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0・G +0・ドロップなし');

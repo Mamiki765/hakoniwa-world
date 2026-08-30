@@ -413,9 +413,9 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
         const role = action.label.replace(/^(増加|消費):\s*/, '');
         return `${actor}の${role}が${amount}${action.type === 'role_stack_gain' ? '増加' : '消費'}した。`;
     }
-    if (action.type === 'status_applied') return `${actor}に${action.label.replace(/^付与:\s*/, '')}が付与された。`;
+    if (action.type === 'status_applied') return `${target}に${action.label.replace(/^付与:\s*/, '')}が付与された。`;
     if (action.type === 'status_expired') return `${actor}の${action.label.replace(/^消滅:\s*/, '')}が消滅した。`;
-    if (action.type === 'status_resisted') return `${actor}は${action.label.replace(/^抵抗:\s*/, '')}を防いだ。`;
+    if (action.type === 'status_resisted') return `${target}は${action.label.replace(/^抵抗:\s*/, '')}を防いだ。`;
     if (action.type === 'status_removed') return `${actor}は状態効果を${amount}個解除した。`;
     if (action.type === 'damage') {
         const qualifiers = [action.critical ? '会心' : '', action.guarded ? '防御' : '', action.parried ? '受け流し' : '']
