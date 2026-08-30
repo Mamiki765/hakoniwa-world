@@ -24,28 +24,71 @@ return new class extends Migration
     ];
 
     /** @var list<string> */
-    private const RETIRED_ALPHA_MIGRATIONS = [
-        '2026_08_29_000000_create_underground_profiles',
-        '2026_08_29_010000_add_underground_runtime_foundation',
-        '2026_08_29_020000_add_underground_intro_progress',
-        '2026_08_29_030000_pin_underground_trial_content_identity',
-        '2026_08_29_040000_cap_underground_battle_log_retention',
-        '2026_08_30_000000_add_underground_contract_growth_and_playtest',
-        '2026_08_30_010000_cap_underground_battle_log_retention_to_one_hour',
-        '2026_08_30_020000_add_underground_growth_stp_foundation',
-        '2026_08_30_030000_add_underground_status_and_skill_progression',
-        '2026_08_30_040000_add_underground_equipment_progression',
+    private const EXACT_280_MIGRATION_LEDGER = [
+        '0001_01_01_000000_create_users_table',
+        '0001_01_01_000001_create_cache_table',
+        '2026_07_26_000000_create_hakoniwa_schema',
+        '2026_07_26_010000_add_roadmap_pr2_systems',
+        '2026_07_26_020000_replace_axial_coordinates_with_staggered_xy',
+        '2026_07_27_000000_add_command_parameter_metadata',
+        '2026_07_27_010000_publish_roadmap_pr6_ruleset',
+        '2026_07_28_000000_add_universal_quantity_to_command_queue_items',
+        '2026_07_28_010000_normalize_food_resources_to_tons',
+        '2026_07_28_999999_enforce_queue_item_ruleset_consistency',
+        '2026_07_29_000000_publish_roadmap_pr7_ruleset',
+        '2026_07_29_010000_create_turn_runs',
+        '2026_07_30_000000_publish_roadmap_pr11_ruleset',
+        '2026_08_01_000000_start_world_turns_at_one',
+        '2026_08_02_000000_publish_roadmap_pr14_ruleset',
+        '2026_08_02_010000_publish_roadmap_pr15_ruleset',
+        '2026_08_02_020000_add_per_world_nation_numbers',
+        '2026_08_04_000000_publish_roadmap_pr18_ruleset',
+        '2026_08_04_010000_add_nation_profiles',
+        '2026_08_04_020000_publish_roadmap_pr19_ruleset',
+        '2026_08_05_000000_create_monster_system_and_publish_roadmap_pr21_ruleset',
+        '2026_08_05_010000_add_pr22_command_event_state_and_publish_ruleset',
+        '2026_08_05_020000_prepare_first_production_release',
+        '2026_08_09_000000_publish_hakoniwa_2s_plus_v2',
+        '2026_08_09_010000_create_announcements',
+        '2026_08_09_020000_repair_hakoniwa_2s_plus_v2_live_monster_references',
+        '2026_08_09_030000_repair_deterministic_application_timestamps',
+        '2026_08_09_040000_create_nation_awards_and_monster_cycles',
+        '2026_08_10_000000_publish_hakoniwa_2s_plus_v3',
+        '2026_08_11_000000_create_island_messages',
+        '2026_08_13_000000_publish_hakoniwa_2s_plus_v4',
+        '2026_08_14_000000_publish_hakoniwa_2s_plus_v5',
+        '2026_08_15_000000_enable_nation_reregistration',
+        '2026_08_16_000000_publish_hakoniwa_2s_plus_v6',
+        '2026_08_16_010000_create_nation_command_queue_bulk_requests',
+        '2026_08_16_020000_create_secretary_system',
+        '2026_08_16_030000_publish_hakoniwa_2s_plus_v7',
+        '2026_08_16_040000_publish_hakoniwa_2s_plus_v8',
+        '2026_08_17_000000_publish_hakoniwa_2s_plus_v9',
+        '2026_08_17_010000_create_secretary_items_and_inquiries',
+        '2026_08_19_000000_add_command_request_fingerprint',
+        '2026_08_19_010000_publish_hakoniwa_2s_plus_v10',
+        '2026_08_20_000000_add_secretary_equipment_version',
+        '2026_08_20_010000_add_monster_definition_display_order',
+        '2026_08_21_000000_add_command_request_ruleset_provenance',
+        '2026_08_21_010000_publish_hakoniwa_2s_plus_v11',
+        '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
+        '2026_08_23_000000_add_nation_dormancy_and_publish_v12',
+        '2026_08_23_010000_add_nation_karma_and_publish_v13',
+        '2026_08_24_000000_add_secretary_profiles_and_publish_v14',
+        '2026_08_24_010000_add_monster_experience_and_publish_v15',
+        '2026_08_25_000000_add_oil_resource_and_publish_v16',
+        '2026_08_26_000000_publish_v17_secretary_item_foundation',
+        '2026_08_27_000000_publish_v18_undersea_city',
     ];
 
     public function up(): void
     {
-        if (DB::table('migrations')->where(
-            'migration',
-            '2026_08_27_000000_publish_v18_undersea_city',
-        )->count() !== 1 || DB::table('migrations')->whereIn(
-            'migration',
-            self::RETIRED_ALPHA_MIGRATIONS,
-        )->exists()) {
+        $sourceLedger = DB::table('migrations')
+            ->orderBy('migration')
+            ->pluck('migration')
+            ->map(static fn (mixed $migration): string => (string) $migration)
+            ->all();
+        if ($sourceLedger !== self::EXACT_280_MIGRATION_LEDGER) {
             throw new RuntimeException(
                 'The 3.0.0 migration requires the exact 2.8.0 migration ledger.',
             );

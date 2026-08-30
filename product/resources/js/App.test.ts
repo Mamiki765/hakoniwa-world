@@ -203,7 +203,7 @@ beforeEach(() => {
     document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
     const meta = document.createElement('meta');
     meta.name = 'hakoniwa-application-version';
-    meta.content = '3.0.0-alpha.1';
+    meta.content = '3.0.0';
     document.head.append(meta);
 });
 
@@ -315,7 +315,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 3.0.0-alpha.1');
+        expect(wrapper.find('.app-version').text()).toBe('ver 3.0.0');
         expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');

@@ -40,6 +40,19 @@ final class FreshInstallRebaselineTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
+    /** @var list<string> */
+    private const UNDERGROUND_RELEASE_TABLES = [
+        'underground_profiles',
+        'underground_trial_progress',
+        'underground_trial_runs',
+        'underground_battles',
+        'underground_battle_logs',
+        'underground_intro_progress',
+        'underground_intro_requests',
+        'underground_skill_allocations',
+        'underground_owned_equipment',
+    ];
+
     public function test_empty_postgresql_uses_direct_current_schema_and_v18_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
@@ -362,6 +375,57 @@ SQL);
         $this->assertSame(2, $world->fresh()->current_turn);
     }
 
+    public function test_3_0_0_migration_rejects_every_noncanonical_2_8_0_ledger_before_schema_change(): void
+    {
+        $this->returnDatabaseToExact280Source();
+        $this->assertSame(54, DB::table('migrations')->count());
+        $this->assertUndergroundReleaseTablesAbsent();
+
+        DB::table('migrations')->insert([
+            'migration' => '2026_08_28_000000_unexpected_source_migration',
+            'batch' => 2,
+        ]);
+        $this->assertReleaseMigrationRejectsCurrentLedger();
+        $this->assertUndergroundReleaseTablesAbsent();
+        DB::table('migrations')->where(
+            'migration',
+            '2026_08_28_000000_unexpected_source_migration',
+        )->delete();
+
+        $removedProductionMigration = DB::table('migrations')->where(
+            'migration',
+            '2026_08_25_000000_add_oil_resource_and_publish_v16',
+        )->sole();
+        DB::table('migrations')->where('id', $removedProductionMigration->id)->delete();
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_27_000000_publish_v18_undersea_city',
+        ]);
+        $this->assertReleaseMigrationRejectsCurrentLedger();
+        $this->assertUndergroundReleaseTablesAbsent();
+        DB::table('migrations')->insert([
+            'migration' => $removedProductionMigration->migration,
+            'batch' => $removedProductionMigration->batch,
+        ]);
+
+        DB::table('migrations')->insert([
+            'migration' => '2026_08_29_000000_create_underground_profiles',
+            'batch' => 3,
+        ]);
+        $this->assertReleaseMigrationRejectsCurrentLedger();
+        $this->assertUndergroundReleaseTablesAbsent();
+        DB::table('migrations')->where(
+            'migration',
+            '2026_08_29_000000_create_underground_profiles',
+        )->delete();
+
+        $this->assertSame(54, DB::table('migrations')->count());
+        $this->assertSame(
+            '2026_08_27_000000_publish_v18_undersea_city',
+            DB::table('migrations')->orderByDesc('migration')->value('migration'),
+        );
+        $this->assertUndergroundReleaseTablesAbsent();
+    }
+
     public function test_exact_v16_to_v17_upgrade_rolls_back_rebinds_by_stable_key_backfills_authoritative_history_and_is_idempotent(): void
     {
         $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v17.php');
@@ -576,23 +640,39 @@ SQL);
 
     private function returnDatabaseToExact280Source(): void
     {
-        foreach ([
-            'underground_owned_equipment',
-            'underground_skill_allocations',
-            'underground_intro_requests',
-            'underground_intro_progress',
-            'underground_battle_logs',
-            'underground_battles',
-            'underground_trial_runs',
-            'underground_trial_progress',
-            'underground_profiles',
-        ] as $table) {
+        foreach (array_reverse(self::UNDERGROUND_RELEASE_TABLES) as $table) {
             Schema::drop($table);
         }
         DB::table('migrations')->where(
             'migration',
             '2026_08_30_050000_rebaseline_3_0_0_underground_release',
         )->delete();
+    }
+
+    private function assertUndergroundReleaseTablesAbsent(): void
+    {
+        foreach (self::UNDERGROUND_RELEASE_TABLES as $table) {
+            $this->assertFalse(Schema::hasTable($table), $table.' must not be created.');
+        }
+        $this->assertDatabaseMissing('migrations', [
+            'migration' => '2026_08_30_050000_rebaseline_3_0_0_underground_release',
+        ]);
+    }
+
+    private function assertReleaseMigrationRejectsCurrentLedger(): void
+    {
+        $migration = require database_path(
+            'migrations/2026_08_30_050000_rebaseline_3_0_0_underground_release.php',
+        );
+        try {
+            $migration->up();
+            $this->fail('Expected the 3.0.0 migration to reject the noncanonical source ledger.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(
+                'The 3.0.0 migration requires the exact 2.8.0 migration ledger.',
+                $exception->getMessage(),
+            );
+        }
     }
 
     /** @return list<string> */
