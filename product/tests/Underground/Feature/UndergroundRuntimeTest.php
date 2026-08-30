@@ -55,7 +55,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame([100, 100, 100], array_column($combat->calls, 'max_rounds'));
         $this->assertSame('damage', $first->log?->actions[0]['effect']);
         $this->assertArrayNotHasKey('reason', $first->log?->actions[0] ?? []);
-        $this->assertTrue($first->log?->expires_at->equalTo($first->finished_at->addHours(100)) ?? false);
+        $this->assertTrue($first->log?->expires_at->equalTo($first->finished_at->addHour()) ?? false);
         $this->assertSame(100, $third->snapshot['max_rounds']);
         $this->assertSame(112, $third->snapshot['actor']['attack']);
         $this->assertSame(40, $third->snapshot['encounter']['xp_reward']);
@@ -307,15 +307,15 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertTrue($runtime->recentBattles($other)->isEmpty());
         $first->log()->update(['expires_at' => $first->finished_at->addHours(1000)]);
         $retentionMigration = require database_path(
-            'migrations/2026_08_29_040000_cap_underground_battle_log_retention.php',
+            'migrations/2026_08_30_010000_cap_underground_battle_log_retention_to_one_hour.php',
         );
         $retentionMigration->up();
         $this->assertTrue(
-            $first->log()->sole()->expires_at->equalTo($first->finished_at->addHours(100)),
+            $first->log()->sole()->expires_at->equalTo($first->finished_at->addHour()),
         );
         Carbon::setTestNow(Carbon::now()->addHour());
         $future = $runtime->explore($other, 'shallow_caves', (string) Str::uuid())['battle'];
-        Carbon::setTestNow($first->finished_at->addHours(100));
+        Carbon::setTestNow($first->finished_at->addHour());
         $this->artisan('underground:prune-battle-logs')
             ->expectsOutput('Pruned 1 expired Underground battle log(s).')
             ->assertSuccessful();

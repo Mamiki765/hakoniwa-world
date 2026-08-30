@@ -1910,6 +1910,7 @@ async function abandonNation(): Promise<void> {
 
         <UndergroundPanel
             v-else-if="page === 'underground' && user && secretary?.name"
+            :secretary-image-url="viewedSecretaryProfile?.main_image.url ?? null"
             @return-to-secretary="returnFromUnderground"
         />
 
@@ -1977,6 +1978,9 @@ async function abandonNation(): Promise<void> {
                         <section class="secretary-profile-summary" aria-label="秘書基本情報">
                             <dl>
                                 <div><dt>内政Lv</dt><dd>{{ viewedSecretaryProfile.domestic_level }}</dd></div>
+                                <div v-if="viewedSecretaryProfile.is_owner && secretary?.underground?.combat_level !== null && secretary?.underground?.combat_level !== undefined">
+                                    <dt>戦闘Lv</dt><dd>{{ secretary.underground.combat_level }}</dd>
+                                </div>
                                 <div><dt>資金・食糧最大</dt><dd>+{{ viewedSecretaryProfile.capacity_bonus_percent }}%</dd></div>
                                 <div><dt>討伐経験値</dt><dd>{{ viewedSecretaryProfile.monster_experience }}</dd></div>
                             </dl>
@@ -1989,9 +1993,6 @@ async function abandonNation(): Promise<void> {
                                 画像設定
                             </button>
                             <div v-if="viewedSecretaryProfile.is_owner && secretary?.name" class="secretary-underground-entry">
-                                <p v-if="secretary.underground?.combat_level !== null && secretary.underground?.combat_level !== undefined">
-                                    戦闘Lv {{ secretary.underground.combat_level }}
-                                </p>
                                 <button class="button primary" type="button" @click="openUnderground">地下へ</button>
                             </div>
                         </section>

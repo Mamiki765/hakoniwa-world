@@ -40,7 +40,10 @@ final readonly class UndergroundIntroService
         $secretary = $this->secretaryForUser($user);
         $profile = UndergroundProfile::query()
             ->where('secretary_id', $secretary->id)
-            ->with(['introProgress.tutorialBattle.log', 'introProgress.scriptedLossBattle.log'])
+            ->with([
+                'introProgress.tutorialBattle.log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+                'introProgress.scriptedLossBattle.log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+            ])
             ->first();
 
         return $this->projectState($secretary, $profile, $profile?->introProgress);
@@ -157,7 +160,7 @@ final readonly class UndergroundIntroService
                 );
             }
 
-            $battle = $this->settleStoryBattle($profile, $requestId, 'tutorial');
+            $battle = $this->settleStoryBattle($profile, $requestId, 'tutorial', $secretary->name);
             $intro->tutorial_battle_id = $battle->id;
             $intro->stage = UndergroundIntroStage::ESCAPE_PENDING;
             $intro->save();
@@ -214,8 +217,8 @@ final readonly class UndergroundIntroService
             }
 
             $battle = $intro->branch_identity === 'true_name'
-                ? $this->settleTrueNameStoryBattle($profile, $requestId)
-                : $this->settleStoryBattle($profile, $requestId, 'scripted_loss');
+                ? $this->settleTrueNameStoryBattle($profile, $requestId, $secretary->name)
+                : $this->settleStoryBattle($profile, $requestId, 'scripted_loss', $secretary->name);
             $intro->scripted_loss_battle_id = $battle->id;
             $intro->stage = UndergroundIntroStage::SPECIAL_LOSS_COMPLETE;
             $intro->save();
@@ -306,8 +309,12 @@ final readonly class UndergroundIntroService
                 UndergroundBattle::ACTIVITY_STORY,
                 UndergroundBattle::ACTIVITY_PLAYTEST,
             ])
-            ->with('log')
+            ->withExists([
+                'log as active_log_exists' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+            ])
             ->orderByDesc('finished_at')
+            ->orderByDesc('id')
+            ->limit(20)
             ->get()
             ->map(fn (UndergroundBattle $battle): array => $this->projectBattle($battle, false))
             ->values()
@@ -331,7 +338,7 @@ final readonly class UndergroundIntroService
                     UndergroundBattle::ACTIVITY_STORY,
                     UndergroundBattle::ACTIVITY_PLAYTEST,
                 ])
-                ->with('log')
+                ->with(['log' => fn ($query) => $query->where('expires_at', '>', Carbon::now())])
                 ->first()
             : null;
         if (! $battle instanceof UndergroundBattle) {
@@ -379,7 +386,11 @@ final readonly class UndergroundIntroService
                     );
                 }
 
-                return $this->projectState($secretary, $profile->refresh(), $intro->refresh());
+                return $this->projectState(
+                    $secretary,
+                    $profile->refresh(),
+                    $this->loadActiveStoryBattles($intro->refresh()),
+                );
             }
             $existingBattle = UndergroundBattle::query()
                 ->where('underground_profile_id', $profile->id)
@@ -406,9 +417,17 @@ final readonly class UndergroundIntroService
             return $this->projectState(
                 $secretary,
                 $profile->refresh(),
-                $intro->refresh()->load(['tutorialBattle.log', 'scriptedLossBattle.log']),
+                $this->loadActiveStoryBattles($intro->refresh()),
             );
         }, 3);
+    }
+
+    private function loadActiveStoryBattles(UndergroundIntroProgress $intro): UndergroundIntroProgress
+    {
+        return $intro->load([
+            'tutorialBattle.log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+            'scriptedLossBattle.log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+        ]);
     }
 
     /** @return array{Secretary, UndergroundProfile, UndergroundIntroProgress} */
@@ -449,6 +468,7 @@ final readonly class UndergroundIntroService
         UndergroundProfile $profile,
         string $requestId,
         string $battleKey,
+        string $playerDisplayName,
     ): UndergroundBattle {
         $definition = $this->catalog->battle($battleKey);
         $before = [
@@ -532,6 +552,17 @@ final readonly class UndergroundIntroService
                 'loadout' => $definition['loadout'],
                 'enemy' => $definition['enemy'],
                 'encounter_display_name' => $definition['display_name'],
+                'player_display_name' => $playerDisplayName,
+                'presentation_log_version' => 1,
+                'summary' => [
+                    'result' => $battleKey === 'tutorial' ? 'victory' : 'defeat',
+                    'rounds' => $result->rounds,
+                    'player_remaining_hp' => $result->playerRemainingHp,
+                    'enemy_remaining_hp' => $result->enemyRemainingHp,
+                    'damage_dealt' => $result->damageDealt,
+                    'damage_received' => $result->damageReceived,
+                    'effective_healing' => $result->healingDone,
+                ],
                 'max_rounds' => $definition['max_rounds'],
                 'penalty_policy' => 'none',
             ],
@@ -540,7 +571,11 @@ final readonly class UndergroundIntroService
         ]);
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
-            'actions' => $this->battleLogProjector->project($result),
+            'actions' => $this->battleLogProjector->project(
+                $result,
+                $playerDisplayName,
+                $definition['display_name'],
+            ),
             'expires_at' => $finishedAt->copy()->addHours($this->runtimeCatalog->battleLogRetentionHours()),
         ]);
 
@@ -569,6 +604,7 @@ final readonly class UndergroundIntroService
     private function settleTrueNameStoryBattle(
         UndergroundProfile $profile,
         string $requestId,
+        string $playerDisplayName,
     ): UndergroundBattle {
         $definition = $this->alphaV1Catalog->trueNameStoryBattle();
         $before = [
@@ -586,6 +622,9 @@ final readonly class UndergroundIntroService
             $definition['tier_key'],
             $definition['seed'],
             $definition['max_rounds'],
+            null,
+            [],
+            $definition['enemy_scale_bps'],
         );
         if ($result->rulesIdentity !== AlphaV1CombatRules::IDENTITY
             || $result->winner !== $definition['expected_winner']
@@ -612,7 +651,12 @@ final readonly class UndergroundIntroService
             );
         }
         $finishedAt = Carbon::now();
-        $projection = $this->alphaV1Projector->project($result, $definition['catalog']);
+        $projection = $this->alphaV1Projector->project(
+            $result,
+            $definition['catalog'],
+            $playerDisplayName,
+            'リカ',
+        );
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
             'request_id' => $requestId,
@@ -640,7 +684,11 @@ final readonly class UndergroundIntroService
             'snapshot' => [
                 'story_identity' => $this->catalog->identity(),
                 'combat_rules_identity' => $result->rulesIdentity,
-                'encounter_display_name' => '案内人',
+                'encounter_display_name' => 'リカ',
+                'player_display_name' => $playerDisplayName,
+                'presentation_log_version' => 1,
+                'enemy_combat_level_equivalent' => $definition['combat_level_equivalent'],
+                'enemy_scale_bps' => $definition['enemy_scale_bps'],
                 'summary' => $projection['summary'],
                 'penalty_policy' => 'none',
             ],
@@ -718,6 +766,7 @@ final readonly class UndergroundIntroService
         }
         $snapshot = $battle->snapshot;
         $displayName = $snapshot['encounter_display_name'] ?? null;
+        $log = $this->loadedLog($battle);
 
         return [
             'id' => $battle->request_id,
@@ -728,12 +777,33 @@ final readonly class UndergroundIntroService
             'xp_awarded' => $battle->xp_awarded,
             'shard_delta' => $battle->shard_delta,
             'finished_at' => $battle->finished_at->toAtomString(),
-            'detail_available' => $battle->log instanceof UndergroundBattleLog,
-            'actions' => $withActions && $battle->log instanceof UndergroundBattleLog
-                ? $battle->log->actions
+            'detail_available' => $withActions
+                ? $log instanceof UndergroundBattleLog
+                : (bool) ($battle->getAttribute('active_log_exists') ?? false),
+            'detail_message' => $withActions && ! ($log instanceof UndergroundBattleLog)
+                ? '詳細ログは保存期間を過ぎました。'
                 : null,
-            'summary' => is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : null,
+            'actions' => $withActions && $log instanceof UndergroundBattleLog
+                ? $log->actions
+                : null,
+            'summary' => is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : [
+                'result' => $battle->result,
+                'rounds' => $battle->rounds,
+                'damage_dealt' => $battle->damage_dealt,
+                'damage_received' => $battle->damage_received,
+                'effective_healing' => $battle->healing_done,
+            ],
         ];
+    }
+
+    private function loadedLog(UndergroundBattle $battle): ?UndergroundBattleLog
+    {
+        if (! $battle->relationLoaded('log')) {
+            return null;
+        }
+        $log = $battle->getRelation('log');
+
+        return $log instanceof UndergroundBattleLog ? $log : null;
     }
 
     /** @param array<string, scalar|null> $payload */

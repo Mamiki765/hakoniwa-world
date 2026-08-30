@@ -4,6 +4,7 @@ namespace App\Application\Underground;
 
 use App\Domain\Nation\NationProfileText;
 use DomainException;
+use Normalizer;
 use RuntimeException;
 
 final class UndergroundIntroCatalog
@@ -91,6 +92,10 @@ final class UndergroundIntroCatalog
 
     public function branchIdentity(string $name): string
     {
+        $comparisonName = Normalizer::normalize($name, Normalizer::FORM_C);
+        if (! is_string($comparisonName)) {
+            throw new RuntimeException('Underground hidden naming normalization failed.');
+        }
         $nameConfig = $this->data()['shopkeeper_name'] ?? null;
         $aliases = is_array($nameConfig) ? ($nameConfig['true_name_aliases'] ?? null) : null;
         if (! is_array($aliases) || ! array_is_list($aliases)) {
@@ -100,12 +105,16 @@ final class UndergroundIntroCatalog
             if (! is_string($alias) || $alias === '') {
                 throw new RuntimeException('Underground hidden naming contract is invalid.');
             }
-            if (hash_equals($alias, $name)) {
+            $comparisonAlias = Normalizer::normalize($alias, Normalizer::FORM_C);
+            if (! is_string($comparisonAlias)) {
+                throw new RuntimeException('Underground hidden naming normalization failed.');
+            }
+            if (hash_equals($comparisonAlias, $comparisonName)) {
                 return 'true_name';
             }
         }
 
-        if (preg_match('/\A雨宮[ \x{3000}]+利香\z/u', $name) === 1) {
+        if (preg_match('/\A雨宮[ \x{3000}]+利香\z/u', $comparisonName) === 1) {
             return 'true_name';
         }
 

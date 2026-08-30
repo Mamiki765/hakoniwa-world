@@ -119,7 +119,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             );
         }
         $maxRounds = $enemy['max_rounds'] ?? null;
-        if (! is_int($maxRounds) || $maxRounds < 1 || $maxRounds > 200) {
+        if ($maxRounds !== 100) {
             throw new RuntimeException('Underground playtest round contract is invalid.');
         }
         $catalog = $this->laboratoryCatalog();
@@ -136,7 +136,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         ];
     }
 
-    /** @return array{catalog: AlphaV1BuildCatalog, build_key: string, enemy_key: string, tier_key: string, seed: int, max_rounds: int, expected_winner: string} */
+    /** @return array{catalog: AlphaV1BuildCatalog, build_key: string, enemy_key: string, tier_key: string, combat_level_equivalent: int, enemy_scale_bps: int, seed: int, max_rounds: int, expected_winner: string} */
     public function trueNameStoryBattle(): array
     {
         $definition = $this->data()['true_name_story_battle'];
@@ -148,7 +148,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         $catalog = new AlphaV1BuildCatalog($manifest);
         $seed = $definition['seed'] ?? null;
         $maxRounds = $definition['max_rounds'] ?? null;
-        if (! is_int($seed) || ! is_int($maxRounds)) {
+        $equivalentCombatLevel = $definition['combat_level_equivalent'] ?? null;
+        if (! is_int($seed) || ! is_int($maxRounds) || ! is_int($equivalentCombatLevel)) {
             throw new RuntimeException('Underground true-name story battle contract is invalid.');
         }
 
@@ -157,6 +158,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'build_key' => $buildKey,
             'enemy_key' => $enemyKey,
             'tier_key' => $this->string($definition, 'tier_key'),
+            'combat_level_equivalent' => $equivalentCombatLevel,
+            'enemy_scale_bps' => $this->rules->storyBenchmarkScaleBps($equivalentCombatLevel),
             'seed' => $seed,
             'max_rounds' => $maxRounds,
             'expected_winner' => $this->string($definition, 'expected_winner'),

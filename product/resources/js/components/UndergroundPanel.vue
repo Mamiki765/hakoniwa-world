@@ -10,15 +10,18 @@ type Stage = 'not_started' | 'initial_descent' | 'tutorial_ready' | 'escape_pend
 interface SimpleAction {
     round: number;
     side: string;
-    action: string;
+    actor_name?: string;
+    target_name?: string;
+    action_label?: string;
     amount: number;
 }
 
 interface RoundAction {
     type: string;
     side: string;
+    actor_name?: string;
+    target_name?: string | null;
     label: string;
-    reason?: string;
     amount?: number;
     critical?: boolean;
     evaded?: boolean;
@@ -56,6 +59,7 @@ interface Battle {
     actions?: SimpleAction[] | CombatRound[] | null;
     summary?: Record<string, number | string> | null;
     rewards?: { xp: number; shards: number; g: number; drops: unknown[] };
+    detail_message?: string | null;
 }
 
 interface GrowthPath {
@@ -206,6 +210,7 @@ const commonEnding = [
 ];
 
 const statLabels = { vitality: '生命', might: '武力', finesse: '技巧', spirit: '精神', agility: '敏捷' } as const;
+const props = defineProps<{ secretaryImageUrl?: string | null }>();
 const emit = defineEmits<{ returnToSecretary: [] }>();
 const state = ref<UndergroundState | null>(null);
 const busy = ref(false);
@@ -215,11 +220,8 @@ const battles = ref<Battle[]>([]);
 const selectedBattle = ref<Battle | null>(null);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
-const shopOpen = ref(false);
-const selectedRoundIndex = ref(0);
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const currentStructuredRounds = computed(() => currentBattle.value ? structuredRounds(currentBattle.value) : []);
-const selectedRound = computed(() => currentStructuredRounds.value[selectedRoundIndex.value] ?? null);
 const growthEnding = computed(() => state.value?.growth_path?.key === 'free_black'
     ? '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」'
     : '「ふふ、とってもお似合いですよ、その能力」');
@@ -228,40 +230,22 @@ const shopGreeting = computed(() => state.value?.true_name_branch
     : '「いらっしゃいませ！　あなたのコンビニ、箱庭ダンジョン店です！」');
 const summaryLabels: Record<string, string> = {
     result: '結果',
-    rounds: 'round数',
-    player_remaining_hp: '秘書の残HP',
-    enemy_remaining_hp: '対戦相手の残HP',
-    final_mp: '最終MP',
-    damage_dealt: '与damage',
-    damage_received: '被damage',
+    damage_dealt: '与ダメージ',
+    damage_received: '被ダメージ',
     effective_healing: '有効回復',
-    damage_prevented: '防いだdamage',
+    damage_prevented: '防いだダメージ',
     mp_spent: 'MP消費',
     mp_natural_recovery: '自然回復MP',
-    mp_skill_recovery: 'skill回復MP',
+    mp_skill_recovery: 'スキル回復MP',
     skill_unavailable_due_to_mp: 'MP不足回数',
 };
-const actionTypeLabels: Record<string, string> = {
-    decision: 'AI判断',
-    damage: 'damage',
-    recovery: '回復',
-    barrier: 'barrier',
-    state: '状態変化',
-    status_applied: 'status付与',
-    status_expired: 'status消滅',
-    status_resisted: 'status抵抗',
-    status_removed: 'status解除',
-    counter: 'counter',
-    guard: 'guard',
-};
+const hiddenSummaryKeys = new Set(['rounds', 'player_remaining_hp', 'enemy_remaining_hp', 'final_mp']);
 
 watch(() => state.value?.playtest, (playtest) => {
     if (!playtest) return;
     selectedBuild.value = playtest.default_build_key;
     selectedEnemy.value ||= playtest.enemies[0]?.key ?? '';
 }, { immediate: true });
-
-watch(() => currentBattle.value?.id, () => { selectedRoundIndex.value = 0; });
 
 function requestId(): string {
     return crypto.randomUUID();
@@ -373,13 +357,6 @@ function structuredRounds(battle: Battle): CombatRound[] {
     return [];
 }
 
-function moveRound(offset: number): void {
-    selectedRoundIndex.value = Math.min(
-        Math.max(selectedRoundIndex.value + offset, 0),
-        Math.max(currentStructuredRounds.value.length - 1, 0),
-    );
-}
-
 function summaryLabel(key: string): string {
     return summaryLabels[key] ?? key;
 }
@@ -388,19 +365,80 @@ function summaryValue(key: string, value: number | string): number | string {
     return key === 'result' ? battleResultLabel(String(value) as Battle['result']) : value;
 }
 
-function actionTypeLabel(type: string): string {
-    return actionTypeLabels[type] ?? '戦闘効果';
+function visibleSummary(summary: Record<string, number | string>): Record<string, number | string> {
+    return Object.fromEntries(Object.entries(summary).filter(([key]) => !hiddenSummaryKeys.has(key)));
 }
 
 function statusSummary(state: RoundState): string {
     return state.statuses.length
-        ? state.statuses.map((status) => `${status.label} 残${status.remaining} / stack ${status.stacks}`).join('、')
+        ? state.statuses.map((status) => `${status.label} 残${status.remaining}・${status.stacks}段階`).join('、')
         : 'なし';
 }
 
 function simpleActions(battle: Battle): SimpleAction[] {
     if (!Array.isArray(battle.actions) || (battle.actions[0] && 'actions' in battle.actions[0])) return [];
     return battle.actions as SimpleAction[];
+}
+
+function simpleRoundNumbers(battle: Battle): number[] {
+    return [...new Set(simpleActions(battle).map((action) => action.round))];
+}
+
+function actorName(side: string, battle: Battle): string {
+    return side === '秘書' || side === 'player'
+        ? state.value?.secretary_name ?? '秘書'
+        : side === '対戦相手' || side === 'enemy'
+            ? battle.encounter_name
+            : '戦闘';
+}
+
+function targetName(side: string, battle: Battle): string {
+    return side === '秘書' || side === 'player'
+        ? battle.encounter_name
+        : state.value?.secretary_name ?? '秘書';
+}
+
+function actionNarrative(action: RoundAction, battle: Battle): string {
+    const actor = action.actor_name ?? actorName(action.side, battle);
+    const target = action.target_name ?? targetName(action.side, battle);
+    const amount = action.amount ?? 0;
+    if (action.type === 'action' || action.type === 'decision') return `${actor}は「${action.label}」を使用した。`;
+    if (action.type === 'mp_cost') return `${actor}はMPを${amount}消費した。`;
+    if (action.type === 'mp_recovery') return `${actor}はMPを${amount}回復した。`;
+    if (action.type === 'counter') return `${actor}の反撃。${target}に${amount}ダメージ。`;
+    if (action.type === 'guard') return `${actor}は防御態勢を取った。`;
+    if (action.type === 'barrier') return `${actor}は「${action.label}」で障壁を${amount}得た。`;
+    if (action.type === 'recovery') return `${actor}は「${action.label}」でHPを${amount}回復した。`;
+    if (action.type === 'role_stack_gain' || action.type === 'role_stack_spent') {
+        const role = action.label.replace(/^(増加|消費):\s*/, '');
+        return `${actor}の${role}が${amount}${action.type === 'role_stack_gain' ? '増加' : '消費'}した。`;
+    }
+    if (action.type === 'status_applied') return `${actor}に${action.label.replace(/^付与:\s*/, '')}が付与された。`;
+    if (action.type === 'status_expired') return `${actor}の${action.label.replace(/^消滅:\s*/, '')}が消滅した。`;
+    if (action.type === 'status_resisted') return `${actor}は${action.label.replace(/^抵抗:\s*/, '')}を防いだ。`;
+    if (action.type === 'status_removed') return `${actor}は状態効果を${amount}個解除した。`;
+    if (action.type === 'damage') {
+        const qualifiers = [action.critical ? '会心' : '', action.guarded ? '防御' : '', action.parried ? '受け流し' : '']
+            .filter(Boolean).join('・');
+        if (action.evaded) return `${actor}の「${action.label}」。${target}は回避した。`;
+        const damage = amount > 0 ? `${target}に${amount}ダメージ。` : `${target}のHPダメージは0。`;
+        const barrier = action.barrier_absorbed ? `障壁が${action.barrier_absorbed}吸収。` : '';
+        return `${actor}の「${action.label}」。${qualifiers ? `${qualifiers}。` : ''}${damage}${barrier}`;
+    }
+    return `${actor}に「${action.label}」の効果。`;
+}
+
+function simpleActionNarrative(action: SimpleAction, battle: Battle): string {
+    const actor = action.actor_name ?? actorName(action.side, battle);
+    const target = action.target_name ?? targetName(action.side, battle);
+    const label = action.action_label ?? '戦闘行動';
+    return action.amount > 0
+        ? `${actor}の「${label}」。${target}に${action.amount}ダメージ。`
+        : `${actor}は「${label}」を行った。`;
+}
+
+function closeBattle(): void {
+    selectedBattle.value = null;
 }
 
 onMounted(() => { void enter(); });
@@ -411,37 +449,87 @@ onMounted(() => { void enter(); });
         <p v-if="busy && state === null" class="status">地下の状態を確認しています。</p>
         <p v-if="error" class="status error" role="alert">{{ error }}</p>
 
-        <template v-if="state?.stage === 'initial_descent'">
-            <div class="underground-story">
-                <p v-for="line in initialDescent" :key="line">{{ line }}</p>
+        <template v-if="state && currentBattle">
+            <section id="underground-battle-start" class="underground-battle-log" aria-label="戦闘ログ">
+                <header class="underground-battle-opening">
+                    <p class="eyebrow">遭遇</p>
+                    <h1>{{ currentBattle.encounter_name }}</h1>
+                    <p v-if="currentBattle.build_name">{{ currentBattle.build_name }}で戦闘を開始した。</p>
+                    <p v-else>{{ state.secretary_name }}は戦闘を開始した。</p>
+                    <a class="underground-log-jump" href="#underground-battle-result">末尾へ</a>
+                </header>
+
+                <div class="underground-rounds">
+                    <p v-if="currentBattle.detail_message" class="status">{{ currentBattle.detail_message }}</p>
+                    <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
+                        <h2>Round {{ round.round }}</h2>
+                        <ol class="underground-action-log">
+                            <li v-for="(action, index) in round.actions" :key="index">{{ actionNarrative(action, currentBattle) }}</li>
+                        </ol>
+                        <div v-if="round.end_state" class="underground-round-state">
+                            <section class="underground-combatant-state">
+                                <strong>{{ state.secretary_name }}</strong>
+                                <div class="underground-vitals">
+                                    <label><span>HP {{ round.end_state.player.hp }}/{{ round.end_state.player.max_hp }}</span><progress class="hp" :max="round.end_state.player.max_hp" :value="round.end_state.player.hp" /></label>
+                                    <label><span>MP {{ round.end_state.player.mp }}/10000</span><progress class="mp" max="10000" :value="round.end_state.player.mp" /></label>
+                                </div>
+                                <p>障壁 {{ round.end_state.player.barrier }}・状態 {{ statusSummary(round.end_state.player) }}・闘志 {{ round.end_state.player.role_stacks.fighting_spirit }}・恩寵 {{ round.end_state.player.role_stacks.grace }}</p>
+                            </section>
+                            <section class="underground-combatant-state">
+                                <strong>{{ currentBattle.encounter_name }}</strong>
+                                <div class="underground-vitals">
+                                    <label><span>HP {{ round.end_state.enemy.hp }}/{{ round.end_state.enemy.max_hp }}</span><progress class="hp" :max="round.end_state.enemy.max_hp" :value="round.end_state.enemy.hp" /></label>
+                                    <label><span>MP {{ round.end_state.enemy.mp }}/10000</span><progress class="mp" max="10000" :value="round.end_state.enemy.mp" /></label>
+                                </div>
+                                <p>障壁 {{ round.end_state.enemy.barrier }}・状態 {{ statusSummary(round.end_state.enemy) }}・闘志 {{ round.end_state.enemy.role_stacks.fighting_spirit }}・恩寵 {{ round.end_state.enemy.role_stacks.grace }}</p>
+                            </section>
+                            <p v-if="round.end_state.player.hp === 0" class="underground-ko">{{ state.secretary_name }}は戦闘不能になった。</p>
+                            <p v-if="round.end_state.enemy.hp === 0" class="underground-ko">{{ currentBattle.encounter_name }}は戦闘不能になった。</p>
+                        </div>
+                    </article>
+
+                    <article v-for="roundNumber in simpleRoundNumbers(currentBattle)" :key="`simple-${roundNumber}`" class="underground-round">
+                        <h2>Round {{ roundNumber }}</h2>
+                        <ol class="underground-action-log">
+                            <li v-for="(action, index) in simpleActions(currentBattle).filter((item) => item.round === roundNumber)" :key="index">{{ simpleActionNarrative(action, currentBattle) }}</li>
+                        </ol>
+                    </article>
+                </div>
+
+                <footer id="underground-battle-result" class="underground-battle-result">
+                    <p class="eyebrow">戦闘終了</p>
+                    <h2>{{ battleResultLabel(currentBattle.result) }}</h2>
+                    <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
+                    <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}<span v-if="currentBattle.context === 'playtest'">・G +0・ドロップなし</span></p>
+                    <dl v-if="currentBattle.summary" class="underground-combat-summary">
+                        <div v-for="(value, key) in visibleSummary(currentBattle.summary)" :key="key"><dt>{{ summaryLabel(key) }}</dt><dd>{{ summaryValue(key, value) }}</dd></div>
+                    </dl>
+                    <a class="underground-log-jump" href="#underground-battle-start">先頭へ</a>
+                </footer>
+            </section>
+
+            <div v-if="state.stage === 'escape_pending'" class="underground-story underground-after-battle">
+                <p v-for="line in tutorialAftermath" :key="line">{{ line }}</p>
+                <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/story/advance', { action: 'escape_complete' })">OK</button>
             </div>
+            <div v-else-if="state.stage === 'special_loss_complete'" class="underground-story underground-after-battle">
+                <p v-for="line in trueNameAfter" :key="line">{{ line }}</p>
+                <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/story/advance', { action: 'special_loss_aftermath_complete' })">OK</button>
+            </div>
+            <button v-else class="button secondary underground-battle-back" type="button" @click="closeBattle">地下メインへ戻る</button>
+        </template>
+
+        <template v-else-if="state?.stage === 'initial_descent'">
+            <div class="underground-story"><p v-for="line in initialDescent" :key="line">{{ line }}</p></div>
             <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/story/advance', { action: 'initial_story_complete' })">OK</button>
         </template>
 
         <template v-else-if="state?.stage === 'tutorial_ready'">
-            <p class="underground-story">鼻を突く臭い。秘書が身構えたのも束の間、闇の中から巨大なネズミの様な怪物が現れ、襲い掛かってきた――！</p>
-            <h1>ジャイアントラット</h1>
-            <dl class="underground-tutorial-stats">
-                <div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.tutorial_projection.stats[key] }}</dd></div>
-                <div><dt>武器</dt><dd>護身用ナイフ</dd></div>
-            </dl>
-            <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/tutorial')">戦闘開始</button>
-        </template>
-
-        <template v-else-if="state?.stage === 'escape_pending'">
-            <div class="underground-story">
-                <p v-for="line in tutorialAftermath" :key="line">{{ line }}</p>
+            <div class="underground-battle-preview">
+                <p>鼻を突く臭い。闇の中から巨大なネズミの様な怪物が襲い掛かってきた――！</p>
+                <p class="eyebrow">遭遇</p><h1>ジャイアントラット</h1>
+                <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/tutorial')">戦闘開始</button>
             </div>
-            <section v-if="currentBattle" class="underground-battle-log" aria-label="戦闘ログ">
-                <h2>戦闘ログ</h2>
-                <p>{{ currentBattle.encounter_name }} / {{ battleRoundCount(currentBattle) }} round</p>
-                <p>結果: {{ battleResultLabel(currentBattle.result) }}</p>
-                <p>経験値 +{{ currentBattle.xp_awarded }} / 輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}</p>
-                <ol v-if="simpleActions(currentBattle).length">
-                    <li v-for="(action, index) in simpleActions(currentBattle)" :key="`${action.round}-${index}`">{{ action.round }} / {{ action.side }} / {{ action.action }} / {{ action.amount }}</li>
-                </ol>
-            </section>
-            <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/story/advance', { action: 'escape_complete' })">OK</button>
         </template>
 
         <template v-else-if="state?.stage === 'shopkeeper_encounter'">
@@ -459,26 +547,11 @@ onMounted(() => { void enter(); });
 
         <template v-else-if="state?.stage === 'special_loss_pending'">
             <div class="underground-story"><p v-for="line in trueNameBefore" :key="line">{{ line }}</p></div>
-            <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/scripted-loss')">戦闘開始</button>
-        </template>
-
-        <template v-else-if="state?.stage === 'special_loss_complete'">
-            <div class="underground-story"><p v-for="line in trueNameAfter" :key="line">{{ line }}</p></div>
-            <section v-if="currentBattle" class="underground-battle-log" aria-label="戦闘ログ">
-                <h2>戦闘ログ</h2>
-                <p>{{ currentBattle.encounter_name }} / {{ battleRoundCount(currentBattle) }} round</p>
-                <p>結果: {{ battleResultLabel(currentBattle.result) }}</p>
-                <p>経験値 +{{ currentBattle.xp_awarded }} / 輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}</p>
-                <article v-if="selectedRound" class="underground-round-viewer">
-                    <nav aria-label="戦闘round操作">
-                        <button type="button" :disabled="selectedRoundIndex === 0" @click="moveRound(-1)">前のround</button>
-                        <strong>Round {{ selectedRound.round }} / {{ currentStructuredRounds.length }}</strong>
-                        <button type="button" :disabled="selectedRoundIndex >= currentStructuredRounds.length - 1" @click="moveRound(1)">次のround</button>
-                    </nav>
-                    <ul><li v-for="(action, index) in selectedRound.actions" :key="index">{{ action.side }} / {{ actionTypeLabel(action.type) }} / {{ action.label }}<span v-if="action.reason"> — {{ action.reason }}</span><span v-if="action.amount"> / {{ action.amount }}</span></li></ul>
-                </article>
+            <section class="underground-battle-preview" aria-labelledby="rika-battle-title">
+                <p class="eyebrow">遭遇</p>
+                <h1 id="rika-battle-title">リカ</h1>
+                <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/scripted-loss')">戦闘開始</button>
             </section>
-            <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/story/advance', { action: 'special_loss_aftermath_complete' })">OK</button>
         </template>
 
         <template v-else-if="state?.stage === 'shop_explanation'">
@@ -494,12 +567,8 @@ onMounted(() => { void enter(); });
             <div class="underground-story"><p v-for="line in crystalOffer" :key="line">{{ line }}</p></div>
             <section class="underground-growth-grid" aria-label="初期輝石選択">
                 <article v-for="path in state.growth_paths ?? []" :key="path.key" class="underground-growth-card" :data-color="path.color">
-                    <h2>{{ path.label }}</h2>
-                    <p v-for="line in path.description" :key="line">{{ line }}</p>
-                    <dl>
-                        <div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ path.stats[key] }}</dd></div>
-                        <div><dt>HP</dt><dd>{{ path.max_hp }}</dd></div><div><dt>MP</dt><dd>{{ path.max_mp }}</dd></div>
-                    </dl>
+                    <h2>{{ path.label }}</h2><p v-for="line in path.description" :key="line">{{ line }}</p>
+                    <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ path.stats[key] }}</dd></div><div><dt>HP</dt><dd>{{ path.max_hp }}</dd></div><div><dt>MP</dt><dd>{{ path.max_mp }}</dd></div></dl>
                     <p>Lv2以降: 自然成長 {{ Object.values(path.natural_growth).reduce((sum, value) => sum + value, 0) }} / 未使用STP +{{ path.unspent_stp_per_level }}</p>
                     <button class="button primary" type="button" :disabled="busy" @click="chooseGrowthPath(path.key)">{{ path.label }}を選ぶ</button>
                 </article>
@@ -512,74 +581,65 @@ onMounted(() => { void enter(); });
         </template>
 
         <template v-else-if="state?.stage === 'underground_open'">
-            <h1>{{ state.secretary_name }}</h1>
-            <dl class="underground-summary">
-                <div><dt>戦闘Lv</dt><dd>{{ state.combat_level }}</dd></div>
-                <div><dt>経験値</dt><dd>{{ state.combat_xp }} / {{ state.next_level_xp }}</dd></div>
-                <div><dt>輝石の欠片</dt><dd>{{ state.shard_balance }} G <small>1 G = 輝石の欠片1グラム</small></dd></div>
-                <div><dt>ショップ</dt><dd>{{ state.shopkeeper_name }}</dd></div>
-                <div v-if="state.growth_path"><dt>成長方針</dt><dd>{{ state.growth_path.label }}</dd></div>
-            </dl>
-            <section v-if="state.growth_path" class="underground-growth-summary">
-                <h2>Lv1能力</h2>
-                <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.growth_path.stats[key] }}</dd></div></dl>
-                <p>HP {{ state.growth_path.max_hp }} / MP {{ state.growth_path.max_mp }} / 自然回復 {{ state.growth_path.natural_recovery }} / round</p>
-                <p>Lv2以降: 未使用STP +{{ state.growth_path.unspent_stp_per_level }} / level（実際の成長・振り分けは今後実装）</p>
-            </section>
-            <div class="underground-entries">
-                <button type="button" disabled>周囲を探索<br><small>準備中</small></button>
-                <button type="button" disabled>試練<br><small>準備中</small></button>
-                <button type="button" @click="shopOpen = !shopOpen">ショップ</button>
+            <div class="underground-main-layout">
+                <section class="underground-character-pane" aria-labelledby="underground-character-title">
+                    <div class="underground-character-header">
+                        <img v-if="props.secretaryImageUrl" :src="props.secretaryImageUrl" :alt="`${state.secretary_name}の画像`">
+                        <div v-else class="underground-portrait-placeholder">No image</div>
+                        <div><p class="eyebrow">Underground</p><h1 id="underground-character-title">{{ state.secretary_name }}</h1></div>
+                    </div>
+                    <dl class="underground-summary">
+                        <div><dt>戦闘Lv</dt><dd>{{ state.combat_level }}</dd></div>
+                        <div><dt>経験値</dt><dd>{{ state.combat_xp }} / {{ state.next_level_xp }}</dd></div>
+                        <div v-if="state.growth_path"><dt>HP</dt><dd>{{ state.growth_path.max_hp }} / {{ state.growth_path.max_hp }}</dd></div>
+                        <div v-if="state.growth_path"><dt>MP</dt><dd>{{ state.growth_path.max_mp }} / {{ state.growth_path.max_mp }}</dd></div>
+                        <div><dt>輝石の欠片</dt><dd>{{ state.shard_balance }} G</dd></div>
+                        <div v-if="state.growth_path"><dt>成長方針</dt><dd>{{ state.growth_path.label }}</dd></div>
+                    </dl>
+                    <section v-if="state.growth_path" class="underground-growth-summary">
+                        <h2>能力</h2>
+                        <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.growth_path.stats[key] }}</dd></div></dl>
+                        <p>自然回復 {{ state.growth_path.natural_recovery }} MP / ラウンド・Lv2以降 未使用STP +{{ state.growth_path.unspent_stp_per_level }}</p>
+                    </section>
+                    <section class="underground-equipment" aria-labelledby="underground-equipment-title">
+                        <h2 id="underground-equipment-title">装備</h2>
+                        <dl><div><dt>武器</dt><dd>未設定</dd></div><div><dt>防具</dt><dd>未設定</dd></div><div><dt>装飾</dt><dd>未設定</dd></div></dl>
+                    </section>
+                    <div class="underground-character-actions"><button type="button" disabled>スキル<small>準備中</small></button><button type="button" disabled>AI設定<small>準備中</small></button></div>
+                </section>
+
+                <section class="underground-action-pane" aria-labelledby="underground-guide-title">
+                    <section class="underground-shop">
+                        <p class="eyebrow">案内人 / ショップ</p>
+                        <h2 id="underground-guide-title">{{ state.shopkeeper_name }}</h2>
+                        <p>{{ shopGreeting }}</p>
+                        <div class="underground-shop-entries">
+                            <button type="button" disabled>宿で休む<small>準備中</small></button>
+                            <button type="button" disabled>装備ショップ<small>準備中</small></button>
+                            <button type="button" disabled>銀行<small>準備中</small></button>
+                            <button type="button" disabled>ショップ<small>準備中</small></button>
+                        </div>
+                    </section>
+                    <section class="underground-adventure" aria-labelledby="underground-adventure-title">
+                        <h2 id="underground-adventure-title">冒険</h2>
+                        <div class="underground-entries"><button type="button" disabled>周囲を探索<small>準備中</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
+                    </section>
+                    <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
+                        <h2 id="underground-playtest-title">力試し（α）</h2>
+                        <p>{{ state.playtest.notice }}</p>
+                        <label for="underground-build">完成形ビルド</label>
+                        <select id="underground-build" v-model="selectedBuild" :disabled="busy"><option v-for="build in state.playtest.builds" :key="build.key" :value="build.key">{{ build.label }} — {{ build.description }}</option></select>
+                        <label for="underground-enemy">対戦相手</label>
+                        <select id="underground-enemy" v-model="selectedEnemy" :disabled="busy"><option v-for="enemy in state.playtest.enemies" :key="enemy.key" :value="enemy.key">{{ enemy.label }} — {{ enemy.description }}</option></select>
+                        <button class="button primary" type="button" :disabled="busy || !selectedBuild || !selectedEnemy" @click="runPlaytest">戦闘開始</button>
+                        <p>報酬なし: XP 0・輝石の欠片 0・G 0・ドロップなし。敗北ペナルティもありません。</p>
+                    </section>
+                    <section class="underground-history" aria-labelledby="underground-history-title">
+                        <h2 id="underground-history-title">戦闘履歴</h2>
+                        <ul><li v-for="battle in battles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
+                    </section>
+                </section>
             </div>
-            <section v-if="shopOpen" class="underground-shop" aria-labelledby="underground-shop-title">
-                <h2 id="underground-shop-title">{{ state.true_name_branch ? '「雨宿り」箱庭ダンジョン支店' : '箱庭ダンジョン店' }}</h2>
-                <p>{{ shopGreeting }}</p>
-                <div class="underground-shop-entries">
-                    <button type="button" disabled>宿で休む<br><small>準備中</small></button>
-                    <button type="button" disabled>装備ショップを覗く<br><small>準備中</small></button>
-                    <button type="button" disabled>銀行に行く<br><small>準備中</small></button>
-                </div>
-            </section>
-            <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
-                <h2 id="underground-playtest-title">力試し（α）</h2>
-                <p>{{ state.playtest.notice }}</p>
-                <label for="underground-build">完成形ビルド</label>
-                <select id="underground-build" v-model="selectedBuild" :disabled="busy"><option v-for="build in state.playtest.builds" :key="build.key" :value="build.key">{{ build.label }} — {{ build.description }}</option></select>
-                <label for="underground-enemy">対戦相手</label>
-                <select id="underground-enemy" v-model="selectedEnemy" :disabled="busy"><option v-for="enemy in state.playtest.enemies" :key="enemy.key" :value="enemy.key">{{ enemy.label }} — {{ enemy.description }}</option></select>
-                <button class="button primary" type="button" :disabled="busy || !selectedBuild || !selectedEnemy" @click="runPlaytest">戦闘開始</button>
-                <p>報酬なし: XP 0 / 輝石の欠片 0 / G 0 / drop なし。敗北penaltyもありません。</p>
-            </section>
-            <section v-if="currentBattle" class="underground-battle-log" aria-label="戦闘ログ">
-                <h2>{{ currentBattle.context === 'playtest' ? '力試し結果' : '戦闘ログ' }}</h2>
-                <p><span v-if="currentBattle.build_name">{{ currentBattle.build_name }} vs </span>{{ currentBattle.encounter_name }} / {{ battleRoundCount(currentBattle) }} round</p>
-                <p>結果: {{ battleResultLabel(currentBattle.result) }}</p>
-                <p>経験値 +{{ currentBattle.xp_awarded }} / 輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}<span v-if="currentBattle.context === 'playtest'"> / G +0 / drop なし</span></p>
-                <dl v-if="currentBattle.summary" class="underground-combat-summary">
-                    <div v-for="(value, key) in currentBattle.summary" :key="key"><dt>{{ summaryLabel(key) }}</dt><dd>{{ summaryValue(key, value) }}</dd></div>
-                </dl>
-                <article v-if="selectedRound" class="underground-round-viewer">
-                    <nav aria-label="戦闘round操作">
-                        <button type="button" :disabled="selectedRoundIndex === 0" @click="moveRound(-1)">前のround</button>
-                        <strong>Round {{ selectedRound.round }} / {{ currentStructuredRounds.length }}</strong>
-                        <button type="button" :disabled="selectedRoundIndex >= currentStructuredRounds.length - 1" @click="moveRound(1)">次のround</button>
-                    </nav>
-                    <ul>
-                        <li v-for="(action, index) in selectedRound.actions" :key="index">
-                            {{ action.side }} / {{ actionTypeLabel(action.type) }} / {{ action.label }}<span v-if="action.reason"> — {{ action.reason }}</span><span v-if="action.amount"> / {{ action.amount }}</span><span v-if="action.critical"> / critical</span><span v-if="action.evaded"> / evade</span><span v-if="action.guarded"> / guard</span><span v-if="action.parried"> / parry</span><span v-if="action.barrier_absorbed"> / barrier {{ action.barrier_absorbed }}</span>
-                        </li>
-                    </ul>
-                    <template v-if="selectedRound.end_state">
-                        <p>秘書 HP {{ selectedRound.end_state.player.hp }}/{{ selectedRound.end_state.player.max_hp }} / MP {{ selectedRound.end_state.player.mp }} / barrier {{ selectedRound.end_state.player.barrier }} / status {{ statusSummary(selectedRound.end_state.player) }} / 闘志 {{ selectedRound.end_state.player.role_stacks.fighting_spirit }} / 恩寵 {{ selectedRound.end_state.player.role_stacks.grace }}</p>
-                        <p>対戦相手 HP {{ selectedRound.end_state.enemy.hp }}/{{ selectedRound.end_state.enemy.max_hp }} / MP {{ selectedRound.end_state.enemy.mp }} / barrier {{ selectedRound.end_state.enemy.barrier }} / status {{ statusSummary(selectedRound.end_state.enemy) }} / 闘志 {{ selectedRound.end_state.enemy.role_stacks.fighting_spirit }} / 恩寵 {{ selectedRound.end_state.enemy.role_stacks.grace }}</p>
-                    </template>
-                </article>
-                <ol v-else-if="simpleActions(currentBattle).length"><li v-for="(action, index) in simpleActions(currentBattle)" :key="`${action.round}-${index}`">{{ action.round }} / {{ action.side }} / {{ action.action }} / {{ action.amount }}</li></ol>
-            </section>
-            <section class="underground-history" aria-labelledby="underground-history-title">
-                <h2 id="underground-history-title">戦闘履歴</h2>
-                <ul><li v-for="battle in battles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }} round</button></li></ul>
-            </section>
         </template>
     </section>
 </template>

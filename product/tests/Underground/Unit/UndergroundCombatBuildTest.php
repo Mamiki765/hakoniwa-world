@@ -531,6 +531,7 @@ final class UndergroundCombatBuildTest extends TestCase
         $manifest['builds'][$definition['build_key']] = $definition['build'];
         $manifest['enemies'][$definition['enemy_key']] = $definition['enemy'];
         $catalog = new AlphaV1BuildCatalog($manifest);
+        $storyScaleBps = (new AlphaV1CombatRules)->storyBenchmarkScaleBps($definition['combat_level_equivalent']);
 
         $first = $this->model()->fight(
             $catalog,
@@ -539,6 +540,9 @@ final class UndergroundCombatBuildTest extends TestCase
             $definition['tier_key'],
             $definition['seed'],
             $definition['max_rounds'],
+            null,
+            [],
+            $storyScaleBps,
         );
         $retry = $this->model()->fight(
             $catalog,
@@ -547,16 +551,27 @@ final class UndergroundCombatBuildTest extends TestCase
             $definition['tier_key'],
             $definition['seed'],
             $definition['max_rounds'],
+            null,
+            [],
+            $storyScaleBps,
         );
 
         $this->assertSame($first->toArray(), $retry->toArray());
+        $this->assertSame(1254, $definition['combat_level_equivalent']);
+        $this->assertSame(1_137_700, $storyScaleBps);
         $this->assertSame('enemy', $first->winner);
-        $this->assertLessThanOrEqual(6, $first->rounds);
+        $this->assertSame(1, $first->rounds);
+        $this->assertSame(0, $first->playerRemainingHp);
+        $this->assertSame(568_850, $first->enemyRemainingHp);
+        $this->assertSame(4, $first->damageDealt);
+        $this->assertSame(500, $first->damageReceived);
         $actions = array_column($first->actionLog, 'action');
         $this->assertContains('counter_stance', $actions);
-        $this->assertContains('defend', $actions);
         $this->assertContains('counter', $actions);
         $this->assertContains('round_end', $actions);
+        $counter = $first->actionLog[array_key_last($first->actionLog) - 1];
+        $this->assertSame('counter', $counter['action']);
+        $this->assertGreaterThan(500, $counter['amount']);
         $this->assertSame([], $first->abnormalState);
     }
 

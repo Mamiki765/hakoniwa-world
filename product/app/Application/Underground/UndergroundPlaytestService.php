@@ -93,7 +93,7 @@ final readonly class UndergroundPlaytestService
                 ->where('underground_profile_id', $profile->id)
                 ->where('request_id', $requestId)
                 ->lockForUpdate()
-                ->with('log')
+                ->with(['log' => fn ($query) => $query->where('expires_at', '>', Carbon::now())])
                 ->first();
             if ($existing instanceof UndergroundBattle) {
                 if ($existing->activity_type !== UndergroundBattle::ACTIVITY_PLAYTEST
@@ -127,7 +127,12 @@ final readonly class UndergroundPlaytestService
                 );
             }
             $finishedAt = Carbon::now();
-            $projection = $this->projector->project($result, $definition['catalog']);
+            $projection = $this->projector->project(
+                $result,
+                $definition['catalog'],
+                $secretary->name,
+                $definition['enemy_label'],
+            );
             $battle = UndergroundBattle::query()->create([
                 'underground_profile_id' => $profile->id,
                 'request_id' => $requestId,
@@ -160,6 +165,10 @@ final readonly class UndergroundPlaytestService
                     'playtest_identity' => $definition['identity'],
                     'build_key' => $buildKey,
                     'enemy_key' => $enemyKey,
+                    'player_display_name' => $secretary->name,
+                    'build_display_name' => $definition['build_label'],
+                    'encounter_display_name' => $definition['enemy_label'],
+                    'presentation_log_version' => 1,
                     'summary' => $projection['summary'],
                     'reward_policy' => 'none',
                     'penalty_policy' => 'none',
@@ -169,7 +178,7 @@ final readonly class UndergroundPlaytestService
             ]);
             UndergroundBattleLog::query()->create([
                 'underground_battle_id' => $battle->id,
-                'actions' => $result->actionLog,
+                'actions' => $projection['rounds'],
                 'expires_at' => $finishedAt->copy()->addHours($this->runtimeCatalog->battleLogRetentionHours()),
             ]);
 
@@ -183,47 +192,25 @@ final readonly class UndergroundPlaytestService
         $snapshot = $battle->snapshot;
         $buildKey = is_string($snapshot['build_key'] ?? null) ? $snapshot['build_key'] : '';
         $enemyKey = is_string($snapshot['enemy_key'] ?? null) ? $snapshot['enemy_key'] : '';
-        $definition = $this->catalog->playtestDefinition($buildKey, $enemyKey);
         $summary = is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : [];
-        $rounds = null;
-        if ($withRounds && $battle->log instanceof UndergroundBattleLog) {
-            $stored = new BuildCombatResult(
-                $battle->runtime_identity,
-                '',
-                0,
-                $buildKey,
-                $enemyKey,
-                $definition['tier_key'],
-                $battle->result === UndergroundBattle::RESULT_VICTORY ? 'player'
-                    : ($battle->result === UndergroundBattle::RESULT_DEFEAT ? 'enemy' : 'stalemate'),
-                $battle->rounds,
-                (int) ($summary['player_remaining_hp'] ?? 0),
-                (int) ($summary['enemy_remaining_hp'] ?? 0),
-                $battle->damage_dealt,
-                $battle->damage_received,
-                $battle->healing_done,
-                (int) ($summary['damage_prevented'] ?? 0),
-                (int) ($summary['mp_spent'] ?? 0),
-                (int) ($summary['mp_natural_recovery'] ?? 0),
-                (int) ($summary['mp_skill_recovery'] ?? 0),
-                0,
-                null,
-                (int) ($summary['skill_unavailable_due_to_mp'] ?? 0),
-                (int) ($summary['final_mp'] ?? 0),
-                [], [], ['fighting_spirit' => 0, 'grace' => 0], [], [],
-                $battle->log->actions,
-                [],
-            );
-            $rounds = $this->projector->project($stored, $definition['catalog'])['rounds'];
-        }
+        $log = $this->loadedLog($battle);
+        $hasPresentationLog = ($snapshot['presentation_log_version'] ?? null) === 1
+            && $log instanceof UndergroundBattleLog;
+        $rounds = $withRounds && $hasPresentationLog ? $log->actions : null;
+        $buildName = is_string($snapshot['build_display_name'] ?? null)
+            ? $snapshot['build_display_name']
+            : '力試しビルド';
+        $encounterName = is_string($snapshot['encounter_display_name'] ?? null)
+            ? $snapshot['encounter_display_name']
+            : '力試しの対戦相手';
 
         return [
             'id' => $battle->request_id,
             'context' => 'playtest',
             'build_key' => $buildKey,
             'enemy_key' => $enemyKey,
-            'build_name' => $definition['build_label'],
-            'encounter_name' => $definition['enemy_label'],
+            'build_name' => $buildName,
+            'encounter_name' => $encounterName,
             'result' => in_array($summary['result'] ?? null, ['victory', 'defeat', 'stalemate'], true)
                 ? $summary['result']
                 : $battle->result,
@@ -232,10 +219,25 @@ final readonly class UndergroundPlaytestService
             'shard_delta' => 0,
             'summary' => $summary,
             'rounds' => $rounds,
-            'detail_available' => $battle->log instanceof UndergroundBattleLog,
+            'detail_available' => $withRounds
+                ? $hasPresentationLog
+                : (bool) ($battle->getAttribute('active_log_exists') ?? false),
+            'detail_message' => $withRounds && ! $hasPresentationLog
+                ? '詳細ログは保存期間を過ぎました。'
+                : null,
             'finished_at' => $battle->finished_at->toAtomString(),
             'rewards' => ['xp' => 0, 'shards' => 0, 'g' => 0, 'drops' => []],
         ];
+    }
+
+    private function loadedLog(UndergroundBattle $battle): ?UndergroundBattleLog
+    {
+        if (! $battle->relationLoaded('log')) {
+            return null;
+        }
+        $log = $battle->getRelation('log');
+
+        return $log instanceof UndergroundBattleLog ? $log : null;
     }
 
     /** @return array{UndergroundProfile, UndergroundIntroProgress} */

@@ -1544,7 +1544,16 @@ describe('application lobby and island entry', () => {
             combat_xp: 5, next_level_xp: 100, shard_balance: 0,
             shopkeeper_name: null, battle: null,
         };
-        const escapeState = { ...returnedState, stage: 'escape_pending' };
+        const escapeState = {
+            ...returnedState,
+            stage: 'escape_pending',
+            battle: {
+                id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+                encounter_name: 'ジャイアントラット', result: 'victory', rounds: 1,
+                xp_awarded: 5, shard_delta: 0, detail_available: true,
+                actions: [{ round: 1, side: 'player', action_label: '連続斬り', amount: 90 }],
+            },
+        };
         const replaceSpy = vi.spyOn(window.history, 'replaceState');
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -1569,7 +1578,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
-        await wrapper.get('.underground-panel > .button').trigger('click');
+        await wrapper.get('.underground-after-battle .button').trigger('click');
         await flushPromises();
 
         expect(window.location.pathname).toBe('/');
@@ -1631,7 +1640,7 @@ describe('application lobby and island entry', () => {
             rounds: [
                 {
                     round: 1,
-                    actions: [{ type: 'decision', side: '秘書', label: 'AI判断: 防御', reason: '優先ルール 1' }],
+                    actions: [{ type: 'decision', side: '秘書', label: '防御', reason: 'priority_rule_0' }],
                     end_state: {
                         player: { hp: 650, max_hp: 660, mp: 9700, barrier: 40, statuses: [], role_stacks: { fighting_spirit: 1, grace: 0 } },
                         enemy: { hp: 100, max_hp: 200, mp: 0, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
@@ -1673,7 +1682,7 @@ describe('application lobby and island entry', () => {
                 }
                 return response({
                     ...summary,
-                    actions: [{ round: 1, side: 'player', action: 'quick_slash', amount: 90 }],
+                    actions: [{ round: 1, side: 'player', action: 'quick_slash', action_label: '連続斬り', amount: 90 }],
                 });
             }
             return response(null, 404);
@@ -1684,33 +1693,43 @@ describe('application lobby and island entry', () => {
         await wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'ペリドット')!.trigger('click');
         await flushPromises();
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('内政Lv');
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv1');
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
 
+        expect(wrapper.find('.underground-main-layout').exists()).toBe(true);
+        expect(wrapper.find('.underground-character-pane').exists()).toBe(true);
+        expect(wrapper.find('.underground-action-pane').exists()).toBe(true);
         expect(wrapper.get('.underground-summary').text()).toContain('戦闘Lv1');
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
-        expect(wrapper.get('.underground-summary').text()).toContain('<b>店員</b>');
-        expect(wrapper.find('.underground-summary b').exists()).toBe(false);
-        expect(wrapper.findAll('.underground-entries button')).toHaveLength(3);
-        expect(wrapper.findAll('.underground-entries button')).toHaveLength(3);
-        expect(wrapper.findAll('.underground-entries button').slice(0, 2).every((button) => (
+        expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
+        expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
+        expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-entries button').every((button) => (
             button.attributes('disabled') !== undefined && button.text().includes('準備中')
         ))).toBe(true);
-        await wrapper.findAll('.underground-entries button')[2]!.trigger('click');
         expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        expect(wrapper.findAll('.underground-shop-entries button')).toHaveLength(4);
         expect(wrapper.findAll('.underground-shop-entries button').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
         const historyButton = wrapper.get('.underground-history li button');
         expect(historyButton.text()).toContain('<b>ジャイアントラット</b>');
         expect(historyButton.find('b').exists()).toBe(false);
         await historyButton.trigger('click');
         await flushPromises();
-        expect(wrapper.get('.underground-battle-log').text()).toContain('quick_slash');
-        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 勝利');
-        expect(wrapper.get('.underground-battle-log').text()).toContain('経験値 +5 / 輝石の欠片 +0');
-        await historyButton.trigger('click');
+        expect(wrapper.get('.underground-battle-opening').text()).toContain('<b>ジャイアントラット</b>');
+        expect(wrapper.get('.underground-battle-opening').text()).not.toContain('勝利');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('連続斬り');
+        expect(wrapper.get('.underground-battle-log').text()).not.toContain('quick_slash');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('勝利');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +5・輝石の欠片 +0');
+        expect(wrapper.get('.underground-log-jump').text()).toBe('末尾へ');
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.get('.underground-history li button').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('戦闘ログを読み込めませんでした。');
         expect(wrapper.get('.underground-battle-log').text()).toContain('<b>ジャイアントラット</b>');
+        await wrapper.get('.underground-battle-back').trigger('click');
         expect(wrapper.get('.underground-playtest').text()).toContain('正式な育成・装備状態ではありません');
         expect(wrapper.get<HTMLSelectElement>('#underground-build').element.value).toBe('pure_tank');
         await wrapper.get('.underground-playtest .button').trigger('click');
@@ -1721,15 +1740,22 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(playtestRequest?.[1]?.body))).toEqual({
             request_id: expect.any(String), build_key: 'pure_tank', enemy_key: 'depth_stalker',
         });
-        expect(wrapper.get('.underground-battle-log').text()).toContain('AI判断: 防御 — 優先ルール 1');
-        expect(wrapper.get('.underground-combat-summary').text()).toContain('防いだdamage120');
-        expect(wrapper.get('.underground-round-viewer').text()).toContain('Round 1 / 2');
-        await wrapper.findAll('.underground-round-viewer nav button')[1]!.trigger('click');
-        expect(wrapper.get('.underground-round-viewer').text()).toContain('Round 2 / 2');
-        expect(wrapper.get('.underground-round-viewer').text()).toContain('status付与 / 付与: 加護');
-        expect(wrapper.get('.underground-round-viewer').text()).toContain('加護 残1 / stack 1');
-        expect(wrapper.get('.underground-round-viewer').text()).toContain('闘志 2 / 恩寵 1');
-        expect(wrapper.get('.underground-battle-log').text()).toContain('経験値 +0 / 輝石の欠片 +0 / G +0 / drop なし');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('ペリドットは「防御」を使用した。');
+        expect(wrapper.get('.underground-battle-log').text()).not.toContain('priority_rule_0');
+        expect(wrapper.get('.underground-combat-summary').text()).toContain('防いだダメージ120');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('ラウンド数');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('残HP');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('最終MP');
+        expect(wrapper.findAll('.underground-vitals progress.hp')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-vitals progress.mp')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-round')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('Round 1');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('Round 2');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('ペリドットに加護が付与された。');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('加護 残1・1段階');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('闘志 2・恩寵 1');
+        expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0・G +0・ドロップなし');
     });
 
     it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {
@@ -1760,7 +1786,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
-        await wrapper.get('.underground-panel > .button').trigger('click');
+        await wrapper.get('.underground-after-battle .button').trigger('click');
         await flushPromises();
 
         expect(wrapper.emitted('returnToSecretary')).toHaveLength(1);
@@ -1787,8 +1813,8 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
-        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 敗北');
-        expect(wrapper.get('.underground-battle-log').text()).toContain('経験値 +0 / 輝石の欠片 +0');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('敗北');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0');
     });
 
     it('completes the normal first-player flow from tutorial through shop explanation and main unlock', async () => {
@@ -1914,14 +1940,13 @@ describe('application lobby and island entry', () => {
         await wrapper.get('.underground-panel > .button').trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-panel h1').text()).toBe('ジャイアントラット');
-        expect(wrapper.get('.underground-tutorial-stats').text()).toContain('生命10');
-        expect(wrapper.get('.underground-tutorial-stats').text()).toContain('敏捷10');
-        await wrapper.get('.underground-panel > .button').trigger('click');
+        expect(wrapper.find('.underground-tutorial-stats').exists()).toBe(false);
+        await wrapper.get('.underground-battle-preview .button').trigger('click');
         await flushPromises();
-        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 勝利');
-        await wrapper.get('.underground-panel > .button').trigger('click');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('勝利');
+        await wrapper.get('.underground-after-battle .button').trigger('click');
         await flushPromises();
-        expect(wrapper.get('.secretary-underground-entry').text()).toContain('戦闘Lv 1');
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv1');
 
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
@@ -1944,10 +1969,12 @@ describe('application lobby and island entry', () => {
         await wrapper.get('.underground-panel > .button').trigger('click');
         await flushPromises();
 
-        expect(wrapper.get('.underground-summary').text()).toContain('通常店員');
+        expect(wrapper.get('#underground-guide-title').text()).toContain('通常店員');
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
-        expect(wrapper.get('.underground-summary').text()).toContain('1 G = 輝石の欠片1グラム');
-        expect(wrapper.get('.underground-growth-summary').text()).toContain('HP 660 / MP 10000 / 自然回復 300 / round');
+        expect(wrapper.find('.underground-currency-note').exists()).toBe(false);
+        expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
+        expect(wrapper.get('.underground-summary').text()).toContain('MP10000 / 10000');
+        expect(wrapper.get('.underground-growth-summary').text()).toContain('自然回復 300 MP / ラウンド');
         expect(wrapper.findAll('.underground-entries button').slice(0, 2).every((button) => button.attributes('disabled') !== undefined)).toBe(true);
         expect(stage).toBe('underground_open');
     });

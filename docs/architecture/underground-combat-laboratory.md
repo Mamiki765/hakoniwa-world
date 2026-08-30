@@ -147,6 +147,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 - battle開始時にSecretary-owned stateからimmutable combat snapshot、loadout、built-in AI設定、enemy/encounter、Underground専用deterministic private seedを構成し、PR101のcanonical pure engineへ渡す。Eloquent modelやDB transactionをpure coreへ渡さない。
 - 通常combatはbuilt-in AIによるatomic auto battleであり、round途中のresume、persistent round session、battle途中の帰還を提供しない。将来manual combatを追加する場合は別runtimeとして接続できる境界だけを保ち、canonical auto pathを変更しない。
 - player-facing runtimeの`max_rounds`は100に固定する。100 roundを終えても未決着ならcanonical resultの`stalemate`をwithdrawalとして扱い、battleを正常終了する。通常探索・trialとも輝石の欠片loss/rewardはなく、通常勝利時base XPの`floor(base XP / 4)`を得る。通常探索は安全な撤退、trialはrun失敗としてprogressをbattle 1へresetし、HP 0 defeatの欠片50% lossとは区別する。
+- damage logは障壁吸収後の計算damageをoverkill分も含めて表示し、HPだけを0で下限固定する。summaryのdamage metricは実際にHPまたは障壁へ適用された量を維持する。
 
 ### Settlement and progression
 
@@ -169,7 +170,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 
 ### Battle history retention
 
-`underground_battle_logs`にはordered action/round sequenceを保存し、retention windowはbattle終了から100時間とする。期限後は`underground:prune-battle-logs`で削除する。`underground_battles`にはencounter identity、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、damage/recovery aggregate、XP/欠片delta、timestamp、request/idempotency identity等のcompact recordを引き続き保持する。内部debug objectやraw simulation payload全体は永続化しない。retention後の古い戦闘についてplayer-facingな詳細またはdamage/recovery summaryの表示は保証しない。productionでは既存のOCI host cron thin-trigger patternから日次実行し、Laravel schedulerや巨大なworkflow subsystemは追加しない。
+`underground_battle_logs`にはordered action/round sequenceを保存し、retention windowはbattle終了から1時間とする。期限後は個別詳細を表示せず、安全な期限切れ案内を返し、`underground:prune-battle-logs`で削除する。履歴一覧は新しい順の最新20件だけを取得し、詳細logをeager loadしない。`underground_battles`にはencounter表示、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、damage/recovery aggregate、XP/欠片delta、timestamp、request/idempotency identity等のcompact recordを引き続き保持し、retention後もsummaryを表示する。内部debug objectやraw simulation payload全体は永続化しない。productionのcleanupは既存のOCI host cron thin-trigger patternを維持し、この変更でcron登録、Laravel scheduler、巨大なworkflow subsystemを追加しない。
 
 ## Permanent contracts and experiment observations
 
@@ -238,7 +239,7 @@ PR103 runtimeはpure engineへidentity/profile snapshot、loadout、encounter、
 
 PR104は汎用visual novel/script engineではなく、Secretary-ownedの一方向finite-state introである。短いダミーscene内のpage番号はfrontend local stateでよいが、Tutorial clear、XP settlement、脱出帰還、店員命名とbranch、scripted loss完了、shop説明、地下メイン解禁はserverで永続化する。mutationはSecretary/profile/intro rowを同じlock順で直列化し、profile単位のUUID fingerprint ledgerとbattle unique identityでduplicate、別payload reuse、stage skip、逆戻りを拒否する。
 
-Tutorialはversioned `tutorial_giant_rat` inputと固定starter-knife projectionをcanonical pure engineへ渡す。starter knifeはinventory Item、weapon instance、rarity/affix/durability schemaを作らない。期待resultは100 round未満のplayer victoryだけであり、contract外ならtransactionをrollbackする。settlementはcombat XP +5、shard +0、combat level 1維持だけで、normal cooldown、Trial、通常探索reward/penaltyを通らない。battle compact record/detailはPR103のtable/logを再利用し、詳細action logには共通の100時間retentionを適用する。
+Tutorialはversioned `tutorial_giant_rat` inputと固定starter-knife projectionをcanonical pure engineへ渡す。starter knifeはinventory Item、weapon instance、rarity/affix/durability schemaを作らない。期待resultは100 round未満のplayer victoryだけであり、contract外ならtransactionをrollbackする。settlementはcombat XP +5、shard +0、combat level 1維持だけで、normal cooldown、Trial、通常探索reward/penaltyを通らない。battle compact record/detailはPR103のtable/logを再利用し、詳細action logには共通の1時間retentionを適用する。
 
 PR104時点では、脱出完了後に一度Secretaryメインへ戻し、2回目のentryを店員遭遇・一度だけの1〜20 Unicode grapheme plain-text命名へ進めた。temporary placeholder branchは命名時に保存して後から再判定せず、scripted lossも固定snapshotをcanonical coreへ渡してexpected enemy victory以外をrollbackする。XP、shard、level、cooldown、Trialは前後一致を要求する。このplaceholder branchはPR106以降も既存profileのlegacy identityとしてだけ維持する。
 
@@ -252,6 +253,6 @@ growth catalogは戦技・護身・祝福・自由の固定Lv1能力、derived H
 
 特別branchのstory戦闘はalpha-v1 canonical combat modelへlocal story build/enemy deltaを渡す。案内人は通常のalpha-v1 Tank action、guard、barrier、闘志、counter、damage/result projectionを使い、別engineを作らない。expected resultは短いdeterministic player defeatで、progression、currency、cooldown、Trial、growth stateの前後一致を要求する。具体的なhidden aliasと背景設定はimplementation-onlyである。
 
-player-facing「力試し（α）」はPR105 immutable manifestのrepresentative 4 buildと3 opponentだけをallowlistし、request-derived private seedでcanonical alpha-v1 modelを実行する。current authenticated User自身のSecretaryかつ契約・growth選択・main unlock済みの場合だけ利用できる。compact battle historyと100時間detail logを再利用するが、XP、輝石の欠片、G、drop、Trial、Combat Lv、cooldown、surface economyのmutationはない。responseはbuild/enemy label、summary、roundごとのAI判断理由・action/status・終了HP/MP/barrierを投影し、private seed、raw manifest、internal database identityを公開しない。
+player-facing「力試し（α）」はPR105 immutable manifestのrepresentative 4 buildと3 opponentだけをallowlistし、request-derived private seedでcanonical alpha-v1 modelを実行する。current authenticated User自身のSecretaryかつ契約・growth選択・main unlock済みの場合だけ利用できる。compact battle historyと1時間detail logを再利用するが、XP、輝石の欠片、G、drop、Trial、Combat Lv、cooldown、surface economyのmutationはない。settlement時にbuild/enemy/player表示名、summary、roundごとのaction/status/value、終了HP/MP/barrierを自己完結したplayer-facing projectionとして保存し、後日の表示でcurrent catalogを再参照しない。表示順は実際のevent順を維持し、AI判断理由、private seed、raw manifest、internal database identityを公開しない。
 
 PR104までにmainへ到達したprofileはforward migrationで正式Shop説明へ戻すが、命名や旧scripted lossを再実行せず、growth pathを自動付与しない。既存のplaceholder branch resultはlegacy identityとして保持し、新しいhidden判定で再分類しない。forward migration後もalpha-v0 Tutorial/historyのXP +5、欠片0、Lv1契約を維持する。

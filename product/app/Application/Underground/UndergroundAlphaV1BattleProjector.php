@@ -8,8 +8,12 @@ use App\Domain\Underground\Combat\BuildCombatResult;
 final class UndergroundAlphaV1BattleProjector
 {
     /** @return array<string, mixed> */
-    public function project(BuildCombatResult $result, AlphaV1BuildCatalog $catalog): array
-    {
+    public function project(
+        BuildCombatResult $result,
+        AlphaV1BuildCatalog $catalog,
+        string $playerDisplayName = '秘書',
+        string $enemyDisplayName = '対戦相手',
+    ): array {
         $rounds = [];
         foreach ($result->actionLog as $row) {
             $round = (int) ($row['round'] ?? 0);
@@ -28,18 +32,23 @@ final class UndergroundAlphaV1BattleProjector
             }
             if ($kind === 'decision') {
                 $actionKey = is_string($row['action_key'] ?? null) ? $row['action_key'] : '';
+                $side = (string) ($row['side'] ?? '');
                 $rounds[$round]['actions'][] = [
-                    'type' => 'decision',
-                    'side' => $this->side((string) ($row['side'] ?? '')),
-                    'label' => 'AI判断: '.$this->actionLabel($actionKey, $catalog),
-                    'reason' => $this->reasonLabel((string) ($row['reason'] ?? '')),
-                    'fallback' => (bool) ($row['fallback'] ?? false),
-                    'mp_blocked' => (bool) ($row['mp_blocked'] ?? false),
+                    'type' => 'action',
+                    'side' => $this->side($side),
+                    'actor_name' => $this->displayName($side, $playerDisplayName, $enemyDisplayName),
+                    'target_name' => null,
+                    'label' => $this->actionLabel($actionKey, $catalog),
                 ];
 
                 continue;
             }
-            $rounds[$round]['actions'][] = $this->effect($row, $catalog);
+            $rounds[$round]['actions'][] = $this->effect(
+                $row,
+                $catalog,
+                $playerDisplayName,
+                $enemyDisplayName,
+            );
         }
         ksort($rounds);
 
@@ -67,8 +76,12 @@ final class UndergroundAlphaV1BattleProjector
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>
      */
-    private function effect(array $row, AlphaV1BuildCatalog $catalog): array
-    {
+    private function effect(
+        array $row,
+        AlphaV1BuildCatalog $catalog,
+        string $playerDisplayName,
+        string $enemyDisplayName,
+    ): array {
         $action = is_string($row['action'] ?? null) ? $row['action'] : '';
         $amount = (int) ($row['amount'] ?? 0);
         $configuredType = $row['effect_type'] ?? null;
@@ -89,9 +102,14 @@ final class UndergroundAlphaV1BattleProjector
             $type = 'guard';
         }
 
+        $side = (string) ($row['side'] ?? '');
+        $targetSide = is_string($row['target_side'] ?? null) ? $row['target_side'] : $side;
+
         return [
             'type' => $type,
-            'side' => $this->side((string) ($row['side'] ?? '')),
+            'side' => $this->side($side),
+            'actor_name' => $this->displayName($side, $playerDisplayName, $enemyDisplayName),
+            'target_name' => $this->displayName($targetSide, $playerDisplayName, $enemyDisplayName),
             'label' => $this->actionLabel($action, $catalog),
             'amount' => abs($amount),
             'critical' => (bool) ($row['critical'] ?? false),
@@ -140,15 +158,25 @@ final class UndergroundAlphaV1BattleProjector
             'counter' => '反撃',
             'action_impaired' => '行動不能',
             'self_regeneration' => '自己再生',
+            'mp_cost' => 'MP消費',
+            'mp_recovery' => 'MP回復',
         ];
         if (isset($plain[$action])) {
             return $plain[$action];
         }
         foreach (['apply_status:' => '付与: ', 'boss_status:' => '付与: ', 'status:' => '付与: ',
             'status_expired:' => '消滅: ', 'status_resisted:' => '抵抗: ',
-            'periodic_damage:' => '継続damage: ', 'periodic_heal:' => '継続回復: '] as $prefix => $label) {
+            'periodic_damage:' => '継続ダメージ: ', 'periodic_heal:' => '継続回復: ',
+            'role_stack_gain:' => '増加: ', 'role_stack_spent:' => '消費: '] as $prefix => $label) {
             if (str_starts_with($action, $prefix)) {
-                return $label.$this->statusLabel(substr($action, strlen($prefix)), $catalog);
+                $key = substr($action, strlen($prefix));
+                $roleLabel = match ($key) {
+                    'fighting_spirit' => '闘志',
+                    'grace' => '恩寵',
+                    default => null,
+                };
+
+                return $label.($roleLabel ?? $this->statusLabel($key, $catalog));
             }
         }
         try {
@@ -173,21 +201,13 @@ final class UndergroundAlphaV1BattleProjector
         }
     }
 
-    private function reasonLabel(string $reason): string
-    {
-        if (preg_match('/^priority_rule_(\d+)$/D', $reason, $matches) === 1) {
-            return '優先ルール '.((int) $matches[1] + 1);
-        }
-
-        return match ($reason) {
-            'no_rule_matched' => '条件に合う優先ルールなし',
-            'invalid_action' => '不正な指定を通常攻撃へfallback',
-            default => '通常攻撃へfallback',
-        };
-    }
-
     private function side(string $side): string
     {
         return $side === 'player' ? '秘書' : ($side === 'enemy' ? '対戦相手' : 'system');
+    }
+
+    private function displayName(string $side, string $playerDisplayName, string $enemyDisplayName): string
+    {
+        return $side === 'player' ? $playerDisplayName : ($side === 'enemy' ? $enemyDisplayName : '戦闘');
     }
 }

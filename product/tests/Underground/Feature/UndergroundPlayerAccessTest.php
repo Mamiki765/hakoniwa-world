@@ -16,6 +16,7 @@ use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -251,13 +252,34 @@ final class UndergroundPlayerAccessTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('data.stage', 'special_loss_complete')
             ->assertJsonPath('data.battle.context', 'scripted_loss')
+            ->assertJsonPath('data.battle.encounter_name', 'リカ')
             ->assertJsonPath('data.battle.result', 'defeat')
+            ->assertJsonPath('data.battle.rounds', 1)
             ->assertJsonPath('data.battle.xp_awarded', 0)
             ->assertJsonPath('data.battle.shard_delta', 0)
             ->assertJsonPath('data.battle.summary.result', 'defeat')
+            ->assertJsonPath('data.battle.summary.player_remaining_hp', 0)
+            ->assertJsonPath('data.battle.summary.enemy_remaining_hp', 568_850)
+            ->assertJsonPath('data.battle.summary.damage_dealt', 4)
+            ->assertJsonPath('data.battle.summary.damage_received', 500)
+            ->assertJsonPath('data.battle.actions.0.end_state.player.max_hp', 500)
+            ->assertJsonPath('data.battle.actions.0.end_state.enemy.max_hp', 568_850)
             ->assertJsonStructure(['data' => ['battle' => ['actions' => [
                 '*' => ['round', 'actions', 'end_state'],
             ]]]]);
+        $storyActions = $first->json('data.battle.actions.0.actions');
+        $this->assertIsArray($storyActions);
+        $damageIndex = array_search('damage', array_column($storyActions, 'type'), true);
+        $stackIndex = array_search('role_stack_gain', array_column($storyActions, 'type'), true);
+        $counterIndex = array_search('counter', array_column($storyActions, 'type'), true);
+        $this->assertIsInt($damageIndex);
+        $this->assertIsInt($stackIndex);
+        $this->assertIsInt($counterIndex);
+        $this->assertLessThan($stackIndex, $damageIndex);
+        $this->assertLessThan($counterIndex, $stackIndex);
+        $this->assertSame('counter', $storyActions[array_key_last($storyActions)]['type']);
+        $this->assertSame('反撃', $storyActions[array_key_last($storyActions)]['label']);
+        $this->assertGreaterThan(500, $storyActions[array_key_last($storyActions)]['amount']);
         $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
             'request_id' => $requestId,
         ])->assertOk()->assertExactJson($first->json());
@@ -274,8 +296,19 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertSame(2, UndergroundBattleLog::query()->count());
         $this->assertSame(1, UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->count());
-        $this->assertSame('secretary-underground-alpha-v1', UndergroundBattle::query()
-            ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->sole()->runtime_identity);
+        $storyBattle = UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->sole();
+        $this->assertSame('secretary-underground-alpha-v1', $storyBattle->runtime_identity);
+        $this->assertSame(1254, $storyBattle->snapshot['enemy_combat_level_equivalent']);
+        $this->assertSame(1_137_700, $storyBattle->snapshot['enemy_scale_bps']);
+        $storyDefinition = app(UndergroundAlphaV1PlayerCatalog::class)->trueNameStoryBattle();
+        $this->assertSame([
+            'unbroken_retort',
+            'renewing_guard',
+            'bulwark_strike',
+            'counter_stance',
+            'shield_bash',
+        ], $storyDefinition['catalog']->enemy($storyDefinition['enemy_key'])['skills']);
 
         $this->advance($user, 'special_loss_aftermath_complete')
             ->assertJsonPath('data.stage', 'shop_explanation');
@@ -291,6 +324,11 @@ final class UndergroundPlayerAccessTest extends TestCase
             $this->assertSame($alias, $normalized);
             $this->assertSame('true_name', $catalog->branchIdentity($normalized));
         }
+        $decomposed = \Normalizer::normalize('リカ・サキュバス', \Normalizer::FORM_D);
+        $this->assertIsString($decomposed);
+        $this->assertNotSame('リカ・サキュバス', $decomposed);
+        $this->assertSame($decomposed, $catalog->normalizeShopkeeperName($decomposed));
+        $this->assertSame('true_name', $catalog->branchIdentity($decomposed));
         foreach (['エリカ', 'リカちゃん', '雨宮利香さん', '雨 宮利香', '雨宮利 香', 'ダミー'] as $normal) {
             $this->assertSame('normal', $catalog->branchIdentity($normal));
         }
@@ -317,6 +355,9 @@ final class UndergroundPlayerAccessTest extends TestCase
             $this->assertSame(10, $path['points_per_level']);
             $this->assertSame(10_000, $path['max_mp']);
             $this->assertSame(300, $path['natural_recovery']);
+        }
+        foreach (['depth_stalker', 'pressure_construct', 'crystal_warden'] as $enemyKey) {
+            $this->assertSame(100, $catalog->playtestDefinition('pure_tank', $enemyKey)['max_rounds']);
         }
 
         [$user, $secretary] = $this->secretaryUser('Playtest secretary');
@@ -375,10 +416,22 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.0.context', 'playtest')
             ->assertJsonPath('data.0.rounds', null)
             ->assertJsonPath('data.0.detail_available', true);
-        $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
+        $detail = $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
             ->assertOk()
             ->assertJsonPath('data.context', 'playtest')
+            ->assertJsonPath('data.build_name', '護身特化')
+            ->assertJsonPath('data.encounter_name', '深層追跡者')
             ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');
+        $projectedActions = collect($detail->json('data.rounds'))
+            ->flatMap(fn (array $round): array => $round['actions']);
+        $this->assertTrue($projectedActions->contains(
+            fn (array $action): bool => ($action['type'] ?? null) === 'action'
+                && ($action['actor_name'] ?? null) === 'Playtest secretary',
+        ));
+        $this->assertTrue($projectedActions->every(
+            fn (array $action): bool => ! array_key_exists('reason', $action)
+                && ! array_key_exists('action_key', $action),
+        ));
         $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', [
             ...$payload,
             'build_key' => 'balanced',
@@ -399,6 +452,45 @@ final class UndergroundPlayerAccessTest extends TestCase
             ...$payload,
             'request_id' => (string) Str::uuid(),
         ])->assertConflict()->assertJsonPath('code', 'underground_playtest_locked');
+
+        $playtestBattle = UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_PLAYTEST)
+            ->sole();
+        $this->assertTrue($playtestBattle->log?->expires_at->equalTo($playtestBattle->finished_at->addHour()) ?? false);
+        config([
+            'underground-alpha-v1.playtest.builds' => [],
+            'underground-alpha-v1.playtest.enemies' => [],
+        ]);
+        $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
+            ->assertOk()
+            ->assertJsonPath('data.build_name', '護身特化')
+            ->assertJsonPath('data.encounter_name', '深層追跡者')
+            ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');
+
+        foreach (range(1, 100) as $offset) {
+            $copy = $playtestBattle->replicate();
+            $copy->request_id = (string) Str::uuid();
+            $copy->started_at = $playtestBattle->started_at->subSeconds($offset);
+            $copy->finished_at = $playtestBattle->finished_at->subSeconds($offset);
+            $copy->save();
+        }
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $history = $this->actingAs($user)->getJson('/api/v1/me/underground/battles')
+            ->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonPath('data.0.id', $requestId)
+            ->assertJsonPath('data.0.build_name', '護身特化')
+            ->assertJsonPath('data.0.encounter_name', '深層追跡者');
+        $this->assertCount(20, $history->json('data'));
+        $this->assertSame([], array_values(array_filter(
+            DB::getQueryLog(),
+            static fn (array $query): bool => str_contains(
+                strtolower((string) ($query['query'] ?? '')),
+                'from "underground_battle_logs"',
+            ) && ! str_contains(strtolower((string) ($query['query'] ?? '')), 'exists'),
+        )));
+        DB::disableQueryLog();
     }
 
     public function test_refresh_resumes_meaningful_stage_and_intro_history_is_private_and_owner_scoped(): void
@@ -437,6 +529,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->actingAs($owner)->getJson("/api/v1/me/underground/battles/{$tutorialId}")
             ->assertOk()
             ->assertJsonPath('data.detail_available', false)
+            ->assertJsonPath('data.detail_message', '詳細ログは保存期間を過ぎました。')
             ->assertJsonPath('data.actions', null);
         $this->actingAs($other)->getJson("/api/v1/me/underground/battles/{$tutorialId}")
             ->assertNotFound();
