@@ -117,6 +117,7 @@ final class UndergroundAlphaV1BattleProjector
             'guarded' => (bool) ($row['guarded'] ?? false),
             'parried' => (bool) ($row['parried'] ?? false),
             'barrier_absorbed' => (int) ($row['barrier_absorbed'] ?? 0),
+            'complete_guarded' => (bool) ($row['complete_guarded'] ?? false),
         ];
     }
 
@@ -158,6 +159,7 @@ final class UndergroundAlphaV1BattleProjector
             'counter' => '反撃',
             'action_impaired' => '行動不能',
             'self_regeneration' => '自己再生',
+            'complete_guard' => '完全防御',
             'mp_cost' => 'MP消費',
             'mp_recovery' => 'MP回復',
         ];

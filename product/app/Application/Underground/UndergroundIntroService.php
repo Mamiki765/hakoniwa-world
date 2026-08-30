@@ -32,6 +32,7 @@ final readonly class UndergroundIntroService
         private AlphaV1CombatModel $alphaV1Combat,
         private UndergroundAlphaV1BattleProjector $alphaV1Projector,
         private UndergroundPlaytestService $playtest,
+        private UndergroundRuntimeService $runtime,
     ) {}
 
     /** @return array<string, mixed> */
@@ -273,10 +274,116 @@ final readonly class UndergroundIntroService
             $profile->growth_path_key = $growthPathKey;
             $profile->growth_path_identity = $path['identity'];
             $profile->growth_path_selected_at = $selectedAt;
+            $profile->unspent_stp = $this->alphaV1Catalog->stpEntitlement(
+                $growthPathKey,
+                $profile->combat_level,
+            );
+            $profile->current_hp = $this->alphaV1Catalog->currentMaxHp(
+                $growthPathKey,
+                $profile->combat_level,
+                $profile->allocatedStp(),
+            );
             $profile->save();
             $intro->stage = UndergroundIntroStage::GROWTH_PATH_SELECTED;
             $intro->save();
         });
+    }
+
+    /** @return array<string, mixed> */
+    public function restAtInn(User $user, string $requestId): array
+    {
+        return $this->mutate($user, $requestId, 'inn_rest', [], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ): void {
+            $this->assertShopUnlocked($profile, $intro);
+            $cost = $this->alphaV1Catalog->innCost();
+            if ($profile->shard_balance < $cost) {
+                throw new UndergroundRuntimeException(
+                    'underground_inn_insufficient_carried_shards',
+                    '宿代に必要な手持ちの輝石の欠片がありません。',
+                );
+            }
+
+            $profile->shard_balance -= $cost;
+            $profile->current_hp = $this->alphaV1Catalog->currentMaxHp(
+                (string) $profile->growth_path_key,
+                $profile->combat_level,
+                $profile->allocatedStp(),
+            );
+            $profile->save();
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function bankTransfer(
+        User $user,
+        string $requestId,
+        string $action,
+        ?int $requestedAmount,
+    ): array {
+        if (! in_array($action, ['deposit', 'withdraw', 'deposit_all', 'withdraw_all'], true)) {
+            throw new UndergroundRuntimeException('underground_bank_action_invalid', '銀行操作を確認してください。');
+        }
+        $isAll = str_ends_with($action, '_all');
+        if ($isAll && $requestedAmount !== null) {
+            throw new UndergroundRuntimeException('underground_bank_amount_invalid', '全額操作に金額は指定できません。');
+        }
+        if (! $isAll && ($requestedAmount === null
+            || $requestedAmount <= 0
+            || $requestedAmount % $this->alphaV1Catalog->bankTransferUnit() !== 0)) {
+            throw new UndergroundRuntimeException(
+                'underground_bank_amount_invalid',
+                '通常の預け入れ・引き出しは1000G単位で指定してください。',
+            );
+        }
+
+        return $this->mutate(
+            $user,
+            $requestId,
+            'bank_transfer',
+            ['action' => $action, 'amount' => $requestedAmount],
+            function (
+                Secretary $secretary,
+                UndergroundProfile $profile,
+                UndergroundIntroProgress $intro,
+            ) use ($action, $requestedAmount): void {
+                $this->assertShopUnlocked($profile, $intro);
+                $deposit = str_starts_with($action, 'deposit');
+                $amount = match ($action) {
+                    'deposit_all' => $profile->shard_balance,
+                    'withdraw_all' => $profile->banked_shard_balance,
+                    default => $requestedAmount,
+                };
+                if (! is_int($amount) || $amount < 0) {
+                    throw new UndergroundRuntimeException('underground_bank_amount_invalid', '銀行操作額を確認してください。');
+                }
+
+                $source = $deposit ? $profile->shard_balance : $profile->banked_shard_balance;
+                $target = $deposit ? $profile->banked_shard_balance : $profile->shard_balance;
+                if ($source < $amount) {
+                    throw new UndergroundRuntimeException(
+                        $deposit
+                            ? 'underground_bank_insufficient_carried_shards'
+                            : 'underground_bank_insufficient_banked_shards',
+                        $deposit ? '手持ち残高が不足しています。' : '預金残高が不足しています。',
+                    );
+                }
+                if ($amount > PHP_INT_MAX - $target) {
+                    throw new UndergroundRuntimeException('underground_bank_balance_overflow', '移動先残高の上限を超えます。');
+                }
+
+                if ($deposit) {
+                    $profile->shard_balance -= $amount;
+                    $profile->banked_shard_balance += $amount;
+                } else {
+                    $profile->banked_shard_balance -= $amount;
+                    $profile->shard_balance += $amount;
+                }
+                $profile->save();
+            },
+        );
     }
 
     /** @return array<string, mixed> */
@@ -308,6 +415,7 @@ final readonly class UndergroundIntroService
                 UndergroundBattle::ACTIVITY_TUTORIAL,
                 UndergroundBattle::ACTIVITY_STORY,
                 UndergroundBattle::ACTIVITY_PLAYTEST,
+                UndergroundBattle::ACTIVITY_EXPLORATION,
             ])
             ->withExists([
                 'log as active_log_exists' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
@@ -337,6 +445,7 @@ final readonly class UndergroundIntroService
                     UndergroundBattle::ACTIVITY_TUTORIAL,
                     UndergroundBattle::ACTIVITY_STORY,
                     UndergroundBattle::ACTIVITY_PLAYTEST,
+                    UndergroundBattle::ACTIVITY_EXPLORATION,
                 ])
                 ->with(['log' => fn ($query) => $query->where('expires_at', '>', Carbon::now())])
                 ->first()
@@ -462,6 +571,20 @@ final readonly class UndergroundIntroService
         }
 
         return $secretary;
+    }
+
+    private function assertShopUnlocked(
+        UndergroundProfile $profile,
+        UndergroundIntroProgress $intro,
+    ): void {
+        if ($intro->stage !== UndergroundIntroStage::UNDERGROUND_OPEN
+            || $profile->underground_contract_completed_at === null
+            || ! is_string($profile->growth_path_key)) {
+            throw new UndergroundRuntimeException(
+                'underground_shop_locked',
+                '宿と銀行は地下の案内が完了すると利用できます。',
+            );
+        }
     }
 
     private function settleStoryBattle(
@@ -718,6 +841,26 @@ final readonly class UndergroundIntroService
             UndergroundIntroStage::SPECIAL_LOSS_COMPLETE => $intro?->scriptedLossBattle,
             default => null,
         };
+        $growthPath = null;
+        $currentStats = null;
+        $combatStats = null;
+        $starterWeapon = null;
+        $maxHp = null;
+        $currentHp = null;
+        if ($profile instanceof UndergroundProfile && $profile->growth_path_key !== null) {
+            $growthPath = $this->alphaV1Catalog->growthPath($profile->growth_path_key);
+            $currentStats = $this->alphaV1Catalog->currentStats(
+                $profile->growth_path_key,
+                $profile->combat_level,
+                $profile->allocatedStp(),
+            );
+            $starterWeapon = $this->alphaV1Catalog->starterWeapon();
+            $combatStats = $this->alphaV1Catalog->combatStats($currentStats, $starterWeapon);
+            $growthPath['stats'] = $currentStats;
+            $maxHp = $this->alphaV1Catalog->maxHp($combatStats, $starterWeapon);
+            $currentHp = min($profile->current_hp ?? $maxHp, $maxHp);
+            $growthPath['max_hp'] = $maxHp;
+        }
 
         return [
             'stage' => $stage,
@@ -725,7 +868,24 @@ final readonly class UndergroundIntroService
             'combat_level' => $profile instanceof UndergroundProfile ? $profile->combat_level : 1,
             'combat_xp' => $profile instanceof UndergroundProfile ? $profile->combat_xp : 0,
             'next_level_xp' => $profile instanceof UndergroundProfile ? $this->nextLevelXp($profile) : 100,
+            'next_level_requirement' => $profile instanceof UndergroundProfile
+                ? $this->nextLevelRequirement($profile)
+                : 100,
+            'xp_to_next_level' => $profile instanceof UndergroundProfile
+                ? max(0, $this->nextLevelXp($profile) - $profile->combat_xp)
+                : 100,
             'shard_balance' => $profile instanceof UndergroundProfile ? $profile->shard_balance : 0,
+            'banked_shard_balance' => $profile instanceof UndergroundProfile
+                ? $profile->banked_shard_balance
+                : 0,
+            'current_hp' => $currentHp,
+            'unspent_stp' => $profile instanceof UndergroundProfile ? $profile->unspent_stp : 0,
+            'allocated_stp' => $profile instanceof UndergroundProfile
+                ? $profile->allocatedStp()
+                : ['vitality' => 0, 'might' => 0, 'finesse' => 0, 'spirit' => 0, 'agility' => 0],
+            'current_stats' => $currentStats,
+            'combat_stats' => $combatStats,
+            'starter_weapon' => $starterWeapon,
             'shopkeeper_name' => $intro?->shopkeeper_name,
             'true_name_branch' => $intro?->branch_identity === 'true_name',
             'tutorial_projection' => [
@@ -736,9 +896,7 @@ final readonly class UndergroundIntroService
             'growth_paths' => $stage === UndergroundIntroStage::CRYSTAL_SELECTION
                 ? $this->alphaV1Catalog->growthPaths()
                 : null,
-            'growth_path' => $profile?->growth_path_key !== null
-                ? $this->alphaV1Catalog->growthPath($profile->growth_path_key)
-                : null,
+            'growth_path' => $growthPath,
             'playtest' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
                 && $profile?->growth_path_key !== null
                     ? $this->alphaV1Catalog->playtestOptions($profile->growth_path_key)
@@ -758,11 +916,25 @@ final readonly class UndergroundIntroService
         );
     }
 
+    private function nextLevelRequirement(UndergroundProfile $profile): int
+    {
+        $curve = $this->runtimeCatalog->xpCurve();
+
+        return $this->progression->xpRequiredForNextLevel(
+            $profile->combat_level,
+            $curve['first_level_cost'],
+            $curve['cost_increment_per_level'],
+        );
+    }
+
     /** @return array<string, mixed> */
     private function projectBattle(UndergroundBattle $battle, bool $withActions): array
     {
         if ($battle->activity_type === UndergroundBattle::ACTIVITY_PLAYTEST) {
             return $this->playtest->projectBattle($battle, $withActions);
+        }
+        if ($battle->activity_type === UndergroundBattle::ACTIVITY_EXPLORATION) {
+            return $this->runtime->projectExplorationBattle($battle, $withActions);
         }
         $snapshot = $battle->snapshot;
         $displayName = $snapshot['encounter_display_name'] ?? null;

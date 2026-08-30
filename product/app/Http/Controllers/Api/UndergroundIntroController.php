@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundPlaytestService;
 use App\Application\Underground\UndergroundRuntimeException;
+use App\Application\Underground\UndergroundRuntimeService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AdvanceUndergroundIntroRequest;
 use App\Http\Requests\NameUndergroundShopkeeperRequest;
 use App\Http\Requests\SelectUndergroundGrowthPathRequest;
+use App\Http\Requests\UndergroundBankTransferRequest;
 use App\Http\Requests\UndergroundIntroMutationRequest;
 use App\Http\Requests\UndergroundPlaytestRequest;
 use DomainException;
@@ -115,6 +117,46 @@ final class UndergroundIntroController extends Controller
     public function main(Request $request, UndergroundIntroService $service): JsonResponse
     {
         return $this->respond(fn (): array => $service->main($request->user()));
+    }
+
+    public function explore(
+        UndergroundIntroMutationRequest $request,
+        UndergroundRuntimeService $service,
+    ): JsonResponse {
+        return $this->respond(function () use ($request, $service): array {
+            $result = $service->explore(
+                $request->user(),
+                $request->string('request_id')->value(),
+            );
+
+            return $service->projectExplorationBattle($result['battle']);
+        });
+    }
+
+    public function restAtInn(
+        UndergroundIntroMutationRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->restAtInn(
+            $request->user(),
+            $request->string('request_id')->value(),
+        ));
+    }
+
+    public function bankTransfer(
+        UndergroundBankTransferRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        $validated = $request->validated();
+
+        return $this->respond(fn (): array => $service->bankTransfer(
+            $request->user(),
+            $request->string('request_id')->value(),
+            $request->string('action')->value(),
+            array_key_exists('amount', $validated) && $validated['amount'] !== null
+                ? (int) $validated['amount']
+                : null,
+        ));
     }
 
     public function battles(Request $request, UndergroundIntroService $service): JsonResponse

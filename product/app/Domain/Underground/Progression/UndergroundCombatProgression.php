@@ -42,4 +42,16 @@ final class UndergroundCombatProgression
         return ($completedLevels * $firstLevelCost)
             + intdiv($completedLevels * ($completedLevels - 1) * $costIncrementPerLevel, 2);
     }
+
+    public function xpRequiredForNextLevel(
+        int $currentLevel,
+        int $firstLevelCost,
+        int $costIncrementPerLevel,
+    ): int {
+        if ($currentLevel < 1 || $firstLevelCost < 1 || $costIncrementPerLevel < 0) {
+            throw new InvalidArgumentException('Underground combat progression values are invalid.');
+        }
+
+        return $firstLevelCost + (($currentLevel - 1) * $costIncrementPerLevel);
+    }
 }

@@ -79,10 +79,23 @@ try {
             'stage' => $result['stage'],
             'growth_path_key' => $result['growth_path']['key'],
         ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'bank_transfer') {
+        $result = app(UndergroundIntroService::class)->bankTransfer(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['action'],
+            isset($payload['amount']) ? (int) $payload['amount'] : null,
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'shard_balance' => $result['shard_balance'],
+            'banked_shard_balance' => $result['banked_shard_balance'],
+        ], JSON_THROW_ON_ERROR));
     } else {
         $result = app(UndergroundRuntimeService::class)->explore(
             $user,
-            (string) $payload['hunting_ground'],
             (string) $payload['request_id'],
         );
         $battle = $result['battle'];

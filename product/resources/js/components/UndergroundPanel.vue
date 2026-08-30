@@ -28,6 +28,7 @@ interface RoundAction {
     guarded?: boolean;
     parried?: boolean;
     barrier_absorbed?: number;
+    complete_guarded?: boolean;
 }
 
 interface RoundState {
@@ -47,7 +48,7 @@ interface CombatRound {
 
 interface Battle {
     id: string;
-    context: 'tutorial' | 'scripted_loss' | 'playtest';
+    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration';
     player_display_name?: string;
     encounter_name: string;
     build_name?: string;
@@ -56,10 +57,14 @@ interface Battle {
     rounds_count?: number;
     xp_awarded: number;
     shard_delta: number;
+    combat_level_before?: number;
+    combat_level_after?: number;
+    stp_awarded?: number;
+    unspent_stp_after?: number;
     detail_available: boolean;
     actions?: SimpleAction[] | CombatRound[] | null;
     summary?: Record<string, number | string> | null;
-    rewards?: { xp: number; shards: number; g: number; drops: unknown[] };
+    rewards?: { xp: number; shards: number; g?: number; drops?: unknown[] };
     detail_message?: string | null;
 }
 
@@ -97,7 +102,21 @@ interface UndergroundState {
     combat_level: number;
     combat_xp: number;
     next_level_xp: number;
+    next_level_requirement: number;
+    xp_to_next_level: number;
     shard_balance: number;
+    banked_shard_balance: number;
+    current_hp: number | null;
+    unspent_stp: number;
+    allocated_stp: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
+    current_stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number> | null;
+    combat_stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number> | null;
+    starter_weapon: {
+        key: string;
+        label: string;
+        rarity: string;
+        item_level: number;
+    } | null;
     shopkeeper_name: string | null;
     true_name_branch: boolean;
     tutorial_projection: {
@@ -221,6 +240,8 @@ const battles = ref<Battle[]>([]);
 const selectedBattle = ref<Battle | null>(null);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
+const bankOpen = ref(false);
+const bankAmount = ref<number | null>(1000);
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
@@ -334,6 +355,35 @@ async function runPlaytest(): Promise<void> {
     }
 }
 
+async function runExplore(): Promise<void> {
+    if (busy.value) return;
+    busy.value = true;
+    error.value = '';
+    try {
+        const battle = await api<Battle>('/api/v1/me/underground/explore', {
+            method: 'POST',
+            body: JSON.stringify({ request_id: requestId() }),
+        });
+        await refresh(false);
+        selectedBattle.value = battle;
+    } catch (caught) {
+        if (caught instanceof ApiError && caught.status === 409) await refresh(false);
+        error.value = caught instanceof Error ? caught.message : '周囲を探索できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function restAtInn(): Promise<void> {
+    await mutate('/api/v1/me/underground/inn/rest');
+}
+
+async function runBankAction(action: 'deposit' | 'withdraw' | 'deposit_all' | 'withdraw_all'): Promise<void> {
+    const body: Record<string, unknown> = { action };
+    if (action === 'deposit' || action === 'withdraw') body.amount = Number(bankAmount.value);
+    await mutate('/api/v1/me/underground/bank/transfer', body);
+}
+
 async function enter(): Promise<void> {
     try {
         await refresh(false);
@@ -428,6 +478,7 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
     if (action.type === 'damage') {
         const qualifiers = [action.critical ? '会心' : '', action.guarded ? '防御' : '', action.parried ? '受け流し' : '']
             .filter(Boolean).join('・');
+        if (action.complete_guarded) return `${actor}の「${action.label}」。${target}は完全防御し、HPダメージは0。`;
         if (action.evaded) return `${actor}の「${action.label}」。${target}は回避した。`;
         const damage = amount > 0 ? `${target}に${amount}ダメージ。` : `${target}のHPダメージは0。`;
         const barrier = action.barrier_absorbed ? `障壁が${action.barrier_absorbed}吸収。` : '';
@@ -508,7 +559,10 @@ onMounted(() => { void enter(); });
                     <p class="eyebrow">戦闘終了</p>
                     <h2>{{ battleResultLabel(currentBattle.result) }}</h2>
                     <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
-                    <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}<span v-if="currentBattle.context === 'playtest'">・G +0・ドロップなし</span></p>
+                    <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
+                    <p v-if="currentBattle.combat_level_after !== undefined && currentBattle.combat_level_after !== currentBattle.combat_level_before">
+                        戦闘Lv {{ currentBattle.combat_level_before }} → {{ currentBattle.combat_level_after }}・未使用STP +{{ currentBattle.stp_awarded ?? 0 }}（合計 {{ currentBattle.unspent_stp_after ?? 0 }}）
+                    </p>
                     <dl v-if="currentBattle.summary" class="underground-combat-summary">
                         <div v-for="(value, key) in visibleSummary(currentBattle.summary)" :key="key"><dt>{{ summaryLabel(key) }}</dt><dd>{{ summaryValue(key, value) }}</dd></div>
                     </dl>
@@ -599,19 +653,20 @@ onMounted(() => { void enter(); });
                     <dl class="underground-summary">
                         <div><dt>戦闘Lv</dt><dd>{{ state.combat_level }}</dd></div>
                         <div><dt>経験値</dt><dd>{{ state.combat_xp }} / {{ state.next_level_xp }}</dd></div>
-                        <div v-if="state.growth_path"><dt>HP</dt><dd>{{ state.growth_path.max_hp }} / {{ state.growth_path.max_hp }}</dd></div>
-                        <div v-if="state.growth_path"><dt>MP</dt><dd>{{ state.growth_path.max_mp }} / {{ state.growth_path.max_mp }}</dd></div>
+                        <div v-if="state.growth_path"><dt>HP</dt><dd>{{ state.current_hp ?? state.growth_path.max_hp }} / {{ state.growth_path.max_hp }}</dd></div>
+                        <div v-if="state.growth_path"><dt>戦闘開始MP</dt><dd>10000 / 10000</dd></div>
                         <div><dt>輝石の欠片</dt><dd>{{ state.shard_balance }} G</dd></div>
+                        <div><dt>未使用STP</dt><dd>{{ state.unspent_stp }}</dd></div>
                         <div v-if="state.growth_path"><dt>成長方針</dt><dd>{{ state.growth_path.label }}</dd></div>
                     </dl>
                     <section v-if="state.growth_path" class="underground-growth-summary">
                         <h2>能力</h2>
-                        <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.growth_path.stats[key] }}</dd></div></dl>
+                        <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.current_stats?.[key] ?? state.growth_path.stats[key] }}</dd></div></dl>
                         <p>自然回復 {{ state.growth_path.natural_recovery }} MP / ラウンド・Lv2以降 未使用STP +{{ state.growth_path.unspent_stp_per_level }}</p>
                     </section>
                     <section class="underground-equipment" aria-labelledby="underground-equipment-title">
                         <h2 id="underground-equipment-title">装備</h2>
-                        <dl><div><dt>武器</dt><dd>未設定</dd></div><div><dt>防具</dt><dd>未設定</dd></div><div><dt>装飾</dt><dd>未設定</dd></div></dl>
+                        <dl><div><dt>武器</dt><dd>{{ state.starter_weapon?.label ?? '未設定' }}</dd></div><div><dt>防具</dt><dd>未設定</dd></div><div><dt>装飾</dt><dd>未設定</dd></div></dl>
                     </section>
                     <div class="underground-character-actions"><button type="button" disabled>スキル<small>準備中</small></button><button type="button" disabled>AI設定<small>準備中</small></button></div>
                 </section>
@@ -622,15 +677,28 @@ onMounted(() => { void enter(); });
                         <h2 id="underground-guide-title">{{ state.shopkeeper_name }}</h2>
                         <p>{{ shopGreeting }}</p>
                         <div class="underground-shop-entries">
-                            <button type="button" disabled>宿で休む<small>準備中</small></button>
+                            <button type="button" :disabled="busy" @click="restAtInn">宿で休む（10G）<small>HPを全回復</small></button>
                             <button type="button" disabled>装備ショップ<small>準備中</small></button>
-                            <button type="button" disabled>銀行<small>準備中</small></button>
+                            <button type="button" :disabled="busy" @click="bankOpen = !bankOpen">銀行<small>預入・引出</small></button>
                             <button type="button" disabled>ショップ<small>準備中</small></button>
                         </div>
+                        <form v-if="bankOpen" class="underground-bank" @submit.prevent>
+                            <h3>銀行</h3>
+                            <p>手持ち: {{ state.shard_balance }} G</p>
+                            <p>預金: {{ state.banked_shard_balance }} G</p>
+                            <label for="underground-bank-amount">1000G単位の金額</label>
+                            <input id="underground-bank-amount" v-model.number="bankAmount" type="number" min="1000" step="1000" :disabled="busy">
+                            <div class="underground-shop-entries">
+                                <button type="button" :disabled="busy" @click="runBankAction('deposit')">預け入れ</button>
+                                <button type="button" :disabled="busy" @click="runBankAction('withdraw')">引き出し</button>
+                                <button type="button" :disabled="busy" @click="runBankAction('deposit_all')">すべて預ける</button>
+                                <button type="button" :disabled="busy" @click="runBankAction('withdraw_all')">すべて引き出す</button>
+                            </div>
+                        </form>
                     </section>
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <h2 id="underground-adventure-title">冒険</h2>
-                        <div class="underground-entries"><button type="button" disabled>周囲を探索<small>準備中</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
+                        <div class="underground-entries"><button type="button" :disabled="busy" @click="runExplore">周囲を探索<small>浅い洞窟</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
                     </section>
                     <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
                         <h2 id="underground-playtest-title">力試し（α）</h2>
@@ -640,7 +708,7 @@ onMounted(() => { void enter(); });
                         <label for="underground-enemy">対戦相手</label>
                         <select id="underground-enemy" v-model="selectedEnemy" :disabled="busy"><option v-for="enemy in state.playtest.enemies" :key="enemy.key" :value="enemy.key">{{ enemy.label }} — {{ enemy.description }}</option></select>
                         <button class="button primary" type="button" :disabled="busy || !selectedBuild || !selectedEnemy" @click="runPlaytest">戦闘開始</button>
-                        <p>報酬なし: XP 0・輝石の欠片 0・G 0・ドロップなし。敗北ペナルティもありません。</p>
+                        <p>報酬なし: XP 0・輝石の欠片 0G・ドロップなし。敗北ペナルティもありません。</p>
                     </section>
                     <section class="underground-history" aria-labelledby="underground-history-title">
                         <h2 id="underground-history-title">戦闘履歴</h2>

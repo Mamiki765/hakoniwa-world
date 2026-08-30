@@ -25,16 +25,24 @@ final class UndergroundPersistenceTest extends TestCase
         $second = $service->ensureForSecretary($secretary);
 
         $this->assertSame($first->id, $second->id);
-        $this->assertSame([0, 1, 0, 0, null, null, null, null, null], [
+        $this->assertSame([0, 1, 0, 0, 0, null, null, null, null, null, null, 0, 0, 0, 0, 0, 0], [
             $first->unlocked_area_layers,
             $first->combat_level,
             $first->combat_xp,
             $first->shard_balance,
+            $first->banked_shard_balance,
+            $first->current_hp,
             $first->next_battle_at,
             $first->underground_contract_completed_at,
             $first->growth_path_key,
             $first->growth_path_identity,
             $first->growth_path_selected_at,
+            $first->unspent_stp,
+            $first->allocated_vitality_stp,
+            $first->allocated_might_stp,
+            $first->allocated_finesse_stp,
+            $first->allocated_spirit_stp,
+            $first->allocated_agility_stp,
         ]);
         $this->assertSame($first->id, $secretary->undergroundProfile()->sole()->id);
         $this->assertSame(1, UndergroundProfile::query()->where('secretary_id', $secretary->id)->count());
@@ -42,9 +50,16 @@ final class UndergroundPersistenceTest extends TestCase
         $columns = Schema::getColumnListing('underground_profiles');
         sort($columns);
         $this->assertSame([
+            'allocated_agility_stp',
+            'allocated_finesse_stp',
+            'allocated_might_stp',
+            'allocated_spirit_stp',
+            'allocated_vitality_stp',
+            'banked_shard_balance',
             'combat_level',
             'combat_xp',
             'created_at',
+            'current_hp',
             'growth_path_identity',
             'growth_path_key',
             'growth_path_selected_at',
@@ -54,8 +69,10 @@ final class UndergroundPersistenceTest extends TestCase
             'shard_balance',
             'underground_contract_completed_at',
             'unlocked_area_layers',
+            'unspent_stp',
             'updated_at',
         ], $columns);
+        $this->assertNotContains('current_mp', $columns);
         $this->assertTrue(Schema::hasTable('underground_trial_progress'));
         $this->assertTrue(Schema::hasTable('underground_trial_runs'));
         $this->assertTrue(Schema::hasTable('underground_battles'));
@@ -98,6 +115,9 @@ final class UndergroundPersistenceTest extends TestCase
             static fn () => $profile->update(['combat_level' => 0]),
             static fn () => $profile->update(['combat_xp' => -1]),
             static fn () => $profile->update(['shard_balance' => -1]),
+            static fn () => $profile->update(['banked_shard_balance' => -1]),
+            static fn () => $profile->update(['current_hp' => 0]),
+            static fn () => $profile->update(['unspent_stp' => 1]),
         ] as $mutation) {
             try {
                 DB::transaction($mutation);
@@ -108,11 +128,13 @@ final class UndergroundPersistenceTest extends TestCase
         }
 
         $persisted = $profile->fresh();
-        $this->assertSame([0, 1, 0, 0], [
+        $this->assertSame([0, 1, 0, 0, 0, null], [
             $persisted?->unlocked_area_layers,
             $persisted?->combat_level,
             $persisted?->combat_xp,
             $persisted?->shard_balance,
+            $persisted?->banked_shard_balance,
+            $persisted?->current_hp,
         ]);
         $secretary->delete();
         $this->assertDatabaseMissing('underground_profiles', ['id' => $profile->id]);

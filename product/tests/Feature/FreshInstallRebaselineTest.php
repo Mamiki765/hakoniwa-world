@@ -48,14 +48,14 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v18')->sole();
 
-        $this->assertSame('3.0.0-alpha.2', config('hakoniwa.application_version'));
+        $this->assertSame('3.0.0-alpha.3', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v18'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v18', $ruleset->key);
         $this->assertSame(18, $ruleset->version);
         $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(61, DB::table('migrations')->count());
+        $this->assertSame(62, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -101,6 +101,9 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_30_010000_cap_underground_battle_log_retention_to_one_hour',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_30_020000_add_underground_growth_stp_foundation',
+        ]);
         $this->assertDatabaseHas('facility_definitions', [
             'key' => 'undersea_city',
             'asset_key' => 'tile.undersea_city',
@@ -138,11 +141,20 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'combat_level'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'combat_xp'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'shard_balance'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'banked_shard_balance'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'current_hp'));
+        $this->assertFalse(Schema::hasColumn('underground_profiles', 'current_mp'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'next_battle_at'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'underground_contract_completed_at'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_key'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_identity'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_selected_at'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'unspent_stp'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_vitality_stp'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_might_stp'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_finesse_stp'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_spirit_stp'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_agility_stp'));
         $this->assertTrue(Schema::hasTable('underground_trial_progress'));
         $this->assertTrue(Schema::hasTable('underground_trial_runs'));
         $this->assertTrue(Schema::hasColumn('underground_trial_runs', 'trial_content_identity'));
@@ -170,6 +182,14 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'underground_battles_profile_request_unique')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_profiles_growth_path_check')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_profiles_combat_level_max_check')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_profiles_stp_entitlement_check')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_profiles_banked_shard_balance_non_negative')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_profiles_current_hp_positive')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_intro_progress_branch_identity_check')->count());
         $this->assertSame(1, DB::table('pg_constraint')

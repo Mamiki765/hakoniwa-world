@@ -17,11 +17,19 @@ use Illuminate\Support\Carbon;
  * @property int $combat_level
  * @property int $combat_xp
  * @property int $shard_balance
+ * @property int $banked_shard_balance
+ * @property int|null $current_hp
  * @property Carbon|null $next_battle_at
  * @property Carbon|null $underground_contract_completed_at
  * @property string|null $growth_path_key
  * @property string|null $growth_path_identity
  * @property Carbon|null $growth_path_selected_at
+ * @property int $unspent_stp
+ * @property int $allocated_vitality_stp
+ * @property int $allocated_might_stp
+ * @property int $allocated_finesse_stp
+ * @property int $allocated_spirit_stp
+ * @property int $allocated_agility_stp
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Secretary $secretary
@@ -35,7 +43,10 @@ final class UndergroundProfile extends Model
 {
     protected $fillable = [
         'secretary_id', 'unlocked_area_layers', 'combat_level', 'combat_xp', 'shard_balance', 'next_battle_at',
+        'banked_shard_balance', 'current_hp',
         'underground_contract_completed_at', 'growth_path_key', 'growth_path_identity', 'growth_path_selected_at',
+        'unspent_stp', 'allocated_vitality_stp', 'allocated_might_stp', 'allocated_finesse_stp',
+        'allocated_spirit_stp', 'allocated_agility_stp',
     ];
 
     protected function casts(): array
@@ -45,9 +56,17 @@ final class UndergroundProfile extends Model
             'combat_level' => 'integer',
             'combat_xp' => 'integer',
             'shard_balance' => 'integer',
+            'banked_shard_balance' => 'integer',
+            'current_hp' => 'integer',
             'next_battle_at' => 'immutable_datetime',
             'underground_contract_completed_at' => 'immutable_datetime',
             'growth_path_selected_at' => 'immutable_datetime',
+            'unspent_stp' => 'integer',
+            'allocated_vitality_stp' => 'integer',
+            'allocated_might_stp' => 'integer',
+            'allocated_finesse_stp' => 'integer',
+            'allocated_spirit_stp' => 'integer',
+            'allocated_agility_stp' => 'integer',
         ];
     }
 
@@ -90,5 +109,17 @@ final class UndergroundProfile extends Model
     public function facilitySlotCapacity(): int
     {
         return UndergroundAreaCapacity::forUnlockedLayers($this->unlocked_area_layers);
+    }
+
+    /** @return array{vitality: int, might: int, finesse: int, spirit: int, agility: int} */
+    public function allocatedStp(): array
+    {
+        return [
+            'vitality' => $this->allocated_vitality_stp,
+            'might' => $this->allocated_might_stp,
+            'finesse' => $this->allocated_finesse_stp,
+            'spirit' => $this->allocated_spirit_stp,
+            'agility' => $this->allocated_agility_stp,
+        ];
     }
 }
