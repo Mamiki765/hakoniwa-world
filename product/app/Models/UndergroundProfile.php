@@ -42,6 +42,7 @@ use Illuminate\Support\Carbon;
  * @property-read UndergroundIntroProgress|null $introProgress
  * @property-read Collection<int, UndergroundIntroRequest> $introRequests
  * @property-read Collection<int, UndergroundSkillAllocation> $skillAllocations
+ * @property-read Collection<int, UndergroundOwnedEquipment> $ownedEquipment
  */
 final class UndergroundProfile extends Model
 {
@@ -117,6 +118,12 @@ final class UndergroundProfile extends Model
     public function skillAllocations(): HasMany
     {
         return $this->hasMany(UndergroundSkillAllocation::class, 'underground_profile_id');
+    }
+
+    /** @return HasMany<UndergroundOwnedEquipment, $this> */
+    public function ownedEquipment(): HasMany
+    {
+        return $this->hasMany(UndergroundOwnedEquipment::class, 'underground_profile_id');
     }
 
     public function facilitySlotCapacity(): int

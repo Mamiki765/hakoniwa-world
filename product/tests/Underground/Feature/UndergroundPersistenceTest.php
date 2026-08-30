@@ -2,8 +2,12 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundEquipmentCatalog;
+use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
 use App\Application\Underground\UndergroundProfileService;
+use App\Application\Underground\UndergroundStarterEquipmentService;
 use App\Models\Secretary;
+use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
 use App\Models\User;
@@ -87,15 +91,72 @@ final class UndergroundPersistenceTest extends TestCase
         $this->assertTrue(Schema::hasTable('underground_intro_progress'));
         $this->assertTrue(Schema::hasTable('underground_intro_requests'));
         $this->assertTrue(Schema::hasTable('underground_skill_allocations'));
+        $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
         foreach ([
             'underground_trial_progress', 'underground_trial_runs', 'underground_battles',
-            'underground_intro_progress', 'underground_intro_requests',
+            'underground_intro_progress', 'underground_intro_requests', 'underground_owned_equipment',
         ] as $table) {
             $this->assertNotContains('user_id', Schema::getColumnListing($table));
             $this->assertNotContains('world_id', Schema::getColumnListing($table));
             $this->assertNotContains('nation_id', Schema::getColumnListing($table));
             $this->assertNotContains('turn_run_id', Schema::getColumnListing($table));
         }
+    }
+
+    public function test_starter_equipment_reconciles_exactly_once_and_owned_instances_remain_extensible(): void
+    {
+        $secretary = $this->secretary();
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+        $profile->update([
+            'underground_contract_completed_at' => now(),
+            'growth_path_key' => 'martial_red',
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'growth_path_selected_at' => now(),
+            'skill_points_total' => 20,
+            'skill_points_unspent' => 20,
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'current_hp' => 492,
+        ]);
+        $service = app(UndergroundStarterEquipmentService::class);
+
+        $first = DB::transaction(fn (): UndergroundOwnedEquipment => $service->reconcile($profile));
+        $second = DB::transaction(fn (): UndergroundOwnedEquipment => $service->reconcile($profile));
+
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame([
+            'starter_knife',
+            'secretary-underground-shop-equipment-alpha-v1',
+            'weapon',
+            UndergroundStarterEquipmentService::GRANT_KEY,
+        ], [
+            $first->definition_key,
+            $first->catalog_identity,
+            $first->equipped_slot,
+            $first->grant_key,
+        ]);
+        $this->assertSame(1, UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('definition_key', UndergroundEquipmentCatalog::STARTER_KEY)
+            ->count());
+        $this->assertSame(1, app(UndergroundEquipmentLoadoutResolver::class)->summary($profile)['used']);
+
+        foreach ([1, 2] as $offset) {
+            UndergroundOwnedEquipment::query()->create([
+                'underground_profile_id' => $profile->id,
+                'definition_key' => 'iron_dagger',
+                'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v1',
+                'equipped_slot' => null,
+                'grant_key' => null,
+                'acquired_at' => now()->addSecond($offset),
+            ]);
+        }
+        $this->assertSame(2, UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('definition_key', 'iron_dagger')
+            ->count());
+
+        $secretary->delete();
+        $this->assertSame(0, UndergroundOwnedEquipment::query()->count());
     }
 
     public function test_unlocked_layers_persist_and_derive_four_facility_slots_per_layer(): void

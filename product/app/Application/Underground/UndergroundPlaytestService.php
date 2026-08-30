@@ -29,6 +29,7 @@ final readonly class UndergroundPlaytestService
     /** @return array<string, mixed> */
     public function options(User $user): array
     {
+        $this->assertAvailable();
         [$profile, $intro] = $this->stateForUser($user);
         $this->assertUnlocked($profile, $intro);
 
@@ -38,6 +39,7 @@ final readonly class UndergroundPlaytestService
     /** @return array<string, mixed> */
     public function fight(User $user, string $requestId, string $buildKey, string $enemyKey): array
     {
+        $this->assertAvailable();
         if (! Str::isUuid($requestId)) {
             throw new UndergroundRuntimeException('underground_request_id_invalid', 'request IDを確認してください。');
         }
@@ -184,6 +186,16 @@ final readonly class UndergroundPlaytestService
 
             return $this->projectBattle($battle->load('log'));
         }, 3);
+    }
+
+    private function assertAvailable(): void
+    {
+        if (config('app.env') === 'production') {
+            throw new UndergroundRuntimeException(
+                'underground_playtest_locked',
+                '力試しはまだ解禁されていません。',
+            );
+        }
     }
 
     /** @return array<string, mixed> */

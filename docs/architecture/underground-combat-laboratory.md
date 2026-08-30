@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backend、PR104 first-player Tutorial flow、PR105の`secretary-underground-alpha-v1` combat/build laboratory、PR106の正式intro・契約・初期成長方針・報酬なしalpha-v1 playtestのcurrent task-specific architecture authorityである。manual combat、playerのskill/equipment persistenceと育成UI、正式shop economy、normal hunt/Trial content、surface bridgeは定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryからPR109の正式equipment、装備Shop、宝物庫、通常探索までを扱うcurrent task-specific architecture authorityである。manual combat、AI editor、Trial content、random equipment/drop、affix、unique、enhancement、enchant、party、market、facility、surface bridgeは定義しない。
 
-application versionは`3.0.0-alpha.4`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth/skill stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR107は通常探索とgrowth settlement、PR108はstatus/STP/SP/Skill Treeをalpha-v1 canonical pathへ接続するが、Trial、正式equipment、実Shop、party、market、facility、surface bridgeは解禁しない。
+application versionは`3.0.0-alpha.5`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth/skill/equipment stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR107は通常探索とgrowth settlement、PR108はstatus/STP/SP/Skill Tree、PR109はSecretary-owned equipment、装備Shop、宝物庫とactual equipmentを用いる通常探索をalpha-v1 canonical pathへ接続する。Trial、party、market、facility、surface bridgeは解禁しない。
 
 ## Modular-monolith boundary
 
@@ -170,7 +170,7 @@ PR103はlaboratoryのpure coreとPR102のSecretary-owned persistenceを接続す
 
 ### Battle history retention
 
-`underground_battle_logs`にはordered action/round sequenceを保存し、retention windowはbattle終了から1時間とする。期限後は個別詳細を表示せず、安全な期限切れ案内を返し、`underground:prune-battle-logs`で削除する。履歴一覧は新しい順の最新20件だけを取得し、詳細logをeager loadしない。`underground_battles`にはencounter表示、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、damage/recovery aggregate、XP/欠片delta、timestamp、request/idempotency identity等のcompact recordを引き続き保持し、retention後もsummaryを表示する。内部debug objectやraw simulation payload全体は永続化しない。productionのcleanupは既存のOCI host cron thin-trigger patternを維持し、この変更でcron登録、Laravel scheduler、巨大なworkflow subsystemを追加しない。
+`underground_battle_logs`にはordered action/round sequenceを保存し、retention windowはbattle終了から1時間とする。期限後は個別詳細を表示せず、安全な期限切れ案内を返し、`underground:prune-battle-logs`で削除する。backend projectionはcompact compatibility/audit境界として新しい順の最新20件までを取得するが、alpha.5のplayer-facing地下メインに表示する履歴はそのうち直近5件だけとし、paginationやarchive UIは設けない。詳細logはeager loadせず、画面に表示された個別戦闘を開いた場合だけ取得する。`underground_battles`にはencounter表示、runtime result（victory/defeat/withdrawal。canonical `stalemate`はwithdrawalへ分類）、round count、damage/recovery aggregate、XP/欠片delta、timestamp、request/idempotency identity等のcompact recordを引き続き保持する。内部debug objectやraw simulation payload全体は永続化しない。productionのcleanupは既存のOCI host cron thin-trigger patternを維持し、この変更でcron登録、Laravel scheduler、巨大なworkflow subsystemを追加しない。
 
 ## Permanent contracts and experiment observations
 
@@ -259,7 +259,7 @@ PR104までにmainへ到達したprofileはforward migrationで正式Shop説明�
 
 ## PR107 normal exploration and player growth adapter
 
-PR107はcurrent authenticated User→own Secretary→profileを解決し、通常探索をalpha-v1 canonical combatへ接続する。player snapshotは`Lv1 baseline + growth path自然成長 × (Lv - 1) + 確定STP`を構成し、starter knifeのequipment補正を別段階で加える。XP/Lv/自然成長/未使用STP、終了HP、G reward/loss、history/cooldownを同じtransactionと既存lock orderでsettleする。Defeatだけ手持ちG半減とHP全回復を行い、銀行Gは保護する。MPはcolumnを追加せず毎battle 10,000から開始する。
+PR107はcurrent authenticated User→own Secretary→profileを解決し、通常探索をalpha-v1 canonical combatへ接続する。PR107時点のplayer snapshotは`Lv1 baseline + growth path自然成長 × (Lv - 1) + 確定STP`を構成し、synthetic starter knifeのequipment補正を別段階で加えた。XP/Lv/自然成長/未使用STP、終了HP、G reward/loss、history/cooldownを同じtransactionと既存lock orderでsettleする。Defeatだけ手持ちG半減とHP全回復を行い、銀行Gは保護する。MPはcolumnを追加せず毎battle 10,000から開始する。
 
 ## PR108 status and skill progression adapter
 
@@ -277,4 +277,14 @@ growth pathとSkill Treeは直交する。growth pathは自然成長、Skill Tre
 
 PR108の軽量浅層観測は、各growth/buildについてLv1 full HPとLv20 full HPを分離し、別にHP持越しの連続探索を1本観測する。Lv1の相対分類は地底鼠・洞窟蟲・腐食スライムをattritionのある雑魚、再生肉塊・狂信者を消耗後に危険な厄介枠、迷い人の影を明確な強敵とし、輝石虫はbonus enemyのため比較対象外とする。win rateは固定契約にせず、enemy categoryの順序、role差、異常な必勝・必敗、MP economyを読む。
 
-Lv20 + starter knifeは正式equipment未実装下の参考観測であり、浅層enemyを弱体化するacceptance gateではない。最終balanceは将来のLv1 Rank 1一式とLv20 Rank 3 weapon / armor / accessory一式を含むprogressionで再確認する。PR108のschema/API/UIはequipment shop、Secretary-owned宝物庫、storage、強化、enchant、affix、unique、sellまたはresaleを先行実装しない。
+PR108時点のLv20 + starter knifeは正式equipment未実装下の参考観測であり、浅層enemyを弱体化するacceptance gateではない。PR108のschema/API/UIはequipment shop、Secretary-owned宝物庫、storage、強化、enchant、affix、unique、sellまたはresaleを先行実装しない。
+
+## PR109 formal equipment, Shop, vault, and shallow balance adapter
+
+PR109は護身用ナイフを含むSecretary-owned equipmentを`1 row = 1 owned instance`として保存し、武器・防具・アクセサリー各1枠と500枠の宝物庫へ接続する。護身用ナイフは既存・新規profileへexactly onceで付与・装備し、非売品かつ0Gとする。装備中instanceも宝物庫の1枠を使用し、500個分の空rowは事前作成しない。
+
+装備Shopは`secretary-underground-shop-equipment-alpha-v1`の固定catalog authorityから12武器、3防具、15アクセサリーを販売する。購入・半額売却・装備変更はcurrent User→own Secretary→profile ownership、server-side definition/price、row lock、UUID fingerprint ledgerを使ってatomicにsettleする。購入は手持ちGだけを使用して銀行から自動引き出しせず、装備中itemを直接売却しない。weaponはreplacementのみ、armor/accessoryはunequip可能とする。max HP増加時はcurrent HPを維持し、減少時だけ新maxへclampする。
+
+通常探索はsynthetic starter injectionを廃止し、progression stats、actual equipped weapon/armor/accessory、passive Skill effects、active loadout、built-in AIを同じcanonical combat snapshotへ渡す。weapon style requirementに適合しないactive skillはruntime snapshotとAI ruleから除外するが、persisted active slotは保持し、適合武器へ戻した時に再利用する。Tutorial、story battle、開発環境限定playtest、PR105 laboratory fixtureはcurrent equipmentへ依存させない。
+
+正式な浅層benchmarkはLv1 Rank 1一式、Lv10 Rank 2一式、Lv20 Rank 3一式とcurrent progressionで観測する。雑魚、厄介、強敵の相対分類とHP持越しattritionを優先し、特定seedの勝率をhard gateにしない。99% complete guardの輝石虫は別軸として維持する。productionではplaytest entryを表示せず、通常探索だけをplayer-facing runtimeとして公開する。random drop、affix、unique、enhancement、enchant、Trialは後続sliceへ残す。

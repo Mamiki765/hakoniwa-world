@@ -36,6 +36,8 @@ final readonly class UndergroundIntroService
         private UndergroundAlphaV1BattleProjector $alphaV1Projector,
         private UndergroundPlaytestService $playtest,
         private UndergroundRuntimeService $runtime,
+        private UndergroundStarterEquipmentService $starterEquipment,
+        private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
     ) {}
 
     /** @return array<string, mixed> */
@@ -49,6 +51,21 @@ final readonly class UndergroundIntroService
                 'introProgress.scriptedLossBattle.log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
             ])
             ->first();
+
+        if ($profile instanceof UndergroundProfile && $profile->growth_path_key !== null) {
+            DB::transaction(function () use ($secretary, $profile): void {
+                Secretary::query()->whereKey($secretary->id)->lockForUpdate()->firstOrFail();
+                $locked = UndergroundProfile::query()->whereKey($profile->id)->lockForUpdate()->firstOrFail();
+                $this->starterEquipment->reconcile($locked);
+            }, 3);
+            $profile = UndergroundProfile::query()
+                ->whereKey($profile->id)
+                ->with([
+                    'introProgress.tutorialBattle.log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+                    'introProgress.scriptedLossBattle.log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+                ])
+                ->first();
+        }
 
         return $this->projectState($secretary, $profile, $profile?->introProgress);
     }
@@ -290,6 +307,7 @@ final readonly class UndergroundIntroService
             $profile->skill_points_unspent = $this->alphaV1Catalog->initialSkillPoints();
             $profile->skill_tree_identity = $this->alphaV1Catalog->skillTreeIdentity();
             $profile->save();
+            $this->starterEquipment->reconcile($profile);
             $intro->stage = UndergroundIntroStage::GROWTH_PATH_SELECTED;
             $intro->save();
         });
@@ -317,6 +335,7 @@ final readonly class UndergroundIntroService
                 (string) $profile->growth_path_key,
                 $profile->combat_level,
                 $profile->allocatedStp(),
+                $this->equipmentLoadout->combatLoadout($profile),
             );
             $profile->save();
         });
@@ -423,10 +442,12 @@ final readonly class UndergroundIntroService
             if ($total > $profile->unspent_stp) {
                 throw new UndergroundRuntimeException('underground_stp_insufficient', '未使用STPが不足しています。');
             }
+            $equipment = $this->equipmentLoadout->combatLoadout($profile);
             $currentHp = $profile->current_hp ?? $this->alphaV1Catalog->currentMaxHp(
                 (string) $profile->growth_path_key,
                 $profile->combat_level,
                 $profile->allocatedStp(),
+                $equipment,
             );
             foreach ($allocations as $stat => $value) {
                 $column = 'allocated_'.$stat.'_stp';
@@ -440,6 +461,7 @@ final readonly class UndergroundIntroService
                 (string) $profile->growth_path_key,
                 $profile->combat_level,
                 $profile->allocatedStp(),
+                $equipment,
             );
             $profile->current_hp = min($currentHp, $newMaxHp);
             $profile->save();
@@ -740,6 +762,9 @@ final readonly class UndergroundIntroService
             ->where('underground_profile_id', $profile->id)
             ->lockForUpdate()
             ->firstOrFail();
+        if ($profile->growth_path_key !== null) {
+            $this->starterEquipment->reconcile($profile);
+        }
 
         return [$secretary, $profile, $intro];
     }
@@ -1055,7 +1080,8 @@ final readonly class UndergroundIntroService
         $growthPath = null;
         $currentStats = null;
         $combatStats = null;
-        $starterWeapon = null;
+        $equipment = null;
+        $equipmentSummary = null;
         $maxHp = null;
         $currentHp = null;
         $statusBreakdown = null;
@@ -1071,10 +1097,11 @@ final readonly class UndergroundIntroService
                 $profile->combat_level,
                 $profile->allocatedStp(),
             );
-            $starterWeapon = $this->alphaV1Catalog->starterWeapon();
-            $combatStats = $this->alphaV1Catalog->combatStats($currentStats, $starterWeapon);
+            $equipment = $this->equipmentLoadout->combatLoadout($profile);
+            $equipmentSummary = $this->equipmentLoadout->summary($profile);
+            $combatStats = $this->alphaV1Catalog->combatStats($currentStats, $equipment);
             $growthPath['stats'] = $currentStats;
-            $maxHp = $this->alphaV1Catalog->maxHp($combatStats, $starterWeapon);
+            $maxHp = $this->alphaV1Catalog->maxHp($combatStats, $equipment);
             $currentHp = min($profile->current_hp ?? $maxHp, $maxHp);
             $growthPath['max_hp'] = $maxHp;
             $statusBreakdown = [];
@@ -1083,7 +1110,7 @@ final readonly class UndergroundIntroService
                     'baseline' => $baselineStats[$stat],
                     'natural_growth' => $growthPath['natural_growth'][$stat] * ($profile->combat_level - 1),
                     'allocated_stp' => $profile->allocatedStp()[$stat],
-                    'equipment' => $starterWeapon['stats'][$stat],
+                    'equipment' => $equipment['stats'][$stat],
                     'final' => $combatStats[$stat],
                 ];
             }
@@ -1137,6 +1164,7 @@ final readonly class UndergroundIntroService
             'banked_shard_balance' => $profile instanceof UndergroundProfile
                 ? $profile->banked_shard_balance
                 : 0,
+            'next_battle_at' => $profile?->next_battle_at?->toAtomString(),
             'current_hp' => $currentHp,
             'unspent_stp' => $profile instanceof UndergroundProfile ? $profile->unspent_stp : 0,
             'allocated_stp' => $profile instanceof UndergroundProfile
@@ -1145,7 +1173,8 @@ final readonly class UndergroundIntroService
             'current_stats' => $currentStats,
             'combat_stats' => $combatStats,
             'status_breakdown' => $statusBreakdown,
-            'starter_weapon' => $starterWeapon,
+            'equipment' => $equipment,
+            'equipment_summary' => $equipmentSummary,
             'skill_points_total' => $profile instanceof UndergroundProfile ? $profile->skill_points_total : 0,
             'skill_points_unspent' => $profile instanceof UndergroundProfile ? $profile->skill_points_unspent : 0,
             'skill_points_spent' => $profile instanceof UndergroundProfile
@@ -1168,6 +1197,7 @@ final readonly class UndergroundIntroService
             'growth_path' => $growthPath,
             'playtest' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
                 && $profile?->growth_path_key !== null
+                && config('app.env') !== 'production'
                     ? $this->alphaV1Catalog->playtestOptions($profile->growth_path_key)
                     : null,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,

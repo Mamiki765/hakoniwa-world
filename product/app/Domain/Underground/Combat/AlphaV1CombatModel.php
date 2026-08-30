@@ -290,10 +290,10 @@ final readonly class AlphaV1CombatModel
         $this->validator->assertAiRules($catalog, $skills, $aiRules, $key);
 
         $equipmentStats = $equipment['stats'] ?? null;
-        if (($equipment['key'] ?? null) !== 'starter_knife'
-            || ($equipment['item_level'] ?? null) !== 1
-            || ($equipment['rarity'] ?? null) !== 'common'
-            || ($equipment['weapon_style'] ?? null) !== 'dagger'
+        if (! is_string($equipment['key'] ?? null) || $equipment['key'] === ''
+            || ! is_int($equipment['item_level'] ?? null) || $equipment['item_level'] < 1
+            || ! is_string($equipment['rarity'] ?? null) || $equipment['rarity'] === ''
+            || ! is_string($equipment['weapon_style'] ?? null) || $equipment['weapon_style'] === ''
             || ! is_array($equipmentStats)
             || array_keys($equipmentStats) !== AlphaV1CombatRules::STATS
             || ! is_int($equipment['weapon_power'] ?? null) || $equipment['weapon_power'] < 1
@@ -303,11 +303,11 @@ final readonly class AlphaV1CombatModel
             || ($equipment['affixes'] ?? null) !== []
             || ! array_key_exists('unique_effect', $equipment)
             || $equipment['unique_effect'] !== null) {
-            throw new InvalidArgumentException('Underground alpha-v1 starter equipment snapshot is invalid.');
+            throw new InvalidArgumentException('Underground alpha-v1 runtime equipment snapshot is invalid.');
         }
         foreach ($equipmentStats as $value) {
             if (! is_int($value) || $value < 0) {
-                throw new InvalidArgumentException('Underground alpha-v1 starter equipment stats are invalid.');
+                throw new InvalidArgumentException('Underground alpha-v1 runtime equipment stats are invalid.');
             }
         }
         foreach (AlphaV1CombatRules::STATS as $stat) {

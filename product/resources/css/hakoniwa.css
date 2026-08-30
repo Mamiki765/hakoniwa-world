@@ -390,6 +390,12 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-playtest select { width: 100%; }
 .underground-progression-panel { display: grid; gap: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--input-surface); }
 .underground-progression-panel > header, .underground-skill-tree > header, .underground-active-loadout > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.underground-skill-header-actions { display: grid; justify-items: end; gap: .4rem; min-width: 0; }
+.underground-skill-header-actions p { text-align: right; }
+.underground-skill-jump { min-height: 2.55rem; padding: .4rem .75rem; border: 1px solid var(--coral); background: var(--paper); color: var(--coral-dark); font: inherit; font-weight: 850; cursor: pointer; }
+.underground-skill-jump:hover, .underground-skill-jump:focus-visible { background: var(--coral); color: white; outline: 3px solid color-mix(in srgb, var(--coral) 28%, transparent); outline-offset: 1px; }
+.underground-skill-incompatible { color: var(--ink); }
+.underground-skill-incompatible .underground-node-unavailable { display: block; margin-top: .2rem; }
 .underground-progression-panel h2, .underground-progression-panel h3, .underground-progression-panel p { margin: 0; }
 .underground-progression-note { padding: .7rem .8rem; border-left: 4px solid var(--coral); background: var(--paper-deep); color: var(--muted); }
 .underground-inn-result { color: var(--coral-dark); font-weight: 800; }
@@ -422,6 +428,62 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-active-skill-notes { display: grid; gap: .3rem; margin: 0; padding-left: 1.3rem; color: var(--muted); }
 .underground-shop { display: grid; gap: .75rem; }
 .underground-shop h2, .underground-shop p { margin: 0; }
+.underground-main-navigation { display: flex; flex-wrap: wrap; gap: .45rem; padding: .35rem; border: 1px solid var(--line); background: var(--paper-deep); }
+.underground-main-navigation button { min-height: 2.8rem; padding: .55rem .9rem; border: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
+.underground-main-navigation button:hover, .underground-main-navigation button:focus-visible, .underground-main-navigation button[aria-current="page"] { border-color: var(--coral); background: var(--paper); }
+.underground-equipment-screen { display: grid; gap: 1rem; min-width: 0; }
+.underground-equipment-screen h1, .underground-equipment-screen h2, .underground-equipment-screen h3, .underground-equipment-screen p { margin: 0; }
+.underground-equipment-screen-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding-bottom: .8rem; border-bottom: 2px solid var(--line); }
+.underground-equipment-screen-heading > div:first-child { display: grid; gap: .4rem; min-width: 0; }
+.underground-equipment-screen-heading h1 { font-size: clamp(1.7rem, 4vw, 2.8rem); overflow-wrap: anywhere; }
+.underground-equipment-screen-heading p:not(.eyebrow) { color: var(--muted); }
+.underground-equipment-balances { display: grid; grid-template-columns: repeat(2, minmax(7rem, 1fr)); gap: .5rem; min-width: 15rem; margin: 0; }
+.underground-equipment-balances div { padding: .55rem .7rem; border: 1px solid var(--line); background: var(--paper); }
+.underground-equipment-balances dt { color: var(--muted); font-size: .75rem; }
+.underground-equipment-balances dd { margin: .25rem 0 0; font-weight: 900; font-variant-numeric: tabular-nums; }
+.underground-equipment-tabs, .underground-equipment-style-tabs { display: flex; flex-wrap: wrap; gap: .4rem; }
+.underground-equipment-tabs button, .underground-equipment-style-tabs button { min-height: 2.7rem; padding: .45rem .8rem; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
+.underground-equipment-tabs button[aria-pressed="true"], .underground-equipment-style-tabs button[aria-pressed="true"] { border-color: var(--coral); background: var(--coral); color: white; }
+.underground-equipment-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: .75rem; }
+.underground-equipment-card { display: grid; align-content: start; gap: .65rem; min-width: 0; padding: .85rem; border: 1px solid var(--line); background: var(--paper); box-shadow: 3px 3px 0 rgba(18, 63, 73, .06); }
+.underground-equipment-card[data-owned="true"] { border-color: var(--coral); }
+.underground-equipment-card-heading { display: flex; align-items: start; justify-content: space-between; gap: .6rem; }
+.underground-equipment-card-heading h3 { overflow-wrap: anywhere; }
+.underground-equipment-card-kicker { color: var(--muted); font-size: .72rem; font-weight: 800; }
+.underground-equipment-rarity { color: var(--muted); font-size: .7rem; white-space: nowrap; }
+.underground-equipment-card-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem .55rem; margin: 0; font-size: .8rem; }
+.underground-equipment-card-stats div { display: flex; justify-content: space-between; gap: .5rem; }
+.underground-equipment-card-stats dt { color: var(--muted); }
+.underground-equipment-card-stats dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.underground-equipment-card-effect { padding: .5rem; border-left: 3px solid var(--coral); background: var(--paper-deep); color: var(--muted); font-size: .78rem; }
+.underground-equipment-card-footer { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem .65rem; margin-top: auto; color: var(--muted); font-size: .78rem; }
+.underground-equipment-card-footer > span { overflow-wrap: anywhere; }
+.underground-equipment-card-footer .button { min-height: 2.65rem; margin-left: auto; padding: .4rem .7rem; }
+.underground-equipment-owned, .underground-equipment-equipped { color: var(--coral-dark); font-weight: 900; }
+.underground-equipment-unaffordable { color: var(--muted); font-weight: 800; }
+.underground-equipment-owned-list, .underground-equipped-slots { display: grid; gap: .75rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.underground-equipment-owned-list > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.underground-equipment-owned-list > header p { color: var(--muted); font-size: .8rem; }
+.underground-confirm-backdrop { z-index: 70; padding: 1rem; }
+.underground-confirm-dialog { display: grid; gap: .9rem; width: min(100%, 30rem); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1.1rem; border: 1px solid var(--navy); background: var(--paper); color: var(--ink); box-shadow: var(--shadow); }
+.underground-confirm-dialog > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.underground-confirm-dialog > header h2 { font-size: 1.2rem; }
+.underground-confirm-dialog > footer { display: flex; justify-content: end; gap: .55rem; }
+.underground-confirm-item { display: flex; justify-content: space-between; gap: .8rem; padding: .7rem; border: 1px solid var(--line); background: var(--paper-deep); }
+.underground-confirm-item span { color: var(--muted); white-space: nowrap; }
+.underground-vault-capacity { display: grid; justify-items: end; gap: .15rem; min-width: 7rem; }
+.underground-vault-capacity strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.underground-vault-capacity span, .underground-vault-toolbar { color: var(--muted); font-size: .8rem; }
+.underground-equipped-slot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; }
+.underground-equipped-slot { display: grid; align-content: start; gap: .35rem; min-width: 0; padding: .7rem; border: 1px solid var(--line); background: var(--paper); }
+.underground-equipped-slot h3 { font-size: .85rem; }
+.underground-equipped-slot p { overflow-wrap: anywhere; }
+.underground-equipped-slot small, .underground-equipment-empty { color: var(--muted); }
+.underground-equipped-slot .button { justify-self: start; min-height: 2.4rem; padding: .35rem .65rem; }
+.underground-vault-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.underground-vault-toolbar p { margin: 0; }
+.underground-vault-toolbar > div { display: flex; align-items: center; gap: .35rem; }
+.underground-vault-toolbar .button { min-height: 2.35rem; padding: .3rem .65rem; }
 .secretary-panel .secretary-page-title { margin: 0 0 14px; font-family: inherit; font-size: 1.5rem; line-height: 1.25; }
 .secretary-name { margin: 0 0 24px; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 1; }
 .secretary-section-title { margin: 0; font-size: 1rem; }
@@ -912,6 +974,9 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .underground-tree-tabs button:focus-visible { outline: 3px solid color-mix(in srgb, var(--coral) 35%, transparent); outline-offset: 1px; }
     .underground-skill-tree[data-mobile-active="false"] { display: none; }
     .underground-progression-panel > header, .underground-active-loadout > header { align-items: stretch; flex-direction: column; }
+    .underground-skill-header-actions { justify-items: stretch; }
+    .underground-skill-header-actions p { text-align: left; }
+    .underground-skill-jump { width: 100%; min-height: 2.8rem; }
     .underground-character-pane, .underground-action-pane { padding: .8rem; }
     .underground-character-header { grid-template-columns: 5.5rem minmax(0, 1fr); }
     .underground-character-header img, .underground-portrait-placeholder { width: 5.5rem; height: 6.5rem; }
@@ -1024,6 +1089,17 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .equipment-modal { max-height: calc(100dvh - 20px); }
     .equipment-options-scroll { max-height: min(58dvh, 430px); }
     .inquiry-detail dl div { grid-template-columns: 1fr; gap: 3px; }
+    .underground-main-navigation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .underground-main-navigation button { min-width: 0; padding-inline: .35rem; font-size: .8rem; }
+    .underground-equipment-screen-heading, .underground-equipment-owned-list > header { flex-direction: column; }
+    .underground-equipment-balances { width: 100%; min-width: 0; }
+    .underground-equipment-tabs button, .underground-equipment-style-tabs button { flex: 1 1 auto; }
+    .underground-equipped-slot-grid { grid-template-columns: 1fr; }
+    .underground-vault-toolbar { align-items: stretch; flex-direction: column; }
+    .underground-vault-toolbar > div { justify-content: space-between; }
+    .underground-vault-toolbar .button { min-width: 5rem; }
+    .underground-confirm-dialog > footer { justify-content: stretch; }
+    .underground-confirm-dialog > footer .button { flex: 1; min-height: 2.8rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

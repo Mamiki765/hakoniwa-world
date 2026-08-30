@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
+import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
+import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
+import type { EquipmentItem } from './EquipmentItemCard.vue';
 
 type Stage = 'not_started' | 'initial_descent' | 'tutorial_ready' | 'escape_pending'
     | 'returned_after_tutorial' | 'shopkeeper_encounter' | 'shopkeeper_naming'
@@ -154,6 +157,7 @@ interface UndergroundState {
     xp_to_next_level: number;
     shard_balance: number;
     banked_shard_balance: number;
+    next_battle_at: string | null;
     current_hp: number | null;
     unspent_stp: number;
     allocated_stp: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
@@ -166,12 +170,7 @@ interface UndergroundState {
         equipment: number;
         final: number;
     }> | null;
-    starter_weapon: {
-        key: string;
-        label: string;
-        rarity: string;
-        item_level: number;
-    } | null;
+    equipment_summary: EquipmentSummary | null;
     skill_points_total: number;
     skill_points_unspent: number;
     skill_points_spent: number;
@@ -190,6 +189,22 @@ interface UndergroundState {
     growth_path: GrowthPath | null;
     playtest: PlaytestOptions | null;
     battle: Battle | null;
+}
+
+interface EquipmentSummary {
+    used: number;
+    capacity: number;
+    equipped: {
+        weapon: EquipmentItem | null;
+        armor: EquipmentItem | null;
+        accessory: EquipmentItem | null;
+    };
+}
+
+interface EquipmentMutationState {
+    shard_balance: number;
+    banked_shard_balance: number;
+    vault: EquipmentSummary;
 }
 
 const initialDescent = [
@@ -299,6 +314,7 @@ const busy = ref(false);
 const error = ref('');
 const shopkeeperName = ref('');
 const battles = ref<Battle[]>([]);
+const recentBattles = computed(() => battles.value.slice(0, 5));
 const selectedBattle = ref<Battle | null>(null);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
@@ -317,7 +333,17 @@ const loadoutDraft = ref<Array<string | null>>([null, null, null, null, null]);
 const pendingStpMutation = ref<PendingMutation | null>(null);
 const pendingSkillAcquire = ref<PendingMutation | null>(null);
 const pendingLoadoutMutation = ref<PendingMutation | null>(null);
+const equipmentView = ref<'main' | 'shop' | 'vault'>('main');
+const cooldownNowMs = ref(Date.now());
+let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const exploreCooldownSeconds = computed(() => {
+    const nextBattleAt = state.value?.next_battle_at;
+    if (!nextBattleAt) return 0;
+    const timestamp = Date.parse(nextBattleAt);
+    if (!Number.isFinite(timestamp)) return 0;
+    return Math.max(0, Math.ceil((timestamp - cooldownNowMs.value) / 1_000));
+});
 const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
     : state.value?.secretary_name ?? '秘書');
@@ -343,6 +369,13 @@ const acquiredActiveSkills = computed<ActiveSkill[]>(() => (state.value?.skill_t
         cooldown: node.cooldown ?? 0,
         required_weapon_styles: node.required_weapon_styles,
     })));
+const currentWeaponStyle = computed(() => state.value?.equipment_summary?.equipped.weapon?.weapon_style ?? null);
+const weaponStyleLabels: Record<string, string> = {
+    dagger: '短剣',
+    rapier: '細身剣',
+    longsword: '長剣',
+    crystal_staff: '輝石杖',
+};
 const summaryLabels: Record<string, string> = {
     result: '結果',
     damage_dealt: '与ダメージ',
@@ -377,7 +410,9 @@ function requestId(): string {
 }
 
 async function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
+    innRested.value = false;
     state.value = await api<UndergroundState>('/api/v1/me/underground');
+    cooldownNowMs.value = Date.now();
     if (returnIfTutorialAlreadyFinished && state.value.stage === 'returned_after_tutorial') {
         emit('returnToSecretary');
         return;
@@ -394,11 +429,13 @@ async function mutate(
     if (busy.value) return false;
     busy.value = true;
     error.value = '';
+    innRested.value = false;
     try {
         state.value = await api<UndergroundState>(path, {
             method,
             body: JSON.stringify({ request_id: mutationRequestId, ...body }),
         });
+        cooldownNowMs.value = Date.now();
         selectedBattle.value = null;
         if (state.value.stage === 'returned_after_tutorial') {
             emit('returnToSecretary');
@@ -428,6 +465,7 @@ async function loadBattles(): Promise<void> {
 }
 
 async function showBattle(battle: Battle): Promise<void> {
+    innRested.value = false;
     error.value = '';
     try {
         selectedBattle.value = battle.detail_available
@@ -441,6 +479,7 @@ async function showBattle(battle: Battle): Promise<void> {
 
 async function runPlaytest(): Promise<void> {
     if (busy.value || !selectedBuild.value || !selectedEnemy.value) return;
+    innRested.value = false;
     busy.value = true;
     error.value = '';
     try {
@@ -462,6 +501,7 @@ async function runPlaytest(): Promise<void> {
 
 async function runExplore(): Promise<void> {
     if (busy.value) return;
+    innRested.value = false;
     const explorationRequestId = pendingExplorationRequestId.value ?? requestId();
     pendingExplorationRequestId.value = explorationRequestId;
     busy.value = true;
@@ -560,8 +600,39 @@ function nodeLabel(nodeKey: string | null): string {
         .find((node) => node.key === nodeKey)?.label ?? '前提skill';
 }
 
+function orderedSkillNodes(nodes: SkillNode[]): SkillNode[] {
+    return nodes
+        .map((node, index) => ({ node, index }))
+        .sort((left, right) => left.node.invested_points_required - right.node.invested_points_required
+            || left.index - right.index)
+        .map(({ node }) => node);
+}
+
 function loadoutChoiceDisabled(skillKey: string, slotIndex: number): boolean {
     return loadoutDraft.value.some((equipped, index) => index !== slotIndex && equipped === skillKey);
+}
+
+function weaponStyleLabel(style: string): string {
+    return weaponStyleLabels[style] ?? style;
+}
+
+function requiredWeaponText(styles: string[]): string {
+    return `必要武器: ${styles.map(weaponStyleLabel).join(' / ')}`;
+}
+
+function activeSkillWeaponIncompatible(skill: Pick<ActiveSkill, 'required_weapon_styles'>): boolean {
+    const current = currentWeaponStyle.value;
+    return current !== null
+        && skill.required_weapon_styles.length > 0
+        && !skill.required_weapon_styles.includes(current);
+}
+
+async function focusActiveLoadout(): Promise<void> {
+    await nextTick();
+    const heading = document.getElementById('underground-loadout-title');
+    if (!heading) return;
+    heading.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    heading.focus({ preventScroll: true });
 }
 
 async function enter(): Promise<void> {
@@ -678,9 +749,28 @@ function simpleActionNarrative(action: SimpleAction, battle: Battle): string {
 
 function closeBattle(): void {
     selectedBattle.value = null;
+    innRested.value = false;
 }
 
-onMounted(() => { void enter(); });
+async function applyEquipmentMutation(result: EquipmentMutationState): Promise<void> {
+    if (!state.value) return;
+    state.value.shard_balance = result.shard_balance;
+    state.value.banked_shard_balance = result.banked_shard_balance;
+    state.value.equipment_summary = result.vault;
+    try {
+        await refresh(false);
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : '装備変更後の状態を更新できませんでした。';
+    }
+}
+
+onMounted(() => {
+    cooldownTimer = window.setInterval(() => { cooldownNowMs.value = Date.now(); }, 1_000);
+    void enter();
+});
+onUnmounted(() => {
+    if (cooldownTimer !== null) window.clearInterval(cooldownTimer);
+});
 </script>
 
 <template>
@@ -823,7 +913,16 @@ onMounted(() => { void enter(); });
         </template>
 
         <template v-else-if="state?.stage === 'underground_open'">
-            <div class="underground-main-layout">
+            <nav class="underground-main-navigation" aria-label="地下メニュー">
+                <button type="button" :aria-current="equipmentView === 'main' ? 'page' : undefined" @click="equipmentView = 'main'">地下メイン</button>
+                <button type="button" :aria-current="equipmentView === 'shop' ? 'page' : undefined" @click="equipmentView = 'shop'">装備ショップ</button>
+                <button type="button" :aria-current="equipmentView === 'vault' ? 'page' : undefined" @click="equipmentView = 'vault'">宝物庫</button>
+            </nav>
+
+            <UndergroundEquipmentShop v-if="equipmentView === 'shop'" @updated="applyEquipmentMutation" />
+            <UndergroundEquipmentVault v-else-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
+
+            <div v-else class="underground-main-layout">
                 <section class="underground-character-pane" aria-labelledby="underground-character-title">
                     <div class="underground-character-header">
                         <img v-if="props.secretaryImageUrl" :src="props.secretaryImageUrl" :alt="`${state.secretary_name}の画像`">
@@ -847,7 +946,12 @@ onMounted(() => { void enter(); });
                     </section>
                     <section class="underground-equipment" aria-labelledby="underground-equipment-title">
                         <h2 id="underground-equipment-title">装備</h2>
-                        <dl><div><dt>武器</dt><dd>{{ state.starter_weapon?.label ?? '未設定' }}</dd></div><div><dt>防具</dt><dd>未設定</dd></div><div><dt>装飾</dt><dd>未設定</dd></div></dl>
+                        <dl>
+                            <div><dt>武器</dt><dd>{{ state.equipment_summary?.equipped.weapon?.name ?? '未設定' }}</dd></div>
+                            <div><dt>防具</dt><dd>{{ state.equipment_summary?.equipped.armor?.name ?? '未設定' }}</dd></div>
+                            <div><dt>アクセサリー</dt><dd>{{ state.equipment_summary?.equipped.accessory?.name ?? '未設定' }}</dd></div>
+                        </dl>
+                        <p v-if="state.equipment_summary">宝物庫 {{ state.equipment_summary.used }} / {{ state.equipment_summary.capacity }}</p>
                     </section>
                     <div class="underground-character-actions">
                         <button type="button" :aria-expanded="statusOpen" @click="statusOpen = !statusOpen">ステータス<small>STP配分</small></button>
@@ -864,9 +968,9 @@ onMounted(() => { void enter(); });
                         <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
                         <div class="underground-shop-entries">
                             <button type="button" :disabled="busy || innResting" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
-                            <button type="button" disabled>装備ショップ<small>準備中</small></button>
+                            <button type="button" :disabled="busy" @click="equipmentView = 'shop'">装備ショップ<small>武器・防具・アクセサリー</small></button>
                             <button type="button" :disabled="busy" @click="bankOpen = !bankOpen">銀行<small>預入・引出</small></button>
-                            <button type="button" disabled>ショップ<small>準備中</small></button>
+                            <button type="button" :disabled="busy" @click="equipmentView = 'vault'">宝物庫<small>所持品・装備変更</small></button>
                         </div>
                         <form v-if="bankOpen" class="underground-bank" @submit.prevent>
                             <h3>銀行</h3>
@@ -884,7 +988,7 @@ onMounted(() => { void enter(); });
                     </section>
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <h2 id="underground-adventure-title">冒険</h2>
-                        <div class="underground-entries"><button type="button" :disabled="busy" @click="runExplore">周囲を探索<small>浅い洞窟</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
+                        <div class="underground-entries"><button type="button" :disabled="busy || exploreCooldownSeconds > 0" @click="runExplore">周囲を探索<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : '浅い洞窟' }}</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
                     </section>
                     <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
                         <h2 id="underground-playtest-title">力試し（α）</h2>
@@ -898,7 +1002,7 @@ onMounted(() => { void enter(); });
                     </section>
                     <section class="underground-history" aria-labelledby="underground-history-title">
                         <h2 id="underground-history-title">戦闘履歴</h2>
-                        <ul><li v-for="battle in battles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
+                        <ul><li v-for="battle in recentBattles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
                     </section>
                 </section>
             </div>
@@ -931,7 +1035,10 @@ onMounted(() => { void enter(); });
             <section v-if="skillsOpen && state.skill_trees" class="underground-progression-panel" aria-labelledby="underground-skills-title">
                 <header>
                     <div><p class="eyebrow">Finite Skill Points</p><h2 id="underground-skills-title">Skill Tree</h2></div>
-                    <p>SP {{ state.skill_points_unspent }} / {{ state.skill_points_total }}（使用済み {{ state.skill_points_spent }}）</p>
+                    <div class="underground-skill-header-actions">
+                        <p>SP {{ state.skill_points_unspent }} / {{ state.skill_points_total }}（使用済み {{ state.skill_points_spent }}）</p>
+                        <button class="underground-skill-jump" type="button" @click="focusActiveLoadout">アクティブスキル設定へ</button>
+                    </div>
                 </header>
                 <p class="underground-progression-note">SPを消費することでスキルを習得できます。</p>
                 <div class="underground-tree-tabs" role="tablist" aria-label="Skill Tree系統">
@@ -959,7 +1066,7 @@ onMounted(() => { void enter(); });
                     >
                         <header><h3>{{ tree.label }}</h3><span>{{ tree.invested_points }} / {{ tree.full_points }} SP</span></header>
                         <ol>
-                            <li v-for="node in tree.nodes" :key="node.key" class="underground-skill-node" :data-acquired="node.rank > 0">
+                            <li v-for="node in orderedSkillNodes(tree.nodes)" :key="node.key" class="underground-skill-node" :data-acquired="node.rank > 0">
                                 <div class="underground-skill-node-heading"><strong>{{ node.label }}</strong><span>{{ node.type === 'active' ? 'active' : 'passive' }} {{ node.rank }} / {{ node.max_rank }}</span></div>
                                 <p>{{ node.summary }}</p>
                                 <dl>
@@ -977,8 +1084,8 @@ onMounted(() => { void enter(); });
                     </article>
                 </div>
 
-                <section class="underground-active-loadout" aria-labelledby="underground-loadout-title">
-                    <header><div><h3 id="underground-loadout-title">Active Skill</h3><p>取得済みskillを最大5個まで装備します。</p></div><p>基本行動: 通常攻撃 / 防御（常時利用可能）</p></header>
+                <section id="underground-active-loadout" class="underground-active-loadout" aria-labelledby="underground-loadout-title">
+                    <header><div><h3 id="underground-loadout-title" tabindex="-1">Active Skill</h3><p>取得済みskillを最大5個まで装備します。</p></div><p>基本行動: 通常攻撃 / 防御（常時利用可能）</p></header>
                     <div class="underground-loadout-grid">
                         <label v-for="(_, index) in loadoutDraft" :key="index">slot {{ index + 1 }}
                             <select v-model="loadoutDraft[index]" :disabled="busy">
@@ -988,7 +1095,11 @@ onMounted(() => { void enter(); });
                         </label>
                     </div>
                     <ul class="underground-active-skill-notes">
-                        <li v-for="skill in acquiredActiveSkills" :key="skill.key"><strong>{{ skill.label }}</strong>: {{ skill.summary }} / MP {{ skill.mp_cost }} / cooldown {{ skill.cooldown }}R<span v-if="skill.required_weapon_styles.length > 0"> / {{ skill.required_weapon_styles.join('・') }}専用</span></li>
+                        <li v-for="skill in acquiredActiveSkills" :key="skill.key" :class="{ 'underground-skill-incompatible': activeSkillWeaponIncompatible(skill) }">
+                            <strong>{{ skill.label }}</strong>: {{ skill.summary }} / MP {{ skill.mp_cost }} / cooldown {{ skill.cooldown }}R
+                            <span v-if="skill.required_weapon_styles.length > 0"> / {{ requiredWeaponText(skill.required_weapon_styles) }}</span>
+                            <span v-if="activeSkillWeaponIncompatible(skill)" class="underground-node-unavailable">現在の武器では使用できません</span>
+                        </li>
                     </ul>
                     <button class="button primary" type="button" :disabled="busy" @click="saveLoadout">slot 1～5を保存</button>
                 </section>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
@@ -92,6 +93,42 @@ try {
             'request_id' => $payload['request_id'],
             'shard_balance' => $result['shard_balance'],
             'banked_shard_balance' => $result['banked_shard_balance'],
+        ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'equipment_purchase') {
+        $result = app(UndergroundEquipmentService::class)->purchase(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['definition_key'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'request_id' => $payload['request_id'],
+            'definition_key' => $payload['definition_key'],
+            'shard_balance' => $result['shard_balance'],
+            'vault_used' => $result['vault']['used'],
+        ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'equipment_sell') {
+        $result = app(UndergroundEquipmentService::class)->sell(
+            $user,
+            (string) $payload['request_id'],
+            (int) $payload['item_id'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'request_id' => $payload['request_id'],
+            'shard_balance' => $result['shard_balance'],
+            'vault_used' => $result['vault']['used'],
+        ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'equipment_equip') {
+        $result = app(UndergroundEquipmentService::class)->equip(
+            $user,
+            (string) $payload['request_id'],
+            (int) $payload['item_id'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'request_id' => $payload['request_id'],
+            'equipped_weapon_id' => $result['vault']['equipped']['weapon']['id'],
         ], JSON_THROW_ON_ERROR));
     } elseif (($payload['operation'] ?? 'explore') === 'stp_allocate') {
         $result = app(UndergroundIntroService::class)->allocateStp(
