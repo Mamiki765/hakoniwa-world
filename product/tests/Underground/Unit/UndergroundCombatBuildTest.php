@@ -2,6 +2,7 @@
 
 namespace Tests\Underground\Unit;
 
+use App\Application\Underground\UndergroundAlphaV1BattleProjector;
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
@@ -324,9 +325,8 @@ final class UndergroundCombatBuildTest extends TestCase
             'dodgeable' => false,
             'hits' => 1,
         ];
-        $settled = $this->model()->fight(
-            new AlphaV1BuildCatalog($barrierSettlement), 'pure_tank', 'pressure_construct', 'early', 1, 2,
-        );
+        $barrierCatalog = new AlphaV1BuildCatalog($barrierSettlement);
+        $settled = $this->model()->fight($barrierCatalog, 'pure_tank', 'pressure_construct', 'early', 1, 2);
         $counterRows = array_values(array_filter(
             $settled->actionLog,
             static fn (array $row): bool => $row['action'] === 'counter',
@@ -341,6 +341,13 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertNotEmpty($periodicRows, json_encode($settled->actionLog, JSON_THROW_ON_ERROR));
         $this->assertSame(0, $periodicRows[0]['amount']);
         $this->assertGreaterThan($periodicRows[0]['actor_hp'], $periodicRows[0]['barrier_absorbed']);
+        $projected = (new UndergroundAlphaV1BattleProjector)->project($settled, $barrierCatalog);
+        $projectedTypes = collect($projected['rounds'])
+            ->flatMap(static fn (array $round): array => $round['actions'])
+            ->pluck('type')
+            ->all();
+        $this->assertContains('barrier', $projectedTypes);
+        $this->assertContains('status_applied', $projectedTypes);
     }
 
     public function test_status_stack_refresh_cleanse_and_boss_control_conversion_never_create_permanent_lock(): void
@@ -352,6 +359,7 @@ final class UndergroundCombatBuildTest extends TestCase
             static fn (array $row): bool => $row['action'] === 'status:bleed',
         ));
         $this->assertNotEmpty($bleedApplications);
+        $this->assertSame('status_applied', $bleedApplications[0]['effect_type']);
         $this->assertLessThanOrEqual(3, max(array_column($bleedApplications, 'amount')));
 
         $manifest['skills']['enemy_break'] = [
@@ -513,6 +521,58 @@ final class UndergroundCombatBuildTest extends TestCase
                 $this->assertLessThanOrEqual(10_000, $result->finalMp);
             }
         }
+    }
+
+    public function test_true_name_story_profile_is_a_short_deterministic_alpha_v1_tank_defeat(): void
+    {
+        [$manifest] = $this->catalog();
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $definition = $configuration['true_name_story_battle'];
+        $manifest['builds'][$definition['build_key']] = $definition['build'];
+        $manifest['enemies'][$definition['enemy_key']] = $definition['enemy'];
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $storyScaleBps = (new AlphaV1CombatRules)->storyBenchmarkScaleBps($definition['combat_level_equivalent']);
+
+        $first = $this->model()->fight(
+            $catalog,
+            $definition['build_key'],
+            $definition['enemy_key'],
+            $definition['tier_key'],
+            $definition['seed'],
+            $definition['max_rounds'],
+            null,
+            [],
+            $storyScaleBps,
+        );
+        $retry = $this->model()->fight(
+            $catalog,
+            $definition['build_key'],
+            $definition['enemy_key'],
+            $definition['tier_key'],
+            $definition['seed'],
+            $definition['max_rounds'],
+            null,
+            [],
+            $storyScaleBps,
+        );
+
+        $this->assertSame($first->toArray(), $retry->toArray());
+        $this->assertSame(1254, $definition['combat_level_equivalent']);
+        $this->assertSame(1_137_700, $storyScaleBps);
+        $this->assertSame('enemy', $first->winner);
+        $this->assertSame(1, $first->rounds);
+        $this->assertSame(0, $first->playerRemainingHp);
+        $this->assertSame(568_850, $first->enemyRemainingHp);
+        $this->assertSame(4, $first->damageDealt);
+        $this->assertSame(500, $first->damageReceived);
+        $actions = array_column($first->actionLog, 'action');
+        $this->assertContains('counter_stance', $actions);
+        $this->assertContains('counter', $actions);
+        $this->assertContains('round_end', $actions);
+        $counter = $first->actionLog[array_key_last($first->actionLog) - 1];
+        $this->assertSame('counter', $counter['action']);
+        $this->assertGreaterThan(500, $counter['amount']);
+        $this->assertSame([], $first->abnormalState);
     }
 
     /** @return array{array<string, mixed>, AlphaV1BuildCatalog, UndergroundBuildValidator} */

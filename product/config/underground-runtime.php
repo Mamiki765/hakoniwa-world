@@ -7,7 +7,7 @@ return [
     'combat' => [
         'max_rounds' => 100,
         'cooldown_seconds' => 10,
-        'battle_log_retention_hours' => 100,
+        'battle_log_retention_hours' => 1,
         'actor_key' => 'knife_initiate',
         'loadout' => [
             'quick_slash',

@@ -65,6 +65,15 @@ final class AlphaV1CombatRules
         return 10_000 + ((max($combatLevel, $itemLevel) - 1) * 900);
     }
 
+    public function storyBenchmarkScaleBps(int $equivalentCombatLevel): int
+    {
+        if ($equivalentCombatLevel < 1 || $equivalentCombatLevel > 10_000) {
+            throw new InvalidArgumentException('Underground story benchmark level is invalid.');
+        }
+
+        return 10_000 + (($equivalentCombatLevel - 1) * 900);
+    }
+
     /**
      * @param  array<string, int>  $baseStats
      * @param  array<string, int>  $equipmentStats

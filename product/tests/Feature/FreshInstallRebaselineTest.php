@@ -48,14 +48,14 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v18')->sole();
 
-        $this->assertSame('3.0.0-alpha.1', config('hakoniwa.application_version'));
+        $this->assertSame('3.0.0-alpha.2', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v18'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v18', $ruleset->key);
         $this->assertSame(18, $ruleset->version);
         $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(59, DB::table('migrations')->count());
+        $this->assertSame(61, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -95,6 +95,12 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_29_040000_cap_underground_battle_log_retention',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_30_000000_add_underground_contract_growth_and_playtest',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_30_010000_cap_underground_battle_log_retention_to_one_hour',
+        ]);
         $this->assertDatabaseHas('facility_definitions', [
             'key' => 'undersea_city',
             'asset_key' => 'tile.undersea_city',
@@ -133,12 +139,17 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'combat_xp'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'shard_balance'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'next_battle_at'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'underground_contract_completed_at'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_key'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_identity'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_selected_at'));
         $this->assertTrue(Schema::hasTable('underground_trial_progress'));
         $this->assertTrue(Schema::hasTable('underground_trial_runs'));
         $this->assertTrue(Schema::hasColumn('underground_trial_runs', 'trial_content_identity'));
         $this->assertTrue(Schema::hasTable('underground_battles'));
         $this->assertTrue(Schema::hasTable('underground_battle_logs'));
         $this->assertTrue(Schema::hasTable('underground_intro_progress'));
+        $this->assertTrue(Schema::hasColumn('underground_intro_progress', 'branch_identity'));
         $this->assertTrue(Schema::hasTable('underground_intro_requests'));
         $this->assertSame(0, DB::table('auction_listings')->count());
         $this->assertSame(0, DB::table('auction_bids')->count());
@@ -157,6 +168,10 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'underground_profiles_combat_level_positive')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_battles_profile_request_unique')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_profiles_growth_path_check')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_intro_progress_branch_identity_check')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_trial_runs_content_identity_not_empty')->count());
         $auctionIndexes = [

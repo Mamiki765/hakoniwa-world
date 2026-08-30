@@ -280,7 +280,6 @@ final readonly class UndergroundRuntimeService
 
         return UndergroundBattle::query()
             ->where('underground_profile_id', $profile->id)
-            ->with('log')
             ->orderByDesc('finished_at')
             ->orderByDesc('id')
             ->limit($limit)

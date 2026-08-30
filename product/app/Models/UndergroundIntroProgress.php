@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $stage
  * @property string|null $shopkeeper_name
  * @property bool|null $special_loss_required
+ * @property string|null $branch_identity
  * @property int|null $tutorial_battle_id
  * @property int|null $scripted_loss_battle_id
  * @property-read UndergroundProfile $profile
@@ -23,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 final class UndergroundIntroProgress extends Model
 {
     protected $fillable = [
-        'underground_profile_id', 'stage', 'shopkeeper_name', 'special_loss_required',
+        'underground_profile_id', 'stage', 'shopkeeper_name', 'special_loss_required', 'branch_identity',
         'tutorial_battle_id', 'scripted_loss_battle_id',
     ];
 

@@ -180,6 +180,146 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             ->count());
     }
 
+    public function test_concurrent_contract_and_growth_selection_never_overwrite_the_chosen_path(): void
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $secretary->update(['name' => 'ペリドット', 'named_at' => now()]);
+        $introService = app(UndergroundIntroService::class);
+        $introService->enter($user, (string) Str::uuid());
+        $introService->advance($user, (string) Str::uuid(), 'initial_story_complete');
+        $introService->tutorial($user, (string) Str::uuid());
+        $introService->advance($user, (string) Str::uuid(), 'escape_complete');
+        $introService->enter($user, (string) Str::uuid());
+        $introService->advance($user, (string) Str::uuid(), 'shopkeeper_encounter_complete');
+        $introService->nameShopkeeper($user, (string) Str::uuid(), '案内係');
+        $introService->advance($user, (string) Str::uuid(), 'shop_explanation_complete');
+
+        $contractRequest = (string) Str::uuid();
+        $contractResults = $this->runConcurrentOperations($user, $secretary, [
+            ['operation' => 'contract', 'request_id' => $contractRequest],
+            ['operation' => 'contract', 'request_id' => $contractRequest],
+        ]);
+        $this->assertSame(['ok', 'ok'], array_column($contractResults, 'status'));
+        $this->assertSame(['crystal_selection', 'crystal_selection'], array_column($contractResults, 'stage'));
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'contract')->count());
+
+        $keys = ['martial_red', 'blessing_green'];
+        $growthResults = $this->runConcurrentOperations($user, $secretary, [
+            ['operation' => 'growth_path', 'request_id' => (string) Str::uuid(), 'growth_path_key' => $keys[0]],
+            ['operation' => 'growth_path', 'request_id' => (string) Str::uuid(), 'growth_path_key' => $keys[1]],
+        ]);
+        $statuses = array_column($growthResults, 'status');
+        sort($statuses);
+        $this->assertSame(['conflict', 'ok'], $statuses);
+        $conflict = collect($growthResults)->firstWhere('status', 'conflict');
+        $success = collect($growthResults)->firstWhere('status', 'ok');
+        $this->assertIsArray($conflict);
+        $this->assertIsArray($success);
+        $this->assertSame('underground_growth_path_already_selected', $conflict['error_code']);
+
+        $profile->refresh();
+        $this->assertContains($profile->growth_path_key, $keys);
+        $this->assertSame($profile->growth_path_key, $success['growth_path_key']);
+        $this->assertSame('secretary-underground-growth-alpha-v1', $profile->growth_path_identity);
+        $this->assertNotNull($profile->growth_path_selected_at);
+        $this->assertDatabaseHas('underground_intro_progress', [
+            'underground_profile_id' => $profile->id,
+            'stage' => 'growth_path_selected',
+        ]);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'growth_path')->count());
+    }
+
+    public function test_forward_migration_resumes_existing_pr104_profiles_without_reclassifying_the_legacy_branch(): void
+    {
+        $schema = 'pr106_forward_'.strtolower(Str::random(12));
+        $connection = DB::connection($this->primaryConnection);
+        $connection->unprepared("CREATE SCHEMA {$schema}");
+        $connection->unprepared("SET search_path TO {$schema}");
+
+        try {
+            $connection->unprepared(<<<'SQL'
+CREATE TABLE underground_profiles (id BIGSERIAL PRIMARY KEY);
+CREATE TABLE underground_battles (id BIGSERIAL PRIMARY KEY, activity_type VARCHAR(16) NOT NULL);
+ALTER TABLE underground_battles
+  ADD CONSTRAINT underground_battles_activity_type_check
+  CHECK (activity_type IN ('exploration', 'trial', 'tutorial', 'story'));
+CREATE TABLE underground_intro_progress (
+  id BIGSERIAL PRIMARY KEY,
+  underground_profile_id BIGINT NOT NULL,
+  stage VARCHAR(32) NOT NULL,
+  shopkeeper_name VARCHAR(255),
+  special_loss_required BOOLEAN,
+  tutorial_battle_id BIGINT,
+  scripted_loss_battle_id BIGINT
+);
+ALTER TABLE underground_intro_progress
+  ADD CONSTRAINT underground_intro_progress_stage_check
+  CHECK (stage IN (
+    'not_started', 'initial_descent', 'tutorial_ready', 'escape_pending',
+    'returned_after_tutorial', 'shopkeeper_encounter', 'shopkeeper_naming',
+    'special_loss_pending', 'special_loss_complete', 'shop_explanation', 'underground_open'
+  )),
+  ADD CONSTRAINT underground_intro_progress_naming_check
+  CHECK (shopkeeper_name IS NOT NULL AND special_loss_required IS NOT NULL),
+  ADD CONSTRAINT underground_intro_progress_special_loss_check
+  CHECK (
+    (special_loss_required = FALSE AND scripted_loss_battle_id IS NULL)
+    OR (special_loss_required = TRUE AND scripted_loss_battle_id IS NOT NULL)
+  );
+CREATE TABLE underground_intro_requests (
+  id BIGSERIAL PRIMARY KEY,
+  operation VARCHAR(32) NOT NULL,
+  resulting_stage VARCHAR(32) NOT NULL
+);
+ALTER TABLE underground_intro_requests
+  ADD CONSTRAINT underground_intro_requests_operation_check
+  CHECK (operation IN ('entry', 'advance', 'tutorial', 'shopkeeper_name', 'scripted_loss')),
+  ADD CONSTRAINT underground_intro_requests_stage_check
+  CHECK (resulting_stage IN (
+    'not_started', 'initial_descent', 'tutorial_ready', 'escape_pending',
+    'returned_after_tutorial', 'shopkeeper_encounter', 'shopkeeper_naming',
+    'special_loss_pending', 'special_loss_complete', 'shop_explanation', 'underground_open'
+  ));
+INSERT INTO underground_profiles (id) VALUES (1), (2);
+INSERT INTO underground_battles (id, activity_type) VALUES (1, 'story');
+INSERT INTO underground_intro_progress (
+  underground_profile_id, stage, shopkeeper_name, special_loss_required, scripted_loss_battle_id
+) VALUES
+  (1, 'underground_open', 'ダミー', TRUE, 1),
+  (2, 'underground_open', '通常案内', FALSE, NULL);
+SQL);
+
+            $migration = require database_path(
+                'migrations/2026_08_30_000000_add_underground_contract_growth_and_playtest.php',
+            );
+            $migration->up();
+
+            $rows = $connection->table('underground_intro_progress')
+                ->orderBy('underground_profile_id')
+                ->get(['stage', 'shopkeeper_name', 'special_loss_required', 'branch_identity']);
+            $this->assertSame('shop_explanation', $rows[0]->stage);
+            $this->assertSame('ダミー', $rows[0]->shopkeeper_name);
+            $this->assertTrue($rows[0]->special_loss_required);
+            $this->assertSame('legacy_temporary', $rows[0]->branch_identity);
+            $this->assertSame('shop_explanation', $rows[1]->stage);
+            $this->assertSame('normal', $rows[1]->branch_identity);
+            $profiles = $connection->table('underground_profiles')->orderBy('id')->get();
+            foreach ($profiles as $profile) {
+                $this->assertNull($profile->underground_contract_completed_at);
+                $this->assertNull($profile->growth_path_key);
+                $this->assertNull($profile->growth_path_identity);
+                $this->assertNull($profile->growth_path_selected_at);
+            }
+        } finally {
+            $connection->unprepared('SET search_path TO public');
+            $connection->unprepared("DROP SCHEMA {$schema} CASCADE");
+        }
+    }
+
     /** @return array{User, Secretary, UndergroundProfile} */
     private function undergroundFixture(): array
     {

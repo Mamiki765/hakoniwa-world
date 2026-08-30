@@ -25,12 +25,16 @@ final class UndergroundPersistenceTest extends TestCase
         $second = $service->ensureForSecretary($secretary);
 
         $this->assertSame($first->id, $second->id);
-        $this->assertSame([0, 1, 0, 0, null], [
+        $this->assertSame([0, 1, 0, 0, null, null, null, null, null], [
             $first->unlocked_area_layers,
             $first->combat_level,
             $first->combat_xp,
             $first->shard_balance,
             $first->next_battle_at,
+            $first->underground_contract_completed_at,
+            $first->growth_path_key,
+            $first->growth_path_identity,
+            $first->growth_path_selected_at,
         ]);
         $this->assertSame($first->id, $secretary->undergroundProfile()->sole()->id);
         $this->assertSame(1, UndergroundProfile::query()->where('secretary_id', $secretary->id)->count());
@@ -41,10 +45,14 @@ final class UndergroundPersistenceTest extends TestCase
             'combat_level',
             'combat_xp',
             'created_at',
+            'growth_path_identity',
+            'growth_path_key',
+            'growth_path_selected_at',
             'id',
             'next_battle_at',
             'secretary_id',
             'shard_balance',
+            'underground_contract_completed_at',
             'unlocked_area_layers',
             'updated_at',
         ], $columns);

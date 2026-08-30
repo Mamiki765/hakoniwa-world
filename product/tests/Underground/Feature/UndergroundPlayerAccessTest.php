@@ -3,17 +3,20 @@
 namespace Tests\Underground\Feature;
 
 use App\Application\SecretaryService;
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundIntroCatalog;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
+use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -183,12 +186,31 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => (string) Str::uuid(),
         ])->assertConflict()->assertJsonPath('code', 'underground_scripted_loss_unavailable');
 
-        $this->advance($user, 'shop_explanation_complete')->assertJsonPath('data.stage', 'underground_open');
+        $this->advance($user, 'shop_explanation_complete')->assertJsonPath('data.stage', 'contract_ready');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/growth-path', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'martial_red',
+        ])->assertConflict()->assertJsonPath('code', 'underground_growth_path_already_selected');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/contract', [
+            'request_id' => (string) Str::uuid(),
+        ])->assertOk()->assertJsonPath('data.stage', 'crystal_selection');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/growth-path', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'martial_red',
+        ])->assertOk()
+            ->assertJsonPath('data.stage', 'growth_path_selected')
+            ->assertJsonPath('data.growth_path.stats.vitality', 18)
+            ->assertJsonPath('data.growth_path.stats.might', 34)
+            ->assertJsonPath('data.growth_path.max_hp', 484)
+            ->assertJsonPath('data.growth_path.max_mp', 10000)
+            ->assertJsonPath('data.growth_path.natural_recovery', 300);
+        $this->advance($user, 'growth_path_story_complete')->assertJsonPath('data.stage', 'underground_open');
         $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
             ->assertJsonPath('data.shopkeeper_name', 'ダミー店員')
             ->assertJsonPath('data.combat_level', 1)
-            ->assertJsonPath('data.combat_xp', 5);
+            ->assertJsonPath('data.combat_xp', 5)
+            ->assertJsonPath('data.playtest.default_build_key', 'pure_attacker');
         $requestCount = UndergroundIntroRequest::query()->count();
         $this->actingAs($user)->postJson('/api/v1/me/underground/entry', [
             'request_id' => (string) Str::uuid(),
@@ -197,14 +219,16 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertSame(1, UndergroundBattle::query()->count());
     }
 
-    public function test_exact_dummy_name_runs_one_logged_scripted_loss_without_normal_penalties(): void
+    public function test_true_name_branch_runs_one_logged_alpha_v1_scripted_loss_without_normal_penalties(): void
     {
         [$user] = $this->secretaryUser('Special secretary');
         $this->reachShopkeeperNaming($user);
         $this->actingAs($user)->postJson('/api/v1/me/underground/shopkeeper/name', [
             'request_id' => (string) Str::uuid(),
-            'name' => ' ダミー ',
-        ])->assertOk()->assertJsonPath('data.stage', 'special_loss_pending');
+            'name' => ' リカ ',
+        ])->assertOk()
+            ->assertJsonPath('data.stage', 'special_loss_pending')
+            ->assertJsonPath('data.true_name_branch', true);
 
         $profile = UndergroundProfile::query()->sole();
         $profile->shard_balance = 9;
@@ -228,9 +252,35 @@ final class UndergroundPlayerAccessTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('data.stage', 'special_loss_complete')
             ->assertJsonPath('data.battle.context', 'scripted_loss')
+            ->assertJsonPath('data.battle.player_display_name', 'Special secretary')
+            ->assertJsonPath('data.battle.encounter_name', 'リカ')
             ->assertJsonPath('data.battle.result', 'defeat')
+            ->assertJsonPath('data.battle.rounds', 1)
             ->assertJsonPath('data.battle.xp_awarded', 0)
-            ->assertJsonPath('data.battle.shard_delta', 0);
+            ->assertJsonPath('data.battle.shard_delta', 0)
+            ->assertJsonPath('data.battle.summary.result', 'defeat')
+            ->assertJsonPath('data.battle.summary.player_remaining_hp', 0)
+            ->assertJsonPath('data.battle.summary.enemy_remaining_hp', 568_850)
+            ->assertJsonPath('data.battle.summary.damage_dealt', 4)
+            ->assertJsonPath('data.battle.summary.damage_received', 500)
+            ->assertJsonPath('data.battle.actions.0.end_state.player.max_hp', 500)
+            ->assertJsonPath('data.battle.actions.0.end_state.enemy.max_hp', 568_850)
+            ->assertJsonStructure(['data' => ['battle' => ['actions' => [
+                '*' => ['round', 'actions', 'end_state'],
+            ]]]]);
+        $storyActions = $first->json('data.battle.actions.0.actions');
+        $this->assertIsArray($storyActions);
+        $damageIndex = array_search('damage', array_column($storyActions, 'type'), true);
+        $stackIndex = array_search('role_stack_gain', array_column($storyActions, 'type'), true);
+        $counterIndex = array_search('counter', array_column($storyActions, 'type'), true);
+        $this->assertIsInt($damageIndex);
+        $this->assertIsInt($stackIndex);
+        $this->assertIsInt($counterIndex);
+        $this->assertLessThan($stackIndex, $damageIndex);
+        $this->assertLessThan($counterIndex, $stackIndex);
+        $this->assertSame('counter', $storyActions[array_key_last($storyActions)]['type']);
+        $this->assertSame('反撃', $storyActions[array_key_last($storyActions)]['label']);
+        $this->assertGreaterThan(500, $storyActions[array_key_last($storyActions)]['amount']);
         $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
             'request_id' => $requestId,
         ])->assertOk()->assertExactJson($first->json());
@@ -247,11 +297,206 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertSame(2, UndergroundBattleLog::query()->count());
         $this->assertSame(1, UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->count());
+        $storyBattle = UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->sole();
+        $this->assertSame('secretary-underground-alpha-v1', $storyBattle->runtime_identity);
+        $this->assertSame(1254, $storyBattle->snapshot['enemy_combat_level_equivalent']);
+        $this->assertSame(1_137_700, $storyBattle->snapshot['enemy_scale_bps']);
+        $storyDefinition = app(UndergroundAlphaV1PlayerCatalog::class)->trueNameStoryBattle();
+        $this->assertSame([
+            'unbroken_retort',
+            'renewing_guard',
+            'bulwark_strike',
+            'counter_stance',
+            'shield_bash',
+        ], $storyDefinition['catalog']->enemy($storyDefinition['enemy_key'])['skills']);
 
         $this->advance($user, 'special_loss_aftermath_complete')
             ->assertJsonPath('data.stage', 'shop_explanation');
         $this->advance($user, 'shop_explanation_complete')
-            ->assertJsonPath('data.stage', 'underground_open');
+            ->assertJsonPath('data.stage', 'contract_ready');
+    }
+
+    public function test_hidden_alias_matching_is_exact_and_keeps_the_normalized_display_name(): void
+    {
+        $catalog = app(UndergroundIntroCatalog::class);
+        foreach (['リカ', '雨宮利香', '雨宮 利香', '雨宮　利香', 'リカ・サキュバス'] as $alias) {
+            $normalized = $catalog->normalizeShopkeeperName("　{$alias}　");
+            $this->assertSame($alias, $normalized);
+            $this->assertSame('true_name', $catalog->branchIdentity($normalized));
+        }
+        $decomposed = \Normalizer::normalize('リカ・サキュバス', \Normalizer::FORM_D);
+        $this->assertIsString($decomposed);
+        $this->assertNotSame('リカ・サキュバス', $decomposed);
+        $this->assertSame($decomposed, $catalog->normalizeShopkeeperName($decomposed));
+        $this->assertSame('true_name', $catalog->branchIdentity($decomposed));
+        foreach (['エリカ', 'リカちゃん', '雨宮利香さん', '雨 宮利香', '雨宮利 香', 'ダミー'] as $normal) {
+            $this->assertSame('normal', $catalog->branchIdentity($normal));
+        }
+    }
+
+    public function test_growth_catalog_and_rewardless_playtest_are_exact_owner_scoped_and_idempotent(): void
+    {
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+        $paths = collect($catalog->growthPaths())->keyBy('key');
+        $this->assertSame([
+            'martial_red' => [[18, 34, 30, 8, 10], 484, 'pure_attacker', [1, 2, 1, 1, 0], 5],
+            'guardianship_blue' => [[40, 22, 10, 16, 12], 660, 'pure_tank', [2, 1, 1, 1, 0], 5],
+            'blessing_green' => [[22, 8, 16, 42, 12], 516, 'pure_healer', [1, 1, 1, 2, 0], 5],
+            'free_black' => [[26, 22, 20, 20, 12], 548, 'balanced', [1, 1, 1, 1, 0], 6],
+        ], $paths->map(fn (array $path): array => [
+            array_values($path['stats']),
+            $path['max_hp'],
+            $path['default_build_key'],
+            array_values($path['natural_growth']),
+            $path['unspent_stp_per_level'],
+        ])->all());
+        foreach ($paths as $path) {
+            $this->assertSame(100, array_sum($path['stats']));
+            $this->assertSame(10, $path['points_per_level']);
+            $this->assertSame(10_000, $path['max_mp']);
+            $this->assertSame(300, $path['natural_recovery']);
+        }
+        foreach (['depth_stalker', 'pressure_construct', 'crystal_warden'] as $enemyKey) {
+            $this->assertSame(100, $catalog->playtestDefinition('pure_tank', $enemyKey)['max_rounds']);
+        }
+
+        [$user, $secretary] = $this->secretaryUser('Playtest secretary');
+        $profile = UndergroundProfile::query()->create([
+            'secretary_id' => $secretary->id,
+            'underground_contract_completed_at' => Carbon::now()->subMinute(),
+            'growth_path_key' => 'guardianship_blue',
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'growth_path_selected_at' => Carbon::now(),
+        ]);
+        UndergroundIntroProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'stage' => 'underground_open',
+            'shopkeeper_name' => '案内係',
+            'special_loss_required' => false,
+            'branch_identity' => 'normal',
+            'tutorial_battle_id' => $this->tutorialBattle($profile)->id,
+        ]);
+        $before = $profile->fresh()->only([
+            'combat_level', 'combat_xp', 'shard_balance', 'next_battle_at',
+            'growth_path_key', 'growth_path_identity', 'growth_path_selected_at',
+        ]);
+
+        $this->actingAs($user)->getJson('/api/v1/me/underground/playtest')
+            ->assertOk()
+            ->assertJsonPath('data.default_build_key', 'pure_tank')
+            ->assertJsonCount(4, 'data.builds')
+            ->assertJsonCount(3, 'data.enemies');
+        $requestId = (string) Str::uuid();
+        $payload = [
+            'request_id' => $requestId,
+            'build_key' => 'pure_tank',
+            'enemy_key' => 'depth_stalker',
+        ];
+        $first = $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.context', 'playtest')
+            ->assertJsonPath('data.player_display_name', 'Playtest secretary')
+            ->assertJsonPath('data.summary.result', 'victory')
+            ->assertJsonPath('data.rewards.xp', 0)
+            ->assertJsonPath('data.rewards.shards', 0)
+            ->assertJsonStructure(['data' => [
+                'summary' => [
+                    'rounds', 'player_remaining_hp', 'enemy_remaining_hp', 'final_mp',
+                    'damage_dealt', 'damage_received', 'effective_healing', 'damage_prevented',
+                    'mp_spent', 'mp_natural_recovery', 'mp_skill_recovery', 'skill_unavailable_due_to_mp',
+                ],
+                'rounds' => ['*' => ['round', 'actions', 'end_state']],
+            ]])
+            ->assertJsonMissingPath('data.private_seed')
+            ->assertJsonMissingPath('data.snapshot')
+            ->assertJsonMissingPath('data.manifest');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', $payload)
+            ->assertOk()->assertExactJson($first->json());
+        $secretary->name = 'Renamed secretary';
+        $secretary->save();
+        $this->actingAs($user)->getJson('/api/v1/me/underground/battles')
+            ->assertOk()
+            ->assertJsonPath('data.0.context', 'playtest')
+            ->assertJsonPath('data.0.player_display_name', 'Playtest secretary')
+            ->assertJsonPath('data.0.rounds', null)
+            ->assertJsonPath('data.0.detail_available', true);
+        $detail = $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
+            ->assertOk()
+            ->assertJsonPath('data.context', 'playtest')
+            ->assertJsonPath('data.player_display_name', 'Playtest secretary')
+            ->assertJsonPath('data.build_name', '護身特化')
+            ->assertJsonPath('data.encounter_name', '深層追跡者')
+            ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');
+        $projectedActions = collect($detail->json('data.rounds'))
+            ->flatMap(fn (array $round): array => $round['actions']);
+        $this->assertTrue($projectedActions->contains(
+            fn (array $action): bool => ($action['type'] ?? null) === 'action'
+                && ($action['actor_name'] ?? null) === 'Playtest secretary',
+        ));
+        $this->assertTrue($projectedActions->every(
+            fn (array $action): bool => ! array_key_exists('reason', $action)
+                && ! array_key_exists('action_key', $action),
+        ));
+        $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', [
+            ...$payload,
+            'build_key' => 'balanced',
+        ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', [
+            ...$payload,
+            'request_id' => (string) Str::uuid(),
+            'build_key' => 'unsupported',
+        ])->assertUnprocessable();
+
+        $this->assertEquals($before, $profile->fresh()->only(array_keys($before)));
+        $this->assertSame(1, UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_PLAYTEST)->count());
+        $this->assertSame(0, UndergroundTrialProgress::query()->count());
+
+        [$other] = $this->secretaryUser('Locked playtest secretary');
+        $this->actingAs($other)->postJson('/api/v1/me/underground/playtest', [
+            ...$payload,
+            'request_id' => (string) Str::uuid(),
+        ])->assertConflict()->assertJsonPath('code', 'underground_playtest_locked');
+
+        $playtestBattle = UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_PLAYTEST)
+            ->sole();
+        $this->assertTrue($playtestBattle->log?->expires_at->equalTo($playtestBattle->finished_at->addHour()) ?? false);
+        config([
+            'underground-alpha-v1.playtest.builds' => [],
+            'underground-alpha-v1.playtest.enemies' => [],
+        ]);
+        $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
+            ->assertOk()
+            ->assertJsonPath('data.build_name', '護身特化')
+            ->assertJsonPath('data.encounter_name', '深層追跡者')
+            ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');
+
+        foreach (range(1, 100) as $offset) {
+            $copy = $playtestBattle->replicate();
+            $copy->request_id = (string) Str::uuid();
+            $copy->started_at = $playtestBattle->started_at->subSeconds($offset);
+            $copy->finished_at = $playtestBattle->finished_at->subSeconds($offset);
+            $copy->save();
+        }
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $history = $this->actingAs($user)->getJson('/api/v1/me/underground/battles')
+            ->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonPath('data.0.id', $requestId)
+            ->assertJsonPath('data.0.build_name', '護身特化')
+            ->assertJsonPath('data.0.encounter_name', '深層追跡者');
+        $this->assertCount(20, $history->json('data'));
+        $this->assertSame([], array_values(array_filter(
+            DB::getQueryLog(),
+            static fn (array $query): bool => str_contains(
+                strtolower((string) ($query['query'] ?? '')),
+                'from "underground_battle_logs"',
+            ) && ! str_contains(strtolower((string) ($query['query'] ?? '')), 'exists'),
+        )));
+        DB::disableQueryLog();
     }
 
     public function test_refresh_resumes_meaningful_stage_and_intro_history_is_private_and_owner_scoped(): void
@@ -290,6 +535,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->actingAs($owner)->getJson("/api/v1/me/underground/battles/{$tutorialId}")
             ->assertOk()
             ->assertJsonPath('data.detail_available', false)
+            ->assertJsonPath('data.detail_message', '詳細ログは保存期間を過ぎました。')
             ->assertJsonPath('data.actions', null);
         $this->actingAs($other)->getJson("/api/v1/me/underground/battles/{$tutorialId}")
             ->assertNotFound();
@@ -331,6 +577,36 @@ final class UndergroundPlayerAccessTest extends TestCase
         return $this->actingAs($user)->postJson('/api/v1/me/underground/story/advance', [
             'request_id' => (string) Str::uuid(),
             'action' => $action,
+        ]);
+    }
+
+    private function tutorialBattle(UndergroundProfile $profile): UndergroundBattle
+    {
+        return UndergroundBattle::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('a', 64),
+            'runtime_identity' => 'secretary-underground-intro-alpha-v2',
+            'activity_type' => UndergroundBattle::ACTIVITY_TUTORIAL,
+            'activity_key' => 'first_descent_tutorial',
+            'encounter_key' => 'tutorial_giant_rat',
+            'result' => UndergroundBattle::RESULT_VICTORY,
+            'rounds' => 1,
+            'damage_dealt' => 1,
+            'damage_received' => 0,
+            'healing_done' => 0,
+            'xp_awarded' => 5,
+            'shard_delta' => 0,
+            'combat_level_before' => 1,
+            'combat_level_after' => 1,
+            'combat_xp_before' => 0,
+            'combat_xp_after' => 5,
+            'shard_balance_before' => 0,
+            'shard_balance_after' => 0,
+            'private_seed' => 1,
+            'snapshot' => [],
+            'started_at' => Carbon::now(),
+            'finished_at' => Carbon::now(),
         ]);
     }
 }

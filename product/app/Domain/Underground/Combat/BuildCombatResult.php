@@ -11,7 +11,7 @@ final readonly class BuildCombatResult
      * @param  array{fighting_spirit: int, grace: int}  $finalRoleStacks
      * @param  list<array<string, int>>  $mpHistory
      * @param  list<string>  $abnormalState
-     * @param  list<array<string, int|string|bool|null>>  $actionLog
+     * @param  list<array<string, mixed>>  $actionLog
      * @param  list<array<string, mixed>>  $generatedEquipment
      */
     public function __construct(

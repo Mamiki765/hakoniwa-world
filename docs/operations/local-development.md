@@ -45,11 +45,13 @@ docker compose -f compose.yml -f compose.development.yml up -d hakoniwa-dev
 通常のPHP/test編集後はimageをbuildまたはcontainerを再作成せず、そのままfocused testとstatic analysisを再実行する。
 
 ```powershell
-docker compose -f compose.yml -f compose.development.yml exec -T hakoniwa-dev composer test -- --filter HakoniwaCalendarTest
+docker compose -f compose.yml -f compose.development.yml exec -T hakoniwa-dev composer test:surface -- --filter HakoniwaCalendarTest
 docker compose -f compose.yml -f compose.development.yml exec -T hakoniwa-dev composer analyse
 ```
 
-`composer test`は既存の512 MiB PHPUnit contract、`composer analyse`は既存の1 GiB PHPStan contractを使用する。`composer.json`、`composer.lock`、Dockerfile、PHP extension、またはbaked frontend assetを変更した場合はdevelopment imageを再buildする。通常のPHP source/test/config/migration/viewだけの変更では再buildしない。Composer downloadはBuildKit cacheを使用するため、同じbuilderで失敗したbuildをretryすると取得済みpackageを再利用できる。
+backend full suiteは検証対象ごとに分離する。Surface作業は`composer test:surface`（`tests/Unit`と`tests/Feature`）、Underground作業は`composer test:underground`（`tests/Underground`のみ）を使用する。repository全体、release、rebaseline、または明示されたcross-cutting検証は`composer test:all`を使用し、`composer test`はその互換aliasとして残す。各commandは既存の512 MiB PHPUnit contract、`composer analyse`は既存の1 GiB PHPStan contractを使用する。片側だけの通常作業で、もう片側のlocal full suiteを追加実行しない。
+
+`composer.json`、`composer.lock`、Dockerfile、PHP extension、またはbaked frontend assetを変更した場合はdevelopment imageを再buildする。通常のPHP source/test/config/migration/viewだけの変更では再buildしない。Composer downloadはBuildKit cacheを使用するため、同じbuilderで失敗したbuildをretryすると取得済みpackageを再利用できる。
 
 production相当imageと通常のlocal applicationは従来どおりbase Composeだけを使用する。
 
@@ -61,7 +63,7 @@ docker compose exec hakoniwa-web ./vendor/bin/phpstan analyse --memory-limit=1G
 
 本番設定を持つcontainer内では`php artisan test`を直接実行しない。PHP process起動時から`APP_ENV=testing`と`DB_DATABASE=hakoniwa_test`を明示し、`tests/TestCase.php`のguardでも本番DBへの接続を拒否する。
 
-canonicalなserial full suiteは従来どおり`composer test`で実行できる。ローカルで並列化する場合は、Windows hostのrepository rootから次を実行する。
+repository-wideのcanonical serial full suiteは`composer test:all`で実行でき、`composer test`も互換aliasとして同じ集合を実行する。ローカルでrepository-wide suiteを並列化する場合は、Windows hostのrepository rootから次を実行する。
 
 ```powershell
 .\product\tests\scripts\run_parallel_tests.cmd 4
@@ -69,7 +71,7 @@ canonicalなserial full suiteは従来どおり`composer test`で実行できる
 
 既定・推奨値は4 shardsである。この開発機での同一suiteの実測はserial 15分41秒、2 shards 9分12秒、4 shards 5分46秒、8 shards 5分09秒だった。8 shardsは最速だが4 shardsとの差は約37秒で、container群の推定ピークメモリは約723 MiBから約1.13 GiBへ増えたため、通常は4、CPU・メモリに余裕があり最短時間を優先するときだけ8を使う。PowerShell wrapperは`hakoniwa-dev`を起動し、bind mountされた現在checkoutのsource/testで既存の`tests/scripts/run_parallel_tests.sh`を呼ぶ。通常の編集ごとのDocker buildや`hakoniwa-web`再作成は行わない。Windows hostへComposerやGNU `xargs -P`を追加する必要はない。source checkoutでComposerとBashを直接利用する環境では`composer test:parallel -- 4`も同じrunnerを起動する。parallel runnerはcanonical `phpunit.xml`からtest fileを自動検出し、CIと共通のdeterministic plannerで各fileを1回だけ割り当てる。各processには`hakoniwa_parallel_<run>_<shard>_test`という固定test-only prefix/suffixの独立DBを作成し、そのDB名だけを強制する一時PHPUnit configを使用する。全process終了時、失敗時、またはinterrupt時にはchild processを停止してtest DBと一時configを可能な限りcleanupする。cleanupに失敗した場合はproduction DBへfallbackせず、manifestを残して安全なretry commandを表示する。
 
-GitHub Actionsも同じplannerを使用し、独立runner・独立PostgreSQL service上のPHPUnit matrixへ自動検出したfileを分配する。workflow YAMLへtest file一覧は保持しない。各runはdiscoveryのunion、duplicate、missingを検証し、`backend-static`と全PHPUnit shardsを最終`backend` gateへ集約する。
+GitHub Actionsも同じplannerを使用し、SurfaceとUndergroundの全test fileを独立runner・独立PostgreSQL service上のPHPUnit matrixへ自動配分する。workflow YAMLへtest file一覧は保持しない。各runはdiscoveryのunion、duplicate、missingを検証し、`backend-static`と全PHPUnit shardsを最終`backend` gateへ集約する。Quality CIは両full suiteを含むrepository-wide safety netである。
 
 frontend test、lint、typecheck、production buildは`docker compose build`のNode stageで実行される。既存volumeにtest DBがない場合は、PostgreSQL管理権限を持つ運用者がtest専用DBを追加するか、開発volumeを明示的に再作成する。本番DBをtestに使用しない。
 

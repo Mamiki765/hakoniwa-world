@@ -55,6 +55,30 @@ try {
             'battle_id' => $result['battle']['id'],
             'stage' => $result['stage'],
         ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'contract') {
+        $result = app(UndergroundIntroService::class)->contract(
+            $user,
+            (string) $payload['request_id'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'stage' => $result['stage'],
+        ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'growth_path') {
+        $result = app(UndergroundIntroService::class)->selectGrowthPath(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['growth_path_key'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'stage' => $result['stage'],
+            'growth_path_key' => $result['growth_path']['key'],
+        ], JSON_THROW_ON_ERROR));
     } else {
         $result = app(UndergroundRuntimeService::class)->explore(
             $user,

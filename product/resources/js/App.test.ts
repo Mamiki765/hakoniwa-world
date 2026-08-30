@@ -1511,7 +1511,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.secretary-underground-entry button').text()).toBe('地下へ');
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
-        expect(wrapper.get('.underground-story').text()).toBe('（ダミー）');
+        expect(wrapper.get('.underground-story').text()).toContain('あなたの秘書は、暗く狭い場所で目を覚ました。');
         const undergroundRequest = fetchMock.mock.calls.find(([path]) => (
             String(path) === '/api/v1/me/underground/entry'
         ));
@@ -1544,7 +1544,16 @@ describe('application lobby and island entry', () => {
             combat_xp: 5, next_level_xp: 100, shard_balance: 0,
             shopkeeper_name: null, battle: null,
         };
-        const escapeState = { ...returnedState, stage: 'escape_pending' };
+        const escapeState = {
+            ...returnedState,
+            stage: 'escape_pending',
+            battle: {
+                id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+                encounter_name: 'ジャイアントラット', result: 'victory', rounds: 1,
+                xp_awarded: 5, shard_delta: 0, detail_available: true,
+                actions: [{ round: 1, side: 'player', action_label: '連続斬り', amount: 90 }],
+            },
+        };
         const replaceSpy = vi.spyOn(window.history, 'replaceState');
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -1569,7 +1578,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
-        await wrapper.get('.underground-panel > .button').trigger('click');
+        await wrapper.get('.underground-after-battle .button').trigger('click');
         await flushPromises();
 
         expect(window.location.pathname).toBe('/');
@@ -1588,15 +1597,76 @@ describe('application lobby and island entry', () => {
             available: true, stage: 'underground_open', combat_level: 1,
             combat_xp: 5, next_level_xp: 100,
         };
+        const growthPath = {
+            key: 'guardianship_blue', label: '護身', color: 'blue',
+            description: ['粘り強い戦いを求める成長方針。'], default_build_key: 'pure_tank',
+            stats: { vitality: 40, might: 20, finesse: 15, spirit: 15, agility: 10 },
+            max_hp: 660, max_mp: 10000, natural_recovery: 300,
+            natural_growth: { vitality: 2, might: 1, finesse: 1, spirit: 1, agility: 0 },
+            unspent_stp_per_level: 5, points_per_level: 10,
+        };
+        const playtest = {
+            notice: 'α版の戦闘検証用完成形ビルドです。正式な育成・装備状態ではありません。',
+            default_build_key: 'pure_tank',
+            builds: [
+                { key: 'pure_attacker', label: '攻撃特化', description: '短期戦' },
+                { key: 'pure_tank', label: '護身特化', description: '防御判断' },
+                { key: 'pure_healer', label: '奇跡特化', description: '回復' },
+                { key: 'balanced', label: '混成', description: '混成' },
+            ],
+            enemies: [
+                { key: 'depth_stalker', label: '深層追跡者', description: '通常の適正戦闘' },
+                { key: 'pressure_construct', label: '予兆を放つ圧力試験体', description: '防御判断' },
+                { key: 'crystal_warden', label: '輝晶守護者', description: 'boss' },
+            ],
+        };
         const openState = {
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 1,
             combat_xp: 5, next_level_xp: 100, shard_balance: 0,
-            shopkeeper_name: '<b>店員</b>', battle: null,
+            shopkeeper_name: '<b>店員</b>', true_name_branch: false,
+            tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
+            contract_completed: true, growth_paths: null, growth_path: growthPath, playtest, battle: null,
         };
         const summary = {
             id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+            player_display_name: '過去のペリドット',
             encounter_name: '<b>ジャイアントラット</b>', result: 'victory', rounds: 2,
             xp_awarded: 5, shard_delta: 0, detail_available: true, actions: null,
+        };
+        const playtestBattle = {
+            id: '44444444-4444-4444-8444-444444444444', context: 'playtest',
+            player_display_name: '過去のペリドット',
+            build_name: '護身特化', encounter_name: '深層追跡者', result: 'victory', rounds_count: 2,
+            xp_awarded: 0, shard_delta: 0, detail_available: true,
+            summary: { damage_prevented: 120, final_mp: 9700 },
+            rounds: [
+                {
+                    round: 1,
+                    actions: [{ type: 'decision', side: '秘書', label: '防御', reason: 'priority_rule_0' }],
+                    end_state: {
+                        player: { hp: 650, max_hp: 660, mp: 9700, barrier: 40, statuses: [], role_stacks: { fighting_spirit: 1, grace: 0 } },
+                        enemy: { hp: 100, max_hp: 200, mp: 0, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                    },
+                },
+                {
+                    round: 2,
+                    actions: [
+                        {
+                            type: 'status_applied', side: '秘書', actor_name: '過去のペリドット',
+                            target_name: '深層追跡者', label: '付与: 出血', amount: 0,
+                        },
+                        {
+                            type: 'status_resisted', side: '対戦相手', actor_name: '深層追跡者',
+                            target_name: '過去のペリドット', label: '抵抗: 鈍足', amount: 0,
+                        },
+                    ],
+                    end_state: {
+                        player: { hp: 640, max_hp: 660, mp: 9700, barrier: 20, statuses: [], role_stacks: { fighting_spirit: 2, grace: 1 } },
+                        enemy: { hp: 0, max_hp: 200, mp: 0, barrier: 0, statuses: [{ label: '出血', remaining: 1, stacks: 1 }], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                    },
+                },
+            ],
+            rewards: { xp: 0, shards: 0, g: 0, drops: [] },
         };
         let battleDetailGets = 0;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1611,6 +1681,7 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
             if (path === '/api/v1/me/underground') return response(openState);
             if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') return response(openState);
+            if (path === '/api/v1/me/underground/playtest' && init?.method === 'POST') return response(playtestBattle);
             if (path === '/api/v1/me/underground/battles') return response([summary]);
             if (path === `/api/v1/me/underground/battles/${summary.id}`) {
                 battleDetailGets++;
@@ -1622,7 +1693,7 @@ describe('application lobby and island entry', () => {
                 }
                 return response({
                     ...summary,
-                    actions: [{ round: 1, side: 'player', action: 'quick_slash', amount: 90 }],
+                    actions: [{ round: 1, side: 'player', action: 'quick_slash', action_label: '連続斬り', amount: 90 }],
                 });
             }
             return response(null, 404);
@@ -1633,29 +1704,72 @@ describe('application lobby and island entry', () => {
         await wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'ペリドット')!.trigger('click');
         await flushPromises();
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('内政Lv');
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv1');
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
 
+        expect(wrapper.find('.underground-main-layout').exists()).toBe(true);
+        expect(wrapper.find('.underground-character-pane').exists()).toBe(true);
+        expect(wrapper.find('.underground-action-pane').exists()).toBe(true);
         expect(wrapper.get('.underground-summary').text()).toContain('戦闘Lv1');
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
-        expect(wrapper.get('.underground-summary').text()).toContain('<b>店員</b>');
-        expect(wrapper.find('.underground-summary b').exists()).toBe(false);
-        expect(wrapper.findAll('.underground-entries button')).toHaveLength(3);
+        expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
+        expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
+        expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
         expect(wrapper.findAll('.underground-entries button').every((button) => (
             button.attributes('disabled') !== undefined && button.text().includes('準備中')
         ))).toBe(true);
+        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        expect(wrapper.findAll('.underground-shop-entries button')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-shop-entries button').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
         const historyButton = wrapper.get('.underground-history li button');
         expect(historyButton.text()).toContain('<b>ジャイアントラット</b>');
         expect(historyButton.find('b').exists()).toBe(false);
         await historyButton.trigger('click');
         await flushPromises();
-        expect(wrapper.get('.underground-battle-log').text()).toContain('quick_slash');
-        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 勝利');
-        expect(wrapper.get('.underground-battle-log').text()).toContain('経験値 +5 / 輝石の欠片 +0');
-        await historyButton.trigger('click');
+        expect(wrapper.get('.underground-battle-opening').text()).toContain('<b>ジャイアントラット</b>');
+        expect(wrapper.get('.underground-battle-opening').text()).toContain('過去のペリドットは戦闘を開始した。');
+        expect(wrapper.get('.underground-battle-opening').text()).not.toContain('勝利');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('連続斬り');
+        expect(wrapper.get('.underground-battle-log').text()).not.toContain('quick_slash');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('勝利');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +5・輝石の欠片 +0');
+        expect(wrapper.get('.underground-log-jump').text()).toBe('末尾へ');
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.get('.underground-history li button').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('戦闘ログを読み込めませんでした。');
         expect(wrapper.get('.underground-battle-log').text()).toContain('<b>ジャイアントラット</b>');
+        await wrapper.get('.underground-battle-back').trigger('click');
+        expect(wrapper.get('.underground-playtest').text()).toContain('正式な育成・装備状態ではありません');
+        expect(wrapper.get<HTMLSelectElement>('#underground-build').element.value).toBe('pure_tank');
+        await wrapper.get('.underground-playtest .button').trigger('click');
+        await flushPromises();
+        const playtestRequest = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/underground/playtest' && init?.method === 'POST'
+        ));
+        expect(JSON.parse(String(playtestRequest?.[1]?.body))).toEqual({
+            request_id: expect.any(String), build_key: 'pure_tank', enemy_key: 'depth_stalker',
+        });
+        expect(wrapper.get('.underground-battle-log').text()).toContain('過去のペリドットは「防御」を使用した。');
+        expect(wrapper.get('.underground-battle-log').text()).not.toContain('priority_rule_0');
+        expect(wrapper.get('.underground-combat-summary').text()).toContain('防いだダメージ120');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('ラウンド数');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('残HP');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('最終MP');
+        expect(wrapper.findAll('.underground-vitals progress.hp')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-vitals progress.mp')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-round')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('Round 1');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('Round 2');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('深層追跡者に出血が付与された。');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('過去のペリドットは鈍足を防いだ。');
+        expect(wrapper.findAll('.underground-combatant-state')[0]!.get('strong').text()).toBe('過去のペリドット');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('出血 残1・1段階');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('闘志 2・恩寵 1');
+        expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0・G +0・ドロップなし');
     });
 
     it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {
@@ -1686,7 +1800,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
-        await wrapper.get('.underground-panel > .button').trigger('click');
+        await wrapper.get('.underground-after-battle .button').trigger('click');
         await flushPromises();
 
         expect(wrapper.emitted('returnToSecretary')).toHaveLength(1);
@@ -1713,8 +1827,8 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
-        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 敗北');
-        expect(wrapper.get('.underground-battle-log').text()).toContain('経験値 +0 / 輝石の欠片 +0');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('敗北');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0');
     });
 
     it('completes the normal first-player flow from tutorial through shop explanation and main unlock', async () => {
@@ -1726,6 +1840,21 @@ describe('application lobby and island entry', () => {
         let combatXp = 0;
         let shopkeeperName: string | null = null;
         let battle: Record<string, unknown> | null = null;
+        let contractCompleted = false;
+        let growthPath: Record<string, unknown> | null = null;
+        const pathFixture = (key: string, label: string, color: string, build: string) => ({
+            key, label, color, description: [`${label}の説明`], default_build_key: build,
+            stats: { vitality: 40, might: 20, finesse: 15, spirit: 15, agility: 10 },
+            max_hp: 660, max_mp: 10000, natural_recovery: 300,
+            natural_growth: { vitality: 2, might: 1, finesse: 1, spirit: 1, agility: 0 },
+            unspent_stp_per_level: 5, points_per_level: 10,
+        });
+        const growthPaths = [
+            pathFixture('martial_red', '戦技', 'red', 'pure_attacker'),
+            pathFixture('guardianship_blue', '護身', 'blue', 'pure_tank'),
+            pathFixture('blessing_green', '祝福', 'green', 'pure_healer'),
+            pathFixture('free_black', '自由', 'black', 'balanced'),
+        ];
         const projection = () => ({
             stage,
             secretary_name: 'ペリドット',
@@ -1734,6 +1863,15 @@ describe('application lobby and island entry', () => {
             next_level_xp: 100,
             shard_balance: 0,
             shopkeeper_name: shopkeeperName,
+            true_name_branch: false,
+            tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
+            contract_completed: contractCompleted,
+            growth_paths: stage === 'crystal_selection' ? growthPaths : null,
+            growth_path: growthPath,
+            playtest: stage === 'underground_open' ? {
+                notice: 'α版の戦闘検証用完成形ビルドです。正式な育成・装備状態ではありません。',
+                default_build_key: 'pure_tank', builds: [], enemies: [],
+            } : null,
             battle,
         });
         const tutorialBattle = {
@@ -1776,7 +1914,8 @@ describe('application lobby and island entry', () => {
                     initial_story_complete: 'tutorial_ready',
                     escape_complete: 'returned_after_tutorial',
                     shopkeeper_encounter_complete: 'shopkeeper_naming',
-                    shop_explanation_complete: 'underground_open',
+                    shop_explanation_complete: 'contract_ready',
+                    growth_path_story_complete: 'underground_open',
                 };
                 stage = transitions[action] ?? stage;
                 if (stage !== 'escape_pending') battle = null;
@@ -1785,6 +1924,17 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me/underground/shopkeeper/name' && init?.method === 'POST') {
                 shopkeeperName = String(JSON.parse(String(init.body)).name).trim();
                 stage = 'shop_explanation';
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/contract' && init?.method === 'POST') {
+                contractCompleted = true;
+                stage = 'crystal_selection';
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/growth-path' && init?.method === 'POST') {
+                const key = String(JSON.parse(String(init.body)).growth_path_key);
+                growthPath = growthPaths.find((candidate) => candidate.key === key) ?? null;
+                stage = 'growth_path_selected';
                 return response(projection());
             }
             if (path === '/api/v1/me/underground/battles') return response([tutorialBattle]);
@@ -1800,33 +1950,46 @@ describe('application lobby and island entry', () => {
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
 
-        for (let index = 0; index < 4; index++) {
-            await wrapper.get('.underground-panel > .button').trigger('click');
-            await flushPromises();
-        }
+        expect(wrapper.get('.underground-story').text()).toContain('首都に核シェルターを作るための工事');
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
         expect(wrapper.get('.underground-panel h1').text()).toBe('ジャイアントラット');
-        await wrapper.get('.underground-panel > .button').trigger('click');
+        expect(wrapper.find('.underground-tutorial-stats').exists()).toBe(false);
+        await wrapper.get('.underground-battle-preview .button').trigger('click');
         await flushPromises();
-        expect(wrapper.get('.underground-battle-log').text()).toContain('結果: 勝利');
-        await wrapper.get('.underground-panel > .button').trigger('click');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('勝利');
+        await wrapper.get('.underground-after-battle .button').trigger('click');
         await flushPromises();
-        expect(wrapper.get('.secretary-underground-entry').text()).toContain('戦闘Lv 1');
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv1');
 
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
-        for (let index = 0; index < 2; index++) {
-            await wrapper.get('.underground-panel > .button').trigger('click');
-            await flushPromises();
-        }
+        expect(wrapper.get('.underground-story').text()).toContain('また来ましたね');
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
         await wrapper.get('#underground-shopkeeper-name').setValue('通常店員');
         await wrapper.get('.underground-name-form').trigger('submit');
         await flushPromises();
         await wrapper.get('.underground-panel > .button').trigger('click');
         await flushPromises();
+        expect(wrapper.get('.underground-contract').text()).toBe('契約する');
+        await wrapper.get('.underground-contract').trigger('click');
+        await flushPromises();
+        expect(wrapper.findAll('.underground-growth-card')).toHaveLength(4);
+        expect(wrapper.get('.underground-growth-grid').text()).toContain('Lv2以降: 自然成長 5 / 未使用STP +5');
+        await wrapper.findAll('.underground-growth-card .button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-story').text()).toContain('ふふ、とってもお似合いですよ、その能力');
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
 
-        expect(wrapper.get('.underground-summary').text()).toContain('通常店員');
+        expect(wrapper.get('#underground-guide-title').text()).toContain('通常店員');
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
-        expect(wrapper.findAll('.underground-entries button').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
+        expect(wrapper.find('.underground-currency-note').exists()).toBe(false);
+        expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
+        expect(wrapper.get('.underground-summary').text()).toContain('MP10000 / 10000');
+        expect(wrapper.get('.underground-growth-summary').text()).toContain('自然回復 300 MP / ラウンド');
+        expect(wrapper.findAll('.underground-entries button').slice(0, 2).every((button) => button.attributes('disabled') !== undefined)).toBe(true);
         expect(stage).toBe('underground_open');
     });
 

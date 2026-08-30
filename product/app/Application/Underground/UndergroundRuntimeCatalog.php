@@ -40,9 +40,9 @@ final class UndergroundRuntimeCatalog
     {
         $value = $this->combatValue('battle_log_retention_hours');
 
-        return is_int($value) && $value > 0
+        return is_int($value) && $value === 1
             ? $value
-            : throw new RuntimeException('Underground battle log retention is invalid.');
+            : throw new RuntimeException('Underground battle log retention must be exactly one hour.');
     }
 
     public function actorKey(): string

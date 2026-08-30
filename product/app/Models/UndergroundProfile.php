@@ -18,6 +18,10 @@ use Illuminate\Support\Carbon;
  * @property int $combat_xp
  * @property int $shard_balance
  * @property Carbon|null $next_battle_at
+ * @property Carbon|null $underground_contract_completed_at
+ * @property string|null $growth_path_key
+ * @property string|null $growth_path_identity
+ * @property Carbon|null $growth_path_selected_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Secretary $secretary
@@ -31,6 +35,7 @@ final class UndergroundProfile extends Model
 {
     protected $fillable = [
         'secretary_id', 'unlocked_area_layers', 'combat_level', 'combat_xp', 'shard_balance', 'next_battle_at',
+        'underground_contract_completed_at', 'growth_path_key', 'growth_path_identity', 'growth_path_selected_at',
     ];
 
     protected function casts(): array
@@ -41,6 +46,8 @@ final class UndergroundProfile extends Model
             'combat_xp' => 'integer',
             'shard_balance' => 'integer',
             'next_battle_at' => 'immutable_datetime',
+            'underground_contract_completed_at' => 'immutable_datetime',
+            'growth_path_selected_at' => 'immutable_datetime',
         ];
     }
 
