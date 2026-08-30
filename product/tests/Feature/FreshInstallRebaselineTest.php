@@ -290,7 +290,23 @@ SQL);
         $this->assertFalse($run->is_dry_run);
         $this->assertSame(2, $world->fresh()->current_turn);
         $this->assertSame('completed', NationCommandQueueItem::query()->findOrFail($item->id)->status);
-        $this->assertSame('plain', $target->fresh()->terrain()->value('key'));
+        $terrainChange = DB::table('audit_events')
+            ->where('event_type', 'terrain.changed')
+            ->where('world_id', $world->id)
+            ->where('turn', 2)
+            ->where('nation_id', $nation->id)
+            ->where('subject_id', $target->id)
+            ->whereRaw("metadata->>'command_key' = ?", ['land_clear'])
+            ->sole();
+        $terrainChangeMetadata = json_decode(
+            (string) $terrainChange->metadata,
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame($run->id, $terrainChangeMetadata['turn_run_id']);
+        $this->assertSame('forest', $terrainChangeMetadata['from_terrain_key']);
+        $this->assertSame('plain', $terrainChangeMetadata['to_terrain_key']);
         $this->assertSame(7, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
         $this->assertDatabaseHas('secretary_skills', [
             'secretary_id' => $secretary->id,
