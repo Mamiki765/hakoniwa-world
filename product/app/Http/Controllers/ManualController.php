@@ -16,6 +16,7 @@ final class ManualController extends Controller
         'advanced' => '上級編',
         'trading-post' => '交易場',
         'secretary' => '秘書について',
+        'underground' => '箱庭ダンジョン',
     ];
 
     public function __invoke(?string $section = null): View

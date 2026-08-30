@@ -6,6 +6,10 @@ use App\Application\CompleteTurnEngine;
 use App\Application\InitialIslandGenerator;
 use App\Application\LegacyInspiredInitialIslandGenerator;
 use App\Application\MonsterRemovalService;
+use App\Application\Underground\AtomicUndergroundCombat;
+use App\Application\Underground\AtomicUndergroundExplorationCombat;
+use App\Application\Underground\CanonicalUndergroundCombat;
+use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Console\ProductionDestructiveDatabaseCommandGuard;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Nation\UserMembershipMutationLock;
@@ -37,6 +41,11 @@ class AppServiceProvider extends ServiceProvider
         ));
         $this->app->bind(InitialIslandGenerator::class, LegacyInspiredInitialIslandGenerator::class);
         $this->app->bind(TurnSeedGenerator::class, RandomTurnSeedGenerator::class);
+        $this->app->bind(AtomicUndergroundCombat::class, CanonicalUndergroundCombat::class);
+        $this->app->bind(
+            AtomicUndergroundExplorationCombat::class,
+            CanonicalUndergroundExplorationCombat::class,
+        );
         // MonsterTurnService and its disaster resolver must mutate one shared
         // turn-local occupancy index during defense self-destruct blasts.
         $this->app->singleton(MonsterRemovalService::class);

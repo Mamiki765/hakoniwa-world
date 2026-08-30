@@ -1,0 +1,314 @@
+{
+    "schema_version": 2,
+    "combat_identity": "secretary-underground-alpha-v1",
+    "generator_identity": "secretary-underground-equipment-alpha-v1",
+    "laboratory_status": "player_inaccessible_build_foundation",
+    "base_stats": ["vitality", "might", "finesse", "spirit", "agility"],
+    "skill_tree_keys": ["martial", "guardianship", "miracle"],
+    "weapon_styles": ["dagger", "rapier", "shield", "crystal_staff"],
+    "balance": {
+        "standard_level_one_hp": 500,
+        "max_mp": 10000,
+        "mp_natural_recovery": 300,
+        "active_skill_limit": 5,
+        "ai_rule_limit": 16,
+        "build_point_budget": 120,
+        "full_tree_points": 100,
+        "all_tree_points": 300,
+        "damage_reduction_cap_bps": 7500,
+        "role_stack_cap": 5
+    },
+    "targeting_contract": {
+        "identity": "secretary-underground-targeting-alpha-v1",
+        "taunt": {"key": "taunt", "label": "挑発", "duration": "battle", "targeting_scope": "default_hostile_single_target", "overrides_explicit_targeting": false, "latest_source_wins": true, "invalid_source_fallback": "normal_target_selection"}
+    },
+    "seed_range": {"start": 0, "count": 10000},
+    "max_rounds": 30,
+    "scale_seed_count": 1000,
+    "mp_recovery_candidates": [150, 200, 250, 300, 400],
+    "tiers": {
+        "early": {"combat_level": 1, "item_level": 1},
+        "mid": {"combat_level": 50, "item_level": 50},
+        "late": {"combat_level": 100, "item_level": 100}
+    },
+    "normal_attack": {
+        "type": "damage",
+        "category": "physical",
+        "potency_bps": 7000,
+        "stat_coefficients": {"might": 7000, "finesse": 3000},
+        "weapon_coefficient_bps": 10000,
+        "fixed": 0,
+        "target_max_hp_bps": 0,
+        "can_crit": true,
+        "dodgeable": true,
+        "hits": 1
+    },
+    "skill_trees": {
+        "martial": {
+            "label": "戦技",
+            "nodes": {
+                "martial_precision_cut": {"label": "精密斬り", "summary": "武力を活かす単体攻撃。", "type": "active", "skill_key": "precision_cut", "max_rank": 1, "point_cost_per_rank": 6, "invested_points_required": 0, "prerequisite": null},
+                "martial_weapon_mastery": {"label": "武器習熟", "summary": "物理与ダメージをrankごとに1.2%上げる。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 2, "invested_points_required": 0, "prerequisite": null, "modifiers": [{"key": "physical_damage_bps", "value_per_rank": 120}]},
+                "martial_critical_training": {"label": "会心訓練", "summary": "会心率をrankごとに1%上げる。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 2, "invested_points_required": 0, "prerequisite": null, "modifiers": [{"key": "critical_chance_bps", "value_per_rank": 100}]},
+                "martial_dagger_flurry": {"label": "短剣乱舞", "summary": "短剣・細剣で3回攻撃し、出血を狙う。", "type": "active", "skill_key": "dagger_flurry", "max_rank": 1, "point_cost_per_rank": 6, "invested_points_required": 15, "prerequisite": "martial_precision_cut"},
+                "martial_tempo": {"label": "緩急", "summary": "MP消費をrankごとに1%軽減する。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 2, "invested_points_required": 15, "prerequisite": null, "modifiers": [{"key": "mp_cost_reduction_bps", "value_per_rank": 100}]},
+                "martial_armor_break": {"label": "破甲撃", "summary": "防御を崩す単体攻撃。", "type": "active", "skill_key": "armor_break_strike", "max_rank": 1, "point_cost_per_rank": 8, "invested_points_required": 35, "prerequisite": "martial_dagger_flurry"},
+                "martial_blood_return": {"label": "血の還流", "summary": "与えたdamageの一部をHPへ還元する。", "type": "passive", "max_rank": 3, "point_cost_per_rank": 4, "invested_points_required": 35, "prerequisite": null, "modifiers": [{"key": "lifesteal_bps", "value_per_rank": 120}]},
+                "martial_severing_bleed": {"label": "裂傷斬り", "summary": "高威力攻撃で出血を与える。", "type": "active", "skill_key": "severing_bleed", "max_rank": 1, "point_cost_per_rank": 10, "invested_points_required": 60, "prerequisite": "martial_armor_break"},
+                "martial_last_stand": {"label": "背水", "summary": "全与ダメージをrankごとに0.8%上げる。", "type": "passive", "max_rank": 4, "point_cost_per_rank": 4, "invested_points_required": 60, "prerequisite": null, "modifiers": [{"key": "all_damage_bps", "value_per_rank": 80}]},
+                "martial_executioner": {"label": "処刑斬", "summary": "戦技の最終単体攻撃。", "type": "active", "skill_key": "executioner_cut", "max_rank": 1, "point_cost_per_rank": 12, "invested_points_required": 85, "prerequisite": "martial_severing_bleed"}
+            }
+        },
+        "guardianship": {
+            "label": "護身",
+            "nodes": {
+                "guardianship_shield_bash": {"label": "盾撃", "summary": "敵を攻撃し、戦闘中の挑発を付与する。", "type": "active", "skill_key": "shield_bash", "max_rank": 1, "point_cost_per_rank": 6, "invested_points_required": 0, "prerequisite": null},
+                "guardianship_vital_core": {"label": "堅守核", "summary": "被ダメージをrankごとに1%軽減する。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 2, "invested_points_required": 0, "prerequisite": null, "modifiers": [{"key": "damage_taken_reduction_bps", "value_per_rank": 100}]},
+                "guardianship_guard_training": {"label": "防御訓練", "summary": "防御軽減と受け流し率を高める。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 2, "invested_points_required": 0, "prerequisite": null, "modifiers": [{"key": "guard_reduction_bps", "value_per_rank": 100}, {"key": "parry_bps", "value_per_rank": 140}]},
+                "guardianship_counter_stance": {"label": "反撃態勢", "summary": "障壁を得て反撃loopを始める。", "type": "active", "skill_key": "counter_stance", "max_rank": 1, "point_cost_per_rank": 6, "invested_points_required": 15, "prerequisite": "guardianship_shield_bash"},
+                "guardianship_fighting_spirit": {"label": "闘志鍛錬", "summary": "防御・受け流しから闘志を得て反撃を強化する。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 2, "invested_points_required": 15, "prerequisite": null, "modifiers": [{"key": "fighting_spirit_enabled", "flag": true}, {"key": "counter_power_bps", "value_per_rank": 680}]},
+                "guardianship_bulwark_strike": {"label": "闘志破砕", "summary": "闘志を活かして攻撃し、戦闘中の挑発を付与する。", "type": "active", "skill_key": "bulwark_strike", "max_rank": 1, "point_cost_per_rank": 8, "invested_points_required": 35, "prerequisite": "guardianship_counter_stance"},
+                "guardianship_regeneration": {"label": "再生力", "summary": "毎round自身のHPを少量回復する。", "type": "passive", "max_rank": 3, "point_cost_per_rank": 4, "invested_points_required": 35, "prerequisite": null, "modifiers": [{"key": "self_regeneration_target_hp_bps", "value_per_rank": 45}]},
+                "guardianship_renewing_guard": {"label": "自己再生", "summary": "自身のHPを回復して防御を立て直す。", "type": "active", "skill_key": "renewing_guard", "max_rank": 1, "point_cost_per_rank": 10, "invested_points_required": 60, "prerequisite": "guardianship_bulwark_strike"},
+                "guardianship_unbroken": {"label": "不屈", "summary": "被ダメージを減らし状態効果を強める。", "type": "passive", "max_rank": 4, "point_cost_per_rank": 4, "invested_points_required": 60, "prerequisite": null, "modifiers": [{"key": "damage_taken_reduction_bps", "value_per_rank": 80}, {"key": "status_potency_bps", "value_per_rank": 40}]},
+                "guardianship_retort": {"label": "不屈反攻", "summary": "闘志を消費して攻撃し、戦闘中の挑発を付与する。", "type": "active", "skill_key": "unbroken_retort", "max_rank": 1, "point_cost_per_rank": 12, "invested_points_required": 85, "prerequisite": "guardianship_renewing_guard"}
+            }
+        },
+        "miracle": {
+            "label": "祝福",
+            "nodes": {
+                "miracle_holy_bolt": {"label": "聖晶弾", "summary": "精神を活かす祝福の単体攻撃。", "type": "active", "skill_key": "holy_bolt", "max_rank": 1, "point_cost_per_rank": 5, "invested_points_required": 0, "prerequisite": null},
+                "miracle_spirit_channel": {"label": "精神導路", "summary": "祝福与ダメージをrankごとに1.2%上げる。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 1, "invested_points_required": 15, "prerequisite": null, "modifiers": [{"key": "miracle_damage_bps", "value_per_rank": 120}]},
+                "miracle_healing_study": {"label": "治癒研究", "summary": "HP回復量をrankごとに1.5%上げる。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 2, "invested_points_required": 0, "prerequisite": null, "modifiers": [{"key": "healing_bps", "value_per_rank": 150}]},
+                "miracle_mending_prayer": {"label": "治癒祈祷", "summary": "自身のHPを回復する。", "type": "active", "skill_key": "mending_prayer", "max_rank": 1, "point_cost_per_rank": 6, "invested_points_required": 0, "prerequisite": "miracle_holy_bolt"},
+                "miracle_grace_core": {"label": "恩寵核", "summary": "恩寵を有効にしてMP消費を軽減する。", "type": "passive", "max_rank": 5, "point_cost_per_rank": 2, "invested_points_required": 15, "prerequisite": null, "modifiers": [{"key": "grace_enabled", "flag": true}, {"key": "mp_cost_reduction_bps", "value_per_rank": 90}]},
+                "miracle_crystal_cycle": {"label": "輝石循環", "summary": "1 actionを使って自身のMPを3000回復する。", "type": "active", "skill_key": "crystal_cycle", "max_rank": 1, "point_cost_per_rank": 6, "invested_points_required": 35, "prerequisite": "miracle_mending_prayer"},
+                "miracle_crystal_aegis": {"label": "輝石障壁", "summary": "自身に障壁を張る。", "type": "active", "skill_key": "crystal_aegis", "max_rank": 1, "point_cost_per_rank": 8, "invested_points_required": 35, "prerequisite": "miracle_mending_prayer"},
+                "miracle_aegis_mastery": {"label": "障壁習熟", "summary": "障壁量をrankごとに1.8%上げる。", "type": "passive", "max_rank": 3, "point_cost_per_rank": 4, "invested_points_required": 35, "prerequisite": null, "modifiers": [{"key": "barrier_bps", "value_per_rank": 180}]},
+                "miracle_cleansing_wave": {"label": "浄化の波", "summary": "弱体効果を解除し、自身を小回復する。", "type": "active", "skill_key": "cleansing_wave", "max_rank": 1, "point_cost_per_rank": 10, "invested_points_required": 60, "prerequisite": "miracle_crystal_aegis"},
+                "miracle_apotheosis": {"label": "神化", "summary": "一定roundごとに祝福与ダメージを強化する。", "type": "passive", "max_rank": 4, "point_cost_per_rank": 4, "invested_points_required": 60, "prerequisite": null, "modifiers": [{"key": "apotheosis_period_rounds", "fixed_value": 5}, {"key": "apotheosis_bonus_bps", "value_per_rank": 700}]},
+                "miracle_radiant_judgment": {"label": "極光審判", "summary": "恩寵を活かす祝福の最終攻撃。", "type": "active", "skill_key": "radiant_judgment", "max_rank": 1, "point_cost_per_rank": 12, "invested_points_required": 85, "prerequisite": "miracle_cleansing_wave"}
+            }
+        }
+    },
+    "skills": {
+        "precision_cut": {"label": "精密斬り", "node_key": "martial_precision_cut", "mp_cost": 600, "cooldown": 0, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 8500, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}]},
+        "dagger_flurry": {"label": "短剣乱舞", "node_key": "martial_dagger_flurry", "mp_cost": 1200, "cooldown": 2, "required_weapon_styles": ["dagger", "rapier"], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 4400, "stat_coefficients": {"might": 6000, "finesse": 4000}, "weapon_coefficient_bps": 7500, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 3}, {"type": "apply_status", "target": "enemy", "status": "bleed"}]},
+        "armor_break_strike": {"label": "破甲撃", "node_key": "martial_armor_break", "mp_cost": 1400, "cooldown": 3, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 9200, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 9000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}, {"type": "apply_status", "target": "enemy", "status": "armor_break"}]},
+        "severing_bleed": {"label": "裂傷斬り", "node_key": "martial_severing_bleed", "mp_cost": 1800, "cooldown": 3, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 11200, "stat_coefficients": {"might": 6500, "finesse": 3500}, "weapon_coefficient_bps": 9500, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}, {"type": "apply_status", "target": "enemy", "status": "bleed"}]},
+        "executioner_cut": {"label": "処刑斬", "node_key": "martial_executioner", "mp_cost": 2500, "cooldown": 4, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 17000, "stat_coefficients": {"might": 7500, "finesse": 2500}, "weapon_coefficient_bps": 12000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}]},
+        "shield_bash": {"label": "盾撃", "node_key": "guardianship_shield_bash", "mp_cost": 700, "cooldown": 1, "required_weapon_styles": [], "effects": [{"type": "taunt", "target": "enemy"}, {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 8200, "stat_coefficients": {"vitality": 6000, "might": 4000}, "weapon_coefficient_bps": 6000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}, {"type": "apply_status", "target": "enemy", "status": "stagger"}]},
+        "counter_stance": {"label": "反撃態勢", "node_key": "guardianship_counter_stance", "mp_cost": 900, "cooldown": 2, "required_weapon_styles": [], "effects": [{"type": "barrier", "target": "self", "source_stat_coefficients": {"vitality": 6500, "spirit": 1500}, "target_max_hp_bps": 300, "fixed": 0}, {"type": "apply_status", "target": "self", "status": "aegis"}]},
+        "bulwark_strike": {"label": "闘志破砕", "node_key": "guardianship_bulwark_strike", "mp_cost": 1200, "cooldown": 2, "required_weapon_styles": [], "effects": [{"type": "taunt", "target": "enemy"}, {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 9000, "stat_coefficients": {"vitality": 6500, "might": 3500}, "weapon_coefficient_bps": 7000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1, "consume_stack": {"key": "fighting_spirit", "maximum": 5, "bonus_per_stack_bps": 750}}]},
+        "renewing_guard": {"label": "自己再生", "node_key": "guardianship_renewing_guard", "mp_cost": 1500, "cooldown": 4, "required_weapon_styles": [], "effects": [{"type": "heal", "target": "self", "source_stat_coefficients": {"vitality": 6000, "spirit": 2000}, "target_max_hp_bps": 500, "fixed": 0}, {"type": "barrier", "target": "self", "source_stat_coefficients": {"vitality": 5000}, "target_max_hp_bps": 250, "fixed": 0}]},
+        "unbroken_retort": {"label": "不屈反攻", "node_key": "guardianship_retort", "mp_cost": 2200, "cooldown": 4, "required_weapon_styles": [], "effects": [{"type": "taunt", "target": "enemy"}, {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 15000, "stat_coefficients": {"vitality": 7000, "might": 3000}, "weapon_coefficient_bps": 8000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1, "consume_stack": {"key": "fighting_spirit", "maximum": 5, "bonus_per_stack_bps": 900}}]},
+        "holy_bolt": {"label": "聖晶弾", "node_key": "miracle_holy_bolt", "mp_cost": 700, "cooldown": 0, "required_weapon_styles": [], "grace_on_use": true, "effects": [{"type": "damage", "target": "enemy", "category": "miracle", "potency_bps": 12200, "stat_coefficients": {"spirit": 8500, "finesse": 1500}, "weapon_coefficient_bps": 7000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}, {"type": "mp_restore", "target": "self", "amount": 100}]},
+        "mending_prayer": {"label": "治癒祈祷", "node_key": "miracle_mending_prayer", "mp_cost": 1200, "cooldown": 2, "required_weapon_styles": [], "effects": [{"type": "heal", "target": "self", "source_stat_coefficients": {"spirit": 12000}, "target_max_hp_bps": 350, "fixed": 0}]},
+        "crystal_cycle": {"label": "輝石循環", "node_key": "miracle_crystal_cycle", "mp_cost": 0, "cooldown": 7, "required_weapon_styles": [], "effects": [{"type": "mp_restore", "target": "self", "amount": 3000}]},
+        "crystal_aegis": {"label": "輝石障壁", "node_key": "miracle_crystal_aegis", "mp_cost": 1100, "cooldown": 3, "required_weapon_styles": [], "effects": [{"type": "barrier", "target": "self", "source_stat_coefficients": {"spirit": 8000, "vitality": 4000}, "target_max_hp_bps": 450, "fixed": 0}, {"type": "apply_status", "target": "self", "status": "aegis"}]},
+        "cleansing_wave": {"label": "浄化の波", "node_key": "miracle_cleansing_wave", "mp_cost": 1000, "cooldown": 3, "required_weapon_styles": [], "effects": [{"type": "cleanse", "target": "self", "maximum": 2}, {"type": "heal", "target": "self", "source_stat_coefficients": {"spirit": 6000}, "target_max_hp_bps": 150, "fixed": 0}]},
+        "radiant_judgment": {"label": "極光審判", "node_key": "miracle_radiant_judgment", "mp_cost": 2400, "cooldown": 4, "required_weapon_styles": [], "grace_on_use": true, "effects": [{"type": "damage", "target": "enemy", "category": "miracle", "potency_bps": 18500, "stat_coefficients": {"spirit": 8500, "finesse": 1500}, "weapon_coefficient_bps": 9000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1, "consume_stack": {"key": "grace", "maximum": 5, "bonus_per_stack_bps": 600}}]},
+        "pressure_strike": {"label": "圧力打撃", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 5700, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}]},
+        "pressure_heavy": {"label": "予告強打", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "consume_status": "telegraph", "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 10600, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 12000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}]},
+        "endurance_strike": {"label": "持久圧力", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 1500, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}]},
+        "endurance_heavy": {"label": "持久強打", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "consume_status": "telegraph", "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 3000, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 12000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}]},
+        "enemy_telegraph": {"label": "強打予告", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "effects": [{"type": "telegraph", "target": "self"}]},
+        "stalker_strike": {"label": "深層斬撃", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 7600, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}]},
+        "warden_stagger": {"label": "守護震", "node_key": null, "mp_cost": 0, "cooldown": 2, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 6800, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 8000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}, {"type": "apply_status", "target": "enemy", "status": "stagger"}]}
+    },
+    "statuses": {
+        "bleed": {"label": "出血", "disposition": "debuff", "duration_rounds": 3, "stack_policy": "stack_refresh", "max_stacks": 3, "application_chance_bps": 8500, "effects": [{"type": "periodic_damage", "target_max_hp_bps": 120, "source_stat_coefficients": {"finesse": 10000}, "source_cap_multiplier_bps": 6000}]},
+        "armor_break": {"label": "破甲", "disposition": "debuff", "duration_rounds": 3, "stack_policy": "refresh", "max_stacks": 1, "application_chance_bps": 9000, "effects": [{"type": "stat_modifier", "stat": "physical_defense", "value_bps": -1500}]},
+        "weakened": {"label": "衰弱", "disposition": "debuff", "duration_rounds": 2, "stack_policy": "refresh", "max_stacks": 1, "application_chance_bps": 9000, "effects": [{"type": "damage_dealt_modifier", "category": "all", "value_bps": -1200}]},
+        "regeneration": {"label": "再生", "disposition": "buff", "duration_rounds": 3, "stack_policy": "refresh", "max_stacks": 1, "application_chance_bps": 10000, "effects": [{"type": "periodic_heal", "source_stat_coefficients": {"spirit": 5000}, "target_max_hp_bps": 180}]},
+        "aegis": {"label": "加護", "disposition": "buff", "duration_rounds": 2, "stack_policy": "refresh", "max_stacks": 1, "application_chance_bps": 10000, "effects": [{"type": "damage_taken_modifier", "category": "all", "value_bps": -800}, {"type": "barrier", "source_stat_coefficients": {"spirit": 3000, "vitality": 2000}, "target_max_hp_bps": 120, "fixed": 0}]},
+        "stagger": {"label": "よろめき", "disposition": "debuff", "duration_rounds": 1, "stack_policy": "refresh", "max_stacks": 1, "application_chance_bps": 8000, "effects": [{"type": "action_impairment", "skip_chance_bps": 10000}, {"type": "initiative_modifier", "value_bps": -1500}], "boss_profile": {"effects": [{"type": "initiative_modifier", "value_bps": -1800}, {"type": "damage_dealt_modifier", "category": "all", "value_bps": -700}]}},
+        "telegraph": {"label": "予告", "disposition": "buff", "duration_rounds": 2, "stack_policy": "refresh", "max_stacks": 1, "application_chance_bps": 10000, "effects": []}
+    },
+    "equipment": {
+        "rarities": {
+            "common": {"label": "一般", "affix_count": 1, "quality_min_bps": 8500, "quality_max_bps": 9500, "unique_eligible": false},
+            "uncommon": {"label": "上等", "affix_count": 2, "quality_min_bps": 9000, "quality_max_bps": 10000, "unique_eligible": false},
+            "rare": {"label": "希少", "affix_count": 3, "quality_min_bps": 9500, "quality_max_bps": 10500, "unique_eligible": false},
+            "epic": {"label": "叙事", "affix_count": 4, "quality_min_bps": 10000, "quality_max_bps": 11000, "unique_eligible": false},
+            "unique": {"label": "唯一", "affix_count": 4, "quality_min_bps": 9500, "quality_max_bps": 10500, "unique_eligible": true}
+        },
+        "slots": {
+            "weapon": {"label": "武器", "weapon_power": 0, "physical_defense": 0, "magical_defense": 0, "max_hp": 0, "base_stats": {}},
+            "armor": {"label": "防具", "weapon_power": 0, "physical_defense": 34, "magical_defense": 24, "max_hp": 55, "base_stats": {"vitality": 2}},
+            "charm": {"label": "護符", "weapon_power": 0, "physical_defense": 8, "magical_defense": 18, "max_hp": 20, "base_stats": {"spirit": 2}}
+        },
+        "weapon_style_bases": {
+            "dagger": {"label": "短剣", "weapon_power": 68, "base_stats": {"finesse": 3, "agility": 2}},
+            "rapier": {"label": "細身剣", "weapon_power": 72, "base_stats": {"might": 2, "finesse": 2}},
+            "shield": {"label": "盾", "weapon_power": 55, "base_stats": {"vitality": 4, "might": 1}},
+            "crystal_staff": {"label": "輝石杖", "weapon_power": 64, "base_stats": {"spirit": 4, "finesse": 1}}
+        },
+        "affixes": {
+            "vitality": {"label": "生命", "kind": "stat", "target": "vitality", "minimum": 1, "maximum": 3, "cap": 50000, "scales_with_item_level": true, "slots": ["weapon", "armor", "charm"]},
+            "might": {"label": "武力", "kind": "stat", "target": "might", "minimum": 1, "maximum": 3, "cap": 50000, "scales_with_item_level": true, "slots": ["weapon", "armor", "charm"]},
+            "finesse": {"label": "技巧", "kind": "stat", "target": "finesse", "minimum": 1, "maximum": 3, "cap": 50000, "scales_with_item_level": true, "slots": ["weapon", "armor", "charm"]},
+            "spirit": {"label": "精神", "kind": "stat", "target": "spirit", "minimum": 1, "maximum": 3, "cap": 50000, "scales_with_item_level": true, "slots": ["weapon", "armor", "charm"]},
+            "agility": {"label": "敏捷", "kind": "stat", "target": "agility", "minimum": 1, "maximum": 3, "cap": 50000, "scales_with_item_level": true, "slots": ["weapon", "armor", "charm"]},
+            "physical_damage": {"label": "物理威力", "kind": "modifier", "target": "physical_damage_bps", "minimum": 180, "maximum": 420, "cap": 1200, "scales_with_item_level": false, "slots": ["weapon", "charm"]},
+            "miracle_damage": {"label": "祝福威力", "kind": "modifier", "target": "miracle_damage_bps", "minimum": 180, "maximum": 420, "cap": 1200, "scales_with_item_level": false, "slots": ["weapon", "charm"]},
+            "healing": {"label": "治癒", "kind": "modifier", "target": "healing_bps", "minimum": 180, "maximum": 420, "cap": 1200, "scales_with_item_level": false, "slots": ["armor", "charm"]},
+            "critical": {"label": "会心", "kind": "modifier", "target": "critical_chance_bps", "minimum": 120, "maximum": 300, "cap": 900, "scales_with_item_level": false, "slots": ["weapon", "charm"]},
+            "status_potency": {"label": "状態威力", "kind": "modifier", "target": "status_potency_bps", "minimum": 150, "maximum": 350, "cap": 1000, "scales_with_item_level": false, "slots": ["weapon", "charm"]},
+            "mp_efficiency": {"label": "消費軽減", "kind": "modifier", "target": "mp_cost_reduction_bps", "minimum": 120, "maximum": 280, "cap": 1000, "scales_with_item_level": false, "slots": ["weapon", "armor", "charm"]},
+            "guard_barrier": {"label": "護壁", "kind": "modifier", "target": "barrier_bps", "minimum": 180, "maximum": 420, "cap": 1200, "scales_with_item_level": false, "slots": ["armor", "charm"]},
+            "periodic_effect": {"label": "周期効果", "kind": "modifier", "target": "periodic_bps", "minimum": 150, "maximum": 350, "cap": 1000, "scales_with_item_level": false, "slots": ["weapon", "charm"]}
+        },
+        "unique_effects": {
+            "sanguine_edge": {"label": "吸命の代償", "slots": ["weapon"], "weapon_styles": ["dagger", "rapier"], "summary": "damageを少し下げて吸収を得る"},
+            "heavy_retort": {"label": "重き反攻", "slots": ["weapon"], "weapon_styles": ["shield"], "summary": "敏捷を下げてcounterを強化する"},
+            "afterguard_focus": {"label": "守勢転化", "slots": ["weapon"], "weapon_styles": ["shield", "crystal_staff"], "summary": "有効なguard後の次skillを強化する"},
+            "graceful_focus": {"label": "恩寵転光", "slots": ["weapon"], "weapon_styles": ["crystal_staff", "dagger"], "summary": "effective healing後の攻撃祝福を強化する"}
+        }
+    },
+    "builds": {
+        "pure_attacker": {
+            "label": "攻撃特化",
+            "base_stats": {"vitality": 18, "might": 34, "finesse": 30, "spirit": 8, "agility": 10},
+            "weapon_style": "dagger",
+            "allocations": {"martial_precision_cut": 1, "martial_weapon_mastery": 5, "martial_critical_training": 5, "martial_dagger_flurry": 1, "martial_tempo": 5, "martial_armor_break": 1, "martial_blood_return": 3, "martial_severing_bleed": 1, "martial_last_stand": 4, "martial_executioner": 1, "guardianship_shield_bash": 1, "guardianship_vital_core": 5, "guardianship_guard_training": 2},
+            "active_skills": ["executioner_cut", "severing_bleed", "armor_break_strike", "dagger_flurry", "precision_cut"],
+            "ai_rules": [
+                {"conditions": [{"type": "enemy_hp_lte", "percent": 30}, {"type": "skill_ready", "skill": "executioner_cut"}], "action": "skill:executioner_cut"},
+                {"conditions": [{"type": "enemy_lacks_status", "status": "armor_break"}, {"type": "skill_ready", "skill": "armor_break_strike"}], "action": "skill:armor_break_strike"},
+                {"conditions": [{"type": "enemy_lacks_status", "status": "bleed"}, {"type": "skill_ready", "skill": "severing_bleed"}], "action": "skill:severing_bleed"},
+                {"conditions": [{"type": "skill_ready", "skill": "dagger_flurry"}], "action": "skill:dagger_flurry"},
+                {"conditions": [{"type": "skill_ready", "skill": "precision_cut"}], "action": "skill:precision_cut"},
+                {"conditions": [{"type": "always"}], "action": "normal_attack"}
+            ],
+            "equipment": [
+                {"slot": "weapon", "weapon_style": "dagger", "rarity": "rare", "seed": 10501},
+                {"slot": "armor", "weapon_style": "dagger", "rarity": "rare", "seed": 10502},
+                {"slot": "charm", "weapon_style": "dagger", "rarity": "rare", "seed": 10503}
+            ]
+        },
+        "pure_tank": {
+            "label": "護身特化",
+            "base_stats": {"vitality": 40, "might": 22, "finesse": 10, "spirit": 16, "agility": 12},
+            "weapon_style": "shield",
+            "allocations": {"guardianship_shield_bash": 1, "guardianship_vital_core": 5, "guardianship_guard_training": 5, "guardianship_counter_stance": 1, "guardianship_fighting_spirit": 5, "guardianship_bulwark_strike": 1, "guardianship_regeneration": 3, "guardianship_renewing_guard": 1, "guardianship_unbroken": 4, "guardianship_retort": 1, "martial_precision_cut": 1, "martial_weapon_mastery": 5, "martial_critical_training": 2},
+            "active_skills": ["unbroken_retort", "renewing_guard", "bulwark_strike", "counter_stance", "shield_bash"],
+            "ai_rules": [
+                {"conditions": [{"type": "enemy_telegraph"}], "action": "defend"},
+                {"conditions": [{"type": "own_hp_lte", "percent": 65}, {"type": "skill_ready", "skill": "renewing_guard"}], "action": "skill:renewing_guard"},
+                {"conditions": [{"type": "role_stacks_gte", "status": "fighting_spirit", "stacks": 1}, {"type": "skill_ready", "skill": "unbroken_retort"}], "action": "skill:unbroken_retort"},
+                {"conditions": [{"type": "self_lacks_status", "status": "aegis"}, {"type": "skill_ready", "skill": "counter_stance"}], "action": "skill:counter_stance"},
+                {"conditions": [{"type": "skill_ready", "skill": "bulwark_strike"}], "action": "skill:bulwark_strike"},
+                {"conditions": [{"type": "skill_ready", "skill": "shield_bash"}], "action": "skill:shield_bash"},
+                {"conditions": [{"type": "always"}], "action": "normal_attack"}
+            ],
+            "equipment": [
+                {"slot": "weapon", "weapon_style": "shield", "rarity": "rare", "seed": 10511},
+                {"slot": "armor", "weapon_style": "shield", "rarity": "rare", "seed": 10512},
+                {"slot": "charm", "weapon_style": "shield", "rarity": "rare", "seed": 10513}
+            ]
+        },
+        "pure_healer": {
+            "label": "祝福特化",
+            "base_stats": {"vitality": 22, "might": 8, "finesse": 16, "spirit": 42, "agility": 12},
+            "weapon_style": "crystal_staff",
+            "allocations": {"miracle_holy_bolt": 1, "miracle_spirit_channel": 5, "miracle_healing_study": 5, "miracle_mending_prayer": 1, "miracle_grace_core": 5, "miracle_crystal_cycle": 1, "miracle_crystal_aegis": 1, "miracle_aegis_mastery": 3, "miracle_cleansing_wave": 1, "miracle_apotheosis": 4, "miracle_radiant_judgment": 1, "martial_precision_cut": 1, "martial_weapon_mastery": 5, "martial_critical_training": 2},
+            "active_skills": ["radiant_judgment", "crystal_cycle", "crystal_aegis", "mending_prayer", "holy_bolt"],
+            "ai_rules": [
+                {"conditions": [{"type": "own_hp_lte", "percent": 80}, {"type": "skill_ready", "skill": "mending_prayer"}], "action": "skill:mending_prayer"},
+                {"conditions": [{"type": "own_mp_lte", "percent": 35}, {"type": "skill_ready", "skill": "crystal_cycle"}], "action": "skill:crystal_cycle"},
+                {"conditions": [{"type": "own_hp_lte", "percent": 65}, {"type": "skill_ready", "skill": "crystal_aegis"}], "action": "skill:crystal_aegis"},
+                {"conditions": [{"type": "round_modulo", "modulo": 5, "equals": 0}, {"type": "skill_ready", "skill": "radiant_judgment"}], "action": "skill:radiant_judgment"},
+                {"conditions": [{"type": "skill_ready", "skill": "holy_bolt"}], "action": "skill:holy_bolt"},
+                {"conditions": [{"type": "always"}], "action": "normal_attack"}
+            ],
+            "equipment": [
+                {"slot": "weapon", "weapon_style": "crystal_staff", "rarity": "rare", "seed": 10521},
+                {"slot": "armor", "weapon_style": "crystal_staff", "rarity": "rare", "seed": 10522},
+                {"slot": "charm", "weapon_style": "crystal_staff", "rarity": "rare", "seed": 10523}
+            ]
+        },
+        "balanced": {
+            "label": "混成",
+            "base_stats": {"vitality": 26, "might": 22, "finesse": 20, "spirit": 20, "agility": 12},
+            "weapon_style": "rapier",
+            "allocations": {"martial_precision_cut": 1, "martial_weapon_mastery": 5, "martial_critical_training": 5, "martial_dagger_flurry": 1, "martial_tempo": 4, "guardianship_shield_bash": 1, "guardianship_vital_core": 5, "guardianship_guard_training": 5, "guardianship_counter_stance": 1, "guardianship_fighting_spirit": 4, "miracle_holy_bolt": 1, "miracle_spirit_channel": 5, "miracle_healing_study": 5, "miracle_mending_prayer": 1, "miracle_grace_core": 5, "miracle_aegis_mastery": 1},
+            "active_skills": ["dagger_flurry", "precision_cut", "shield_bash", "mending_prayer", "holy_bolt"],
+            "ai_rules": [
+                {"conditions": [{"type": "enemy_telegraph"}, {"type": "own_hp_lte", "percent": 85}], "action": "defend"},
+                {"conditions": [{"type": "own_hp_lte", "percent": 55}, {"type": "skill_ready", "skill": "mending_prayer"}], "action": "skill:mending_prayer"},
+                {"conditions": [{"type": "skill_ready", "skill": "dagger_flurry"}], "action": "skill:dagger_flurry"},
+                {"conditions": [{"type": "round_modulo", "modulo": 3, "equals": 0}, {"type": "skill_ready", "skill": "shield_bash"}], "action": "skill:shield_bash"},
+                {"conditions": [{"type": "skill_ready", "skill": "precision_cut"}], "action": "skill:precision_cut"},
+                {"conditions": [{"type": "skill_ready", "skill": "holy_bolt"}], "action": "skill:holy_bolt"},
+                {"conditions": [{"type": "always"}], "action": "normal_attack"}
+            ],
+            "equipment": [
+                {"slot": "weapon", "weapon_style": "rapier", "rarity": "rare", "seed": 10531},
+                {"slot": "armor", "weapon_style": "rapier", "rarity": "rare", "seed": 10532},
+                {"slot": "charm", "weapon_style": "rapier", "rarity": "rare", "seed": 10533}
+            ]
+        }
+    },
+    "enemies": {
+        "pressure_construct": {
+            "label": "圧力試験体", "boss": false,
+            "base_stats": {"vitality": 24, "might": 30, "finesse": 14, "spirit": 14, "agility": 18},
+            "max_hp": 100000, "physical_defense": 120, "magical_defense": 120, "weapon_power": 50,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 5600, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "skills": ["pressure_strike", "pressure_heavy", "enemy_telegraph"],
+            "ai_rules": [
+                {"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:pressure_heavy"},
+                {"conditions": [{"type": "round_modulo", "modulo": 3, "equals": 2}], "action": "skill:enemy_telegraph"},
+                {"conditions": [{"type": "always"}], "action": "skill:pressure_strike"}
+            ],
+            "modifiers": {}
+        },
+        "endurance_construct": {
+            "label": "持久試験体", "boss": false,
+            "base_stats": {"vitality": 24, "might": 30, "finesse": 14, "spirit": 14, "agility": 18},
+            "max_hp": 100000000, "physical_defense": 120, "magical_defense": 120, "weapon_power": 50,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 1500, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "skills": ["endurance_strike", "endurance_heavy", "enemy_telegraph"],
+            "ai_rules": [
+                {"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:endurance_heavy"},
+                {"conditions": [{"type": "round_modulo", "modulo": 3, "equals": 2}], "action": "skill:enemy_telegraph"},
+                {"conditions": [{"type": "always"}], "action": "skill:endurance_strike"}
+            ],
+            "modifiers": {}
+        },
+        "depth_stalker": {
+            "label": "深層追跡者", "boss": false,
+            "base_stats": {"vitality": 25, "might": 30, "finesse": 20, "spirit": 10, "agility": 15},
+            "max_hp": 1050, "physical_defense": 105, "magical_defense": 95, "weapon_power": 58,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7000, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
+            "skills": ["stalker_strike", "enemy_telegraph", "pressure_heavy"],
+            "ai_rules": [
+                {"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:pressure_heavy"},
+                {"conditions": [{"type": "round_modulo", "modulo": 4, "equals": 3}], "action": "skill:enemy_telegraph"},
+                {"conditions": [{"type": "skill_ready", "skill": "stalker_strike"}], "action": "skill:stalker_strike"},
+                {"conditions": [{"type": "always"}], "action": "normal_attack"}
+            ],
+            "modifiers": {}
+        },
+        "crystal_warden": {
+            "label": "輝晶守護者", "boss": true,
+            "base_stats": {"vitality": 30, "might": 28, "finesse": 12, "spirit": 20, "agility": 10},
+            "max_hp": 4800, "physical_defense": 135, "magical_defense": 125, "weapon_power": 62,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7200, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "skills": ["warden_stagger", "pressure_strike"],
+            "ai_rules": [
+                {"conditions": [{"type": "skill_ready", "skill": "warden_stagger"}], "action": "skill:warden_stagger"},
+                {"conditions": [{"type": "always"}], "action": "skill:pressure_strike"}
+            ],
+            "modifiers": {"damage_taken_reduction_bps": 300}
+        }
+    },
+    "experiments": {
+        "pressure": {"enemy_key": "pressure_construct", "tier_key": "early", "max_rounds": 30},
+        "appropriate": {"enemy_key": "depth_stalker", "tier_key": "early", "max_rounds": 100},
+        "mp": {"enemy_key": "endurance_construct", "tier_key": "early", "max_rounds": 100},
+        "boss_status": {"enemy_key": "crystal_warden", "tier_key": "early", "max_rounds": 40},
+        "sidegrade": {"low_item_level": 40, "high_item_level": 45, "slot": "weapon", "weapon_style": "dagger", "seed": 10581, "build_key": "pure_attacker", "enemy_key": "pressure_construct", "tier_key": "mid", "max_rounds": 30}
+    }
+}

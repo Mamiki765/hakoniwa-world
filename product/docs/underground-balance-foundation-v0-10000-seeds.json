@@ -1,0 +1,345 @@
+{
+    "schema_version": 1,
+    "simulator_version": "underground-balance-v1",
+    "rules_identity": "secretary-underground-alpha-v0",
+    "commit_sha": "9c8a17b7ca6b2e31e7cf0da28951b786826b4715",
+    "working_tree_dirty": null,
+    "manifest_path": "config/underground/balance/foundation-v0.json",
+    "manifest_hash": "bd62f60ce219c41f72b03d432bcdee28b92773fc9b6800d82e19b5669b150d27",
+    "manifest_contents": "{\n    \"schema_version\": 1,\n    \"rules_identity\": \"secretary-underground-alpha-v0\",\n    \"laboratory_scope\": {\n        \"status\": \"player_inaccessible_alpha_v0\",\n        \"win_rate_observations_are_balance_targets\": false,\n        \"future_balance_must_preserve_observed_win_rates\": false,\n        \"retuning_before_first_playable_is_allowed\": true,\n        \"permanent_contracts\": [\n            \"deterministic_replay\",\n            \"legal_state_transitions\",\n            \"zero_abnormal_states\",\n            \"explicit_max_round_stalemate\",\n            \"reproducible_report\",\n            \"scenario_semantics\",\n            \"no_surface_dependency\"\n        ]\n    },\n    \"seed_range\": {\n        \"start\": 0,\n        \"count\": 10000\n    },\n    \"max_rounds\": 30,\n    \"scenarios\": [\n        {\n            \"id\": \"standard_enemy\",\n            \"party\": [\n                {\n                    \"actor_key\": \"knife_initiate\",\n                    \"weapon_key\": \"starter_knife\",\n                    \"skill_keys\": [\n                        \"quick_slash\",\n                        \"piercing_thrust\",\n                        \"mending_light\",\n                        \"crystal_burst\"\n                    ]\n                }\n            ],\n            \"enemy_composition\": [\n                {\n                    \"enemy_key\": \"cave_crawler\"\n                }\n            ],\n            \"ai_preset\": \"built_in_v0\",\n            \"laboratory_observation\": {\n                \"classification\": \"alpha_v0_initial_observation\",\n                \"seed_start\": 0,\n                \"seed_count\": 10000,\n                \"observed_win_rate\": 0.7924,\n                \"provisional_win_rate_range\": {\n                    \"min\": 0.7,\n                    \"max\": 0.9\n                },\n                \"is_player_facing_balance_target\": false,\n                \"future_retuning_allowed\": true\n            }\n        },\n        {\n            \"id\": \"fast_enemy\",\n            \"party\": [\n                {\n                    \"actor_key\": \"knife_initiate\",\n                    \"weapon_key\": \"starter_knife\",\n                    \"skill_keys\": [\n                        \"quick_slash\",\n                        \"piercing_thrust\",\n                        \"mending_light\",\n                        \"crystal_burst\"\n                    ]\n                }\n            ],\n            \"enemy_composition\": [\n                {\n                    \"enemy_key\": \"needle_bat\"\n                }\n            ],\n            \"ai_preset\": \"built_in_v0\",\n            \"laboratory_observation\": {\n                \"classification\": \"alpha_v0_initial_observation\",\n                \"seed_start\": 0,\n                \"seed_count\": 10000,\n                \"observed_win_rate\": 0.561,\n                \"provisional_win_rate_range\": {\n                    \"min\": 0.55,\n                    \"max\": 0.8\n                },\n                \"is_player_facing_balance_target\": false,\n                \"future_retuning_allowed\": true\n            }\n        },\n        {\n            \"id\": \"armored_enemy\",\n            \"party\": [\n                {\n                    \"actor_key\": \"knife_initiate\",\n                    \"weapon_key\": \"starter_knife\",\n                    \"skill_keys\": [\n                        \"quick_slash\",\n                        \"piercing_thrust\",\n                        \"mending_light\",\n                        \"crystal_burst\"\n                    ]\n                }\n            ],\n            \"enemy_composition\": [\n                {\n                    \"enemy_key\": \"stone_shell\"\n                }\n            ],\n            \"ai_preset\": \"built_in_v0\",\n            \"laboratory_observation\": {\n                \"classification\": \"alpha_v0_initial_observation\",\n                \"seed_start\": 0,\n                \"seed_count\": 10000,\n                \"observed_win_rate\": 0.7538,\n                \"provisional_win_rate_range\": {\n                    \"min\": 0.55,\n                    \"max\": 0.8\n                },\n                \"is_player_facing_balance_target\": false,\n                \"future_retuning_allowed\": true\n            }\n        },\n        {\n            \"id\": \"telegraphed_threat\",\n            \"party\": [\n                {\n                    \"actor_key\": \"knife_initiate\",\n                    \"weapon_key\": \"starter_knife\",\n                    \"skill_keys\": [\n                        \"quick_slash\",\n                        \"piercing_thrust\",\n                        \"mending_light\",\n                        \"crystal_burst\"\n                    ]\n                }\n            ],\n            \"enemy_composition\": [\n                {\n                    \"enemy_key\": \"gloom_herald\"\n                }\n            ],\n            \"ai_preset\": \"built_in_v0\",\n            \"laboratory_observation\": {\n                \"classification\": \"alpha_v0_initial_observation\",\n                \"seed_start\": 0,\n                \"seed_count\": 10000,\n                \"observed_win_rate\": 0.6783,\n                \"provisional_win_rate_range\": {\n                    \"min\": 0.5,\n                    \"max\": 0.75\n                },\n                \"is_player_facing_balance_target\": false,\n                \"future_retuning_allowed\": true\n            }\n        }\n    ]\n}\n",
+    "seed_range": {
+        "start": 0,
+        "count": 10000,
+        "end": 9999
+    },
+    "max_rounds": 30,
+    "laboratory_contract_passed": true,
+    "semantic_contract_passed": true,
+    "semantic_observations": [
+        {
+            "id": "fast_has_initiative_advantage_over_standard",
+            "passed": true,
+            "standard_enemy_first_action_rate": 0,
+            "fast_enemy_first_action_rate": 1
+        },
+        {
+            "id": "armored_is_more_durable_than_standard",
+            "passed": true,
+            "standard_median_rounds": 7,
+            "armored_median_rounds": 11
+        },
+        {
+            "id": "telegraphed_heavy_strikes_are_observed_and_guarded",
+            "passed": true,
+            "telegraph_usage": 23217,
+            "heavy_strike_usage": 23217,
+            "guarded_heavy_strike_usage": 23217
+        }
+    ],
+    "experiment_thresholds_passed": null,
+    "scenarios": [
+        {
+            "id": "standard_enemy",
+            "party": [
+                {
+                    "actor_key": "knife_initiate",
+                    "weapon_key": "starter_knife",
+                    "skill_keys": [
+                        "quick_slash",
+                        "piercing_thrust",
+                        "mending_light",
+                        "crystal_burst"
+                    ]
+                }
+            ],
+            "enemy_composition": [
+                {
+                    "enemy_key": "cave_crawler"
+                }
+            ],
+            "ai_preset": "built_in_v0",
+            "iterations": 10000,
+            "laboratory_observation": {
+                "classification": "alpha_v0_initial_observation",
+                "seed_start": 0,
+                "seed_count": 10000,
+                "observed_win_rate": 0.7924,
+                "provisional_win_rate_range": {
+                    "min": 0.7,
+                    "max": 0.9
+                },
+                "is_player_facing_balance_target": false,
+                "future_retuning_allowed": true
+            },
+            "experiment_thresholds": null,
+            "experiment_thresholds_passed": null,
+            "threshold_violations": [],
+            "metrics": {
+                "win_rate": 0.7924,
+                "loss_rate": 0.2076,
+                "stalemate_rate": 0,
+                "median_rounds": 7,
+                "p90_rounds": 7,
+                "p99_rounds": 7,
+                "average_damage_dealt": 409.118,
+                "average_damage_received": 512.612,
+                "skill_usage": {
+                    "quick_slash": 30000,
+                    "piercing_thrust": 0,
+                    "mending_light": 10000,
+                    "crystal_burst": 7924
+                },
+                "normal_attack_usage": 10000,
+                "defend_usage": 10000,
+                "ai_fallback_usage": 10000,
+                "enemy_first_action_rate": 0,
+                "enemy_telegraph_usage": 0,
+                "enemy_heavy_strike_usage": 0,
+                "guarded_enemy_heavy_strike_usage": 0,
+                "resource_overflow_units": 160000,
+                "resource_overflow_fight_rate": 1,
+                "unused_resource_rate": 0.2076,
+                "unused_skills": [
+                    "piercing_thrust"
+                ],
+                "abnormal_rate": 0
+            },
+            "abnormal_seeds": [],
+            "reproduction_arguments": [
+                "php",
+                "artisan",
+                "underground:balance",
+                "--manifest=config/underground/balance/foundation-v0.json",
+                "--scenario=standard_enemy",
+                "--replay-seed=0"
+            ]
+        },
+        {
+            "id": "fast_enemy",
+            "party": [
+                {
+                    "actor_key": "knife_initiate",
+                    "weapon_key": "starter_knife",
+                    "skill_keys": [
+                        "quick_slash",
+                        "piercing_thrust",
+                        "mending_light",
+                        "crystal_burst"
+                    ]
+                }
+            ],
+            "enemy_composition": [
+                {
+                    "enemy_key": "needle_bat"
+                }
+            ],
+            "ai_preset": "built_in_v0",
+            "iterations": 10000,
+            "laboratory_observation": {
+                "classification": "alpha_v0_initial_observation",
+                "seed_start": 0,
+                "seed_count": 10000,
+                "observed_win_rate": 0.561,
+                "provisional_win_rate_range": {
+                    "min": 0.55,
+                    "max": 0.8
+                },
+                "is_player_facing_balance_target": false,
+                "future_retuning_allowed": true
+            },
+            "experiment_thresholds": null,
+            "experiment_thresholds_passed": null,
+            "threshold_violations": [],
+            "metrics": {
+                "win_rate": 0.561,
+                "loss_rate": 0.439,
+                "stalemate_rate": 0,
+                "median_rounds": 6,
+                "p90_rounds": 6,
+                "p99_rounds": 6,
+                "average_damage_dealt": 323.17,
+                "average_damage_received": 515.042,
+                "skill_usage": {
+                    "quick_slash": 25610,
+                    "piercing_thrust": 0,
+                    "mending_light": 10000,
+                    "crystal_burst": 0
+                },
+                "normal_attack_usage": 10000,
+                "defend_usage": 10000,
+                "ai_fallback_usage": 10000,
+                "enemy_first_action_rate": 1,
+                "enemy_telegraph_usage": 0,
+                "enemy_heavy_strike_usage": 0,
+                "guarded_enemy_heavy_strike_usage": 0,
+                "resource_overflow_units": 89760,
+                "resource_overflow_fight_rate": 0.561,
+                "unused_resource_rate": 0.561,
+                "unused_skills": [
+                    "piercing_thrust",
+                    "crystal_burst"
+                ],
+                "abnormal_rate": 0
+            },
+            "abnormal_seeds": [],
+            "reproduction_arguments": [
+                "php",
+                "artisan",
+                "underground:balance",
+                "--manifest=config/underground/balance/foundation-v0.json",
+                "--scenario=fast_enemy",
+                "--replay-seed=0"
+            ]
+        },
+        {
+            "id": "armored_enemy",
+            "party": [
+                {
+                    "actor_key": "knife_initiate",
+                    "weapon_key": "starter_knife",
+                    "skill_keys": [
+                        "quick_slash",
+                        "piercing_thrust",
+                        "mending_light",
+                        "crystal_burst"
+                    ]
+                }
+            ],
+            "enemy_composition": [
+                {
+                    "enemy_key": "stone_shell"
+                }
+            ],
+            "ai_preset": "built_in_v0",
+            "iterations": 10000,
+            "laboratory_observation": {
+                "classification": "alpha_v0_initial_observation",
+                "seed_start": 0,
+                "seed_count": 10000,
+                "observed_win_rate": 0.7538,
+                "provisional_win_rate_range": {
+                    "min": 0.55,
+                    "max": 0.8
+                },
+                "is_player_facing_balance_target": false,
+                "future_retuning_allowed": true
+            },
+            "experiment_thresholds": null,
+            "experiment_thresholds_passed": null,
+            "threshold_violations": [],
+            "metrics": {
+                "win_rate": 0.7538,
+                "loss_rate": 0.2462,
+                "stalemate_rate": 0,
+                "median_rounds": 11,
+                "p90_rounds": 11,
+                "p99_rounds": 11,
+                "average_damage_dealt": 517.416,
+                "average_damage_received": 555.819,
+                "skill_usage": {
+                    "quick_slash": 30000,
+                    "piercing_thrust": 36608,
+                    "mending_light": 16608,
+                    "crystal_burst": 10000
+                },
+                "normal_attack_usage": 10000,
+                "defend_usage": 0,
+                "ai_fallback_usage": 10000,
+                "enemy_first_action_rate": 0,
+                "enemy_telegraph_usage": 0,
+                "enemy_heavy_strike_usage": 0,
+                "guarded_enemy_heavy_strike_usage": 0,
+                "resource_overflow_units": 20000,
+                "resource_overflow_fight_rate": 1,
+                "unused_resource_rate": 0,
+                "unused_skills": [],
+                "abnormal_rate": 0
+            },
+            "abnormal_seeds": [],
+            "reproduction_arguments": [
+                "php",
+                "artisan",
+                "underground:balance",
+                "--manifest=config/underground/balance/foundation-v0.json",
+                "--scenario=armored_enemy",
+                "--replay-seed=0"
+            ]
+        },
+        {
+            "id": "telegraphed_threat",
+            "party": [
+                {
+                    "actor_key": "knife_initiate",
+                    "weapon_key": "starter_knife",
+                    "skill_keys": [
+                        "quick_slash",
+                        "piercing_thrust",
+                        "mending_light",
+                        "crystal_burst"
+                    ]
+                }
+            ],
+            "enemy_composition": [
+                {
+                    "enemy_key": "gloom_herald"
+                }
+            ],
+            "ai_preset": "built_in_v0",
+            "iterations": 10000,
+            "laboratory_observation": {
+                "classification": "alpha_v0_initial_observation",
+                "seed_start": 0,
+                "seed_count": 10000,
+                "observed_win_rate": 0.6783,
+                "provisional_win_rate_range": {
+                    "min": 0.5,
+                    "max": 0.75
+                },
+                "is_player_facing_balance_target": false,
+                "future_retuning_allowed": true
+            },
+            "experiment_thresholds": null,
+            "experiment_thresholds_passed": null,
+            "threshold_violations": [],
+            "metrics": {
+                "win_rate": 0.6783,
+                "loss_rate": 0.3217,
+                "stalemate_rate": 0,
+                "median_rounds": 8,
+                "p90_rounds": 9,
+                "p99_rounds": 9,
+                "average_damage_dealt": 458.299,
+                "average_damage_received": 496.309,
+                "skill_usage": {
+                    "quick_slash": 30000,
+                    "piercing_thrust": 0,
+                    "mending_light": 10000,
+                    "crystal_burst": 10000
+                },
+                "normal_attack_usage": 10000,
+                "defend_usage": 23217,
+                "ai_fallback_usage": 10000,
+                "enemy_first_action_rate": 0,
+                "enemy_telegraph_usage": 23217,
+                "enemy_heavy_strike_usage": 23217,
+                "guarded_enemy_heavy_strike_usage": 23217,
+                "resource_overflow_units": 300000,
+                "resource_overflow_fight_rate": 1,
+                "unused_resource_rate": 0,
+                "unused_skills": [
+                    "piercing_thrust"
+                ],
+                "abnormal_rate": 0
+            },
+            "abnormal_seeds": [],
+            "reproduction_arguments": [
+                "php",
+                "artisan",
+                "underground:balance",
+                "--manifest=config/underground/balance/foundation-v0.json",
+                "--scenario=telegraphed_threat",
+                "--replay-seed=0"
+            ]
+        }
+    ]
+}

@@ -14,6 +14,8 @@ use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
 use App\Http\Controllers\Api\TradingPostController;
+use App\Http\Controllers\Api\UndergroundEquipmentController;
+use App\Http\Controllers\Api\UndergroundIntroController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\CommunityGuidelinesController;
@@ -36,7 +38,7 @@ Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 
 Route::get('/manual/{section?}', ManualController::class)
-    ->where('section', 'beginner|intermediate|advanced|trading-post|secretary');
+    ->where('section', 'beginner|intermediate|advanced|trading-post|secretary|underground');
 Route::get('/community-guidelines', CommunityGuidelinesController::class);
 
 Route::prefix('api/v1/public')
@@ -83,6 +85,35 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/me/secretary/main-image', [SecretaryController::class, 'storeMainImage']);
     Route::patch('/me/secretary/main-image', [SecretaryController::class, 'updateMainImageMetadata']);
     Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
+    Route::prefix('/me/underground')->middleware('throttle:60,1')->group(function (): void {
+        Route::get('/', [UndergroundIntroController::class, 'show']);
+        Route::post('/entry', [UndergroundIntroController::class, 'enter']);
+        Route::post('/story/advance', [UndergroundIntroController::class, 'advance']);
+        Route::post('/tutorial', [UndergroundIntroController::class, 'tutorial']);
+        Route::post('/shopkeeper/name', [UndergroundIntroController::class, 'nameShopkeeper']);
+        Route::post('/scripted-loss', [UndergroundIntroController::class, 'scriptedLoss']);
+        Route::post('/contract', [UndergroundIntroController::class, 'contract']);
+        Route::post('/growth-path', [UndergroundIntroController::class, 'growthPath']);
+        Route::get('/main', [UndergroundIntroController::class, 'main']);
+        Route::post('/explore', [UndergroundIntroController::class, 'explore']);
+        Route::post('/inn/rest', [UndergroundIntroController::class, 'restAtInn']);
+        Route::post('/bank/transfer', [UndergroundIntroController::class, 'bankTransfer']);
+        Route::get('/equipment/shop', [UndergroundEquipmentController::class, 'shop']);
+        Route::post('/equipment/shop/purchase', [UndergroundEquipmentController::class, 'purchase']);
+        Route::post('/equipment/items/{itemId}/sell', [UndergroundEquipmentController::class, 'sell'])
+            ->whereNumber('itemId');
+        Route::get('/equipment/vault', [UndergroundEquipmentController::class, 'vault']);
+        Route::put('/equipment/equipped', [UndergroundEquipmentController::class, 'equip']);
+        Route::delete('/equipment/equipped/{slot}', [UndergroundEquipmentController::class, 'unequip']);
+        Route::post('/status/stp', [UndergroundIntroController::class, 'allocateStp']);
+        Route::post('/skills/acquire', [UndergroundIntroController::class, 'acquireSkill']);
+        Route::put('/skills/loadout', [UndergroundIntroController::class, 'updateActiveLoadout']);
+        Route::get('/playtest', [UndergroundIntroController::class, 'playtestOptions']);
+        Route::post('/playtest', [UndergroundIntroController::class, 'playtest']);
+        Route::get('/battles', [UndergroundIntroController::class, 'battles']);
+        Route::get('/battles/{battleRequestId}', [UndergroundIntroController::class, 'battle'])
+            ->whereUuid('battleRequestId');
+    });
     Route::get('/me/secretary/equipment/{slot}/options', [SecretaryController::class, 'equipmentOptions'])
         ->where('slot', '-?\d+');
     Route::put('/me/secretary/equipment/{slot}', [SecretaryController::class, 'updateEquipment'])

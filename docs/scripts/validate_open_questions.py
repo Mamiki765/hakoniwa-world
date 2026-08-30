@@ -15,6 +15,7 @@ ALLOWED_STATUSES = {"Decided", "Open", "Deferred"}
 REQUIRED_SECTIONS = (
     "Current blocking gates",
     "Decided architecture",
+    "Underground RPG gates",
     "Monster/combat gates",
     "Release gates",
     "Deferred post-MVP",
@@ -77,7 +78,7 @@ EXPECTED_STATUSES = {
     "D-07": "Decided",
     "D-08": "Deferred",
     "DISASTER-01": "Decided",
-    "E-01": "Deferred",
+    "E-01": "Decided",
     "E-02": "Deferred",
     "E-03": "Decided",
     "E-04": "Deferred",
@@ -99,6 +100,10 @@ EXPECTED_STATUSES = {
     "SECRETARY-03": "Decided",
     "T-01": "Decided",
     "T-02": "Open",
+    "UG-01": "Decided",
+    "UG-02": "Decided",
+    "UG-03": "Decided",
+    "UG-04": "Open",
 }
 
 

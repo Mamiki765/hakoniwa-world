@@ -32,8 +32,11 @@ foreach ($tables as $table) {
     foreach (preg_split('/\R/u', $table[2]) ?: [] as $line) {
         $line = trim($line, " \t\n\r\0\x0B,");
 
-        if ($line === '' || str_starts_with($line, 'CONSTRAINT ')) {
+        if ($line === '') {
             continue;
+        }
+        if (str_starts_with($line, 'CONSTRAINT ')) {
+            break;
         }
 
         if (preg_match(

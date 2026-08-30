@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import HexMap from './components/HexMap.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
+import UndergroundPanel from './components/UndergroundPanel.vue';
 import type { MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
@@ -202,7 +203,7 @@ beforeEach(() => {
     document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
     const meta = document.createElement('meta');
     meta.name = 'hakoniwa-application-version';
-    meta.content = '2.4.0';
+    meta.content = '3.0.0';
     document.head.append(meta);
 });
 
@@ -212,6 +213,7 @@ afterEach(() => {
     document.querySelector('meta[name="hakoniwa-application-version"]')?.remove();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    window.history.replaceState({}, '', '/');
 });
 
 describe('application lobby and island entry', () => {
@@ -284,6 +286,7 @@ describe('application lobby and island entry', () => {
     });
 
     it('continues rendering the public lobby after the normal guest /me 401', async () => {
+        window.history.replaceState({}, '', '/underground');
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             return publicResponse(path) ?? response(null, 401);
@@ -291,6 +294,8 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
+        expect(window.location.pathname).toBe('/');
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
         expect(wrapper.text()).toContain('HAKONIWA ISLANDS');
         expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
@@ -310,7 +315,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
-        expect(wrapper.find('.app-version').text()).toBe('ver 2.4.0');
+        expect(wrapper.find('.app-version').text()).toBe('ver 3.0.0');
         expect(wrapper.find('.hakoniwa-calendar').text()).toBe('箱庭歴 1年1月');
         expect(wrapper.find('.site-header nav').text()).toContain('TOP');
         expect(wrapper.find('.site-header nav').text()).toContain('マニュアル');
@@ -1320,6 +1325,7 @@ describe('application lobby and island entry', () => {
     });
 
     it('shows the unnamed Secretary story with the default name and switches permanently to the skill view after naming', async () => {
+        window.history.replaceState({}, '', '/underground');
         let secretary = unnamedSecretaryFixture;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -1380,6 +1386,20 @@ describe('application lobby and island entry', () => {
                 return response({ ...secretary.profile, name: secretary.name, is_owner: true });
             }
             if (path === '/api/v1/me/secretary?world_id=1') return response(secretary);
+            if (path === '/api/v1/me/underground') {
+                return response({
+                    stage: 'not_started', secretary_name: 'エメラルド', combat_level: 1,
+                    combat_xp: 0, next_level_xp: 100, shard_balance: 0,
+                    shopkeeper_name: null, battle: null,
+                });
+            }
+            if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') {
+                return response({
+                    stage: 'initial_descent', secretary_name: secretary.name,
+                    combat_level: 1, combat_xp: 0, next_level_xp: 100,
+                    shard_balance: 0, shopkeeper_name: null, battle: null,
+                });
+            }
 
             return response(null, 404);
         });
@@ -1387,11 +1407,12 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
+        expect(window.location.pathname).toBe('/');
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
+        expect(wrapper.find('.secretary-panel').exists()).toBe(true);
         const secretaryButton = wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === '？？？')!;
         expect(secretaryButton.exists()).toBe(true);
-        await secretaryButton.trigger('click');
-        await flushPromises();
 
         expect(wrapper.get('.secretary-story').text()).toContain('怪獣に踏み荒らされた地から妙な施設が見つかった');
         expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
@@ -1484,6 +1505,823 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(renameRequest?.[1]?.body))).toEqual({ name: 'エメラルド' });
         expect(wrapper.text()).toContain('秘書の名前を「エメラルド」に変更しました。');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'エメラルド')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.secretary-underground-entry button').text()).toBe('地下へ');
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-story').text()).toContain('あなたの秘書は、暗く狭い場所で目を覚ました。');
+        const undergroundRequest = fetchMock.mock.calls.find(([path]) => (
+            String(path) === '/api/v1/me/underground/entry'
+        ));
+        expect(JSON.parse(String(undergroundRequest?.[1]?.body))).toEqual({
+            request_id: expect.any(String),
+        });
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'TOP')!.trigger('click');
+        await flushPromises();
+        expect(window.location.pathname).toBe('/');
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'エメラルド')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+        window.history.pushState({ page: 'secretary' }, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate', { state: { page: 'secretary' } }));
+        await flushPromises();
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
+        expect(wrapper.find('.secretary-panel').exists()).toBe(true);
+    });
+
+    it('replaces the Underground history entry when escape completion redirects to Secretary', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        const returnedState = {
+            stage: 'returned_after_tutorial', secretary_name: 'ペリドット', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100, shard_balance: 0,
+            shopkeeper_name: null, battle: null,
+        };
+        const escapeState = {
+            ...returnedState,
+            stage: 'escape_pending',
+            battle: {
+                id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+                encounter_name: 'ジャイアントラット', result: 'victory', rounds: 1,
+                xp_awarded: 5, shard_delta: 0, detail_available: true,
+                actions: [{ round: 1, side: 'player', action_label: '連続斬り', amount: 90 }],
+            },
+        };
+        const replaceSpy = vi.spyOn(window.history, 'replaceState');
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false,
+                can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
+            if (path === '/api/v1/me/underground') return response(escapeState);
+            if (path === '/api/v1/me/underground/story/advance' && init?.method === 'POST') return response(returnedState);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+        await wrapper.get('.underground-after-battle .button').trigger('click');
+        await flushPromises();
+
+        expect(window.location.pathname).toBe('/');
+        expect(wrapper.find('.underground-panel').exists()).toBe(false);
+        expect(wrapper.find('.secretary-panel').exists()).toBe(true);
+        expect(replaceSpy).toHaveBeenCalledWith({ page: 'secretary' }, '', '/');
+        expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/story/advance')).toHaveLength(1);
+    });
+
+    it('shows the unlocked Underground projection with disabled future entries and escaped battle history', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        serverSecretary.underground = {
+            available: true, stage: 'underground_open', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100,
+        };
+        const growthPath = {
+            key: 'guardianship_blue', label: '護身', color: 'blue',
+            description: ['粘り強い戦いを求める成長方針。'], default_build_key: 'pure_tank',
+            stats: { vitality: 40, might: 20, finesse: 15, spirit: 15, agility: 10 },
+            max_hp: 660, max_mp: 10000, natural_recovery: 300,
+            natural_growth: { vitality: 2, might: 1, finesse: 1, spirit: 1, agility: 0 },
+            unspent_stp_per_level: 5, points_per_level: 10,
+        };
+        const playtest = {
+            notice: 'α版の戦闘検証用完成形ビルドです。正式な育成・装備状態ではありません。',
+            default_build_key: 'pure_tank',
+            builds: [
+                { key: 'pure_attacker', label: '攻撃特化', description: '短期戦' },
+                { key: 'pure_tank', label: '護身特化', description: '防御判断' },
+                { key: 'pure_healer', label: '祝福特化', description: '回復' },
+                { key: 'balanced', label: '混成', description: '混成' },
+            ],
+            enemies: [
+                { key: 'depth_stalker', label: '深層追跡者', description: '通常の適正戦闘' },
+                { key: 'pressure_construct', label: '予兆を放つ圧力試験体', description: '防御判断' },
+                { key: 'crystal_warden', label: '輝晶守護者', description: 'boss' },
+            ],
+        };
+        let openState = {
+            stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100, next_level_requirement: 100, xp_to_next_level: 95,
+            shard_balance: 2350, banked_shard_balance: 5000, current_hp: 321, unspent_stp: 3,
+            allocated_stp: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 },
+            current_stats: growthPath.stats,
+            combat_stats: { vitality: 41, might: 21, finesse: 16, spirit: 16, agility: 11 },
+            status_breakdown: {
+                vitality: { baseline: 40, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 41 },
+                might: { baseline: 20, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 21 },
+                finesse: { baseline: 15, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 16 },
+                spirit: { baseline: 15, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 16 },
+                agility: { baseline: 10, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 11 },
+            },
+            skill_points_total: 20, skill_points_unspent: 20, skill_points_spent: 0,
+            skill_tree_identity: 'secretary-underground-skill-tree-alpha-v1',
+            skill_trees: [{ key: 'martial', label: '戦技', invested_points: 6, full_points: 100, nodes: [{
+                    key: 'martial_dagger_flurry', label: '短剣乱舞', summary: '短剣・細剣で3回攻撃し、出血を狙う。',
+                    type: 'active', rank: 1, max_rank: 1, point_cost: 6, invested_points_required: 15,
+                    prerequisite: 'martial_precision_cut', can_acquire: false, unavailable_reason: '最大rankです',
+                    skill_key: 'dagger_flurry', mp_cost: 1200, cooldown: 2, required_weapon_styles: ['dagger', 'rapier'] as string[], recommended_stats: ['might', 'finesse'] as string[], active_slot: null,
+                }] },
+                { key: 'guardianship', label: '護身', invested_points: 0, full_points: 100, nodes: [] },
+                { key: 'miracle', label: '祝福', invested_points: 0, full_points: 100, nodes: [{
+                    key: 'miracle_holy_bolt', label: '聖晶弾', summary: '精神を活かす祝福の単体攻撃。',
+                    type: 'active', rank: 0, max_rank: 1, point_cost: 5, invested_points_required: 0,
+                    prerequisite: null, can_acquire: true, unavailable_reason: null as string | null,
+                    skill_key: 'holy_bolt', mp_cost: 700, cooldown: 0, required_weapon_styles: [] as string[], recommended_stats: ['spirit', 'finesse'] as string[], active_slot: null,
+                }, {
+                    key: 'miracle_spirit_channel', label: '精神導路', summary: '祝福与ダメージを強化する。',
+                    type: 'passive', rank: 0, max_rank: 5, point_cost: 1, invested_points_required: 15,
+                    prerequisite: null, can_acquire: false, unavailable_reason: '祝福へあと15SP必要',
+                    skill_key: null, mp_cost: null, cooldown: null, required_weapon_styles: [] as string[], recommended_stats: null, active_slot: null,
+                }, {
+                    key: 'miracle_mending_prayer', label: '治癒祈祷', summary: '自身のHPを回復する。',
+                    type: 'active', rank: 0, max_rank: 1, point_cost: 6, invested_points_required: 0,
+                    prerequisite: 'miracle_holy_bolt', can_acquire: false, unavailable_reason: '前提skill未取得',
+                    skill_key: 'mending_prayer', mp_cost: 1200, cooldown: 2, required_weapon_styles: [] as string[], recommended_stats: ['spirit'] as string[], active_slot: null,
+                }, {
+                    key: 'miracle_crystal_cycle', label: '輝石循環', summary: '1 actionを使って自身のMPを3000回復する。',
+                    type: 'active', rank: 0, max_rank: 1, point_cost: 6, invested_points_required: 35,
+                    prerequisite: 'miracle_mending_prayer', can_acquire: false, unavailable_reason: '祝福へあと35SP必要',
+                    skill_key: 'crystal_cycle', mp_cost: 0, cooldown: 3, required_weapon_styles: [] as string[], recommended_stats: [] as string[], active_slot: null,
+                }] }],
+            active_slots: [null, null, null, null, null] as Array<{
+                key: string; label: string; summary: string; mp_cost: number; cooldown: number; required_weapon_styles: string[];
+            } | null>, passive_modifiers: {},
+            equipment_summary: { used: 2, capacity: 500, equipped: { weapon: {
+                id: 2, key: 'iron_longsword', name: '鉄の長剣', category: 'weapon', weapon_style: 'longsword',
+                rank: 1, item_level: 1, rarity: 'common', buy_price: 120, sell_price: 60, equipped_slot: 'weapon',
+                weapon_power: 31, physical_defense: 4, magical_defense: 0, max_hp: 0,
+                stats: { vitality: 3, might: 2, finesse: 0, spirit: 0, agility: 0 },
+            }, armor: null, accessory: null } },
+            shopkeeper_name: '<b>店員</b>', true_name_branch: false,
+            tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
+            contract_completed: true, growth_paths: null, growth_path: growthPath, playtest, battle: null,
+            next_battle_at: null as string | null,
+        };
+        const summary = {
+            id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+            player_display_name: '過去のペリドット',
+            encounter_name: '<b>ジャイアントラット</b>', result: 'victory', rounds: 2,
+            xp_awarded: 5, shard_delta: 0, detail_available: true, actions: null,
+        };
+        const historyBattles = [summary, ...Array.from({ length: 5 }, (_, index) => ({
+            ...summary,
+            id: `66666666-6666-4666-8666-66666666666${index + 2}`,
+            encounter_name: `履歴${index + 2}`,
+        }))];
+        const playtestBattle = {
+            id: '44444444-4444-4444-8444-444444444444', context: 'playtest',
+            player_display_name: '過去のペリドット',
+            build_name: '護身特化', encounter_name: '深層追跡者', result: 'victory', rounds_count: 2,
+            xp_awarded: 0, shard_delta: 0, detail_available: true,
+            summary: { damage_prevented: 120, final_mp: 9700 },
+            rounds: [
+                {
+                    round: 1,
+                    actions: [{ type: 'decision', side: '秘書', label: '防御', reason: 'priority_rule_0' }],
+                    end_state: {
+                        player: { hp: 650, max_hp: 660, mp: 9700, barrier: 40, statuses: [], role_stacks: { fighting_spirit: 1, grace: 0 } },
+                        enemy: { hp: 100, max_hp: 200, mp: 0, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                    },
+                },
+                {
+                    round: 2,
+                    actions: [
+                        {
+                            type: 'status_applied', side: '秘書', actor_name: '過去のペリドット',
+                            target_name: '深層追跡者', label: '付与: 出血', amount: 0,
+                        },
+                        {
+                            type: 'status_resisted', side: '対戦相手', actor_name: '深層追跡者',
+                            target_name: '過去のペリドット', label: '抵抗: 鈍足', amount: 0,
+                        },
+                    ],
+                    end_state: {
+                        player: { hp: 640, max_hp: 660, mp: 9700, barrier: 20, statuses: [], role_stacks: { fighting_spirit: 2, grace: 1 } },
+                        enemy: { hp: 0, max_hp: 200, mp: 0, barrier: 0, statuses: [{ label: '出血', remaining: 1, stacks: 1 }], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                    },
+                },
+            ],
+            rewards: { xp: 0, shards: 0, g: 0, drops: [] },
+        };
+        const explorationBattle = {
+            id: '55555555-5555-4555-8555-555555555555', context: 'exploration',
+            player_display_name: 'ペリドット', encounter_name: '輝石虫', result: 'victory',
+            rounds_count: 1, xp_awarded: 1150, shard_delta: 0, detail_available: true,
+            combat_level_before: 1, combat_level_after: 6, stp_awarded: 25, unspent_stp_after: 25,
+            summary: { damage_dealt: 1, damage_received: 0 },
+            rounds: [{
+                round: 1,
+                actions: [
+                    { type: 'damage', side: '秘書', actor_name: 'ペリドット', target_name: '輝石虫', label: '通常攻撃', amount: 0, complete_guarded: true },
+                    { type: 'damage', side: '秘書', actor_name: 'ペリドット', target_name: '輝石虫', label: '通常攻撃', amount: 1, complete_guarded: false },
+                ],
+                end_state: {
+                    player: { hp: 660, max_hp: 660, mp: 10000, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                    enemy: { hp: 0, max_hp: 1, mp: 10000, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                },
+            }],
+            rewards: { xp: 1150, shards: 0 },
+        };
+        let battleDetailGets = 0;
+        let explorationAttempts = 0;
+        let innAttempts = 0;
+        let bankTransferAttempts = 0;
+        let releaseInnRetry!: () => void;
+        const innRetryGate = new Promise<void>((resolve) => { releaseInnRetry = resolve; });
+        const explorationResults = new Map<string, typeof explorationBattle>();
+        const innResults = new Map<string, typeof openState>();
+        const bankTransferResults = new Map<string, typeof openState>();
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false,
+                can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
+            if (path === '/api/v1/me/underground') return response(openState);
+            if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') return response(openState);
+            if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as { request_id: string };
+                const duplicate = explorationResults.get(payload.request_id);
+                if (duplicate) return response(duplicate);
+                explorationResults.set(payload.request_id, explorationBattle);
+                explorationAttempts++;
+                openState = { ...openState, next_battle_at: new Date(Date.now() + 10_000).toISOString() };
+                if (explorationAttempts === 1) throw new TypeError('Explore response lost');
+                return response(explorationBattle);
+            }
+            if (path === '/api/v1/me/underground/inn/rest' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as { request_id: string };
+                const duplicate = innResults.get(payload.request_id);
+                if (duplicate) {
+                    await innRetryGate;
+                    openState = duplicate;
+                    return response(openState);
+                }
+                openState = { ...openState, shard_balance: openState.shard_balance - 10, current_hp: growthPath.max_hp };
+                innResults.set(payload.request_id, openState);
+                innAttempts++;
+                if (innAttempts === 1) throw new TypeError('Inn response lost');
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/bank/transfer' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as {
+                    request_id: string;
+                    action: string;
+                    amount?: number;
+                };
+                const duplicate = bankTransferResults.get(payload.request_id);
+                if (duplicate) {
+                    openState = duplicate;
+                    return response(openState);
+                }
+                const amount = payload.action === 'deposit_all'
+                    ? openState.shard_balance
+                    : payload.action === 'withdraw_all'
+                        ? openState.banked_shard_balance
+                        : payload.amount ?? 0;
+                const deposit = payload.action.startsWith('deposit');
+                openState = {
+                    ...openState,
+                    shard_balance: openState.shard_balance + (deposit ? -amount : amount),
+                    banked_shard_balance: openState.banked_shard_balance + (deposit ? amount : -amount),
+                };
+                bankTransferResults.set(payload.request_id, openState);
+                bankTransferAttempts++;
+                if (bankTransferAttempts === 1) throw new TypeError('Failed to fetch');
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/status/stp' && init?.method === 'POST') {
+                openState = {
+                    ...openState,
+                    unspent_stp: 2,
+                    allocated_stp: { ...openState.allocated_stp, vitality: 1 },
+                    status_breakdown: {
+                        ...openState.status_breakdown,
+                        vitality: { baseline: 40, natural_growth: 0, allocated_stp: 1, equipment: 1, final: 42 },
+                    },
+                };
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/skills/acquire' && init?.method === 'POST') {
+                openState = {
+                    ...openState,
+                    skill_points_unspent: 15,
+                    skill_points_spent: 5,
+                    skill_trees: openState.skill_trees.map((tree) => tree.key !== 'miracle' ? tree : {
+                        ...tree,
+                        invested_points: 5,
+                        nodes: tree.nodes.map((node) => ({ ...node, rank: 1, can_acquire: false, unavailable_reason: '最大rankです' })),
+                    }),
+                };
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/skills/loadout' && init?.method === 'PUT') {
+                openState = {
+                    ...openState,
+                    active_slots: [{ key: 'holy_bolt', label: '聖晶弾', summary: '精神を活かす祝福の単体攻撃。', mp_cost: 700, cooldown: 0, required_weapon_styles: [] }, null, null, null, null],
+                };
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/playtest' && init?.method === 'POST') return response(playtestBattle);
+            if (path === '/api/v1/me/underground/battles') return response(historyBattles);
+            if (path === `/api/v1/me/underground/battles/${summary.id}`) {
+                battleDetailGets++;
+                if (battleDetailGets > 1) {
+                    return new Response(JSON.stringify({ message: '戦闘ログを読み込めませんでした。' }), {
+                        status: 500,
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                }
+                return response({
+                    ...summary,
+                    actions: [{ round: 1, side: 'player', action: 'quick_slash', action_label: '連続斬り', amount: 90 }],
+                });
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App, { attachTo: document.body });
+        await flushPromises();
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('内政Lv');
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv1');
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.find('.underground-main-layout').exists()).toBe(true);
+        expect(wrapper.find('.underground-character-pane').exists()).toBe(true);
+        expect(wrapper.find('.underground-action-pane').exists()).toBe(true);
+        expect(wrapper.get('.underground-summary').text()).toContain('戦闘Lv1');
+        expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
+        expect(wrapper.get('.underground-summary').text()).toContain('HP321 / 660');
+        expect(wrapper.get('.underground-summary').text()).toContain('戦闘開始MP10000 / 10000');
+        expect(wrapper.get('.underground-summary').text()).toContain('銀行預金5000 G');
+        expect(wrapper.get('.underground-summary').text()).toContain('未使用STP3');
+        expect(wrapper.get('.underground-equipment').text()).toContain('武器鉄の長剣');
+        expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
+        expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
+        expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-entries button')[0]!.attributes('disabled')).toBeUndefined();
+        expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeDefined();
+        expect(wrapper.findAll('.underground-history li')).toHaveLength(5);
+        expect(wrapper.get('.underground-history').text()).toContain('履歴5');
+        expect(wrapper.get('.underground-history').text()).not.toContain('履歴6');
+        await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
+        expect(wrapper.get('.underground-status-table').text()).toContain('初期値');
+        await wrapper.findAll('.underground-stp-control button')[1]!.trigger('click');
+        await wrapper.get('.underground-progression-panel .button.primary').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-summary').text()).toContain('未使用STP2');
+        await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
+        expect(wrapper.findAll('.underground-progression-note').map((note) => note.text()).join(' '))
+            .toContain('SPを消費することでスキルを習得できます');
+        expect(wrapper.get('.underground-skill-jump').text()).toBe('アクティブスキル設定へ');
+        expect(wrapper.find('#underground-active-loadout').exists()).toBe(true);
+        await wrapper.get('.underground-skill-jump').trigger('click');
+        expect(document.activeElement).toBe(wrapper.get('#underground-loadout-title').element);
+        expect(wrapper.findAll('.underground-tree-tabs [role="tab"]')).toHaveLength(3);
+        expect(wrapper.get('#underground-tree-panel-martial').attributes('data-mobile-active')).toBe('true');
+        await wrapper.get('#underground-tree-tab-miracle').trigger('click');
+        expect(wrapper.get('#underground-tree-panel-martial').attributes('data-mobile-active')).toBe('false');
+        expect(wrapper.get('#underground-tree-panel-miracle').attributes('data-mobile-active')).toBe('true');
+        expect(wrapper.get('.underground-tree-grid').text()).toContain('戦技');
+        expect(wrapper.get('.underground-tree-grid').text()).toContain('護身');
+        expect(wrapper.get('.underground-tree-grid').text()).toContain('祝福');
+        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-node')
+            .map((node) => node.get('strong').text()))
+            .toEqual(['聖晶弾', '治癒祈祷', '精神導路', '輝石循環']);
+        expect(wrapper.get('#underground-tree-panel-miracle .underground-skill-node').text()).toContain('聖晶弾');
+        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-dependency').map((node) => node.text()))
+            .toEqual(['依存： 精神 / 技巧', '依存： 精神', '依存： ー']);
+        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-node')[2]!
+            .find('.underground-skill-dependency').exists()).toBe(false);
+        await wrapper.get('#underground-tree-panel-miracle .underground-skill-node button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-active-skill-notes').text()).toContain('必要武器: 短剣 / 細身剣');
+        expect(wrapper.get('.underground-active-skill-notes').text()).toContain('現在の武器では使用できません');
+        await wrapper.get('.underground-loadout-grid select').setValue('holy_bolt');
+        await wrapper.get('.underground-active-loadout .button.primary').trigger('click');
+        await flushPromises();
+        const loadoutCall = fetchMock.mock.calls.find(([path, init]) => String(path) === '/api/v1/me/underground/skills/loadout' && init?.method === 'PUT');
+        expect(JSON.parse(String(loadoutCall?.[1]?.body)).slots).toEqual(['holy_bolt', null, null, null, null]);
+        await wrapper.findAll('.underground-entries button')[0]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Explore response lost');
+        const failedExplorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
+        ));
+        expect(failedExplorationRequests).toHaveLength(1);
+        const failedExplorationPayload = JSON.parse(String(failedExplorationRequests[0]?.[1]?.body)) as {
+            request_id: string;
+        };
+        await wrapper.findAll('.underground-entries button')[0]!.trigger('click');
+        await flushPromises();
+        const explorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
+        ));
+        expect(explorationRequests).toHaveLength(2);
+        expect(JSON.parse(String(explorationRequests[1]?.[1]?.body))).toEqual({
+            request_id: failedExplorationPayload.request_id,
+        });
+        const explorationLog = wrapper.get('.underground-battle-log').text();
+        expect(explorationLog).toContain('輝石虫は完全防御し、HPダメージは0。');
+        expect(explorationLog.indexOf('Round 1')).toBeLessThan(explorationLog.indexOf('戦闘終了'));
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +1150・輝石の欠片 +0G');
+        expect(wrapper.get('.underground-level-up').attributes('role')).toBe('status');
+        expect(wrapper.get('.underground-level-up strong').text()).toBe('LEVEL UP！');
+        expect(wrapper.get('.underground-level-up').text()).toContain('戦闘Lv 1 → 6');
+        expect(wrapper.get('.underground-level-up').text()).toContain('未使用STP +25（合計 25）');
+        await wrapper.get('.underground-battle-back').trigger('click');
+        const exploreButton = wrapper.findAll('.underground-entries button')[0]!;
+        expect(exploreButton.attributes('disabled')).toBeDefined();
+        expect(exploreButton.text()).toMatch(/あと(?:9|10)秒/);
+        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        expect(wrapper.findAll('.underground-shop-entries button')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-shop-entries button').map((button) => button.attributes('disabled') !== undefined))
+            .toEqual([false, false, false, false]);
+        await wrapper.findAll('.underground-shop-entries button')[0]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Inn response lost');
+        expect(wrapper.get('.underground-summary').text()).toContain('HP321 / 660');
+        const failedInnRequests = fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/underground/inn/rest'
+        ));
+        expect(failedInnRequests).toHaveLength(1);
+        const failedInnPayload = JSON.parse(String(failedInnRequests[0]?.[1]?.body)) as { request_id: string };
+        await wrapper.findAll('.underground-shop-entries button')[0]!.trigger('click');
+        expect(wrapper.findAll('.underground-shop-entries button')[0]!.attributes('disabled')).toBeDefined();
+        expect(wrapper.findAll('.underground-shop-entries button')[0]!.text()).toContain('休憩中…');
+        releaseInnRetry();
+        await flushPromises();
+        expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
+        expect(wrapper.get('.underground-shop').text()).toContain('いい夢は見られましたか？　それじゃ、頑張ってくださいね！');
+        expect(wrapper.get('.underground-inn-result').text()).toBe('（HPが全回復しました）');
+        await wrapper.get('.underground-playtest .button').trigger('click');
+        await flushPromises();
+        await wrapper.get('.underground-battle-back').trigger('click');
+        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        expect(wrapper.find('.underground-inn-result').exists()).toBe(false);
+        const innRequests = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/inn/rest');
+        expect(innRequests).toHaveLength(2);
+        expect(JSON.parse(String(innRequests[1]?.[1]?.body))).toEqual({
+            request_id: failedInnPayload.request_id,
+        });
+        await wrapper.findAll('.underground-shop > .underground-shop-entries button')[2]!.trigger('click');
+        expect(wrapper.get('.underground-bank').text()).toContain('手持ち: 2340 G');
+        expect(wrapper.get('.underground-bank').text()).toContain('預金: 5000 G');
+        await wrapper.get('#underground-bank-amount').setValue('2000');
+        await wrapper.findAll('.underground-bank .underground-shop-entries button')[0]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Failed to fetch');
+        expect(wrapper.get('.underground-bank').text()).toContain('手持ち: 2340 G');
+        expect(wrapper.get('.underground-bank').text()).toContain('預金: 5000 G');
+        const failedBankRequest = fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/underground/bank/transfer'
+        ));
+        expect(failedBankRequest).toHaveLength(1);
+        const failedBankPayload = JSON.parse(String(failedBankRequest[0]?.[1]?.body)) as {
+            request_id: string;
+            action: string;
+            amount: number;
+        };
+        await wrapper.findAll('.underground-bank .underground-shop-entries button')[0]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-bank').text()).toContain('手持ち: 340 G');
+        expect(wrapper.get('.underground-bank').text()).toContain('預金: 7000 G');
+        const bankRequests = fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/underground/bank/transfer'
+        ));
+        expect(bankRequests).toHaveLength(2);
+        expect(JSON.parse(String(bankRequests[1]?.[1]?.body))).toEqual({
+            request_id: failedBankPayload.request_id, action: 'deposit', amount: 2000,
+        });
+        const historyButton = wrapper.get('.underground-history li button');
+        expect(historyButton.text()).toContain('<b>ジャイアントラット</b>');
+        expect(historyButton.find('b').exists()).toBe(false);
+        await historyButton.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-battle-opening').text()).toContain('<b>ジャイアントラット</b>');
+        expect(wrapper.get('.underground-battle-opening').text()).toContain('過去のペリドットは戦闘を開始した。');
+        expect(wrapper.get('.underground-battle-opening').text()).not.toContain('勝利');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('連続斬り');
+        expect(wrapper.get('.underground-battle-log').text()).not.toContain('quick_slash');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('勝利');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +5・輝石の欠片 +0');
+        expect(wrapper.get('.underground-log-jump').text()).toBe('末尾へ');
+        await wrapper.get('.underground-battle-back').trigger('click');
+        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        expect(wrapper.find('.underground-inn-result').exists()).toBe(false);
+        await wrapper.get('.underground-history li button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('戦闘ログを読み込めませんでした。');
+        expect(wrapper.get('.underground-battle-log').text()).toContain('<b>ジャイアントラット</b>');
+        await wrapper.get('.underground-battle-back').trigger('click');
+        expect(wrapper.get('.underground-playtest').text()).toContain('正式な育成・装備状態ではありません');
+        expect(wrapper.get<HTMLSelectElement>('#underground-build').element.value).toBe('pure_tank');
+        await wrapper.get('.underground-playtest .button').trigger('click');
+        await flushPromises();
+        const playtestRequest = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/underground/playtest' && init?.method === 'POST'
+        ));
+        expect(JSON.parse(String(playtestRequest?.[1]?.body))).toEqual({
+            request_id: expect.any(String), build_key: 'pure_tank', enemy_key: 'depth_stalker',
+        });
+        expect(wrapper.get('.underground-battle-log').text()).toContain('過去のペリドットは「防御」を使用した。');
+        expect(wrapper.get('.underground-battle-log').text()).not.toContain('priority_rule_0');
+        expect(wrapper.get('.underground-combat-summary').text()).toContain('防いだダメージ120');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('ラウンド数');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('残HP');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('最終MP');
+        expect(wrapper.findAll('.underground-vitals progress.hp')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-vitals progress.mp')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-round')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('Round 1');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('Round 2');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('深層追跡者に出血が付与された。');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('過去のペリドットは鈍足を防いだ。');
+        expect(wrapper.findAll('.underground-combatant-state')[0]!.get('strong').text()).toBe('過去のペリドット');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('出血 残1・1段階');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('闘志 2・恩寵 1');
+        expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0G・ドロップなし');
+        wrapper.unmount();
+    });
+
+    it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {
+        const battle = {
+            id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',
+            encounter_name: 'ジャイアントラット', result: 'victory', rounds: 2,
+            xp_awarded: 5, shard_delta: 0, detail_available: true,
+            actions: [{ round: 1, side: 'player', action: 'quick_slash', amount: 90 }],
+        };
+        const escapeState = {
+            stage: 'escape_pending', secretary_name: 'ペリドット', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100, shard_balance: 0,
+            shopkeeper_name: null, battle,
+        };
+        const returnedState = { ...escapeState, stage: 'returned_after_tutorial', battle: null };
+        let stateGets = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') {
+                stateGets++;
+                return response(stateGets === 1 ? escapeState : returnedState);
+            }
+            if (path === '/api/v1/me/underground/story/advance' && init?.method === 'POST') return response(null, 409);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        await wrapper.get('.underground-after-battle .button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.emitted('returnToSecretary')).toHaveLength(1);
+    });
+
+    it('renders the story battle outcome as a penalty-free player defeat', async () => {
+        const lossState = {
+            stage: 'special_loss_complete', secretary_name: 'ペリドット', combat_level: 1,
+            combat_xp: 5, next_level_xp: 100, shard_balance: 9,
+            shopkeeper_name: 'ダミー',
+            battle: {
+                id: '22222222-2222-4222-8222-222222222222', context: 'scripted_loss',
+                encounter_name: '（ダミー）', result: 'defeat', rounds: 1,
+                xp_awarded: 0, shard_delta: 0, detail_available: true,
+                actions: [{ round: 1, side: 'enemy', action: 'heavy_strike', amount: 999 }],
+            },
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            if (String(input) === '/api/v1/me/underground') return response(lossState);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        expect(wrapper.get('.underground-battle-result').text()).toContain('敗北');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0');
+    });
+
+    it('completes the normal first-player flow from tutorial through shop explanation and main unlock', async () => {
+        const serverSecretary = structuredClone(unnamedSecretaryFixture);
+        serverSecretary.name = 'ペリドット';
+        serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
+        serverSecretary.header_label = 'ペリドット';
+        let stage = 'not_started';
+        let combatXp = 0;
+        let shopkeeperName: string | null = null;
+        let battle: Record<string, unknown> | null = null;
+        let contractCompleted = false;
+        let growthPath: Record<string, unknown> | null = null;
+        const pathFixture = (key: string, label: string, color: string, build: string) => ({
+            key, label, color, description: [`${label}の説明`], default_build_key: build,
+            stats: { vitality: 40, might: 20, finesse: 15, spirit: 15, agility: 10 },
+            max_hp: 660, max_mp: 10000, natural_recovery: 300,
+            natural_growth: { vitality: 2, might: 1, finesse: 1, spirit: 1, agility: 0 },
+            unspent_stp_per_level: 5, points_per_level: 10,
+        });
+        const growthPaths = [
+            pathFixture('martial_red', '戦技', 'red', 'pure_attacker'),
+            pathFixture('guardianship_blue', '護身', 'blue', 'pure_tank'),
+            pathFixture('blessing_green', '祝福', 'green', 'pure_healer'),
+            pathFixture('free_black', '自由', 'black', 'balanced'),
+        ];
+        const projection = () => ({
+            stage,
+            secretary_name: 'ペリドット',
+            combat_level: 1,
+            combat_xp: combatXp,
+            next_level_xp: 100,
+            shard_balance: 0,
+            shopkeeper_name: shopkeeperName,
+            true_name_branch: false,
+            tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
+            contract_completed: contractCompleted,
+            growth_paths: stage === 'crystal_selection' ? growthPaths : null,
+            growth_path: growthPath,
+            playtest: stage === 'underground_open' ? {
+                notice: 'α版の戦闘検証用完成形ビルドです。正式な育成・装備状態ではありません。',
+                default_build_key: 'pure_tank', builds: [], enemies: [],
+            } : null,
+            battle,
+        });
+        const tutorialBattle = {
+            id: '33333333-3333-4333-8333-333333333333', context: 'tutorial',
+            encounter_name: 'ジャイアントラット', result: 'victory', rounds: 1,
+            xp_awarded: 5, shard_delta: 0, detail_available: true,
+            actions: [{ round: 1, side: 'player', action: 'quick_slash', amount: 90 }],
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false,
+                can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') {
+                serverSecretary.underground = {
+                    available: true, stage, combat_level: 1,
+                    combat_xp: combatXp, next_level_xp: 100,
+                };
+                return response(serverSecretary);
+            }
+            if (path === '/api/v1/me/underground' && init?.method === undefined) return response(projection());
+            if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') {
+                stage = stage === 'not_started' ? 'initial_descent' : 'shopkeeper_encounter';
+                battle = null;
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/tutorial' && init?.method === 'POST') {
+                stage = 'escape_pending';
+                combatXp = 5;
+                battle = tutorialBattle;
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/story/advance' && init?.method === 'POST') {
+                const action = String(JSON.parse(String(init.body)).action);
+                const transitions: Record<string, string> = {
+                    initial_story_complete: 'tutorial_ready',
+                    escape_complete: 'returned_after_tutorial',
+                    shopkeeper_encounter_complete: 'shopkeeper_naming',
+                    shop_explanation_complete: 'contract_ready',
+                    growth_path_story_complete: 'underground_open',
+                };
+                stage = transitions[action] ?? stage;
+                if (stage !== 'escape_pending') battle = null;
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/shopkeeper/name' && init?.method === 'POST') {
+                shopkeeperName = String(JSON.parse(String(init.body)).name).trim();
+                stage = 'shop_explanation';
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/contract' && init?.method === 'POST') {
+                contractCompleted = true;
+                stage = 'crystal_selection';
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/growth-path' && init?.method === 'POST') {
+                const key = String(JSON.parse(String(init.body)).growth_path_key);
+                growthPath = growthPaths.find((candidate) => candidate.key === key) ?? null;
+                stage = 'growth_path_selected';
+                return response(projection());
+            }
+            if (path === '/api/v1/me/underground/battles') return response([tutorialBattle]);
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.findAll('.site-header nav button')
+            .find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.underground-story').text()).toContain('首都に核シェルターを作るための工事');
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-panel h1').text()).toBe('ジャイアントラット');
+        expect(wrapper.find('.underground-tutorial-stats').exists()).toBe(false);
+        await wrapper.get('.underground-battle-preview .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-battle-result').text()).toContain('勝利');
+        await wrapper.get('.underground-after-battle .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv1');
+
+        await wrapper.get('.secretary-underground-entry button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-story').text()).toContain('また来ましたね');
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+        await wrapper.get('#underground-shopkeeper-name').setValue('通常店員');
+        await wrapper.get('.underground-name-form').trigger('submit');
+        await flushPromises();
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-contract').text()).toBe('契約する');
+        await wrapper.get('.underground-contract').trigger('click');
+        await flushPromises();
+        expect(wrapper.findAll('.underground-growth-card')).toHaveLength(4);
+        expect(wrapper.get('.underground-growth-grid').text()).toContain('Lv2以降: 自然成長 5 / 未使用STP +5');
+        await wrapper.findAll('.underground-growth-card .button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-story').text()).toContain('ふふ、とってもお似合いですよ、その能力');
+        await wrapper.get('.underground-panel > .button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('#underground-guide-title').text()).toContain('通常店員');
+        expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
+        expect(wrapper.find('.underground-currency-note').exists()).toBe(false);
+        expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
+        expect(wrapper.get('.underground-summary').text()).toContain('MP10000 / 10000');
+        expect(wrapper.get('.underground-growth-summary').text()).toContain('自然回復 300 MP / ラウンド');
+        const adventureButtons = wrapper.findAll('.underground-entries button');
+        expect(adventureButtons[0]?.attributes('disabled')).toBeUndefined();
+        expect(adventureButtons[1]?.attributes('disabled')).toBeDefined();
+        expect(stage).toBe('underground_open');
+    });
+
+    it('keeps a Secretary load failure visible instead of treating it as an absent Secretary', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', can_manage_announcements: false,
+                can_manage_inquiries: false, providers: [],
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') {
+                return new Response(JSON.stringify({ message: 'Secretaryを読み込めませんでした。' }), {
+                    status: 500,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('Secretaryを読み込めませんでした。');
+        expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === '？？？')).toBe(false);
     });
 
     it('keeps a committed equipment mutation when the scoped projection refresh fails', async () => {
@@ -2135,5 +2973,66 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-form').exists()).toBe(false);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
         expect(wrapper.get('.abandonment-modal [role="alert"]').text()).toContain('このWorldは現在更新中です。');
+    });
+});
+
+describe('Underground equipment navigation', () => {
+    it('opens the shop, shows carried balance, and retries an ambiguous purchase with the same UUID', async () => {
+        const item = {
+            key: 'iron_dagger', name: '鉄の短剣', category: 'weapon', weapon_style: 'dagger', rank: 1, item_level: 1,
+            rarity: 'common', buy_price: 120, sell_price: 60, owned: false, equipped_slot: null,
+            weapon_power: 30, physical_defense: 0, magical_defense: 0, max_hp: 0,
+            stats: { vitality: 0, might: 0, finesse: 3, spirit: 0, agility: 2 }, effect_text: null,
+        };
+        const state = {
+            stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 1, combat_xp: 5,
+            next_level_xp: 100, next_level_requirement: 95, xp_to_next_level: 95, shard_balance: 240,
+            banked_shard_balance: 1000, current_hp: 660, unspent_stp: 0,
+            allocated_stp: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 }, current_stats: null,
+            combat_stats: null, status_breakdown: null,
+            equipment_summary: { used: 1, capacity: 500, equipped: { weapon: { ...item, id: 1, key: 'starter_knife', name: '護身用ナイフ', buy_price: null, sell_price: 0, equipped_slot: 'weapon' }, armor: null, accessory: null } },
+            skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0, skill_tree_identity: null,
+            skill_trees: null, active_slots: [null, null, null, null, null], passive_modifiers: {}, shopkeeper_name: '案内人',
+            true_name_branch: false, tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
+            contract_completed: true, growth_paths: null, growth_path: null, playtest: null, battle: null,
+        };
+        let owned = false;
+        const purchasePayloads: string[] = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') return response(state);
+            if (path === '/api/v1/me/underground/battles') return response([]);
+            if (path === '/api/v1/me/underground/equipment/shop') return response({
+                catalog_identity: 'test-catalog', currency_label: '輝石の欠片 G', shard_balance: owned ? 120 : 240,
+                banked_shard_balance: 1000, bank_auto_withdraw: false,
+                items: [{ ...item, owned }], owned_items: owned ? [{ ...item, id: 42, owned: undefined }] : [],
+            });
+            if (path === '/api/v1/me/underground/equipment/shop/purchase' && init?.method === 'POST') {
+                purchasePayloads.push(String(init.body));
+                if (purchasePayloads.length === 1) return response(null, 503);
+                owned = true;
+                return response({ shard_balance: 120, banked_shard_balance: 1000, vault: { used: 2, capacity: 500, equipped: { weapon: null, armor: null, accessory: null } } });
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        await wrapper.find('.underground-main-navigation button:nth-child(2)').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('#underground-equipment-shop-title').text()).toBe('装備ショップ');
+        expect(wrapper.get('.underground-equipment-screen').text()).toContain('手持ち');
+        expect(wrapper.get('.underground-equipment-screen').text()).toContain('銀行');
+        await wrapper.get('.underground-equipment-card .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('HTTP 503');
+        await wrapper.get('.underground-equipment-card .button').trigger('click');
+        await flushPromises();
+        expect(purchasePayloads).toHaveLength(2);
+        expect(JSON.parse(purchasePayloads[0]!).request_id)
+            .toBe(JSON.parse(purchasePayloads[1]!).request_id);
+        expect(wrapper.get('.underground-equipment-screen').text()).toContain('所有済み');
+        wrapper.unmount();
     });
 });

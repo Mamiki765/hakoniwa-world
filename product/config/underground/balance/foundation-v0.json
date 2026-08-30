@@ -1,0 +1,158 @@
+{
+    "schema_version": 1,
+    "rules_identity": "secretary-underground-alpha-v0",
+    "laboratory_scope": {
+        "status": "player_inaccessible_alpha_v0",
+        "win_rate_observations_are_balance_targets": false,
+        "future_balance_must_preserve_observed_win_rates": false,
+        "retuning_before_first_playable_is_allowed": true,
+        "permanent_contracts": [
+            "deterministic_replay",
+            "legal_state_transitions",
+            "zero_abnormal_states",
+            "explicit_max_round_stalemate",
+            "reproducible_report",
+            "scenario_semantics",
+            "no_surface_dependency"
+        ]
+    },
+    "seed_range": {
+        "start": 0,
+        "count": 10000
+    },
+    "max_rounds": 30,
+    "scenarios": [
+        {
+            "id": "standard_enemy",
+            "party": [
+                {
+                    "actor_key": "knife_initiate",
+                    "weapon_key": "starter_knife",
+                    "skill_keys": [
+                        "quick_slash",
+                        "piercing_thrust",
+                        "mending_light",
+                        "crystal_burst"
+                    ]
+                }
+            ],
+            "enemy_composition": [
+                {
+                    "enemy_key": "cave_crawler"
+                }
+            ],
+            "ai_preset": "built_in_v0",
+            "laboratory_observation": {
+                "classification": "alpha_v0_initial_observation",
+                "seed_start": 0,
+                "seed_count": 10000,
+                "observed_win_rate": 0.7924,
+                "provisional_win_rate_range": {
+                    "min": 0.7,
+                    "max": 0.9
+                },
+                "is_player_facing_balance_target": false,
+                "future_retuning_allowed": true
+            }
+        },
+        {
+            "id": "fast_enemy",
+            "party": [
+                {
+                    "actor_key": "knife_initiate",
+                    "weapon_key": "starter_knife",
+                    "skill_keys": [
+                        "quick_slash",
+                        "piercing_thrust",
+                        "mending_light",
+                        "crystal_burst"
+                    ]
+                }
+            ],
+            "enemy_composition": [
+                {
+                    "enemy_key": "needle_bat"
+                }
+            ],
+            "ai_preset": "built_in_v0",
+            "laboratory_observation": {
+                "classification": "alpha_v0_initial_observation",
+                "seed_start": 0,
+                "seed_count": 10000,
+                "observed_win_rate": 0.561,
+                "provisional_win_rate_range": {
+                    "min": 0.55,
+                    "max": 0.8
+                },
+                "is_player_facing_balance_target": false,
+                "future_retuning_allowed": true
+            }
+        },
+        {
+            "id": "armored_enemy",
+            "party": [
+                {
+                    "actor_key": "knife_initiate",
+                    "weapon_key": "starter_knife",
+                    "skill_keys": [
+                        "quick_slash",
+                        "piercing_thrust",
+                        "mending_light",
+                        "crystal_burst"
+                    ]
+                }
+            ],
+            "enemy_composition": [
+                {
+                    "enemy_key": "stone_shell"
+                }
+            ],
+            "ai_preset": "built_in_v0",
+            "laboratory_observation": {
+                "classification": "alpha_v0_initial_observation",
+                "seed_start": 0,
+                "seed_count": 10000,
+                "observed_win_rate": 0.7538,
+                "provisional_win_rate_range": {
+                    "min": 0.55,
+                    "max": 0.8
+                },
+                "is_player_facing_balance_target": false,
+                "future_retuning_allowed": true
+            }
+        },
+        {
+            "id": "telegraphed_threat",
+            "party": [
+                {
+                    "actor_key": "knife_initiate",
+                    "weapon_key": "starter_knife",
+                    "skill_keys": [
+                        "quick_slash",
+                        "piercing_thrust",
+                        "mending_light",
+                        "crystal_burst"
+                    ]
+                }
+            ],
+            "enemy_composition": [
+                {
+                    "enemy_key": "gloom_herald"
+                }
+            ],
+            "ai_preset": "built_in_v0",
+            "laboratory_observation": {
+                "classification": "alpha_v0_initial_observation",
+                "seed_start": 0,
+                "seed_count": 10000,
+                "observed_win_rate": 0.6783,
+                "provisional_win_rate_range": {
+                    "min": 0.5,
+                    "max": 0.75
+                },
+                "is_player_facing_balance_target": false,
+                "future_retuning_allowed": true
+            }
+        }
+    ]
+}
