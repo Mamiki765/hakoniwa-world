@@ -1693,6 +1693,8 @@ describe('application lobby and island entry', () => {
             rewards: { xp: 1150, shards: 0 },
         };
         let battleDetailGets = 0;
+        let bankTransferAttempts = 0;
+        const bankTransferResults = new Map<string, typeof openState>();
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             const lobby = publicResponse(path);
@@ -1711,7 +1713,16 @@ describe('application lobby and island entry', () => {
                 return response(openState);
             }
             if (path === '/api/v1/me/underground/bank/transfer' && init?.method === 'POST') {
-                const payload = JSON.parse(String(init.body)) as { action: string; amount?: number };
+                const payload = JSON.parse(String(init.body)) as {
+                    request_id: string;
+                    action: string;
+                    amount?: number;
+                };
+                const duplicate = bankTransferResults.get(payload.request_id);
+                if (duplicate) {
+                    openState = duplicate;
+                    return response(openState);
+                }
                 const amount = payload.action === 'deposit_all'
                     ? openState.shard_balance
                     : payload.action === 'withdraw_all'
@@ -1723,6 +1734,9 @@ describe('application lobby and island entry', () => {
                     shard_balance: openState.shard_balance + (deposit ? -amount : amount),
                     banked_shard_balance: openState.banked_shard_balance + (deposit ? amount : -amount),
                 };
+                bankTransferResults.set(payload.request_id, openState);
+                bankTransferAttempts++;
+                if (bankTransferAttempts === 1) throw new TypeError('Failed to fetch');
                 return response(openState);
             }
             if (path === '/api/v1/me/underground/playtest' && init?.method === 'POST') return response(playtestBattle);
@@ -1794,11 +1808,28 @@ describe('application lobby and island entry', () => {
         await wrapper.get('#underground-bank-amount').setValue('2000');
         await wrapper.findAll('.underground-bank .underground-shop-entries button')[0]!.trigger('click');
         await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Failed to fetch');
+        expect(wrapper.get('.underground-bank').text()).toContain('手持ち: 2340 G');
+        expect(wrapper.get('.underground-bank').text()).toContain('預金: 5000 G');
+        const failedBankRequest = fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/underground/bank/transfer'
+        ));
+        expect(failedBankRequest).toHaveLength(1);
+        const failedBankPayload = JSON.parse(String(failedBankRequest[0]?.[1]?.body)) as {
+            request_id: string;
+            action: string;
+            amount: number;
+        };
+        await wrapper.findAll('.underground-bank .underground-shop-entries button')[0]!.trigger('click');
+        await flushPromises();
         expect(wrapper.get('.underground-bank').text()).toContain('手持ち: 340 G');
         expect(wrapper.get('.underground-bank').text()).toContain('預金: 7000 G');
-        const bankRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/me/underground/bank/transfer');
-        expect(JSON.parse(String(bankRequest?.[1]?.body))).toEqual({
-            request_id: expect.any(String), action: 'deposit', amount: 2000,
+        const bankRequests = fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/underground/bank/transfer'
+        ));
+        expect(bankRequests).toHaveLength(2);
+        expect(JSON.parse(String(bankRequests[1]?.[1]?.body))).toEqual({
+            request_id: failedBankPayload.request_id, action: 'deposit', amount: 2000,
         });
         const historyButton = wrapper.get('.underground-history li button');
         expect(historyButton.text()).toContain('<b>ジャイアントラット</b>');

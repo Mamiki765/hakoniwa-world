@@ -96,6 +96,11 @@ interface PlaytestOptions {
     enemies: PlaytestOption[];
 }
 
+interface PendingBankMutation {
+    fingerprint: string;
+    requestId: string;
+}
+
 interface UndergroundState {
     stage: Stage;
     secretary_name: string;
@@ -242,6 +247,7 @@ const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
+const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
@@ -285,14 +291,18 @@ async function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
     if (state.value.stage === 'underground_open') await loadBattles();
 }
 
-async function mutate(path: string, body: Record<string, unknown> = {}): Promise<boolean> {
+async function mutate(
+    path: string,
+    body: Record<string, unknown> = {},
+    mutationRequestId = requestId(),
+): Promise<boolean> {
     if (busy.value) return false;
     busy.value = true;
     error.value = '';
     try {
         state.value = await api<UndergroundState>(path, {
             method: 'POST',
-            body: JSON.stringify({ request_id: requestId(), ...body }),
+            body: JSON.stringify({ request_id: mutationRequestId, ...body }),
         });
         selectedBattle.value = null;
         if (state.value.stage === 'returned_after_tutorial') {
@@ -381,7 +391,14 @@ async function restAtInn(): Promise<void> {
 async function runBankAction(action: 'deposit' | 'withdraw' | 'deposit_all' | 'withdraw_all'): Promise<void> {
     const body: Record<string, unknown> = { action };
     if (action === 'deposit' || action === 'withdraw') body.amount = Number(bankAmount.value);
-    await mutate('/api/v1/me/underground/bank/transfer', body);
+    const fingerprint = JSON.stringify(body);
+    const pending = pendingBankMutation.value?.fingerprint === fingerprint
+        ? pendingBankMutation.value
+        : { fingerprint, requestId: requestId() };
+    pendingBankMutation.value = pending;
+    if (await mutate('/api/v1/me/underground/bank/transfer', body, pending.requestId)) {
+        pendingBankMutation.value = null;
+    }
 }
 
 async function enter(): Promise<void> {

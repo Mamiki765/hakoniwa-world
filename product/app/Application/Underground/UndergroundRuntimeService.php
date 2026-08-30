@@ -784,7 +784,9 @@ final readonly class UndergroundRuntimeService
             );
         }
 
-        return $battle->load('log');
+        return $battle->load([
+            'log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+        ]);
     }
 
     private function assertExplorationUnlocked(UndergroundProfile $profile): void

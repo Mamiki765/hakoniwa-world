@@ -464,6 +464,15 @@ final class UndergroundRuntimeTest extends TestCase
         Carbon::setTestNow(Carbon::now()->addHour());
         $future = $runtime->explore($other, (string) Str::uuid())['battle'];
         Carbon::setTestNow($first->finished_at->addHour());
+        $expiredDuplicate = $runtime->explore($owner, $requestId);
+        $expiredProjection = $runtime->projectExplorationBattle($expiredDuplicate['battle']);
+        $this->assertTrue($expiredDuplicate['duplicate']);
+        $this->assertSame($first->id, $expiredDuplicate['battle']->id);
+        $this->assertNull($expiredDuplicate['battle']->log);
+        $this->assertFalse($expiredProjection['detail_available']);
+        $this->assertNull($expiredProjection['rounds']);
+        $this->assertSame('詳細ログは保存期間を過ぎました。', $expiredProjection['detail_message']);
+        $this->assertDatabaseHas('underground_battle_logs', ['underground_battle_id' => $first->id]);
         $this->artisan('underground:prune-battle-logs')
             ->expectsOutput('Pruned 1 expired Underground battle log(s).')
             ->assertSuccessful();
