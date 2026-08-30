@@ -24,6 +24,22 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(AlphaV1CombatRules::TREES, $manifest['skill_tree_keys']);
         $this->assertSame(120, $manifest['balance']['build_point_budget']);
         $this->assertSame(5, $manifest['balance']['active_skill_limit']);
+        $this->assertSame(AlphaV1CombatRules::TARGETING_IDENTITY, $manifest['targeting_contract']['identity']);
+        $this->assertSame([
+            'key' => 'taunt',
+            'label' => '挑発',
+            'duration' => 'battle',
+            'targeting_scope' => 'default_hostile_single_target',
+            'overrides_explicit_targeting' => false,
+            'latest_source_wins' => true,
+            'invalid_source_fallback' => 'normal_target_selection',
+        ], $manifest['targeting_contract']['taunt']);
+        foreach (['shield_bash', 'bulwark_strike', 'unbroken_retort'] as $skillKey) {
+            $this->assertSame(
+                ['type' => 'taunt', 'target' => 'enemy'],
+                $manifest['skills'][$skillKey]['effects'][0],
+            );
+        }
         foreach ($catalog->buildKeys() as $buildKey) {
             $build = $validator->validate($catalog, $buildKey);
             $this->assertSame(120, $build['points_spent']);
@@ -208,6 +224,58 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertGreaterThan(0, $tank->effectiveHealing);
         $this->assertGreaterThan(0, $tank->damagePrevented);
         $this->assertGreaterThan(0, $tank->actionUsage['unbroken_retort']);
+        $taunts = array_values(array_filter(
+            $tank->actionLog,
+            static fn (array $row): bool => $row['action'] === 'taunt',
+        ));
+        $this->assertNotEmpty($taunts);
+        $this->assertSame(AlphaV1CombatRules::TARGETING_IDENTITY, $taunts[0]['targeting_identity']);
+        $this->assertSame('default_hostile_single_target', $taunts[0]['targeting_scope']);
+        $this->assertSame('battle', $taunts[0]['duration']);
+        $this->assertFalse($taunts[0]['overrides_explicit_targeting']);
+        $this->assertSame('pure_tank', $taunts[0]['source_actor_key']);
+        $this->assertSame('pressure_construct', $taunts[0]['target_actor_key']);
+        $this->assertNotEmpty(array_intersect(
+            ['shield_bash', 'bulwark_strike', 'unbroken_retort', 'counter'],
+            array_column($taunts, 'source_action'),
+        ));
+
+        $withoutSkillTaunt = $manifest;
+        foreach (['shield_bash', 'bulwark_strike', 'unbroken_retort'] as $skillKey) {
+            $withoutSkillTaunt['skills'][$skillKey]['effects'] = array_values(array_filter(
+                $withoutSkillTaunt['skills'][$skillKey]['effects'],
+                static fn (array $effect): bool => ($effect['type'] ?? null) !== 'taunt',
+            ));
+        }
+        $withoutSkillTaunt = $this->model()->fight(
+            new AlphaV1BuildCatalog($withoutSkillTaunt),
+            'pure_tank',
+            'pressure_construct',
+            'early',
+            4,
+            20,
+        );
+        $this->assertSame([
+            $withoutSkillTaunt->winner,
+            $withoutSkillTaunt->rounds,
+            $withoutSkillTaunt->playerRemainingHp,
+            $withoutSkillTaunt->enemyRemainingHp,
+            $withoutSkillTaunt->damageDealt,
+            $withoutSkillTaunt->damageReceived,
+            $withoutSkillTaunt->effectiveHealing,
+            $withoutSkillTaunt->damagePrevented,
+            $withoutSkillTaunt->finalMp,
+        ], [
+            $tank->winner,
+            $tank->rounds,
+            $tank->playerRemainingHp,
+            $tank->enemyRemainingHp,
+            $tank->damageDealt,
+            $tank->damageReceived,
+            $tank->effectiveHealing,
+            $tank->damagePrevented,
+            $tank->finalMp,
+        ]);
 
         $attacker = $this->model()->fight($catalog, 'pure_attacker', 'crystal_warden', 'early', 2, 30);
         $appliedRounds = array_column(array_filter(
@@ -338,16 +406,25 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertNotEmpty($counterRows, json_encode($settled->actionLog, JSON_THROW_ON_ERROR));
         $this->assertSame(0, $counterRows[0]['amount']);
         $this->assertGreaterThan(0, $counterRows[0]['barrier_absorbed']);
+        $counterTaunts = array_values(array_filter(
+            $settled->actionLog,
+            static fn (array $row): bool => $row['action'] === 'taunt'
+                && ($row['source_action'] ?? null) === 'counter',
+        ));
+        $this->assertNotEmpty($counterTaunts);
+        $this->assertSame('pure_tank', $counterTaunts[0]['source_actor_key']);
+        $this->assertSame('pressure_construct', $counterTaunts[0]['target_actor_key']);
         $this->assertNotEmpty($periodicRows, json_encode($settled->actionLog, JSON_THROW_ON_ERROR));
         $this->assertSame(0, $periodicRows[0]['amount']);
         $this->assertGreaterThan($periodicRows[0]['actor_hp'], $periodicRows[0]['barrier_absorbed']);
         $projected = (new UndergroundAlphaV1BattleProjector)->project($settled, $barrierCatalog);
-        $projectedTypes = collect($projected['rounds'])
+        $projectedActions = collect($projected['rounds'])
             ->flatMap(static fn (array $round): array => $round['actions'])
-            ->pluck('type')
-            ->all();
-        $this->assertContains('barrier', $projectedTypes);
-        $this->assertContains('status_applied', $projectedTypes);
+            ->values();
+        $this->assertContains('barrier', $projectedActions->pluck('type')->all());
+        $this->assertContains('status_applied', $projectedActions->pluck('type')->all());
+        $this->assertContains('taunt_applied', $projectedActions->pluck('type')->all());
+        $this->assertContains('挑発', $projectedActions->pluck('label')->all());
     }
 
     public function test_status_stack_refresh_cleanse_and_boss_control_conversion_never_create_permanent_lock(): void
@@ -370,6 +447,18 @@ final class UndergroundCombatBuildTest extends TestCase
         $manifest['enemies']['pressure_construct']['skills'] = ['enemy_break'];
         $manifest['enemies']['pressure_construct']['ai_rules'] = [[
             'conditions' => [['type' => 'always']], 'action' => 'skill:enemy_break',
+        ]];
+        $manifest['builds']['pure_healer']['active_skills'] = [
+            'radiant_judgment', 'crystal_aegis', 'cleansing_wave', 'mending_prayer', 'holy_bolt',
+        ];
+        $manifest['builds']['pure_healer']['ai_rules'] = [[
+            'conditions' => [
+                ['type' => 'self_has_status', 'status' => 'armor_break'],
+                ['type' => 'skill_ready', 'skill' => 'cleansing_wave'],
+            ],
+            'action' => 'skill:cleansing_wave',
+        ], [
+            'conditions' => [['type' => 'always']], 'action' => 'normal_attack',
         ]];
         $cleansed = $this->model()->fight(
             new AlphaV1BuildCatalog($manifest),
@@ -414,6 +503,47 @@ final class UndergroundCombatBuildTest extends TestCase
             ));
         };
         $this->assertGreaterThan($skips($highAgility), $skips($lowAgility));
+    }
+
+    public function test_crystal_cycle_spends_an_action_restores_mp_and_caps_overflow(): void
+    {
+        [$manifest] = $this->catalog();
+        $skill = $manifest['skills']['crystal_cycle'];
+        $this->assertSame(0, $skill['mp_cost']);
+        $this->assertSame(7, $skill['cooldown']);
+        $this->assertSame(3000, $skill['effects'][0]['amount']);
+        $this->assertSame('skill:mending_prayer', $manifest['builds']['pure_healer']['ai_rules'][0]['action']);
+        $this->assertSame('skill:crystal_cycle', $manifest['builds']['pure_healer']['ai_rules'][1]['action']);
+
+        $manifest['builds']['pure_healer']['ai_rules'] = [[
+            'conditions' => [
+                ['type' => 'round_modulo', 'modulo' => 2, 'equals' => 1],
+                ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
+            ],
+            'action' => 'skill:mending_prayer',
+        ], [
+            'conditions' => [['type' => 'skill_ready', 'skill' => 'crystal_cycle']],
+            'action' => 'skill:crystal_cycle',
+        ], [
+            'conditions' => [['type' => 'always']], 'action' => 'normal_attack',
+        ]];
+        $manifest['enemies']['endurance_construct']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'defend',
+        ]];
+
+        $result = $this->model()->fight(
+            new AlphaV1BuildCatalog($manifest), 'pure_healer', 'endurance_construct', 'early', 11, 2,
+        );
+        $retry = $this->model()->fight(
+            new AlphaV1BuildCatalog($manifest), 'pure_healer', 'endurance_construct', 'early', 11, 2,
+        );
+
+        $this->assertSame($result->toArray(), $retry->toArray());
+        $this->assertSame(1, $result->actionUsage['crystal_cycle']);
+        $this->assertGreaterThan(0, $result->mpSkillRecovery);
+        $this->assertSame($result->mpSkillRecovery, $result->crystalCycleRecovery);
+        $this->assertGreaterThan(0, $result->mpOverflow);
+        $this->assertLessThanOrEqual(AlphaV1CombatRules::MAX_MP, $result->finalMp);
     }
 
     public function test_fighting_spirit_and_grace_require_effective_defense_or_recovery(): void
@@ -592,6 +722,41 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertGreaterThan(1_900, $completeGuards);
         $this->assertGreaterThan(0, $passedHits);
         $this->assertSame(2_000, $completeGuards + $passedHits);
+
+        [$skillManifest] = $this->catalog();
+        $skillManifest['enemies']['crystal_bug'] = $configuration['exploration']['encounters']['crystal_bug']['enemy'];
+        $skillCatalog = new AlphaV1BuildCatalog($skillManifest);
+        $skillSnapshot = [
+            'key' => 'secretary_runtime',
+            'label' => '輝石虫試験の秘書',
+            'stats' => $growthStats,
+            'active_skills' => ['precision_cut'],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'skill:precision_cut']],
+            'modifiers' => [],
+            'equipment' => $weapon,
+        ];
+        $precisionWins = 0;
+        $flurryWins = 0;
+        foreach (range(0, 999) as $seed) {
+            $precision = $this->model()->fightPlayerSnapshot(
+                $skillCatalog, $skillSnapshot, 'crystal_bug', $seed, 1, 300,
+            );
+            $precisionWins += $precision->winner === 'player' ? 1 : 0;
+
+            $skillSnapshot['active_skills'] = ['dagger_flurry'];
+            $skillSnapshot['ai_rules'] = [[
+                'conditions' => [['type' => 'always']], 'action' => 'skill:dagger_flurry',
+            ]];
+            $flurry = $this->model()->fightPlayerSnapshot(
+                $skillCatalog, $skillSnapshot, 'crystal_bug', $seed, 1, 300,
+            );
+            $flurryWins += $flurry->winner === 'player' ? 1 : 0;
+            $skillSnapshot['active_skills'] = ['precision_cut'];
+            $skillSnapshot['ai_rules'] = [[
+                'conditions' => [['type' => 'always']], 'action' => 'skill:precision_cut',
+            ]];
+        }
+        $this->assertGreaterThan($precisionWins, $flurryWins);
     }
 
     public function test_true_name_story_profile_is_a_short_deterministic_alpha_v1_tank_defeat(): void
@@ -640,7 +805,11 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertContains('counter_stance', $actions);
         $this->assertContains('counter', $actions);
         $this->assertContains('round_end', $actions);
-        $counter = $first->actionLog[array_key_last($first->actionLog) - 1];
+        $counterRows = array_values(array_filter(
+            $first->actionLog,
+            static fn (array $row): bool => $row['action'] === 'counter',
+        ));
+        $counter = $counterRows[array_key_last($counterRows)];
         $this->assertSame('counter', $counter['action']);
         $this->assertGreaterThan(500, $counter['amount']);
         $this->assertSame([], $first->abnormalState);

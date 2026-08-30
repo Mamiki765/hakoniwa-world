@@ -1611,7 +1611,7 @@ describe('application lobby and island entry', () => {
             builds: [
                 { key: 'pure_attacker', label: '攻撃特化', description: '短期戦' },
                 { key: 'pure_tank', label: '護身特化', description: '防御判断' },
-                { key: 'pure_healer', label: '奇跡特化', description: '回復' },
+                { key: 'pure_healer', label: '祝福特化', description: '回復' },
                 { key: 'balanced', label: '混成', description: '混成' },
             ],
             enemies: [
@@ -1623,10 +1623,30 @@ describe('application lobby and island entry', () => {
         let openState = {
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 1,
             combat_xp: 5, next_level_xp: 100, next_level_requirement: 100, xp_to_next_level: 95,
-            shard_balance: 2350, banked_shard_balance: 5000, current_hp: 321, unspent_stp: 0,
+            shard_balance: 2350, banked_shard_balance: 5000, current_hp: 321, unspent_stp: 3,
             allocated_stp: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 },
             current_stats: growthPath.stats,
             combat_stats: { vitality: 41, might: 21, finesse: 16, spirit: 16, agility: 11 },
+            status_breakdown: {
+                vitality: { baseline: 40, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 41 },
+                might: { baseline: 20, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 21 },
+                finesse: { baseline: 15, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 16 },
+                spirit: { baseline: 15, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 16 },
+                agility: { baseline: 10, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 11 },
+            },
+            skill_points_total: 20, skill_points_unspent: 20, skill_points_spent: 0,
+            skill_tree_identity: 'secretary-underground-skill-tree-alpha-v1',
+            skill_trees: [{ key: 'martial', label: '戦技', invested_points: 0, full_points: 100, nodes: [] },
+                { key: 'guardianship', label: '護身', invested_points: 0, full_points: 100, nodes: [] },
+                { key: 'miracle', label: '祝福', invested_points: 0, full_points: 100, nodes: [{
+                    key: 'miracle_holy_bolt', label: '聖晶弾', summary: '精神を活かす祝福の単体攻撃。',
+                    type: 'active', rank: 0, max_rank: 1, point_cost: 5, invested_points_required: 0,
+                    prerequisite: null, can_acquire: true, unavailable_reason: null as string | null,
+                    skill_key: 'holy_bolt', mp_cost: 700, cooldown: 0, required_weapon_styles: [], active_slot: null,
+                }] }],
+            active_slots: [null, null, null, null, null] as Array<{
+                key: string; label: string; summary: string; mp_cost: number; cooldown: number; required_weapon_styles: string[];
+            } | null>, passive_modifiers: {},
             starter_weapon: { key: 'starter_knife', label: '護身用ナイフ', item_level: 1, rarity: 'common' },
             shopkeeper_name: '<b>店員</b>', true_name_branch: false,
             tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
@@ -1696,6 +1716,8 @@ describe('application lobby and island entry', () => {
         let explorationAttempts = 0;
         let innAttempts = 0;
         let bankTransferAttempts = 0;
+        let releaseInnRetry!: () => void;
+        const innRetryGate = new Promise<void>((resolve) => { releaseInnRetry = resolve; });
         const explorationResults = new Map<string, typeof explorationBattle>();
         const innResults = new Map<string, typeof openState>();
         const bankTransferResults = new Map<string, typeof openState>();
@@ -1724,6 +1746,7 @@ describe('application lobby and island entry', () => {
                 const payload = JSON.parse(String(init.body)) as { request_id: string };
                 const duplicate = innResults.get(payload.request_id);
                 if (duplicate) {
+                    await innRetryGate;
                     openState = duplicate;
                     return response(openState);
                 }
@@ -1758,6 +1781,38 @@ describe('application lobby and island entry', () => {
                 bankTransferResults.set(payload.request_id, openState);
                 bankTransferAttempts++;
                 if (bankTransferAttempts === 1) throw new TypeError('Failed to fetch');
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/status/stp' && init?.method === 'POST') {
+                openState = {
+                    ...openState,
+                    unspent_stp: 2,
+                    allocated_stp: { ...openState.allocated_stp, vitality: 1 },
+                    status_breakdown: {
+                        ...openState.status_breakdown,
+                        vitality: { baseline: 40, natural_growth: 0, allocated_stp: 1, equipment: 1, final: 42 },
+                    },
+                };
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/skills/acquire' && init?.method === 'POST') {
+                openState = {
+                    ...openState,
+                    skill_points_unspent: 15,
+                    skill_points_spent: 5,
+                    skill_trees: openState.skill_trees.map((tree) => tree.key !== 'miracle' ? tree : {
+                        ...tree,
+                        invested_points: 5,
+                        nodes: tree.nodes.map((node) => ({ ...node, rank: 1, can_acquire: false, unavailable_reason: '最大rankです' })),
+                    }),
+                };
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/skills/loadout' && init?.method === 'PUT') {
+                openState = {
+                    ...openState,
+                    active_slots: [{ key: 'holy_bolt', label: '聖晶弾', summary: '精神を活かす祝福の単体攻撃。', mp_cost: 700, cooldown: 0, required_weapon_styles: [] }, null, null, null, null],
+                };
                 return response(openState);
             }
             if (path === '/api/v1/me/underground/playtest' && init?.method === 'POST') return response(playtestBattle);
@@ -1795,13 +1850,39 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
         expect(wrapper.get('.underground-summary').text()).toContain('HP321 / 660');
         expect(wrapper.get('.underground-summary').text()).toContain('戦闘開始MP10000 / 10000');
-        expect(wrapper.get('.underground-summary').text()).toContain('未使用STP0');
+        expect(wrapper.get('.underground-summary').text()).toContain('銀行預金5000 G');
+        expect(wrapper.get('.underground-summary').text()).toContain('未使用STP3');
         expect(wrapper.get('.underground-equipment').text()).toContain('武器護身用ナイフ');
         expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
         expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
         expect(wrapper.findAll('.underground-entries button')[0]!.attributes('disabled')).toBeUndefined();
         expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeDefined();
+        await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
+        expect(wrapper.get('.underground-status-table').text()).toContain('初期値');
+        await wrapper.findAll('.underground-stp-control button')[1]!.trigger('click');
+        await wrapper.get('.underground-progression-panel .button.primary').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-summary').text()).toContain('未使用STP2');
+        await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
+        expect(wrapper.findAll('.underground-progression-note').map((note) => note.text()).join(' '))
+            .toContain('SPを消費することでスキルを習得できます');
+        expect(wrapper.findAll('.underground-tree-tabs [role="tab"]')).toHaveLength(3);
+        expect(wrapper.get('#underground-tree-panel-martial').attributes('data-mobile-active')).toBe('true');
+        await wrapper.get('#underground-tree-tab-miracle').trigger('click');
+        expect(wrapper.get('#underground-tree-panel-martial').attributes('data-mobile-active')).toBe('false');
+        expect(wrapper.get('#underground-tree-panel-miracle').attributes('data-mobile-active')).toBe('true');
+        expect(wrapper.get('.underground-tree-grid').text()).toContain('戦技');
+        expect(wrapper.get('.underground-tree-grid').text()).toContain('護身');
+        expect(wrapper.get('.underground-tree-grid').text()).toContain('祝福');
+        expect(wrapper.get('.underground-skill-node').text()).toContain('聖晶弾');
+        await wrapper.get('.underground-skill-node button').trigger('click');
+        await flushPromises();
+        await wrapper.get('.underground-loadout-grid select').setValue('holy_bolt');
+        await wrapper.get('.underground-active-loadout .button.primary').trigger('click');
+        await flushPromises();
+        const loadoutCall = fetchMock.mock.calls.find(([path, init]) => String(path) === '/api/v1/me/underground/skills/loadout' && init?.method === 'PUT');
+        expect(JSON.parse(String(loadoutCall?.[1]?.body)).slots).toEqual(['holy_bolt', null, null, null, null]);
         await wrapper.findAll('.underground-entries button')[0]!.trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Explore response lost');
@@ -1841,8 +1922,13 @@ describe('application lobby and island entry', () => {
         expect(failedInnRequests).toHaveLength(1);
         const failedInnPayload = JSON.parse(String(failedInnRequests[0]?.[1]?.body)) as { request_id: string };
         await wrapper.findAll('.underground-shop-entries button')[0]!.trigger('click');
+        expect(wrapper.findAll('.underground-shop-entries button')[0]!.attributes('disabled')).toBeDefined();
+        expect(wrapper.findAll('.underground-shop-entries button')[0]!.text()).toContain('休憩中…');
+        releaseInnRetry();
         await flushPromises();
         expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
+        expect(wrapper.get('.underground-shop').text()).toContain('いい夢は見られましたか？　それじゃ、頑張ってくださいね！');
+        expect(wrapper.get('.underground-inn-result').text()).toBe('（HPが全回復しました）');
         const innRequests = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/inn/rest');
         expect(innRequests).toHaveLength(2);
         expect(JSON.parse(String(innRequests[1]?.[1]?.body))).toEqual({

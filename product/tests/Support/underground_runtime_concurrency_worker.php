@@ -93,6 +93,31 @@ try {
             'shard_balance' => $result['shard_balance'],
             'banked_shard_balance' => $result['banked_shard_balance'],
         ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'stp_allocate') {
+        $result = app(UndergroundIntroService::class)->allocateStp(
+            $user,
+            (string) $payload['request_id'],
+            $payload['allocations'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'unspent_stp' => $result['unspent_stp'],
+            'allocated_stp' => $result['allocated_stp'],
+        ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'skill_acquire') {
+        $result = app(UndergroundIntroService::class)->acquireSkillNode(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['node_key'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'skill_points_unspent' => $result['skill_points_unspent'],
+        ], JSON_THROW_ON_ERROR));
     } else {
         $result = app(UndergroundRuntimeService::class)->explore(
             $user,

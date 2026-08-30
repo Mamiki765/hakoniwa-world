@@ -163,6 +163,41 @@ final class UndergroundBuildValidator
     }
 
     /**
+     * Canonical alpha-v1 passive-node aggregation shared by laboratory and player runtime builds.
+     *
+     * @param  array<string, mixed>  $passiveNodes
+     * @return array<string, int|bool|string>
+     */
+    public function passiveModifiers(AlphaV1BuildCatalog $catalog, array $passiveNodes): array
+    {
+        $modifiers = [];
+        foreach ($passiveNodes as $nodeKey => $rank) {
+            $node = $catalog->node($nodeKey)['node'];
+            if (($node['type'] ?? null) !== 'passive' || ! is_int($rank) || $rank < 1
+                || $rank > ($node['max_rank'] ?? 0)) {
+                throw new InvalidArgumentException("Underground alpha-v1 passive node [{$nodeKey}] is invalid.");
+            }
+            foreach (($node['modifiers'] ?? []) as $modifier) {
+                if (! is_array($modifier) || ! is_string($modifier['key'] ?? null)) {
+                    throw new InvalidArgumentException("Underground alpha-v1 passive node [{$nodeKey}] modifier is invalid.");
+                }
+                $key = $modifier['key'];
+                if (($modifier['flag'] ?? false) === true) {
+                    $modifiers[$key] = true;
+                } elseif (is_int($modifier['fixed_value'] ?? null)) {
+                    $modifiers[$key] = $modifier['fixed_value'];
+                } elseif (is_int($modifier['value_per_rank'] ?? null)) {
+                    $modifiers[$key] = (int) ($modifiers[$key] ?? 0) + ($modifier['value_per_rank'] * $rank);
+                } else {
+                    throw new InvalidArgumentException("Underground alpha-v1 passive node [{$nodeKey}] modifier is invalid.");
+                }
+            }
+        }
+
+        return $modifiers;
+    }
+
+    /**
      * @param  list<string>  $activeSkills
      * @param  list<mixed>  $aiRules
      */

@@ -15,10 +15,13 @@ use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
+use App\Models\UndergroundSkillAllocation;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
+use RuntimeException;
 
 final readonly class UndergroundIntroService
 {
@@ -283,6 +286,9 @@ final readonly class UndergroundIntroService
                 $profile->combat_level,
                 $profile->allocatedStp(),
             );
+            $profile->skill_points_total = $this->alphaV1Catalog->initialSkillPoints();
+            $profile->skill_points_unspent = $this->alphaV1Catalog->initialSkillPoints();
+            $profile->skill_tree_identity = $this->alphaV1Catalog->skillTreeIdentity();
             $profile->save();
             $intro->stage = UndergroundIntroStage::GROWTH_PATH_SELECTED;
             $intro->save();
@@ -386,6 +392,181 @@ final readonly class UndergroundIntroService
         );
     }
 
+    /**
+     * @param  array<string, mixed>  $requestedAllocations
+     * @return array<string, mixed>
+     */
+    public function allocateStp(User $user, string $requestId, array $requestedAllocations): array
+    {
+        $allocations = [];
+        foreach (AlphaV1CombatRules::STATS as $stat) {
+            if (! array_key_exists($stat, $requestedAllocations)) {
+                continue;
+            }
+            $value = $requestedAllocations[$stat];
+            if (! is_int($value) || $value < 1) {
+                throw new UndergroundRuntimeException('underground_stp_allocation_invalid', 'STP配分を確認してください。');
+            }
+            $allocations[$stat] = $value;
+        }
+        if ($allocations === [] || count($allocations) !== count($requestedAllocations)) {
+            throw new UndergroundRuntimeException('underground_stp_allocation_invalid', 'STP配分を確認してください。');
+        }
+
+        return $this->mutate($user, $requestId, 'stp_allocate', ['allocations' => $allocations], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($allocations): void {
+            $this->assertGrowthUnlocked($profile, $intro);
+            $total = array_sum($allocations);
+            if ($total > $profile->unspent_stp) {
+                throw new UndergroundRuntimeException('underground_stp_insufficient', '未使用STPが不足しています。');
+            }
+            $currentHp = $profile->current_hp ?? $this->alphaV1Catalog->currentMaxHp(
+                (string) $profile->growth_path_key,
+                $profile->combat_level,
+                $profile->allocatedStp(),
+            );
+            foreach ($allocations as $stat => $value) {
+                $column = 'allocated_'.$stat.'_stp';
+                if ($profile->{$column} > 2_147_483_647 - $value) {
+                    throw new UndergroundRuntimeException('underground_stp_allocation_overflow', 'STP配分が上限を超えます。');
+                }
+                $profile->{$column} += $value;
+            }
+            $profile->unspent_stp -= $total;
+            $newMaxHp = $this->alphaV1Catalog->currentMaxHp(
+                (string) $profile->growth_path_key,
+                $profile->combat_level,
+                $profile->allocatedStp(),
+            );
+            $profile->current_hp = min($currentHp, $newMaxHp);
+            $profile->save();
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function acquireSkillNode(User $user, string $requestId, string $nodeKey): array
+    {
+        try {
+            $entry = $this->alphaV1Catalog->laboratoryCatalog()->node($nodeKey);
+        } catch (InvalidArgumentException) {
+            throw new UndergroundRuntimeException('underground_skill_node_unknown', 'Skill Tree nodeを確認してください。');
+        }
+
+        return $this->mutate($user, $requestId, 'skill_acquire', ['node_key' => $nodeKey], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($nodeKey, $entry): void {
+            $this->assertSkillTreeUnlocked($profile, $intro);
+            $catalog = $this->alphaV1Catalog->laboratoryCatalog();
+            $node = $entry['node'];
+            $allocation = UndergroundSkillAllocation::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('node_key', $nodeKey)
+                ->lockForUpdate()
+                ->first();
+            $currentRank = $allocation instanceof UndergroundSkillAllocation ? $allocation->rank : 0;
+            $maxRank = $node['max_rank'] ?? null;
+            $cost = $node['point_cost_per_rank'] ?? null;
+            $required = $node['invested_points_required'] ?? null;
+            if (! is_int($maxRank) || ! is_int($cost) || ! is_int($required)) {
+                throw new UndergroundRuntimeException('underground_skill_node_invalid', 'Skill Tree nodeを解決できません。');
+            }
+            if ($currentRank >= $maxRank) {
+                throw new UndergroundRuntimeException('underground_skill_max_rank', 'このnodeは最大rankです。');
+            }
+            $allocationMap = $profile->skillAllocationMap();
+            $prerequisite = $node['prerequisite'] ?? null;
+            if (is_string($prerequisite) && ! isset($allocationMap[$prerequisite])) {
+                throw new UndergroundRuntimeException('underground_skill_prerequisite', '前提skillが未取得です。');
+            }
+            if ($this->alphaV1Catalog->investedBelowGate(
+                $catalog,
+                $allocationMap,
+                $entry['tree'],
+                $required,
+            ) < $required) {
+                throw new UndergroundRuntimeException('underground_skill_investment_gate', '同じSkill Treeへの投資SPが不足しています。');
+            }
+            if ($profile->skill_points_unspent < $cost) {
+                throw new UndergroundRuntimeException('underground_skill_points_insufficient', '未使用SPが不足しています。');
+            }
+
+            $profile->skill_points_unspent -= $cost;
+            $profile->save();
+            if ($allocation instanceof UndergroundSkillAllocation) {
+                $allocation->rank++;
+                $allocation->save();
+            } else {
+                UndergroundSkillAllocation::query()->create([
+                    'underground_profile_id' => $profile->id,
+                    'node_key' => $nodeKey,
+                    'rank' => 1,
+                    'active_slot' => null,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * @param  array<int, mixed>  $slots
+     * @return array<string, mixed>
+     */
+    public function updateActiveLoadout(User $user, string $requestId, array $slots): array
+    {
+        if (count($slots) !== AlphaV1CombatRules::ACTIVE_SKILL_LIMIT || ! array_is_list($slots)) {
+            throw new UndergroundRuntimeException('underground_active_loadout_invalid', 'active skill slotを確認してください。');
+        }
+        $selected = array_values(array_filter($slots, 'is_string'));
+        if (count($selected) !== count(array_unique($selected))) {
+            throw new UndergroundRuntimeException('underground_active_loadout_duplicate', '同じskillを複数slotへ設定できません。');
+        }
+
+        return $this->mutate($user, $requestId, 'active_loadout', ['slots' => $slots], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($slots): void {
+            $this->assertSkillTreeUnlocked($profile, $intro);
+            $catalog = $this->alphaV1Catalog->laboratoryCatalog();
+            $rows = UndergroundSkillAllocation::query()
+                ->where('underground_profile_id', $profile->id)
+                ->lockForUpdate()
+                ->get();
+            $bySkill = [];
+            foreach ($rows as $allocation) {
+                $entry = $catalog->node($allocation->node_key);
+                $node = $entry['node'];
+                if (($node['type'] ?? null) === 'active' && is_string($node['skill_key'] ?? null)) {
+                    $bySkill[$node['skill_key']] = $allocation;
+                }
+            }
+            foreach ($slots as $skillKey) {
+                if ($skillKey !== null && (! is_string($skillKey) || ! isset($bySkill[$skillKey]))) {
+                    throw new UndergroundRuntimeException(
+                        'underground_active_skill_unacquired',
+                        '取得済みのactive skillだけをslotへ設定できます。',
+                    );
+                }
+            }
+
+            UndergroundSkillAllocation::query()
+                ->where('underground_profile_id', $profile->id)
+                ->whereNotNull('active_slot')
+                ->update(['active_slot' => null, 'updated_at' => Carbon::now()]);
+            foreach ($slots as $index => $skillKey) {
+                if (is_string($skillKey)) {
+                    UndergroundSkillAllocation::query()
+                        ->whereKey($bySkill[$skillKey]->getKey())
+                        ->update(['active_slot' => $index + 1]);
+                }
+            }
+        });
+    }
+
     /** @return array<string, mixed> */
     public function main(User $user): array
     {
@@ -458,7 +639,7 @@ final readonly class UndergroundIntroService
     }
 
     /**
-     * @param  array<string, scalar|null>  $payload
+     * @param  array<string, mixed>  $payload
      * @param  callable(Secretary, UndergroundProfile, UndergroundIntroProgress):(UndergroundBattle|void)  $operation
      * @return array<string, mixed>
      */
@@ -583,6 +764,36 @@ final readonly class UndergroundIntroService
             throw new UndergroundRuntimeException(
                 'underground_shop_locked',
                 '宿と銀行は地下の案内が完了すると利用できます。',
+            );
+        }
+    }
+
+    private function assertGrowthUnlocked(
+        UndergroundProfile $profile,
+        UndergroundIntroProgress $intro,
+    ): void {
+        if ($intro->stage !== UndergroundIntroStage::UNDERGROUND_OPEN
+            || $profile->underground_contract_completed_at === null
+            || ! is_string($profile->growth_path_key)
+            || $profile->growth_path_identity !== $this->alphaV1Catalog->growthIdentity()) {
+            throw new UndergroundRuntimeException(
+                'underground_progression_locked',
+                '成長機能は地下の案内と成長方針の選択後に利用できます。',
+            );
+        }
+    }
+
+    private function assertSkillTreeUnlocked(
+        UndergroundProfile $profile,
+        UndergroundIntroProgress $intro,
+    ): void {
+        $this->assertGrowthUnlocked($profile, $intro);
+        if ($profile->skill_tree_identity !== $this->alphaV1Catalog->skillTreeIdentity()
+            || $profile->skill_points_total < $this->alphaV1Catalog->initialSkillPoints()
+            || $profile->skill_points_unspent > $profile->skill_points_total) {
+            throw new UndergroundRuntimeException(
+                'underground_skill_tree_identity_mismatch',
+                '保存済みSkill Tree identityをcurrent contentとして解釈できません。',
             );
         }
     }
@@ -847,8 +1058,14 @@ final readonly class UndergroundIntroService
         $starterWeapon = null;
         $maxHp = null;
         $currentHp = null;
+        $statusBreakdown = null;
+        $skillAllocations = [];
+        $skillBuild = null;
+        $skillTrees = null;
+        $activeSlots = array_fill(0, AlphaV1CombatRules::ACTIVE_SKILL_LIMIT, null);
         if ($profile instanceof UndergroundProfile && $profile->growth_path_key !== null) {
             $growthPath = $this->alphaV1Catalog->growthPath($profile->growth_path_key);
+            $baselineStats = $growthPath['stats'];
             $currentStats = $this->alphaV1Catalog->currentStats(
                 $profile->growth_path_key,
                 $profile->combat_level,
@@ -860,6 +1077,48 @@ final readonly class UndergroundIntroService
             $maxHp = $this->alphaV1Catalog->maxHp($combatStats, $starterWeapon);
             $currentHp = min($profile->current_hp ?? $maxHp, $maxHp);
             $growthPath['max_hp'] = $maxHp;
+            $statusBreakdown = [];
+            foreach (AlphaV1CombatRules::STATS as $stat) {
+                $statusBreakdown[$stat] = [
+                    'baseline' => $baselineStats[$stat],
+                    'natural_growth' => $growthPath['natural_growth'][$stat] * ($profile->combat_level - 1),
+                    'allocated_stp' => $profile->allocatedStp()[$stat],
+                    'equipment' => $starterWeapon['stats'][$stat],
+                    'final' => $combatStats[$stat],
+                ];
+            }
+            $skillAllocations = $profile->skillAllocationMap();
+            if ($profile->skill_tree_identity === $this->alphaV1Catalog->skillTreeIdentity()) {
+                $skillBuild = $this->alphaV1Catalog->playerSkillBuild($skillAllocations);
+                $skillTrees = $this->alphaV1Catalog->skillTrees(
+                    $skillAllocations,
+                    $profile->skill_points_unspent,
+                );
+                $catalog = $this->alphaV1Catalog->laboratoryCatalog();
+                foreach ($skillAllocations as $nodeKey => $allocation) {
+                    if ($allocation['active_slot'] === null) {
+                        continue;
+                    }
+                    $node = $catalog->node($nodeKey)['node'];
+                    $skillKey = $node['skill_key'] ?? null;
+                    if (! is_string($skillKey)) {
+                        throw new RuntimeException('Underground active skill allocation is invalid.');
+                    }
+                    $skill = $catalog->skill($skillKey);
+                    $label = $skill['label'] ?? null;
+                    if (! is_string($label) || $label === '') {
+                        throw new RuntimeException('Underground active skill label is invalid.');
+                    }
+                    $activeSlots[$allocation['active_slot'] - 1] = [
+                        'key' => $skillKey,
+                        'label' => $label,
+                        'summary' => is_string($node['summary'] ?? null) ? $node['summary'] : '',
+                        'mp_cost' => $skill['mp_cost'],
+                        'cooldown' => $skill['cooldown'],
+                        'required_weapon_styles' => $skill['required_weapon_styles'],
+                    ];
+                }
+            }
         }
 
         return [
@@ -885,7 +1144,17 @@ final readonly class UndergroundIntroService
                 : ['vitality' => 0, 'might' => 0, 'finesse' => 0, 'spirit' => 0, 'agility' => 0],
             'current_stats' => $currentStats,
             'combat_stats' => $combatStats,
+            'status_breakdown' => $statusBreakdown,
             'starter_weapon' => $starterWeapon,
+            'skill_points_total' => $profile instanceof UndergroundProfile ? $profile->skill_points_total : 0,
+            'skill_points_unspent' => $profile instanceof UndergroundProfile ? $profile->skill_points_unspent : 0,
+            'skill_points_spent' => $profile instanceof UndergroundProfile
+                ? $profile->skill_points_total - $profile->skill_points_unspent
+                : 0,
+            'skill_tree_identity' => $profile?->skill_tree_identity,
+            'skill_trees' => $skillTrees,
+            'active_slots' => $activeSlots,
+            'passive_modifiers' => $skillBuild['passive_modifiers'] ?? [],
             'shopkeeper_name' => $intro?->shopkeeper_name,
             'true_name_branch' => $intro?->branch_identity === 'true_name',
             'tutorial_projection' => [
@@ -980,7 +1249,7 @@ final readonly class UndergroundIntroService
         return $log instanceof UndergroundBattleLog ? $log : null;
     }
 
-    /** @param array<string, scalar|null> $payload */
+    /** @param array<string, mixed> $payload */
     private function fingerprint(string $operation, array $payload): string
     {
         ksort($payload);

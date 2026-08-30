@@ -48,14 +48,14 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v18')->sole();
 
-        $this->assertSame('3.0.0-alpha.3', config('hakoniwa.application_version'));
+        $this->assertSame('3.0.0-alpha.4', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v18'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v18', $ruleset->key);
         $this->assertSame(18, $ruleset->version);
         $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(62, DB::table('migrations')->count());
+        $this->assertSame(63, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -103,6 +103,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_30_020000_add_underground_growth_stp_foundation',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_30_030000_add_underground_status_and_skill_progression',
         ]);
         $this->assertDatabaseHas('facility_definitions', [
             'key' => 'undersea_city',

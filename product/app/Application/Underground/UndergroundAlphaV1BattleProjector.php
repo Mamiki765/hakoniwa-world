@@ -143,6 +143,13 @@ final class UndergroundAlphaV1BattleProjector
             'max_hp' => (int) ($value['max_hp'] ?? 0),
             'mp' => (int) ($value['mp'] ?? 0),
             'barrier' => (int) ($value['barrier'] ?? 0),
+            'taunt' => is_array($value['taunt'] ?? null) ? [
+                'label' => '挑発',
+                'source_side' => $this->side((string) ($value['taunt']['source_side'] ?? '')),
+                'source_key' => is_string($value['taunt']['source_key'] ?? null)
+                    ? $value['taunt']['source_key']
+                    : null,
+            ] : null,
             'statuses' => $statuses,
             'role_stacks' => [
                 'fighting_spirit' => (int) ($roleStacks['fighting_spirit'] ?? 0),
@@ -162,6 +169,7 @@ final class UndergroundAlphaV1BattleProjector
             'complete_guard' => '完全防御',
             'mp_cost' => 'MP消費',
             'mp_recovery' => 'MP回復',
+            'taunt' => '挑発',
         ];
         if (isset($plain[$action])) {
             return $plain[$action];

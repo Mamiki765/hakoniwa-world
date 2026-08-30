@@ -97,6 +97,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/explore', [UndergroundIntroController::class, 'explore']);
         Route::post('/inn/rest', [UndergroundIntroController::class, 'restAtInn']);
         Route::post('/bank/transfer', [UndergroundIntroController::class, 'bankTransfer']);
+        Route::post('/status/stp', [UndergroundIntroController::class, 'allocateStp']);
+        Route::post('/skills/acquire', [UndergroundIntroController::class, 'acquireSkill']);
+        Route::put('/skills/loadout', [UndergroundIntroController::class, 'updateActiveLoadout']);
         Route::get('/playtest', [UndergroundIntroController::class, 'playtestOptions']);
         Route::post('/playtest', [UndergroundIntroController::class, 'playtest']);
         Route::get('/battles', [UndergroundIntroController::class, 'battles']);

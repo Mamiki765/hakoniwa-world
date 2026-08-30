@@ -12,6 +12,12 @@ final class AlphaV1CombatRules
 
     public const GENERATOR_IDENTITY = 'secretary-underground-equipment-alpha-v1';
 
+    public const TARGETING_IDENTITY = 'secretary-underground-targeting-alpha-v1';
+
+    public const TAUNT_KEY = 'taunt';
+
+    public const TAUNT_TARGETING_SCOPE = 'default_hostile_single_target';
+
     public const MAX_MP = 10_000;
 
     public const ACTIVE_SKILL_LIMIT = 5;

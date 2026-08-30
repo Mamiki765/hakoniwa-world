@@ -145,6 +145,10 @@ final readonly class AlphaV1CombatModel
             'mp_overflow' => 0,
             'mp_exhaustion_round' => null,
             'skill_unavailable_due_to_mp' => 0,
+            'emergency_heal_opportunities' => 0,
+            'emergency_heal_available' => 0,
+            'emergency_heal_blocked_by_mp' => 0,
+            'crystal_cycle_recovery' => 0,
         ];
         $actionUsage = ['normal_attack' => 0, 'defend' => 0, 'ai_fallback' => 0, 'action_skipped' => 0, 'counter' => 0];
         foreach ($player->skills as $skillKey) {
@@ -240,6 +244,10 @@ final readonly class AlphaV1CombatModel
             $metrics['mp_overflow'],
             $metrics['mp_exhaustion_round'],
             $metrics['skill_unavailable_due_to_mp'],
+            $metrics['emergency_heal_opportunities'],
+            $metrics['emergency_heal_available'],
+            $metrics['emergency_heal_blocked_by_mp'],
+            $metrics['crystal_cycle_recovery'],
             $player->mp,
             $actionUsage,
             $statusUptime,
@@ -268,8 +276,16 @@ final readonly class AlphaV1CombatModel
             throw new InvalidArgumentException('Underground alpha-v1 player runtime snapshot is invalid.');
         }
         $this->rules->assertFiveStats($stats, false);
-        if ($skills !== [] || array_key_exists('complete_guard_chance_bps', $modifiers)) {
-            throw new InvalidArgumentException('Underground alpha-v1 starter runtime action contract is invalid.');
+        if (count($skills) > AlphaV1CombatRules::ACTIVE_SKILL_LIMIT
+            || count($skills) !== count(array_unique($skills))
+            || array_key_exists('complete_guard_chance_bps', $modifiers)) {
+            throw new InvalidArgumentException('Underground alpha-v1 player runtime action contract is invalid.');
+        }
+        foreach ($skills as $skillKey) {
+            if (! is_string($skillKey)) {
+                throw new InvalidArgumentException('Underground alpha-v1 player runtime action contract is invalid.');
+            }
+            $catalog->skill($skillKey);
         }
         $this->validator->assertAiRules($catalog, $skills, $aiRules, $key);
 
@@ -335,7 +351,7 @@ final readonly class AlphaV1CombatModel
         int $scaleBps,
     ): BuildCombatState {
         $stats = $this->rules->scaledStats($build['base_stats'], $equipment['stats'], $scaleBps);
-        $modifiers = $this->passiveModifiers($catalog, $build['passive_nodes']);
+        $modifiers = $this->validator->passiveModifiers($catalog, $build['passive_nodes']);
         foreach ($equipment['modifiers'] as $key => $value) {
             $modifiers[$key] = (int) ($modifiers[$key] ?? 0) + (int) $value;
         }
@@ -475,6 +491,20 @@ final readonly class AlphaV1CombatModel
             $actionLog[] = $this->logRow($round, $actor, 'action_impaired', 0, false, false);
 
             return;
+        }
+
+        if ($actor->side === 'player'
+            && in_array('mending_prayer', $actor->skills, true)
+            && ($actor->hp * 100) <= ($actor->maxHp * 80)) {
+            $metrics['emergency_heal_opportunities']++;
+            if ($this->ai->skillAvailable($actor, $catalog, 'mending_prayer')) {
+                $metrics['emergency_heal_available']++;
+            } elseif ($actor->skillReady('mending_prayer')) {
+                $heal = $catalog->skill('mending_prayer');
+                if ($actor->mp < $this->ai->effectiveCost($actor, (int) $heal['mp_cost'])) {
+                    $metrics['emergency_heal_blocked_by_mp']++;
+                }
+            }
         }
 
         $action = $this->ai->select($actor, $target, $catalog, $round);
@@ -617,6 +647,7 @@ final readonly class AlphaV1CombatModel
                 $mpHistory,
                 $actionLog,
                 $effectTarget->side === 'player',
+                $skillKey,
             ),
             'telegraph' => $this->applyStatus(
                 $catalog,
@@ -629,8 +660,42 @@ final readonly class AlphaV1CombatModel
                 $actionLog,
                 true,
             ),
+            'taunt' => $this->applyTaunt($actor, $effectTarget, $round, $skillKey, $actionLog),
             default => throw new InvalidArgumentException("Underground alpha-v1 skill [{$skillKey}] effect is unsupported."),
         };
+    }
+
+    /** @param list<array<string, mixed>> $actionLog */
+    private function applyTaunt(
+        BuildCombatState $source,
+        BuildCombatState $target,
+        int $round,
+        string $sourceAction,
+        array &$actionLog,
+    ): void {
+        $target->taunt = [
+            'source_side' => $source->side,
+            'source_key' => $source->key,
+            'applied_round' => $round,
+        ];
+        $row = $this->logRow(
+            $round,
+            $source,
+            AlphaV1CombatRules::TAUNT_KEY,
+            0,
+            false,
+            false,
+            effectType: 'taunt_applied',
+            targetSide: $target->side,
+        );
+        $row['source_action'] = $sourceAction;
+        $row['source_actor_key'] = $source->key;
+        $row['target_actor_key'] = $target->key;
+        $row['targeting_identity'] = AlphaV1CombatRules::TARGETING_IDENTITY;
+        $row['targeting_scope'] = AlphaV1CombatRules::TAUNT_TARGETING_SCOPE;
+        $row['duration'] = 'battle';
+        $row['overrides_explicit_targeting'] = false;
+        $actionLog[] = $row;
     }
 
     /**
@@ -1233,6 +1298,9 @@ final readonly class AlphaV1CombatModel
             effectType: 'counter',
             targetSide: $attacker->side,
         );
+        if (($defender->modifiers['fighting_spirit_enabled'] ?? false) === true) {
+            $this->applyTaunt($defender, $attacker, $round, 'counter', $actionLog);
+        }
     }
 
     /**
@@ -1310,6 +1378,7 @@ final readonly class AlphaV1CombatModel
         array &$history,
         array &$actionLog,
         bool $recordMetrics = true,
+        ?string $skillKey = null,
     ): void {
         if ($cost > $state->mp) {
             throw new InvalidArgumentException('Underground alpha-v1 MP cost exceeds the current value.');
@@ -1333,6 +1402,9 @@ final readonly class AlphaV1CombatModel
             $metrics['mp_natural_recovery'] += $effectiveGain;
         } elseif ($source === 'skill_recovery') {
             $metrics['mp_skill_recovery'] += $effectiveGain;
+            if ($skillKey === 'crystal_cycle') {
+                $metrics['crystal_cycle_recovery'] += $effectiveGain;
+            }
         }
         $metrics['mp_overflow'] += $overflow;
         if ($state->mp === 0 && $metrics['mp_exhaustion_round'] === null) {
@@ -1346,33 +1418,6 @@ final readonly class AlphaV1CombatModel
             'spent' => $cost,
             'overflow' => $overflow,
         ];
-    }
-
-    /**
-     * @param  array<string, int>  $passiveNodes
-     * @return array<string, int|bool|string>
-     */
-    private function passiveModifiers(AlphaV1BuildCatalog $catalog, array $passiveNodes): array
-    {
-        $modifiers = [];
-        foreach ($passiveNodes as $nodeKey => $rank) {
-            $node = $catalog->node($nodeKey)['node'];
-            foreach (($node['modifiers'] ?? []) as $modifier) {
-                if (! is_array($modifier) || ! is_string($modifier['key'] ?? null)) {
-                    continue;
-                }
-                $key = $modifier['key'];
-                if (($modifier['flag'] ?? false) === true) {
-                    $modifiers[$key] = true;
-                } elseif (is_int($modifier['fixed_value'] ?? null)) {
-                    $modifiers[$key] = $modifier['fixed_value'];
-                } elseif (is_int($modifier['value_per_rank'] ?? null)) {
-                    $modifiers[$key] = (int) ($modifiers[$key] ?? 0) + ($modifier['value_per_rank'] * $rank);
-                }
-            }
-        }
-
-        return $modifiers;
     }
 
     /**
@@ -1417,6 +1462,7 @@ final readonly class AlphaV1CombatModel
             'max_hp' => $state->maxHp,
             'mp' => $state->mp,
             'barrier' => $state->barrier,
+            'taunt' => $state->taunt,
             'statuses' => $statuses,
             'role_stacks' => $state->roleStacks,
         ];

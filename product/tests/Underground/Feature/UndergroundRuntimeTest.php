@@ -572,6 +572,9 @@ final class UndergroundRuntimeTest extends TestCase
             'growth_path_key' => $growthPathKey,
             'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
             'growth_path_selected_at' => Carbon::now(),
+            'skill_points_total' => 20,
+            'skill_points_unspent' => 20,
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
             'unspent_stp' => ($profile->combat_level - 1) * ($growthPathKey === 'free_black' ? 6 : 5),
         ]);
         $tutorial = UndergroundBattle::query()->create([
@@ -743,6 +746,10 @@ final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExp
             mpOverflow: 0,
             mpExhaustionRound: null,
             skillUnavailableDueToMp: 0,
+            emergencyHealOpportunities: 0,
+            emergencyHealAvailable: 0,
+            emergencyHealBlockedByMp: 0,
+            crystalCycleRecovery: 0,
             finalMp: $finalMp,
             actionUsage: ['normal_attack' => 1],
             statusUptime: [],

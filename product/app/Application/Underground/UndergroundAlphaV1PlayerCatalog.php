@@ -4,16 +4,228 @@ namespace App\Application\Underground;
 
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\UndergroundBuildValidator;
 use JsonException;
 use RuntimeException;
 
 final readonly class UndergroundAlphaV1PlayerCatalog
 {
-    public function __construct(private AlphaV1CombatRules $rules) {}
+    public function __construct(
+        private AlphaV1CombatRules $rules,
+        private UndergroundBuildValidator $buildValidator,
+    ) {}
 
     public function growthIdentity(): string
     {
         return $this->string($this->data(), 'growth_identity');
+    }
+
+    public function skillTreeIdentity(): string
+    {
+        return $this->string($this->data(), 'skill_tree_identity');
+    }
+
+    public function targetingIdentity(): string
+    {
+        $contract = $this->laboratoryCatalog()->targetingContract();
+        $identity = $contract['identity'] ?? null;
+
+        return is_string($identity) && $identity === AlphaV1CombatRules::TARGETING_IDENTITY
+            ? $identity
+            : throw new RuntimeException('Underground targeting identity is invalid.');
+    }
+
+    public function initialSkillPoints(): int
+    {
+        $points = $this->data()['initial_skill_points'] ?? null;
+
+        return is_int($points) && $points === 20
+            ? $points
+            : throw new RuntimeException('Underground initial Skill Point contract must be exactly 20.');
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $allocations
+     * @return array{
+     *     acquired_nodes: array<string, int>,
+     *     passive_nodes: array<string, int>,
+     *     passive_modifiers: array<string, int|bool|string>,
+     *     active_skills: list<string>,
+     *     ai_rules: list<array<string, mixed>>,
+     *     tree_points: array<string, int>
+     * }
+     */
+    public function playerSkillBuild(array $allocations): array
+    {
+        $catalog = $this->laboratoryCatalog();
+        $acquired = [];
+        $passives = [];
+        $activeBySlot = [];
+        $treePoints = array_fill_keys(AlphaV1CombatRules::TREES, 0);
+        foreach ($allocations as $nodeKey => $allocation) {
+            if (! is_string($nodeKey) || ! is_array($allocation)
+                || ! is_int($allocation['rank'] ?? null) || $allocation['rank'] < 1
+                || ! array_key_exists('active_slot', $allocation)
+                || (! is_null($allocation['active_slot']) && ! is_int($allocation['active_slot']))) {
+                throw new RuntimeException('Underground player skill allocation is invalid.');
+            }
+            $entry = $catalog->node($nodeKey);
+            $node = $entry['node'];
+            $rank = $allocation['rank'];
+            $maxRank = $node['max_rank'] ?? null;
+            $cost = $node['point_cost_per_rank'] ?? null;
+            if (! is_int($maxRank) || ! is_int($cost) || $rank > $maxRank || $cost < 1) {
+                throw new RuntimeException("Underground player skill allocation [{$nodeKey}] is invalid.");
+            }
+            $acquired[$nodeKey] = $rank;
+            $treePoints[$entry['tree']] += $rank * $cost;
+            if (($node['type'] ?? null) === 'passive') {
+                if ($allocation['active_slot'] !== null) {
+                    throw new RuntimeException('Underground passive skill cannot occupy an active slot.');
+                }
+                $passives[$nodeKey] = $rank;
+
+                continue;
+            }
+            $skillKey = $node['skill_key'] ?? null;
+            if (! is_string($skillKey)) {
+                throw new RuntimeException("Underground active skill node [{$nodeKey}] is invalid.");
+            }
+            $skill = $catalog->skill($skillKey);
+            if (($skill['node_key'] ?? null) !== $nodeKey) {
+                throw new RuntimeException("Underground active skill node [{$nodeKey}] is invalid.");
+            }
+            $slot = $allocation['active_slot'];
+            if ($slot !== null) {
+                if ($slot < 1 || $slot > AlphaV1CombatRules::ACTIVE_SKILL_LIMIT || isset($activeBySlot[$slot])) {
+                    throw new RuntimeException('Underground active skill loadout is invalid.');
+                }
+                $activeBySlot[$slot] = $skillKey;
+            }
+        }
+        ksort($activeBySlot);
+        $activeSkills = array_values($activeBySlot);
+        $modifiers = $this->buildValidator->passiveModifiers($catalog, $passives);
+        $aiRules = $this->playerAiRules($activeSkills);
+        $this->buildValidator->assertAiRules($catalog, $activeSkills, $aiRules, 'secretary_runtime');
+
+        return [
+            'acquired_nodes' => $acquired,
+            'passive_nodes' => $passives,
+            'passive_modifiers' => $modifiers,
+            'active_skills' => $activeSkills,
+            'ai_rules' => $aiRules,
+            'tree_points' => $treePoints,
+        ];
+    }
+
+    /**
+     * @param  array<string, array{rank: int, active_slot: int|null}>  $allocations
+     * @return list<array<string, mixed>>
+     */
+    public function skillTrees(array $allocations, int $unspentSkillPoints): array
+    {
+        if ($unspentSkillPoints < 0) {
+            throw new RuntimeException('Underground unspent Skill Points are invalid.');
+        }
+        $catalog = $this->laboratoryCatalog();
+        $build = $this->playerSkillBuild($allocations);
+        $trees = [];
+        foreach (AlphaV1CombatRules::TREES as $treeKey) {
+            $tree = $catalog->tree($treeKey);
+            $nodes = [];
+            foreach (($tree['nodes'] ?? []) as $nodeKey => $node) {
+                if (! is_string($nodeKey) || ! is_array($node)) {
+                    throw new RuntimeException("Underground skill tree [{$treeKey}] is invalid.");
+                }
+                $rank = $build['acquired_nodes'][$nodeKey] ?? 0;
+                $cost = $node['point_cost_per_rank'] ?? null;
+                $maxRank = $node['max_rank'] ?? null;
+                $required = $node['invested_points_required'] ?? null;
+                $prerequisite = $node['prerequisite'] ?? null;
+                if (! is_int($cost) || ! is_int($maxRank) || ! is_int($required)) {
+                    throw new RuntimeException("Underground skill node [{$nodeKey}] is invalid.");
+                }
+                $reason = null;
+                if ($rank >= $maxRank) {
+                    $reason = '最大rankです';
+                } elseif (is_string($prerequisite) && ! isset($build['acquired_nodes'][$prerequisite])) {
+                    $reason = '前提skill未取得';
+                } elseif ($this->investedBelowGate($catalog, $allocations, $treeKey, $required) < $required) {
+                    $remaining = $required - $this->investedBelowGate($catalog, $allocations, $treeKey, $required);
+                    $reason = ($tree['label'] ?? $treeKey)."へあと{$remaining}SP必要";
+                } elseif ($unspentSkillPoints < $cost) {
+                    $reason = 'SP不足';
+                }
+                $skill = ($node['type'] ?? null) === 'active'
+                    ? $catalog->skill((string) ($node['skill_key'] ?? ''))
+                    : null;
+                $nodes[] = [
+                    'key' => $nodeKey,
+                    'label' => $this->string($node, 'label'),
+                    'summary' => $this->string($node, 'summary'),
+                    'type' => $node['type'],
+                    'rank' => $rank,
+                    'max_rank' => $maxRank,
+                    'point_cost' => $cost,
+                    'invested_points_required' => $required,
+                    'prerequisite' => $prerequisite,
+                    'can_acquire' => $reason === null,
+                    'unavailable_reason' => $reason,
+                    'skill_key' => $skill === null ? null : $node['skill_key'],
+                    'mp_cost' => $skill['mp_cost'] ?? null,
+                    'cooldown' => $skill['cooldown'] ?? null,
+                    'required_weapon_styles' => $skill['required_weapon_styles'] ?? [],
+                    'active_slot' => $allocations[$nodeKey]['active_slot'] ?? null,
+                ];
+            }
+            $trees[] = [
+                'key' => $treeKey,
+                'label' => $this->string($tree, 'label'),
+                'invested_points' => $build['tree_points'][$treeKey],
+                'full_points' => $this->fullTreePoints($catalog, $treeKey),
+                'nodes' => $nodes,
+            ];
+        }
+
+        return $trees;
+    }
+
+    /**
+     * @param  array<string, array{rank: int, active_slot: int|null}>  $allocations
+     */
+    public function investedBelowGate(
+        AlphaV1BuildCatalog $catalog,
+        array $allocations,
+        string $treeKey,
+        int $requiredInvestment,
+    ): int {
+        $points = 0;
+        foreach ($allocations as $nodeKey => $allocation) {
+            $entry = $catalog->node($nodeKey);
+            $node = $entry['node'];
+            if ($entry['tree'] === $treeKey
+                && is_int($node['invested_points_required'] ?? null)
+                && $node['invested_points_required'] < $requiredInvestment) {
+                $points += $allocation['rank'] * (int) $node['point_cost_per_rank'];
+            }
+        }
+
+        return $points;
+    }
+
+    public function fullTreePoints(AlphaV1BuildCatalog $catalog, string $treeKey): int
+    {
+        $points = 0;
+        foreach (($catalog->tree($treeKey)['nodes'] ?? []) as $node) {
+            if (! is_array($node) || ! is_int($node['max_rank'] ?? null)
+                || ! is_int($node['point_cost_per_rank'] ?? null)) {
+                throw new RuntimeException("Underground skill tree [{$treeKey}] is invalid.");
+            }
+            $points += $node['max_rank'] * $node['point_cost_per_rank'];
+        }
+
+        return $points;
     }
 
     public function explorationIdentity(): string
@@ -307,7 +519,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
 
     /**
      * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
-     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, starter_weapon: array<string, mixed>, current_hp: int, max_hp: int}
+     * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
+     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, starter_weapon: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>}
      */
     public function explorationCombatDefinition(
         string $growthPathKey,
@@ -315,6 +528,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         array $allocatedStp,
         string $playerDisplayName,
         ?int $currentHp = null,
+        array $skillAllocations = [],
     ): array {
         $progressionStats = $this->currentStats($growthPathKey, $combatLevel, $allocatedStp);
         $starterWeapon = $this->starterWeapon();
@@ -325,15 +539,17 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             throw new RuntimeException('Underground current HP is invalid.');
         }
 
+        $skillBuild = $this->playerSkillBuild($skillAllocations);
+
         return [
             'catalog' => $this->explorationCatalog(),
             'player_snapshot' => [
                 'key' => 'secretary_runtime',
                 'label' => $playerDisplayName,
                 'stats' => $progressionStats,
-                'active_skills' => [],
-                'ai_rules' => $this->explorationConfig()['player_ai_rules'],
-                'modifiers' => [],
+                'active_skills' => $skillBuild['active_skills'],
+                'ai_rules' => $skillBuild['ai_rules'],
+                'modifiers' => $skillBuild['passive_modifiers'],
                 'equipment' => $starterWeapon,
                 'current_hp' => $currentHp,
             ],
@@ -342,6 +558,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'starter_weapon' => $starterWeapon,
             'current_hp' => $currentHp,
             'max_hp' => $maxHp,
+            'acquired_nodes' => $skillBuild['acquired_nodes'],
+            'active_skills' => $skillBuild['active_skills'],
+            'passive_modifiers' => $skillBuild['passive_modifiers'],
         ];
     }
 
@@ -478,7 +697,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         $exploration = $this->data()['exploration'];
         if (! is_array($exploration['encounters'] ?? null)
             || ! is_array($exploration['starter_weapon'] ?? null)
-            || ! is_array($exploration['player_ai_rules'] ?? null)) {
+            || ! is_array($exploration['player_ai_rules'] ?? null)
+            || ! is_array($exploration['player_skill_ai_rules'] ?? null)) {
             throw new RuntimeException('Underground exploration configuration is invalid.');
         }
 
@@ -502,6 +722,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         $data = config('underground-alpha-v1');
         if (! is_array($data) || ($data['schema_version'] ?? null) !== 1
             || ! is_array($data['growth_paths'] ?? null)
+            || ! is_string($data['skill_tree_identity'] ?? null)
+            || ! is_int($data['initial_skill_points'] ?? null)
             || ! is_array($data['exploration'] ?? null)
             || ! is_array($data['shop'] ?? null)
             || ! is_array($data['playtest'] ?? null)
@@ -520,5 +742,38 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return is_string($value) && $value !== ''
             ? $value
             : throw new RuntimeException("Underground alpha-v1 [{$key}] is invalid.");
+    }
+
+    /**
+     * @param  list<string>  $activeSkills
+     * @return list<array<string, mixed>>
+     */
+    private function playerAiRules(array $activeSkills): array
+    {
+        $configured = $this->explorationConfig()['player_skill_ai_rules'];
+        $emergencyActions = ['skill:mending_prayer', 'skill:renewing_guard'];
+        $emergency = [];
+        $remaining = [];
+        foreach ($configured as $rule) {
+            $action = is_array($rule) ? ($rule['action'] ?? null) : null;
+            if (! is_string($action) || ! str_starts_with($action, 'skill:')) {
+                throw new RuntimeException('Underground player skill AI rule is invalid.');
+            }
+            if (! in_array(substr($action, 6), $activeSkills, true)) {
+                continue;
+            }
+            if (in_array($action, $emergencyActions, true)) {
+                $emergency[] = $rule;
+            } else {
+                $remaining[] = $rule;
+            }
+        }
+        $base = $this->explorationConfig()['player_ai_rules'];
+        $fallback = array_pop($base);
+        if (! is_array($fallback) || ($fallback['action'] ?? null) !== 'normal_attack') {
+            throw new RuntimeException('Underground player AI fallback is invalid.');
+        }
+
+        return [...$emergency, ...$base, ...$remaining, $fallback];
     }
 }

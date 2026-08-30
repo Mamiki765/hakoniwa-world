@@ -101,6 +101,49 @@ interface PendingBankMutation {
     requestId: string;
 }
 
+type StatKey = 'vitality' | 'might' | 'finesse' | 'spirit' | 'agility';
+
+interface SkillNode {
+    key: string;
+    label: string;
+    summary: string;
+    type: 'active' | 'passive';
+    rank: number;
+    max_rank: number;
+    point_cost: number;
+    invested_points_required: number;
+    prerequisite: string | null;
+    can_acquire: boolean;
+    unavailable_reason: string | null;
+    skill_key: string | null;
+    mp_cost: number | null;
+    cooldown: number | null;
+    required_weapon_styles: string[];
+    active_slot: number | null;
+}
+
+interface SkillTree {
+    key: string;
+    label: string;
+    invested_points: number;
+    full_points: number;
+    nodes: SkillNode[];
+}
+
+interface ActiveSkill {
+    key: string;
+    label: string;
+    summary: string;
+    mp_cost: number;
+    cooldown: number;
+    required_weapon_styles: string[];
+}
+
+interface PendingMutation {
+    fingerprint: string;
+    requestId: string;
+}
+
 interface UndergroundState {
     stage: Stage;
     secretary_name: string;
@@ -116,12 +159,26 @@ interface UndergroundState {
     allocated_stp: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
     current_stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number> | null;
     combat_stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number> | null;
+    status_breakdown: Record<StatKey, {
+        baseline: number;
+        natural_growth: number;
+        allocated_stp: number;
+        equipment: number;
+        final: number;
+    }> | null;
     starter_weapon: {
         key: string;
         label: string;
         rarity: string;
         item_level: number;
     } | null;
+    skill_points_total: number;
+    skill_points_unspent: number;
+    skill_points_spent: number;
+    skill_tree_identity: string | null;
+    skill_trees: SkillTree[] | null;
+    active_slots: Array<ActiveSkill | null>;
+    passive_modifiers: Record<string, number | boolean | string>;
     shopkeeper_name: string | null;
     true_name_branch: boolean;
     tutorial_projection: {
@@ -250,6 +307,16 @@ const bankAmount = ref<number | null>(1000);
 const pendingExplorationRequestId = ref<string | null>(null);
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
+const statusOpen = ref(false);
+const skillsOpen = ref(false);
+const activeSkillTreeKey = ref('martial');
+const innResting = ref(false);
+const innRested = ref(false);
+const stpDraft = ref<Record<StatKey, number>>({ vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 });
+const loadoutDraft = ref<Array<string | null>>([null, null, null, null, null]);
+const pendingStpMutation = ref<PendingMutation | null>(null);
+const pendingSkillAcquire = ref<PendingMutation | null>(null);
+const pendingLoadoutMutation = ref<PendingMutation | null>(null);
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
@@ -258,9 +325,24 @@ const currentStructuredRounds = computed(() => currentBattle.value ? structuredR
 const growthEnding = computed(() => state.value?.growth_path?.key === 'free_black'
     ? '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」'
     : '「ふふ、とってもお似合いですよ、その能力」');
-const shopGreeting = computed(() => state.value?.true_name_branch
-    ? '「いらっしゃいませ！　『雨宿り』箱庭ダンジョン支店です！」'
-    : '「いらっしゃいませ！　あなたのコンビニ、箱庭ダンジョン店です！」');
+const shopGreeting = computed(() => innRested.value
+    ? '「いい夢は見られましたか？　それじゃ、頑張ってくださいね！」'
+    : state.value?.true_name_branch
+        ? '「いらっしゃいませ！　『雨宿り』箱庭ダンジョン支店です！」'
+        : '「いらっしゃいませ！　あなたのコンビニ、箱庭ダンジョン店です！」');
+const stpDraftTotal = computed(() => Object.values(stpDraft.value).reduce((sum, value) => sum + value, 0));
+const stpDraftRemaining = computed(() => Math.max(0, (state.value?.unspent_stp ?? 0) - stpDraftTotal.value));
+const acquiredActiveSkills = computed<ActiveSkill[]>(() => (state.value?.skill_trees ?? [])
+    .flatMap((tree) => tree.nodes)
+    .filter((node) => node.type === 'active' && node.rank > 0 && node.skill_key !== null)
+    .map((node) => ({
+        key: node.skill_key as string,
+        label: node.label,
+        summary: node.summary,
+        mp_cost: node.mp_cost ?? 0,
+        cooldown: node.cooldown ?? 0,
+        required_weapon_styles: node.required_weapon_styles,
+    })));
 const summaryLabels: Record<string, string> = {
     result: '結果',
     damage_dealt: '与ダメージ',
@@ -280,6 +362,16 @@ watch(() => state.value?.playtest, (playtest) => {
     selectedEnemy.value ||= playtest.enemies[0]?.key ?? '';
 }, { immediate: true });
 
+watch(() => state.value?.active_slots, (slots) => {
+    if (!slots || pendingLoadoutMutation.value) return;
+    loadoutDraft.value = slots.map((slot) => slot?.key ?? null);
+}, { deep: true, immediate: true });
+
+watch(() => state.value?.skill_trees, (trees) => {
+    if (!trees || trees.some((tree) => tree.key === activeSkillTreeKey.value)) return;
+    activeSkillTreeKey.value = trees[0]?.key ?? 'martial';
+}, { deep: true, immediate: true });
+
 function requestId(): string {
     return crypto.randomUUID();
 }
@@ -297,13 +389,14 @@ async function mutate(
     path: string,
     body: Record<string, unknown> = {},
     mutationRequestId = requestId(),
+    method: 'POST' | 'PUT' = 'POST',
 ): Promise<boolean> {
     if (busy.value) return false;
     busy.value = true;
     error.value = '';
     try {
         state.value = await api<UndergroundState>(path, {
-            method: 'POST',
+            method,
             body: JSON.stringify({ request_id: mutationRequestId, ...body }),
         });
         selectedBattle.value = null;
@@ -392,8 +485,15 @@ async function runExplore(): Promise<void> {
 async function restAtInn(): Promise<void> {
     const innRequestId = pendingInnRequestId.value ?? requestId();
     pendingInnRequestId.value = innRequestId;
-    if (await mutate('/api/v1/me/underground/inn/rest', {}, innRequestId)) {
-        pendingInnRequestId.value = null;
+    innRested.value = false;
+    innResting.value = true;
+    try {
+        if (await mutate('/api/v1/me/underground/inn/rest', {}, innRequestId)) {
+            pendingInnRequestId.value = null;
+            innRested.value = true;
+        }
+    } finally {
+        innResting.value = false;
     }
 }
 
@@ -408,6 +508,60 @@ async function runBankAction(action: 'deposit' | 'withdraw' | 'deposit_all' | 'w
     if (await mutate('/api/v1/me/underground/bank/transfer', body, pending.requestId)) {
         pendingBankMutation.value = null;
     }
+}
+
+function changeStpDraft(stat: StatKey, delta: number): void {
+    const next = stpDraft.value[stat] + delta;
+    if (next < 0 || stpDraftTotal.value + delta > (state.value?.unspent_stp ?? 0)) return;
+    stpDraft.value = { ...stpDraft.value, [stat]: next };
+}
+
+async function confirmStp(): Promise<void> {
+    const allocations = Object.fromEntries(
+        Object.entries(stpDraft.value).filter(([, value]) => value > 0),
+    );
+    if (Object.keys(allocations).length === 0) return;
+    const fingerprint = JSON.stringify(allocations);
+    const pending = pendingStpMutation.value?.fingerprint === fingerprint
+        ? pendingStpMutation.value
+        : { fingerprint, requestId: requestId() };
+    pendingStpMutation.value = pending;
+    if (await mutate('/api/v1/me/underground/status/stp', { allocations }, pending.requestId)) {
+        stpDraft.value = { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 };
+        pendingStpMutation.value = null;
+    }
+}
+
+async function acquireSkill(nodeKey: string): Promise<void> {
+    const pending = pendingSkillAcquire.value?.fingerprint === nodeKey
+        ? pendingSkillAcquire.value
+        : { fingerprint: nodeKey, requestId: requestId() };
+    pendingSkillAcquire.value = pending;
+    if (await mutate('/api/v1/me/underground/skills/acquire', { node_key: nodeKey }, pending.requestId)) {
+        pendingSkillAcquire.value = null;
+    }
+}
+
+async function saveLoadout(): Promise<void> {
+    const fingerprint = JSON.stringify(loadoutDraft.value);
+    const pending = pendingLoadoutMutation.value?.fingerprint === fingerprint
+        ? pendingLoadoutMutation.value
+        : { fingerprint, requestId: requestId() };
+    pendingLoadoutMutation.value = pending;
+    if (await mutate('/api/v1/me/underground/skills/loadout', { slots: loadoutDraft.value }, pending.requestId, 'PUT')) {
+        pendingLoadoutMutation.value = null;
+    }
+}
+
+function nodeLabel(nodeKey: string | null): string {
+    if (!nodeKey) return 'なし';
+    return (state.value?.skill_trees ?? [])
+        .flatMap((tree) => tree.nodes)
+        .find((node) => node.key === nodeKey)?.label ?? '前提skill';
+}
+
+function loadoutChoiceDisabled(skillKey: string, slotIndex: number): boolean {
+    return loadoutDraft.value.some((equipped, index) => index !== slotIndex && equipped === skillKey);
 }
 
 async function enter(): Promise<void> {
@@ -682,6 +836,7 @@ onMounted(() => { void enter(); });
                         <div v-if="state.growth_path"><dt>HP</dt><dd>{{ state.current_hp ?? state.growth_path.max_hp }} / {{ state.growth_path.max_hp }}</dd></div>
                         <div v-if="state.growth_path"><dt>戦闘開始MP</dt><dd>10000 / 10000</dd></div>
                         <div><dt>輝石の欠片</dt><dd>{{ state.shard_balance }} G</dd></div>
+                        <div><dt>銀行預金</dt><dd>{{ state.banked_shard_balance }} G</dd></div>
                         <div><dt>未使用STP</dt><dd>{{ state.unspent_stp }}</dd></div>
                         <div v-if="state.growth_path"><dt>成長方針</dt><dd>{{ state.growth_path.label }}</dd></div>
                     </dl>
@@ -694,7 +849,11 @@ onMounted(() => { void enter(); });
                         <h2 id="underground-equipment-title">装備</h2>
                         <dl><div><dt>武器</dt><dd>{{ state.starter_weapon?.label ?? '未設定' }}</dd></div><div><dt>防具</dt><dd>未設定</dd></div><div><dt>装飾</dt><dd>未設定</dd></div></dl>
                     </section>
-                    <div class="underground-character-actions"><button type="button" disabled>スキル<small>準備中</small></button><button type="button" disabled>AI設定<small>準備中</small></button></div>
+                    <div class="underground-character-actions">
+                        <button type="button" :aria-expanded="statusOpen" @click="statusOpen = !statusOpen">ステータス<small>STP配分</small></button>
+                        <button type="button" :aria-expanded="skillsOpen" @click="skillsOpen = !skillsOpen">Skill Tree<small>SP・active設定</small></button>
+                        <button type="button" disabled>AI設定<small>準備中</small></button>
+                    </div>
                 </section>
 
                 <section class="underground-action-pane" aria-labelledby="underground-guide-title">
@@ -702,8 +861,9 @@ onMounted(() => { void enter(); });
                         <p class="eyebrow">案内人 / ショップ</p>
                         <h2 id="underground-guide-title">{{ state.shopkeeper_name }}</h2>
                         <p>{{ shopGreeting }}</p>
+                        <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
                         <div class="underground-shop-entries">
-                            <button type="button" :disabled="busy" @click="restAtInn">宿で休む（10G）<small>HPを全回復</small></button>
+                            <button type="button" :disabled="busy || innResting" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
                             <button type="button" disabled>装備ショップ<small>準備中</small></button>
                             <button type="button" :disabled="busy" @click="bankOpen = !bankOpen">銀行<small>預入・引出</small></button>
                             <button type="button" disabled>ショップ<small>準備中</small></button>
@@ -742,6 +902,97 @@ onMounted(() => { void enter(); });
                     </section>
                 </section>
             </div>
+
+            <section v-if="statusOpen && state.status_breakdown" class="underground-progression-panel" aria-labelledby="underground-status-title">
+                <header>
+                    <div><p class="eyebrow">Character Growth</p><h2 id="underground-status-title">ステータス</h2></div>
+                    <p>未使用STP {{ state.unspent_stp }} / 仮配分後 {{ stpDraftRemaining }}</p>
+                </header>
+                <div class="underground-table-scroll">
+                    <table class="underground-status-table">
+                        <thead><tr><th scope="col">能力</th><th scope="col">初期値</th><th scope="col">自然成長</th><th scope="col">確定STP</th><th scope="col">装備</th><th scope="col">最終値</th><th scope="col">今回の配分</th></tr></thead>
+                        <tbody>
+                            <tr v-for="(label, key) in statLabels" :key="key">
+                                <th scope="row">{{ label }}</th>
+                                <td>{{ state.status_breakdown[key].baseline }}</td>
+                                <td>+{{ state.status_breakdown[key].natural_growth }}</td>
+                                <td>+{{ state.status_breakdown[key].allocated_stp }}</td>
+                                <td>+{{ state.status_breakdown[key].equipment }}</td>
+                                <td>{{ state.status_breakdown[key].final }}</td>
+                                <td class="underground-stp-control"><button type="button" :disabled="busy || stpDraft[key] === 0" :aria-label="`${label}の仮配分を1減らす`" @click="changeStpDraft(key, -1)">−</button><output>{{ stpDraft[key] }}</output><button type="button" :disabled="busy || stpDraftRemaining === 0" :aria-label="`${label}の仮配分を1増やす`" @click="changeStpDraft(key, 1)">＋</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="underground-progression-note">確定すると元に戻せません。装備補正とSTPは別々に計算されます。</p>
+                <button class="button primary" type="button" :disabled="busy || stpDraftTotal === 0" @click="confirmStp">{{ stpDraftTotal }} STPを一括確定</button>
+            </section>
+
+            <section v-if="skillsOpen && state.skill_trees" class="underground-progression-panel" aria-labelledby="underground-skills-title">
+                <header>
+                    <div><p class="eyebrow">Finite Skill Points</p><h2 id="underground-skills-title">Skill Tree</h2></div>
+                    <p>SP {{ state.skill_points_unspent }} / {{ state.skill_points_total }}（使用済み {{ state.skill_points_spent }}）</p>
+                </header>
+                <p class="underground-progression-note">SPを消費することでスキルを習得できます。</p>
+                <div class="underground-tree-tabs" role="tablist" aria-label="Skill Tree系統">
+                    <button
+                        v-for="tree in state.skill_trees"
+                        :id="`underground-tree-tab-${tree.key}`"
+                        :key="tree.key"
+                        type="button"
+                        role="tab"
+                        :aria-controls="`underground-tree-panel-${tree.key}`"
+                        :aria-selected="activeSkillTreeKey === tree.key"
+                        @click="activeSkillTreeKey = tree.key"
+                    >
+                        {{ tree.label }}
+                    </button>
+                </div>
+                <div class="underground-tree-grid">
+                    <article
+                        v-for="tree in state.skill_trees"
+                        :id="`underground-tree-panel-${tree.key}`"
+                        :key="tree.key"
+                        class="underground-skill-tree"
+                        :aria-labelledby="`underground-tree-tab-${tree.key}`"
+                        :data-mobile-active="activeSkillTreeKey === tree.key"
+                    >
+                        <header><h3>{{ tree.label }}</h3><span>{{ tree.invested_points }} / {{ tree.full_points }} SP</span></header>
+                        <ol>
+                            <li v-for="node in tree.nodes" :key="node.key" class="underground-skill-node" :data-acquired="node.rank > 0">
+                                <div class="underground-skill-node-heading"><strong>{{ node.label }}</strong><span>{{ node.type === 'active' ? 'active' : 'passive' }} {{ node.rank }} / {{ node.max_rank }}</span></div>
+                                <p>{{ node.summary }}</p>
+                                <dl>
+                                    <div><dt>SP cost</dt><dd>{{ node.point_cost }}</dd></div>
+                                    <div><dt>前提</dt><dd>{{ nodeLabel(node.prerequisite) }}</dd></div>
+                                    <div><dt>tree投資</dt><dd>{{ node.invested_points_required }} SP</dd></div>
+                                    <div v-if="node.type === 'active'"><dt>MP / CD</dt><dd>{{ node.mp_cost }} / {{ node.cooldown }}R</dd></div>
+                                    <div v-if="node.required_weapon_styles.length > 0"><dt>武器条件</dt><dd>{{ node.required_weapon_styles.join('・') }}</dd></div>
+                                </dl>
+                                <p v-if="!node.can_acquire && node.rank < node.max_rank" class="underground-node-unavailable">{{ node.unavailable_reason }}</p>
+                                <p v-else-if="node.rank >= node.max_rank" class="underground-node-complete">取得済み</p>
+                                <button v-else type="button" :disabled="busy" @click="acquireSkill(node.key)">取得する</button>
+                            </li>
+                        </ol>
+                    </article>
+                </div>
+
+                <section class="underground-active-loadout" aria-labelledby="underground-loadout-title">
+                    <header><div><h3 id="underground-loadout-title">Active Skill</h3><p>取得済みskillを最大5個まで装備します。</p></div><p>基本行動: 通常攻撃 / 防御（常時利用可能）</p></header>
+                    <div class="underground-loadout-grid">
+                        <label v-for="(_, index) in loadoutDraft" :key="index">slot {{ index + 1 }}
+                            <select v-model="loadoutDraft[index]" :disabled="busy">
+                                <option :value="null">未設定</option>
+                                <option v-for="skill in acquiredActiveSkills" :key="skill.key" :value="skill.key" :disabled="loadoutChoiceDisabled(skill.key, index)">{{ skill.label }}（MP {{ skill.mp_cost }} / CD {{ skill.cooldown }}R）</option>
+                            </select>
+                        </label>
+                    </div>
+                    <ul class="underground-active-skill-notes">
+                        <li v-for="skill in acquiredActiveSkills" :key="skill.key"><strong>{{ skill.label }}</strong>: {{ skill.summary }} / MP {{ skill.mp_cost }} / cooldown {{ skill.cooldown }}R<span v-if="skill.required_weapon_styles.length > 0"> / {{ skill.required_weapon_styles.join('・') }}専用</span></li>
+                    </ul>
+                    <button class="button primary" type="button" :disabled="busy" @click="saveLoadout">slot 1～5を保存</button>
+                </section>
+            </section>
         </template>
     </section>
 </template>

@@ -4,7 +4,7 @@
 
 この文書は`secretary-underground-alpha-v0` combat laboratory、PR102 persistence foundation、PR103 expedition runtime backend、PR104 first-player Tutorial flow、PR105の`secretary-underground-alpha-v1` combat/build laboratory、PR106の正式intro・契約・初期成長方針・報酬なしalpha-v1 playtestのcurrent task-specific architecture authorityである。manual combat、playerのskill/equipment persistenceと育成UI、正式shop economy、normal hunt/Trial content、surface bridgeは定義しない。
 
-application versionは`3.0.0-alpha.2`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR106はalpha-v1を報酬なしplaytestと特別branchのstory戦闘にだけ接続し、通常探索、Trial、正式equipment/skill育成、実Shopは解禁しない。
+application versionは`3.0.0-alpha.4`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth/skill stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR107は通常探索とgrowth settlement、PR108はstatus/STP/SP/Skill Treeをalpha-v1 canonical pathへ接続するが、Trial、正式equipment、実Shop、party、market、facility、surface bridgeは解禁しない。
 
 ## Modular-monolith boundary
 
@@ -29,7 +29,7 @@ application versionは`3.0.0-alpha.2`である。surface Ruleset `hakoniwa-2s-pl
 
 ### Ownership and lifecycle
 
-Undergroundの恒久的なplayer progression ownerは`Secretary`である。combat level/XP、輝石の欠片、trial unlock/progress、地下箱庭で解禁済みのarea layer等のSecretary固有状態はNationから独立して保持する。PR102では地下箱庭entitlementを、PR103ではcombat progressionとruntime stateを追加する。equipment、skill、探索基地等の将来状態はこのowner境界を継承するが、今回のPRで先回りして永続化しない。
+Undergroundの恒久的なplayer progression ownerは`Secretary`である。combat level/XP、輝石の欠片、STP/SP、Skill Tree allocation/loadout、trial unlock/progress、地下箱庭で解禁済みのarea layer等のSecretary固有状態はNationから独立して保持する。PR102では地下箱庭entitlementを、PR103ではcombat progressionとruntime stateを、PR107ではcurrent HP/銀行/STP foundationを、PR108では有限SPとskill allocationを追加する。equipmentと探索基地等の将来状態もこのowner境界を継承する。
 
 `underground_profiles`はSecretaryと1:1で、`secretary_id`をunique FKとする。既存Secretaryはbackfillせず、必要になった時にApplication serviceがtransaction内でSecretary rowをlockしてprofileをlazy createする。profileはNationの破棄・再作成では削除しない。Secretaryそのものが正式に削除された場合だけ、Secretary skill/itemと同じcurrent child lifecycleに従ってcascade deleteする。current User→Secretary FKは`RESTRICT`であり、このPRはUser/Secretary lifecycleを変更しない。
 
@@ -95,7 +95,7 @@ damage prevention metricはHP clamp前のpost-mitigation damageを基準にし�
 
 ### Trees, points, active slots, and role stacks
 
-skill treeは`martial`（戦技）、`guardianship`（護身）、`miracle`（奇跡）の3つで、固定classやbalanced専用treeはない。各treeの全node最大rankはexactly 100 points、全treeは300 points、representative final budgetは120 pointsである。同tree内prerequisite、max rank、tree投資済み15 / 35 / 60 / 85 points gateをvalidatorが確認する。最大5 active skillに加え、通常攻撃と防御はslot外である。weapon styleはdagger、rapier、shield、crystal staffをauthoringし、styleとtreeを固定classとして結合しない。
+skill treeは`martial`（戦技）、`guardianship`（護身）、`miracle`（祝福）の3つで、固定classやbalanced専用treeはない。player-facing labelだけを祝福へ統一し、既存manifest/combat/node identityの`miracle` / `miracle_*`は維持する。各treeの全node最大rankはexactly 100 points、全treeは300 points、representative final budgetは120 pointsである。同tree内prerequisite、max rank、tree投資済み15 / 35 / 60 / 85 points gateをvalidatorが確認する。最大5 active skillに加え、通常攻撃と防御はslot外である。weapon styleはdagger、rapier、shield、crystal staffをauthoringし、styleとtreeを固定classとして結合しない。
 
 `fighting_spirit`（闘志）は実際にguard/parry/barrier吸収が発生した時だけ最大5 stackまで得る。攻撃されていない防御では増えない。`grace`（恩寵）はeffective healing、実際のcleanse、barrier吸収、または明示されたholy actionだけから得る。overhealだけでは増えない。いずれも通常combat flow内のstatus/role stackであり、variant専用engineを持たない。
 
@@ -115,7 +115,7 @@ uniqueは水平sidegradeである。manual comparisonではアイテムLv40の�
 
 ### Representative observations
 
-同point budget・同アイテムLvのpure attacker、pure tank、pure healer/miracle、balanced buildをclass recordではなくfixtureとしてauthoringする。standardized pressure benchmarkのmanual targetはattacker 100に対してbalanced 88〜92、tank 82〜84、healer 79〜81であり、tankの平均はhealer以上とする。tankのpressure出力は通常攻撃の基礎値ではなく、実効guard/parry/barrier吸収から闘志を得てcounterへつなぐ護身固有loopの価値で調整する。これらは通常CIのhard gateにはしない。適正帯enemyはmedian 14〜26 rounds、全build solo可能、100-round stalemateなしをinitial targetとする。
+同point budget・同アイテムLvのpure attacker、pure tank、pure healer/祝福、balanced buildをclass recordではなくfixtureとしてauthoringする。standardized pressure benchmarkのmanual targetはattacker 100に対してbalanced 88〜92、tank 82〜84、healer 79〜81であり、tankの平均はhealer以上とする。tankのpressure出力は通常攻撃の基礎値ではなく、実効guard/parry/barrier吸収から闘志を得てcounterへつなぐ護身固有loopの価値で調整する。これらは通常CIのhard gateにはしない。適正帯enemyはmedian 14〜26 rounds、全build solo可能、100-round stalemateなしをinitial targetとする。
 
 seed 0〜9,999のpressure/appropriate実験、各1,000-seedのearly/mid/late、MP sweep、sidegradeを含むsummaryは[`underground-balance-foundation-v1-10000-seeds.json`](../../product/docs/underground-balance-foundation-v1-10000-seeds.json)を正本とする。reportはraw per-seed action logを含めず、observed ratio、round分布、outcome、healing/prevention、status/action usage、MP economy、最大10 abnormal seeds、再現argumentを保持する。数値はalpha-v1の初期観測であり、player-facing contentや永久balance gateではない。
 
@@ -256,3 +256,25 @@ growth catalogは戦技・護身・祝福・自由の固定Lv1能力、derived H
 player-facing「力試し（α）」はPR105 immutable manifestのrepresentative 4 buildと3 opponentだけをallowlistし、request-derived private seedでcanonical alpha-v1 modelを実行する。current authenticated User自身のSecretaryかつ契約・growth選択・main unlock済みの場合だけ利用できる。compact battle historyと1時間detail logを再利用するが、XP、輝石の欠片、G、drop、Trial、Combat Lv、cooldown、surface economyのmutationはない。settlement時にbuild/enemy/player表示名、summary、roundごとのaction/status/value、終了HP/MP/barrierを自己完結したplayer-facing projectionとして保存し、後日の表示でcurrent catalogを再参照しない。表示順は実際のevent順を維持し、AI判断理由、private seed、raw manifest、internal database identityを公開しない。
 
 PR104までにmainへ到達したprofileはforward migrationで正式Shop説明へ戻すが、命名や旧scripted lossを再実行せず、growth pathを自動付与しない。既存のplaceholder branch resultはlegacy identityとして保持し、新しいhidden判定で再分類しない。forward migration後もalpha-v0 Tutorial/historyのXP +5、欠片0、Lv1契約を維持する。
+
+## PR107 normal exploration and player growth adapter
+
+PR107はcurrent authenticated User→own Secretary→profileを解決し、通常探索をalpha-v1 canonical combatへ接続する。player snapshotは`Lv1 baseline + growth path自然成長 × (Lv - 1) + 確定STP`を構成し、starter knifeのequipment補正を別段階で加える。XP/Lv/自然成長/未使用STP、終了HP、G reward/loss、history/cooldownを同じtransactionと既存lock orderでsettleする。Defeatだけ手持ちG半減とHP全回復を行い、銀行Gは保護する。MPはcolumnを追加せず毎battle 10,000から開始する。
+
+## PR108 status and skill progression adapter
+
+PR108はgrowth path選択時にfinite initial 20 SPと`secretary-underground-skill-tree-alpha-v1`を一度だけ保存する。forward migrationは既存のgrowth-selected profileだけを20/20へreconcileし、未選択profileは0/0/nullを維持する。`underground_skill_allocations`はprofile/nodeのrankとnullable active slotを保持し、profile/node unique、profile/slot unique、rank positive、slot 1〜5をdatabaseでも保護する。既存migrationは変更せずforward-only migrationを追加する。
+
+STP allocation、SP node acquisition、active loadout更新は`UndergroundIntroService`の既存UUID fingerprint ledger、Secretary/profile row lock、operation-specific fingerprintを再利用する。同じrequest ID + 同じintentは保存済みprojectionを返し、別payload reuseはconflictにする。node取得はcurrent identity、max rank、同tree prerequisite、lower-tier invested points gate、unspent SPをlock内で再検証してからSPを減算する。STPとSPのreset/refund、Trial SP grantはこのadapterに含めない。
+
+Skill Treeの表示はdesktop 3 column / mobile 3 tabとし、mobileで長い3 treeを連続stackしない。宿は既存の10G・carried balance・UUID retry contractを維持したまま、request中disableと成功後の案内人台詞・HP全回復statusだけをclient feedbackとして追加する。
+
+growth pathとSkill Treeは直交する。growth pathは自然成長、Skill TreeはSP使用先を決め、同じplayer-facing「祝福」名でも組合せを制限しない。祝福treeでは治癒祈祷を0 SP段、精神導路を15 SP段に置き、initial 20 SP内で初期回復役を構成できる。combat snapshotはprogression stats→starter equipment→passive modifiersの順にcanonical runtime inputへ統合し、tree identity、取得node/rank、active skill、effective passive modifierをbattle settlement時に自己完結保存する。後日のhistory表示でcurrent allocationへ再依存しない。
+
+祝福treeの「輝石循環」は既存`mp_restore` effectとpriority AIを使うlocal content deltaで、専用engineを持たない。MP cost 0、cooldown 7、restore 3,000、cap 10,000とし、緊急域で使用可能なhealを先、低MP時のcycleを後に評価する。10,000-seed reportはMP exhaustion、healのMP-block、emergency heal availability、cycle usage/effective restore、overflow、終端MP、round分布を観測する。
+
+`secretary-underground-targeting-alpha-v1`は`taunt`（挑発）をbattle-durationのtarget-selection modifierとして定義する。盾撃・闘志破砕・不屈反攻のauthoringと、`fighting_spirit_enabled`を持つactorの独立counterは、damage effectより先またはdamage結果と独立してenemyへ挑発sourceを記録するため、evasion/complete guardでdamage 0でも成立する。後発sourceが上書きし、将来selectorは明示targetingなしの敵対single-targetだけに適用し、sourceがtarget不能ならnormal selectionへfallbackする。明示random/lowest-HP/role/marked/scripted/ignore-taunt、self、area targetingを上書きせず、control resistanceやduration tickへ流用しない。current canonical engineは1v1のためtarget結果を変えず、round snapshotとeffect logにsource actor、scope、duration、override policyを保存する。party selectorはUG-04のOpen gateに残す。
+
+PR108の軽量浅層観測は、各growth/buildについてLv1 full HPとLv20 full HPを分離し、別にHP持越しの連続探索を1本観測する。Lv1の相対分類は地底鼠・洞窟蟲・腐食スライムをattritionのある雑魚、再生肉塊・狂信者を消耗後に危険な厄介枠、迷い人の影を明確な強敵とし、輝石虫はbonus enemyのため比較対象外とする。win rateは固定契約にせず、enemy categoryの順序、role差、異常な必勝・必敗、MP economyを読む。
+
+Lv20 + starter knifeは正式equipment未実装下の参考観測であり、浅層enemyを弱体化するacceptance gateではない。最終balanceは将来のLv1 Rank 1一式とLv20 Rank 3 weapon / armor / accessory一式を含むprogressionで再確認する。PR108のschema/API/UIはequipment shop、Secretary-owned宝物庫、storage、強化、enchant、affix、unique、sellまたはresaleを先行実装しない。

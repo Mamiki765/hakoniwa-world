@@ -380,6 +380,7 @@ final readonly class UndergroundRuntimeService
             $profile->allocatedStp(),
             $secretary->name,
             $currentHpBefore,
+            $profile->skillAllocationMap(),
         );
         $growthPath = $this->alphaV1Catalog->growthPath($profile->growth_path_key);
         $maxRounds = $this->alphaV1Catalog->explorationMaxRounds();
@@ -478,6 +479,11 @@ final readonly class UndergroundRuntimeService
                 'combat_stats' => $definition['combat_stats'],
                 'allocated_stp' => $profile->allocatedStp(),
                 'starter_weapon' => $definition['starter_weapon'],
+                'skill_tree_identity' => $profile->skill_tree_identity,
+                'targeting_contract_identity' => $this->alphaV1Catalog->targetingIdentity(),
+                'acquired_skill_nodes' => $definition['acquired_nodes'],
+                'equipped_active_skills' => $definition['active_skills'],
+                'effective_passive_modifiers' => $definition['passive_modifiers'],
                 'encounter' => [
                     'key' => $encounterKey,
                     'weight_bps' => $encounter['weight'],
@@ -801,6 +807,9 @@ final readonly class UndergroundRuntimeService
             || $profile->growth_path_key === null
             || $profile->growth_path_identity !== $this->alphaV1Catalog->growthIdentity()
             || $profile->growth_path_selected_at === null
+            || $profile->skill_tree_identity !== $this->alphaV1Catalog->skillTreeIdentity()
+            || $profile->skill_points_total < $this->alphaV1Catalog->initialSkillPoints()
+            || $profile->skill_points_unspent > $profile->skill_points_total
             || $profile->combat_level < 1) {
             throw new UndergroundRuntimeException(
                 'underground_exploration_locked',
