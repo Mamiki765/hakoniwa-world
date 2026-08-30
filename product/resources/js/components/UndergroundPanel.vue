@@ -575,6 +575,14 @@ function nodeLabel(nodeKey: string | null): string {
         .find((node) => node.key === nodeKey)?.label ?? '前提skill';
 }
 
+function orderedSkillNodes(nodes: SkillNode[]): SkillNode[] {
+    return nodes
+        .map((node, index) => ({ node, index }))
+        .sort((left, right) => left.node.invested_points_required - right.node.invested_points_required
+            || left.index - right.index)
+        .map(({ node }) => node);
+}
+
 function loadoutChoiceDisabled(skillKey: string, slotIndex: number): boolean {
     return loadoutDraft.value.some((equipped, index) => index !== slotIndex && equipped === skillKey);
 }
@@ -1000,7 +1008,7 @@ onMounted(() => { void enter(); });
                     >
                         <header><h3>{{ tree.label }}</h3><span>{{ tree.invested_points }} / {{ tree.full_points }} SP</span></header>
                         <ol>
-                            <li v-for="node in tree.nodes" :key="node.key" class="underground-skill-node" :data-acquired="node.rank > 0">
+                            <li v-for="node in orderedSkillNodes(tree.nodes)" :key="node.key" class="underground-skill-node" :data-acquired="node.rank > 0">
                                 <div class="underground-skill-node-heading"><strong>{{ node.label }}</strong><span>{{ node.type === 'active' ? 'active' : 'passive' }} {{ node.rank }} / {{ node.max_rank }}</span></div>
                                 <p>{{ node.summary }}</p>
                                 <dl>

@@ -1643,6 +1643,16 @@ describe('application lobby and island entry', () => {
                     type: 'active', rank: 0, max_rank: 1, point_cost: 5, invested_points_required: 0,
                     prerequisite: null, can_acquire: true, unavailable_reason: null as string | null,
                     skill_key: 'holy_bolt', mp_cost: 700, cooldown: 0, required_weapon_styles: [], active_slot: null,
+                }, {
+                    key: 'miracle_spirit_channel', label: '精神導路', summary: '祝福与ダメージを強化する。',
+                    type: 'passive', rank: 0, max_rank: 5, point_cost: 1, invested_points_required: 15,
+                    prerequisite: null, can_acquire: false, unavailable_reason: '祝福へあと15SP必要',
+                    skill_key: null, mp_cost: null, cooldown: null, required_weapon_styles: [], active_slot: null,
+                }, {
+                    key: 'miracle_mending_prayer', label: '治癒祈祷', summary: '自身のHPを回復する。',
+                    type: 'active', rank: 0, max_rank: 1, point_cost: 6, invested_points_required: 0,
+                    prerequisite: 'miracle_holy_bolt', can_acquire: false, unavailable_reason: '前提skill未取得',
+                    skill_key: 'mending_prayer', mp_cost: 1200, cooldown: 2, required_weapon_styles: [], active_slot: null,
                 }] }],
             active_slots: [null, null, null, null, null] as Array<{
                 key: string; label: string; summary: string; mp_cost: number; cooldown: number; required_weapon_styles: string[];
@@ -1880,6 +1890,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-tree-grid').text()).toContain('戦技');
         expect(wrapper.get('.underground-tree-grid').text()).toContain('護身');
         expect(wrapper.get('.underground-tree-grid').text()).toContain('祝福');
+        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-node')
+            .map((node) => node.get('strong').text()))
+            .toEqual(['聖晶弾', '治癒祈祷', '精神導路']);
         expect(wrapper.get('.underground-skill-node').text()).toContain('聖晶弾');
         await wrapper.get('.underground-skill-node button').trigger('click');
         await flushPromises();
