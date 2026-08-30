@@ -1693,7 +1693,11 @@ describe('application lobby and island entry', () => {
             rewards: { xp: 1150, shards: 0 },
         };
         let battleDetailGets = 0;
+        let explorationAttempts = 0;
+        let innAttempts = 0;
         let bankTransferAttempts = 0;
+        const explorationResults = new Map<string, typeof explorationBattle>();
+        const innResults = new Map<string, typeof openState>();
         const bankTransferResults = new Map<string, typeof openState>();
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -1707,9 +1711,26 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
             if (path === '/api/v1/me/underground') return response(openState);
             if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') return response(openState);
-            if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') return response(explorationBattle);
+            if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as { request_id: string };
+                const duplicate = explorationResults.get(payload.request_id);
+                if (duplicate) return response(duplicate);
+                explorationResults.set(payload.request_id, explorationBattle);
+                explorationAttempts++;
+                if (explorationAttempts === 1) throw new TypeError('Explore response lost');
+                return response(explorationBattle);
+            }
             if (path === '/api/v1/me/underground/inn/rest' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as { request_id: string };
+                const duplicate = innResults.get(payload.request_id);
+                if (duplicate) {
+                    openState = duplicate;
+                    return response(openState);
+                }
                 openState = { ...openState, shard_balance: openState.shard_balance - 10, current_hp: growthPath.max_hp };
+                innResults.set(payload.request_id, openState);
+                innAttempts++;
+                if (innAttempts === 1) throw new TypeError('Inn response lost');
                 return response(openState);
             }
             if (path === '/api/v1/me/underground/bank/transfer' && init?.method === 'POST') {
@@ -1783,10 +1804,23 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeDefined();
         await wrapper.findAll('.underground-entries button')[0]!.trigger('click');
         await flushPromises();
-        const explorationRequest = fetchMock.mock.calls.find(([path, init]) => (
+        expect(wrapper.get('[role="alert"]').text()).toContain('Explore response lost');
+        const failedExplorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
             String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
         ));
-        expect(JSON.parse(String(explorationRequest?.[1]?.body))).toEqual({ request_id: expect.any(String) });
+        expect(failedExplorationRequests).toHaveLength(1);
+        const failedExplorationPayload = JSON.parse(String(failedExplorationRequests[0]?.[1]?.body)) as {
+            request_id: string;
+        };
+        await wrapper.findAll('.underground-entries button')[0]!.trigger('click');
+        await flushPromises();
+        const explorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
+        ));
+        expect(explorationRequests).toHaveLength(2);
+        expect(JSON.parse(String(explorationRequests[1]?.[1]?.body))).toEqual({
+            request_id: failedExplorationPayload.request_id,
+        });
         const explorationLog = wrapper.get('.underground-battle-log').text();
         expect(explorationLog).toContain('輝石虫は完全防御し、HPダメージは0。');
         expect(explorationLog.indexOf('Round 1')).toBeLessThan(explorationLog.indexOf('戦闘終了'));
@@ -1799,9 +1833,21 @@ describe('application lobby and island entry', () => {
             .toEqual([false, true, false, true]);
         await wrapper.findAll('.underground-shop-entries button')[0]!.trigger('click');
         await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Inn response lost');
+        expect(wrapper.get('.underground-summary').text()).toContain('HP321 / 660');
+        const failedInnRequests = fetchMock.mock.calls.filter(([path]) => (
+            String(path) === '/api/v1/me/underground/inn/rest'
+        ));
+        expect(failedInnRequests).toHaveLength(1);
+        const failedInnPayload = JSON.parse(String(failedInnRequests[0]?.[1]?.body)) as { request_id: string };
+        await wrapper.findAll('.underground-shop-entries button')[0]!.trigger('click');
+        await flushPromises();
         expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
-        const innRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/me/underground/inn/rest');
-        expect(JSON.parse(String(innRequest?.[1]?.body))).toEqual({ request_id: expect.any(String) });
+        const innRequests = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/inn/rest');
+        expect(innRequests).toHaveLength(2);
+        expect(JSON.parse(String(innRequests[1]?.[1]?.body))).toEqual({
+            request_id: failedInnPayload.request_id,
+        });
         await wrapper.findAll('.underground-shop > .underground-shop-entries button')[2]!.trigger('click');
         expect(wrapper.get('.underground-bank').text()).toContain('手持ち: 2340 G');
         expect(wrapper.get('.underground-bank').text()).toContain('預金: 5000 G');

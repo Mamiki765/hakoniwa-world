@@ -247,6 +247,8 @@ const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
+const pendingExplorationRequestId = ref<string | null>(null);
+const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const currentPlayerDisplayName = computed(() => currentBattle.value
@@ -367,15 +369,18 @@ async function runPlaytest(): Promise<void> {
 
 async function runExplore(): Promise<void> {
     if (busy.value) return;
+    const explorationRequestId = pendingExplorationRequestId.value ?? requestId();
+    pendingExplorationRequestId.value = explorationRequestId;
     busy.value = true;
     error.value = '';
     try {
         const battle = await api<Battle>('/api/v1/me/underground/explore', {
             method: 'POST',
-            body: JSON.stringify({ request_id: requestId() }),
+            body: JSON.stringify({ request_id: explorationRequestId }),
         });
         await refresh(false);
         selectedBattle.value = battle;
+        pendingExplorationRequestId.value = null;
     } catch (caught) {
         if (caught instanceof ApiError && caught.status === 409) await refresh(false);
         error.value = caught instanceof Error ? caught.message : '周囲を探索できませんでした。';
@@ -385,7 +390,11 @@ async function runExplore(): Promise<void> {
 }
 
 async function restAtInn(): Promise<void> {
-    await mutate('/api/v1/me/underground/inn/rest');
+    const innRequestId = pendingInnRequestId.value ?? requestId();
+    pendingInnRequestId.value = innRequestId;
+    if (await mutate('/api/v1/me/underground/inn/rest', {}, innRequestId)) {
+        pendingInnRequestId.value = null;
+    }
 }
 
 async function runBankAction(action: 'deposit' | 'withdraw' | 'deposit_all' | 'withdraw_all'): Promise<void> {
