@@ -639,6 +639,103 @@ final class UndergroundCombatBuildTest extends TestCase
         }
     }
 
+    public function test_player_shop_equipment_catalog_has_exact_stable_ranked_common_progression(): void
+    {
+        $catalog = require dirname(__DIR__, 3).'/config/underground-equipment.php';
+        $definitions = $catalog['definitions'];
+        $shop = array_filter(
+            $definitions,
+            static fn (array $definition): bool => $definition['shop_sold'],
+        );
+
+        $this->assertSame('secretary-underground-shop-equipment-alpha-v1', $catalog['catalog_identity']);
+        $this->assertSame([500, 50, 31, 30], [
+            $catalog['vault_capacity'],
+            $catalog['page_size'],
+            count($definitions),
+            count($shop),
+        ]);
+        $this->assertSame([
+            'starter_knife',
+            'iron_dagger', 'steel_dagger', 'polished_steel_dagger',
+            'bronze_rapier', 'iron_rapier', 'steel_rapier',
+            'iron_longsword', 'steel_longsword', 'reinforced_longsword',
+            'wood_crystal_staff', 'oak_crystal_staff', 'iron_core_crystal_staff',
+            'leather_armor', 'reinforced_leather_armor', 'iron_breastplate',
+            'vitality_accessory_rank_1', 'vitality_accessory_rank_2', 'vitality_accessory_rank_3',
+            'might_accessory_rank_1', 'might_accessory_rank_2', 'might_accessory_rank_3',
+            'finesse_accessory_rank_1', 'finesse_accessory_rank_2', 'finesse_accessory_rank_3',
+            'spirit_accessory_rank_1', 'spirit_accessory_rank_2', 'spirit_accessory_rank_3',
+            'agility_accessory_rank_1', 'agility_accessory_rank_2', 'agility_accessory_rank_3',
+        ], array_keys($definitions));
+        $starter = $definitions['starter_knife'];
+        $this->assertSame([
+            '護身用ナイフ', 'weapon', 'dagger', 0, 1, 'common', null,
+            false, false, 24, 0, 0, 0,
+            ['vitality' => 1, 'might' => 1, 'finesse' => 1, 'spirit' => 1, 'agility' => 1],
+            [], [], null,
+        ], [
+            $starter['name'], $starter['category'], $starter['weapon_style'],
+            $starter['rank'], $starter['item_level'], $starter['rarity'], $starter['buy_price'],
+            $starter['shop_sold'], $starter['sellable'], $starter['weapon_power'],
+            $starter['physical_defense'], $starter['magical_defense'], $starter['max_hp'],
+            $starter['stats'], $starter['modifiers'], $starter['affixes'], $starter['unique_effect'],
+        ]);
+
+        $weapons = array_filter($shop, static fn (array $item): bool => $item['category'] === 'weapon');
+        $armors = array_values(array_filter($shop, static fn (array $item): bool => $item['category'] === 'armor'));
+        $accessories = array_filter($shop, static fn (array $item): bool => $item['category'] === 'accessory');
+        $this->assertSame([12, 3, 15], [count($weapons), count($armors), count($accessories)]);
+        $this->assertSame(
+            ['dagger', 'rapier', 'longsword', 'crystal_staff'],
+            array_values(array_unique(array_column($weapons, 'weapon_style'))),
+        );
+        $this->assertNotContains('shield', array_column($weapons, 'weapon_style'));
+
+        foreach (['dagger', 'rapier', 'longsword', 'crystal_staff'] as $style) {
+            $series = array_values(array_filter(
+                $weapons,
+                static fn (array $item): bool => $item['weapon_style'] === $style,
+            ));
+            $this->assertSame([1, 2, 3], array_column($series, 'rank'));
+            $this->assertSame([1, 10, 20], array_column($series, 'item_level'));
+            $this->assertSame([120, 360, 1_000], array_column($series, 'buy_price'));
+            $this->assertLessThan($series[1]['weapon_power'], $series[0]['weapon_power']);
+            $this->assertLessThan($series[2]['weapon_power'], $series[1]['weapon_power']);
+        }
+        $this->assertSame([1, 2, 3], array_column($armors, 'rank'));
+        $this->assertSame([100, 300, 900], array_column($armors, 'buy_price'));
+        foreach (['physical_defense', 'magical_defense', 'max_hp'] as $field) {
+            $this->assertLessThan($armors[1][$field], $armors[0][$field]);
+            $this->assertLessThan($armors[2][$field], $armors[1][$field]);
+        }
+
+        foreach (AlphaV1CombatRules::STATS as $stat) {
+            $series = array_values(array_filter(
+                $accessories,
+                static fn (array $item, string $key): bool => str_starts_with($key, $stat.'_'),
+                ARRAY_FILTER_USE_BOTH,
+            ));
+            $this->assertSame([1, 2, 3], array_column($series, 'rank'));
+            $this->assertSame([60, 180, 600], array_column($series, 'buy_price'));
+            foreach ($series as $index => $item) {
+                $expected = array_fill_keys(AlphaV1CombatRules::STATS, 0);
+                $expected[$stat] = $index + 1;
+                $this->assertSame($expected, $item['stats']);
+            }
+        }
+        foreach ($shop as $item) {
+            $this->assertSame(['common', [], [], null], [
+                $item['rarity'], $item['modifiers'], $item['affixes'], $item['unique_effect'],
+            ]);
+        }
+        $this->assertSame([3, 20, 'common'], [
+            $definitions['polished_steel_dagger']['rank'],
+            $definitions['polished_steel_dagger']['item_level'],
+            $definitions['polished_steel_dagger']['rarity'],
+        ]);
+    }
+
     public function test_representative_build_smoke_has_legal_state_and_no_surface_or_database_fixture(): void
     {
         [, $catalog] = $this->catalog();

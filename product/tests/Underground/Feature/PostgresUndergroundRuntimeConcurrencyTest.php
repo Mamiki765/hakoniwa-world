@@ -9,6 +9,7 @@ use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
+use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
@@ -136,6 +137,114 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $this->assertSame(1, UndergroundIntroRequest::query()
             ->where('underground_profile_id', $profile->id)
             ->where('operation', 'bank_transfer')->count());
+    }
+
+    public function test_equipment_mutations_serialize_duplicate_settlement_last_vault_slot_and_slot_swap(): void
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $this->openExploration($user, $secretary);
+        $profile->refresh();
+        $profile->update(['shard_balance' => 10_000]);
+
+        $purchase = [
+            'operation' => 'equipment_purchase',
+            'definition_key' => 'iron_dagger',
+        ];
+        $purchaseResults = $this->runConcurrentOperations($user, $secretary, [
+            ['request_id' => (string) Str::uuid()] + $purchase,
+            ['request_id' => (string) Str::uuid()] + $purchase,
+        ]);
+        $purchaseStatuses = array_column($purchaseResults, 'status');
+        sort($purchaseStatuses);
+        $this->assertSame(['conflict', 'ok'], $purchaseStatuses);
+        $purchaseConflict = collect($purchaseResults)->firstWhere('status', 'conflict');
+        $this->assertIsArray($purchaseConflict);
+        $this->assertSame('underground_equipment_already_owned', $purchaseConflict['error_code']);
+        $this->assertSame(9_880, $profile->fresh()->shard_balance);
+        $ironDagger = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('definition_key', 'iron_dagger')->sole();
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'equipment_purchase')->count());
+
+        $saleRequest = (string) Str::uuid();
+        $sale = [
+            'operation' => 'equipment_sell',
+            'request_id' => $saleRequest,
+            'item_id' => $ironDagger->id,
+        ];
+        $saleResults = $this->runConcurrentOperations($user, $secretary, [$sale, $sale]);
+        $this->assertSame(['ok', 'ok'], array_column($saleResults, 'status'));
+        $this->assertSame([9_940, 9_940], array_column($saleResults, 'shard_balance'));
+        $this->assertDatabaseMissing('underground_owned_equipment', ['id' => $ironDagger->id]);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'equipment_sell')->count());
+
+        $profile->refresh()->update(['shard_balance' => 10_000]);
+        $rows = [];
+        foreach (range(1, 498) as $offset) {
+            $rows[] = [
+                'underground_profile_id' => $profile->id,
+                'definition_key' => 'bronze_rapier',
+                'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v1',
+                'equipped_slot' => null,
+                'grant_key' => null,
+                'acquired_at' => now()->addSecond($offset),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        DB::table('underground_owned_equipment')->insert($rows);
+        $this->assertSame(499, UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)->count());
+        $lastSlotResults = $this->runConcurrentOperations($user, $secretary, [[
+            'operation' => 'equipment_purchase',
+            'request_id' => (string) Str::uuid(),
+            'definition_key' => 'steel_dagger',
+        ], [
+            'operation' => 'equipment_purchase',
+            'request_id' => (string) Str::uuid(),
+            'definition_key' => 'leather_armor',
+        ]]);
+        $statuses = array_column($lastSlotResults, 'status');
+        sort($statuses);
+        $this->assertSame(['conflict', 'ok'], $statuses);
+        $conflict = collect($lastSlotResults)->firstWhere('status', 'conflict');
+        $success = collect($lastSlotResults)->firstWhere('status', 'ok');
+        $this->assertIsArray($conflict);
+        $this->assertIsArray($success);
+        $this->assertSame('underground_vault_full', $conflict['error_code']);
+        $price = $success['definition_key'] === 'steel_dagger' ? 360 : 100;
+        $this->assertSame(10_000 - $price, $profile->fresh()->shard_balance);
+        $this->assertSame(500, UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)->count());
+
+        $equipCandidates = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('definition_key', 'bronze_rapier')
+            ->orderBy('id')->limit(2)->get();
+        $equipResults = $this->runConcurrentOperations($user, $secretary, [
+            [
+                'operation' => 'equipment_equip',
+                'request_id' => (string) Str::uuid(),
+                'item_id' => $equipCandidates[0]->id,
+            ],
+            [
+                'operation' => 'equipment_equip',
+                'request_id' => (string) Str::uuid(),
+                'item_id' => $equipCandidates[1]->id,
+            ],
+        ]);
+        $this->assertSame(['ok', 'ok'], array_column($equipResults, 'status'));
+        $equippedWeapon = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('equipped_slot', 'weapon')->sole();
+        $this->assertContains($equippedWeapon->id, $equipCandidates->pluck('id')->all());
+        $this->assertSame(2, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'equipment_equip')->count());
     }
 
     public function test_concurrent_different_shopkeeper_names_commit_exactly_one_under_secretary_lock(): void
@@ -420,6 +529,32 @@ SQL);
                 ->where('pg_constraint.conname', 'underground_profiles_combat_level_max_check')
                 ->where('pg_namespace.nspname', $schema)
                 ->count());
+            $connection->table('underground_intro_progress')
+                ->where('underground_profile_id', 1)
+                ->update(['stage' => 'underground_open']);
+            $equipmentMigration = require database_path(
+                'migrations/2026_08_30_040000_add_underground_equipment_progression.php',
+            );
+            $equipmentMigration->up();
+            $starter = $connection->table('underground_owned_equipment')->sole();
+            $this->assertSame([1, 'starter_knife', 'weapon', 'starter-knife-alpha-v1'], [
+                $starter->underground_profile_id,
+                $starter->definition_key,
+                $starter->equipped_slot,
+                $starter->grant_key,
+            ]);
+            $this->assertSame(1, $connection->table('pg_constraint')
+                ->join('pg_class', 'pg_constraint.conrelid', '=', 'pg_class.oid')
+                ->join('pg_namespace', 'pg_class.relnamespace', '=', 'pg_namespace.oid')
+                ->where('pg_constraint.conname', 'underground_owned_equipment_slot_check')
+                ->where('pg_namespace.nspname', $schema)
+                ->count());
+            foreach (['equipment_purchase', 'equipment_sell', 'equipment_equip', 'equipment_unequip'] as $operation) {
+                $connection->table('underground_intro_requests')->insert([
+                    'operation' => $operation,
+                    'resulting_stage' => 'underground_open',
+                ]);
+            }
         } finally {
             $connection->unprepared('SET search_path TO public');
             $connection->unprepared("DROP SCHEMA {$schema} CASCADE");

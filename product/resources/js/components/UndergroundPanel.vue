@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
+import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
+import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
+import type { EquipmentItem } from './EquipmentItemCard.vue';
 
 type Stage = 'not_started' | 'initial_descent' | 'tutorial_ready' | 'escape_pending'
     | 'returned_after_tutorial' | 'shopkeeper_encounter' | 'shopkeeper_naming'
@@ -166,12 +169,7 @@ interface UndergroundState {
         equipment: number;
         final: number;
     }> | null;
-    starter_weapon: {
-        key: string;
-        label: string;
-        rarity: string;
-        item_level: number;
-    } | null;
+    equipment_summary: EquipmentSummary | null;
     skill_points_total: number;
     skill_points_unspent: number;
     skill_points_spent: number;
@@ -190,6 +188,22 @@ interface UndergroundState {
     growth_path: GrowthPath | null;
     playtest: PlaytestOptions | null;
     battle: Battle | null;
+}
+
+interface EquipmentSummary {
+    used: number;
+    capacity: number;
+    equipped: {
+        weapon: EquipmentItem | null;
+        armor: EquipmentItem | null;
+        accessory: EquipmentItem | null;
+    };
+}
+
+interface EquipmentMutationState {
+    shard_balance: number;
+    banked_shard_balance: number;
+    vault: EquipmentSummary;
 }
 
 const initialDescent = [
@@ -317,6 +331,7 @@ const loadoutDraft = ref<Array<string | null>>([null, null, null, null, null]);
 const pendingStpMutation = ref<PendingMutation | null>(null);
 const pendingSkillAcquire = ref<PendingMutation | null>(null);
 const pendingLoadoutMutation = ref<PendingMutation | null>(null);
+const equipmentView = ref<'main' | 'shop' | 'vault'>('main');
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
@@ -680,6 +695,18 @@ function closeBattle(): void {
     selectedBattle.value = null;
 }
 
+async function applyEquipmentMutation(result: EquipmentMutationState): Promise<void> {
+    if (!state.value) return;
+    state.value.shard_balance = result.shard_balance;
+    state.value.banked_shard_balance = result.banked_shard_balance;
+    state.value.equipment_summary = result.vault;
+    try {
+        await refresh(false);
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : '装備変更後の状態を更新できませんでした。';
+    }
+}
+
 onMounted(() => { void enter(); });
 </script>
 
@@ -823,7 +850,16 @@ onMounted(() => { void enter(); });
         </template>
 
         <template v-else-if="state?.stage === 'underground_open'">
-            <div class="underground-main-layout">
+            <nav class="underground-main-navigation" aria-label="地下メニュー">
+                <button type="button" :aria-current="equipmentView === 'main' ? 'page' : undefined" @click="equipmentView = 'main'">地下メイン</button>
+                <button type="button" :aria-current="equipmentView === 'shop' ? 'page' : undefined" @click="equipmentView = 'shop'">装備ショップ</button>
+                <button type="button" :aria-current="equipmentView === 'vault' ? 'page' : undefined" @click="equipmentView = 'vault'">宝物庫</button>
+            </nav>
+
+            <UndergroundEquipmentShop v-if="equipmentView === 'shop'" @updated="applyEquipmentMutation" />
+            <UndergroundEquipmentVault v-else-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
+
+            <div v-else class="underground-main-layout">
                 <section class="underground-character-pane" aria-labelledby="underground-character-title">
                     <div class="underground-character-header">
                         <img v-if="props.secretaryImageUrl" :src="props.secretaryImageUrl" :alt="`${state.secretary_name}の画像`">
@@ -847,7 +883,12 @@ onMounted(() => { void enter(); });
                     </section>
                     <section class="underground-equipment" aria-labelledby="underground-equipment-title">
                         <h2 id="underground-equipment-title">装備</h2>
-                        <dl><div><dt>武器</dt><dd>{{ state.starter_weapon?.label ?? '未設定' }}</dd></div><div><dt>防具</dt><dd>未設定</dd></div><div><dt>装飾</dt><dd>未設定</dd></div></dl>
+                        <dl>
+                            <div><dt>武器</dt><dd>{{ state.equipment_summary?.equipped.weapon?.name ?? '未設定' }}</dd></div>
+                            <div><dt>防具</dt><dd>{{ state.equipment_summary?.equipped.armor?.name ?? '未設定' }}</dd></div>
+                            <div><dt>アクセサリー</dt><dd>{{ state.equipment_summary?.equipped.accessory?.name ?? '未設定' }}</dd></div>
+                        </dl>
+                        <p v-if="state.equipment_summary">宝物庫 {{ state.equipment_summary.used }} / {{ state.equipment_summary.capacity }}</p>
                     </section>
                     <div class="underground-character-actions">
                         <button type="button" :aria-expanded="statusOpen" @click="statusOpen = !statusOpen">ステータス<small>STP配分</small></button>
@@ -864,9 +905,9 @@ onMounted(() => { void enter(); });
                         <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
                         <div class="underground-shop-entries">
                             <button type="button" :disabled="busy || innResting" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
-                            <button type="button" disabled>装備ショップ<small>準備中</small></button>
+                            <button type="button" :disabled="busy" @click="equipmentView = 'shop'">装備ショップ<small>武器・防具・アクセサリー</small></button>
                             <button type="button" :disabled="busy" @click="bankOpen = !bankOpen">銀行<small>預入・引出</small></button>
-                            <button type="button" disabled>ショップ<small>準備中</small></button>
+                            <button type="button" :disabled="busy" @click="equipmentView = 'vault'">宝物庫<small>所持品・装備変更</small></button>
                         </div>
                         <form v-if="bankOpen" class="underground-bank" @submit.prevent>
                             <h3>銀行</h3>

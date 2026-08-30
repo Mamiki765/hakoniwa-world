@@ -164,8 +164,8 @@ return [
                 'enemy' => [
                     'label' => '迷い人の影', 'boss' => false,
                     'base_stats' => ['vitality' => 28, 'might' => 34, 'finesse' => 20, 'spirit' => 2, 'agility' => 16],
-                    'max_hp' => 620, 'physical_defense' => 70, 'magical_defense' => 60, 'weapon_power' => 34,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 9500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => true, 'dodgeable' => true, 'hits' => 1],
+                    'max_hp' => 1000, 'physical_defense' => 110, 'magical_defense' => 100, 'weapon_power' => 44,
+                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 10500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => true, 'dodgeable' => true, 'hits' => 1],
                     'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
                 ],
             ],

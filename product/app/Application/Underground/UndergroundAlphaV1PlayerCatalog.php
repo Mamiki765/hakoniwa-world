@@ -428,10 +428,17 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return $this->rules->maxHp($combatStats, 10_000, $maxHp);
     }
 
-    /** @param array<string, mixed> $allocatedStp */
-    public function currentMaxHp(string $growthPathKey, int $combatLevel, array $allocatedStp): int
-    {
-        $equipment = $this->starterWeapon();
+    /**
+     * @param  array<string, mixed>  $allocatedStp
+     * @param  array<string, mixed>|null  $equipment
+     */
+    public function currentMaxHp(
+        string $growthPathKey,
+        int $combatLevel,
+        array $allocatedStp,
+        ?array $equipment = null,
+    ): int {
+        $equipment ??= $this->starterWeapon();
         $progressionStats = $this->currentStats($growthPathKey, $combatLevel, $allocatedStp);
 
         return $this->maxHp($this->combatStats($progressionStats, $equipment), $equipment);
@@ -520,20 +527,21 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     /**
      * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
      * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
-     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, starter_weapon: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>}
+     * @param  array<string, mixed>  $equipment
+     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>}
      */
     public function explorationCombatDefinition(
         string $growthPathKey,
         int $combatLevel,
         array $allocatedStp,
+        array $equipment,
         string $playerDisplayName,
         ?int $currentHp = null,
         array $skillAllocations = [],
     ): array {
         $progressionStats = $this->currentStats($growthPathKey, $combatLevel, $allocatedStp);
-        $starterWeapon = $this->starterWeapon();
-        $combatStats = $this->combatStats($progressionStats, $starterWeapon);
-        $maxHp = $this->maxHp($combatStats, $starterWeapon);
+        $combatStats = $this->combatStats($progressionStats, $equipment);
+        $maxHp = $this->maxHp($combatStats, $equipment);
         $currentHp ??= $maxHp;
         if ($currentHp < 1 || $currentHp > $maxHp) {
             throw new RuntimeException('Underground current HP is invalid.');
@@ -550,12 +558,12 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 'active_skills' => $skillBuild['active_skills'],
                 'ai_rules' => $skillBuild['ai_rules'],
                 'modifiers' => $skillBuild['passive_modifiers'],
-                'equipment' => $starterWeapon,
+                'equipment' => $equipment,
                 'current_hp' => $currentHp,
             ],
             'progression_stats' => $progressionStats,
             'combat_stats' => $combatStats,
-            'starter_weapon' => $starterWeapon,
+            'equipment' => $equipment,
             'current_hp' => $currentHp,
             'max_hp' => $maxHp,
             'acquired_nodes' => $skillBuild['acquired_nodes'],

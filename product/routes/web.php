@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
 use App\Http\Controllers\Api\TradingPostController;
+use App\Http\Controllers\Api\UndergroundEquipmentController;
 use App\Http\Controllers\Api\UndergroundIntroController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
@@ -97,6 +98,13 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/explore', [UndergroundIntroController::class, 'explore']);
         Route::post('/inn/rest', [UndergroundIntroController::class, 'restAtInn']);
         Route::post('/bank/transfer', [UndergroundIntroController::class, 'bankTransfer']);
+        Route::get('/equipment/shop', [UndergroundEquipmentController::class, 'shop']);
+        Route::post('/equipment/shop/purchase', [UndergroundEquipmentController::class, 'purchase']);
+        Route::post('/equipment/items/{itemId}/sell', [UndergroundEquipmentController::class, 'sell'])
+            ->whereNumber('itemId');
+        Route::get('/equipment/vault', [UndergroundEquipmentController::class, 'vault']);
+        Route::put('/equipment/equipped', [UndergroundEquipmentController::class, 'equip']);
+        Route::delete('/equipment/equipped/{slot}', [UndergroundEquipmentController::class, 'unequip']);
         Route::post('/status/stp', [UndergroundIntroController::class, 'allocateStp']);
         Route::post('/skills/acquire', [UndergroundIntroController::class, 'acquireSkill']);
         Route::put('/skills/loadout', [UndergroundIntroController::class, 'updateActiveLoadout']);

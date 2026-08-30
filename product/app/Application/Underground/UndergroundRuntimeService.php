@@ -35,6 +35,8 @@ final readonly class UndergroundRuntimeService
         private UndergroundBattleLogProjector $battleLogProjector,
         private UndergroundAlphaV1PlayerCatalog $alphaV1Catalog,
         private UndergroundAlphaV1BattleProjector $alphaV1Projector,
+        private UndergroundStarterEquipmentService $starterEquipment,
+        private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
     ) {}
 
     /** @return array{battle: UndergroundBattle, duplicate: bool} */
@@ -368,16 +370,19 @@ final readonly class UndergroundRuntimeService
                 '周囲の探索はまだ解禁されていません。',
             );
         }
+        $equipment = $this->equipmentLoadout->combatLoadout($profile);
         $maxHpBefore = $this->alphaV1Catalog->currentMaxHp(
             $profile->growth_path_key,
             $profile->combat_level,
             $profile->allocatedStp(),
+            $equipment,
         );
         $currentHpBefore = min($profile->current_hp ?? $maxHpBefore, $maxHpBefore);
         $definition = $this->alphaV1Catalog->explorationCombatDefinition(
             $profile->growth_path_key,
             $profile->combat_level,
             $profile->allocatedStp(),
+            $equipment,
             $secretary->name,
             $currentHpBefore,
             $profile->skillAllocationMap(),
@@ -428,6 +433,7 @@ final readonly class UndergroundRuntimeService
             $profile->growth_path_key,
             $profile->combat_level,
             $profile->allocatedStp(),
+            $equipment,
         );
         $profile->current_hp = $resultType === UndergroundBattle::RESULT_DEFEAT
             ? $maxHpAfter
@@ -478,7 +484,7 @@ final readonly class UndergroundRuntimeService
                 'progression_stats' => $definition['progression_stats'],
                 'combat_stats' => $definition['combat_stats'],
                 'allocated_stp' => $profile->allocatedStp(),
-                'starter_weapon' => $definition['starter_weapon'],
+                'equipment' => $definition['equipment'],
                 'skill_tree_identity' => $profile->skill_tree_identity,
                 'targeting_contract_identity' => $this->alphaV1Catalog->targetingIdentity(),
                 'acquired_skill_nodes' => $definition['acquired_nodes'],
@@ -732,6 +738,9 @@ final readonly class UndergroundRuntimeService
             ->lockForUpdate()
             ->firstOrFail();
         $profile->setRelation('secretary', $secretary);
+        if ($profile->growth_path_key !== null) {
+            $this->starterEquipment->reconcile($profile);
+        }
 
         return $profile;
     }

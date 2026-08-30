@@ -1647,7 +1647,12 @@ describe('application lobby and island entry', () => {
             active_slots: [null, null, null, null, null] as Array<{
                 key: string; label: string; summary: string; mp_cost: number; cooldown: number; required_weapon_styles: string[];
             } | null>, passive_modifiers: {},
-            starter_weapon: { key: 'starter_knife', label: '護身用ナイフ', item_level: 1, rarity: 'common' },
+            equipment_summary: { used: 1, capacity: 500, equipped: { weapon: {
+                id: 1, key: 'starter_knife', name: '護身用ナイフ', category: 'weapon', weapon_style: 'dagger',
+                rank: 0, item_level: 1, rarity: 'common', buy_price: null, sell_price: 0, equipped_slot: 'weapon',
+                weapon_power: 24, physical_defense: 0, magical_defense: 0, max_hp: 0,
+                stats: { vitality: 1, might: 1, finesse: 1, spirit: 1, agility: 1 },
+            }, armor: null, accessory: null } },
             shopkeeper_name: '<b>店員</b>', true_name_branch: false,
             tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
             contract_completed: true, growth_paths: null, growth_path: growthPath, playtest, battle: null,
@@ -1911,7 +1916,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
         expect(wrapper.findAll('.underground-shop-entries button')).toHaveLength(4);
         expect(wrapper.findAll('.underground-shop-entries button').map((button) => button.attributes('disabled') !== undefined))
-            .toEqual([false, true, false, true]);
+            .toEqual([false, false, false, false]);
         await wrapper.findAll('.underground-shop-entries button')[0]!.trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Inn response lost');
@@ -2911,5 +2916,66 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-form').exists()).toBe(false);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
         expect(wrapper.get('.abandonment-modal [role="alert"]').text()).toContain('このWorldは現在更新中です。');
+    });
+});
+
+describe('Underground equipment navigation', () => {
+    it('opens the shop, shows carried balance, and retries an ambiguous purchase with the same UUID', async () => {
+        const item = {
+            key: 'iron_dagger', name: '鉄の短剣', category: 'weapon', weapon_style: 'dagger', rank: 1, item_level: 1,
+            rarity: 'common', buy_price: 120, sell_price: 60, owned: false, equipped_slot: null,
+            weapon_power: 30, physical_defense: 0, magical_defense: 0, max_hp: 0,
+            stats: { vitality: 0, might: 0, finesse: 3, spirit: 0, agility: 2 }, effect_text: null,
+        };
+        const state = {
+            stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 1, combat_xp: 5,
+            next_level_xp: 100, next_level_requirement: 95, xp_to_next_level: 95, shard_balance: 240,
+            banked_shard_balance: 1000, current_hp: 660, unspent_stp: 0,
+            allocated_stp: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 }, current_stats: null,
+            combat_stats: null, status_breakdown: null,
+            equipment_summary: { used: 1, capacity: 500, equipped: { weapon: { ...item, id: 1, key: 'starter_knife', name: '護身用ナイフ', buy_price: null, sell_price: 0, equipped_slot: 'weapon' }, armor: null, accessory: null } },
+            skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0, skill_tree_identity: null,
+            skill_trees: null, active_slots: [null, null, null, null, null], passive_modifiers: {}, shopkeeper_name: '案内人',
+            true_name_branch: false, tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
+            contract_completed: true, growth_paths: null, growth_path: null, playtest: null, battle: null,
+        };
+        let owned = false;
+        const purchasePayloads: string[] = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') return response(state);
+            if (path === '/api/v1/me/underground/battles') return response([]);
+            if (path === '/api/v1/me/underground/equipment/shop') return response({
+                catalog_identity: 'test-catalog', currency_label: '輝石の欠片 G', shard_balance: owned ? 120 : 240,
+                banked_shard_balance: 1000, bank_auto_withdraw: false,
+                items: [{ ...item, owned }], owned_items: owned ? [{ ...item, id: 42, owned: undefined }] : [],
+            });
+            if (path === '/api/v1/me/underground/equipment/shop/purchase' && init?.method === 'POST') {
+                purchasePayloads.push(String(init.body));
+                if (purchasePayloads.length === 1) return response(null, 503);
+                owned = true;
+                return response({ shard_balance: 120, banked_shard_balance: 1000, vault: { used: 2, capacity: 500, equipped: { weapon: null, armor: null, accessory: null } } });
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        await wrapper.find('.underground-main-navigation button:nth-child(2)').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('#underground-equipment-shop-title').text()).toBe('装備ショップ');
+        expect(wrapper.get('.underground-equipment-screen').text()).toContain('手持ち');
+        expect(wrapper.get('.underground-equipment-screen').text()).toContain('銀行');
+        await wrapper.get('.underground-equipment-card .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('HTTP 503');
+        await wrapper.get('.underground-equipment-card .button').trigger('click');
+        await flushPromises();
+        expect(purchasePayloads).toHaveLength(2);
+        expect(JSON.parse(purchasePayloads[0]!).request_id)
+            .toBe(JSON.parse(purchasePayloads[1]!).request_id);
+        expect(wrapper.get('.underground-equipment-screen').text()).toContain('所有済み');
+        wrapper.unmount();
     });
 });
