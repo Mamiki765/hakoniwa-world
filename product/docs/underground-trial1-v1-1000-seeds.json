@@ -9,9 +9,9 @@
     "equipment_catalog_identity": "secretary-underground-shop-equipment-alpha-v1",
     "seed_strategy_identity": "trial-sequence-common-random-v1",
     "manifest_path": "config/underground/balance/trial1-v1.json",
-    "manifest_hash": "75e32b55fb70720ac9267f5f0ca5bbfde754dca870d58be60d145596cda8f35c",
-    "manifest_contents": "{\n    \"schema_version\": 1,\n    \"simulation_type\": \"trial_sequence\",\n    \"trial_identity\": \"underground-trial-01-simulation-v1\",\n    \"combat_identity\": \"secretary-underground-alpha-v1\",\n    \"seed_strategy_identity\": \"trial-sequence-common-random-v1\",\n    \"seed_range\": {\"start\": 0, \"count\": 1000},\n    \"max_rounds\": 100,\n    \"mp_natural_recovery\": 300,\n    \"checkpoints\": [25, 30, 35],\n    \"interbattle_healing\": {\n        \"primary_bps\": 2000,\n        \"comparison_bps\": [1000, 2000, 3000],\n        \"comparison_levels\": [30]\n    },\n    \"builds\": {\n        \"martial_red\": {\n            \"label\": \"戦技型（赤）\",\n            \"growth_path\": \"martial_red\",\n            \"stp_weights_bps\": {\"vitality\": 1500, \"might\": 5500, \"finesse\": 2000, \"spirit\": 0, \"agility\": 1000},\n            \"skill_allocations\": {\n                \"martial_precision_cut\": {\"rank\": 1, \"active_slot\": 1},\n                \"martial_weapon_mastery\": {\"rank\": 5, \"active_slot\": null},\n                \"martial_critical_training\": {\"rank\": 2, \"active_slot\": null}\n            },\n            \"equipment_keys\": [\"polished_steel_dagger\", \"iron_breastplate\", \"might_accessory_rank_3\"]\n        },\n        \"guardianship_blue\": {\n            \"label\": \"護身型（青）\",\n            \"growth_path\": \"guardianship_blue\",\n            \"stp_weights_bps\": {\"vitality\": 500, \"might\": 7000, \"finesse\": 1500, \"spirit\": 0, \"agility\": 1000},\n            \"skill_allocations\": {\n                \"guardianship_shield_bash\": {\"rank\": 1, \"active_slot\": 1},\n                \"martial_weapon_mastery\": {\"rank\": 5, \"active_slot\": null},\n                \"martial_critical_training\": {\"rank\": 2, \"active_slot\": null}\n            },\n            \"equipment_keys\": [\"reinforced_longsword\", \"iron_breastplate\", \"might_accessory_rank_3\"]\n        },\n        \"blessing_green\": {\n            \"label\": \"祝福型（緑）\",\n            \"growth_path\": \"blessing_green\",\n            \"stp_weights_bps\": {\"vitality\": 1000, \"might\": 0, \"finesse\": 3500, \"spirit\": 4500, \"agility\": 1000},\n            \"skill_allocations\": {\n                \"miracle_holy_bolt\": {\"rank\": 1, \"active_slot\": 1},\n                \"miracle_mending_prayer\": {\"rank\": 1, \"active_slot\": 2},\n                \"miracle_healing_study\": {\"rank\": 4, \"active_slot\": null}\n            },\n            \"equipment_keys\": [\"iron_core_crystal_staff\", \"iron_breastplate\", \"spirit_accessory_rank_3\"]\n        },\n        \"free_black\": {\n            \"label\": \"自由型（黒）\",\n            \"growth_path\": \"free_black\",\n            \"stp_weights_bps\": {\"vitality\": 0, \"might\": 5000, \"finesse\": 4000, \"spirit\": 0, \"agility\": 1000},\n            \"skill_allocations\": {\n                \"martial_precision_cut\": {\"rank\": 1, \"active_slot\": 1},\n                \"miracle_holy_bolt\": {\"rank\": 1, \"active_slot\": 2},\n                \"miracle_mending_prayer\": {\"rank\": 1, \"active_slot\": 3},\n                \"miracle_healing_study\": {\"rank\": 1, \"active_slot\": null}\n            },\n            \"equipment_keys\": [\"steel_rapier\", \"iron_breastplate\", \"finesse_accessory_rank_3\"]\n        }\n    },\n    \"battle_sequence\": [\n        \"trial_rat_vanguard\",\n        \"trial_cave_hunter\",\n        \"trial_corrosive_guard\",\n        \"trial_regenerating_hulk\",\n        \"trial_crystal_adept\",\n        \"trial_fanatic_captain\",\n        \"trial_razor_bat\",\n        \"trial_ash_knight\",\n        \"trial_gate_golem\",\n        \"trial_wyvern\"\n    ],\n    \"skills\": {\n        \"trial_corrosive_slam\": {\n            \"label\": \"腐食殴打\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 2, \"required_weapon_styles\": [],\n            \"effects\": [\n                {\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"physical\", \"potency_bps\": 7600, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 9000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n                {\"type\": \"apply_status\", \"target\": \"enemy\", \"status\": \"armor_break\"}\n            ]\n        },\n        \"trial_arcane_burst\": {\n            \"label\": \"晶力弾\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 2, \"required_weapon_styles\": [],\n            \"effects\": [{\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"miracle\", \"potency_bps\": 8200, \"stat_coefficients\": {\"spirit\": 10000}, \"weapon_coefficient_bps\": 10500, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1}]\n        },\n        \"trial_razor_flurry\": {\n            \"label\": \"裂翼連撃\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 1, \"required_weapon_styles\": [],\n            \"effects\": [{\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"physical\", \"potency_bps\": 3300, \"stat_coefficients\": {\"might\": 6000, \"finesse\": 4000}, \"weapon_coefficient_bps\": 6500, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 3}]\n        },\n        \"trial_wyvern_breath\": {\n            \"label\": \"灼熱の息吹\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 0, \"required_weapon_styles\": [], \"consume_status\": \"telegraph\",\n            \"effects\": [\n                {\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"miracle\", \"potency_bps\": 11800, \"stat_coefficients\": {\"might\": 4000, \"spirit\": 6000}, \"weapon_coefficient_bps\": 12000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": false, \"hits\": 1},\n                {\"type\": \"apply_status\", \"target\": \"enemy\", \"status\": \"weakened\"}\n            ]\n        },\n        \"trial_wyvern_tail\": {\n            \"label\": \"裂傷尾撃\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 2, \"required_weapon_styles\": [],\n            \"effects\": [\n                {\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"physical\", \"potency_bps\": 8500, \"stat_coefficients\": {\"might\": 7000, \"finesse\": 3000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n                {\"type\": \"apply_status\", \"target\": \"enemy\", \"status\": \"bleed\"}\n            ]\n        }\n    },\n    \"statuses\": {},\n    \"enemies\": {\n        \"trial_rat_vanguard\": {\n            \"label\": \"試練の地底鼠\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 18, \"might\": 24, \"finesse\": 18, \"spirit\": 10, \"agility\": 30},\n            \"max_hp\": 700, \"physical_defense\": 70, \"magical_defense\": 65, \"weapon_power\": 82,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6600, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [], \"ai_rules\": [{\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_cave_hunter\": {\n            \"label\": \"洞窟狩人\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 24, \"might\": 28, \"finesse\": 18, \"spirit\": 14, \"agility\": 16},\n            \"max_hp\": 850, \"physical_defense\": 80, \"magical_defense\": 75, \"weapon_power\": 92,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 7000, \"stat_coefficients\": {\"might\": 8000, \"finesse\": 2000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [], \"ai_rules\": [{\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_corrosive_guard\": {\n            \"label\": \"腐食鎧兵\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 36, \"might\": 20, \"finesse\": 12, \"spirit\": 22, \"agility\": 10},\n            \"max_hp\": 1000, \"physical_defense\": 120, \"magical_defense\": 85, \"weapon_power\": 95,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6600, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"trial_corrosive_slam\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"skill_ready\", \"skill\": \"trial_corrosive_slam\"}], \"action\": \"skill:trial_corrosive_slam\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_regenerating_hulk\": {\n            \"label\": \"再生する巨躯\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 38, \"might\": 28, \"finesse\": 10, \"spirit\": 14, \"agility\": 10},\n            \"max_hp\": 1150, \"physical_defense\": 95, \"magical_defense\": 85, \"weapon_power\": 102,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6600, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [], \"ai_rules\": [{\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {\"self_regeneration_target_hp_bps\": 25}\n        },\n        \"trial_crystal_adept\": {\n            \"label\": \"晶術士\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 18, \"might\": 12, \"finesse\": 20, \"spirit\": 38, \"agility\": 12},\n            \"max_hp\": 1000, \"physical_defense\": 75, \"magical_defense\": 120, \"weapon_power\": 95,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"miracle\", \"potency_bps\": 6800, \"stat_coefficients\": {\"spirit\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"trial_arcane_burst\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"skill_ready\", \"skill\": \"trial_arcane_burst\"}], \"action\": \"skill:trial_arcane_burst\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_fanatic_captain\": {\n            \"label\": \"狂信隊長\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 24, \"might\": 38, \"finesse\": 16, \"spirit\": 10, \"agility\": 12},\n            \"max_hp\": 1200, \"physical_defense\": 100, \"magical_defense\": 85, \"weapon_power\": 95,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 7000, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"enemy_telegraph\", \"pressure_heavy\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"self_has_status\", \"status\": \"telegraph\"}], \"action\": \"skill:pressure_heavy\"}, {\"conditions\": [{\"type\": \"round_modulo\", \"modulo\": 4, \"equals\": 3}], \"action\": \"skill:enemy_telegraph\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_razor_bat\": {\n            \"label\": \"刃翼蝙蝠\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 18, \"might\": 28, \"finesse\": 24, \"spirit\": 10, \"agility\": 20},\n            \"max_hp\": 1050, \"physical_defense\": 80, \"magical_defense\": 75, \"weapon_power\": 100,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6200, \"stat_coefficients\": {\"might\": 6000, \"finesse\": 4000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"trial_razor_flurry\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"skill_ready\", \"skill\": \"trial_razor_flurry\"}], \"action\": \"skill:trial_razor_flurry\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_ash_knight\": {\n            \"label\": \"灰晶騎士\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 30, \"might\": 28, \"finesse\": 12, \"spirit\": 20, \"agility\": 10},\n            \"max_hp\": 1400, \"physical_defense\": 120, \"magical_defense\": 110, \"weapon_power\": 100,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 7200, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"trial_arcane_burst\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"round_modulo\", \"modulo\": 3, \"equals\": 0}, {\"type\": \"skill_ready\", \"skill\": \"trial_arcane_burst\"}], \"action\": \"skill:trial_arcane_burst\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_gate_golem\": {\n            \"label\": \"門衛石像\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 42, \"might\": 28, \"finesse\": 8, \"spirit\": 12, \"agility\": 10},\n            \"max_hp\": 1200, \"physical_defense\": 125, \"magical_defense\": 115, \"weapon_power\": 100,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6500, \"stat_coefficients\": {\"vitality\": 3000, \"might\": 7000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [], \"ai_rules\": [{\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {\"self_regeneration_target_hp_bps\": 10, \"damage_taken_reduction_bps\": 50}\n        },\n        \"trial_wyvern\": {\n            \"label\": \"ワイバーン\", \"boss\": true,\n            \"base_stats\": {\"vitality\": 30, \"might\": 34, \"finesse\": 16, \"spirit\": 12, \"agility\": 8},\n            \"max_hp\": 1600, \"physical_defense\": 60, \"magical_defense\": 300, \"weapon_power\": 180,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 7600, \"stat_coefficients\": {\"might\": 8000, \"finesse\": 2000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"enemy_telegraph\", \"trial_wyvern_breath\", \"trial_wyvern_tail\", \"trial_razor_flurry\"],\n            \"ai_rules\": [\n                {\"conditions\": [{\"type\": \"self_has_status\", \"status\": \"telegraph\"}], \"action\": \"skill:trial_wyvern_breath\"},\n                {\"conditions\": [{\"type\": \"round_modulo\", \"modulo\": 5, \"equals\": 4}], \"action\": \"skill:enemy_telegraph\"},\n                {\"conditions\": [{\"type\": \"round_modulo\", \"modulo\": 3, \"equals\": 0}, {\"type\": \"skill_ready\", \"skill\": \"trial_wyvern_tail\"}], \"action\": \"skill:trial_wyvern_tail\"},\n                {\"conditions\": [{\"type\": \"skill_ready\", \"skill\": \"trial_razor_flurry\"}], \"action\": \"skill:trial_razor_flurry\"},\n                {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}\n            ],\n            \"modifiers\": {\"damage_taken_reduction_bps\": 100, \"self_regeneration_target_hp_bps\": 110}\n        }\n    },\n    \"tuning_parameters\": {\n        \"scope\": \"simulation_only_trial_01\",\n        \"primary_target\": \"Lv30 Rank3 four-build clear rate observation near 30-70 percent\",\n        \"non_targets\": [\"player-facing release\", \"persistence\", \"Surface Ruleset\", \"production migration\"],\n        \"adjustable\": [\"enemy max_hp\", \"enemy defenses\", \"enemy weapon_power\", \"enemy attack potency\", \"enemy regeneration\", \"boss damage reduction\"]\n    }\n}\n",
-    "source_commit": "ba98e7fd4ebca3e2ded77a617e1309732718101e",
+    "manifest_hash": "6c65f49c9eb8008c1b2ce9fc36ba5ed9501a4b3c423679ba643209c025d598ff",
+    "manifest_contents": "{\n    \"schema_version\": 1,\n    \"simulation_type\": \"trial_sequence\",\n    \"trial_identity\": \"underground-trial-01-simulation-v1\",\n    \"combat_identity\": \"secretary-underground-alpha-v1\",\n    \"seed_strategy_identity\": \"trial-sequence-common-random-v1\",\n    \"seed_range\": {\"start\": 0, \"count\": 1000},\n    \"max_rounds\": 100,\n    \"mp_natural_recovery\": 300,\n    \"checkpoints\": [25, 30, 35],\n    \"interbattle_healing\": {\n        \"primary_bps\": 2000,\n        \"comparison_bps\": [1000, 2000, 3000],\n        \"comparison_levels\": [30]\n    },\n    \"builds\": {\n        \"martial_red\": {\n            \"label\": \"戦技型（赤）\",\n            \"growth_path\": \"martial_red\",\n            \"stp_weights_bps\": {\"vitality\": 1500, \"might\": 5500, \"finesse\": 2000, \"spirit\": 0, \"agility\": 1000},\n            \"skill_allocations\": {\n                \"martial_precision_cut\": {\"rank\": 1, \"active_slot\": 1},\n                \"martial_weapon_mastery\": {\"rank\": 5, \"active_slot\": null},\n                \"martial_critical_training\": {\"rank\": 2, \"active_slot\": null}\n            },\n            \"equipment_keys\": [\"polished_steel_dagger\", \"iron_breastplate\", \"might_accessory_rank_3\"]\n        },\n        \"guardianship_blue\": {\n            \"label\": \"護身型（青）\",\n            \"growth_path\": \"guardianship_blue\",\n            \"stp_weights_bps\": {\"vitality\": 500, \"might\": 7000, \"finesse\": 1500, \"spirit\": 0, \"agility\": 1000},\n            \"skill_allocations\": {\n                \"guardianship_shield_bash\": {\"rank\": 1, \"active_slot\": 1},\n                \"martial_weapon_mastery\": {\"rank\": 5, \"active_slot\": null},\n                \"martial_critical_training\": {\"rank\": 2, \"active_slot\": null}\n            },\n            \"equipment_keys\": [\"reinforced_longsword\", \"iron_breastplate\", \"might_accessory_rank_3\"]\n        },\n        \"blessing_green\": {\n            \"label\": \"祝福型（緑）\",\n            \"growth_path\": \"blessing_green\",\n            \"stp_weights_bps\": {\"vitality\": 1000, \"might\": 0, \"finesse\": 3500, \"spirit\": 4500, \"agility\": 1000},\n            \"skill_allocations\": {\n                \"miracle_holy_bolt\": {\"rank\": 1, \"active_slot\": 1},\n                \"miracle_mending_prayer\": {\"rank\": 1, \"active_slot\": 2},\n                \"miracle_healing_study\": {\"rank\": 4, \"active_slot\": null}\n            },\n            \"equipment_keys\": [\"iron_core_crystal_staff\", \"iron_breastplate\", \"spirit_accessory_rank_3\"]\n        },\n        \"free_black\": {\n            \"label\": \"自由型（黒）\",\n            \"growth_path\": \"free_black\",\n            \"stp_weights_bps\": {\"vitality\": 0, \"might\": 5000, \"finesse\": 4000, \"spirit\": 0, \"agility\": 1000},\n            \"skill_allocations\": {\n                \"martial_precision_cut\": {\"rank\": 1, \"active_slot\": 1},\n                \"miracle_holy_bolt\": {\"rank\": 1, \"active_slot\": 2},\n                \"miracle_mending_prayer\": {\"rank\": 1, \"active_slot\": 3},\n                \"miracle_healing_study\": {\"rank\": 1, \"active_slot\": null}\n            },\n            \"equipment_keys\": [\"steel_rapier\", \"iron_breastplate\", \"finesse_accessory_rank_3\"]\n        }\n    },\n    \"battle_sequence\": [\n        \"trial_rat_vanguard\",\n        \"trial_cave_hunter\",\n        \"trial_corrosive_guard\",\n        \"trial_regenerating_hulk\",\n        \"trial_crystal_adept\",\n        \"trial_fanatic_captain\",\n        \"trial_razor_bat\",\n        \"trial_ash_knight\",\n        \"trial_gate_golem\",\n        \"trial_wyvern\"\n    ],\n    \"skills\": {\n        \"trial_corrosive_slam\": {\n            \"label\": \"腐食殴打\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 2, \"required_weapon_styles\": [],\n            \"effects\": [\n                {\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"physical\", \"potency_bps\": 7600, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 9000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n                {\"type\": \"apply_status\", \"target\": \"enemy\", \"status\": \"armor_break\"}\n            ]\n        },\n        \"trial_arcane_burst\": {\n            \"label\": \"晶力弾\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 2, \"required_weapon_styles\": [],\n            \"effects\": [{\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"miracle\", \"potency_bps\": 8200, \"stat_coefficients\": {\"spirit\": 10000}, \"weapon_coefficient_bps\": 10500, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1}]\n        },\n        \"trial_razor_flurry\": {\n            \"label\": \"裂翼連撃\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 1, \"required_weapon_styles\": [],\n            \"effects\": [{\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"physical\", \"potency_bps\": 3300, \"stat_coefficients\": {\"might\": 6000, \"finesse\": 4000}, \"weapon_coefficient_bps\": 6500, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 3}]\n        },\n        \"trial_wyvern_breath\": {\n            \"label\": \"灼熱の息吹\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 0, \"required_weapon_styles\": [], \"consume_status\": \"telegraph\",\n            \"effects\": [\n                {\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"miracle\", \"potency_bps\": 11800, \"stat_coefficients\": {\"might\": 4000, \"spirit\": 6000}, \"weapon_coefficient_bps\": 12000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": false, \"hits\": 1},\n                {\"type\": \"apply_status\", \"target\": \"enemy\", \"status\": \"weakened\"}\n            ]\n        },\n        \"trial_wyvern_tail\": {\n            \"label\": \"裂傷尾撃\", \"node_key\": null, \"mp_cost\": 0, \"cooldown\": 2, \"required_weapon_styles\": [],\n            \"effects\": [\n                {\"type\": \"damage\", \"target\": \"enemy\", \"category\": \"physical\", \"potency_bps\": 8500, \"stat_coefficients\": {\"might\": 7000, \"finesse\": 3000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n                {\"type\": \"apply_status\", \"target\": \"enemy\", \"status\": \"bleed\"}\n            ]\n        }\n    },\n    \"statuses\": {\n        \"wyvern_airborne\": {\n            \"label\": \"飛翔\", \"disposition\": \"buff\", \"duration_rounds\": 100,\n            \"stack_policy\": \"refresh\", \"max_stacks\": 1, \"application_chance_bps\": 10000,\n            \"effects\": [{\"type\": \"damage_dealt_modifier\", \"category\": \"all\", \"value_bps\": 10000}]\n        }\n    },\n    \"enemies\": {\n        \"trial_rat_vanguard\": {\n            \"label\": \"試練の地底鼠\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 18, \"might\": 24, \"finesse\": 18, \"spirit\": 10, \"agility\": 30},\n            \"max_hp\": 700, \"physical_defense\": 70, \"magical_defense\": 65, \"weapon_power\": 82,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6600, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [], \"ai_rules\": [{\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_cave_hunter\": {\n            \"label\": \"洞窟狩人\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 24, \"might\": 28, \"finesse\": 18, \"spirit\": 14, \"agility\": 16},\n            \"max_hp\": 850, \"physical_defense\": 80, \"magical_defense\": 75, \"weapon_power\": 92,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 7000, \"stat_coefficients\": {\"might\": 8000, \"finesse\": 2000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [], \"ai_rules\": [{\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_corrosive_guard\": {\n            \"label\": \"腐食鎧兵\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 36, \"might\": 20, \"finesse\": 12, \"spirit\": 22, \"agility\": 10},\n            \"max_hp\": 1000, \"physical_defense\": 120, \"magical_defense\": 85, \"weapon_power\": 95,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6600, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"trial_corrosive_slam\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"skill_ready\", \"skill\": \"trial_corrosive_slam\"}], \"action\": \"skill:trial_corrosive_slam\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_regenerating_hulk\": {\n            \"label\": \"再生する巨躯\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 38, \"might\": 28, \"finesse\": 10, \"spirit\": 14, \"agility\": 10},\n            \"max_hp\": 1150, \"physical_defense\": 95, \"magical_defense\": 85, \"weapon_power\": 102,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6600, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [], \"ai_rules\": [{\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {\"self_regeneration_target_hp_bps\": 25}\n        },\n        \"trial_crystal_adept\": {\n            \"label\": \"晶術士\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 18, \"might\": 12, \"finesse\": 20, \"spirit\": 38, \"agility\": 12},\n            \"max_hp\": 1000, \"physical_defense\": 75, \"magical_defense\": 120, \"weapon_power\": 95,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"miracle\", \"potency_bps\": 6800, \"stat_coefficients\": {\"spirit\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"trial_arcane_burst\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"skill_ready\", \"skill\": \"trial_arcane_burst\"}], \"action\": \"skill:trial_arcane_burst\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_fanatic_captain\": {\n            \"label\": \"狂信隊長\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 24, \"might\": 38, \"finesse\": 16, \"spirit\": 10, \"agility\": 12},\n            \"max_hp\": 1200, \"physical_defense\": 100, \"magical_defense\": 85, \"weapon_power\": 95,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 7000, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"enemy_telegraph\", \"pressure_heavy\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"self_has_status\", \"status\": \"telegraph\"}], \"action\": \"skill:pressure_heavy\"}, {\"conditions\": [{\"type\": \"round_modulo\", \"modulo\": 4, \"equals\": 3}], \"action\": \"skill:enemy_telegraph\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_razor_bat\": {\n            \"label\": \"刃翼蝙蝠\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 18, \"might\": 28, \"finesse\": 24, \"spirit\": 10, \"agility\": 20},\n            \"max_hp\": 1050, \"physical_defense\": 80, \"magical_defense\": 75, \"weapon_power\": 100,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6200, \"stat_coefficients\": {\"might\": 6000, \"finesse\": 4000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"trial_razor_flurry\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"skill_ready\", \"skill\": \"trial_razor_flurry\"}], \"action\": \"skill:trial_razor_flurry\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_ash_knight\": {\n            \"label\": \"灰晶騎士\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 30, \"might\": 28, \"finesse\": 12, \"spirit\": 20, \"agility\": 10},\n            \"max_hp\": 1400, \"physical_defense\": 120, \"magical_defense\": 110, \"weapon_power\": 100,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 7200, \"stat_coefficients\": {\"might\": 10000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"trial_arcane_burst\"], \"ai_rules\": [{\"conditions\": [{\"type\": \"round_modulo\", \"modulo\": 3, \"equals\": 0}, {\"type\": \"skill_ready\", \"skill\": \"trial_arcane_burst\"}], \"action\": \"skill:trial_arcane_burst\"}, {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {}\n        },\n        \"trial_gate_golem\": {\n            \"label\": \"門衛石像\", \"boss\": false,\n            \"base_stats\": {\"vitality\": 42, \"might\": 28, \"finesse\": 8, \"spirit\": 12, \"agility\": 10},\n            \"max_hp\": 1200, \"physical_defense\": 125, \"magical_defense\": 115, \"weapon_power\": 100,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 6500, \"stat_coefficients\": {\"vitality\": 3000, \"might\": 7000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": false, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [], \"ai_rules\": [{\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}], \"modifiers\": {\"self_regeneration_target_hp_bps\": 10, \"damage_taken_reduction_bps\": 50}\n        },\n        \"trial_wyvern\": {\n            \"label\": \"ワイバーン\", \"boss\": true,\n            \"base_stats\": {\"vitality\": 30, \"might\": 34, \"finesse\": 16, \"spirit\": 12, \"agility\": 8},\n            \"max_hp\": 1600, \"physical_defense\": 60, \"magical_defense\": 229, \"weapon_power\": 180,\n            \"normal_attack\": {\"type\": \"damage\", \"category\": \"physical\", \"potency_bps\": 7600, \"stat_coefficients\": {\"might\": 8000, \"finesse\": 2000}, \"weapon_coefficient_bps\": 10000, \"fixed\": 0, \"target_max_hp_bps\": 0, \"can_crit\": true, \"dodgeable\": true, \"hits\": 1},\n            \"skills\": [\"enemy_telegraph\", \"trial_wyvern_breath\", \"trial_wyvern_tail\", \"trial_razor_flurry\"],\n            \"ai_rules\": [\n                {\"conditions\": [{\"type\": \"self_has_status\", \"status\": \"telegraph\"}], \"action\": \"skill:trial_wyvern_breath\"},\n                {\"conditions\": [{\"type\": \"round_modulo\", \"modulo\": 5, \"equals\": 4}], \"action\": \"skill:enemy_telegraph\"},\n                {\"conditions\": [{\"type\": \"round_modulo\", \"modulo\": 3, \"equals\": 0}, {\"type\": \"skill_ready\", \"skill\": \"trial_wyvern_tail\"}], \"action\": \"skill:trial_wyvern_tail\"},\n                {\"conditions\": [{\"type\": \"skill_ready\", \"skill\": \"trial_razor_flurry\"}], \"action\": \"skill:trial_razor_flurry\"},\n                {\"conditions\": [{\"type\": \"always\"}], \"action\": \"normal_attack\"}\n            ],\n            \"phase_transition\": {\n                \"round\": 40,\n                \"status\": \"wyvern_airborne\",\n                \"message\": \"天井が崩落し、ワイバーンは宙に舞い上がる……！\"\n            },\n            \"modifiers\": {\"damage_taken_reduction_bps\": 100, \"self_regeneration_target_hp_bps\": 110}\n        }\n    },\n    \"tuning_parameters\": {\n        \"scope\": \"simulation_only_trial_01\",\n        \"primary_target\": \"Lv30 Rank3 four-build clear rate observation near 30-70 percent\",\n        \"non_targets\": [\"player-facing release\", \"persistence\", \"Surface Ruleset\", \"production migration\"],\n        \"adjustable\": [\"enemy max_hp\", \"enemy defenses\", \"enemy weapon_power\", \"enemy attack potency\", \"enemy regeneration\", \"boss damage reduction\", \"boss phase transition round\", \"boss phase damage bonus\"]\n    }\n}\n",
+    "source_commit": "5ac91899f19655685b64107f4a62deb11358c9c2",
     "working_tree_dirty": false,
     "seed_range": {
         "start": 0,
@@ -1318,7 +1318,8 @@
                     "action": "normal_attack"
                 }
             ],
-            "modifiers": []
+            "modifiers": [],
+            "phase_transition": null
         },
         {
             "index": 2,
@@ -1340,7 +1341,8 @@
                     "action": "normal_attack"
                 }
             ],
-            "modifiers": []
+            "modifiers": [],
+            "phase_transition": null
         },
         {
             "index": 3,
@@ -1373,7 +1375,8 @@
                     "action": "normal_attack"
                 }
             ],
-            "modifiers": []
+            "modifiers": [],
+            "phase_transition": null
         },
         {
             "index": 4,
@@ -1397,7 +1400,8 @@
             ],
             "modifiers": {
                 "self_regeneration_target_hp_bps": 25
-            }
+            },
+            "phase_transition": null
         },
         {
             "index": 5,
@@ -1430,7 +1434,8 @@
                     "action": "normal_attack"
                 }
             ],
-            "modifiers": []
+            "modifiers": [],
+            "phase_transition": null
         },
         {
             "index": 6,
@@ -1474,7 +1479,8 @@
                     "action": "normal_attack"
                 }
             ],
-            "modifiers": []
+            "modifiers": [],
+            "phase_transition": null
         },
         {
             "index": 7,
@@ -1507,7 +1513,8 @@
                     "action": "normal_attack"
                 }
             ],
-            "modifiers": []
+            "modifiers": [],
+            "phase_transition": null
         },
         {
             "index": 8,
@@ -1545,7 +1552,8 @@
                     "action": "normal_attack"
                 }
             ],
-            "modifiers": []
+            "modifiers": [],
+            "phase_transition": null
         },
         {
             "index": 9,
@@ -1570,7 +1578,8 @@
             "modifiers": {
                 "self_regeneration_target_hp_bps": 10,
                 "damage_taken_reduction_bps": 50
-            }
+            },
+            "phase_transition": null
         },
         {
             "index": 10,
@@ -1579,7 +1588,7 @@
             "boss": true,
             "max_hp": 1600,
             "physical_defense": 60,
-            "magical_defense": 300,
+            "magical_defense": 229,
             "weapon_power": 180,
             "skills": [
                 "enemy_telegraph",
@@ -1642,6 +1651,11 @@
             "modifiers": {
                 "damage_taken_reduction_bps": 100,
                 "self_regeneration_target_hp_bps": 110
+            },
+            "phase_transition": {
+                "round": 40,
+                "status": "wyvern_airborne",
+                "message": "天井が崩落し、ワイバーンは宙に舞い上がる……！"
             }
         }
     ],
@@ -1832,7 +1846,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 106.496,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 345.544
+                    "average_damage_prevented": 345.544,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -1850,7 +1865,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 141.81,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 455.706
+                    "average_damage_prevented": 455.706,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -1868,7 +1884,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 203.647,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 586.836
+                    "average_damage_prevented": 586.836,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -1886,7 +1903,8 @@
                     "average_damage_dealt": 1171.622,
                     "average_damage_received": 217.647,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 698.233
+                    "average_damage_prevented": 698.233,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -1904,7 +1922,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 286.651,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 530.477
+                    "average_damage_prevented": 530.477,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -1922,7 +1941,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 308.636,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 982.992
+                    "average_damage_prevented": 982.992,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -1940,7 +1960,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 187.307,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 631.678
+                    "average_damage_prevented": 631.678,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -1958,7 +1979,8 @@
                     "average_damage_dealt": 1399.86,
                     "average_damage_received": 380.685,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 1002.523
+                    "average_damage_prevented": 1002.523,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -1976,7 +1998,8 @@
                     "average_damage_dealt": 1194.27,
                     "average_damage_received": 288.827,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 929.533
+                    "average_damage_prevented": 929.533,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -1994,7 +2017,8 @@
                     "average_damage_dealt": 795.762,
                     "average_damage_received": 475.384,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 1365.312
+                    "average_damage_prevented": 1365.312,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 0,
@@ -2212,7 +2236,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 80.834,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 263.45
+                    "average_damage_prevented": 263.45,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -2230,7 +2255,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 122.714,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 395.711
+                    "average_damage_prevented": 395.711,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -2248,7 +2274,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 169.399,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 533.128
+                    "average_damage_prevented": 533.128,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -2266,7 +2293,8 @@
                     "average_damage_dealt": 1168.91,
                     "average_damage_received": 189.717,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 611.611
+                    "average_damage_prevented": 611.611,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -2284,7 +2312,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 236.625,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 489.901
+                    "average_damage_prevented": 489.901,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -2302,7 +2331,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 272.778,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 871.45
+                    "average_damage_prevented": 871.45,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -2320,7 +2350,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 165.411,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 559.684
+                    "average_damage_prevented": 559.684,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -2338,7 +2369,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 326.007,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 899.265
+                    "average_damage_prevented": 899.265,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -2356,7 +2388,8 @@
                     "average_damage_dealt": 1211.589,
                     "average_damage_received": 233.217,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 747.885
+                    "average_damage_prevented": 747.885,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -2374,7 +2407,8 @@
                     "average_damage_dealt": 1732.526,
                     "average_damage_received": 747.002,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 2125.537
+                    "average_damage_prevented": 2125.537,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 84.891,
@@ -2592,7 +2626,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 72.228,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 236.255
+                    "average_damage_prevented": 236.255,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -2610,7 +2645,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 111.532,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 360.816
+                    "average_damage_prevented": 360.816,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -2628,7 +2664,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 146.862,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 480.286
+                    "average_damage_prevented": 480.286,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -2646,7 +2683,8 @@
                     "average_damage_dealt": 1166.768,
                     "average_damage_received": 167.907,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 542.601
+                    "average_damage_prevented": 542.601,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -2664,7 +2702,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 199.548,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 456.74
+                    "average_damage_prevented": 456.74,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -2682,7 +2721,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 240.339,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 772.992
+                    "average_damage_prevented": 772.992,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -2700,7 +2740,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 146.687,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 499.021
+                    "average_damage_prevented": 499.021,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -2718,7 +2759,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 281.285,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 810.337
+                    "average_damage_prevented": 810.337,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -2736,7 +2778,8 @@
                     "average_damage_dealt": 1210.207,
                     "average_damage_received": 204.709,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 659.737
+                    "average_damage_prevented": 659.737,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -2754,7 +2797,8 @@
                     "average_damage_dealt": 1837.745,
                     "average_damage_received": 573.263,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 1582.856
+                    "average_damage_prevented": 1582.856,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 487.9,
@@ -2972,7 +3016,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 80.834,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 263.45
+                    "average_damage_prevented": 263.45,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -2990,7 +3035,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 122.714,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 395.711
+                    "average_damage_prevented": 395.711,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -3008,7 +3054,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 169.399,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 533.128
+                    "average_damage_prevented": 533.128,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -3026,7 +3073,8 @@
                     "average_damage_dealt": 1168.91,
                     "average_damage_received": 189.717,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 611.611
+                    "average_damage_prevented": 611.611,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -3044,7 +3092,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 236.625,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 489.901
+                    "average_damage_prevented": 489.901,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -3062,7 +3111,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 272.778,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 871.45
+                    "average_damage_prevented": 871.45,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -3080,7 +3130,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 165.411,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 559.684
+                    "average_damage_prevented": 559.684,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -3098,7 +3149,8 @@
                     "average_damage_dealt": 1210.937,
                     "average_damage_received": 433.196,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 1286.753
+                    "average_damage_prevented": 1286.753,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -3116,7 +3168,8 @@
                     "average_damage_dealt": 749.307,
                     "average_damage_received": 339.872,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 1128.163
+                    "average_damage_prevented": 1128.163,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -3134,7 +3187,8 @@
                     "average_damage_dealt": 587.5,
                     "average_damage_received": 345.375,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 1046.5
+                    "average_damage_prevented": 1046.5,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 0,
@@ -3352,7 +3406,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 80.834,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 263.45
+                    "average_damage_prevented": 263.45,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -3370,7 +3425,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 122.714,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 395.711
+                    "average_damage_prevented": 395.711,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -3388,7 +3444,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 169.399,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 533.128
+                    "average_damage_prevented": 533.128,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -3406,7 +3463,8 @@
                     "average_damage_dealt": 1168.91,
                     "average_damage_received": 189.717,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 611.611
+                    "average_damage_prevented": 611.611,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -3424,7 +3482,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 236.625,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 489.901
+                    "average_damage_prevented": 489.901,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -3442,7 +3501,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 272.778,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 871.45
+                    "average_damage_prevented": 871.45,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -3460,7 +3520,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 165.411,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 559.684
+                    "average_damage_prevented": 559.684,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -3478,7 +3539,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 326.007,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 899.265
+                    "average_damage_prevented": 899.265,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -3496,7 +3558,8 @@
                     "average_damage_dealt": 1211.589,
                     "average_damage_received": 233.217,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 747.885
+                    "average_damage_prevented": 747.885,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -3514,7 +3577,8 @@
                     "average_damage_dealt": 1874.975,
                     "average_damage_received": 655.353,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 1819.337
+                    "average_damage_prevented": 1819.337,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 380.1,
@@ -3732,7 +3796,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 50.475,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 162.769
+                    "average_damage_prevented": 162.769,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -3750,7 +3815,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 48.708,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 155.126
+                    "average_damage_prevented": 155.126,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -3768,7 +3834,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 64.224,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 206.393
+                    "average_damage_prevented": 206.393,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -3786,7 +3853,8 @@
                     "average_damage_dealt": 1184.374,
                     "average_damage_received": 74.315,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 236.793
+                    "average_damage_prevented": 236.793,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -3804,7 +3872,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 95.823,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 207.957
+                    "average_damage_prevented": 207.957,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -3822,7 +3891,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 102.94,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 327.09
+                    "average_damage_prevented": 327.09,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -3840,7 +3910,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 67.633,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 226.938
+                    "average_damage_prevented": 226.938,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -3858,7 +3929,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 123.2,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 341.127
+                    "average_damage_prevented": 341.127,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -3876,7 +3948,8 @@
                     "average_damage_dealt": 1220.334,
                     "average_damage_received": 89.094,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 282.183
+                    "average_damage_prevented": 282.183,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -3894,7 +3967,8 @@
                     "average_damage_dealt": 1708.415,
                     "average_damage_received": 1316,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 3697.653
+                    "average_damage_prevented": 3697.653,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 0,
@@ -4112,7 +4186,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 73.634,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 238.021
+                    "average_damage_prevented": 238.021,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -4130,7 +4205,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 44.187,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 140.647
+                    "average_damage_prevented": 140.647,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -4148,7 +4224,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 57.41,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 186.112
+                    "average_damage_prevented": 186.112,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -4166,7 +4243,8 @@
                     "average_damage_dealt": 1180.332,
                     "average_damage_received": 65.27,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 208.344
+                    "average_damage_prevented": 208.344,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -4184,7 +4262,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 76.565,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 183.104
+                    "average_damage_prevented": 183.104,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -4202,7 +4281,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 92.543,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 296.098
+                    "average_damage_prevented": 296.098,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -4220,7 +4300,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 58.072,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 195.169
+                    "average_damage_prevented": 195.169,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -4238,7 +4319,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 104.135,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 300.936
+                    "average_damage_prevented": 300.936,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -4256,7 +4338,8 @@
                     "average_damage_dealt": 1218.244,
                     "average_damage_received": 79.973,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 254.187
+                    "average_damage_prevented": 254.187,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -4274,7 +4357,8 @@
                     "average_damage_dealt": 2026.337,
                     "average_damage_received": 1267.191,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 3506.946
+                    "average_damage_prevented": 3506.946,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 136.809,
@@ -4492,7 +4576,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 81.042,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 263.515
+                    "average_damage_prevented": 263.515,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -4510,7 +4595,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 39.671,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 126.343
+                    "average_damage_prevented": 126.343,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -4528,7 +4614,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 51.85,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 169.09
+                    "average_damage_prevented": 169.09,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -4546,7 +4633,8 @@
                     "average_damage_dealt": 1178.16,
                     "average_damage_received": 60.785,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 194.421
+                    "average_damage_prevented": 194.421,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -4564,7 +4652,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 64.54,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 169.317
+                    "average_damage_prevented": 169.317,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -4582,7 +4671,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 82.284,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 264.094
+                    "average_damage_prevented": 264.094,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -4600,7 +4690,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 52.853,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 178.261
+                    "average_damage_prevented": 178.261,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -4618,7 +4709,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 93.816,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 280.743
+                    "average_damage_prevented": 280.743,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -4636,7 +4728,8 @@
                     "average_damage_dealt": 1216.785,
                     "average_damage_received": 73.408,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 234.264
+                    "average_damage_prevented": 234.264,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -4654,7 +4747,8 @@
                     "average_damage_dealt": 2043.632,
                     "average_damage_received": 1032.231,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 2821.353
+                    "average_damage_prevented": 2821.353,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 467.769,
@@ -4872,7 +4966,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 73.634,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 238.021
+                    "average_damage_prevented": 238.021,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -4890,7 +4985,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 44.187,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 140.647
+                    "average_damage_prevented": 140.647,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -4908,7 +5004,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 57.41,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 186.112
+                    "average_damage_prevented": 186.112,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -4926,7 +5023,8 @@
                     "average_damage_dealt": 1180.332,
                     "average_damage_received": 65.27,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 208.344
+                    "average_damage_prevented": 208.344,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -4944,7 +5042,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 76.565,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 183.104
+                    "average_damage_prevented": 183.104,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -4962,7 +5061,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 92.543,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 296.098
+                    "average_damage_prevented": 296.098,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -4980,7 +5080,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 58.072,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 195.169
+                    "average_damage_prevented": 195.169,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -4998,7 +5099,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 104.135,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 300.936
+                    "average_damage_prevented": 300.936,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -5016,7 +5118,8 @@
                     "average_damage_dealt": 1218.244,
                     "average_damage_received": 79.973,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 254.187
+                    "average_damage_prevented": 254.187,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -5034,7 +5137,8 @@
                     "average_damage_dealt": 2023.028,
                     "average_damage_received": 1271.256,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 3521.23
+                    "average_damage_prevented": 3521.23,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 130.38,
@@ -5252,7 +5356,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 73.634,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 238.021
+                    "average_damage_prevented": 238.021,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -5270,7 +5375,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 44.187,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 140.647
+                    "average_damage_prevented": 140.647,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -5288,7 +5394,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 57.41,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 186.112
+                    "average_damage_prevented": 186.112,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -5306,7 +5413,8 @@
                     "average_damage_dealt": 1180.332,
                     "average_damage_received": 65.27,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 208.344
+                    "average_damage_prevented": 208.344,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -5324,7 +5432,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 76.565,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 183.104
+                    "average_damage_prevented": 183.104,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -5342,7 +5451,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 92.543,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 296.098
+                    "average_damage_prevented": 296.098,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -5360,7 +5470,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 58.072,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 195.169
+                    "average_damage_prevented": 195.169,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -5378,7 +5489,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 104.135,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 300.936
+                    "average_damage_prevented": 300.936,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -5396,7 +5508,8 @@
                     "average_damage_dealt": 1218.244,
                     "average_damage_received": 79.973,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 254.187
+                    "average_damage_prevented": 254.187,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -5414,7 +5527,8 @@
                     "average_damage_dealt": 2026.337,
                     "average_damage_received": 1267.191,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 3506.946
+                    "average_damage_prevented": 3506.946,
+                    "phase_transition_count": 0
                 }
             ],
             "trial_end_average_hp_all_trials": 136.809,
@@ -5610,8 +5724,8 @@
                     "total": 0
                 },
                 "10": {
-                    "defeat": 19,
-                    "stalemate": 981,
+                    "defeat": 1000,
+                    "stalemate": 0,
                     "total": 1000
                 }
             },
@@ -5632,7 +5746,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 91.885,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 295.559
+                    "average_damage_prevented": 295.559,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -5650,7 +5765,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 116.616,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 371.211
+                    "average_damage_prevented": 371.211,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -5668,7 +5784,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 146.507,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 409.015
+                    "average_damage_prevented": 409.015,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -5686,7 +5803,8 @@
                     "average_damage_dealt": 1167.138,
                     "average_damage_received": 173.205,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 552.254
+                    "average_damage_prevented": 552.254,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -5704,7 +5822,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 209.901,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 670.175
+                    "average_damage_prevented": 670.175,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -5722,7 +5841,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 242.457,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 766.194
+                    "average_damage_prevented": 766.194,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -5740,7 +5860,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 152.712,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 511.053
+                    "average_damage_prevented": 511.053,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -5758,7 +5879,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 267.904,
                     "average_effective_healing": 1.428,
-                    "average_damage_prevented": 854.921
+                    "average_damage_prevented": 854.921,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -5776,7 +5898,8 @@
                     "average_damage_dealt": 1210.463,
                     "average_damage_received": 212.248,
                     "average_effective_healing": 4.998,
-                    "average_damage_prevented": 672.842
+                    "average_damage_prevented": 672.842,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -5784,44 +5907,45 @@
                     "label": "ワイバーン",
                     "entered_count": 1000,
                     "victory_count": 0,
-                    "defeat_count": 19,
-                    "stalemate_count": 981,
-                    "average_rounds": 99.419,
-                    "average_remaining_hp_all_entries": 176.825,
+                    "defeat_count": 1000,
+                    "stalemate_count": 0,
+                    "average_rounds": 45.535,
+                    "average_remaining_hp_all_entries": 0,
                     "average_remaining_hp_survivors": 0,
                     "average_interbattle_heal": 0,
                     "average_post_heal_hp": 0,
-                    "average_damage_dealt": 2622.72,
-                    "average_damage_received": 4104.168,
-                    "average_effective_healing": 3472.896,
-                    "average_damage_prevented": 11149.381
+                    "average_damage_dealt": 1916.174,
+                    "average_damage_received": 2092.345,
+                    "average_effective_healing": 1284.248,
+                    "average_damage_prevented": 5914.435,
+                    "phase_transition_count": 1000
                 }
             ],
             "trial_end_average_hp_all_trials": 0,
             "trial_end_average_hp_clears": 0,
-            "average_total_rounds": 184.495,
-            "median_total_rounds": 185,
-            "stalemate_count": 981,
+            "average_total_rounds": 130.611,
+            "median_total_rounds": 130,
+            "stalemate_count": 0,
             "abnormal_result_count": 0,
-            "average_damage_dealt": 12200.321,
-            "average_damage_received": 5717.603,
-            "average_in_combat_healing": 3479.322,
-            "average_damage_prevented": 16252.605,
+            "average_damage_dealt": 11493.775,
+            "average_damage_received": 3705.78,
+            "average_in_combat_healing": 1290.674,
+            "average_damage_prevented": 11017.659,
             "action_usage_total": {
-                "normal_attack": 13625,
-                "defend": 37981,
+                "normal_attack": 2454,
+                "defend": 13841,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
-                "holy_bolt": 118270,
-                "mending_prayer": 14619
+                "holy_bolt": 108893,
+                "mending_prayer": 5423
             },
-            "guard_usage_total": 37981,
+            "guard_usage_total": 13841,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
             "mp_exhausted_battle_count": 1000,
-            "skill_unavailable_due_to_mp_count": 53429,
-            "average_final_mp_per_battle": 6294.37,
+            "skill_unavailable_due_to_mp_count": 9318,
+            "average_final_mp_per_battle": 6343.99,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -5937,13 +6061,13 @@
                     ]
                 }
             },
-            "clear_count": 400,
-            "clear_rate": 0.4,
+            "clear_count": 476,
+            "clear_rate": 0.476,
             "boss_reached_count": 1000,
             "boss_reached_rate": 1,
-            "boss_clear_count": 400,
-            "boss_clear_rate_all_trials": 0.4,
-            "boss_clear_rate_after_reaching": 0.4,
+            "boss_clear_count": 476,
+            "boss_clear_rate_all_trials": 0.476,
+            "boss_clear_rate_after_reaching": 0.476,
             "defeat_battle_distribution": {
                 "1": {
                     "defeat": 0,
@@ -5991,9 +6115,9 @@
                     "total": 0
                 },
                 "10": {
-                    "defeat": 1,
-                    "stalemate": 599,
-                    "total": 600
+                    "defeat": 524,
+                    "stalemate": 0,
+                    "total": 524
                 }
             },
             "battle_metrics": [
@@ -6013,7 +6137,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 82.311,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 265.73
+                    "average_damage_prevented": 265.73,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -6031,7 +6156,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 103.267,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 329.518
+                    "average_damage_prevented": 329.518,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -6049,7 +6175,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 120.55,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 371.349
+                    "average_damage_prevented": 371.349,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -6067,7 +6194,8 @@
                     "average_damage_dealt": 1165.166,
                     "average_damage_received": 152.935,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 489.093
+                    "average_damage_prevented": 489.093,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -6085,7 +6213,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 185.245,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 593.22
+                    "average_damage_prevented": 593.22,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -6103,7 +6232,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 209.88,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 666.732
+                    "average_damage_prevented": 666.732,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -6121,7 +6251,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 133.834,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 449.942
+                    "average_damage_prevented": 449.942,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -6139,7 +6270,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 234.847,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 753.482
+                    "average_damage_prevented": 753.482,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -6157,52 +6289,54 @@
                     "average_damage_dealt": 1209.268,
                     "average_damage_received": 187.516,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 596.687
+                    "average_damage_prevented": 596.687,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
                     "key": "trial_wyvern",
                     "label": "ワイバーン",
                     "entered_count": 1000,
-                    "victory_count": 400,
-                    "defeat_count": 1,
-                    "stalemate_count": 599,
-                    "average_rounds": 93.885,
-                    "average_remaining_hp_all_entries": 228.141,
-                    "average_remaining_hp_survivors": 240.003,
+                    "victory_count": 476,
+                    "defeat_count": 524,
+                    "stalemate_count": 0,
+                    "average_rounds": 44.039,
+                    "average_remaining_hp_all_entries": 160.14,
+                    "average_remaining_hp_survivors": 336.429,
                     "average_interbattle_heal": 0,
-                    "average_post_heal_hp": 570.353,
-                    "average_damage_dealt": 3078.258,
-                    "average_damage_received": 3850.197,
-                    "average_effective_healing": 3089.991,
-                    "average_damage_prevented": 10496.936
+                    "average_post_heal_hp": 336.429,
+                    "average_damage_dealt": 2255.369,
+                    "average_damage_received": 1966.428,
+                    "average_effective_healing": 1138.221,
+                    "average_damage_prevented": 5508.516,
+                    "phase_transition_count": 892
                 }
             ],
-            "trial_end_average_hp_all_trials": 96.001,
-            "trial_end_average_hp_clears": 240.003,
-            "average_total_rounds": 169.877,
-            "median_total_rounds": 174,
-            "stalemate_count": 599,
+            "trial_end_average_hp_all_trials": 160.14,
+            "trial_end_average_hp_clears": 336.429,
+            "average_total_rounds": 120.031,
+            "median_total_rounds": 120,
+            "stalemate_count": 0,
             "abnormal_result_count": 0,
-            "average_damage_dealt": 12652.692,
-            "average_damage_received": 5260.582,
-            "average_in_combat_healing": 3089.991,
-            "average_damage_prevented": 15012.689,
+            "average_damage_dealt": 11829.803,
+            "average_damage_received": 3376.813,
+            "average_in_combat_healing": 1138.221,
+            "average_damage_prevented": 10024.269,
             "action_usage_total": {
-                "normal_attack": 12363,
-                "defend": 32648,
+                "normal_attack": 1545,
+                "defend": 11726,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
-                "holy_bolt": 113293,
-                "mending_prayer": 11573
+                "holy_bolt": 102497,
+                "mending_prayer": 4263
             },
-            "guard_usage_total": 32648,
+            "guard_usage_total": 11726,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
-            "mp_exhausted_battle_count": 1000,
-            "skill_unavailable_due_to_mp_count": 48631,
-            "average_final_mp_per_battle": 6517.3,
+            "mp_exhausted_battle_count": 997,
+            "skill_unavailable_due_to_mp_count": 6686,
+            "average_final_mp_per_battle": 6545.89,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -6318,13 +6452,13 @@
                     ]
                 }
             },
-            "clear_count": 1000,
-            "clear_rate": 1,
+            "clear_count": 999,
+            "clear_rate": 0.999,
             "boss_reached_count": 1000,
             "boss_reached_rate": 1,
-            "boss_clear_count": 1000,
-            "boss_clear_rate_all_trials": 1,
-            "boss_clear_rate_after_reaching": 1,
+            "boss_clear_count": 999,
+            "boss_clear_rate_all_trials": 0.999,
+            "boss_clear_rate_after_reaching": 0.999,
             "defeat_battle_distribution": {
                 "1": {
                     "defeat": 0,
@@ -6372,9 +6506,9 @@
                     "total": 0
                 },
                 "10": {
-                    "defeat": 0,
+                    "defeat": 1,
                     "stalemate": 0,
-                    "total": 0
+                    "total": 1
                 }
             },
             "battle_metrics": [
@@ -6394,7 +6528,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 73.716,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 239.357
+                    "average_damage_prevented": 239.357,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -6412,7 +6547,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 89.611,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 286.583
+                    "average_damage_prevented": 286.583,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -6430,7 +6566,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 102.217,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 332.884
+                    "average_damage_prevented": 332.884,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -6448,7 +6585,8 @@
                     "average_damage_dealt": 1163.292,
                     "average_damage_received": 133.573,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 429.14
+                    "average_damage_prevented": 429.14,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -6466,7 +6604,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 168.029,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 541.26
+                    "average_damage_prevented": 541.26,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -6484,7 +6623,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 189.701,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 605.834
+                    "average_damage_prevented": 605.834,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -6502,7 +6642,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 118.598,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 400.423
+                    "average_damage_prevented": 400.423,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -6520,7 +6661,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 209.427,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 674.301
+                    "average_damage_prevented": 674.301,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -6538,52 +6680,54 @@
                     "average_damage_dealt": 1208.259,
                     "average_damage_received": 166.59,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 532.295
+                    "average_damage_prevented": 532.295,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
                     "key": "trial_wyvern",
                     "label": "ワイバーン",
                     "entered_count": 1000,
-                    "victory_count": 1000,
-                    "defeat_count": 0,
+                    "victory_count": 999,
+                    "defeat_count": 1,
                     "stalemate_count": 0,
-                    "average_rounds": 48.825,
-                    "average_remaining_hp_all_entries": 350.994,
-                    "average_remaining_hp_survivors": 350.994,
+                    "average_rounds": 36.481,
+                    "average_remaining_hp_all_entries": 667.544,
+                    "average_remaining_hp_survivors": 668.212,
                     "average_interbattle_heal": 0,
-                    "average_post_heal_hp": 350.994,
-                    "average_damage_dealt": 2412.957,
-                    "average_damage_received": 1959.2,
-                    "average_effective_healing": 1242.54,
-                    "average_damage_prevented": 5375.752
+                    "average_post_heal_hp": 668.212,
+                    "average_damage_dealt": 2202.96,
+                    "average_damage_received": 1466.24,
+                    "average_effective_healing": 1066.13,
+                    "average_damage_prevented": 4023.841,
+                    "phase_transition_count": 94
                 }
             ],
-            "trial_end_average_hp_all_trials": 350.994,
-            "trial_end_average_hp_clears": 350.994,
-            "average_total_rounds": 117.521,
-            "median_total_rounds": 117,
+            "trial_end_average_hp_all_trials": 667.544,
+            "trial_end_average_hp_clears": 668.212,
+            "average_total_rounds": 105.177,
+            "median_total_rounds": 105,
             "stalemate_count": 0,
             "abnormal_result_count": 0,
-            "average_damage_dealt": 11984.508,
-            "average_damage_received": 3210.662,
-            "average_in_combat_healing": 1242.54,
-            "average_damage_prevented": 9417.829,
+            "average_damage_dealt": 11774.511,
+            "average_damage_received": 2717.702,
+            "average_in_combat_healing": 1066.13,
+            "average_damage_prevented": 8065.918,
             "action_usage_total": {
-                "normal_attack": 3402,
-                "defend": 11433,
+                "normal_attack": 211,
+                "defend": 8669,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
-                "holy_bolt": 98474,
-                "mending_prayer": 4212
+                "holy_bolt": 92683,
+                "mending_prayer": 3614
             },
-            "guard_usage_total": 11433,
+            "guard_usage_total": 8669,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
-            "mp_exhausted_battle_count": 1000,
-            "skill_unavailable_due_to_mp_count": 8826,
-            "average_final_mp_per_battle": 6715.15,
+            "mp_exhausted_battle_count": 462,
+            "skill_unavailable_due_to_mp_count": 345,
+            "average_final_mp_per_battle": 6761.61,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -6699,13 +6843,13 @@
                     ]
                 }
             },
-            "clear_count": 206,
-            "clear_rate": 0.206,
+            "clear_count": 150,
+            "clear_rate": 0.15,
             "boss_reached_count": 1000,
             "boss_reached_rate": 1,
-            "boss_clear_count": 206,
-            "boss_clear_rate_all_trials": 0.206,
-            "boss_clear_rate_after_reaching": 0.206,
+            "boss_clear_count": 150,
+            "boss_clear_rate_all_trials": 0.15,
+            "boss_clear_rate_after_reaching": 0.15,
             "defeat_battle_distribution": {
                 "1": {
                     "defeat": 0,
@@ -6753,9 +6897,9 @@
                     "total": 0
                 },
                 "10": {
-                    "defeat": 0,
-                    "stalemate": 794,
-                    "total": 794
+                    "defeat": 850,
+                    "stalemate": 0,
+                    "total": 850
                 }
             },
             "battle_metrics": [
@@ -6775,7 +6919,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 82.311,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 265.73
+                    "average_damage_prevented": 265.73,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -6793,7 +6938,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 103.267,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 329.518
+                    "average_damage_prevented": 329.518,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -6811,7 +6957,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 120.55,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 371.349
+                    "average_damage_prevented": 371.349,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -6829,7 +6976,8 @@
                     "average_damage_dealt": 1165.166,
                     "average_damage_received": 152.935,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 489.093
+                    "average_damage_prevented": 489.093,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -6847,7 +6995,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 185.245,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 593.22
+                    "average_damage_prevented": 593.22,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -6865,7 +7014,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 210.613,
                     "average_effective_healing": 7.476,
-                    "average_damage_prevented": 669.054
+                    "average_damage_prevented": 669.054,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -6883,7 +7033,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 135.952,
                     "average_effective_healing": 26.7,
-                    "average_damage_prevented": 456.949
+                    "average_damage_prevented": 456.949,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -6901,7 +7052,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 253.937,
                     "average_effective_healing": 222.144,
-                    "average_damage_prevented": 814.019
+                    "average_damage_prevented": 814.019,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -6919,52 +7071,54 @@
                     "average_damage_dealt": 1209.394,
                     "average_damage_received": 190.058,
                     "average_effective_healing": 33.642,
-                    "average_damage_prevented": 604.788
+                    "average_damage_prevented": 604.788,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
                     "key": "trial_wyvern",
                     "label": "ワイバーン",
                     "entered_count": 1000,
-                    "victory_count": 206,
-                    "defeat_count": 0,
-                    "stalemate_count": 794,
-                    "average_rounds": 97.371,
-                    "average_remaining_hp_all_entries": 217.084,
-                    "average_remaining_hp_survivors": 240.447,
+                    "victory_count": 150,
+                    "defeat_count": 850,
+                    "stalemate_count": 0,
+                    "average_rounds": 46.347,
+                    "average_remaining_hp_all_entries": 44.202,
+                    "average_remaining_hp_survivors": 294.68,
                     "average_interbattle_heal": 0,
-                    "average_post_heal_hp": 1053.806,
-                    "average_damage_dealt": 3081.753,
-                    "average_damage_received": 4001.155,
-                    "average_effective_healing": 3466.728,
-                    "average_damage_prevented": 10908.139
+                    "average_post_heal_hp": 294.68,
+                    "average_damage_dealt": 2204.707,
+                    "average_damage_received": 2155.517,
+                    "average_effective_healing": 1448.208,
+                    "average_damage_prevented": 6085.556,
+                    "phase_transition_count": 983
                 }
             ],
-            "trial_end_average_hp_all_trials": 49.532,
-            "trial_end_average_hp_clears": 240.447,
-            "average_total_rounds": 174.456,
-            "median_total_rounds": 176,
-            "stalemate_count": 794,
+            "trial_end_average_hp_all_trials": 44.202,
+            "trial_end_average_hp_clears": 294.68,
+            "average_total_rounds": 123.432,
+            "median_total_rounds": 123,
+            "stalemate_count": 0,
             "abnormal_result_count": 0,
-            "average_damage_dealt": 12656.313,
-            "average_damage_received": 5436.023,
-            "average_in_combat_healing": 3756.69,
-            "average_damage_prevented": 15501.859,
+            "average_damage_dealt": 11779.267,
+            "average_damage_received": 3590.385,
+            "average_in_combat_healing": 1738.17,
+            "average_damage_prevented": 10679.276,
             "action_usage_total": {
-                "normal_attack": 13984,
-                "defend": 34331,
+                "normal_attack": 2778,
+                "defend": 13205,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
-                "holy_bolt": 112071,
-                "mending_prayer": 14070
+                "holy_bolt": 100939,
+                "mending_prayer": 6510
             },
-            "guard_usage_total": 34331,
+            "guard_usage_total": 13205,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
             "mp_exhausted_battle_count": 1000,
-            "skill_unavailable_due_to_mp_count": 52240,
-            "average_final_mp_per_battle": 6429.68,
+            "skill_unavailable_due_to_mp_count": 9249,
+            "average_final_mp_per_battle": 6474.33,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -7080,13 +7234,13 @@
                     ]
                 }
             },
-            "clear_count": 445,
-            "clear_rate": 0.445,
+            "clear_count": 532,
+            "clear_rate": 0.532,
             "boss_reached_count": 1000,
             "boss_reached_rate": 1,
-            "boss_clear_count": 445,
-            "boss_clear_rate_all_trials": 0.445,
-            "boss_clear_rate_after_reaching": 0.445,
+            "boss_clear_count": 532,
+            "boss_clear_rate_all_trials": 0.532,
+            "boss_clear_rate_after_reaching": 0.532,
             "defeat_battle_distribution": {
                 "1": {
                     "defeat": 0,
@@ -7134,9 +7288,9 @@
                     "total": 0
                 },
                 "10": {
-                    "defeat": 3,
-                    "stalemate": 552,
-                    "total": 555
+                    "defeat": 468,
+                    "stalemate": 0,
+                    "total": 468
                 }
             },
             "battle_metrics": [
@@ -7156,7 +7310,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 82.311,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 265.73
+                    "average_damage_prevented": 265.73,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -7174,7 +7329,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 103.267,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 329.518
+                    "average_damage_prevented": 329.518,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -7192,7 +7348,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 120.55,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 371.349
+                    "average_damage_prevented": 371.349,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -7210,7 +7367,8 @@
                     "average_damage_dealt": 1165.166,
                     "average_damage_received": 152.935,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 489.093
+                    "average_damage_prevented": 489.093,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -7228,7 +7386,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 185.245,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 593.22
+                    "average_damage_prevented": 593.22,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -7246,7 +7405,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 209.88,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 666.732
+                    "average_damage_prevented": 666.732,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -7264,7 +7424,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 133.834,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 449.942
+                    "average_damage_prevented": 449.942,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -7282,7 +7443,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 234.847,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 753.482
+                    "average_damage_prevented": 753.482,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -7300,52 +7462,54 @@
                     "average_damage_dealt": 1209.268,
                     "average_damage_received": 187.516,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 596.687
+                    "average_damage_prevented": 596.687,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
                     "key": "trial_wyvern",
                     "label": "ワイバーン",
                     "entered_count": 1000,
-                    "victory_count": 445,
-                    "defeat_count": 3,
-                    "stalemate_count": 552,
-                    "average_rounds": 92.77,
-                    "average_remaining_hp_all_entries": 226.357,
-                    "average_remaining_hp_survivors": 240.061,
+                    "victory_count": 532,
+                    "defeat_count": 468,
+                    "stalemate_count": 0,
+                    "average_rounds": 43.972,
+                    "average_remaining_hp_all_entries": 179.781,
+                    "average_remaining_hp_survivors": 337.934,
                     "average_interbattle_heal": 0,
-                    "average_post_heal_hp": 508.667,
-                    "average_damage_dealt": 3070.583,
-                    "average_damage_received": 3801.675,
-                    "average_effective_healing": 3016.032,
-                    "average_damage_prevented": 10367.331
+                    "average_post_heal_hp": 337.934,
+                    "average_damage_dealt": 2265.424,
+                    "average_damage_received": 1963.498,
+                    "average_effective_healing": 1131.279,
+                    "average_damage_prevented": 5479.014,
+                    "phase_transition_count": 893
                 }
             ],
-            "trial_end_average_hp_all_trials": 106.827,
-            "trial_end_average_hp_clears": 240.061,
-            "average_total_rounds": 168.762,
-            "median_total_rounds": 174,
-            "stalemate_count": 552,
+            "trial_end_average_hp_all_trials": 179.781,
+            "trial_end_average_hp_clears": 337.934,
+            "average_total_rounds": 119.964,
+            "median_total_rounds": 119,
+            "stalemate_count": 0,
             "abnormal_result_count": 0,
-            "average_damage_dealt": 12645.017,
-            "average_damage_received": 5212.06,
-            "average_in_combat_healing": 3016.032,
-            "average_damage_prevented": 14883.084,
+            "average_damage_dealt": 11839.858,
+            "average_damage_received": 3373.883,
+            "average_in_combat_healing": 1131.279,
+            "average_damage_prevented": 9994.767,
             "action_usage_total": {
-                "normal_attack": 12238,
-                "defend": 31936,
+                "normal_attack": 1641,
+                "defend": 11500,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
-                "holy_bolt": 113292,
-                "mending_prayer": 11296
+                "holy_bolt": 102586,
+                "mending_prayer": 4237
             },
-            "guard_usage_total": 31936,
+            "guard_usage_total": 11500,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
-            "mp_exhausted_battle_count": 1000,
-            "skill_unavailable_due_to_mp_count": 47520,
-            "average_final_mp_per_battle": 6516.92,
+            "mp_exhausted_battle_count": 999,
+            "skill_unavailable_due_to_mp_count": 6301,
+            "average_final_mp_per_battle": 6541.42,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -7542,7 +7706,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 132.229,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 379.047
+                    "average_damage_prevented": 379.047,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -7560,7 +7725,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 175.53,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 498.604
+                    "average_damage_prevented": 498.604,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -7578,7 +7744,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 260.274,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 647.845
+                    "average_damage_prevented": 647.845,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -7596,7 +7763,8 @@
                     "average_damage_dealt": 1175.032,
                     "average_damage_received": 275.772,
                     "average_effective_healing": 13.28,
-                    "average_damage_prevented": 784.341
+                    "average_damage_prevented": 784.341,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -7614,7 +7782,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 332.99,
                     "average_effective_healing": 140.104,
-                    "average_damage_prevented": 781.063
+                    "average_damage_prevented": 781.063,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -7632,7 +7801,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 482.559,
                     "average_effective_healing": 308.511,
-                    "average_damage_prevented": 1432.323
+                    "average_damage_prevented": 1432.323,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -7650,7 +7820,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 253.552,
                     "average_effective_healing": 80.012,
-                    "average_damage_prevented": 769.287
+                    "average_damage_prevented": 769.287,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -7668,7 +7839,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 547.188,
                     "average_effective_healing": 361.797,
-                    "average_damage_prevented": 1453.122
+                    "average_damage_prevented": 1453.122,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -7686,7 +7858,8 @@
                     "average_damage_dealt": 1217.59,
                     "average_damage_received": 387.763,
                     "average_effective_healing": 220.863,
-                    "average_damage_prevented": 1100.994
+                    "average_damage_prevented": 1100.994,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -7696,7 +7869,7 @@
                     "victory_count": 0,
                     "defeat_count": 1000,
                     "stalemate_count": 0,
-                    "average_rounds": 34.226,
+                    "average_rounds": 34.225,
                     "average_remaining_hp_all_entries": 0,
                     "average_remaining_hp_survivors": 0,
                     "average_interbattle_heal": 0,
@@ -7704,22 +7877,23 @@
                     "average_damage_dealt": 1611.46,
                     "average_damage_received": 1455.558,
                     "average_effective_healing": 762.438,
-                    "average_damage_prevented": 3756.653
+                    "average_damage_prevented": 3756.787,
+                    "phase_transition_count": 1
                 }
             ],
             "trial_end_average_hp_all_trials": 0,
             "trial_end_average_hp_clears": 0,
-            "average_total_rounds": 164.953,
+            "average_total_rounds": 164.952,
             "median_total_rounds": 165,
             "stalemate_count": 0,
             "abnormal_result_count": 0,
             "average_damage_dealt": 11204.082,
             "average_damage_received": 4303.415,
             "average_in_combat_healing": 1887.005,
-            "average_damage_prevented": 11603.279,
+            "average_damage_prevented": 11603.413,
             "action_usage_total": {
                 "normal_attack": 2584,
-                "defend": 14618,
+                "defend": 14617,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
@@ -7727,12 +7901,12 @@
                 "holy_bolt": 0,
                 "mending_prayer": 22735
             },
-            "guard_usage_total": 14618,
+            "guard_usage_total": 14617,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
             "mp_exhausted_battle_count": 0,
             "skill_unavailable_due_to_mp_count": 10962,
-            "average_final_mp_per_battle": 4419.43,
+            "average_final_mp_per_battle": 4419.4,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -7929,7 +8103,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 114.007,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 354.811
+                    "average_damage_prevented": 354.811,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -7947,7 +8122,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 149.327,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 455.322
+                    "average_damage_prevented": 455.322,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -7965,7 +8141,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 216.963,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 587.304
+                    "average_damage_prevented": 587.304,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -7983,7 +8160,8 @@
                     "average_damage_dealt": 1171.914,
                     "average_damage_received": 228.202,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 700.014
+                    "average_damage_prevented": 700.014,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -8001,7 +8179,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 234.88,
                     "average_effective_healing": 0.364,
-                    "average_damage_prevented": 604.183
+                    "average_damage_prevented": 604.183,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -8019,7 +8198,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 348.512,
                     "average_effective_healing": 95.095,
-                    "average_damage_prevented": 1082.308
+                    "average_damage_prevented": 1082.308,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -8037,7 +8217,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 198.434,
                     "average_effective_healing": 18.746,
-                    "average_damage_prevented": 647.159
+                    "average_damage_prevented": 647.159,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -8055,7 +8236,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 423.228,
                     "average_effective_healing": 234.325,
-                    "average_damage_prevented": 1229.797
+                    "average_damage_prevented": 1229.797,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -8073,7 +8255,8 @@
                     "average_damage_dealt": 1214.574,
                     "average_damage_received": 303.835,
                     "average_effective_healing": 122.759,
-                    "average_damage_prevented": 929.768
+                    "average_damage_prevented": 929.768,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -8083,43 +8266,44 @@
                     "victory_count": 335,
                     "defeat_count": 665,
                     "stalemate_count": 0,
-                    "average_rounds": 35.823,
+                    "average_rounds": 35.577,
                     "average_remaining_hp_all_entries": 78.853,
                     "average_remaining_hp_survivors": 235.382,
                     "average_interbattle_heal": 0,
                     "average_post_heal_hp": 235.382,
                     "average_damage_dealt": 2006.547,
-                    "average_damage_received": 1469.12,
-                    "average_effective_healing": 820.001,
-                    "average_damage_prevented": 3952.904
+                    "average_damage_received": 1468.847,
+                    "average_effective_healing": 819.728,
+                    "average_damage_prevented": 3972.472,
+                    "phase_transition_count": 224
                 }
             ],
             "trial_end_average_hp_all_trials": 78.853,
             "trial_end_average_hp_clears": 235.382,
-            "average_total_rounds": 145.264,
-            "median_total_rounds": 146,
+            "average_total_rounds": 145.018,
+            "median_total_rounds": 145,
             "stalemate_count": 0,
             "abnormal_result_count": 0,
             "average_damage_dealt": 11593.035,
-            "average_damage_received": 3686.508,
-            "average_in_combat_healing": 1291.29,
-            "average_damage_prevented": 10543.57,
+            "average_damage_received": 3686.235,
+            "average_in_combat_healing": 1291.017,
+            "average_damage_prevented": 10563.138,
             "action_usage_total": {
                 "normal_attack": 2389,
-                "defend": 13182,
+                "defend": 12939,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
                 "precision_cut": 115503,
                 "holy_bolt": 0,
-                "mending_prayer": 14190
+                "mending_prayer": 14187
             },
-            "guard_usage_total": 13182,
+            "guard_usage_total": 12939,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
             "mp_exhausted_battle_count": 0,
-            "skill_unavailable_due_to_mp_count": 10422,
-            "average_final_mp_per_battle": 5424.94,
+            "skill_unavailable_due_to_mp_count": 10302,
+            "average_final_mp_per_battle": 5417.92,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -8316,7 +8500,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 83.241,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 271.904
+                    "average_damage_prevented": 271.904,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -8334,7 +8519,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 127.262,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 410.426
+                    "average_damage_prevented": 410.426,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -8352,7 +8538,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 185.845,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 538.026
+                    "average_damage_prevented": 538.026,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -8370,7 +8557,8 @@
                     "average_damage_dealt": 1169.618,
                     "average_damage_received": 196.648,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 634.576
+                    "average_damage_prevented": 634.576,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -8388,7 +8576,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 195.71,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 549.068
+                    "average_damage_prevented": 549.068,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -8406,7 +8595,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 280.338,
                     "average_effective_healing": 0.098,
-                    "average_damage_prevented": 897.854
+                    "average_damage_prevented": 897.854,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -8424,7 +8614,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 170.642,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 578.054
+                    "average_damage_prevented": 578.054,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -8442,7 +8633,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 314.937,
                     "average_effective_healing": 25.676,
-                    "average_damage_prevented": 971.065
+                    "average_damage_prevented": 971.065,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -8460,7 +8652,8 @@
                     "average_damage_dealt": 1212.298,
                     "average_damage_received": 247.049,
                     "average_effective_healing": 43.512,
-                    "average_damage_prevented": 794.057
+                    "average_damage_prevented": 794.057,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -8470,7 +8663,7 @@
                     "victory_count": 984,
                     "defeat_count": 16,
                     "stalemate_count": 0,
-                    "average_rounds": 29.262,
+                    "average_rounds": 29.248,
                     "average_remaining_hp_all_entries": 361.737,
                     "average_remaining_hp_survivors": 367.619,
                     "average_interbattle_heal": 0,
@@ -8478,22 +8671,23 @@
                     "average_damage_dealt": 2076.712,
                     "average_damage_received": 1160.977,
                     "average_effective_healing": 757.246,
-                    "average_damage_prevented": 3185.431
+                    "average_damage_prevented": 3186.256,
+                    "phase_transition_count": 12
                 }
             ],
             "trial_end_average_hp_all_trials": 361.737,
             "trial_end_average_hp_clears": 367.619,
-            "average_total_rounds": 124.003,
+            "average_total_rounds": 123.989,
             "median_total_rounds": 124,
             "stalemate_count": 0,
             "abnormal_result_count": 0,
             "average_damage_dealt": 11658.628,
             "average_damage_received": 2962.649,
             "average_in_combat_healing": 826.532,
-            "average_damage_prevented": 8830.461,
+            "average_damage_prevented": 8831.286,
             "action_usage_total": {
                 "normal_attack": 1514,
-                "defend": 8231,
+                "defend": 8217,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
@@ -8501,12 +8695,12 @@
                 "holy_bolt": 0,
                 "mending_prayer": 8434
             },
-            "guard_usage_total": 8231,
+            "guard_usage_total": 8217,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
             "mp_exhausted_battle_count": 0,
-            "skill_unavailable_due_to_mp_count": 4624,
-            "average_final_mp_per_battle": 6058.57,
+            "skill_unavailable_due_to_mp_count": 4614,
+            "average_final_mp_per_battle": 6058.15,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -8703,7 +8897,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 114.007,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 354.811
+                    "average_damage_prevented": 354.811,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -8721,7 +8916,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 149.327,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 455.322
+                    "average_damage_prevented": 455.322,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -8739,7 +8935,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 216.963,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 587.304
+                    "average_damage_prevented": 587.304,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -8757,7 +8954,8 @@
                     "average_damage_dealt": 1173.504,
                     "average_damage_received": 244.496,
                     "average_effective_healing": 71.708,
-                    "average_damage_prevented": 751.034
+                    "average_damage_prevented": 751.034,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -8775,7 +8973,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 296.637,
                     "average_effective_healing": 199.199,
-                    "average_damage_prevented": 761.426
+                    "average_damage_prevented": 761.426,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -8793,7 +8992,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 420.777,
                     "average_effective_healing": 327.964,
-                    "average_damage_prevented": 1307.627
+                    "average_damage_prevented": 1307.627,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -8811,7 +9011,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 226.333,
                     "average_effective_healing": 137.683,
-                    "average_damage_prevented": 738.05
+                    "average_damage_prevented": 738.05,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -8829,7 +9030,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 457.836,
                     "average_effective_healing": 363.727,
-                    "average_damage_prevented": 1330.072
+                    "average_damage_prevented": 1330.072,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -8847,7 +9049,8 @@
                     "average_damage_dealt": 1215.892,
                     "average_damage_received": 331.401,
                     "average_effective_healing": 242.06,
-                    "average_damage_prevented": 1013.636
+                    "average_damage_prevented": 1013.636,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -8857,7 +9060,7 @@
                     "victory_count": 92,
                     "defeat_count": 908,
                     "stalemate_count": 0,
-                    "average_rounds": 35.821,
+                    "average_rounds": 35.724,
                     "average_remaining_hp_all_entries": 20.514,
                     "average_remaining_hp_survivors": 222.978,
                     "average_interbattle_heal": 0,
@@ -8865,22 +9068,23 @@
                     "average_damage_dealt": 1885.008,
                     "average_damage_received": 1474.677,
                     "average_effective_healing": 859.404,
-                    "average_damage_prevented": 3976.958
+                    "average_damage_prevented": 3980.495,
+                    "phase_transition_count": 70
                 }
             ],
             "trial_end_average_hp_all_trials": 20.514,
             "trial_end_average_hp_clears": 222.978,
-            "average_total_rounds": 155.707,
+            "average_total_rounds": 155.61,
             "median_total_rounds": 156,
             "stalemate_count": 0,
             "abnormal_result_count": 0,
             "average_damage_dealt": 11474.404,
             "average_damage_received": 3932.454,
             "average_in_combat_healing": 2201.745,
-            "average_damage_prevented": 11276.24,
+            "average_damage_prevented": 11279.777,
             "action_usage_total": {
                 "normal_attack": 2498,
-                "defend": 14685,
+                "defend": 14588,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
@@ -8888,12 +9092,12 @@
                 "holy_bolt": 0,
                 "mending_prayer": 24195
             },
-            "guard_usage_total": 14685,
+            "guard_usage_total": 14588,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
             "mp_exhausted_battle_count": 0,
-            "skill_unavailable_due_to_mp_count": 11748,
-            "average_final_mp_per_battle": 4608.07,
+            "skill_unavailable_due_to_mp_count": 11704,
+            "average_final_mp_per_battle": 4605.16,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -9090,7 +9294,8 @@
                     "average_damage_dealt": 700,
                     "average_damage_received": 114.007,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 354.811
+                    "average_damage_prevented": 354.811,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 2,
@@ -9108,7 +9313,8 @@
                     "average_damage_dealt": 850,
                     "average_damage_received": 149.327,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 455.322
+                    "average_damage_prevented": 455.322,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 3,
@@ -9126,7 +9332,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 216.963,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 587.304
+                    "average_damage_prevented": 587.304,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 4,
@@ -9144,7 +9351,8 @@
                     "average_damage_dealt": 1171.914,
                     "average_damage_received": 228.202,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 700.014
+                    "average_damage_prevented": 700.014,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 5,
@@ -9162,7 +9370,8 @@
                     "average_damage_dealt": 1000,
                     "average_damage_received": 234.759,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 603.891
+                    "average_damage_prevented": 603.891,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 6,
@@ -9180,7 +9389,8 @@
                     "average_damage_dealt": 1200,
                     "average_damage_received": 318.703,
                     "average_effective_healing": 0.091,
-                    "average_damage_prevented": 991.233
+                    "average_damage_prevented": 991.233,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 7,
@@ -9198,7 +9408,8 @@
                     "average_damage_dealt": 1050,
                     "average_damage_received": 194.025,
                     "average_effective_healing": 0,
-                    "average_damage_prevented": 632.885
+                    "average_damage_prevented": 632.885,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 8,
@@ -9216,7 +9427,8 @@
                     "average_damage_dealt": 1400,
                     "average_damage_received": 361.396,
                     "average_effective_healing": 3.276,
-                    "average_damage_prevented": 1051.215
+                    "average_damage_prevented": 1051.215,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 9,
@@ -9234,7 +9446,8 @@
                     "average_damage_dealt": 1213.274,
                     "average_damage_received": 276.713,
                     "average_effective_healing": 4.914,
-                    "average_damage_prevented": 846.844
+                    "average_damage_prevented": 846.844,
+                    "phase_transition_count": 0
                 },
                 {
                     "index": 10,
@@ -9244,43 +9457,44 @@
                     "victory_count": 829,
                     "defeat_count": 171,
                     "stalemate_count": 0,
-                    "average_rounds": 32.092,
+                    "average_rounds": 31.976,
                     "average_remaining_hp_all_entries": 237.402,
                     "average_remaining_hp_survivors": 286.372,
                     "average_interbattle_heal": 0,
                     "average_post_heal_hp": 286.372,
                     "average_damage_dealt": 2091.724,
-                    "average_damage_received": 1305.396,
-                    "average_effective_healing": 697.697,
-                    "average_damage_prevented": 3488.584
+                    "average_damage_received": 1305.305,
+                    "average_effective_healing": 697.606,
+                    "average_damage_prevented": 3493.782,
+                    "phase_transition_count": 88
                 }
             ],
             "trial_end_average_hp_all_trials": 237.402,
             "trial_end_average_hp_clears": 286.372,
-            "average_total_rounds": 136.1,
+            "average_total_rounds": 135.984,
             "median_total_rounds": 135,
             "stalemate_count": 0,
             "abnormal_result_count": 0,
             "average_damage_dealt": 11676.912,
-            "average_damage_received": 3399.491,
-            "average_in_combat_healing": 705.978,
-            "average_damage_prevented": 9712.103,
+            "average_damage_received": 3399.4,
+            "average_in_combat_healing": 705.887,
+            "average_damage_prevented": 9717.301,
             "action_usage_total": {
                 "normal_attack": 2044,
-                "defend": 9556,
+                "defend": 9441,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
                 "precision_cut": 116742,
                 "holy_bolt": 0,
-                "mending_prayer": 7758
+                "mending_prayer": 7757
             },
-            "guard_usage_total": 9556,
+            "guard_usage_total": 9441,
             "counter_usage_total": 0,
             "barrier_action_usage_total": 0,
             "mp_exhausted_battle_count": 0,
-            "skill_unavailable_due_to_mp_count": 6748,
-            "average_final_mp_per_battle": 5847.52,
+            "skill_unavailable_due_to_mp_count": 6687,
+            "average_final_mp_per_battle": 5844.16,
             "abnormal_seeds": [],
             "max_battles_observed": 10,
             "continued_after_failure_count": 0,
@@ -9306,8 +9520,8 @@
             },
             "blessing_green": {
                 "lv25_clear_rate": 0,
-                "lv30_clear_rate": 0.4,
-                "lv35_clear_rate": 1,
+                "lv30_clear_rate": 0.476,
+                "lv35_clear_rate": 0.999,
                 "lv30_in_advisory_30_to_70_percent_band": true,
                 "progression_curve_strictly_increases": true
             },
@@ -9333,6 +9547,6 @@
         "--manifest=config/underground/balance/trial1-v1.json",
         "--seed-start=0",
         "--count=1000",
-        "--commit-sha=ba98e7fd4ebca3e2ded77a617e1309732718101e"
+        "--commit-sha=5ac91899f19655685b64107f4a62deb11358c9c2"
     ]
 }
