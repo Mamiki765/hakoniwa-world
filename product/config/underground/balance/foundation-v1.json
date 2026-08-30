@@ -232,7 +232,7 @@
             "label": "混成",
             "base_stats": {"vitality": 26, "might": 22, "finesse": 20, "spirit": 20, "agility": 12},
             "weapon_style": "rapier",
-            "allocations": {"martial_precision_cut": 1, "martial_weapon_mastery": 5, "martial_critical_training": 5, "martial_dagger_flurry": 1, "martial_tempo": 5, "guardianship_shield_bash": 1, "guardianship_vital_core": 5, "guardianship_guard_training": 5, "guardianship_counter_stance": 1, "guardianship_fighting_spirit": 5, "miracle_holy_bolt": 1, "miracle_spirit_channel": 5, "miracle_healing_study": 5, "miracle_mending_prayer": 1, "miracle_grace_core": 5},
+            "allocations": {"martial_precision_cut": 1, "martial_weapon_mastery": 5, "martial_critical_training": 5, "martial_dagger_flurry": 1, "martial_tempo": 4, "guardianship_shield_bash": 1, "guardianship_vital_core": 5, "guardianship_guard_training": 5, "guardianship_counter_stance": 1, "guardianship_fighting_spirit": 4, "miracle_holy_bolt": 1, "miracle_spirit_channel": 5, "miracle_healing_study": 5, "miracle_mending_prayer": 1, "miracle_grace_core": 5, "miracle_aegis_mastery": 1},
             "active_skills": ["dagger_flurry", "precision_cut", "shield_bash", "mending_prayer", "holy_bolt"],
             "ai_rules": [
                 {"conditions": [{"type": "enemy_telegraph"}, {"type": "own_hp_lte", "percent": 85}], "action": "defend"},
