@@ -268,6 +268,16 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
             ->assertJsonPath('data.playtest', null);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/playtest')
+            ->assertConflict()
+            ->assertJsonPath('code', 'underground_playtest_locked');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', [
+            'request_id' => (string) Str::uuid(),
+            'build_key' => 'pure_attacker',
+            'enemy_key' => 'depth_stalker',
+        ])->assertConflict()->assertJsonPath('code', 'underground_playtest_locked');
+        $this->assertSame(0, UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_PLAYTEST)->count());
         config(['app.env' => $originalEnvironment]);
         $this->assertSame(1, UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $selectedProfile->id)
