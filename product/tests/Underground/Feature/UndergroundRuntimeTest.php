@@ -3,15 +3,22 @@
 namespace Tests\Underground\Feature;
 
 use App\Application\Underground\AtomicUndergroundCombat;
+use App\Application\Underground\AtomicUndergroundExplorationCombat;
 use App\Application\Underground\CanonicalUndergroundCombat;
+use App\Application\Underground\CanonicalUndergroundExplorationCombat;
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
+use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
+use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\BuildCombatResult;
 use App\Domain\Underground\Combat\CombatResult;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
+use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\UndergroundTrialRun;
@@ -63,15 +70,16 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertTrue($profile->next_battle_at?->equalTo($third->finished_at->addSeconds(10)) ?? false);
     }
 
-    public function test_duplicate_request_replays_once_before_cooldown_and_rejects_conflicting_intent(): void
+    public function test_exploration_duplicate_request_replays_once_before_cooldown_without_trial_contamination(): void
     {
         Carbon::setTestNow('2026-08-29 10:00:00+09:00');
-        [$user] = $this->secretaryUser();
-        [$runtime, $combat] = $this->runtimeWithOutcomes(['player']);
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player']);
         $requestId = (string) Str::uuid();
 
-        $first = $runtime->explore($user, 'shallow_caves', $requestId);
-        $duplicate = $runtime->explore($user, 'shallow_caves', $requestId);
+        $first = $runtime->explore($user, $requestId);
+        $duplicate = $runtime->explore($user, $requestId);
         $profile = UndergroundProfile::query()->sole();
 
         $this->assertFalse($first['duplicate']);
@@ -81,14 +89,151 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame($first['battle']->combat_xp_after, $profile->combat_xp);
         $this->assertSame($first['battle']->shard_balance_after, $profile->shard_balance);
         $this->assertRuntimeError(
-            'underground_request_conflict',
-            fn () => $runtime->explore($user, 'lower_galleries', $requestId),
-        );
-        $this->assertRuntimeError(
             'underground_battle_cooldown',
-            fn () => $runtime->explore($user, 'shallow_caves', (string) Str::uuid()),
+            fn () => $runtime->explore($user, (string) Str::uuid()),
         );
-        $this->assertSame(1, UndergroundBattle::query()->count());
+        $this->assertSame(1, UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_EXPLORATION)->count());
+        $this->assertSame(0, UndergroundTrialProgress::query()->count());
+    }
+
+    public function test_exploration_bonus_rewards_settle_multi_level_growth_stp_withdrawal_and_defeat_atomically(): void
+    {
+        Carbon::setTestNow('2026-08-29 10:30:00+09:00');
+        $crystalBug = config('underground-alpha-v1.exploration.encounters.crystal_bug');
+        $this->assertIsArray($crystalBug);
+        $crystalBug['weight'] = 10_000;
+        config(['underground-alpha-v1.exploration.encounters' => ['crystal_bug' => $crystalBug]]);
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        $profile->update([
+            'shard_balance' => 101,
+            'banked_shard_balance' => 5000,
+            'current_hp' => 300,
+        ]);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes([
+            ['winner' => 'player', 'remaining_hp' => 250, 'final_mp' => 123],
+            ['winner' => 'stalemate', 'remaining_hp' => 200, 'final_mp' => 456],
+            ['winner' => 'enemy', 'remaining_hp' => 0, 'final_mp' => 789],
+            ['winner' => 'player', 'remaining_hp' => 250, 'final_mp' => 123],
+            ['winner' => 'player', 'remaining_hp' => 225, 'final_mp' => 456],
+        ]);
+
+        $victory = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $this->assertSame([
+            UndergroundBattle::RESULT_VICTORY, 1150, 0, 1, 6, 25, 25,
+        ], [
+            $victory->result,
+            $victory->xp_awarded,
+            $victory->shard_delta,
+            $victory->combat_level_before,
+            $victory->combat_level_after,
+            $victory->snapshot['stp_awarded'],
+            $victory->snapshot['unspent_stp_after'],
+        ]);
+        $this->assertEquals(
+            ['vitality' => 18, 'might' => 34, 'finesse' => 30, 'spirit' => 8, 'agility' => 10],
+            $victory->snapshot['progression_stats'],
+        );
+        $this->assertEquals(
+            ['vitality' => 23, 'might' => 44, 'finesse' => 35, 'spirit' => 13, 'agility' => 10],
+            app(UndergroundAlphaV1PlayerCatalog::class)->currentStats(
+                'martial_red',
+                $profile->refresh()->combat_level,
+                $profile->allocatedStp(),
+            ),
+        );
+        $this->assertSame([300, 250, 10000, 123], [
+            $victory->snapshot['current_hp_before'],
+            $victory->snapshot['current_hp_after'],
+            $victory->snapshot['battle_start_mp'],
+            $victory->snapshot['summary']['final_mp'],
+        ]);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $withdrawal = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $this->assertSame([
+            UndergroundBattle::RESULT_WITHDRAWAL, 287, 0, 6, 7, 5, 30,
+        ], [
+            $withdrawal->result,
+            $withdrawal->xp_awarded,
+            $withdrawal->shard_delta,
+            $withdrawal->combat_level_before,
+            $withdrawal->combat_level_after,
+            $withdrawal->snapshot['stp_awarded'],
+            $withdrawal->snapshot['unspent_stp_after'],
+        ]);
+        $this->assertSame([250, 200, 10000, 456], [
+            $withdrawal->snapshot['current_hp_before'],
+            $withdrawal->snapshot['current_hp_after'],
+            $withdrawal->snapshot['battle_start_mp'],
+            $withdrawal->snapshot['summary']['final_mp'],
+        ]);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $defeat = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $this->assertSame([
+            UndergroundBattle::RESULT_DEFEAT, 0, -51, 7, 7, 0, 30,
+        ], [
+            $defeat->result,
+            $defeat->xp_awarded,
+            $defeat->shard_delta,
+            $defeat->combat_level_before,
+            $defeat->combat_level_after,
+            $defeat->snapshot['stp_awarded'],
+            $defeat->snapshot['unspent_stp_after'],
+        ]);
+        $this->assertSame([200, 540, 10000, 789], [
+            $defeat->snapshot['current_hp_before'],
+            $defeat->snapshot['current_hp_after'],
+            $defeat->snapshot['battle_start_mp'],
+            $defeat->snapshot['summary']['final_mp'],
+        ]);
+        $this->assertSame([1437, 50, 5000, 540, 30], [
+            $profile->refresh()->combat_xp,
+            $profile->shard_balance,
+            $profile->banked_shard_balance,
+            $profile->current_hp,
+            $profile->unspent_stp,
+        ]);
+        $this->assertSame([300, 250, 200], array_column($combat->calls, 'current_hp'));
+
+        $level100MaxHp = app(UndergroundAlphaV1PlayerCatalog::class)->currentMaxHp(
+            'martial_red',
+            100,
+            $profile->allocatedStp(),
+        );
+        $profile->update([
+            'combat_level' => 100,
+            'combat_xp' => 256_350,
+            'unspent_stp' => 495,
+            'current_hp' => $level100MaxHp,
+        ]);
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $levelUp = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $this->assertSame([100, 101, 257_500, 5, 500, $level100MaxHp, 250], [
+            $levelUp->combat_level_before,
+            $levelUp->combat_level_after,
+            $levelUp->combat_xp_after,
+            $levelUp->snapshot['stp_awarded'],
+            $levelUp->snapshot['unspent_stp_after'],
+            $levelUp->snapshot['current_hp_before'],
+            $levelUp->snapshot['current_hp_after'],
+        ]);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $aboveLevel100 = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $this->assertSame([101, 101, 258_650, 500, 250, 225], [
+            $aboveLevel100->combat_level_before,
+            $aboveLevel100->combat_level_after,
+            $aboveLevel100->combat_xp_after,
+            $aboveLevel100->snapshot['unspent_stp_after'],
+            $aboveLevel100->snapshot['current_hp_before'],
+            $aboveLevel100->snapshot['current_hp_after'],
+        ]);
+        foreach ($combat->calls as $call) {
+            $this->assertArrayNotHasKey('current_mp', $call['player_snapshot']);
+        }
     }
 
     public function test_trial_progress_resumes_and_explicit_withdrawal_restarts_at_battle_one(): void
@@ -234,8 +379,9 @@ final class UndergroundRuntimeTest extends TestCase
         [$runtime] = $this->runtimeWithOutcomes(['stalemate', 'stalemate']);
         $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
         $profile->update(['combat_xp' => 25, 'shard_balance' => 101]);
+        $this->unlockExploration($secretary, $profile);
 
-        $exploration = $runtime->explore($user, 'shallow_caves', (string) Str::uuid())['battle'];
+        $exploration = $runtime->explore($user, (string) Str::uuid())['battle'];
         $explorationXp = intdiv($exploration->snapshot['encounter']['xp_reward'], 4);
         $this->assertSame([UndergroundBattle::RESULT_WITHDRAWAL, 100, $explorationXp, 0], [
             $exploration->result, $exploration->rounds, $exploration->xp_awarded, $exploration->shard_delta,
@@ -297,14 +443,16 @@ final class UndergroundRuntimeTest extends TestCase
     public function test_expired_log_pruning_preserves_history_idempotency_and_user_ownership(): void
     {
         Carbon::setTestNow('2026-08-29 15:00:00+09:00');
-        [$owner] = $this->secretaryUser();
-        [$other] = $this->secretaryUser();
-        [$runtime, $combat] = $this->runtimeWithOutcomes(['player', 'player']);
+        [$owner, $ownerSecretary] = $this->secretaryUser();
+        [$other, $otherSecretary] = $this->secretaryUser();
+        $this->unlockExploration($ownerSecretary);
+        $this->unlockExploration($otherSecretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player', 'player']);
         $requestId = (string) Str::uuid();
-        $first = $runtime->explore($owner, 'shallow_caves', $requestId)['battle'];
+        $first = $runtime->explore($owner, $requestId)['battle'];
 
-        $this->assertSame($first->id, $runtime->recentBattles($owner)->sole()->id);
-        $this->assertTrue($runtime->recentBattles($other)->isEmpty());
+        $this->assertSame($first->id, $runtime->recentBattles($owner)->first()->id);
+        $this->assertFalse($runtime->recentBattles($other)->contains('id', $first->id));
         $first->log()->update(['expires_at' => $first->finished_at->addHours(1000)]);
         $retentionMigration = require database_path(
             'migrations/2026_08_30_010000_cap_underground_battle_log_retention_to_one_hour.php',
@@ -314,15 +462,25 @@ final class UndergroundRuntimeTest extends TestCase
             $first->log()->sole()->expires_at->equalTo($first->finished_at->addHour()),
         );
         Carbon::setTestNow(Carbon::now()->addHour());
-        $future = $runtime->explore($other, 'shallow_caves', (string) Str::uuid())['battle'];
+        $future = $runtime->explore($other, (string) Str::uuid())['battle'];
         Carbon::setTestNow($first->finished_at->addHour());
+        $expiredDuplicate = $runtime->explore($owner, $requestId);
+        $expiredProjection = $runtime->projectExplorationBattle($expiredDuplicate['battle']);
+        $this->assertTrue($expiredDuplicate['duplicate']);
+        $this->assertSame($first->id, $expiredDuplicate['battle']->id);
+        $this->assertNull($expiredDuplicate['battle']->log);
+        $this->assertFalse($expiredProjection['detail_available']);
+        $this->assertNull($expiredProjection['rounds']);
+        $this->assertSame('詳細ログは保存期間を過ぎました。', $expiredProjection['detail_message']);
+        $this->assertDatabaseHas('underground_battle_logs', ['underground_battle_id' => $first->id]);
         $this->artisan('underground:prune-battle-logs')
             ->expectsOutput('Pruned 1 expired Underground battle log(s).')
             ->assertSuccessful();
         $this->assertDatabaseMissing('underground_battle_logs', ['underground_battle_id' => $first->id]);
         $this->assertDatabaseHas('underground_battle_logs', ['underground_battle_id' => $future->id]);
         $this->assertDatabaseHas('underground_battles', ['id' => $first->id, 'request_id' => $requestId]);
-        $retained = $runtime->recentBattles($owner)->sole();
+        $retained = $runtime->recentBattles($owner)->firstWhere('id', $first->id);
+        $this->assertInstanceOf(UndergroundBattle::class, $retained);
         $this->assertSame($first->id, $retained->id);
         $this->assertNull($retained->log);
         $summary = $first->refresh();
@@ -332,7 +490,7 @@ final class UndergroundRuntimeTest extends TestCase
             $summary->healing_done,
         ]);
 
-        $duplicate = $runtime->explore($owner, 'shallow_caves', $requestId);
+        $duplicate = $runtime->explore($owner, $requestId);
         $this->assertTrue($duplicate['duplicate']);
         $this->assertSame($first->id, $duplicate['battle']->id);
         $this->assertNull($duplicate['battle']->log);
@@ -349,11 +507,16 @@ final class UndergroundRuntimeTest extends TestCase
     public function test_default_runtime_adapter_executes_the_canonical_pure_combat_core(): void
     {
         Carbon::setTestNow('2026-08-29 16:00:00+09:00');
-        [$user] = $this->secretaryUser();
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
 
         $this->assertInstanceOf(CanonicalUndergroundCombat::class, app(AtomicUndergroundCombat::class));
+        $this->assertInstanceOf(
+            CanonicalUndergroundExplorationCombat::class,
+            app(AtomicUndergroundExplorationCombat::class),
+        );
         $battle = app(UndergroundRuntimeService::class)
-            ->explore($user, 'shallow_caves', (string) Str::uuid())['battle'];
+            ->explore($user, (string) Str::uuid())['battle'];
 
         $this->assertContains($battle->result, [
             UndergroundBattle::RESULT_VICTORY,
@@ -363,27 +526,90 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $battle->rounds);
         $this->assertLessThanOrEqual(100, $battle->rounds);
         $this->assertNotEmpty($battle->log?->actions);
-        $this->assertSame(UndergroundCombatRules::IDENTITY, $battle->snapshot['combat_rules_identity']);
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $battle->snapshot['combat_rules_identity']);
     }
 
     /** @return array{User, Secretary} */
     private function secretaryUser(): array
     {
         $user = User::factory()->create();
-        $secretary = Secretary::query()->create(['user_id' => $user->id]);
+        $secretary = Secretary::query()->create([
+            'user_id' => $user->id,
+            'name' => 'Runtime secretary',
+            'named_at' => Carbon::now(),
+        ]);
 
         return [$user, $secretary];
     }
 
-    /** @param list<'player'|'enemy'|'stalemate'> $outcomes
-     * @return array{UndergroundRuntimeService, ScriptedUndergroundCombat}
+    /** @param list<'player'|'enemy'|'stalemate'|array{winner: 'player'|'enemy'|'stalemate', remaining_hp?: int, final_mp?: int}> $outcomes
+     * @return array{UndergroundRuntimeService, ScriptedUndergroundCombat, ScriptedUndergroundExplorationCombat}
      */
     private function runtimeWithOutcomes(array $outcomes): array
     {
-        $combat = new ScriptedUndergroundCombat($outcomes);
+        $combatOutcomes = array_map(
+            static fn (string|array $outcome): string => is_array($outcome) ? $outcome['winner'] : $outcome,
+            $outcomes,
+        );
+        $combat = new ScriptedUndergroundCombat($combatOutcomes);
+        $explorationCombat = new ScriptedUndergroundExplorationCombat($outcomes);
         $this->app->instance(AtomicUndergroundCombat::class, $combat);
+        $this->app->instance(AtomicUndergroundExplorationCombat::class, $explorationCombat);
 
-        return [app(UndergroundRuntimeService::class), $combat];
+        return [app(UndergroundRuntimeService::class), $combat, $explorationCombat];
+    }
+
+    private function unlockExploration(
+        Secretary $secretary,
+        ?UndergroundProfile $profile = null,
+        string $growthPathKey = 'martial_red',
+    ): UndergroundProfile {
+        $profile ??= app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+        $profile = $profile->refresh();
+        $contractAt = Carbon::now()->subMinute();
+        $profile->update([
+            'underground_contract_completed_at' => $contractAt,
+            'growth_path_key' => $growthPathKey,
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'growth_path_selected_at' => Carbon::now(),
+            'unspent_stp' => ($profile->combat_level - 1) * ($growthPathKey === 'free_black' ? 6 : 5),
+        ]);
+        $tutorial = UndergroundBattle::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('a', 64),
+            'runtime_identity' => 'secretary-underground-intro-alpha-v2',
+            'activity_type' => UndergroundBattle::ACTIVITY_TUTORIAL,
+            'activity_key' => 'tutorial',
+            'encounter_key' => 'giant_rat',
+            'result' => UndergroundBattle::RESULT_VICTORY,
+            'rounds' => 1,
+            'damage_dealt' => 1,
+            'damage_received' => 0,
+            'healing_done' => 0,
+            'xp_awarded' => 0,
+            'shard_delta' => 0,
+            'combat_level_before' => $profile->combat_level,
+            'combat_level_after' => $profile->combat_level,
+            'combat_xp_before' => $profile->combat_xp,
+            'combat_xp_after' => $profile->combat_xp,
+            'shard_balance_before' => $profile->shard_balance,
+            'shard_balance_after' => $profile->shard_balance,
+            'private_seed' => 1,
+            'snapshot' => [],
+            'started_at' => Carbon::now()->subHour(),
+            'finished_at' => Carbon::now()->subHour(),
+        ]);
+        UndergroundIntroProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'stage' => 'underground_open',
+            'shopkeeper_name' => '案内係',
+            'special_loss_required' => false,
+            'branch_identity' => 'normal',
+            'tutorial_battle_id' => $tutorial->id,
+        ]);
+
+        return $profile->refresh();
     }
 
     /** @param callable(): mixed $operation */
@@ -458,6 +684,81 @@ final class ScriptedUndergroundCombat implements AtomicUndergroundCombat
                 'player_resource' => 0,
                 'enemy_telegraphing' => false,
             ]],
+        );
+    }
+}
+
+final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExplorationCombat
+{
+    /** @var list<array{enemy_key: string, seed: int, max_rounds: int, current_hp: int, player_snapshot: array<string, mixed>}> */
+    public array $calls = [];
+
+    /** @param list<'player'|'enemy'|'stalemate'|array{winner: 'player'|'enemy'|'stalemate', remaining_hp?: int, final_mp?: int}> $outcomes */
+    public function __construct(private array $outcomes) {}
+
+    public function fight(
+        AlphaV1BuildCatalog $catalog,
+        array $playerSnapshot,
+        string $enemyKey,
+        int $seed,
+        int $maxRounds,
+        int $naturalRecovery,
+    ): BuildCombatResult {
+        $configured = array_shift($this->outcomes);
+        if (! is_string($configured) && ! is_array($configured)) {
+            throw new RuntimeException('Scripted Underground exploration outcome was not configured.');
+        }
+        $winner = is_array($configured) ? $configured['winner'] : $configured;
+        $remainingHp = is_array($configured)
+            ? ($configured['remaining_hp'] ?? ($winner === 'enemy' ? 0 : 100))
+            : ($winner === 'enemy' ? 0 : 100);
+        $finalMp = is_array($configured) ? ($configured['final_mp'] ?? AlphaV1CombatRules::MAX_MP) : AlphaV1CombatRules::MAX_MP;
+        $rounds = $winner === 'stalemate' ? $maxRounds : 3;
+        $this->calls[] = [
+            'enemy_key' => $enemyKey,
+            'seed' => $seed,
+            'max_rounds' => $maxRounds,
+            'current_hp' => (int) $playerSnapshot['current_hp'],
+            'player_snapshot' => $playerSnapshot,
+        ];
+
+        return new BuildCombatResult(
+            rulesIdentity: AlphaV1CombatRules::IDENTITY,
+            generatorIdentity: AlphaV1CombatRules::GENERATOR_IDENTITY,
+            seed: $seed,
+            buildKey: 'secretary_runtime',
+            enemyKey: $enemyKey,
+            tierKey: 'runtime',
+            winner: $winner,
+            rounds: $rounds,
+            playerRemainingHp: $remainingHp,
+            enemyRemainingHp: $winner === 'player' ? 0 : 100,
+            damageDealt: 7,
+            damageReceived: 3,
+            effectiveHealing: 0,
+            damagePrevented: 0,
+            mpSpent: 0,
+            mpNaturalRecovery: $naturalRecovery,
+            mpSkillRecovery: 0,
+            mpOverflow: 0,
+            mpExhaustionRound: null,
+            skillUnavailableDueToMp: 0,
+            finalMp: $finalMp,
+            actionUsage: ['normal_attack' => 1],
+            statusUptime: [],
+            finalRoleStacks: ['fighting_spirit' => 0, 'grace' => 0],
+            mpHistory: [],
+            abnormalState: [],
+            actionLog: [[
+                'round' => $rounds,
+                'kind' => 'effect',
+                'side' => 'player',
+                'target_side' => 'enemy',
+                'action' => 'normal_attack',
+                'amount' => 7,
+                'effect_type' => 'damage',
+            ]],
+            generatedEquipment: [$playerSnapshot['equipment']],
         );
     }
 }

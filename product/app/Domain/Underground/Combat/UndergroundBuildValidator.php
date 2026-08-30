@@ -166,7 +166,7 @@ final class UndergroundBuildValidator
      * @param  list<string>  $activeSkills
      * @param  list<mixed>  $aiRules
      */
-    private function assertAiRules(
+    public function assertAiRules(
         AlphaV1BuildCatalog $catalog,
         array $activeSkills,
         array $aiRules,

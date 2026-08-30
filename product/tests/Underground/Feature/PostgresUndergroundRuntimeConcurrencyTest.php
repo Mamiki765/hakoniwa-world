@@ -59,6 +59,9 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
     public function test_same_request_concurrent_explorations_settle_one_battle_under_secretary_lock(): void
     {
         [$user, $secretary, $profile] = $this->undergroundFixture();
+        $this->openExploration($user, $secretary);
+        $profile = $profile->fresh();
+        $this->assertNotNull($profile);
         $requestId = (string) Str::uuid();
 
         $results = $this->runConcurrentExplore($user, $secretary, $requestId);
@@ -76,11 +79,13 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         sort($duplicateFlags);
         $this->assertSame([false, true], $duplicateFlags);
 
-        $battle = UndergroundBattle::query()->sole();
+        $battle = UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_EXPLORATION)
+            ->sole();
         $persistedProfile = $profile->fresh();
         $this->assertNotNull($persistedProfile);
-        $this->assertSame(1, UndergroundBattleLog::query()->count());
-        $this->assertSame(1, UndergroundTrialProgress::query()
+        $this->assertSame(1, $battle->log()->count());
+        $this->assertSame(0, UndergroundTrialProgress::query()
             ->where('underground_profile_id', $profile->id)->count());
         $this->assertSame($battle->combat_xp_after, $persistedProfile->combat_xp);
         $this->assertSame($battle->shard_balance_after, $persistedProfile->shard_balance);
@@ -97,6 +102,40 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             $battle->finished_at->getTimestamp() + 10,
             $persistedProfile->next_battle_at->getTimestamp(),
         );
+    }
+
+    public function test_concurrent_bank_withdrawals_cannot_duplicate_banked_shards(): void
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $this->openExploration($user, $secretary);
+        $profile->update(['shard_balance' => 0, 'banked_shard_balance' => 1000]);
+
+        $results = $this->runConcurrentOperations($user, $secretary, [
+            [
+                'operation' => 'bank_transfer',
+                'request_id' => (string) Str::uuid(),
+                'action' => 'withdraw',
+                'amount' => 1000,
+            ],
+            [
+                'operation' => 'bank_transfer',
+                'request_id' => (string) Str::uuid(),
+                'action' => 'withdraw',
+                'amount' => 1000,
+            ],
+        ]);
+
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        $this->assertSame(['conflict', 'ok'], $statuses);
+        $conflict = collect($results)->firstWhere('status', 'conflict');
+        $this->assertIsArray($conflict);
+        $this->assertSame('underground_bank_insufficient_banked_shards', $conflict['error_code']);
+        $profile->refresh();
+        $this->assertSame([1000, 0], [$profile->shard_balance, $profile->banked_shard_balance]);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'bank_transfer')->count());
     }
 
     public function test_concurrent_different_shopkeeper_names_commit_exactly_one_under_secretary_lock(): void
@@ -242,7 +281,10 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
 
         try {
             $connection->unprepared(<<<'SQL'
-CREATE TABLE underground_profiles (id BIGSERIAL PRIMARY KEY);
+CREATE TABLE underground_profiles (
+  id BIGSERIAL PRIMARY KEY,
+  combat_level INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE underground_battles (id BIGSERIAL PRIMARY KEY, activity_type VARCHAR(16) NOT NULL);
 ALTER TABLE underground_battles
   ADD CONSTRAINT underground_battles_activity_type_check
@@ -314,6 +356,48 @@ SQL);
                 $this->assertNull($profile->growth_path_identity);
                 $this->assertNull($profile->growth_path_selected_at);
             }
+            $connection->table('underground_profiles')->where('id', 1)->update([
+                'combat_level' => 3,
+                'underground_contract_completed_at' => '2026-08-30 00:00:00+00',
+                'growth_path_key' => 'martial_red',
+                'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+                'growth_path_selected_at' => '2026-08-30 00:01:00+00',
+            ]);
+            $connection->table('underground_profiles')->where('id', 2)->update(['combat_level' => 7]);
+            $growthMigration = require database_path(
+                'migrations/2026_08_30_020000_add_underground_growth_stp_foundation.php',
+            );
+            $growthMigration->up();
+            $reconciled = $connection->table('underground_profiles')->orderBy('id')->get();
+            $this->assertSame([10, 0], [
+                $reconciled[0]->unspent_stp,
+                $reconciled[1]->unspent_stp,
+            ]);
+            $this->assertSame([0, 0], [
+                $reconciled[0]->banked_shard_balance,
+                $reconciled[1]->banked_shard_balance,
+            ]);
+            $this->assertSame(508, $reconciled[0]->current_hp);
+            $this->assertNull($reconciled[1]->current_hp);
+            foreach ($reconciled as $profile) {
+                $this->assertSame(0, $profile->allocated_vitality_stp);
+                $this->assertSame(0, $profile->allocated_might_stp);
+                $this->assertSame(0, $profile->allocated_finesse_stp);
+                $this->assertSame(0, $profile->allocated_spirit_stp);
+                $this->assertSame(0, $profile->allocated_agility_stp);
+            }
+            $this->assertSame(1, $connection->table('pg_constraint')
+                ->join('pg_class', 'pg_constraint.conrelid', '=', 'pg_class.oid')
+                ->join('pg_namespace', 'pg_class.relnamespace', '=', 'pg_namespace.oid')
+                ->where('pg_constraint.conname', 'underground_profiles_stp_entitlement_check')
+                ->where('pg_namespace.nspname', $schema)
+                ->count());
+            $this->assertSame(0, $connection->table('pg_constraint')
+                ->join('pg_class', 'pg_constraint.conrelid', '=', 'pg_class.oid')
+                ->join('pg_namespace', 'pg_class.relnamespace', '=', 'pg_namespace.oid')
+                ->where('pg_constraint.conname', 'underground_profiles_combat_level_max_check')
+                ->where('pg_namespace.nspname', $schema)
+                ->count());
         } finally {
             $connection->unprepared('SET search_path TO public');
             $connection->unprepared("DROP SCHEMA {$schema} CASCADE");
@@ -329,6 +413,23 @@ SQL);
         $profile->update(['shard_balance' => 100]);
 
         return [$user, $secretary, $profile->fresh()];
+    }
+
+    private function openExploration(User $user, Secretary $secretary): void
+    {
+        $secretary->update(['name' => '探索秘書', 'named_at' => now()]);
+        $intro = app(UndergroundIntroService::class);
+        $intro->enter($user, (string) Str::uuid());
+        $intro->advance($user, (string) Str::uuid(), 'initial_story_complete');
+        $intro->tutorial($user, (string) Str::uuid());
+        $intro->advance($user, (string) Str::uuid(), 'escape_complete');
+        $intro->enter($user, (string) Str::uuid());
+        $intro->advance($user, (string) Str::uuid(), 'shopkeeper_encounter_complete');
+        $intro->nameShopkeeper($user, (string) Str::uuid(), '案内係');
+        $intro->advance($user, (string) Str::uuid(), 'shop_explanation_complete');
+        $intro->contract($user, (string) Str::uuid());
+        $intro->selectGrowthPath($user, (string) Str::uuid(), 'martial_red');
+        $intro->advance($user, (string) Str::uuid(), 'growth_path_story_complete');
     }
 
     /** @return list<array<string, mixed>> */

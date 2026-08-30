@@ -523,6 +523,77 @@ final class UndergroundCombatBuildTest extends TestCase
         }
     }
 
+    public function test_runtime_snapshot_is_unscaled_and_crystal_guard_rolls_independently_per_hit(): void
+    {
+        [$manifest] = $this->catalog();
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $weapon = $configuration['exploration']['starter_weapon'];
+        $crystalBug = $configuration['exploration']['encounters']['crystal_bug']['enemy'];
+        $crystalBug['max_hp'] = 1_000_000;
+        $crystalBug['base_stats'] = [
+            'vitality' => 95, 'might' => 1, 'finesse' => 1, 'spirit' => 2, 'agility' => 1,
+        ];
+        $manifest['normal_attack']['hits'] = 100;
+        $manifest['enemies']['crystal_bug'] = $crystalBug;
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $growthStats = ['vitality' => 22, 'might' => 42, 'finesse' => 34, 'spirit' => 12, 'agility' => 10];
+        $playerSnapshot = [
+            'key' => 'secretary_runtime',
+            'label' => '成長中の秘書',
+            'stats' => $growthStats,
+            'active_skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'modifiers' => [],
+            'equipment' => $weapon,
+            'current_mp' => 1,
+        ];
+        $combatStats = array_map(
+            static fn (int $value): int => $value + 1,
+            $growthStats,
+        );
+        $expectedMaxHp = (new AlphaV1CombatRules)->maxHp($combatStats, 10_000);
+        $completeGuards = 0;
+        $passedHits = 0;
+
+        foreach (range(0, 19) as $seed) {
+            $result = $this->model()->fightPlayerSnapshot(
+                $catalog,
+                $playerSnapshot,
+                'crystal_bug',
+                $seed,
+                1,
+                300,
+            );
+            $hits = array_values(array_filter(
+                $result->actionLog,
+                static fn (array $row): bool => ($row['kind'] ?? null) === 'effect'
+                    && ($row['side'] ?? null) === 'player'
+                    && ($row['action'] ?? null) === 'normal_attack',
+            ));
+            $this->assertCount(100, $hits);
+            $completeGuards += count(array_filter(
+                $hits,
+                static fn (array $row): bool => ($row['complete_guarded'] ?? false) === true,
+            ));
+            $unguardedHits = array_values(array_filter(
+                $hits,
+                static fn (array $row): bool => ($row['complete_guarded'] ?? false) === false,
+            ));
+            $passedHits += count($unguardedHits);
+            foreach ($unguardedHits as $unguardedHit) {
+                $this->assertGreaterThan(0, $unguardedHit['amount']);
+            }
+            $roundEnd = collect($result->actionLog)->firstWhere('kind', 'round_end');
+            $this->assertIsArray($roundEnd);
+            $this->assertSame($expectedMaxHp, $roundEnd['player']['max_hp']);
+            $this->assertSame(AlphaV1CombatRules::MAX_MP, $result->finalMp);
+        }
+
+        $this->assertGreaterThan(1_900, $completeGuards);
+        $this->assertGreaterThan(0, $passedHits);
+        $this->assertSame(2_000, $completeGuards + $passedHits);
+    }
+
     public function test_true_name_story_profile_is_a_short_deterministic_alpha_v1_tank_defeat(): void
     {
         [$manifest] = $this->catalog();

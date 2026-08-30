@@ -65,11 +65,75 @@ final readonly class AlphaV1CombatModel
         $equipmentAggregate = $this->equipmentGenerator->aggregate($equipment);
         $player = $this->playerState($catalog, $build, $equipmentAggregate, $scaleBps);
         $enemy = $this->enemyState($catalog, $enemyKey, $enemyScaleBpsOverride ?? $scaleBps);
-        $random = new UndergroundRandom($seed);
         $naturalRecovery = $naturalRecoveryOverride ?? $catalog->balanceInt('mp_natural_recovery');
         if ($naturalRecovery < 0 || $naturalRecovery > AlphaV1CombatRules::MAX_MP) {
             throw new InvalidArgumentException('Underground alpha-v1 natural MP recovery is invalid.');
         }
+
+        return $this->resolveFight(
+            $catalog,
+            $player,
+            $enemy,
+            $seed,
+            $maxRounds,
+            $naturalRecovery,
+            $buildKey,
+            $enemyKey,
+            $tierKey,
+            $equipment,
+        );
+    }
+
+    /**
+     * Execute the canonical alpha-v1 model with one server-authored current-player snapshot.
+     * Laboratory progression scaling and representative build allocation are intentionally bypassed.
+     *
+     * @param  array<string, mixed>  $playerSnapshot
+     */
+    public function fightPlayerSnapshot(
+        AlphaV1BuildCatalog $catalog,
+        array $playerSnapshot,
+        string $enemyKey,
+        int $seed,
+        int $maxRounds,
+        int $naturalRecovery,
+    ): BuildCombatResult {
+        if ($seed < 0 || $seed > 2_147_483_647 || $maxRounds < 1 || $maxRounds > 200
+            || $naturalRecovery < 0 || $naturalRecovery > AlphaV1CombatRules::MAX_MP) {
+            throw new InvalidArgumentException('Underground alpha-v1 runtime fight input is invalid.');
+        }
+        $player = $this->runtimePlayerState($catalog, $playerSnapshot);
+        $enemy = $this->enemyState($catalog, $enemyKey, 10_000);
+        $equipment = $playerSnapshot['equipment'];
+
+        return $this->resolveFight(
+            $catalog,
+            $player,
+            $enemy,
+            $seed,
+            $maxRounds,
+            $naturalRecovery,
+            $player->key,
+            $enemyKey,
+            'runtime',
+            [$equipment],
+        );
+    }
+
+    /** @param list<array<string, mixed>> $equipment */
+    private function resolveFight(
+        AlphaV1BuildCatalog $catalog,
+        BuildCombatState $player,
+        BuildCombatState $enemy,
+        int $seed,
+        int $maxRounds,
+        int $naturalRecovery,
+        string $buildKey,
+        string $enemyKey,
+        string $tierKey,
+        array $equipment,
+    ): BuildCombatResult {
+        $random = new UndergroundRandom($seed);
         $metrics = [
             'damage_dealt' => 0,
             'damage_received' => 0,
@@ -187,6 +251,79 @@ final readonly class AlphaV1CombatModel
         );
     }
 
+    /** @param array<string, mixed> $snapshot */
+    private function runtimePlayerState(AlphaV1BuildCatalog $catalog, array $snapshot): BuildCombatState
+    {
+        $key = $snapshot['key'] ?? null;
+        $label = $snapshot['label'] ?? null;
+        $stats = $snapshot['stats'] ?? null;
+        $skills = $snapshot['active_skills'] ?? null;
+        $aiRules = $snapshot['ai_rules'] ?? null;
+        $modifiers = $snapshot['modifiers'] ?? null;
+        $equipment = $snapshot['equipment'] ?? null;
+        if (! is_string($key) || $key === '' || ! is_string($label) || $label === ''
+            || ! is_array($stats) || ! is_array($skills) || ! array_is_list($skills)
+            || ! is_array($aiRules) || ! array_is_list($aiRules)
+            || ! is_array($modifiers) || ! is_array($equipment)) {
+            throw new InvalidArgumentException('Underground alpha-v1 player runtime snapshot is invalid.');
+        }
+        $this->rules->assertFiveStats($stats, false);
+        if ($skills !== [] || array_key_exists('complete_guard_chance_bps', $modifiers)) {
+            throw new InvalidArgumentException('Underground alpha-v1 starter runtime action contract is invalid.');
+        }
+        $this->validator->assertAiRules($catalog, $skills, $aiRules, $key);
+
+        $equipmentStats = $equipment['stats'] ?? null;
+        if (($equipment['key'] ?? null) !== 'starter_knife'
+            || ($equipment['item_level'] ?? null) !== 1
+            || ($equipment['rarity'] ?? null) !== 'common'
+            || ($equipment['weapon_style'] ?? null) !== 'dagger'
+            || ! is_array($equipmentStats)
+            || array_keys($equipmentStats) !== AlphaV1CombatRules::STATS
+            || ! is_int($equipment['weapon_power'] ?? null) || $equipment['weapon_power'] < 1
+            || ! is_int($equipment['physical_defense'] ?? null) || $equipment['physical_defense'] < 0
+            || ! is_int($equipment['magical_defense'] ?? null) || $equipment['magical_defense'] < 0
+            || ! is_int($equipment['max_hp'] ?? null) || $equipment['max_hp'] < 0
+            || ($equipment['affixes'] ?? null) !== []
+            || ! array_key_exists('unique_effect', $equipment)
+            || $equipment['unique_effect'] !== null) {
+            throw new InvalidArgumentException('Underground alpha-v1 starter equipment snapshot is invalid.');
+        }
+        foreach ($equipmentStats as $value) {
+            if (! is_int($value) || $value < 0) {
+                throw new InvalidArgumentException('Underground alpha-v1 starter equipment stats are invalid.');
+            }
+        }
+        foreach (AlphaV1CombatRules::STATS as $stat) {
+            $stats[$stat] += $equipmentStats[$stat];
+        }
+        $this->rules->assertFiveStats($stats, false);
+
+        $state = new BuildCombatState(
+            'player',
+            $key,
+            $label,
+            false,
+            $this->rules->maxHp($stats, 10_000, $equipment['max_hp']),
+            $stats,
+            $equipment['physical_defense'] + ($stats['vitality'] * 4),
+            $equipment['magical_defense'] + ($stats['spirit'] * 4),
+            $this->rules->defenseReference(10_000),
+            $equipment['weapon_power'],
+            $skills,
+            $aiRules,
+            $modifiers,
+            $catalog->manifest()['normal_attack'],
+        );
+        $currentHp = $snapshot['current_hp'] ?? $state->maxHp;
+        if (! is_int($currentHp) || $currentHp < 1 || $currentHp > $state->maxHp) {
+            throw new InvalidArgumentException('Underground alpha-v1 runtime current HP is invalid.');
+        }
+        $state->hp = $currentHp;
+
+        return $state;
+    }
+
     /**
      * @param  array<string, mixed>  $build
      * @param  array{stats: array<string, int>, weapon_power: int, physical_defense: int, magical_defense: int, max_hp: int, modifiers: array<string, int|bool|string>, unique_effects: list<string>}  $equipment
@@ -254,6 +391,11 @@ final readonly class AlphaV1CombatModel
                 throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] is invalid.");
             }
         }
+        $modifiers = is_array($enemy['modifiers'] ?? null) ? $enemy['modifiers'] : [];
+        $completeGuardChance = $modifiers['complete_guard_chance_bps'] ?? 0;
+        if (! is_int($completeGuardChance) || $completeGuardChance < 0 || $completeGuardChance > 10_000) {
+            throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] complete guard trait is invalid.");
+        }
 
         return new BuildCombatState(
             'enemy',
@@ -268,7 +410,7 @@ final readonly class AlphaV1CombatModel
             max(1, intdiv((int) $enemy['weapon_power'] * $scaleBps, 10_000)),
             $this->stringList($enemy['skills']),
             is_array($enemy['ai_rules']) ? $enemy['ai_rules'] : [],
-            is_array($enemy['modifiers'] ?? null) ? $enemy['modifiers'] : [],
+            $modifiers,
             is_array($enemy['normal_attack']) ? $enemy['normal_attack'] : [],
         );
     }
@@ -585,11 +727,32 @@ final readonly class AlphaV1CombatModel
             }
             $variance = $random->integer("alpha-v1:variance:{$actor->key}:{$actionKey}:{$hit}", 95, 105);
             $preMitigation = max(1, intdiv($rawDamage * $variance, 100));
-            $evasion = min(
-                AlphaV1CombatRules::EVASION_CAP_BPS,
-                max(0, $this->scaledProbabilityContribution($target, 'agility', 1_200)
-                    + (int) ($target->modifiers['evasion_bps'] ?? 0)),
-            );
+            $completeGuardChance = max(0, (int) ($target->modifiers['complete_guard_chance_bps'] ?? 0));
+            if ($completeGuardChance > 0
+                && $random->integer("alpha-v1:complete-guard:{$target->key}:{$actionKey}:{$hit}", 1, 10_000)
+                    <= $completeGuardChance) {
+                $actionLog[] = $this->logRow(
+                    $round,
+                    $actor,
+                    $actionKey,
+                    0,
+                    $critical,
+                    false,
+                    effectType: 'damage',
+                    targetSide: $target->side,
+                    completeGuarded: true,
+                );
+
+                continue;
+            }
+            // A failed complete-guard roll is the metal enemy's damage window, not a second evasion roll.
+            $evasion = $completeGuardChance > 0
+                ? 0
+                : min(
+                    AlphaV1CombatRules::EVASION_CAP_BPS,
+                    max(0, $this->scaledProbabilityContribution($target, 'agility', 1_200)
+                        + (int) ($target->modifiers['evasion_bps'] ?? 0)),
+                );
             if (($effect['dodgeable'] ?? true) === true
                 && $random->integer("alpha-v1:evasion:{$target->key}:{$actionKey}:{$hit}", 1, 10_000) <= $evasion) {
                 if ($target->side === 'player') {
@@ -980,7 +1143,7 @@ final readonly class AlphaV1CombatModel
         }
         unset($status);
 
-        if ($state->side === 'player' && $state->alive()) {
+        if ($state->alive()) {
             $regenerationBps = max(0, (int) ($state->modifiers['self_regeneration_target_hp_bps'] ?? 0));
             if ($regenerationBps > 0) {
                 $cap = $state->stat('vitality') * 3;
@@ -1393,6 +1556,7 @@ final readonly class AlphaV1CombatModel
         int $barrierAbsorbed = 0,
         string $effectType = 'state',
         ?string $targetSide = null,
+        bool $completeGuarded = false,
     ): array {
         return [
             'kind' => 'effect',
@@ -1407,6 +1571,7 @@ final readonly class AlphaV1CombatModel
             'guarded' => $guarded,
             'parried' => $parried,
             'barrier_absorbed' => $barrierAbsorbed,
+            'complete_guarded' => $completeGuarded,
             'actor_hp' => $actor->hp,
             'actor_mp' => $actor->mp,
         ];
