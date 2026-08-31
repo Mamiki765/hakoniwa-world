@@ -23,7 +23,7 @@ use Illuminate\Support\Str;
 
 final readonly class UndergroundRuntimeService
 {
-    private const FIRST_CLEAR_STORY_TITLE = '『王女が逃げた、王女を探せ』';
+    private const FIRST_CLEAR_STORY_TITLE = '●封印の解放';
 
     private const FIRST_CHALLENGE_INTRO = <<<'STORY'
 　崩れかけた石壁の向こうに広がっていた不思議な空間。

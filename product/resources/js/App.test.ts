@@ -1779,7 +1779,7 @@ describe('application lobby and island entry', () => {
             trial_status: 'cleared', trial_next_battle_index: 1,
             challenge_intro: '　崩れかけた石壁の向こうに広がっていた不思議な空間。\n　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
             first_clear_story: {
-                title: '『王女が逃げた、王女を探せ』',
+                title: '●封印の解放',
                 body: '　ワイバーンの肉体が自らの魔力に耐え切れず、内から光を放ちながら崩壊していくその瞬間。',
                 system_messages: ['ペリドットは一つ目の封印の地を制覇した。', 'SPを40入手した。'],
             },
@@ -1977,7 +1977,7 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(trialFightRequests[1]?.[1]?.body)))
             .toEqual(JSON.parse(String(trialFightRequests[0]?.[1]?.body)));
         expect(wrapper.get('.underground-trial-intro').text()).toContain('崩れかけた石壁の向こう');
-        expect(wrapper.get('.underground-first-clear-story h2').text()).toBe('『王女が逃げた、王女を探せ』');
+        expect(wrapper.get('.underground-first-clear-story h2').text()).toBe('●封印の解放');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('ペリドットは一つ目の封印の地を制覇した。');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('SPを40入手した。');
         expect(wrapper.findAll('.underground-boss-warning')).toHaveLength(2);
@@ -1986,7 +1986,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-battle-log').text().indexOf('崩れかけた石壁の向こう'))
             .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('遭遇'));
         expect(wrapper.get('.underground-battle-log').text().indexOf('戦闘終了'))
-            .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('王女が逃げた'));
+            .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('封印の解放'));
         await wrapper.get('.underground-battle-back').trigger('click');
         await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
         await flushPromises();

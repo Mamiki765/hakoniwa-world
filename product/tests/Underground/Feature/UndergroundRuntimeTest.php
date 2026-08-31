@@ -505,7 +505,7 @@ final class UndergroundRuntimeTest extends TestCase
             $firstProjection['challenge_intro'],
         );
         $this->assertNull($firstProjection['first_clear_story']);
-        $this->assertSame('『王女が逃げた、王女を探せ』', $firstClearProjection['first_clear_story']['title']);
+        $this->assertSame('●封印の解放', $firstClearProjection['first_clear_story']['title']);
         $this->assertSame([
             "{$secretary->name}は一つ目の封印の地を制覇した。",
             'SPを40入手した。',
