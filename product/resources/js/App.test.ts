@@ -1588,7 +1588,7 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/story/advance')).toHaveLength(1);
     });
 
-    it('shows the unlocked Underground projection with disabled future entries and escaped battle history', async () => {
+    it('shows the unlocked Underground projection, named seal story, and escaped battle history', async () => {
         const serverSecretary = structuredClone(unnamedSecretaryFixture);
         serverSecretary.name = 'ペリドット';
         serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
@@ -1675,7 +1675,16 @@ describe('application lobby and island entry', () => {
             }, armor: null, accessory: null } },
             shopkeeper_name: '<b>店員</b>', true_name_branch: false,
             tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
-            contract_completed: true, growth_paths: null, growth_path: growthPath, playtest, battle: null,
+            contract_completed: true, growth_paths: null, growth_path: growthPath, playtest,
+            trial: {
+                key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10,
+                first_cleared: false,
+                active_run: null as null | {
+                    key: string; label: string; run_key: string; status: string;
+                    next_battle_index: number; total_battles: number;
+                },
+            },
+            battle: null,
             next_battle_at: null as string | null,
         };
         const summary = {
@@ -1743,8 +1752,47 @@ describe('application lobby and island entry', () => {
             }],
             rewards: { xp: 1150, shards: 0 },
         };
+        const trialRun = {
+            key: 'trial_01', label: '地下に眠る古代遺跡',
+            run_key: '77777777-7777-4777-8777-777777777777', status: 'active',
+            next_battle_index: 1, total_battles: 10,
+        };
+        const trialBattle = {
+            ...explorationBattle,
+            id: '88888888-8888-4888-8888-888888888888', context: 'trial',
+            encounter_name: 'ワイバーン', xp_awarded: 370, shard_delta: 69,
+            rounds_count: 40,
+            rounds: [
+                {
+                    round: 20,
+                    actions: [{ type: 'warning', side: 'system', label: '洞窟が崩れそうだ……', amount: 0 }],
+                    end_state: null,
+                },
+                {
+                    round: 40,
+                    actions: [{ type: 'phase_transition', side: '対戦相手', actor_name: 'ワイバーン', label: '天井が崩落し、ワイバーンは宙に舞い上がる……！', amount: 0 }],
+                    end_state: null,
+                },
+            ],
+            combat_level_before: 6, combat_level_after: 6, stp_awarded: 0, unspent_stp_after: 25,
+            trial_run_key: trialRun.run_key, trial_battle_index: 10, trial_total_battles: 10,
+            trial_status: 'cleared', trial_next_battle_index: 1,
+            challenge_intro: '　崩れかけた石壁の向こうに広がっていた不思議な空間。\n　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
+            first_clear_story: {
+                title: '●封印の解放',
+                body: '　ワイバーンの肉体が自らの魔力に耐え切れず、内から光を放ちながら崩壊していくその瞬間。',
+                system_messages: ['ペリドットは一つ目の封印の地を制覇した。', 'SPを40入手した。'],
+            },
+        };
+        const repeatTrialBattle = {
+            ...trialBattle,
+            id: '99999999-9999-4999-8999-999999999999',
+            challenge_intro: null,
+            first_clear_story: null,
+        };
         let battleDetailGets = 0;
         let explorationAttempts = 0;
+        let trialFightAttempts = 0;
         let innAttempts = 0;
         let bankTransferAttempts = 0;
         let releaseInnRetry!: () => void;
@@ -1764,6 +1812,27 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
             if (path === '/api/v1/me/underground') return response(openState);
             if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') return response(openState);
+            if (path === '/api/v1/me/underground/trial/start' && init?.method === 'POST') {
+                openState = { ...openState, trial: { ...openState.trial, active_run: trialRun } };
+                return response(trialRun);
+            }
+            if (path === '/api/v1/me/underground/trial/fight' && init?.method === 'POST') {
+                trialFightAttempts++;
+                openState = {
+                    ...openState,
+                    skill_points_total: 60,
+                    skill_points_unspent: 60,
+                    trial: { ...openState.trial, first_cleared: true, active_run: null },
+                };
+                if (trialFightAttempts === 1) throw new TypeError('Trial response lost');
+                if (trialFightAttempts === 3) {
+                    return new Response(JSON.stringify({
+                        code: 'underground_trial_run_stale',
+                        message: '封印の地の進行状態が更新されています。',
+                    }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+                }
+                return response(trialFightAttempts === 4 ? repeatTrialBattle : trialBattle);
+            }
             if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
                 const payload = JSON.parse(String(init.body)) as { request_id: string };
                 const duplicate = explorationResults.get(payload.request_id);
@@ -1889,7 +1958,53 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
         expect(wrapper.findAll('.underground-entries button')[0]!.attributes('disabled')).toBeUndefined();
-        expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeDefined();
+        expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeUndefined();
+        expect(wrapper.findAll('.underground-entries button')[1]!.text()).toContain('封印の地');
+        expect(wrapper.findAll('.underground-entries button')[1]!.text()).toContain('地下に眠る古代遺跡');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Trial response lost');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        const trialStartRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/start' && init?.method === 'POST'
+        ));
+        expect(trialStartRequests).toHaveLength(1);
+        const trialFightRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/fight' && init?.method === 'POST'
+        ));
+        expect(trialFightRequests).toHaveLength(2);
+        expect(JSON.parse(String(trialFightRequests[1]?.[1]?.body)))
+            .toEqual(JSON.parse(String(trialFightRequests[0]?.[1]?.body)));
+        expect(wrapper.get('.underground-trial-intro').text()).toContain('崩れかけた石壁の向こう');
+        expect(wrapper.get('.underground-first-clear-story h2').text()).toBe('●封印の解放');
+        expect(wrapper.get('.underground-first-clear-results').text()).toContain('ペリドットは一つ目の封印の地を制覇した。');
+        expect(wrapper.get('.underground-first-clear-results').text()).toContain('SPを40入手した。');
+        expect(wrapper.findAll('.underground-boss-warning')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-boss-warning')[0]!.text()).toBe('洞窟が崩れそうだ……');
+        expect(wrapper.findAll('.underground-boss-warning')[1]!.text()).toBe('天井が崩落し、ワイバーンは宙に舞い上がる……！');
+        expect(wrapper.get('.underground-battle-log').text().indexOf('崩れかけた石壁の向こう'))
+            .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('遭遇'));
+        expect(wrapper.get('.underground-battle-log').text().indexOf('戦闘終了'))
+            .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('封印の解放'));
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('封印の地の進行状態が更新されています。');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        const recoveredTrialStarts = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/start' && init?.method === 'POST'
+        ));
+        expect(recoveredTrialStarts).toHaveLength(3);
+        const recoveredTrialFights = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/fight' && init?.method === 'POST'
+        ));
+        expect(recoveredTrialFights).toHaveLength(4);
+        expect(JSON.parse(String(recoveredTrialFights[3]?.[1]?.body)).request_id)
+            .not.toBe(JSON.parse(String(recoveredTrialFights[2]?.[1]?.body)).request_id);
+        expect(wrapper.find('.underground-first-clear-story').exists()).toBe(false);
+        await wrapper.get('.underground-battle-back').trigger('click');
         expect(wrapper.findAll('.underground-history li')).toHaveLength(5);
         expect(wrapper.get('.underground-history').text()).toContain('履歴5');
         expect(wrapper.get('.underground-history').text()).not.toContain('履歴6');

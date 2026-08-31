@@ -96,6 +96,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/growth-path', [UndergroundIntroController::class, 'growthPath']);
         Route::get('/main', [UndergroundIntroController::class, 'main']);
         Route::post('/explore', [UndergroundIntroController::class, 'explore']);
+        Route::post('/trial/start', [UndergroundIntroController::class, 'startTrial']);
+        Route::post('/trial/fight', [UndergroundIntroController::class, 'fightTrial']);
+        Route::post('/trial/withdraw', [UndergroundIntroController::class, 'withdrawTrial']);
         Route::post('/inn/rest', [UndergroundIntroController::class, 'restAtInn']);
         Route::post('/bank/transfer', [UndergroundIntroController::class, 'bankTransfer']);
         Route::get('/equipment/shop', [UndergroundEquipmentController::class, 'shop']);

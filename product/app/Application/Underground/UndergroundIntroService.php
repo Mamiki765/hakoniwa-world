@@ -16,6 +16,7 @@ use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
+use App\Models\UndergroundTrialRun;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -322,6 +323,16 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ): void {
             $this->assertShopUnlocked($profile, $intro);
+            if (UndergroundTrialRun::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
+                ->lockForUpdate()
+                ->exists()) {
+                throw new UndergroundRuntimeException(
+                    'underground_trial_active',
+                    '封印の地へ挑戦中は宿で休めません。帰還後に利用してください。',
+                );
+            }
             $cost = $this->alphaV1Catalog->innCost();
             if ($profile->shard_balance < $cost) {
                 throw new UndergroundRuntimeException(
@@ -619,6 +630,7 @@ final readonly class UndergroundIntroService
                 UndergroundBattle::ACTIVITY_STORY,
                 UndergroundBattle::ACTIVITY_PLAYTEST,
                 UndergroundBattle::ACTIVITY_EXPLORATION,
+                UndergroundBattle::ACTIVITY_TRIAL,
             ])
             ->withExists([
                 'log as active_log_exists' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
@@ -649,6 +661,7 @@ final readonly class UndergroundIntroService
                     UndergroundBattle::ACTIVITY_STORY,
                     UndergroundBattle::ACTIVITY_PLAYTEST,
                     UndergroundBattle::ACTIVITY_EXPLORATION,
+                    UndergroundBattle::ACTIVITY_TRIAL,
                 ])
                 ->with(['log' => fn ($query) => $query->where('expires_at', '>', Carbon::now())])
                 ->first()
@@ -1200,6 +1213,11 @@ final readonly class UndergroundIntroService
                 && config('app.env') !== 'production'
                     ? $this->alphaV1Catalog->playtestOptions($profile->growth_path_key)
                     : null,
+            'trial' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
+                && $profile instanceof UndergroundProfile
+                && $profile->growth_path_key !== null
+                    ? $this->runtime->projectTrialState($profile)
+                    : null,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
         ];
     }
@@ -1234,6 +1252,9 @@ final readonly class UndergroundIntroService
         }
         if ($battle->activity_type === UndergroundBattle::ACTIVITY_EXPLORATION) {
             return $this->runtime->projectExplorationBattle($battle, $withActions);
+        }
+        if ($battle->activity_type === UndergroundBattle::ACTIVITY_TRIAL) {
+            return $this->runtime->projectTrialBattle($battle, $withActions);
         }
         $snapshot = $battle->snapshot;
         $displayName = $snapshot['encounter_display_name'] ?? null;

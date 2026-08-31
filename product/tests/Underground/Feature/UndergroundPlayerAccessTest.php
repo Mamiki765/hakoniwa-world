@@ -17,6 +17,7 @@ use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
 use App\Models\UndergroundTrialProgress;
+use App\Models\UndergroundTrialRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
@@ -37,6 +38,14 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/explore', ['request_id' => (string) Str::uuid()])
             ->assertUnauthorized();
+        $this->postJson('/api/v1/me/underground/trial/start')->assertUnauthorized();
+        $this->postJson('/api/v1/me/underground/trial/fight', [
+            'run_key' => (string) Str::uuid(),
+            'request_id' => (string) Str::uuid(),
+        ])->assertUnauthorized();
+        $this->postJson('/api/v1/me/underground/trial/withdraw', [
+            'run_key' => (string) Str::uuid(),
+        ])->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/inn/rest', ['request_id' => (string) Str::uuid()])
             ->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/bank/transfer', [
@@ -465,6 +474,27 @@ final class UndergroundPlayerAccessTest extends TestCase
             'secretary_id' => $otherSecretary->id,
             'shard_balance' => 9000,
             'banked_shard_balance' => 8000,
+        ]);
+
+        $trialRun = UndergroundTrialRun::query()->create([
+            'underground_profile_id' => $profile->id,
+            'run_key' => (string) Str::uuid(),
+            'trial_key' => 'trial_01',
+            'trial_content_identity' => 'secretary-underground-trial-01-v1',
+            'next_battle_index' => 2,
+            'status' => UndergroundTrialRun::STATUS_ACTIVE,
+            'started_at' => Carbon::now(),
+        ]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/inn/rest', [
+            'request_id' => (string) Str::uuid(),
+        ])->assertConflict()->assertJsonPath('code', 'underground_trial_active');
+        $this->assertSame([2350, 123], [
+            $profile->fresh()->shard_balance,
+            $profile->current_hp,
+        ]);
+        $trialRun->update([
+            'status' => UndergroundTrialRun::STATUS_WITHDRAWN,
+            'ended_at' => Carbon::now(),
         ]);
 
         $innRequest = (string) Str::uuid();
@@ -1365,6 +1395,49 @@ final class UndergroundPlayerAccessTest extends TestCase
             'build_key' => 'pure_attacker',
             'enemy_key' => 'depth_stalker',
         ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+    }
+
+    public function test_trial_api_exposes_named_first_challenge_and_replays_the_same_result(): void
+    {
+        Carbon::setTestNow('2026-08-30 13:00:00+09:00');
+        [$user, $secretary] = $this->secretaryUser('封印探索者');
+        $this->openEquipmentProfile($secretary);
+
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.trial.label', '地下に眠る古代遺跡')
+            ->assertJsonPath('data.trial.first_cleared', false)
+            ->assertJsonPath('data.trial.active_run', null);
+        $run = $this->actingAs($user)->postJson('/api/v1/me/underground/trial/start')
+            ->assertOk()
+            ->assertJsonPath('data.label', '地下に眠る古代遺跡')
+            ->assertJsonPath('data.next_battle_index', 1)
+            ->json('data');
+        $requestId = (string) Str::uuid();
+        $payload = ['run_key' => $run['run_key'], 'request_id' => $requestId];
+        $first = $this->actingAs($user)->postJson('/api/v1/me/underground/trial/fight', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.context', 'trial')
+            ->assertJsonPath('data.player_display_name', '封印探索者')
+            ->assertJsonPath('data.trial_battle_index', 1)
+            ->assertJsonPath('data.first_clear_story', null)
+            ->assertJsonPath(
+                'data.challenge_intro',
+                "　崩れかけた石壁の向こうに広がっていた不思議な空間。\n"
+                ."　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n"
+                .'　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
+            );
+        $this->actingAs($user)->postJson('/api/v1/me/underground/trial/fight', $payload)
+            ->assertOk()
+            ->assertExactJson($first->json());
+        $this->actingAs($user)->getJson('/api/v1/me/underground/battles')
+            ->assertOk()
+            ->assertJsonPath('data.0.context', 'trial')
+            ->assertJsonPath('data.0.challenge_intro', $first->json('data.challenge_intro'));
+        $this->assertSame(1, UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
+            ->where('request_id', $requestId)
+            ->count());
     }
 
     public function test_refresh_resumes_meaningful_stage_and_intro_history_is_private_and_owner_scoped(): void

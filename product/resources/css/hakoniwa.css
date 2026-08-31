@@ -357,6 +357,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-round h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
 .underground-action-log { display: grid; gap: .45rem; margin: 0; padding-left: 1.45rem; }
 .underground-action-log li { line-height: 1.65; }
+.underground-action-log .underground-boss-warning { padding: .65rem .8rem; border: 2px solid var(--danger); background: var(--danger-surface); color: var(--danger-strong); font-weight: 900; }
 .underground-round-state { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin-top: .8rem; padding: .7rem .8rem; background: var(--paper-deep); color: var(--muted); font-size: .84rem; }
 .underground-round-state p { margin: 0; }
 .underground-combatant-state { display: grid; gap: .35rem; min-width: 0; }
@@ -377,6 +378,11 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-level-up strong { font-size: clamp(1.9rem, 8vw, 3.6rem); font-weight: 950; line-height: 1; letter-spacing: .04em; }
 .underground-level-up span { color: var(--ink); font-weight: 850; }
 .underground-battle-result .underground-combat-summary { margin: .5rem 0; }
+.underground-first-clear-story { display: grid; gap: 1rem; margin-top: 1.25rem; padding: 1.4rem; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 88%, #d8c88a 12%); }
+.underground-first-clear-story h2, .underground-first-clear-story p { margin: 0; }
+.underground-first-clear-body { max-width: 58rem; white-space: pre-wrap; line-height: 1.9; }
+.underground-first-clear-results { display: grid; gap: .35rem; padding-top: 1rem; border-top: 1px solid var(--line); font-weight: 700; }
+.underground-trial-intro { margin: 0 0 1.25rem; padding: 1.25rem; white-space: pre-wrap; line-height: 1.9; border: 1px solid var(--line); background: var(--surface); }
 .underground-battle-back { justify-self: center; }
 .underground-growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .underground-growth-card { --crystal: var(--line); display: grid; align-content: start; gap: .75rem; padding: 1rem; border: 2px solid var(--crystal); border-radius: 12px; }

@@ -15,6 +15,8 @@ use App\Http\Requests\SelectUndergroundGrowthPathRequest;
 use App\Http\Requests\UndergroundBankTransferRequest;
 use App\Http\Requests\UndergroundIntroMutationRequest;
 use App\Http\Requests\UndergroundPlaytestRequest;
+use App\Http\Requests\UndergroundTrialFightRequest;
+use App\Http\Requests\UndergroundTrialRunRequest;
 use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -134,6 +136,37 @@ final class UndergroundIntroController extends Controller
 
             return $service->projectExplorationBattle($result['battle']);
         });
+    }
+
+    public function startTrial(Request $request, UndergroundRuntimeService $service): JsonResponse
+    {
+        return $this->respond(fn (): array => $service->projectTrialRun(
+            $service->startTrial($request->user(), 'trial_01'),
+        ));
+    }
+
+    public function fightTrial(
+        UndergroundTrialFightRequest $request,
+        UndergroundRuntimeService $service,
+    ): JsonResponse {
+        return $this->respond(function () use ($request, $service): array {
+            $result = $service->fightTrial(
+                $request->user(),
+                $request->string('run_key')->value(),
+                $request->string('request_id')->value(),
+            );
+
+            return $service->projectTrialBattle($result['battle']);
+        });
+    }
+
+    public function withdrawTrial(
+        UndergroundTrialRunRequest $request,
+        UndergroundRuntimeService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->projectTrialRun(
+            $service->withdrawTrial($request->user(), $request->string('run_key')->value()),
+        ));
     }
 
     public function restAtInn(

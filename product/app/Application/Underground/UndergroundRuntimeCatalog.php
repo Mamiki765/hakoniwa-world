@@ -140,25 +140,61 @@ final class UndergroundRuntimeCatalog
         return ['minimum_combat_level' => $ground['minimum_combat_level'], 'encounters' => $encounters];
     }
 
-    /** @return array{content_identity: string, encounters: list<string>} */
+    /**
+     * @return array{
+     *   label: string,
+     *   content_identity: string,
+     *   interbattle_heal_bps: int,
+     *   first_clear_skill_points: int,
+     *   encounters: list<string>,
+     *   rewards: list<array{xp: int, shards: int}>
+     * }
+     */
     public function trial(string $key): array
     {
         $trials = $this->data()['trials'] ?? null;
         $trial = is_array($trials) ? ($trials[$key] ?? null) : null;
         if (! is_array($trial)
+            || ! is_string($trial['label'] ?? null)
+            || $trial['label'] === ''
             || ! is_string($trial['content_identity'] ?? null)
             || $trial['content_identity'] === ''
-            || mb_strlen($trial['content_identity']) > 128) {
+            || mb_strlen($trial['content_identity']) > 128
+            || ($trial['interbattle_heal_bps'] ?? null) !== 2000
+            || ($trial['first_clear_skill_points'] ?? null) !== 40) {
             throw new InvalidArgumentException("Unknown Underground trial [{$key}].");
         }
         $encounters = $this->stringList($trial['encounters'] ?? null, 'trial encounters');
-        if (count($encounters) < 1) {
-            throw new RuntimeException('Underground trial must contain an encounter.');
+        $configuredRewards = $trial['rewards'] ?? null;
+        if (count($encounters) !== 10
+            || ! is_array($configuredRewards)
+            || ! array_is_list($configuredRewards)
+            || count($configuredRewards) !== count($encounters)) {
+            throw new RuntimeException('Underground Trial 1 must contain ten encounters and rewards.');
+        }
+        $rewards = [];
+        foreach ($configuredRewards as $reward) {
+            if (! is_array($reward)
+                || ! is_int($reward['xp'] ?? null)
+                || ! is_int($reward['shards'] ?? null)
+                || $reward['xp'] < 0
+                || $reward['shards'] < 0) {
+                throw new RuntimeException('Underground Trial 1 rewards are invalid.');
+            }
+            $rewards[] = ['xp' => $reward['xp'], 'shards' => $reward['shards']];
+        }
+        if (array_sum(array_column($rewards, 'xp')) !== 800
+            || array_sum(array_column($rewards, 'shards')) !== 205) {
+            throw new RuntimeException('Underground Trial 1 total rewards are invalid.');
         }
 
         return [
+            'label' => $trial['label'],
             'content_identity' => $trial['content_identity'],
+            'interbattle_heal_bps' => $trial['interbattle_heal_bps'],
+            'first_clear_skill_points' => $trial['first_clear_skill_points'],
             'encounters' => $encounters,
+            'rewards' => $rewards,
         ];
     }
 
@@ -167,17 +203,6 @@ final class UndergroundRuntimeCatalog
         $keys = $this->trialKeys();
 
         return $keys[0] ?? throw new RuntimeException('Underground runtime has no authored trial.');
-    }
-
-    public function nextTrialKey(string $key): ?string
-    {
-        $keys = $this->trialKeys();
-        $position = array_search($key, $keys, true);
-        if ($position === false) {
-            throw new InvalidArgumentException("Unknown Underground trial [{$key}].");
-        }
-
-        return $keys[$position + 1] ?? null;
     }
 
     /** @return list<string> */

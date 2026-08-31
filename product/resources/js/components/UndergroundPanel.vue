@@ -51,7 +51,7 @@ interface CombatRound {
 
 interface Battle {
     id: string;
-    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration';
+    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial';
     player_display_name?: string;
     encounter_name: string;
     build_name?: string;
@@ -69,6 +69,34 @@ interface Battle {
     summary?: Record<string, number | string> | null;
     rewards?: { xp: number; shards: number; g?: number; drops?: unknown[] };
     detail_message?: string | null;
+    trial_run_key?: string | null;
+    trial_battle_index?: number | null;
+    trial_total_battles?: number | null;
+    trial_status?: 'active' | 'withdrawn' | 'defeated' | 'cleared' | null;
+    trial_next_battle_index?: number | null;
+    first_clear_story?: {
+        title: string;
+        body: string;
+        system_messages: string[];
+    } | null;
+    challenge_intro?: string | null;
+}
+
+interface TrialRun {
+    key: string;
+    label: string;
+    run_key: string;
+    status: 'active' | 'withdrawn' | 'defeated' | 'cleared';
+    next_battle_index: number;
+    total_battles: number;
+}
+
+interface TrialState {
+    key: string;
+    label: string;
+    total_battles: number;
+    first_cleared: boolean;
+    active_run: TrialRun | null;
 }
 
 interface GrowthPath {
@@ -102,6 +130,11 @@ interface PlaytestOptions {
 interface PendingBankMutation {
     fingerprint: string;
     requestId: string;
+}
+
+interface PendingTrialRequest {
+    requestId: string;
+    runKey: string;
 }
 
 type StatKey = 'vitality' | 'might' | 'finesse' | 'spirit' | 'agility';
@@ -189,6 +222,7 @@ interface UndergroundState {
     growth_paths: GrowthPath[] | null;
     growth_path: GrowthPath | null;
     playtest: PlaytestOptions | null;
+    trial: TrialState | null;
     battle: Battle | null;
 }
 
@@ -322,6 +356,7 @@ const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
 const pendingExplorationRequestId = ref<string | null>(null);
+const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const statusOpen = ref(false);
@@ -523,6 +558,62 @@ async function runExplore(): Promise<void> {
     }
 }
 
+async function runTrial(): Promise<void> {
+    if (busy.value || !state.value?.trial) return;
+    innRested.value = false;
+    busy.value = true;
+    error.value = '';
+    try {
+        let pending = pendingTrialRequest.value;
+        if (!pending) {
+            let run = state.value.trial.active_run;
+            if (!run) {
+                run = await api<TrialRun>('/api/v1/me/underground/trial/start', { method: 'POST' });
+            }
+            pending = { requestId: requestId(), runKey: run.run_key };
+            pendingTrialRequest.value = pending;
+        }
+        const battle = await api<Battle>('/api/v1/me/underground/trial/fight', {
+            method: 'POST',
+            body: JSON.stringify({ run_key: pending.runKey, request_id: pending.requestId }),
+        });
+        await refresh(false);
+        selectedBattle.value = battle;
+        pendingTrialRequest.value = null;
+    } catch (caught) {
+        await refresh(false);
+        if (caught instanceof ApiError && [
+            'underground_trial_run_stale',
+            'underground_request_conflict',
+        ].includes(caught.code ?? '')) {
+            pendingTrialRequest.value = null;
+        }
+        error.value = caught instanceof Error ? caught.message : '封印の地へ入れませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function withdrawTrial(): Promise<void> {
+    const run = state.value?.trial?.active_run;
+    if (busy.value || !run) return;
+    busy.value = true;
+    error.value = '';
+    try {
+        await api<TrialRun>('/api/v1/me/underground/trial/withdraw', {
+            method: 'POST',
+            body: JSON.stringify({ run_key: run.run_key }),
+        });
+        pendingTrialRequest.value = null;
+        await refresh(false);
+    } catch (caught) {
+        await refresh(false);
+        error.value = caught instanceof Error ? caught.message : '封印の地から帰還できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
 async function restAtInn(): Promise<void> {
     const innRequestId = pendingInnRequestId.value ?? requestId();
     pendingInnRequestId.value = innRequestId;
@@ -716,6 +807,7 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
     const actor = action.actor_name ?? actorName(action.side, battle);
     const target = action.target_name ?? targetName(action.side, battle);
     const amount = action.amount ?? 0;
+    if (action.type === 'warning' || action.type === 'phase_transition') return action.label;
     if (action.type === 'action' || action.type === 'decision') return `${actor}は「${action.label}」を使用した。`;
     if (action.type === 'mp_cost') return `${actor}はMPを${amount}消費した。`;
     if (action.type === 'mp_recovery') return `${actor}はMPを${amount}回復した。`;
@@ -785,6 +877,7 @@ onUnmounted(() => {
 
         <template v-if="state && currentBattle">
             <section id="underground-battle-start" class="underground-battle-log" aria-label="戦闘ログ">
+                <p v-if="currentBattle.challenge_intro" class="underground-trial-intro">{{ currentBattle.challenge_intro }}</p>
                 <header class="underground-battle-opening">
                     <p class="eyebrow">遭遇</p>
                     <h1>{{ currentBattle.encounter_name }}</h1>
@@ -798,7 +891,13 @@ onUnmounted(() => {
                     <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
                         <h2>Round {{ round.round }}</h2>
                         <ol class="underground-action-log">
-                            <li v-for="(action, index) in round.actions" :key="index">{{ actionNarrative(action, currentBattle) }}</li>
+                            <li
+                                v-for="(action, index) in round.actions"
+                                :key="index"
+                                :class="{ 'underground-boss-warning': action.type === 'warning' || action.type === 'phase_transition' }"
+                            >
+                                {{ actionNarrative(action, currentBattle) }}
+                            </li>
                         </ol>
                         <div v-if="round.end_state" class="underground-round-state">
                             <section class="underground-combatant-state">
@@ -850,6 +949,13 @@ onUnmounted(() => {
                     </dl>
                     <a class="underground-log-jump" href="#underground-battle-start">先頭へ</a>
                 </footer>
+                <section v-if="currentBattle.first_clear_story" class="underground-first-clear-story" aria-labelledby="underground-first-clear-title">
+                    <h2 id="underground-first-clear-title">{{ currentBattle.first_clear_story.title }}</h2>
+                    <p class="underground-first-clear-body">{{ currentBattle.first_clear_story.body }}</p>
+                    <div class="underground-first-clear-results" role="status">
+                        <p v-for="message in currentBattle.first_clear_story.system_messages" :key="message">{{ message }}</p>
+                    </div>
+                </section>
             </section>
 
             <div v-if="state.stage === 'escape_pending'" class="underground-story underground-after-battle">
@@ -979,7 +1085,7 @@ onUnmounted(() => {
                         <p>{{ shopGreeting }}</p>
                         <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
                         <div class="underground-shop-entries">
-                            <button type="button" :disabled="busy || innResting" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
+                            <button type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ state.trial?.active_run ? '封印の地から帰還後に利用できます' : innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
                             <button type="button" :disabled="busy" @click="equipmentView = 'shop'">装備ショップ<small>武器・防具・アクセサリー</small></button>
                             <button type="button" :disabled="busy" @click="bankOpen = !bankOpen">銀行<small>預入・引出</small></button>
                             <button type="button" :disabled="busy" @click="equipmentView = 'vault'">宝物庫<small>所持品・装備変更</small></button>
@@ -1000,7 +1106,11 @@ onUnmounted(() => {
                     </section>
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <h2 id="underground-adventure-title">冒険</h2>
-                        <div class="underground-entries"><button type="button" :disabled="busy || exploreCooldownSeconds > 0" @click="runExplore">周囲を探索<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : '浅い洞窟' }}</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
+                        <div class="underground-entries">
+                            <button type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run)" @click="runExplore">周囲を探索<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : '浅い洞窟' }}</small></button>
+                            <button type="button" :disabled="busy || exploreCooldownSeconds > 0 || !state.trial" @click="runTrial">封印の地<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : state.trial?.active_run ? `${state.trial.active_run.next_battle_index}/${state.trial.active_run.total_battles}戦目` : state.trial?.label }}</small></button>
+                        </div>
+                        <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
                     </section>
                     <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
                         <h2 id="underground-playtest-title">力試し（α）</h2>
