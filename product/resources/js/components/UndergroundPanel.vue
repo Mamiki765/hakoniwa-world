@@ -729,6 +729,10 @@ async function saveAwakeningMessage(): Promise<void> {
         'PUT',
     )) {
         pendingAwakeningMutation.value = null;
+        const awakening = state.value?.awakening;
+        if (awakening) {
+            awakeningMessageDraft.value = awakening.custom_message ?? awakening.default_message;
+        }
     }
 }
 

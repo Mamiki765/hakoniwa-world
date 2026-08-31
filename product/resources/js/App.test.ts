@@ -2213,7 +2213,7 @@ describe('application lobby and island entry', () => {
             trial: { key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10, first_cleared: true, active_run: null },
             awakening: {
                 identity: 'secretary-underground-awakening-v1', unlocked: true, current: 1000, maximum: 1000,
-                custom_message: '<b>{secretary_name}</b>、限界突破！',
+                custom_message: '<b>{secretary_name}</b>、限界突破！' as string | null,
                 default_message: '魔力が{secretary_name}の全身を駆け巡る――！',
                 technique: {
                     key: 'limitless_reprise', name: '無窮再演',
@@ -2245,7 +2245,13 @@ describe('application lobby and island entry', () => {
             if (path === `/api/v1/me/underground/battles/${battle.id}`) return response(battle);
             if (path === '/api/v1/me/underground/awakening/message' && init?.method === 'PUT') {
                 const payload = JSON.parse(String(init.body)) as { message: string };
-                state = { ...state, awakening: { ...state.awakening, custom_message: payload.message } };
+                state = {
+                    ...state,
+                    awakening: {
+                        ...state.awakening,
+                        custom_message: payload.message.trim() === '' ? null : payload.message,
+                    },
+                };
                 return response(state);
             }
 
@@ -2274,6 +2280,12 @@ describe('application lobby and island entry', () => {
             request_id: expect.any(String), message: '<script>表示秘書</script>覚醒',
         });
         expect(wrapper.find('.underground-awakening-settings script').exists()).toBe(false);
+
+        await wrapper.get('#underground-awakening-message').setValue('');
+        await wrapper.get('.underground-awakening-settings .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get<HTMLTextAreaElement>('#underground-awakening-message').element.value)
+            .toBe(state.awakening.default_message);
 
         await wrapper.get('.underground-history li button').trigger('click');
         await flushPromises();
