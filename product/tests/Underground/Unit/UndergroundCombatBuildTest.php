@@ -1014,7 +1014,7 @@ final class UndergroundCombatBuildTest extends TestCase
             $this->awakeningPlayerSnapshot('guardianship_blue'),
             'awakening_target',
             93,
-            3,
+            4,
             0,
         );
         $unguarded = $this->model()->fightPlayerSnapshot(
@@ -1022,16 +1022,17 @@ final class UndergroundCombatBuildTest extends TestCase
             $this->awakeningPlayerSnapshot('blessing_green'),
             'awakening_target',
             93,
-            3,
+            4,
             0,
         );
         $guardianHits = $this->enemyDamageAmounts($guardian);
         $unguardedHits = $this->enemyDamageAmounts($unguarded);
-        $this->assertCount(3, $guardianHits);
-        $this->assertCount(3, $unguardedHits);
+        $this->assertCount(4, $guardianHits);
+        $this->assertCount(4, $unguardedHits);
         $this->assertLessThanOrEqual(1, abs($guardianHits[0] - max(1, intdiv($unguardedHits[0], 10))));
         $this->assertLessThanOrEqual(1, abs($guardianHits[1] - max(1, intdiv($unguardedHits[1], 10))));
-        $this->assertSame($unguardedHits[2], $guardianHits[2]);
+        $this->assertLessThanOrEqual(1, abs($guardianHits[2] - max(1, intdiv($unguardedHits[2], 10))));
+        $this->assertSame($unguardedHits[3], $guardianHits[3]);
         $this->assertSame(2, UndergroundAwakening::GUARDIAN_DURATION_ROUNDS);
         $guardianRoundOne = collect($guardian->actionLog)->first(
             static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 1,
@@ -1039,16 +1040,92 @@ final class UndergroundCombatBuildTest extends TestCase
         $guardianRoundTwo = collect($guardian->actionLog)->first(
             static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 2,
         );
+        $guardianRoundThree = collect($guardian->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 3,
+        );
         $this->assertIsArray($guardianRoundOne);
         $this->assertIsArray($guardianRoundTwo);
-        $this->assertSame(1, $guardianRoundOne['player']['awakening_guard_rounds_remaining']);
-        $this->assertSame(0, $guardianRoundTwo['player']['awakening_guard_rounds_remaining']);
+        $this->assertIsArray($guardianRoundThree);
+        $this->assertSame(2, $guardianRoundOne['player']['awakening_guard_rounds_remaining']);
+        $this->assertSame(1, $guardianRoundTwo['player']['awakening_guard_rounds_remaining']);
+        $this->assertSame(0, $guardianRoundThree['player']['awakening_guard_rounds_remaining']);
         $guardianExpiry = array_values(array_filter(
             $guardian->actionLog,
             static fn (array $row): bool => ($row['action'] ?? null) === 'absolute_aegis_expired',
         ));
         $this->assertCount(1, $guardianExpiry);
-        $this->assertSame(2, $guardianExpiry[0]['round']);
+        $this->assertSame(3, $guardianExpiry[0]['round']);
+
+        $enemyFirstCatalog = $this->awakeningCatalog(enemyWeaponPower: 1_000, enemyAgility: 75);
+        $enemyFirstPlayer = $this->awakeningPlayerSnapshot('guardianship_blue', currentHp: 300);
+        $enemyFirstPlayer['stats']['agility'] = 1;
+        $enemyFirst = $this->model()->fightPlayerSnapshot(
+            $enemyFirstCatalog,
+            $enemyFirstPlayer,
+            'awakening_target',
+            95,
+            4,
+            0,
+        );
+        $enemyFirstBaselinePlayer = $this->awakeningPlayerSnapshot('blessing_green', currentHp: 300);
+        $enemyFirstBaselinePlayer['stats']['agility'] = 1;
+        $enemyFirstBaseline = $this->model()->fightPlayerSnapshot(
+            $enemyFirstCatalog,
+            $enemyFirstBaselinePlayer,
+            'awakening_target',
+            95,
+            4,
+            0,
+        );
+        $enemyFirstHits = $this->enemyDamageAmounts($enemyFirst);
+        $enemyFirstBaselineHits = $this->enemyDamageAmounts($enemyFirstBaseline);
+        $this->assertCount(4, $enemyFirstHits);
+        $this->assertCount(4, $enemyFirstBaselineHits);
+        $awakeningIndex = collect($enemyFirst->actionLog)->search(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'awakening',
+        );
+        $techniqueIndex = collect($enemyFirst->actionLog)->search(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'absolute_aegis',
+        );
+        $firstEnemyDamageIndex = collect($enemyFirst->actionLog)->search(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsInt($awakeningIndex);
+        $this->assertIsInt($techniqueIndex);
+        $this->assertIsInt($firstEnemyDamageIndex);
+        $this->assertLessThan($awakeningIndex, $firstEnemyDamageIndex);
+        $this->assertLessThan($techniqueIndex, $awakeningIndex);
+        $this->assertLessThanOrEqual(
+            intdiv((int) $enemyFirst->awakening['normal_max_hp'] * UndergroundAwakening::ACTIVATION_HP_BPS, 10_000),
+            300 - $enemyFirstHits[0],
+        );
+        $enemyFirstRoundOne = collect($enemyFirst->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 1,
+        );
+        $enemyFirstRoundTwo = collect($enemyFirst->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 2,
+        );
+        $enemyFirstRoundThree = collect($enemyFirst->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 3,
+        );
+        $this->assertIsArray($enemyFirstRoundOne);
+        $this->assertIsArray($enemyFirstRoundTwo);
+        $this->assertIsArray($enemyFirstRoundThree);
+        $this->assertSame(2, $enemyFirstRoundOne['player']['awakening_guard_rounds_remaining']);
+        $this->assertSame(1, $enemyFirstRoundTwo['player']['awakening_guard_rounds_remaining']);
+        $this->assertSame(0, $enemyFirstRoundThree['player']['awakening_guard_rounds_remaining']);
+        $this->assertSame(1, $enemyFirstRoundOne['player']['awakening_guard_applied_round']);
+        $this->assertSame($enemyFirstBaselineHits[0], $enemyFirstHits[0]);
+        $this->assertLessThanOrEqual(1, abs($enemyFirstHits[1] - max(1, intdiv($enemyFirstBaselineHits[1], 10))));
+        $this->assertLessThanOrEqual(1, abs($enemyFirstHits[2] - max(1, intdiv($enemyFirstBaselineHits[2], 10))));
+        $this->assertSame($enemyFirstBaselineHits[3], $enemyFirstHits[3]);
+        $enemyFirstExpiry = array_values(array_filter(
+            $enemyFirst->actionLog,
+            static fn (array $row): bool => ($row['action'] ?? null) === 'absolute_aegis_expired',
+        ));
+        $this->assertCount(1, $enemyFirstExpiry);
+        $this->assertSame(3, $enemyFirstExpiry[0]['round']);
 
         $blessingRows = array_values(array_filter(
             $unguarded->actionLog,
@@ -1218,12 +1295,19 @@ final class UndergroundCombatBuildTest extends TestCase
         int $enemyWeaponPower = 3_000,
         bool $enemyDefends = false,
         string $enemyCategory = 'physical',
+        int $enemyAgility = 10,
     ): AlphaV1BuildCatalog {
         [$manifest] = $this->catalog();
         $manifest['enemies']['awakening_target'] = [
             'label' => '覚醒試験体',
             'boss' => false,
-            'base_stats' => ['vitality' => 10, 'might' => 70, 'finesse' => 5, 'spirit' => 5, 'agility' => 10],
+            'base_stats' => [
+                'vitality' => 10,
+                'might' => 80 - $enemyAgility,
+                'finesse' => 5,
+                'spirit' => 5,
+                'agility' => $enemyAgility,
+            ],
             'max_hp' => 10_000_000,
             'physical_defense' => 100,
             'magical_defense' => 100,

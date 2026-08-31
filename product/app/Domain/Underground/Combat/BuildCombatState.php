@@ -59,6 +59,8 @@ final class BuildCombatState
 
     public int $awakeningGuardRoundsRemaining = 0;
 
+    public ?int $awakeningGuardAppliedRound = null;
+
     /** @var array<string, int> */
     public array $normalStats;
 

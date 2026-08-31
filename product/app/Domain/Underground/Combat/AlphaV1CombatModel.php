@@ -1626,6 +1626,7 @@ final readonly class AlphaV1CombatModel
             'awakened' => $state->awakened,
             'awakening_technique_used' => $state->awakeningTechniqueUsed,
             'awakening_guard_rounds_remaining' => $state->awakeningGuardRoundsRemaining,
+            'awakening_guard_applied_round' => $state->awakeningGuardAppliedRound,
         ];
     }
 
@@ -1733,6 +1734,7 @@ final readonly class AlphaV1CombatModel
             );
         } elseif ($growthPath === 'guardianship_blue') {
             $player->awakeningGuardRoundsRemaining = UndergroundAwakening::GUARDIAN_DURATION_ROUNDS;
+            $player->awakeningGuardAppliedRound = $round;
         } elseif ($growthPath === 'blessing_green') {
             $effective = $this->healExact($player, $player->maxHp, $metrics);
             $actionLog[] = $this->logRow(
@@ -1772,11 +1774,12 @@ final readonly class AlphaV1CombatModel
     /** @param list<array<string, mixed>> $actionLog */
     private function advanceAwakeningGuardRound(BuildCombatState $player, int $round, array &$actionLog): void
     {
-        if ($player->awakeningGuardRoundsRemaining < 1) {
+        if ($player->awakeningGuardRoundsRemaining < 1 || $player->awakeningGuardAppliedRound === $round) {
             return;
         }
         $player->awakeningGuardRoundsRemaining--;
         if ($player->awakeningGuardRoundsRemaining === 0) {
+            $player->awakeningGuardAppliedRound = null;
             $actionLog[] = [
                 'kind' => 'effect',
                 'round' => $round,
