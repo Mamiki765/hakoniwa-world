@@ -68,7 +68,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(26, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(55, DB::table('migrations')->count());
+        $this->assertSame(56, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -95,6 +95,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_30_050000_rebaseline_3_0_0_underground_release',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_08_31_000000_add_underground_awakening_progression',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -367,7 +370,10 @@ SQL);
 
         $this->returnDatabaseToExact280Source();
         $this->assertSame(
-            ['2026_08_30_050000_rebaseline_3_0_0_underground_release'],
+            [
+                '2026_08_30_050000_rebaseline_3_0_0_underground_release',
+                '2026_08_31_000000_add_underground_awakening_progression',
+            ],
             $this->pendingMigrations(),
         );
         $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
@@ -375,7 +381,7 @@ SQL);
         $this->assertSame([], $this->pendingMigrations());
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
-        $this->assertSame(55, DB::table('migrations')->count());
+        $this->assertSame(56, DB::table('migrations')->count());
         $this->assertSame($before, $this->businessSnapshot());
         $this->assertSame($rulesetId, $world->fresh()->ruleset_version_id);
         $this->assertSame(Ver280UnderseaCityRulesetUpgrade::TARGET_CHECKSUM, $formalChecksum);
@@ -659,10 +665,10 @@ SQL);
         foreach (array_reverse(self::UNDERGROUND_RELEASE_TABLES) as $table) {
             Schema::drop($table);
         }
-        DB::table('migrations')->where(
-            'migration',
+        DB::table('migrations')->whereIn('migration', [
             '2026_08_30_050000_rebaseline_3_0_0_underground_release',
-        )->delete();
+            '2026_08_31_000000_add_underground_awakening_progression',
+        ])->delete();
     }
 
     private function assertUndergroundReleaseTablesAbsent(): void
@@ -672,6 +678,9 @@ SQL);
         }
         $this->assertDatabaseMissing('migrations', [
             'migration' => '2026_08_30_050000_rebaseline_3_0_0_underground_release',
+        ]);
+        $this->assertDatabaseMissing('migrations', [
+            'migration' => '2026_08_31_000000_add_underground_awakening_progression',
         ]);
     }
 
