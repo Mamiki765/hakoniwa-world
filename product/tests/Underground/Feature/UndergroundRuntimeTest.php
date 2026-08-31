@@ -100,6 +100,29 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(0, UndergroundTrialProgress::query()->count());
     }
 
+    public function test_trial_duplicate_request_survives_global_runtime_identity_change(): void
+    {
+        Carbon::setTestNow('2026-08-29 10:15:00+09:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player']);
+        $run = $runtime->startTrial($user, 'trial_01');
+        $requestId = (string) Str::uuid();
+
+        $first = $runtime->fightTrial($user, $run->run_key, $requestId);
+        $storedFingerprint = $first['battle']->request_fingerprint;
+        config(['underground-runtime.runtime_identity' => 'secretary-underground-runtime-alpha-v1']);
+        $duplicate = $runtime->fightTrial($user, $run->run_key, $requestId);
+
+        $this->assertFalse($first['duplicate']);
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($first['battle']->id, $duplicate['battle']->id);
+        $this->assertSame($storedFingerprint, $duplicate['battle']->request_fingerprint);
+        $this->assertSame(1, count($combat->calls));
+        $this->assertSame(1, UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)->count());
+    }
+
     public function test_exploration_bonus_rewards_settle_multi_level_growth_stp_withdrawal_and_defeat_atomically(): void
     {
         Carbon::setTestNow('2026-08-29 10:30:00+09:00');

@@ -185,7 +185,7 @@ STORY;
     {
         $this->assertRequestId($runKey);
         $this->assertRequestId($requestId);
-        $fingerprint = $this->fingerprint([
+        $fingerprint = $this->trialFingerprint([
             'activity_type' => 'trial',
             'run_key' => $runKey,
         ]);
@@ -193,7 +193,7 @@ STORY;
         return DB::transaction(function () use ($user, $runKey, $requestId, $fingerprint): array {
             $profile = $this->lockedProfileForUser($user);
             $this->assertRequestNotUsedByIntro($profile, $requestId);
-            $duplicate = $this->duplicateBattle($profile, $requestId, $fingerprint);
+            $duplicate = $this->duplicateTrialBattle($profile, $requestId, $runKey);
             if ($duplicate instanceof UndergroundBattle) {
                 return ['battle' => $duplicate, 'duplicate' => true];
             }
@@ -1037,6 +1037,32 @@ STORY;
         ]);
     }
 
+    private function duplicateTrialBattle(
+        UndergroundProfile $profile,
+        string $requestId,
+        string $runKey,
+    ): ?UndergroundBattle {
+        $battle = UndergroundBattle::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('request_id', $requestId)
+            ->lockForUpdate()
+            ->first();
+        if (! $battle instanceof UndergroundBattle) {
+            return null;
+        }
+        if ($battle->activity_type !== UndergroundBattle::ACTIVITY_TRIAL
+            || $battle->trial_run_key !== $runKey) {
+            throw new UndergroundRuntimeException(
+                'underground_request_conflict',
+                '同じrequest IDが別の戦闘に使用されています。',
+            );
+        }
+
+        return $battle->load([
+            'log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
+        ]);
+    }
+
     private function assertExplorationUnlocked(UndergroundProfile $profile): void
     {
         $intro = UndergroundIntroProgress::query()
@@ -1138,6 +1164,16 @@ STORY;
 
         return hash('sha256', json_encode([
             'runtime_identity' => $this->catalog->runtimeIdentity(),
+            'intent' => $intent,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+    }
+
+    /** @param array{activity_type: string, run_key: string} $intent */
+    private function trialFingerprint(array $intent): string
+    {
+        ksort($intent);
+
+        return hash('sha256', json_encode([
             'intent' => $intent,
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
     }
