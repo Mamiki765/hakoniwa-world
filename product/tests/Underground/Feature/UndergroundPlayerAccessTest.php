@@ -7,6 +7,7 @@ use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundIntroCatalog;
 use App\Application\Underground\UndergroundProfileService;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 use App\Models\UndergroundBattle;
@@ -63,6 +64,10 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->putJson('/api/v1/me/underground/skills/loadout', [
             'request_id' => (string) Str::uuid(),
             'slots' => ['holy_bolt', null, null, null, null],
+        ])->assertUnauthorized();
+        $this->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => '覚醒',
         ])->assertUnauthorized();
         $this->getJson('/api/v1/me/underground/equipment/shop')->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/equipment/shop/purchase', [
@@ -1438,6 +1443,76 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
             ->where('request_id', $requestId)
             ->count());
+    }
+
+    public function test_awakening_projection_and_plain_text_message_setting_require_first_clear(): void
+    {
+        Carbon::setTestNow('2026-08-30 13:30:00+09:00');
+        [$user, $secretary] = $this->secretaryUser('設定秘書');
+        $profile = $this->openEquipmentProfile($secretary);
+
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.awakening.unlocked', false)
+            ->assertJsonPath('data.awakening.current', 0)
+            ->assertJsonPath('data.awakening.technique', null);
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => 'まだ使えない',
+        ])->assertConflict()->assertJsonPath('code', 'underground_awakening_locked');
+
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now()->subMinute(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $profile->update(['awakening_gauge' => 384]);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.awakening.unlocked', true)
+            ->assertJsonPath('data.awakening.current', 384)
+            ->assertJsonPath('data.awakening.maximum', UndergroundAwakening::GAUGE_MAX)
+            ->assertJsonPath('data.awakening.default_message', UndergroundAwakening::DEFAULT_MESSAGE)
+            ->assertJsonPath('data.awakening.technique.key', 'decisive_heavenrend')
+            ->assertJsonPath('data.awakening.technique.name', '天断一閃')
+            ->assertJsonPath('data.awakening.technique.consumes_action', true);
+
+        $requestId = (string) Str::uuid();
+        $custom = '<script>{secretary_name}</script>が覚醒した。';
+        $saved = $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => $requestId,
+            'message' => $custom,
+        ])->assertOk()->assertJsonPath('data.awakening.custom_message', $custom);
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => $requestId,
+            'message' => $custom,
+        ])->assertOk()->assertExactJson($saved->json());
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => $requestId,
+            'message' => '別の意図',
+        ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->assertSame($custom, $profile->refresh()->awakening_message);
+        $this->assertSame(
+            '<script>設定秘書</script>が覚醒した。',
+            app(UndergroundAwakening::class)->renderMessage($profile->awakening_message, $secretary->name),
+        );
+
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => '',
+        ])->assertOk()
+            ->assertJsonPath('data.awakening.custom_message', null)
+            ->assertJsonPath('data.awakening.default_message', UndergroundAwakening::DEFAULT_MESSAGE);
+        $this->assertNull($profile->refresh()->awakening_message);
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => "invalid\nmessage",
+        ])->assertUnprocessable()->assertJsonValidationErrors('message');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => str_repeat('界', 101),
+        ])->assertUnprocessable()->assertJsonValidationErrors('message');
     }
 
     public function test_refresh_resumes_meaningful_stage_and_intro_history_is_private_and_owner_scoped(): void

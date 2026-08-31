@@ -15,6 +15,7 @@ use App\Domain\Underground\Combat\BuiltInCombatAi;
 use App\Domain\Underground\Combat\CanonicalCombatOrchestrator;
 use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
@@ -235,6 +236,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
                 $generator,
                 new PriorityCombatAi,
                 new CanonicalCombatOrchestrator,
+                new UndergroundAwakening,
             ),
             new UndergroundBuildValidator($rules),
             $generator,
@@ -526,6 +528,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             new DeterministicEquipmentGenerator($rules),
             new PriorityCombatAi,
             new CanonicalCombatOrchestrator,
+            new UndergroundAwakening,
         );
 
         return new UndergroundTrialBalanceSimulator(
