@@ -162,8 +162,10 @@ final readonly class AlphaV1CombatModel
             $maxRounds,
             static fn (): bool => $player->alive() && $enemy->alive(),
             function (int $round) use (
+                $catalog,
                 $player,
                 $enemy,
+                $random,
                 $naturalRecovery,
                 &$metrics,
                 &$mpHistory,
@@ -171,6 +173,7 @@ final readonly class AlphaV1CombatModel
             ): void {
                 $player->tickCooldowns();
                 $enemy->tickCooldowns();
+                $this->applyPhaseTransition($catalog, $enemy, $random, $round, $actionLog);
                 $this->changeMp($player, $naturalRecovery, 0, $round, 'natural', $metrics, $mpHistory, $actionLog);
                 $this->changeMp($enemy, $naturalRecovery, 0, $round, 'natural', $metrics, $mpHistory, $actionLog, false);
             },
@@ -329,6 +332,7 @@ final readonly class AlphaV1CombatModel
             $skills,
             $aiRules,
             $modifiers,
+            null,
             $catalog->manifest()['normal_attack'],
         );
         $currentHp = $snapshot['current_hp'] ?? $state->maxHp;
@@ -387,6 +391,7 @@ final readonly class AlphaV1CombatModel
             $build['active_skills'],
             $build['ai_rules'],
             $modifiers,
+            null,
             $catalog->manifest()['normal_attack'],
         );
     }
@@ -412,6 +417,7 @@ final readonly class AlphaV1CombatModel
         if (! is_int($completeGuardChance) || $completeGuardChance < 0 || $completeGuardChance > 10_000) {
             throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] complete guard trait is invalid.");
         }
+        $phaseTransition = $this->phaseTransition($catalog, $enemy, $enemyKey);
 
         return new BuildCombatState(
             'enemy',
@@ -427,7 +433,83 @@ final readonly class AlphaV1CombatModel
             $this->stringList($enemy['skills']),
             is_array($enemy['ai_rules']) ? $enemy['ai_rules'] : [],
             $modifiers,
+            $phaseTransition,
             is_array($enemy['normal_attack']) ? $enemy['normal_attack'] : [],
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $enemy
+     * @return array{round: int, status: string, message: string}|null
+     */
+    private function phaseTransition(AlphaV1BuildCatalog $catalog, array $enemy, string $enemyKey): ?array
+    {
+        $transition = $enemy['phase_transition'] ?? null;
+        if ($transition === null) {
+            return null;
+        }
+        $round = is_array($transition) ? ($transition['round'] ?? null) : null;
+        $statusKey = is_array($transition) ? ($transition['status'] ?? null) : null;
+        $message = is_array($transition) ? ($transition['message'] ?? null) : null;
+        if (! is_int($round) || $round < 1 || $round > 200
+            || ! is_string($statusKey) || $statusKey === ''
+            || ! is_string($message) || $message === '') {
+            throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] phase transition is invalid.");
+        }
+        $status = $catalog->status($statusKey);
+        $hasPositiveDamageModifier = false;
+        foreach ($status['effects'] as $effect) {
+            if (($effect['type'] ?? null) === 'damage_dealt_modifier'
+                && ($effect['category'] ?? 'all') === 'all'
+                && is_int($effect['value_bps'] ?? null)
+                && $effect['value_bps'] > 0) {
+                $hasPositiveDamageModifier = true;
+                break;
+            }
+        }
+        if (($status['disposition'] ?? null) !== 'buff' || ! $hasPositiveDamageModifier) {
+            throw new InvalidArgumentException(
+                "Underground alpha-v1 enemy [{$enemyKey}] phase transition must apply a positive all-damage buff.",
+            );
+        }
+
+        return ['round' => $round, 'status' => $statusKey, 'message' => $message];
+    }
+
+    /** @param list<array<string, mixed>> $actionLog */
+    private function applyPhaseTransition(
+        AlphaV1BuildCatalog $catalog,
+        BuildCombatState $state,
+        UndergroundRandom $random,
+        int $round,
+        array &$actionLog,
+    ): void {
+        $transition = $state->phaseTransition;
+        if ($transition === null || $round !== $transition['round']) {
+            return;
+        }
+        $row = $this->logRow(
+            $round,
+            $state,
+            'phase_transition:'.$transition['status'],
+            0,
+            false,
+            false,
+            effectType: 'phase_transition',
+        );
+        $row['message'] = $transition['message'];
+        $row['status'] = $transition['status'];
+        $actionLog[] = $row;
+        $this->applyStatus(
+            $catalog,
+            $state,
+            $state,
+            $transition['status'],
+            $random,
+            $round,
+            'phase_transition',
+            $actionLog,
+            true,
         );
     }
 

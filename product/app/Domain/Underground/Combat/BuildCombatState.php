@@ -47,6 +47,7 @@ final class BuildCombatState
      * @param  list<string>  $skills
      * @param  list<array<string, mixed>>  $aiRules
      * @param  array<string, int|bool|string>  $modifiers
+     * @param  array{round: int, status: string, message: string}|null  $phaseTransition
      * @param  array<string, mixed>  $normalAttack
      */
     public function __construct(
@@ -63,6 +64,7 @@ final class BuildCombatState
         public readonly array $skills,
         public readonly array $aiRules,
         public readonly array $modifiers,
+        public readonly ?array $phaseTransition,
         public readonly array $normalAttack,
     ) {
         $this->hp = $maxHp;
