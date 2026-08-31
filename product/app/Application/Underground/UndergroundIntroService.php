@@ -16,6 +16,7 @@ use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
+use App\Models\UndergroundTrialRun;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -322,6 +323,16 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ): void {
             $this->assertShopUnlocked($profile, $intro);
+            if (UndergroundTrialRun::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
+                ->lockForUpdate()
+                ->exists()) {
+                throw new UndergroundRuntimeException(
+                    'underground_trial_active',
+                    '封印の地へ挑戦中は宿で休めません。帰還後に利用してください。',
+                );
+            }
             $cost = $this->alphaV1Catalog->innCost();
             if ($profile->shard_balance < $cost) {
                 throw new UndergroundRuntimeException(

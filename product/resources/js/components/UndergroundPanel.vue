@@ -1064,7 +1064,7 @@ onUnmounted(() => {
                         <p>{{ shopGreeting }}</p>
                         <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
                         <div class="underground-shop-entries">
-                            <button type="button" :disabled="busy || innResting" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
+                            <button type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ state.trial?.active_run ? '封印の地から帰還後に利用できます' : innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
                             <button type="button" :disabled="busy" @click="equipmentView = 'shop'">装備ショップ<small>武器・防具・アクセサリー</small></button>
                             <button type="button" :disabled="busy" @click="bankOpen = !bankOpen">銀行<small>預入・引出</small></button>
                             <button type="button" :disabled="busy" @click="equipmentView = 'vault'">宝物庫<small>所持品・装備変更</small></button>

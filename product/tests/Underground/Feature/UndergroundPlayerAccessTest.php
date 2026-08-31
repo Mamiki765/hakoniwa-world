@@ -17,6 +17,7 @@ use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
 use App\Models\UndergroundTrialProgress;
+use App\Models\UndergroundTrialRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
@@ -473,6 +474,27 @@ final class UndergroundPlayerAccessTest extends TestCase
             'secretary_id' => $otherSecretary->id,
             'shard_balance' => 9000,
             'banked_shard_balance' => 8000,
+        ]);
+
+        $trialRun = UndergroundTrialRun::query()->create([
+            'underground_profile_id' => $profile->id,
+            'run_key' => (string) Str::uuid(),
+            'trial_key' => 'trial_01',
+            'trial_content_identity' => 'secretary-underground-trial-01-v1',
+            'next_battle_index' => 2,
+            'status' => UndergroundTrialRun::STATUS_ACTIVE,
+            'started_at' => Carbon::now(),
+        ]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/inn/rest', [
+            'request_id' => (string) Str::uuid(),
+        ])->assertConflict()->assertJsonPath('code', 'underground_trial_active');
+        $this->assertSame([2350, 123], [
+            $profile->fresh()->shard_balance,
+            $profile->current_hp,
+        ]);
+        $trialRun->update([
+            'status' => UndergroundTrialRun::STATUS_WITHDRAWN,
+            'ended_at' => Carbon::now(),
         ]);
 
         $innRequest = (string) Str::uuid();
