@@ -132,6 +132,11 @@ interface PendingBankMutation {
     requestId: string;
 }
 
+interface PendingTrialRequest {
+    requestId: string;
+    runKey: string;
+}
+
 type StatKey = 'vitality' | 'might' | 'finesse' | 'spirit' | 'agility';
 
 interface SkillNode {
@@ -351,7 +356,7 @@ const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
 const pendingExplorationRequestId = ref<string | null>(null);
-const pendingTrialRequestId = ref<string | null>(null);
+const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const statusOpen = ref(false);
@@ -556,22 +561,25 @@ async function runExplore(): Promise<void> {
 async function runTrial(): Promise<void> {
     if (busy.value || !state.value?.trial) return;
     innRested.value = false;
-    const trialRequestId = pendingTrialRequestId.value ?? requestId();
-    pendingTrialRequestId.value = trialRequestId;
     busy.value = true;
     error.value = '';
     try {
-        let run = state.value.trial.active_run;
-        if (!run) {
-            run = await api<TrialRun>('/api/v1/me/underground/trial/start', { method: 'POST' });
+        let pending = pendingTrialRequest.value;
+        if (!pending) {
+            let run = state.value.trial.active_run;
+            if (!run) {
+                run = await api<TrialRun>('/api/v1/me/underground/trial/start', { method: 'POST' });
+            }
+            pending = { requestId: requestId(), runKey: run.run_key };
+            pendingTrialRequest.value = pending;
         }
         const battle = await api<Battle>('/api/v1/me/underground/trial/fight', {
             method: 'POST',
-            body: JSON.stringify({ run_key: run.run_key, request_id: trialRequestId }),
+            body: JSON.stringify({ run_key: pending.runKey, request_id: pending.requestId }),
         });
         await refresh(false);
         selectedBattle.value = battle;
-        pendingTrialRequestId.value = null;
+        pendingTrialRequest.value = null;
     } catch (caught) {
         await refresh(false);
         error.value = caught instanceof Error ? caught.message : '封印の地へ入れませんでした。';
@@ -590,7 +598,7 @@ async function withdrawTrial(): Promise<void> {
             method: 'POST',
             body: JSON.stringify({ run_key: run.run_key }),
         });
-        pendingTrialRequestId.value = null;
+        pendingTrialRequest.value = null;
         await refresh(false);
     } catch (caught) {
         await refresh(false);

@@ -19,6 +19,7 @@ use App\Models\Secretary;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundIntroProgress;
+use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
 use App\Models\UndergroundTrialProgress;
@@ -422,6 +423,20 @@ final class UndergroundRuntimeTest extends TestCase
         ]);
         [$runtime, , $combat] = $this->runtimeWithOutcomes(array_fill(0, 13, 'player'));
         $run = $runtime->startTrial($user, 'trial_01');
+        $mutationRequestId = (string) Str::uuid();
+        UndergroundIntroRequest::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => $mutationRequestId,
+            'request_fingerprint' => hash('sha256', 'inn-rest'),
+            'operation' => 'inn_rest',
+            'resulting_stage' => 'underground_open',
+        ]);
+        $this->assertRuntimeError(
+            'underground_request_conflict',
+            fn () => $runtime->fightTrial($user, $run->run_key, $mutationRequestId),
+        );
+        $this->assertSame(1, $run->refresh()->next_battle_index);
+        $this->assertSame(0, count($combat->calls));
         $bossRequestId = null;
         $firstProjection = null;
         $firstClearProjection = null;

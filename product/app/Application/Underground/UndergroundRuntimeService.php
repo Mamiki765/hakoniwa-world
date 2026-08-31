@@ -190,6 +190,7 @@ STORY;
 
         return DB::transaction(function () use ($user, $runKey, $requestId, $fingerprint): array {
             $profile = $this->lockedProfileForUser($user);
+            $this->assertRequestNotUsedByIntro($profile, $requestId);
             $duplicate = $this->duplicateBattle($profile, $requestId, $fingerprint);
             if ($duplicate instanceof UndergroundBattle) {
                 return ['battle' => $duplicate, 'duplicate' => true];

@@ -1773,6 +1773,7 @@ describe('application lobby and island entry', () => {
         };
         let battleDetailGets = 0;
         let explorationAttempts = 0;
+        let trialFightAttempts = 0;
         let innAttempts = 0;
         let bankTransferAttempts = 0;
         let releaseInnRetry!: () => void;
@@ -1797,12 +1798,14 @@ describe('application lobby and island entry', () => {
                 return response(trialRun);
             }
             if (path === '/api/v1/me/underground/trial/fight' && init?.method === 'POST') {
+                trialFightAttempts++;
                 openState = {
                     ...openState,
                     skill_points_total: 60,
                     skill_points_unspent: 60,
                     trial: { ...openState.trial, first_cleared: true, active_run: null },
                 };
+                if (trialFightAttempts === 1) throw new TypeError('Trial response lost');
                 return response(trialBattle);
             }
             if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
@@ -1935,6 +1938,19 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-entries button')[1]!.text()).toContain('地下に眠る古代遺跡');
         await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
         await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Trial response lost');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        const trialStartRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/start' && init?.method === 'POST'
+        ));
+        expect(trialStartRequests).toHaveLength(1);
+        const trialFightRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/fight' && init?.method === 'POST'
+        ));
+        expect(trialFightRequests).toHaveLength(2);
+        expect(JSON.parse(String(trialFightRequests[1]?.[1]?.body)))
+            .toEqual(JSON.parse(String(trialFightRequests[0]?.[1]?.body)));
         expect(wrapper.get('.underground-trial-intro').text()).toContain('崩れかけた石壁の向こう');
         expect(wrapper.get('.underground-first-clear-story h2').text()).toBe('『王女が逃げた、王女を探せ』');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('ペリドットは一つ目の封印の地を制覇した。');
