@@ -2,12 +2,15 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\NationCreationService;
 use App\Application\SecretaryService;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundIntroCatalog;
 use App\Application\Underground\UndergroundProfileService;
+use App\Domain\Underground\Area\UndergroundAreaCapacity;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\UndergroundAwakening;
+use App\Models\NationCapital;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 use App\Models\UndergroundBattle;
@@ -26,15 +29,18 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 final class UndergroundPlayerAccessTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_player_routes_require_session_and_resolve_only_the_current_users_secretary(): void
     {
         $this->getJson('/api/v1/me/underground')->assertUnauthorized();
+        $this->getJson('/api/v1/me/underground/surface-map')->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/entry', ['request_id' => (string) Str::uuid()])
             ->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/explore', ['request_id' => (string) Str::uuid()])
@@ -91,6 +97,74 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->actingAs($other)->getJson('/api/v1/me/underground')
             ->assertOk()
             ->assertJsonPath('data.stage', 'not_started');
+    }
+
+    public function test_surface_map_is_hidden_until_trial_one_first_clear_and_projects_fixed_capital_relative_slots(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '地底表示島', '地底表示島主');
+        $secretary = Secretary::query()->where('user_id', $user->id)->sole();
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+
+        $this->actingAs($user)->getJson('/api/v1/me/underground/surface-map')
+            ->assertOk()->assertJsonPath('data', null);
+
+        $profile->update(['unlocked_area_layers' => 1]);
+        $progress = UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => null,
+        ]);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/surface-map')
+            ->assertOk()->assertJsonPath('data', null);
+
+        $progress->update(['first_cleared_at' => Carbon::now()]);
+        $capital = NationCapital::query()->where('nation_id', $nation->id)->sole();
+        foreach ([1 => 4, 2 => 8, 3 => 12] as $unlockedLayers => $slotCapacity) {
+            $profile->update(['unlocked_area_layers' => $unlockedLayers]);
+            $data = $this->actingAs($user)->getJson('/api/v1/me/underground/surface-map')
+                ->assertOk()->json('data');
+
+            $this->assertSame($unlockedLayers, $data['unlocked_layers']);
+            $this->assertSame(UndergroundAreaCapacity::FACILITY_SLOTS_PER_LAYER, $data['facility_slots_per_layer']);
+            $this->assertSame($slotCapacity, $data['total_facility_slots']);
+            $this->assertCount($unlockedLayers, $data['layers']);
+            $this->assertSame(['x' => $capital->x, 'y' => $capital->y], $data['capital']);
+            $this->assertFalse($data['entrance']['counts_as_facility_slot']);
+            $this->assertArrayNotHasKey('map_cells', $data);
+            $this->assertArrayNotHasKey('world', $data);
+
+            foreach ($data['layers'] as $layerIndex => $layer) {
+                $layerNumber = $layerIndex + 1;
+                $expectedZ = -($layerNumber + 1);
+                $this->assertSame($layerNumber, $layer['layer']);
+                $this->assertSame($expectedZ, $layer['z']);
+                $this->assertFalse($layer['ladder']['counts_as_facility_slot']);
+                $this->assertCount(4, $layer['slots']);
+                $this->assertSame([-2, -1, 1, 2], array_column($layer['slots'], 'offset_x'));
+
+                foreach ($layer['slots'] as $slotIndex => $slot) {
+                    $this->assertSame($slotIndex, $slot['slot_index']);
+                    $this->assertSame($capital->x + [-2, -1, 1, 2][$slotIndex], $slot['coordinate']['x']);
+                    $this->assertSame($capital->y, $slot['coordinate']['y']);
+                    $this->assertSame($expectedZ, $slot['coordinate']['z']);
+                    $this->assertNull($slot['facility_key']);
+                    $this->assertSame('underground.road', $slot['asset_key']);
+                    $slotKeys = array_keys($slot);
+                    sort($slotKeys);
+                    $this->assertSame(
+                        ['asset_key', 'coordinate', 'coordinate_label', 'facility_key', 'offset_x', 'relative_label', 'slot_index'],
+                        $slotKeys,
+                    );
+                }
+            }
+        }
+
+        $this->assertSame('(X-2, Y, -2)', $data['layers'][0]['slots'][0]['relative_label']);
+        $this->assertSame('(X+2, Y, -2)', $data['layers'][0]['slots'][3]['relative_label']);
+        $this->assertSame(-3, $data['layers'][1]['z']);
     }
 
     public function test_tutorial_is_a_legal_deterministic_single_settlement_then_escape_returns_to_secretary(): void

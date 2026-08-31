@@ -45,7 +45,7 @@ final class DomesticCommandExecutor
     private const QUANTITY_COMMANDS = ['build_farm', 'build_factory', 'build_mine'];
 
     /** @var list<string> */
-    private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate'];
+    private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate', 'territory_abandon'];
 
     public function __construct(
         private readonly MapCellStateService $cells,
@@ -399,6 +399,9 @@ final class DomesticCommandExecutor
                 return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
             }
         }
+        if ($definition->key === 'territory_abandon' && (int) $cell->population !== 0) {
+            return ['reason' => CommandFailureReason::PopulationExists, 'observed' => $observed];
+        }
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
             $matchingQuantityFacility = $this->isMatchingQuantityFacility($definition, $cell);
             if (! $matchingQuantityFacility
@@ -690,6 +693,11 @@ final class DomesticCommandExecutor
         }
         if ($definition->key === 'territory_expand') {
             $this->applyTerritoryExpand($context, $nation, $item, $cell);
+
+            return true;
+        }
+        if ($definition->key === 'territory_abandon') {
+            $this->applyTerritoryAbandon($context, $nation, $cell);
 
             return true;
         }
@@ -1164,6 +1172,25 @@ final class DomesticCommandExecutor
                 'crime_points' => $points,
             ], 'admin');
         }
+    }
+
+    private function applyTerritoryAbandon(
+        TurnContext $context,
+        Nation $nation,
+        MapCell $cell,
+    ): void {
+        $terrainKey = $cell->terrain->key;
+        $cell->owner_nation_id = null;
+        $cell->version++;
+        $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+        $this->events->record($context, 'command.territory_abandoned', $cell, [
+            'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'terrain_key' => $terrainKey,
+        ], 'nation');
     }
 
     private function lockedCapitalCell(Nation $nation): MapCell

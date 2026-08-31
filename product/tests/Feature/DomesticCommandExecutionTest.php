@@ -656,7 +656,7 @@ class DomesticCommandExecutionTest extends TestCase
         $moneyBefore = $nation->money;
         $populationBefore = $capital->population;
         $items = [];
-        foreach (['land_clear', 'land_level', 'excavate'] as $position => $commandKey) {
+        foreach (['land_clear', 'land_level', 'excavate', 'territory_abandon'] as $position => $commandKey) {
             $items[] = $this->queue($user, $nation, $space, $commandKey, $capital, 1, $position + 1);
         }
 
@@ -664,8 +664,8 @@ class DomesticCommandExecutionTest extends TestCase
             $this->context($world, [$nation->id], str_repeat('9', 64)),
         );
 
-        $this->assertSame(3, $result['failures']);
-        $this->assertSame(3, $result['removed']);
+        $this->assertSame(4, $result['failures']);
+        $this->assertSame(4, $result['removed']);
         $this->assertSame(1, $result['automatic_finance']);
         foreach ($items as $item) {
             $this->assertSame('failed', $item->fresh()->status);
@@ -675,7 +675,7 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame($populationBefore, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
         $this->assertSame('plain', $capital->fresh()->terrain()->value('key'));
-        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.failed')->count());
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'command.failed')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
     }
 
@@ -706,7 +706,7 @@ class DomesticCommandExecutionTest extends TestCase
         ]);
         $moneyBefore = (int) $nation->money;
         $items = [];
-        foreach (['land_clear', 'land_level', 'excavate'] as $position => $commandKey) {
+        foreach (['land_clear', 'land_level', 'excavate', 'territory_abandon'] as $position => $commandKey) {
             $items[] = $this->queue($user, $nation, $space, $commandKey, $target, 1, $position + 1);
         }
 
@@ -714,8 +714,8 @@ class DomesticCommandExecutionTest extends TestCase
             $this->context($world, [$nation->id], str_repeat('7', 64)),
         );
 
-        $this->assertSame(3, $result['failures']);
-        $this->assertSame(3, $result['removed']);
+        $this->assertSame(4, $result['failures']);
+        $this->assertSame(4, $result['removed']);
         $this->assertSame(0, $result['successes']);
         foreach ($items as $item) {
             $this->assertSame('failed', $item->fresh()->status);
@@ -726,7 +726,93 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('alive', $monster->fresh()->state);
         $this->assertSame($target->id, $occupancy->fresh()->map_cell_id);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'terrain.changed')->count());
-        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'command.failed')->count());
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'command.failed')->count());
+    }
+
+    public function test_territory_abandon_releases_only_safe_owned_cells_without_consuming_the_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        $space = $this->surfaceMapSpace($world);
+        [$user, $nation] = $this->createNation($world, '領土破棄国');
+        [, $rival] = $this->createNation($world, '領土維持国');
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNotIn('id', $nation->capital()->select('map_cell_id'))
+            ->orderBy('id')->limit(8)->get();
+        $this->assertCount(8, $cells);
+        $terrainKeys = ['sea', 'shallow', 'wasteland', 'plain'];
+        $valid = [];
+        foreach ($terrainKeys as $index => $terrainKey) {
+            $this->changeTerrain($cells[$index], $terrainKey);
+            $valid[] = $cells[$index]->fresh(['terrain', 'facility']);
+        }
+        $foreign = $cells[4];
+        $this->changeTerrain($foreign, 'plain');
+        $foreign->update(['owner_nation_id' => $rival->id]);
+        $populated = $cells[5];
+        $this->changeTerrain($populated, 'plain');
+        $populated->update(['population' => 100]);
+        $town = $cells[6];
+        $this->changeTerrain($town, 'plain');
+        app(MapCellStateService::class)->setFacility(
+            $town,
+            FacilityDefinition::query()->where('key', 'village')->firstOrFail(),
+            100,
+        );
+        $town->population = 0;
+        $town->save();
+        $seaFacility = $cells[7];
+        $this->changeTerrain($seaFacility, 'sea');
+        app(MapCellStateService::class)->setFacility(
+            $seaFacility,
+            FacilityDefinition::query()->where('key', 'seabed_base')->firstOrFail(),
+        );
+        $seaFacility->save();
+
+        $items = [];
+        foreach ([...$valid, $foreign, $populated, $town, $seaFacility] as $position => $cell) {
+            $items[] = $this->queue($user, $nation, $space, 'territory_abandon', $cell, 1, $position + 1);
+        }
+        $terrainBefore = collect($valid)->mapWithKeys(
+            static fn (MapCell $cell): array => [$cell->id => $cell->terrain->key],
+        );
+        $moneyBefore = (int) $nation->money;
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], str_repeat('a', 64)),
+        );
+
+        $this->assertSame(4, $result['successes']);
+        $this->assertSame(4, $result['failures']);
+        $this->assertSame(1, $result['automatic_finance']);
+        foreach ($valid as $index => $cell) {
+            $cell->refresh();
+            $this->assertNull($cell->owner_nation_id);
+            $this->assertSame($terrainBefore[$cell->id], $cell->terrain()->value('key'));
+            $this->assertSame('completed', $items[$index]->fresh()->status);
+        }
+        $this->assertSame('foreign_owned', $items[4]->fresh()->failure_code);
+        $this->assertSame('population_exists', $items[5]->fresh()->failure_code);
+        $this->assertSame('facility_exists', $items[6]->fresh()->failure_code);
+        $this->assertSame('facility_exists', $items[7]->fresh()->failure_code);
+        $this->assertSame($rival->id, $foreign->fresh()->owner_nation_id);
+        $this->assertSame($nation->id, $populated->fresh()->owner_nation_id);
+        $this->assertSame($nation->id, $town->fresh()->owner_nation_id);
+        $this->assertSame($nation->id, $seaFacility->fresh()->owner_nation_id);
+        $this->assertSame($moneyBefore + 10, (int) $nation->fresh()->money);
+        $successes = DB::table('audit_events')->where('event_type', 'command.success')
+            ->whereRaw("metadata->>'command_key' = ?", ['territory_abandon'])->get();
+        $this->assertCount(4, $successes);
+        foreach ($successes as $success) {
+            $metadata = json_decode((string) $success->metadata, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertFalse($metadata['consumes_turn']);
+            $this->assertSame(0, $metadata['cost_money']);
+        }
+        $messages = collect(app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 2)['groups'])
+            ->flatMap(static fn (array $group): array => $group['events'])
+            ->pluck('message');
+        $this->assertTrue($messages->contains(
+            fn (string $message): bool => str_contains($message, 'の領土を放棄しました。'),
+        ));
     }
 
     public function test_water_commands_reject_targets_owned_by_another_nation(): void

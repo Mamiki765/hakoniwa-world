@@ -2,9 +2,9 @@
 
 ## Purpose and authority
 
-The current application authors one canonical runtime Ruleset: `hakoniwa-2s-plus-v18`.
-The thin entrypoint at `config/hakoniwa/rulesets/hakoniwa-2s-plus-v18.php` explicitly composes
-unchanged fields from immutable v17 and changed fields from the bounded v18 domain fragments.
+The current application authors one canonical runtime Ruleset: `hakoniwa-2s-plus-v19`.
+The thin entrypoint at `config/hakoniwa/rulesets/hakoniwa-2s-plus-v19.php` explicitly composes
+unchanged fields from immutable v18 and changed fields from the bounded v19 domain fragments.
 It does not load an unsupported historical or roadmap Ruleset and does not introduce a
 second runtime schema.
 
@@ -13,20 +13,14 @@ Git is the complete implementation history. The Markdown archive under
 
 ## Domain-first layout
 
-The v17 source remains the complete immutable predecessor. v18 changes only these fragments:
+The v18 source remains the complete immutable predecessor. v19 changes only these fragments:
 
-- `v18/world-and-map.php` (identity only)
-- `v18/lifecycle-and-karma.php`
-- `v18/terrain-and-disasters.php`
-- `v18/facilities.php`
-- `v18/commands-and-production.php`
-- `v18/turn-pipeline.php`
-- `v18/monsters-and-military.php`
+- `v19/world-and-map.php` (identity only)
+- `v19/commands-and-production.php`
 
-The entrypoint names every final top-level field explicitly and explicitly replaces the
-changed KARMA, facility, command, settlement, maintenance, disaster, refugee, and military
-portions. Unchanged world generation, economy, Secretary, and Trading Post behavior is reused
-as-is from v17. There is
+The entrypoint replaces only identity and commands. Unchanged world generation, economy,
+surface facilities, Secretary, Underground, and Trading Post behavior is reused as-is from
+v18. There is
 no recursive merge, implicit flattening, reflection, generic Ruleset inheritance, or dynamic
 historical catalog.
 
@@ -49,6 +43,10 @@ target eligibility, capital-population transfer, fixed settlement identity, refu
 maintenance payment and ordering policies, famine deduplication, minimum-population removal,
 fire/disaster eligibility, missile resistance and destruction classification, and KARMA ledger
 category identities.
+
+For v19 this additionally includes the `territory_abandon` identity, its safe owned-cell
+eligibility, ownership-only result, and non-turn-consuming execution contract. Command sort
+order is also behavior because it determines the player-facing command sequence.
 
 ### Data
 
@@ -105,7 +103,9 @@ are immutable. The v17 key, version, full payload, and checksum
 `8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3`
 are immutable. The v18 key, version, full payload, and checksum
 `40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b`
-are immutable after this publication. Later ver 2.8.0 gameplay contracts require v19 or later.
+are immutable. The current v19 key, version, full payload, and checksum
+`3f6cc0bbede129ab08cd14093de3d19bbd08879cfb6d87cb792b21a46bcc16d0`
+are immutable after publication. Later gameplay contracts require v20 or later.
 
 A changed checksum under an already-published identity fails closed. A later gameplay,
 balance, RNG, or persistence-interpretation change requires a new Ruleset identity and a

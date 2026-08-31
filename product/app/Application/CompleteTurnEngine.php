@@ -1564,7 +1564,7 @@ final class CompleteTurnEngine
             ];
             sort($keys);
             sort($expectedKeys);
-            $expectedFacilityKeys = ($context->ruleset->settings['version'] ?? null) === 18
+            $expectedFacilityKeys = ($context->ruleset->settings['version'] ?? 0) >= 18
                 ? ['village', 'town', 'city', 'undersea_city']
                 : ['village', 'town', 'city'];
             if (! is_array($declineContract) || $keys !== $expectedKeys

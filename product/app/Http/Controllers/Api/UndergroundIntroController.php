@@ -6,6 +6,7 @@ use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundPlaytestService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
+use App\Application\Underground\UndergroundSurfaceMapProjection;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AcquireUndergroundSkillRequest;
 use App\Http\Requests\AdvanceUndergroundIntroRequest;
@@ -29,6 +30,11 @@ final class UndergroundIntroController extends Controller
     public function show(Request $request, UndergroundIntroService $service): JsonResponse
     {
         return $this->respond(fn (): array => $service->state($request->user()));
+    }
+
+    public function surfaceMap(Request $request, UndergroundSurfaceMapProjection $projection): JsonResponse
+    {
+        return response()->json(['data' => $projection->forUser($request->user())]);
     }
 
     public function enter(

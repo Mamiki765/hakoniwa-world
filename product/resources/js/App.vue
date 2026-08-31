@@ -11,6 +11,7 @@ import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
+import UndergroundSurfaceMapView from './components/UndergroundSurfaceMap.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import type {
@@ -30,6 +31,7 @@ import type {
     Secretary,
     SecretaryEquipmentOptions,
     SecretaryProfile,
+    UndergroundSurfaceMap,
     World,
 } from './types';
 
@@ -101,6 +103,7 @@ const inquiryConfirmation = ref<InquirySubmission | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
 const authoritativeCommandQueue = ref<CommandQueue | null>(null);
+const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits'
         ? 'credits'
@@ -745,7 +748,13 @@ async function openOwnIsland(): Promise<void> {
     busy.value = true;
     message.value = '';
     try {
-        const spaces = await api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`);
+        const [spacesResult, undergroundMapResult] = await Promise.allSettled([
+            api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`),
+            api<UndergroundSurfaceMap | null>('/api/v1/me/underground/surface-map'),
+        ]);
+        if (spacesResult.status === 'rejected') throw spacesResult.reason;
+        const spaces = spacesResult.value;
+        undergroundSurfaceMap.value = undergroundMapResult.status === 'fulfilled' ? undergroundMapResult.value : null;
         mapSpace.value = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
         if (mapSpace.value !== null) {
             await map.loadAround(mapSpace.value, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
@@ -1790,6 +1799,7 @@ async function abandonNation(): Promise<void> {
                     </div>
                 </details>
             </header>
+            <UndergroundSurfaceMapView v-if="undergroundSurfaceMap" :map="undergroundSurfaceMap" />
             <div class="island-workspace-region">
                 <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
                     <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>

@@ -7,6 +7,7 @@ enum CommandFailureReason: string
     case InsufficientFunds = 'insufficient_funds';
     case InsufficientResource = 'insufficient_resource';
     case InsufficientPopulation = 'insufficient_population';
+    case PopulationExists = 'population_exists';
     case InvalidTerrain = 'invalid_terrain';
     case MissingAdjacentTerritory = 'missing_adjacent_territory';
     case NoAdjacentOwnedLand = 'no_adjacent_owned_land';

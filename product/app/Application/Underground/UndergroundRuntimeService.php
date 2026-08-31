@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Domain\Underground\Area\UndergroundAreaCapacity;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuildCombatResult;
 use App\Domain\Underground\Combat\UndergroundAwakening;
@@ -860,6 +861,7 @@ STORY;
             'system_messages' => [
                 "{$secretary->name}は一つ目の封印の地を制覇した。",
                 'SPを40入手した。',
+                '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(1).'マス解禁された。',
                 '覚醒を習得した。',
                 '覚醒ゲージが解禁された。',
             ],
@@ -1014,19 +1016,23 @@ STORY;
             ->where('trial_key', $run->trial_key)
             ->lockForUpdate()
             ->firstOrFail();
-        if ($progress->first_cleared_at === null) {
+        $firstClear = $progress->first_cleared_at === null;
+        if ($firstClear) {
             $progress->first_cleared_at = $finishedAt;
             $progress->save();
             $reward = $this->catalog->trial($run->trial_key)['first_clear_skill_points'];
             $profile->skill_points_total += $reward;
             $profile->skill_points_unspent += $reward;
         }
+        if ($run->trial_key === 'trial_01' && $profile->unlocked_area_layers < 1) {
+            $profile->unlocked_area_layers = 1;
+        }
         $run->status = UndergroundTrialRun::STATUS_CLEARED;
         $run->next_battle_index = 1;
         $run->ended_at = $finishedAt;
         $run->save();
 
-        return $progress->wasChanged('first_cleared_at');
+        return $firstClear;
     }
 
     private function lockedProfileForUser(User $user): UndergroundProfile

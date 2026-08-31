@@ -1595,7 +1595,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.quantity_contract.maximum', 99)
             ->assertJsonPath('data.quantity_contract.default', 1)
             ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99])
-            ->assertJsonCount(26, 'data.commands');
+            ->assertJsonCount(27, 'data.commands');
         foreach ($definitions->json('data.commands') as $definition) {
             $this->assertArrayNotHasKey('parameter_schema', $definition);
             $this->assertArrayHasKey('target_type', $definition);

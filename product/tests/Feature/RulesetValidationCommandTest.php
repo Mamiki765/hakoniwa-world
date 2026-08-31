@@ -16,12 +16,12 @@ class RulesetValidationCommandTest extends TestCase
     public function test_validation_command_loads_only_current_authoring_while_normal_config_stays_current_only(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
-        $currentKeys = ['hakoniwa-2s-plus-v18'];
+        $currentKeys = ['hakoniwa-2s-plus-v19'];
 
         $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
 
-        $this->artisan('hakoniwa:ruleset:validate', ['--key' => 'hakoniwa-2s-plus-v18'])
-            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v18 is valid: version=18')
+        $this->artisan('hakoniwa:ruleset:validate', ['--key' => 'hakoniwa-2s-plus-v19'])
+            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v19 is valid: version=19')
             ->assertSuccessful();
 
         $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
@@ -33,7 +33,7 @@ class RulesetValidationCommandTest extends TestCase
         $before = $this->databaseSnapshot($world);
 
         $this->artisan('hakoniwa:ruleset:validate')
-            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v18 is valid: version=18')
+            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v19 is valid: version=19')
             ->assertSuccessful();
 
         $this->assertSame($before, $this->databaseSnapshot($world->fresh()));
@@ -45,7 +45,7 @@ class RulesetValidationCommandTest extends TestCase
         $before = $this->databaseSnapshot($world);
 
         $this->artisan('hakoniwa:ruleset:validate', ['--key' => 'does-not-exist'])
-            ->expectsOutputToContain('does-not-exist is not the current key hakoniwa-2s-plus-v18')
+            ->expectsOutputToContain('does-not-exist is not the current key hakoniwa-2s-plus-v19')
             ->assertFailed();
 
         $this->assertSame($before, $this->databaseSnapshot($world->fresh()));
