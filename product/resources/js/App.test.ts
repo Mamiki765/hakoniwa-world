@@ -1771,6 +1771,12 @@ describe('application lobby and island entry', () => {
                 system_messages: ['ペリドットは一つ目の封印の地を制覇した。', 'SPを40入手した。'],
             },
         };
+        const repeatTrialBattle = {
+            ...trialBattle,
+            id: '99999999-9999-4999-8999-999999999999',
+            challenge_intro: null,
+            first_clear_story: null,
+        };
         let battleDetailGets = 0;
         let explorationAttempts = 0;
         let trialFightAttempts = 0;
@@ -1806,7 +1812,13 @@ describe('application lobby and island entry', () => {
                     trial: { ...openState.trial, first_cleared: true, active_run: null },
                 };
                 if (trialFightAttempts === 1) throw new TypeError('Trial response lost');
-                return response(trialBattle);
+                if (trialFightAttempts === 3) {
+                    return new Response(JSON.stringify({
+                        code: 'underground_trial_run_stale',
+                        message: '封印の地の進行状態が更新されています。',
+                    }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+                }
+                return response(trialFightAttempts === 4 ? repeatTrialBattle : trialBattle);
             }
             if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
                 const payload = JSON.parse(String(init.body)) as { request_id: string };
@@ -1959,6 +1971,23 @@ describe('application lobby and island entry', () => {
             .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('遭遇'));
         expect(wrapper.get('.underground-battle-log').text().indexOf('戦闘終了'))
             .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('王女が逃げた'));
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('封印の地の進行状態が更新されています。');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        const recoveredTrialStarts = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/start' && init?.method === 'POST'
+        ));
+        expect(recoveredTrialStarts).toHaveLength(3);
+        const recoveredTrialFights = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/fight' && init?.method === 'POST'
+        ));
+        expect(recoveredTrialFights).toHaveLength(4);
+        expect(JSON.parse(String(recoveredTrialFights[3]?.[1]?.body)).request_id)
+            .not.toBe(JSON.parse(String(recoveredTrialFights[2]?.[1]?.body)).request_id);
+        expect(wrapper.find('.underground-first-clear-story').exists()).toBe(false);
         await wrapper.get('.underground-battle-back').trigger('click');
         expect(wrapper.findAll('.underground-history li')).toHaveLength(5);
         expect(wrapper.get('.underground-history').text()).toContain('履歴5');

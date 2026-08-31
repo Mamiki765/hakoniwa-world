@@ -582,6 +582,12 @@ async function runTrial(): Promise<void> {
         pendingTrialRequest.value = null;
     } catch (caught) {
         await refresh(false);
+        if (caught instanceof ApiError && [
+            'underground_trial_run_stale',
+            'underground_request_conflict',
+        ].includes(caught.code ?? '')) {
+            pendingTrialRequest.value = null;
+        }
         error.value = caught instanceof Error ? caught.message : '封印の地へ入れませんでした。';
     } finally {
         busy.value = false;

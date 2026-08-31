@@ -359,23 +359,34 @@ STORY;
     {
         $trialKey = $this->catalog->firstTrialKey();
         $trial = $this->catalog->trial($trialKey);
-        $progress = UndergroundTrialProgress::query()
-            ->where('underground_profile_id', $profile->id)
-            ->where('trial_key', $trialKey)
-            ->first();
-        $run = UndergroundTrialRun::query()
-            ->where('underground_profile_id', $profile->id)
-            ->where('trial_key', $trialKey)
-            ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
-            ->first();
 
-        return [
-            'key' => $trialKey,
-            'label' => $trial['label'],
-            'total_battles' => count($trial['encounters']),
-            'first_cleared' => $progress?->first_cleared_at !== null,
-            'active_run' => $run instanceof UndergroundTrialRun ? $this->projectTrialRun($run) : null,
-        ];
+        return DB::transaction(function () use ($profile, $trialKey, $trial): array {
+            $lockedProfile = UndergroundProfile::query()
+                ->whereKey($profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $progress = UndergroundTrialProgress::query()
+                ->where('underground_profile_id', $lockedProfile->id)
+                ->where('trial_key', $trialKey)
+                ->first();
+            $run = UndergroundTrialRun::query()
+                ->where('underground_profile_id', $lockedProfile->id)
+                ->where('trial_key', $trialKey)
+                ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
+                ->lockForUpdate()
+                ->first();
+            if ($run instanceof UndergroundTrialRun) {
+                $run = $this->reconcileActiveTrialContent($run, $trial['content_identity']);
+            }
+
+            return [
+                'key' => $trialKey,
+                'label' => $trial['label'],
+                'total_battles' => count($trial['encounters']),
+                'first_cleared' => $progress?->first_cleared_at !== null,
+                'active_run' => $run instanceof UndergroundTrialRun ? $this->projectTrialRun($run) : null,
+            ];
+        }, 3);
     }
 
     /** @return array<string, mixed> */

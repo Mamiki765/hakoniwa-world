@@ -313,12 +313,13 @@ final class UndergroundRuntimeTest extends TestCase
         ]);
 
         config(['underground-runtime.trials.trial_01.content_identity' => 'trial-01-v2']);
-        $reset = $runtime->activeTrial($user);
+        $projected = $runtime->projectTrialState($profile->refresh());
+        $reset = $run->refresh();
         $this->assertSame([$run->run_key, 'trial-01-v2', 1, UndergroundTrialRun::STATUS_ACTIVE], [
-            $reset?->run_key,
-            $reset?->trial_content_identity,
-            $reset?->next_battle_index,
-            $reset?->status,
+            $projected['active_run']['run_key'],
+            $reset->trial_content_identity,
+            $projected['active_run']['next_battle_index'],
+            $reset->status,
         ]);
         $this->assertSame([1, 77, 101, 3, $cooldownAt->toAtomString()], [
             $profile->refresh()->combat_level,
