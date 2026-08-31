@@ -1761,6 +1761,19 @@ describe('application lobby and island entry', () => {
             ...explorationBattle,
             id: '88888888-8888-4888-8888-888888888888', context: 'trial',
             encounter_name: 'ワイバーン', xp_awarded: 370, shard_delta: 69,
+            rounds_count: 40,
+            rounds: [
+                {
+                    round: 20,
+                    actions: [{ type: 'warning', side: 'system', label: '洞窟が崩れそうだ……', amount: 0 }],
+                    end_state: null,
+                },
+                {
+                    round: 40,
+                    actions: [{ type: 'phase_transition', side: '対戦相手', actor_name: 'ワイバーン', label: '天井が崩落し、ワイバーンは宙に舞い上がる……！', amount: 0 }],
+                    end_state: null,
+                },
+            ],
             combat_level_before: 6, combat_level_after: 6, stp_awarded: 0, unspent_stp_after: 25,
             trial_run_key: trialRun.run_key, trial_battle_index: 10, trial_total_battles: 10,
             trial_status: 'cleared', trial_next_battle_index: 1,
@@ -1967,6 +1980,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-first-clear-story h2').text()).toBe('『王女が逃げた、王女を探せ』');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('ペリドットは一つ目の封印の地を制覇した。');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('SPを40入手した。');
+        expect(wrapper.findAll('.underground-boss-warning')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-boss-warning')[0]!.text()).toBe('洞窟が崩れそうだ……');
+        expect(wrapper.findAll('.underground-boss-warning')[1]!.text()).toBe('天井が崩落し、ワイバーンは宙に舞い上がる……！');
         expect(wrapper.get('.underground-battle-log').text().indexOf('崩れかけた石壁の向こう'))
             .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('遭遇'));
         expect(wrapper.get('.underground-battle-log').text().indexOf('戦闘終了'))

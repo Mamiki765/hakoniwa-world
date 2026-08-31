@@ -807,6 +807,7 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
     const actor = action.actor_name ?? actorName(action.side, battle);
     const target = action.target_name ?? targetName(action.side, battle);
     const amount = action.amount ?? 0;
+    if (action.type === 'warning' || action.type === 'phase_transition') return action.label;
     if (action.type === 'action' || action.type === 'decision') return `${actor}は「${action.label}」を使用した。`;
     if (action.type === 'mp_cost') return `${actor}はMPを${amount}消費した。`;
     if (action.type === 'mp_recovery') return `${actor}はMPを${amount}回復した。`;
@@ -890,7 +891,13 @@ onUnmounted(() => {
                     <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
                         <h2>Round {{ round.round }}</h2>
                         <ol class="underground-action-log">
-                            <li v-for="(action, index) in round.actions" :key="index">{{ actionNarrative(action, currentBattle) }}</li>
+                            <li
+                                v-for="(action, index) in round.actions"
+                                :key="index"
+                                :class="{ 'underground-boss-warning': action.type === 'warning' || action.type === 'phase_transition' }"
+                            >
+                                {{ actionNarrative(action, currentBattle) }}
+                            </li>
                         </ol>
                         <div v-if="round.end_state" class="underground-round-state">
                             <section class="underground-combatant-state">

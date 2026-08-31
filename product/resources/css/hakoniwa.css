@@ -357,6 +357,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-round h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
 .underground-action-log { display: grid; gap: .45rem; margin: 0; padding-left: 1.45rem; }
 .underground-action-log li { line-height: 1.65; }
+.underground-action-log .underground-boss-warning { padding: .65rem .8rem; border: 2px solid var(--danger); background: var(--danger-surface); color: var(--danger-strong); font-weight: 900; }
 .underground-round-state { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin-top: .8rem; padding: .7rem .8rem; background: var(--paper-deep); color: var(--muted); font-size: .84rem; }
 .underground-round-state p { margin: 0; }
 .underground-combatant-state { display: grid; gap: .35rem; min-width: 0; }

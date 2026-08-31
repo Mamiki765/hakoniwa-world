@@ -31,6 +31,8 @@ final readonly class UndergroundRuntimeService
 　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。
 STORY;
 
+    private const TRIAL_ONE_ROUND_TWENTY_WARNING = '洞窟が崩れそうだ……';
+
     private const FIRST_CLEAR_STORY_BODY = <<<'STORY'
 　ワイバーンの肉体が自らの魔力に耐え切れず、内から光を放ちながら崩壊していくその瞬間。
 　秘書の中で何かが強く脈打った。ドクン、ドクンと、全身の細胞が歓喜に震え、肉体の輪郭が歪んでいく幻覚が見える。
@@ -769,6 +771,9 @@ STORY;
             $secretary->name,
             $encounterLabel,
         );
+        if ($isTrialBoss && $result->rounds >= 20) {
+            $projection = $this->withTrialOneRoundTwentyWarning($projection);
+        }
         $projection['summary']['result'] = $resultType;
         $firstChallenge = $trialBattleIndex === 1
             && ! UndergroundBattle::query()
@@ -858,6 +863,44 @@ STORY;
         ]);
 
         return $battle->load('log');
+    }
+
+    /**
+     * @param  array<string, mixed>  $projection
+     * @return array<string, mixed>
+     */
+    private function withTrialOneRoundTwentyWarning(array $projection): array
+    {
+        $rounds = is_array($projection['rounds'] ?? null) ? $projection['rounds'] : [];
+        $warning = [
+            'type' => 'warning',
+            'side' => 'system',
+            'actor_name' => null,
+            'target_name' => null,
+            'label' => self::TRIAL_ONE_ROUND_TWENTY_WARNING,
+            'amount' => 0,
+        ];
+        foreach ($rounds as &$round) {
+            if (is_array($round) && ($round['round'] ?? null) === 20) {
+                $actions = is_array($round['actions'] ?? null) ? $round['actions'] : [];
+                array_unshift($actions, $warning);
+                $round['actions'] = $actions;
+                $projection['rounds'] = array_values($rounds);
+
+                return $projection;
+            }
+        }
+        unset($round);
+
+        $rounds[] = ['round' => 20, 'actions' => [$warning], 'end_state' => null];
+        usort(
+            $rounds,
+            static fn (mixed $left, mixed $right): int => (int) (is_array($left) ? ($left['round'] ?? 0) : 0)
+                <=> (int) (is_array($right) ? ($right['round'] ?? 0) : 0),
+        );
+        $projection['rounds'] = $rounds;
+
+        return $projection;
     }
 
     private function settleTrial(

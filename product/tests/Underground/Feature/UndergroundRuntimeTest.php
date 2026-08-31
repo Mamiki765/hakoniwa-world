@@ -422,7 +422,10 @@ final class UndergroundRuntimeTest extends TestCase
             'rank' => 1,
             'active_slot' => 1,
         ]);
-        [$runtime, , $combat] = $this->runtimeWithOutcomes(array_fill(0, 13, 'player'));
+        $outcomes = array_fill(0, 13, 'player');
+        $outcomes[9] = ['winner' => 'player', 'rounds' => 20];
+        $outcomes[10] = ['winner' => 'player', 'rounds' => 20];
+        [$runtime, , $combat] = $this->runtimeWithOutcomes($outcomes);
         $run = $runtime->startTrial($user, 'trial_01');
         $mutationRequestId = (string) Str::uuid();
         UndergroundIntroRequest::query()->create([
@@ -509,6 +512,10 @@ final class UndergroundRuntimeTest extends TestCase
         ], $firstClearProjection['first_clear_story']['system_messages']);
         $this->assertStringStartsWith('　ワイバーンの肉体が自らの魔力に耐え切れず', $firstClearProjection['first_clear_story']['body']);
         $this->assertStringEndsWith('「ただし、あなたがその力に溺れないという決意を見せてくれたらの話ですけれど、ね？」', $firstClearProjection['first_clear_story']['body']);
+        $roundTwenty = collect($firstClearProjection['rounds'])->firstWhere('round', 20);
+        $this->assertIsArray($roundTwenty);
+        $this->assertSame('warning', $roundTwenty['actions'][0]['type']);
+        $this->assertSame('洞窟が崩れそうだ……', $roundTwenty['actions'][0]['label']);
 
         $this->assertIsString($bossRequestId);
         $duplicate = $runtime->fightTrial($user, $run->run_key, $bossRequestId);
@@ -641,7 +648,7 @@ final class UndergroundRuntimeTest extends TestCase
         return [$user, $secretary];
     }
 
-    /** @param list<'player'|'enemy'|'stalemate'|array{winner: 'player'|'enemy'|'stalemate', remaining_hp?: int, final_mp?: int}> $outcomes
+    /** @param list<'player'|'enemy'|'stalemate'|array{winner: 'player'|'enemy'|'stalemate', remaining_hp?: int, final_mp?: int, rounds?: int}> $outcomes
      * @return array{UndergroundRuntimeService, ScriptedUndergroundCombat, ScriptedUndergroundExplorationCombat}
      */
     private function runtimeWithOutcomes(array $outcomes): array
@@ -795,7 +802,7 @@ final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExp
     /** @var list<array{enemy_key: string, seed: int, max_rounds: int, current_hp: int, player_snapshot: array<string, mixed>}> */
     public array $calls = [];
 
-    /** @param list<'player'|'enemy'|'stalemate'|array{winner: 'player'|'enemy'|'stalemate', remaining_hp?: int, final_mp?: int}> $outcomes */
+    /** @param list<'player'|'enemy'|'stalemate'|array{winner: 'player'|'enemy'|'stalemate', remaining_hp?: int, final_mp?: int, rounds?: int}> $outcomes */
     public function __construct(private array $outcomes) {}
 
     public function fight(
@@ -815,7 +822,9 @@ final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExp
             ? ($configured['remaining_hp'] ?? ($winner === 'enemy' ? 0 : 100))
             : ($winner === 'enemy' ? 0 : 100);
         $finalMp = is_array($configured) ? ($configured['final_mp'] ?? AlphaV1CombatRules::MAX_MP) : AlphaV1CombatRules::MAX_MP;
-        $rounds = $winner === 'stalemate' ? $maxRounds : 3;
+        $rounds = is_array($configured)
+            ? ($configured['rounds'] ?? ($winner === 'stalemate' ? $maxRounds : 3))
+            : ($winner === 'stalemate' ? $maxRounds : 3);
         $this->calls[] = [
             'enemy_key' => $enemyKey,
             'seed' => $seed,
