@@ -4,6 +4,7 @@ namespace App\Application\Underground;
 
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuildCombatResult;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundRandom;
 use App\Domain\Underground\Intro\UndergroundIntroStage;
 use App\Domain\Underground\Progression\UndergroundCombatProgression;
@@ -63,6 +64,7 @@ STORY;
         private UndergroundAlphaV1BattleProjector $alphaV1Projector,
         private UndergroundStarterEquipmentService $starterEquipment,
         private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
+        private UndergroundAwakening $awakening,
     ) {}
 
     /** @return array{battle: UndergroundBattle, duplicate: bool} */
@@ -456,10 +458,52 @@ STORY;
                 && is_array($snapshot['first_clear_story'] ?? null)
                     ? $snapshot['first_clear_story']
                     : null,
+            'awakening' => is_array($snapshot['awakening'] ?? null)
+                ? $snapshot['awakening']
+                : null,
             'challenge_intro' => $context === UndergroundBattle::ACTIVITY_TRIAL
                 && is_string($snapshot['challenge_intro'] ?? null)
                     ? $snapshot['challenge_intro']
                     : null,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function projectAwakeningState(UndergroundProfile $profile, bool $unlocked): array
+    {
+        $technique = is_string($profile->growth_path_key)
+            ? $this->awakening->technique($profile->growth_path_key)
+            : null;
+
+        return [
+            'identity' => UndergroundAwakening::IDENTITY,
+            'unlocked' => $unlocked,
+            'current' => $unlocked ? $profile->awakening_gauge : 0,
+            'maximum' => UndergroundAwakening::GAUGE_MAX,
+            'custom_message' => $unlocked ? $profile->awakening_message : null,
+            'default_message' => UndergroundAwakening::DEFAULT_MESSAGE,
+            'technique' => $unlocked ? $technique : null,
+        ];
+    }
+
+    /** @return array{unlocked: bool, gauge: int, message: string, growth_path: string} */
+    private function awakeningSnapshot(
+        UndergroundProfile $profile,
+        bool $unlocked,
+        string $secretaryName,
+    ): array {
+        if (! is_string($profile->growth_path_key)) {
+            throw new UndergroundRuntimeException(
+                'underground_exploration_locked',
+                '覚醒対象の成長方針を解決できません。',
+            );
+        }
+
+        return [
+            'unlocked' => $unlocked,
+            'gauge' => $unlocked ? $profile->awakening_gauge : 0,
+            'message' => $this->awakening->renderMessage($profile->awakening_message, $secretaryName),
+            'growth_path' => $profile->growth_path_key,
         ];
     }
 
@@ -501,6 +545,12 @@ STORY;
             $currentHpBefore,
             $profile->skillAllocationMap(),
         );
+        $awakeningUnlocked = $this->awakeningUnlocked($profile);
+        $definition['player_snapshot']['awakening'] = $this->awakeningSnapshot(
+            $profile,
+            $awakeningUnlocked,
+            $secretary->name,
+        );
         $growthPath = $this->alphaV1Catalog->growthPath($profile->growth_path_key);
         $maxRounds = $this->alphaV1Catalog->explorationMaxRounds();
         $startedAt = Carbon::now();
@@ -512,7 +562,14 @@ STORY;
             $maxRounds,
             (int) $growthPath['natural_recovery'],
         );
-        $this->assertExplorationCombatResult($result, $encounterKey, $seed, $maxRounds, $maxHpBefore);
+        $this->assertExplorationCombatResult(
+            $result,
+            $encounterKey,
+            $seed,
+            $maxRounds,
+            $awakeningUnlocked,
+            $profile->awakening_gauge,
+        );
         $finishedAt = Carbon::now();
         $resultType = match ($result->winner) {
             'player' => UndergroundBattle::RESULT_VICTORY,
@@ -552,6 +609,7 @@ STORY;
         $profile->current_hp = $resultType === UndergroundBattle::RESULT_DEFEAT
             ? $maxHpAfter
             : min($result->playerRemainingHp, $maxHpAfter);
+        $profile->awakening_gauge = $result->awakening['gauge_after'];
         $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
         $profile->save();
 
@@ -621,6 +679,7 @@ STORY;
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
+                'awakening' => $result->awakening,
             ],
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
@@ -692,6 +751,12 @@ STORY;
             $currentHpBefore,
             $profile->skillAllocationMap(),
         );
+        $awakeningUnlocked = $this->awakeningUnlocked($profile);
+        $definition['player_snapshot']['awakening'] = $this->awakeningSnapshot(
+            $profile,
+            $awakeningUnlocked,
+            $secretary->name,
+        );
         $enemy = $definition['catalog']->enemy($encounterKey);
         $encounterLabel = $enemy['label'] ?? null;
         if (! is_string($encounterLabel) || $encounterLabel === '') {
@@ -711,7 +776,14 @@ STORY;
             $maxRounds,
             (int) $growthPath['natural_recovery'],
         );
-        $this->assertExplorationCombatResult($result, $encounterKey, $seed, $maxRounds, $maxHpBefore);
+        $this->assertExplorationCombatResult(
+            $result,
+            $encounterKey,
+            $seed,
+            $maxRounds,
+            $awakeningUnlocked,
+            $profile->awakening_gauge,
+        );
         $finishedAt = Carbon::now();
         $resultType = match ($result->winner) {
             'player' => UndergroundBattle::RESULT_VICTORY,
@@ -761,6 +833,7 @@ STORY;
                 ),
             default => min($result->playerRemainingHp, $maxHpAfter),
         };
+        $profile->awakening_gauge = $result->awakening['gauge_after'];
         $firstClear = $this->settleTrial($profile, $trialRun, $resultType, $isTrialBoss, $finishedAt);
         $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
         $profile->save();
@@ -787,6 +860,8 @@ STORY;
             'system_messages' => [
                 "{$secretary->name}は一つ目の封印の地を制覇した。",
                 'SPを40入手した。',
+                '覚醒を習得した。',
+                '覚醒ゲージが解禁された。',
             ],
         ] : null;
         $battle = UndergroundBattle::query()->create([
@@ -847,6 +922,7 @@ STORY;
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
+                'awakening' => $result->awakening,
                 'trial_total_battles' => count($trial['encounters']),
                 'trial_status' => $trialRun->status,
                 'trial_next_battle_index' => $trialRun->next_battle_index,
@@ -994,6 +1070,17 @@ STORY;
         return $this->reconcileActiveTrialContent($run, $trial['content_identity']);
     }
 
+    private function awakeningUnlocked(UndergroundProfile $profile): bool
+    {
+        $progress = UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('trial_key', $this->catalog->firstTrialKey())
+            ->lockForUpdate()
+            ->first();
+
+        return $progress?->first_cleared_at !== null;
+    }
+
     private function reconcileActiveTrialContent(
         UndergroundTrialRun $run,
         string $currentContentIdentity,
@@ -1138,9 +1225,12 @@ STORY;
         string $enemyKey,
         int $seed,
         int $maxRounds,
-        int $maxPlayerHp,
+        bool $awakeningUnlocked,
+        int $awakeningGaugeBefore,
     ): void {
-        if ($result->rulesIdentity !== AlphaV1CombatRules::IDENTITY
+        $awakening = $this->untypedAwakeningResult($result);
+        if (! is_array($awakening)
+            || $result->rulesIdentity !== AlphaV1CombatRules::IDENTITY
             || $result->buildKey !== 'secretary_runtime'
             || $result->enemyKey !== $enemyKey
             || $result->seed !== $seed
@@ -1148,13 +1238,30 @@ STORY;
             || $result->rounds > $maxRounds
             || ($result->winner === 'enemy' && $result->playerRemainingHp !== 0)
             || ($result->winner !== 'enemy'
-                && ($result->playerRemainingHp < 1 || $result->playerRemainingHp > $maxPlayerHp))
+                && ($result->playerRemainingHp < 1
+                    || $result->playerRemainingHp > (int) ($awakening['final_max_hp'] ?? 0)))
+            || ($awakening['identity'] ?? null) !== UndergroundAwakening::IDENTITY
+            || ($awakening['unlocked'] ?? null) !== $awakeningUnlocked
+            || ($awakening['gauge_before'] ?? null) !== ($awakeningUnlocked ? $awakeningGaugeBefore : 0)
+            || ! is_int($awakening['gauge_after'] ?? null)
+            || $awakening['gauge_after'] < 0
+            || $awakening['gauge_after'] > UndergroundAwakening::GAUGE_MAX
+            || ! is_int($awakening['gauge_gained'] ?? null)
+            || $awakening['gauge_gained'] < 0
+            || ! is_bool($awakening['triggered'] ?? null)
+            || ! is_int($awakening['normal_max_hp'] ?? null)
+            || ! is_int($awakening['final_max_hp'] ?? null)
             || $result->abnormalState !== []) {
             throw new UndergroundRuntimeException(
                 'underground_combat_result_invalid',
                 '戦闘結果を検証できなかったためsettlementを取り消しました。',
             );
         }
+    }
+
+    private function untypedAwakeningResult(BuildCombatResult $result): mixed
+    {
+        return $result->awakening;
     }
 
     /** @param array<string, string> $intent */

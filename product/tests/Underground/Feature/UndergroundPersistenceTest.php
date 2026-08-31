@@ -30,7 +30,7 @@ final class UndergroundPersistenceTest extends TestCase
         $second = $service->ensureForSecretary($secretary);
 
         $this->assertSame($first->id, $second->id);
-        $this->assertSame([0, 1, 0, 0, 0, null, null, null, null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, null], [
+        $this->assertSame([0, 1, 0, 0, 0, null, null, null, null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, null, 0, null], [
             $first->unlocked_area_layers,
             $first->combat_level,
             $first->combat_xp,
@@ -51,6 +51,8 @@ final class UndergroundPersistenceTest extends TestCase
             $first->skill_points_total,
             $first->skill_points_unspent,
             $first->skill_tree_identity,
+            $first->awakening_gauge,
+            $first->awakening_message,
         ]);
         $this->assertSame($first->id, $secretary->undergroundProfile()->sole()->id);
         $this->assertSame(1, UndergroundProfile::query()->where('secretary_id', $secretary->id)->count());
@@ -63,6 +65,8 @@ final class UndergroundPersistenceTest extends TestCase
             'allocated_might_stp',
             'allocated_spirit_stp',
             'allocated_vitality_stp',
+            'awakening_gauge',
+            'awakening_message',
             'banked_shard_balance',
             'combat_level',
             'combat_xp',
@@ -186,6 +190,8 @@ final class UndergroundPersistenceTest extends TestCase
             static fn () => $profile->update(['shard_balance' => -1]),
             static fn () => $profile->update(['banked_shard_balance' => -1]),
             static fn () => $profile->update(['current_hp' => 0]),
+            static fn () => $profile->update(['awakening_gauge' => 1_001]),
+            static fn () => $profile->update(['awakening_message' => "invalid\nmessage"]),
             static fn () => $profile->update(['unspent_stp' => 1]),
             static fn () => $profile->update(['skill_points_total' => 1, 'skill_points_unspent' => 1]),
         ] as $mutation) {

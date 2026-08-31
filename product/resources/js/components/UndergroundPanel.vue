@@ -32,6 +32,7 @@ interface RoundAction {
     parried?: boolean;
     barrier_absorbed?: number;
     complete_guarded?: boolean;
+    lines?: string[];
 }
 
 interface RoundState {
@@ -66,7 +67,7 @@ interface Battle {
     unspent_stp_after?: number;
     detail_available: boolean;
     actions?: SimpleAction[] | CombatRound[] | null;
-    summary?: Record<string, number | string> | null;
+    summary?: Record<string, boolean | number | string> | null;
     rewards?: { xp: number; shards: number; g?: number; drops?: unknown[] };
     detail_message?: string | null;
     trial_run_key?: string | null;
@@ -97,6 +98,21 @@ interface TrialState {
     total_battles: number;
     first_cleared: boolean;
     active_run: TrialRun | null;
+}
+
+interface AwakeningState {
+    identity: string;
+    unlocked: boolean;
+    current: number;
+    maximum: number;
+    custom_message: string | null;
+    default_message: string;
+    technique: {
+        key: string;
+        name: string;
+        summary: string;
+        consumes_action: boolean;
+    } | null;
 }
 
 interface GrowthPath {
@@ -223,6 +239,7 @@ interface UndergroundState {
     growth_path: GrowthPath | null;
     playtest: PlaytestOptions | null;
     trial: TrialState | null;
+    awakening: AwakeningState | null;
     battle: Battle | null;
 }
 
@@ -369,6 +386,8 @@ const loadoutDraft = ref<Array<string | null>>([null, null, null, null, null]);
 const pendingStpMutation = ref<PendingMutation | null>(null);
 const pendingSkillAcquire = ref<PendingMutation | null>(null);
 const pendingLoadoutMutation = ref<PendingMutation | null>(null);
+const pendingAwakeningMutation = ref<PendingMutation | null>(null);
+const awakeningMessageDraft = ref('');
 const equipmentView = ref<'main' | 'shop' | 'vault'>('main');
 const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
@@ -423,7 +442,14 @@ const summaryLabels: Record<string, string> = {
     mp_skill_recovery: 'スキル回復MP',
     skill_unavailable_due_to_mp: 'MP不足回数',
 };
-const hiddenSummaryKeys = new Set(['rounds', 'player_remaining_hp', 'enemy_remaining_hp', 'final_mp']);
+const hiddenSummaryKeys = new Set([
+    'rounds',
+    'player_remaining_hp',
+    'enemy_remaining_hp',
+    'final_mp',
+    'awakening_triggered',
+    'awakening_technique_used',
+]);
 
 watch(() => state.value?.playtest, (playtest) => {
     if (!playtest) return;
@@ -439,6 +465,11 @@ watch(() => state.value?.active_slots, (slots) => {
 watch(() => state.value?.skill_trees, (trees) => {
     if (!trees || trees.some((tree) => tree.key === activeSkillTreeKey.value)) return;
     activeSkillTreeKey.value = trees[0]?.key ?? 'martial';
+}, { deep: true, immediate: true });
+
+watch(() => state.value?.awakening, (awakening) => {
+    if (!awakening || pendingAwakeningMutation.value) return;
+    awakeningMessageDraft.value = awakening.custom_message ?? awakening.default_message;
 }, { deep: true, immediate: true });
 
 function requestId(): string {
@@ -685,6 +716,22 @@ async function saveLoadout(): Promise<void> {
     }
 }
 
+async function saveAwakeningMessage(): Promise<void> {
+    const fingerprint = JSON.stringify({ message: awakeningMessageDraft.value });
+    const pending = pendingAwakeningMutation.value?.fingerprint === fingerprint
+        ? pendingAwakeningMutation.value
+        : { fingerprint, requestId: requestId() };
+    pendingAwakeningMutation.value = pending;
+    if (await mutate(
+        '/api/v1/me/underground/awakening/message',
+        { message: awakeningMessageDraft.value },
+        pending.requestId,
+        'PUT',
+    )) {
+        pendingAwakeningMutation.value = null;
+    }
+}
+
 function nodeLabel(nodeKey: string | null): string {
     if (!nodeKey) return 'なし';
     return (state.value?.skill_trees ?? [])
@@ -762,11 +809,11 @@ function summaryLabel(key: string): string {
     return summaryLabels[key] ?? key;
 }
 
-function summaryValue(key: string, value: number | string): number | string {
+function summaryValue(key: string, value: boolean | number | string): boolean | number | string {
     return key === 'result' ? battleResultLabel(String(value) as Battle['result']) : value;
 }
 
-function visibleSummary(summary: Record<string, number | string>): Record<string, number | string> {
+function visibleSummary(summary: Record<string, boolean | number | string>): Record<string, boolean | number | string> {
     return Object.fromEntries(Object.entries(summary).filter(([key]) => !hiddenSummaryKeys.has(key)));
 }
 
@@ -807,6 +854,7 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
     const actor = action.actor_name ?? actorName(action.side, battle);
     const target = action.target_name ?? targetName(action.side, battle);
     const amount = action.amount ?? 0;
+    if (action.lines && action.lines.length > 0) return action.lines.join('\n');
     if (action.type === 'warning' || action.type === 'phase_transition') return action.label;
     if (action.type === 'action' || action.type === 'decision') return `${actor}は「${action.label}」を使用した。`;
     if (action.type === 'mp_cost') return `${actor}はMPを${amount}消費した。`;
@@ -894,7 +942,10 @@ onUnmounted(() => {
                             <li
                                 v-for="(action, index) in round.actions"
                                 :key="index"
-                                :class="{ 'underground-boss-warning': action.type === 'warning' || action.type === 'phase_transition' }"
+                                :class="{
+                                    'underground-boss-warning': action.type === 'warning' || action.type === 'phase_transition',
+                                    'underground-awakening-event': action.type === 'awakening' || action.type === 'awakening_technique',
+                                }"
                             >
                                 {{ actionNarrative(action, currentBattle) }}
                             </li>
@@ -1057,6 +1108,15 @@ onUnmounted(() => {
                         <div><dt>未使用STP</dt><dd>{{ state.unspent_stp }}</dd></div>
                         <div v-if="state.growth_path"><dt>成長方針</dt><dd>{{ state.growth_path.label }}</dd></div>
                     </dl>
+                    <section
+                        v-if="state.awakening?.unlocked"
+                        class="underground-awakening-gauge"
+                        :data-full="state.awakening.current >= state.awakening.maximum"
+                        aria-labelledby="underground-awakening-gauge-title"
+                    >
+                        <div><h2 id="underground-awakening-gauge-title">覚醒ゲージ</h2><strong>{{ state.awakening.current }} / {{ state.awakening.maximum }}</strong></div>
+                        <progress :max="state.awakening.maximum" :value="state.awakening.current" />
+                    </section>
                     <section v-if="state.growth_path" class="underground-growth-summary">
                         <h2>能力</h2>
                         <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.current_stats?.[key] ?? state.growth_path.stats[key] }}</dd></div></dl>
@@ -1225,6 +1285,19 @@ onUnmounted(() => {
                         </li>
                     </ul>
                     <button class="button primary" type="button" :disabled="busy" @click="saveLoadout">slot 1～5を保存</button>
+                </section>
+
+                <section v-if="state.awakening?.unlocked && state.awakening.technique" class="underground-awakening-settings" aria-labelledby="underground-awakening-settings-title">
+                    <header>
+                        <div><p class="eyebrow">Awakening</p><h3 id="underground-awakening-settings-title">{{ state.awakening.technique.name }}</h3></div>
+                        <strong>覚醒中に1度だけ使用可能</strong>
+                    </header>
+                    <p>{{ state.awakening.technique.summary }}</p>
+                    <p>{{ state.awakening.technique.consumes_action ? '通常actionを消費します。' : '通常actionを消費せず、そのままAI行動を続けます。' }}</p>
+                    <label for="underground-awakening-message">覚醒時の最初の演出文</label>
+                    <textarea id="underground-awakening-message" v-model="awakeningMessageDraft" maxlength="100" rows="3" :disabled="busy"></textarea>
+                    <p class="underground-progression-note"><code>{secretary_name}</code> はbattle開始時の秘書名へ置換されます。空欄でdefaultへ戻ります。{{ awakeningMessageDraft.length }} / 100</p>
+                    <button class="button primary" type="button" :disabled="busy" @click="saveAwakeningMessage">覚醒演出文を保存</button>
                 </section>
             </section>
         </template>

@@ -7,9 +7,11 @@ use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuildCombatResult;
+use App\Domain\Underground\Combat\BuildCombatState;
 use App\Domain\Underground\Combat\CanonicalCombatOrchestrator;
 use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -856,6 +858,293 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertGreaterThan($precisionWins, $flurryWins);
     }
 
+    public function test_awakening_core_applies_once_to_final_equipped_stats_without_cleansing_battle_state(): void
+    {
+        $rules = new AlphaV1CombatRules;
+        $awakening = new UndergroundAwakening;
+        $normalStats = [
+            'vitality' => 21,
+            'might' => 32,
+            'finesse' => 43,
+            'spirit' => 54,
+            'agility' => 65,
+        ];
+        $state = new BuildCombatState(
+            'player',
+            'awakening_test',
+            '覚醒試験',
+            false,
+            $rules->maxHp($normalStats, 10_000, 37),
+            $normalStats,
+            19 + ($normalStats['vitality'] * 4),
+            23 + ($normalStats['spirit'] * 4),
+            $rules->defenseReference(10_000),
+            41,
+            ['precision_cut'],
+            [['conditions' => [['type' => 'always']], 'action' => 'skill:precision_cut']],
+            [],
+            null,
+            [],
+        );
+        $state->equipmentMaxHp = 37;
+        $state->equipmentPhysicalDefense = 19;
+        $state->equipmentMagicalDefense = 23;
+        $state->awakeningUnlocked = true;
+        $state->awakeningGauge = UndergroundAwakening::GAUGE_MAX;
+        $state->hp = intdiv($state->maxHp, 5);
+        $state->mp = 123;
+        $state->cooldowns['precision_cut'] = 2;
+        $state->statuses['bleed'] = [
+            'key' => 'bleed',
+            'disposition' => 'debuff',
+            'remaining' => 2,
+            'applied_round' => 1,
+            'stacks' => 2,
+            'effects' => [],
+            'control' => false,
+        ];
+        $state->roleStacks = ['fighting_spirit' => 3, 'grace' => 2];
+        $state->barrier = 47;
+        $state->flags['afterguard_focus'] = true;
+        $preserved = [
+            'cooldowns' => $state->cooldowns,
+            'statuses' => $state->statuses,
+            'role_stacks' => $state->roleStacks,
+            'barrier' => $state->barrier,
+            'flags' => $state->flags,
+        ];
+
+        $this->assertTrue($awakening->tryActivate($state, $rules));
+        $expectedStats = array_map(
+            static fn (int $value): int => $value + intdiv($value * 3_000, 10_000),
+            $normalStats,
+        );
+        $this->assertSame($expectedStats, $state->stats);
+        $this->assertSame($normalStats, $state->normalStats);
+        $this->assertSame($rules->maxHp($expectedStats, 10_000, 37), $state->maxHp);
+        $this->assertSame($state->maxHp, $state->hp);
+        $this->assertSame(AlphaV1CombatRules::MAX_MP, $state->mp);
+        $this->assertSame(19 + ($expectedStats['vitality'] * 4), $state->physicalDefense);
+        $this->assertSame(23 + ($expectedStats['spirit'] * 4), $state->magicalDefense);
+        $this->assertSame(0, $state->awakeningGauge);
+        $this->assertTrue($state->awakened);
+        $this->assertSame($preserved, [
+            'cooldowns' => $state->cooldowns,
+            'statuses' => $state->statuses,
+            'role_stacks' => $state->roleStacks,
+            'barrier' => $state->barrier,
+            'flags' => $state->flags,
+        ]);
+        $activated = clone $state;
+        $this->assertFalse($awakening->tryActivate($state, $rules));
+        $this->assertEquals($activated, $state);
+    }
+
+    public function test_awakening_gauge_is_deterministic_capped_and_counts_one_damaging_enemy_action_not_hits(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyHits: 10, enemyWeaponPower: 10);
+        $snapshot = $this->awakeningPlayerSnapshot('martial_red', gauge: 0, currentHp: null);
+
+        $first = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 71, 1, 0);
+        $retry = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 71, 1, 0);
+        $this->assertSame($first->toArray(), $retry->toArray());
+        $this->assertFalse($first->awakening['triggered']);
+        $this->assertSame(30, $first->awakening['gauge_after']);
+        $this->assertSame(30, $first->awakening['gauge_gained']);
+        $this->assertCount(10, array_filter(
+            $first->actionLog,
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        ));
+
+        $nearCap = $this->awakeningPlayerSnapshot('martial_red', gauge: 999, currentHp: null);
+        $capped = $this->model()->fightPlayerSnapshot($catalog, $nearCap, 'awakening_target', 71, 1, 0);
+        $this->assertSame(UndergroundAwakening::GAUGE_MAX, $capped->awakening['gauge_after']);
+        $this->assertSame(1, $capped->awakening['gauge_gained']);
+
+        $locked = $this->awakeningPlayerSnapshot('martial_red', gauge: 0, currentHp: null, unlocked: false);
+        $lockedResult = $this->model()->fightPlayerSnapshot($catalog, $locked, 'awakening_target', 71, 1, 0);
+        $this->assertSame(0, $lockedResult->awakening['gauge_after']);
+        $this->assertFalse($lockedResult->awakening['triggered']);
+    }
+
+    public function test_fixed_awakening_techniques_cover_martial_two_round_guardianship_and_blessing_solo_targets(): void
+    {
+        $awakening = new UndergroundAwakening;
+        $this->assertSame([
+            'martial_red' => ['decisive_heavenrend', '天断一閃', true],
+            'guardianship_blue' => ['absolute_aegis', '絶対護界', true],
+            'blessing_green' => ['life_requiem', '生命讃歌', true],
+            'free_black' => ['limitless_reprise', '無窮再演', false],
+        ], array_map(
+            static fn (array $technique): array => [
+                $technique['key'], $technique['name'], $technique['consumes_action'],
+            ],
+            array_combine(
+                ['martial_red', 'guardianship_blue', 'blessing_green', 'free_black'],
+                array_map(
+                    static fn (string $path): array => $awakening->technique($path),
+                    ['martial_red', 'guardianship_blue', 'blessing_green', 'free_black'],
+                ),
+            ),
+        ));
+
+        $catalog = $this->awakeningCatalog(enemyWeaponPower: 2_500);
+        $martial = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $this->awakeningPlayerSnapshot('martial_red'),
+            'awakening_target',
+            91,
+            1,
+            0,
+        );
+        $martialDamage = array_values(array_filter(
+            $martial->actionLog,
+            static fn (array $row): bool => ($row['action'] ?? null) === 'decisive_heavenrend'
+                && ($row['effect_type'] ?? null) === 'damage',
+        ));
+        $this->assertCount(1, $martialDamage);
+        $this->assertSame('enemy', $martialDamage[0]['target_side']);
+        $this->assertGreaterThan(0, $martialDamage[0]['amount']);
+        $this->assertSame(35_000, UndergroundAwakening::MARTIAL_POTENCY_BPS);
+        $this->assertTrue($martial->awakening['technique']['used']);
+
+        $guardian = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $this->awakeningPlayerSnapshot('guardianship_blue'),
+            'awakening_target',
+            93,
+            3,
+            0,
+        );
+        $unguarded = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $this->awakeningPlayerSnapshot('blessing_green'),
+            'awakening_target',
+            93,
+            3,
+            0,
+        );
+        $guardianHits = $this->enemyDamageAmounts($guardian);
+        $unguardedHits = $this->enemyDamageAmounts($unguarded);
+        $this->assertCount(3, $guardianHits);
+        $this->assertCount(3, $unguardedHits);
+        $this->assertLessThanOrEqual(1, abs($guardianHits[0] - max(1, intdiv($unguardedHits[0], 10))));
+        $this->assertLessThanOrEqual(1, abs($guardianHits[1] - max(1, intdiv($unguardedHits[1], 10))));
+        $this->assertSame($unguardedHits[2], $guardianHits[2]);
+        $this->assertSame(2, UndergroundAwakening::GUARDIAN_DURATION_ROUNDS);
+        $guardianRoundOne = collect($guardian->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 1,
+        );
+        $guardianRoundTwo = collect($guardian->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 2,
+        );
+        $this->assertIsArray($guardianRoundOne);
+        $this->assertIsArray($guardianRoundTwo);
+        $this->assertSame(1, $guardianRoundOne['player']['awakening_guard_rounds_remaining']);
+        $this->assertSame(0, $guardianRoundTwo['player']['awakening_guard_rounds_remaining']);
+        $guardianExpiry = array_values(array_filter(
+            $guardian->actionLog,
+            static fn (array $row): bool => ($row['action'] ?? null) === 'absolute_aegis_expired',
+        ));
+        $this->assertCount(1, $guardianExpiry);
+        $this->assertSame(2, $guardianExpiry[0]['round']);
+
+        $blessingRows = array_values(array_filter(
+            $unguarded->actionLog,
+            static fn (array $row): bool => ($row['action'] ?? null) === 'life_requiem',
+        ));
+        $this->assertCount(2, $blessingRows);
+        $this->assertSame('awakening_technique', $blessingRows[0]['kind']);
+        $this->assertSame('player', $blessingRows[0]['target_side']);
+        $this->assertSame('recovery', $blessingRows[1]['effect_type']);
+        $this->assertLessThan(0, $blessingRows[1]['amount']);
+        $roundTwo = collect($unguarded->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end' && ($row['round'] ?? null) === 2,
+        );
+        $this->assertIsArray($roundTwo);
+        $this->assertSame(
+            $unguarded->awakening['final_max_hp'] - $roundTwo['player']['hp'],
+            -$blessingRows[1]['amount'],
+        );
+        $this->assertTrue($unguarded->awakening['technique']['used']);
+
+        $normalBurst = collect($unguarded->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['action'] ?? null) === 'normal_attack'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($normalBurst);
+        $this->assertGreaterThan($normalBurst['amount'], $martialDamage[0]['amount']);
+
+        $miracleCatalog = $this->awakeningCatalog(enemyWeaponPower: 2_500, enemyCategory: 'miracle');
+        $miracleGuard = $this->model()->fightPlayerSnapshot(
+            $miracleCatalog,
+            $this->awakeningPlayerSnapshot('guardianship_blue'),
+            'awakening_target',
+            97,
+            3,
+            0,
+        );
+        $miracleBaseline = $this->model()->fightPlayerSnapshot(
+            $miracleCatalog,
+            $this->awakeningPlayerSnapshot('blessing_green'),
+            'awakening_target',
+            97,
+            3,
+            0,
+        );
+        $this->assertLessThanOrEqual(1, abs(
+            $this->enemyDamageAmounts($miracleGuard)[0]
+            - max(1, intdiv($this->enemyDamageAmounts($miracleBaseline)[0], 10)),
+        ));
+    }
+
+    public function test_free_awakening_technique_resets_normal_rotation_and_continues_the_same_turn_once(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyDefends: true);
+        $snapshot = $this->awakeningPlayerSnapshot(
+            'free_black',
+            skills: ['radiant_judgment', 'severing_bleed'],
+            aiRules: [
+                ['conditions' => [['type' => 'skill_ready', 'skill' => 'radiant_judgment']], 'action' => 'skill:radiant_judgment'],
+                ['conditions' => [['type' => 'skill_ready', 'skill' => 'severing_bleed']], 'action' => 'skill:severing_bleed'],
+                ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+            ],
+        );
+
+        $result = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 109, 3, 0);
+        $retry = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 109, 3, 0);
+        $this->assertSame($result->toArray(), $retry->toArray());
+        $techniques = array_values(array_filter(
+            $result->actionLog,
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'awakening_technique',
+        ));
+        $this->assertCount(1, $techniques);
+        $this->assertSame('limitless_reprise', $techniques[0]['action']);
+        $techniqueIndex = array_search($techniques[0], $result->actionLog, true);
+        $sameRoundLater = array_slice($result->actionLog, ((int) $techniqueIndex) + 1);
+        $this->assertNotEmpty(array_filter(
+            $sameRoundLater,
+            static fn (array $row): bool => ($row['round'] ?? null) === $techniques[0]['round']
+                && ($row['kind'] ?? null) === 'decision'
+                && ($row['side'] ?? null) === 'player',
+        ));
+        $this->assertSame(2, $result->actionUsage['radiant_judgment']);
+        $this->assertSame(1, $result->actionUsage['severing_bleed']);
+        $this->assertSame(AlphaV1CombatRules::MAX_MP - 2_400, $result->finalMp);
+        $this->assertSame(0, $result->awakening['gauge_after']);
+        $this->assertTrue($result->awakening['triggered']);
+        $this->assertTrue($result->awakening['technique']['used']);
+        $this->assertSame(1, $result->actionUsage['awakening_technique']);
+        $lastRound = collect($result->actionLog)->last(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end',
+        );
+        $this->assertIsArray($lastRound);
+        $this->assertSame(4, $lastRound['player']['cooldowns']['radiant_judgment']);
+        $this->assertSame(0, $lastRound['player']['cooldowns']['severing_bleed']);
+    }
+
     public function test_true_name_story_profile_is_a_short_deterministic_alpha_v1_tank_defeat(): void
     {
         [$manifest] = $this->catalog();
@@ -924,6 +1213,93 @@ final class UndergroundCombatBuildTest extends TestCase
         return [$manifest, $catalog, new UndergroundBuildValidator(new AlphaV1CombatRules)];
     }
 
+    private function awakeningCatalog(
+        int $enemyHits = 1,
+        int $enemyWeaponPower = 3_000,
+        bool $enemyDefends = false,
+        string $enemyCategory = 'physical',
+    ): AlphaV1BuildCatalog {
+        [$manifest] = $this->catalog();
+        $manifest['enemies']['awakening_target'] = [
+            'label' => '覚醒試験体',
+            'boss' => false,
+            'base_stats' => ['vitality' => 10, 'might' => 70, 'finesse' => 5, 'spirit' => 5, 'agility' => 10],
+            'max_hp' => 10_000_000,
+            'physical_defense' => 100,
+            'magical_defense' => 100,
+            'weapon_power' => $enemyWeaponPower,
+            'normal_attack' => [
+                'type' => 'damage',
+                'category' => $enemyCategory,
+                'potency_bps' => 10_000,
+                'stat_coefficients' => ['might' => 10_000],
+                'weapon_coefficient_bps' => 10_000,
+                'fixed' => 0,
+                'target_max_hp_bps' => 0,
+                'can_crit' => false,
+                'dodgeable' => false,
+                'hits' => $enemyHits,
+            ],
+            'skills' => [],
+            'ai_rules' => [[
+                'conditions' => [['type' => 'always']],
+                'action' => $enemyDefends ? 'defend' : 'normal_attack',
+            ]],
+            'modifiers' => [],
+        ];
+
+        return new AlphaV1BuildCatalog($manifest);
+    }
+
+    /** @param list<string> $skills
+     * @param  list<array<string, mixed>>|null  $aiRules
+     * @return array<string, mixed>
+     */
+    private function awakeningPlayerSnapshot(
+        string $growthPath,
+        int $gauge = UndergroundAwakening::GAUGE_MAX,
+        ?int $currentHp = 1,
+        bool $unlocked = true,
+        array $skills = [],
+        ?array $aiRules = null,
+    ): array {
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $snapshot = [
+            'key' => 'awakening_secretary',
+            'label' => '覚醒秘書',
+            'stats' => ['vitality' => 100, 'might' => 40, 'finesse' => 30, 'spirit' => 40, 'agility' => 200],
+            'active_skills' => $skills,
+            'ai_rules' => $aiRules ?? [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'modifiers' => [],
+            'equipment' => $configuration['exploration']['starter_weapon'],
+            'awakening' => [
+                'unlocked' => $unlocked,
+                'gauge' => $gauge,
+                'message' => '魔力が覚醒秘書の全身を駆け巡る――！',
+                'growth_path' => $growthPath,
+            ],
+        ];
+        if ($currentHp !== null) {
+            $snapshot['current_hp'] = $currentHp;
+        }
+
+        return $snapshot;
+    }
+
+    /** @return list<int> */
+    private function enemyDamageAmounts(BuildCombatResult $result): array
+    {
+        return array_values(array_map(
+            static fn (array $row): int => (int) $row['amount'],
+            array_filter(
+                $result->actionLog,
+                static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                    && ($row['target_side'] ?? null) === 'player'
+                    && ($row['effect_type'] ?? null) === 'damage',
+            ),
+        ));
+    }
+
     private function model(): AlphaV1CombatModel
     {
         $rules = new AlphaV1CombatRules;
@@ -934,6 +1310,7 @@ final class UndergroundCombatBuildTest extends TestCase
             new DeterministicEquipmentGenerator($rules),
             new PriorityCombatAi,
             new CanonicalCombatOrchestrator,
+            new UndergroundAwakening,
         );
     }
 }

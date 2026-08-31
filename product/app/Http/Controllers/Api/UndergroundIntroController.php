@@ -18,6 +18,7 @@ use App\Http\Requests\UndergroundPlaytestRequest;
 use App\Http\Requests\UndergroundTrialFightRequest;
 use App\Http\Requests\UndergroundTrialRunRequest;
 use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
+use App\Http\Requests\UpdateUndergroundAwakeningMessageRequest;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -231,6 +232,19 @@ final class UndergroundIntroController extends Controller
             $request->user(),
             $request->string('request_id')->value(),
             $slots,
+        ));
+    }
+
+    public function updateAwakeningMessage(
+        UpdateUndergroundAwakeningMessageRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        $message = $request->validated('message');
+
+        return $this->respond(fn (): array => $service->updateAwakeningMessage(
+            $request->user(),
+            $request->string('request_id')->value(),
+            is_string($message) ? $message : null,
         ));
     }
 

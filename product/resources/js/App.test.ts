@@ -2189,6 +2189,100 @@ describe('application lobby and island entry', () => {
         wrapper.unmount();
     });
 
+    it('renders and saves the unlocked awakening gauge technique and plain-text battle event', async () => {
+        const growthPath = {
+            key: 'free_black', label: '自由', color: 'black', description: ['自由型'], default_build_key: 'balanced',
+            stats: { vitality: 20, might: 20, finesse: 20, spirit: 20, agility: 20 },
+            max_hp: 500, max_mp: 10000, natural_recovery: 300,
+            natural_growth: { vitality: 1, might: 1, finesse: 1, spirit: 1, agility: 0 },
+            unspent_stp_per_level: 6, points_per_level: 10,
+        };
+        let state = {
+            stage: 'underground_open', secretary_name: '表示秘書', combat_level: 1,
+            combat_xp: 0, next_level_xp: 100, next_level_requirement: 100, xp_to_next_level: 100,
+            shard_balance: 0, banked_shard_balance: 0, current_hp: 500, unspent_stp: 0,
+            allocated_stp: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 },
+            current_stats: growthPath.stats, combat_stats: growthPath.stats, status_breakdown: null,
+            equipment: null, equipment_summary: null,
+            skill_points_total: 20, skill_points_unspent: 20, skill_points_spent: 0,
+            skill_tree_identity: 'secretary-underground-skill-tree-alpha-v1', skill_trees: [],
+            active_slots: [null, null, null, null, null], passive_modifiers: {},
+            shopkeeper_name: '案内係', true_name_branch: false,
+            tutorial_projection: { stats: growthPath.stats, weapon: 'starter knife' },
+            contract_completed: true, growth_paths: null, growth_path: growthPath, playtest: null,
+            trial: { key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10, first_cleared: true, active_run: null },
+            awakening: {
+                identity: 'secretary-underground-awakening-v1', unlocked: true, current: 1000, maximum: 1000,
+                custom_message: '<b>{secretary_name}</b>、限界突破！',
+                default_message: '魔力が{secretary_name}の全身を駆け巡る――！',
+                technique: {
+                    key: 'limitless_reprise', name: '無窮再演',
+                    summary: 'MPを全回復し、通常active skillのcooldownを全解除。そのまま行動。',
+                    consumes_action: false,
+                },
+            },
+            battle: null, next_battle_at: null,
+        };
+        const battle = {
+            id: '77777777-7777-4777-8777-777777777777', context: 'exploration',
+            player_display_name: '表示秘書', encounter_name: '迷い人の影', result: 'victory',
+            rounds_count: 1, xp_awarded: 0, shard_delta: 0, detail_available: true,
+            summary: { result: 'victory', awakening_triggered: true, awakening_technique_used: true },
+            rounds: [{
+                round: 1,
+                actions: [{
+                    type: 'awakening', side: '秘書', actor_name: '表示秘書', target_name: '表示秘書', label: '覚醒',
+                    lines: ['<img src=x onerror=alert(1)>', '表示秘書は覚醒した！', 'HP/MPが全回復した！', '生命・武力・技巧・精神・敏捷が30%上昇した！'],
+                    amount: 0,
+                }],
+                end_state: null,
+            }],
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground' && init?.method === undefined) return response(state);
+            if (path === '/api/v1/me/underground/battles') return response([battle]);
+            if (path === `/api/v1/me/underground/battles/${battle.id}`) return response(battle);
+            if (path === '/api/v1/me/underground/awakening/message' && init?.method === 'PUT') {
+                const payload = JSON.parse(String(init.body)) as { message: string };
+                state = { ...state, awakening: { ...state.awakening, custom_message: payload.message } };
+                return response(state);
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        expect(wrapper.get('.underground-awakening-gauge').attributes('data-full')).toBe('true');
+        expect(wrapper.get('.underground-awakening-gauge').text()).toContain('1000 / 1000');
+        expect(wrapper.get<HTMLProgressElement>('.underground-awakening-gauge progress').element.value).toBe(1000);
+        await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
+        expect(wrapper.get('.underground-awakening-settings').text()).toContain('無窮再演');
+        expect(wrapper.get('.underground-awakening-settings').text()).toContain('覚醒中に1度だけ使用可能');
+        expect(wrapper.get('.underground-awakening-settings').text()).toContain('通常actionを消費せず');
+        expect(wrapper.get<HTMLTextAreaElement>('#underground-awakening-message').element.value)
+            .toBe('<b>{secretary_name}</b>、限界突破！');
+        await wrapper.get('#underground-awakening-message').setValue('<script>表示秘書</script>覚醒');
+        await wrapper.get('.underground-awakening-settings .button').trigger('click');
+        await flushPromises();
+        const save = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/underground/awakening/message' && init?.method === 'PUT'
+        ));
+        expect(JSON.parse(String(save?.[1]?.body))).toEqual({
+            request_id: expect.any(String), message: '<script>表示秘書</script>覚醒',
+        });
+        expect(wrapper.find('.underground-awakening-settings script').exists()).toBe(false);
+
+        await wrapper.get('.underground-history li button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-awakening-event').text()).toContain('<img src=x onerror=alert(1)>');
+        expect(wrapper.find('.underground-awakening-event img').exists()).toBe(false);
+        expect(wrapper.get('.underground-awakening-event').text()).toContain('生命・武力・技巧・精神・敏捷が30%上昇した！');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('awakening_triggered');
+    });
+
     it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {
         const battle = {
             id: '11111111-1111-4111-8111-111111111111', context: 'tutorial',

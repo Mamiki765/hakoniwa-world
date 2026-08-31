@@ -336,6 +336,16 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-character-pane > section + section, .underground-action-pane > section + section { margin-top: .25rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .underground-growth-summary dl { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .35rem; }
 .underground-growth-summary dl div { padding: .45rem; text-align: center; }
+.underground-awakening-gauge { padding: .7rem .8rem; border: 1px solid #3d6fb4; border-radius: 10px; background: color-mix(in srgb, var(--surface) 88%, #3d6fb4 12%); }
+.underground-awakening-gauge > div { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.underground-awakening-gauge strong { font-variant-numeric: tabular-nums; }
+.underground-awakening-gauge progress { width: 100%; height: .8rem; overflow: hidden; border: 0; border-radius: 999px; appearance: none; background: var(--line); }
+.underground-awakening-gauge progress::-webkit-progress-bar { border-radius: 999px; background: var(--line); }
+.underground-awakening-gauge progress::-webkit-progress-value { border-radius: 999px; background: #3d6fb4; }
+.underground-awakening-gauge progress::-moz-progress-bar { background: #3d6fb4; }
+.underground-awakening-gauge[data-full="true"] { border-color: #c9a227; background: #fff7c7; }
+.underground-awakening-gauge[data-full="true"] progress::-webkit-progress-value { background: #c9a227; }
+.underground-awakening-gauge[data-full="true"] progress::-moz-progress-bar { background: #c9a227; }
 .underground-equipment dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; margin: 0; }
 .underground-equipment dl div { padding: .55rem; border: 1px solid var(--line); }
 .underground-equipment dd { margin: .2rem 0 0; color: var(--muted); }
@@ -357,6 +367,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-round h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
 .underground-action-log { display: grid; gap: .45rem; margin: 0; padding-left: 1.45rem; }
 .underground-action-log li { line-height: 1.65; }
+.underground-action-log .underground-awakening-event { padding: .75rem .9rem; border: 2px solid #c9a227; background: #fff7c7; color: #326b38; font-weight: 900; white-space: pre-line; }
 .underground-action-log .underground-boss-warning { padding: .65rem .8rem; border: 2px solid var(--danger); background: var(--danger-surface); color: var(--danger-strong); font-weight: 900; }
 .underground-round-state { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin-top: .8rem; padding: .7rem .8rem; background: var(--paper-deep); color: var(--muted); font-size: .84rem; }
 .underground-round-state p { margin: 0; }
@@ -432,6 +443,9 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-node-unavailable { color: var(--coral-dark); font-weight: 700; }
 .underground-node-complete { color: #398258; font-weight: 800; }
 .underground-active-loadout { display: grid; gap: .8rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.underground-awakening-settings { display: grid; gap: .75rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.underground-awakening-settings > header { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+.underground-awakening-settings textarea { width: 100%; resize: vertical; }
 .underground-loadout-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .55rem; }
 .underground-loadout-grid label { display: grid; gap: .3rem; min-width: 0; font-weight: 800; }
 .underground-loadout-grid select { width: 100%; min-width: 0; }

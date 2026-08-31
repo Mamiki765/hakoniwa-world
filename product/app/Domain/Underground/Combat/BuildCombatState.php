@@ -38,8 +38,37 @@ final class BuildCombatState
 
     public int $controlResistanceRounds = 0;
 
-    /** @var array<string, bool|int> */
+    /** @var array<string, bool|int|string> */
     public array $flags = [];
+
+    public bool $awakeningUnlocked = false;
+
+    public int $awakeningGauge = 0;
+
+    public int $awakeningGaugeBefore = 0;
+
+    public int $awakeningGaugeGained = 0;
+
+    public bool $awakened = false;
+
+    public ?string $awakeningMessage = null;
+
+    public ?string $awakeningTechniqueKey = null;
+
+    public bool $awakeningTechniqueUsed = false;
+
+    public int $awakeningGuardRoundsRemaining = 0;
+
+    /** @var array<string, int> */
+    public array $normalStats;
+
+    public int $normalMaxHp;
+
+    public int $equipmentMaxHp = 0;
+
+    public int $equipmentPhysicalDefense = 0;
+
+    public int $equipmentMagicalDefense = 0;
 
     /**
      * @param  'player'|'enemy'  $side
@@ -55,10 +84,10 @@ final class BuildCombatState
         public readonly string $key,
         public readonly string $label,
         public readonly bool $boss,
-        public readonly int $maxHp,
-        public readonly array $stats,
-        public readonly int $physicalDefense,
-        public readonly int $magicalDefense,
+        public int $maxHp,
+        public array $stats,
+        public int $physicalDefense,
+        public int $magicalDefense,
         public readonly int $defenseReference,
         public readonly int $weaponPower,
         public readonly array $skills,
@@ -68,6 +97,8 @@ final class BuildCombatState
         public readonly array $normalAttack,
     ) {
         $this->hp = $maxHp;
+        $this->normalMaxHp = $maxHp;
+        $this->normalStats = $stats;
         foreach ($skills as $skill) {
             $this->cooldowns[$skill] = 0;
         }
