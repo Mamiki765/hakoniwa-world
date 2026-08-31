@@ -44,6 +44,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertSame($first, $second);
         $this->assertTrue($first['result']['cleared']);
         $this->assertCount(10, $first['result']['battles']);
+        $this->assertSame($first['result']['battles'][9]['remaining_hp'], $first['result']['final_hp']);
         $maxHp = $first['result']['build']['max_hp'];
         $nominalHeal = intdiv($maxHp * 3000, 10_000);
         foreach ($first['result']['battles'] as $index => $battle) {
@@ -169,6 +170,53 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertCount(1, $result['battles']);
         $this->assertFalse($result['continued_after_failure']);
         $this->assertSame(0, $result['battles'][0]['interbattle_heal']);
+        $this->assertSame('defeat', $result['failure_result']);
+        $this->assertSame(0, $result['final_hp']);
+    }
+
+    public function test_trial_withdrawal_preserves_remaining_hp_in_the_all_trial_average(): void
+    {
+        [, $manifest] = $this->trialManifest();
+        $firstEnemyKey = $manifest['battle_sequence'][0];
+        $manifest['enemies'][$firstEnemyKey]['max_hp'] = 1_000_000;
+        $manifest['enemies'][$firstEnemyKey]['physical_defense'] = 0;
+        $manifest['enemies'][$firstEnemyKey]['magical_defense'] = 0;
+        $manifest['enemies'][$firstEnemyKey]['weapon_power'] = 1;
+        $manifest['enemies'][$firstEnemyKey]['normal_attack'] = [
+            'type' => 'damage', 'category' => 'physical', 'potency_bps' => 0,
+            'stat_coefficients' => [], 'weapon_coefficient_bps' => 0, 'fixed' => 1,
+            'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => false, 'hits' => 1,
+        ];
+        $manifest['enemies'][$firstEnemyKey]['skills'] = [];
+        $manifest['enemies'][$firstEnemyKey]['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $manifest['enemies'][$firstEnemyKey]['modifiers'] = [];
+        $contents = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $simulator = $this->trialSimulator();
+        $result = $simulator->replay($manifest, 'martial_red:lv30:heal2000', 41)['result'];
+
+        $this->assertFalse($result['cleared']);
+        $this->assertSame('stalemate', $result['failure_result']);
+        $this->assertSame(1, $result['stalemate_count']);
+        $this->assertGreaterThan(0, $result['battles'][0]['remaining_hp']);
+        $this->assertSame($result['battles'][0]['remaining_hp'], $result['final_hp']);
+
+        $scenario = $simulator->run(
+            $manifest,
+            $contents,
+            hash('sha256', $contents),
+            'config/underground/balance/trial1-v1.json',
+            str_repeat('d', 40),
+            false,
+            41,
+            1,
+            'martial_red:lv30:heal2000',
+        )['scenarios'][0];
+
+        $this->assertSame(0, $scenario['clear_count']);
+        $this->assertSame(1, $scenario['stalemate_count']);
+        $this->assertSame((float) $result['final_hp'], $scenario['trial_end_average_hp_all_trials']);
     }
 
     public function test_alpha_v1_small_smoke_reports_build_damage_mp_scale_and_zero_abnormal_states(): void

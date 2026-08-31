@@ -387,6 +387,7 @@ final readonly class UndergroundTrialBalanceSimulator
         $cleared = count($battles) === 10
             && $failedBattle === null
             && $battles[9]['winner'] === 'player';
+        $finalBattle = $battles[count($battles) - 1];
 
         return [
             'seed' => $seed,
@@ -396,7 +397,7 @@ final readonly class UndergroundTrialBalanceSimulator
             'boss_cleared' => $cleared,
             'failed_battle' => $failedBattle,
             'failure_result' => $failureResult,
-            'final_hp' => $cleared ? $battles[9]['remaining_hp'] : 0,
+            'final_hp' => $finalBattle['winner'] === 'enemy' ? 0 : $finalBattle['remaining_hp'],
             'total_rounds' => $totalRounds,
             'stalemate_count' => $stalemates,
             'abnormal_result_count' => $abnormalResults,
