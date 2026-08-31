@@ -20,6 +20,7 @@ use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundProfile;
+use App\Models\UndergroundSkillAllocation;
 use App\Models\UndergroundTrialProgress;
 use App\Models\UndergroundTrialRun;
 use App\Models\User;
@@ -43,8 +44,8 @@ final class UndergroundRuntimeTest extends TestCase
     {
         Carbon::setTestNow('2026-08-29 09:00:00+09:00');
         [$user, $secretary] = $this->secretaryUser();
-        [$runtime, $combat] = $this->runtimeWithOutcomes(['player', 'player', 'player']);
-        $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary)->refresh();
+        $profile = $this->unlockExploration($secretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player', 'player', 'player']);
 
         $this->assertSame([1, 0, 0], [$profile->combat_level, $profile->combat_xp, $profile->shard_balance]);
         $run = $runtime->startTrial($user, 'trial_01');
@@ -57,14 +58,15 @@ final class UndergroundRuntimeTest extends TestCase
         $profile = $profile->refresh();
         $this->assertSame([2, 125, 38], [$profile->combat_level, $profile->combat_xp, $profile->shard_balance]);
         $this->assertSame(4, $run->refresh()->next_battle_index);
-        $this->assertSame(3, UndergroundBattle::query()->count());
-        $this->assertSame(3, UndergroundBattleLog::query()->count());
+        $this->assertSame(3, UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)->count());
+        $this->assertSame(3, UndergroundBattleLog::query()
+            ->whereHas('battle', fn ($query) => $query
+                ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL))->count());
         $this->assertSame([100, 100, 100], array_column($combat->calls, 'max_rounds'));
-        $this->assertSame('damage', $first->log?->actions[0]['effect']);
-        $this->assertArrayNotHasKey('reason', $first->log?->actions[0] ?? []);
+        $this->assertSame('damage', $first->log?->actions[0]['actions'][0]['type']);
         $this->assertTrue($first->log?->expires_at->equalTo($first->finished_at->addHour()) ?? false);
         $this->assertSame(100, $third->snapshot['max_rounds']);
-        $this->assertSame(112, $third->snapshot['actor']['attack']);
         $this->assertSame(40, $third->snapshot['encounter']['xp_reward']);
         $this->assertSame(100, $third->snapshot['xp_curve']['first_level_cost']);
         $this->assertTrue($profile->next_battle_at?->equalTo($third->finished_at->addSeconds(10)) ?? false);
@@ -239,7 +241,8 @@ final class UndergroundRuntimeTest extends TestCase
     public function test_trial_progress_resumes_and_explicit_withdrawal_restarts_at_battle_one(): void
     {
         Carbon::setTestNow('2026-08-29 11:00:00+09:00');
-        [$user] = $this->secretaryUser();
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
         [$runtime] = $this->runtimeWithOutcomes(['player']);
         $run = $runtime->startTrial($user, 'trial_01');
 
@@ -247,12 +250,17 @@ final class UndergroundRuntimeTest extends TestCase
         $resumed = app(UndergroundRuntimeService::class)->activeTrial($user);
 
         $this->assertSame($run->run_key, $resumed?->run_key);
-        $this->assertSame('trial-01-v1', $resumed?->trial_content_identity);
+        $this->assertSame('secretary-underground-trial-01-v1', $resumed?->trial_content_identity);
         $this->assertSame(2, $resumed?->next_battle_index);
         $withdrawn = $runtime->withdrawTrial($user, $run->run_key);
         $this->assertSame(UndergroundTrialRun::STATUS_WITHDRAWN, $withdrawn->status);
         $this->assertSame(1, $withdrawn->next_battle_index);
         $this->assertSame($withdrawn->id, $runtime->withdrawTrial($user, $run->run_key)->id);
+        $this->assertNull(UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->first_cleared_at);
+        $this->assertSame([20, 20], [
+            UndergroundProfile::query()->sole()->skill_points_total,
+            UndergroundProfile::query()->sole()->skill_points_unspent,
+        ]);
 
         $restarted = $runtime->startTrial($user, 'trial_01');
         $this->assertNotSame($run->run_key, $restarted->run_key);
@@ -262,7 +270,8 @@ final class UndergroundRuntimeTest extends TestCase
     public function test_active_trial_resets_only_for_its_own_content_identity_without_permanent_loss(): void
     {
         Carbon::setTestNow('2026-08-29 11:30:00+09:00');
-        [$user] = $this->secretaryUser();
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
         [$runtime] = $this->runtimeWithOutcomes(['player']);
         $run = $runtime->startTrial($user, 'trial_01');
         $profile = UndergroundProfile::query()->sole();
@@ -277,16 +286,10 @@ final class UndergroundRuntimeTest extends TestCase
         UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->update([
             'first_cleared_at' => $firstClearedAt,
         ]);
-        $trialTwoUnlockedAt = Carbon::now()->subHour();
-        UndergroundTrialProgress::query()->create([
-            'underground_profile_id' => $profile->id,
-            'trial_key' => 'trial_02',
-            'unlocked_at' => $trialTwoUnlockedAt,
-        ]);
         $run->update(['next_battle_index' => 6]);
 
         $sameContent = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'trial-01-v1', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v1', 6], [
             $sameContent?->run_key,
             $sameContent?->trial_content_identity,
             $sameContent?->next_battle_index,
@@ -294,7 +297,7 @@ final class UndergroundRuntimeTest extends TestCase
 
         config(['hakoniwa.application_version' => '3.0.0-alpha.2']);
         $applicationOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'trial-01-v1', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v1', 6], [
             $applicationOnly?->run_key,
             $applicationOnly?->trial_content_identity,
             $applicationOnly?->next_battle_index,
@@ -302,18 +305,10 @@ final class UndergroundRuntimeTest extends TestCase
 
         config(['underground-runtime.runtime_identity' => 'secretary-underground-runtime-alpha-v1']);
         $runtimeOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'trial-01-v1', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v1', 6], [
             $runtimeOnly?->run_key,
             $runtimeOnly?->trial_content_identity,
             $runtimeOnly?->next_battle_index,
-        ]);
-
-        config(['underground-runtime.trials.trial_02.content_identity' => 'trial-02-v2']);
-        $otherTrialOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'trial-01-v1', 6], [
-            $otherTrialOnly?->run_key,
-            $otherTrialOnly?->trial_content_identity,
-            $otherTrialOnly?->next_battle_index,
         ]);
 
         config(['underground-runtime.trials.trial_01.content_identity' => 'trial-01-v2']);
@@ -334,10 +329,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertTrue($firstClearedAt->equalTo(
             UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->first_cleared_at,
         ));
-        $this->assertTrue($trialTwoUnlockedAt->equalTo(
-            UndergroundTrialProgress::query()->where('trial_key', 'trial_02')->sole()->unlocked_at,
-        ));
-        $this->assertSame(2, UndergroundTrialProgress::query()->count());
+        $this->assertSame(1, UndergroundTrialProgress::query()->count());
 
         $continued = $runtime->startTrial($user, 'trial_01');
         $this->assertSame([$run->run_key, 'trial-01-v2', 1], [
@@ -346,7 +338,7 @@ final class UndergroundRuntimeTest extends TestCase
             $continued->next_battle_index,
         ]);
         $battle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
-        $this->assertSame('cave_crawler', $battle->encounter_key);
+        $this->assertSame('trial_rat_vanguard', $battle->encounter_key);
         $this->assertSame(2, $run->refresh()->next_battle_index);
         $this->assertSame('trial-01-v2', $run->trial_content_identity);
     }
@@ -356,7 +348,7 @@ final class UndergroundRuntimeTest extends TestCase
         Carbon::setTestNow('2026-08-29 12:00:00+09:00');
         [$user, $secretary] = $this->secretaryUser();
         [$runtime] = $this->runtimeWithOutcomes(['enemy']);
-        $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+        $profile = $this->unlockExploration($secretary);
         $profile->update(['combat_xp' => 25, 'shard_balance' => 101]);
         $run = $runtime->startTrial($user, 'trial_01');
         $run->update(['next_battle_index' => 8]);
@@ -369,6 +361,9 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(UndergroundTrialRun::STATUS_DEFEATED, $run->refresh()->status);
         $this->assertSame(1, $run->next_battle_index);
         $this->assertNull($runtime->activeTrial($user));
+        $this->assertNull(UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->first_cleared_at);
+        $this->assertNull($runtime->projectTrialBattle($battle)['first_clear_story']);
+        $this->assertSame([20, 20], [$profile->skill_points_total, $profile->skill_points_unspent]);
         $this->assertSame(1, $runtime->startTrial($user, 'trial_01')->next_battle_index);
     }
 
@@ -407,37 +402,130 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(1, $run->next_battle_index);
         $this->assertNull($runtime->activeTrial($user));
         $this->assertNotNull($profile->next_battle_at);
+        $this->assertNull(UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->first_cleared_at);
+        $this->assertNull($runtime->projectTrialBattle($battle)['first_clear_story']);
+        $this->assertSame([20, 20], [$profile->skill_points_total, $profile->skill_points_unspent]);
         $this->assertSame(1, $runtime->startTrial($user, 'trial_01')->next_battle_index);
     }
 
-    public function test_trial_first_clear_unlocks_one_layer_and_next_trial_once(): void
+    public function test_trial_first_clear_rewards_exactly_once_and_repeat_remains_available(): void
     {
         Carbon::setTestNow('2026-08-29 14:00:00+09:00');
-        [$user] = $this->secretaryUser();
-        [$runtime] = $this->runtimeWithOutcomes(['player', 'player']);
-        $run = $runtime->startTrial($user, 'trial_01');
-        $run->update(['next_battle_index' => 10]);
-
-        $runtime->fightTrial($user, $run->run_key, (string) Str::uuid());
-        $profile = UndergroundProfile::query()->sole();
-        $firstClear = UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->first_cleared_at;
-        $this->assertSame([1, 4], [$profile->unlocked_area_layers, $profile->facilitySlotCapacity()]);
-        $this->assertDatabaseHas('underground_trial_progress', [
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        $profile->update(['skill_points_total' => 20, 'skill_points_unspent' => 1]);
+        UndergroundSkillAllocation::query()->create([
             'underground_profile_id' => $profile->id,
-            'trial_key' => 'trial_02',
+            'node_key' => 'martial_precision_cut',
+            'rank' => 1,
+            'active_slot' => 1,
         ]);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(array_fill(0, 13, 'player'));
+        $run = $runtime->startTrial($user, 'trial_01');
+        $bossRequestId = null;
+        $firstProjection = null;
+        $firstClearProjection = null;
+        for ($battleIndex = 1; $battleIndex <= 10; $battleIndex++) {
+            if ($battleIndex > 1) {
+                Carbon::setTestNow(Carbon::now()->addSeconds(10));
+            }
+            $requestId = (string) Str::uuid();
+            if ($battleIndex === 10) {
+                config(['underground-runtime.combat.battle_log_retention_hours' => 2]);
+                try {
+                    $runtime->fightTrial($user, $run->run_key, $requestId);
+                    $this->fail('Trial settlement should roll back when its result cannot be persisted.');
+                } catch (RuntimeException $exception) {
+                    $this->assertSame('Underground battle log retention must be exactly one hour.', $exception->getMessage());
+                } finally {
+                    config(['underground-runtime.combat.battle_log_retention_hours' => 1]);
+                }
+                $this->assertSame([430, 136, 20, 1], [
+                    $profile->refresh()->combat_xp,
+                    $profile->shard_balance,
+                    $profile->skill_points_total,
+                    $profile->skill_points_unspent,
+                ]);
+                $this->assertNull(UndergroundTrialProgress::query()
+                    ->where('trial_key', 'trial_01')->sole()->first_cleared_at);
+                $this->assertSame([UndergroundTrialRun::STATUS_ACTIVE, 10], [
+                    $run->refresh()->status,
+                    $run->next_battle_index,
+                ]);
+                $this->assertDatabaseMissing('underground_battles', ['request_id' => $requestId]);
+            }
+            $result = $runtime->fightTrial($user, $run->run_key, $requestId);
+            if ($battleIndex === 1) {
+                $firstProjection = $runtime->projectTrialBattle($result['battle']);
+            }
+            if ($battleIndex === 10) {
+                $bossRequestId = $requestId;
+                $firstClearProjection = $runtime->projectTrialBattle($result['battle']);
+            }
+        }
+
+        $profile->refresh();
+        $firstClear = UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->first_cleared_at;
+        $this->assertSame([800, 205, 60, 41, 0], [
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+            $profile->unlocked_area_layers,
+        ]);
+        $this->assertNotNull($firstClear);
+        $this->assertSame(1, UndergroundSkillAllocation::query()->count());
+        $this->assertSame(800, (int) UndergroundBattle::query()
+            ->where('trial_run_key', $run->run_key)->sum('xp_awarded'));
+        $this->assertSame(205, (int) UndergroundBattle::query()
+            ->where('trial_run_key', $run->run_key)->sum('shard_delta'));
+        $this->assertSame(
+            "　崩れかけた石壁の向こうに広がっていた不思議な空間。\n"
+            ."　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n"
+            .'　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
+            $firstProjection['challenge_intro'],
+        );
+        $this->assertNull($firstProjection['first_clear_story']);
+        $this->assertSame('『王女が逃げた、王女を探せ』', $firstClearProjection['first_clear_story']['title']);
+        $this->assertSame([
+            "{$secretary->name}は一つ目の封印の地を制覇した。",
+            'SPを40入手した。',
+        ], $firstClearProjection['first_clear_story']['system_messages']);
+        $this->assertStringStartsWith('　ワイバーンの肉体が自らの魔力に耐え切れず', $firstClearProjection['first_clear_story']['body']);
+        $this->assertStringEndsWith('「ただし、あなたがその力に溺れないという決意を見せてくれたらの話ですけれど、ね？」', $firstClearProjection['first_clear_story']['body']);
+
+        $this->assertIsString($bossRequestId);
+        $duplicate = $runtime->fightTrial($user, $run->run_key, $bossRequestId);
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame([800, 205, 60, 41], [
+            $profile->refresh()->combat_xp,
+            $profile->shard_balance,
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+        ]);
+        $this->assertSame(11, count($combat->calls));
 
         $repeat = $runtime->startTrial($user, 'trial_01');
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $repeatFirst = $runtime->fightTrial($user, $repeat->run_key, (string) Str::uuid())['battle'];
         $repeat->update(['next_battle_index' => 10]);
         Carbon::setTestNow(Carbon::now()->addSeconds(10));
-        $runtime->fightTrial($user, $repeat->run_key, (string) Str::uuid());
+        $repeatClear = $runtime->fightTrial($user, $repeat->run_key, (string) Str::uuid())['battle'];
 
-        $this->assertSame(1, $profile->refresh()->unlocked_area_layers);
+        $this->assertSame([1210, 286, 60, 41, 0], [
+            $profile->refresh()->combat_xp,
+            $profile->shard_balance,
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+            $profile->unlocked_area_layers,
+        ]);
         $this->assertTrue($firstClear?->equalTo(
             UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->first_cleared_at,
         ) ?? false);
-        $this->assertSame(1, UndergroundTrialProgress::query()->where('trial_key', 'trial_02')->count());
-        $this->assertSame('trial_02', $runtime->startTrial($user, 'trial_02')->trial_key);
+        $this->assertNull($runtime->projectTrialBattle($repeatFirst)['challenge_intro']);
+        $this->assertNull($runtime->projectTrialBattle($repeatClear)['first_clear_story']);
+        $this->assertSame(0, UndergroundTrialProgress::query()->where('trial_key', 'trial_02')->count());
+        $this->assertSame(13, count($combat->calls));
     }
 
     public function test_expired_log_pruning_preserves_history_idempotency_and_user_ownership(): void

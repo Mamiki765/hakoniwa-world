@@ -619,6 +619,7 @@ final readonly class UndergroundIntroService
                 UndergroundBattle::ACTIVITY_STORY,
                 UndergroundBattle::ACTIVITY_PLAYTEST,
                 UndergroundBattle::ACTIVITY_EXPLORATION,
+                UndergroundBattle::ACTIVITY_TRIAL,
             ])
             ->withExists([
                 'log as active_log_exists' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
@@ -649,6 +650,7 @@ final readonly class UndergroundIntroService
                     UndergroundBattle::ACTIVITY_STORY,
                     UndergroundBattle::ACTIVITY_PLAYTEST,
                     UndergroundBattle::ACTIVITY_EXPLORATION,
+                    UndergroundBattle::ACTIVITY_TRIAL,
                 ])
                 ->with(['log' => fn ($query) => $query->where('expires_at', '>', Carbon::now())])
                 ->first()
@@ -1200,6 +1202,11 @@ final readonly class UndergroundIntroService
                 && config('app.env') !== 'production'
                     ? $this->alphaV1Catalog->playtestOptions($profile->growth_path_key)
                     : null,
+            'trial' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
+                && $profile instanceof UndergroundProfile
+                && $profile->growth_path_key !== null
+                    ? $this->runtime->projectTrialState($profile)
+                    : null,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
         ];
     }
@@ -1234,6 +1241,9 @@ final readonly class UndergroundIntroService
         }
         if ($battle->activity_type === UndergroundBattle::ACTIVITY_EXPLORATION) {
             return $this->runtime->projectExplorationBattle($battle, $withActions);
+        }
+        if ($battle->activity_type === UndergroundBattle::ACTIVITY_TRIAL) {
+            return $this->runtime->projectTrialBattle($battle, $withActions);
         }
         $snapshot = $battle->snapshot;
         $displayName = $snapshot['encounter_display_name'] ?? null;
