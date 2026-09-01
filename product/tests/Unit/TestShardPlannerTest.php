@@ -150,21 +150,24 @@ final class TestShardPlannerTest extends TestCase
         $scripts = $composer['scripts'] ?? [];
 
         $this->assertSame(['@test:all'], $scripts['test']);
+        foreach (['test:surface', 'test:underground', 'test:all', 'test:parallel'] as $script) {
+            $this->assertSame('Composer\\Config::disableProcessTimeout', $scripts[$script][0]);
+        }
         $this->assertSame(
             '@php -d memory_limit=512M vendor/bin/phpunit tests/Unit tests/Feature',
-            $scripts['test:surface'][1],
+            $scripts['test:surface'][2],
         );
         $this->assertSame(
             '@php -d memory_limit=512M vendor/bin/phpunit tests/Underground',
-            $scripts['test:underground'][1],
+            $scripts['test:underground'][2],
         );
         $this->assertSame(
             '@php -d memory_limit=512M vendor/bin/phpunit',
-            $scripts['test:all'][1],
+            $scripts['test:all'][2],
         );
-        $this->assertStringNotContainsString('Underground', $scripts['test:surface'][1]);
-        $this->assertStringNotContainsString('tests/Unit', $scripts['test:underground'][1]);
-        $this->assertStringNotContainsString('tests/Feature', $scripts['test:underground'][1]);
+        $this->assertStringNotContainsString('Underground', $scripts['test:surface'][2]);
+        $this->assertStringNotContainsString('tests/Unit', $scripts['test:underground'][2]);
+        $this->assertStringNotContainsString('tests/Feature', $scripts['test:underground'][2]);
     }
 
     private function createFixtureProject(): string

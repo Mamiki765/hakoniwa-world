@@ -25,7 +25,6 @@ use App\Domain\Secretary\SecretaryRingFinanceBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
-use App\Domain\Underground\Facility\UndergroundCommandCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
@@ -40,7 +39,6 @@ use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
-use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
@@ -74,7 +72,7 @@ final class DomesticCommandExecutor
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
         private readonly NationProtectionPolicy $nationProtection,
         private readonly UndergroundFacilityService $undergroundFacilities,
-        private readonly UndergroundCommandCatalog $undergroundCommands,
+        private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
     ) {}
 
@@ -140,7 +138,7 @@ final class DomesticCommandExecutor
                     continue;
                 }
 
-                $definition = $this->definitionForItem($item);
+                $definition = $this->queuedCommandDefinitions->resolve($item);
                 if ($item->target_context === 'underground_slot') {
                     if (! $definition instanceof UndergroundCommandDefinition) {
                         throw new DomainException('Underground queue item definition is invalid.');
@@ -338,7 +336,7 @@ final class DomesticCommandExecutor
         NationCommandQueue $queue,
         NationCommandQueueItem $item,
     ): ?array {
-        $definition = $this->definitionForItem($item);
+        $definition = $this->queuedCommandDefinitions->resolve($item);
         if ($definition instanceof CommandDefinition
             && $definition->ruleset_version_id !== $nation->world()->value('ruleset_version_id')) {
             return [
@@ -1871,7 +1869,7 @@ final class DomesticCommandExecutor
         CommandFailureReason $reason,
         array $observed,
     ): void {
-        $definition = $this->definitionForItem($item);
+        $definition = $this->queuedCommandDefinitions->resolve($item);
         $metadata = [
             'nation_id' => $nation->id,
             'nation_name' => $nation->name,
@@ -1915,33 +1913,6 @@ final class DomesticCommandExecutor
             'command_key' => $definition->key,
             'reason' => $reason->value,
         ]);
-    }
-
-    private function definitionForItem(
-        NationCommandQueueItem $item,
-    ): CommandDefinition|UndergroundCommandDefinition {
-        if ($item->target_context === 'underground_slot') {
-            if (! is_string($item->underground_command_key) || $item->command_definition_id !== null) {
-                throw new DomainException('Underground queue item command identity is invalid.');
-            }
-
-            $ruleset = $item->relationLoaded('requestRulesetVersion')
-                ? $item->requestRulesetVersion
-                : $item->requestRulesetVersion()->first();
-            if (! $ruleset instanceof RulesetVersion) {
-                throw new DomainException('Underground queue item Ruleset provenance is missing.');
-            }
-
-            return $this->undergroundCommands->get($ruleset->settings, $item->underground_command_key);
-        }
-        $definition = $item->relationLoaded('definition')
-            ? $item->definition
-            : $item->definition()->first();
-        if (! $definition instanceof CommandDefinition || $item->underground_command_key !== null) {
-            throw new DomainException('Surface queue item command identity is invalid.');
-        }
-
-        return $definition;
     }
 
     /**

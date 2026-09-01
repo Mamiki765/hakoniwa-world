@@ -16,7 +16,7 @@ The facility feature does not add a second scheduler, a second missile engine, U
 
 Surface Ruleset v19 is the in-development Ruleset for release/3.1.0. It may still be revised as needed while release/3.1.0 is in development and freezes only when 3.1.0 is released to main/production.
 
-This PR adds Underground facility and command definitions to the in-development v19 payload and does not add v20. They remain in the dedicated `underground_facility_development` section and are deliberately absent from Surface `command_definitions`. A queued Underground item has no Surface `command_definition_id`; its existing `request_ruleset_version_id` and `underground_command_key` reproduce the exact Underground definition used at reservation. This PR changes v19 only because v19 has not yet reached main/production; v19 freezes when 3.1.0 is released.
+The final 3.1.0 contract keeps Underground facility and command definitions in the in-development v19 payload and does not add v20. They remain in the dedicated `underground_facility_development` section and are deliberately absent from Surface `command_definitions`. A queued Underground item has no Surface `command_definition_id`; its existing `request_ruleset_version_id` and `underground_command_key` reproduce the exact Underground definition used at reservation. v19 may be completed only because it has not yet reached main/production; it freezes when 3.1.0 is released.
 
 This separation is enforced on both boundaries:
 

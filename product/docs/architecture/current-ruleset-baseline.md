@@ -54,11 +54,12 @@ Ruleset and command-definition snapshots rather than historical PHP.
 
 ## Installation and forward migration
 
-The schema dump is the canonical final 3.0.0 schema and migration ledger. A fresh install
-loads that schema directly, then the forward 3.1.0 migrations publish current v19 and create
-the Nation-owned Underground facility schema with a non-null `ruleset_version_id`; no
-Underground or 3D map schema is created. The exact v18 source remains in code as the immutable
-supported upgrade input; a fresh database does not need a historical v18 catalog row.
+The schema dump is the canonical final 3.0.0 schema and 55-entry migration ledger. A fresh
+install loads that schema directly, then the single forward 3.1.0 release migration creates
+the final Awakening and Nation-owned Underground facility schema and publishes final v19.
+The facility schema has a non-null `ruleset_version_id`; no Underground MapCell or 3D map
+schema is created. The exact v18 source remains in code as the immutable supported upgrade input; a
+fresh database does not need a historical v18 catalog row.
 
 The supported production application upgrade from ver 2.8.0 / v18 to 3.0.0 uses the
 forward-only 3.0.0 migration. It rejects an absent v18 ledger, any retired Underground alpha
@@ -68,15 +69,20 @@ battle/history, STP/SP/Skill Tree, equipment ownership, request-idempotency, con
 index, and foreign-key schema directly. Existing World, Nation, player, command, Turn,
 event, audit, and surface Ruleset data are not reset or reinterpreted.
 
-The supported 3.1.0 gameplay upgrade is exact v18 to v19. It rebinds current queued commands
-and live definition references by stable key, switches the locked World atomically, and
-reconciles the development-only Trial 1 inconsistency by raising only profiles with a first
-clear and zero unlocked layers to layer 1. Existing values above layer 1 are never reduced,
-and historical commands, events, turns, battles, and Ruleset snapshots are preserved.
-The subsequent development-only forward migration upgrades the earlier PR116 facility schema
-and v19 payload by backfilling each facility row to the exact v19 definition identity. Queued
-Underground commands continue to resolve through their existing request Ruleset provenance,
-so future definitions cannot reinterpret an existing queue item or constructed facility.
+The supported 3.1.0 application upgrade starts from the exact 3.0.0 schema and v18 World and
+runs one forward migration. That migration creates the final schema directly, publishes the
+complete v19 payload once, rebinds current queued Surface commands and live definition
+references by stable key, switches the locked World atomically, and reconciles the Trial 1
+inconsistency by raising only profiles with a first clear and zero unlocked layers to layer 1.
+Existing values above layer 1 are never reduced, and historical commands, events, turns,
+battles, Ruleset snapshots, and other business data are preserved. Queued Underground commands
+resolve through their existing request Ruleset provenance, so the current Ruleset cannot
+reinterpret a reserved command or constructed facility.
+
+The four migrations used while PR112 through PR116 were under development were never applied
+to production and are not supported upgrade ledgers. The canonical release migration does not
+replay a pre-versioned facility schema or rewrite an intermediate v19 payload before reaching
+the final state.
 
 The ten Underground migrations authored during the 3.0.0-alpha branch were never deployed to
 production and are retired from the final release. Their final schema is represented by the

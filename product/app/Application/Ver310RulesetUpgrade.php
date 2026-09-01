@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
-final readonly class Ver310TerritoryAbandonmentRulesetUpgrade
+final readonly class Ver310RulesetUpgrade
 {
     public const SOURCE_KEY = 'hakoniwa-2s-plus-v18';
 
