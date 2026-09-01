@@ -708,6 +708,16 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .command-workspace { display: contents; }
 .command-panel { grid-area: command; min-width: 0; border-right: 1px solid var(--line); background: var(--paper); overflow: hidden; }
 .command-panel-body { height: 100%; overflow: auto; padding: 16px; }
+.underground-target-summary {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 2px solid #9b6b35;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--paper) 84%, #9b6b35);
+}
+.underground-target-summary h3,
+.underground-target-summary p { margin: 0; }
+.underground-target-summary h3 { margin-block: 4px; }
 .plan-panel { grid-area: plan; min-width: 0; border-left: 1px solid var(--line); background: var(--paper); overflow: hidden; }
 .plan-panel-body { position: relative; display: flex; flex-direction: column; height: 100%; overflow: hidden; padding: 14px 12px; }
 .map-column { grid-area: map; min-width: 0; min-height: 0; }

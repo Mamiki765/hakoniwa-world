@@ -1,8 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { AssetDescriptor, UndergroundSurfaceMap, UndergroundSurfaceMapSlot } from '../types';
+import type {
+    AssetDescriptor,
+    UndergroundFacilityTarget,
+    UndergroundSurfaceMap,
+    UndergroundSurfaceMapSlot,
+} from '../types';
 
-const props = defineProps<{ map: UndergroundSurfaceMap }>();
+const props = defineProps<{
+    map: UndergroundSurfaceMap;
+    selected: UndergroundFacilityTarget | null;
+}>();
+const emit = defineEmits<{
+    select: [target: UndergroundFacilityTarget];
+}>();
 
 const soilStyle = computed(() => props.map.assets.soil.available && props.map.assets.soil.url
     ? { backgroundImage: `url(${props.map.assets.soil.url})` }
@@ -12,6 +23,28 @@ function slotAsset(slot: UndergroundSurfaceMapSlot): AssetDescriptor {
     return slot.facility_key === null
         ? props.map.assets.road
         : props.map.assets[slot.facility_key];
+}
+
+function selectSlot(layer: number, slot: UndergroundSurfaceMapSlot): void {
+    emit('select', {
+        layer,
+        slot_index: slot.slot_index,
+        coordinate_label: slot.coordinate_label,
+        facility_key: slot.facility_key,
+    });
+}
+
+function isSelected(layer: number, slotIndex: number): boolean {
+    return props.selected?.layer === layer && props.selected.slot_index === slotIndex;
+}
+
+function facilityLabel(slot: UndergroundSurfaceMapSlot): string {
+    return slot.facility_key === null ? '空き施設枠' : {
+        underground_city: '地底都市',
+        underground_farm: '地底農場',
+        underground_factory: '地底工場',
+        underground_missile_base: '地底ミサイル基地',
+    }[slot.facility_key];
 }
 </script>
 
@@ -35,22 +68,40 @@ function slotAsset(slot: UndergroundSurfaceMapSlot): AssetDescriptor {
             <li v-for="layer in map.layers" :key="layer.layer" class="underground-layer">
                 <p><strong>地下{{ layer.layer }}層</strong> <span>z = {{ layer.z }}</span></p>
                 <div class="underground-layer-row" :style="soilStyle">
-                    <article v-for="slot in layer.slots.slice(0, 2)" :key="slot.slot_index" class="underground-slot">
-                        <img v-if="slotAsset(slot).available && slotAsset(slot).url" :src="slotAsset(slot).url ?? ''" alt="空き施設枠">
+                    <button
+                        v-for="slot in layer.slots.slice(0, 2)"
+                        :key="slot.slot_index"
+                        type="button"
+                        class="underground-slot"
+                        :class="{ selected: isSelected(layer.layer, slot.slot_index) }"
+                        :aria-pressed="isSelected(layer.layer, slot.slot_index)"
+                        :aria-label="`${facilityLabel(slot)} ${slot.coordinate_label}`"
+                        @click="selectSlot(layer.layer, slot)"
+                    >
+                        <img v-if="slotAsset(slot).available && slotAsset(slot).url" :src="slotAsset(slot).url ?? ''" :alt="facilityLabel(slot)">
                         <span v-else class="underground-slot-fallback" aria-hidden="true">{{ slotAsset(slot).fallback_label }}</span>
                         <strong>{{ slot.coordinate_label }}</strong>
                         <small>{{ slot.relative_label }}</small>
-                    </article>
+                    </button>
                     <div class="underground-ladder" aria-label="固定梯子（施設枠外）">
                         <img v-if="map.assets.ladder.available && map.assets.ladder.url" :src="map.assets.ladder.url" alt="梯子">
                         <span v-else aria-hidden="true">梯</span>
                     </div>
-                    <article v-for="slot in layer.slots.slice(2)" :key="slot.slot_index" class="underground-slot">
-                        <img v-if="slotAsset(slot).available && slotAsset(slot).url" :src="slotAsset(slot).url ?? ''" alt="空き施設枠">
+                    <button
+                        v-for="slot in layer.slots.slice(2)"
+                        :key="slot.slot_index"
+                        type="button"
+                        class="underground-slot"
+                        :class="{ selected: isSelected(layer.layer, slot.slot_index) }"
+                        :aria-pressed="isSelected(layer.layer, slot.slot_index)"
+                        :aria-label="`${facilityLabel(slot)} ${slot.coordinate_label}`"
+                        @click="selectSlot(layer.layer, slot)"
+                    >
+                        <img v-if="slotAsset(slot).available && slotAsset(slot).url" :src="slotAsset(slot).url ?? ''" :alt="facilityLabel(slot)">
                         <span v-else class="underground-slot-fallback" aria-hidden="true">{{ slotAsset(slot).fallback_label }}</span>
                         <strong>{{ slot.coordinate_label }}</strong>
                         <small>{{ slot.relative_label }}</small>
-                    </article>
+                    </button>
                 </div>
             </li>
         </ol>
@@ -102,6 +153,7 @@ function slotAsset(slot: UndergroundSurfaceMapSlot): AssetDescriptor {
     background-repeat: repeat;
 }
 .underground-slot {
+    appearance: none;
     min-width: 0;
     padding: 0.35rem 0.2rem;
     border: 1px solid #8b7b62;
@@ -109,6 +161,16 @@ function slotAsset(slot: UndergroundSurfaceMapSlot): AssetDescriptor {
     background: #6d665a;
     color: #fff;
     text-align: center;
+    cursor: pointer;
+}
+.underground-slot.selected {
+    border-color: #ffe07a;
+    outline: 0.2rem solid color-mix(in srgb, #ffe07a 72%, transparent);
+    background: #514224;
+}
+.underground-slot:focus-visible {
+    outline: 0.2rem solid #fff3b0;
+    outline-offset: 0.1rem;
 }
 .underground-slot img,
 .underground-slot-fallback { display: grid; place-items: center; width: 2rem; height: 2rem; margin: 0 auto 0.2rem; }

@@ -7,6 +7,7 @@ import type {
     CommandQueueItem,
     EffectivePlanSlot,
     MapCell,
+    UndergroundFacilityTarget,
 } from '../types';
 import CommandQueuePanel from './CommandQueuePanel.vue';
 import SalePolicyPanel from './SalePolicyPanel.vue';
@@ -30,7 +31,8 @@ const definition = (overrides: Partial<CommandDefinition> = {}): CommandDefiniti
 
 const item = (id: number, position: number, overrides: Partial<CommandQueueItem> = {}): CommandQueueItem => ({
     id, command_key: 'land_clear', command_name: '整地', queue_position: position,
-    target_x: 8, target_y: 7, quantity: 1, quantity_semantics: 'unused', quantity_label: null,
+    target_context: 'surface_cell', target_x: 8, target_y: 7, target_layer: null, target_slot_index: null,
+    quantity: 1, quantity_semantics: 'unused', quantity_label: null,
     parameters: {}, status: 'queued', queued_at: null,
     ...overrides,
 });
@@ -975,6 +977,75 @@ describe('command plan workspace', () => {
         await flushPromises();
         expect(wrapper.text()).toContain('最新コマンド');
         expect(wrapper.text()).not.toContain('古いコマンド');
+    });
+
+    it('keeps an Underground slot target isolated from Surface coordinates and commands', async () => {
+        const undergroundTarget: UndergroundFacilityTarget = {
+            layer: 2,
+            slot_index: 3,
+            coordinate_label: '(14, 8, -3)',
+            facility_key: null,
+        };
+        const undergroundCommand = definition({
+            key: 'build_underground_factory',
+            name: '地底工場建設',
+            target_type: 'underground_slot',
+            cost_money: 1000,
+        });
+        const queued = item(91, 1, {
+            command_key: undergroundCommand.key,
+            command_name: undergroundCommand.name,
+            target_context: 'underground_slot',
+            target_x: null,
+            target_y: null,
+            target_layer: 2,
+            target_slot_index: 3,
+        });
+        let serverQueue = commandQueue();
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                serverQueue = commandQueue(2, [queued]);
+                return jsonResponse({ queue: serverQueue, message: '登録しました。' }, 201);
+            }
+
+            return jsonResponse(String(input).includes('command-definitions')
+                ? catalog([undergroundCommand])
+                : serverQueue);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, {
+            props: { nationId: 1, mapSpaceId: 2, selected: null, selectedUnderground: undergroundTarget },
+        });
+        await flushPromises();
+
+        const definitionUrl = String(fetchMock.mock.calls.find(([input]) => String(input).includes('command-definitions'))?.[0]);
+        expect(definitionUrl).toContain('target_layer=2');
+        expect(definitionUrl).toContain('target_slot_index=3');
+        expect(definitionUrl).not.toContain('target_x');
+        expect(wrapper.get('.underground-target-summary').text()).toContain('地下2層・slot 3');
+        expect(wrapper.find('.bulk-actions').exists()).toBe(false);
+
+        await wrapper.get('.command-grid button').trigger('click');
+        await flushPromises();
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+            command_key: 'build_underground_factory',
+            target_x: null,
+            target_y: null,
+            target_layer: 2,
+            target_slot_index: 3,
+        });
+        expect(wrapper.get('.plan-list').text()).toContain('地下2層・slot 3');
+
+        await wrapper.setProps({ selected, selectedUnderground: null });
+        await flushPromises();
+        const latestDefinitionUrl = String(fetchMock.mock.calls
+            .filter(([input]) => String(input).includes('command-definitions')).at(-1)?.[0]);
+        expect(latestDefinitionUrl).toContain('target_x=8');
+        expect(latestDefinitionUrl).toContain('target_y=7');
+        expect(latestDefinitionUrl).not.toContain('target_layer');
+        expect(wrapper.find('.underground-target-summary').exists()).toBe(false);
+        expect(wrapper.find('.bulk-actions').exists()).toBe(true);
     });
 });
 

@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
@@ -9,6 +10,7 @@ use App\Domain\Nation\NationLifecyclePrepareStateResolver;
 use App\Models\FacilityDefinition;
 use App\Models\Nation;
 use App\Models\NationResource;
+use App\Models\NationUndergroundFacility;
 use App\Models\ResourceDefinition;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
@@ -22,6 +24,7 @@ final class NationResourceForecastProjection
         private readonly SecretaryTurnService $secretaries,
         private readonly FacilityCapacityService $facilityCapacities,
         private readonly NationLifecyclePrepareStateResolver $prepareState,
+        private readonly UndergroundFacilityBenefits $undergroundBenefits,
     ) {}
 
     /**
@@ -124,6 +127,18 @@ final class NationResourceForecastProjection
                 'cell_id' => (int) $row->id,
                 'key' => $definition->key,
                 'capacity' => $this->facilityCapacities->capacityPeople($definition, (int) $row->facility_scale),
+            ];
+        }
+        $undergroundFactoryCapacity = $this->undergroundBenefits->factoryCapacityPerFacility();
+        foreach (NationUndergroundFacility::query()
+            ->where('nation_id', $nation->id)
+            ->where('facility_key', 'underground_factory')
+            ->orderBy('id')->get(['id']) as $facility) {
+            $industrialFacilities[] = [
+                'cell_id' => (int) $facility->id,
+                'source_key' => 'underground:'.(int) $facility->id,
+                'key' => 'factory',
+                'capacity' => $undergroundFactoryCapacity,
             ];
         }
         $economy = $this->economy->calculate(

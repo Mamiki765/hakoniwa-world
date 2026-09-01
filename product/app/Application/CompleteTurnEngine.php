@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\InventorySalePlanner;
 use App\Domain\Economy\NationCapacityResolver;
@@ -75,6 +76,7 @@ final class CompleteTurnEngine
         private readonly NationLifecycleService $nationLifecycle,
         private readonly KarmaTurnService $karma,
         private readonly TradingPostTurnService $tradingPost,
+        private readonly UndergroundFacilityBenefits $undergroundBenefits,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -107,6 +109,9 @@ final class CompleteTurnEngine
         $lifecycleMetrics = $this->nationLifecycle->prepare($context);
         $nationIds = $this->orders->stableNationIds($context->world);
         $context->state->setStableNationIds($nationIds);
+        $context->state->setUndergroundFacilitySnapshots(
+            $this->undergroundBenefits->loadTurnSnapshots($nationIds),
+        );
         foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
             $context->state->setNationStartSummary($nationId, $record['summary']);
         }
@@ -121,6 +126,7 @@ final class CompleteTurnEngine
             'nations' => count($nationIds),
             'ruleset_validated' => true,
             'secretary_snapshots' => $secretarySnapshots,
+            'underground_facility_snapshots' => $context->state->undergroundFacilitySnapshotCount(),
             ...$lifecycleMetrics,
             ...$karmaMetrics,
         ];
@@ -141,6 +147,10 @@ final class CompleteTurnEngine
         foreach ($heartbeatMetrics as $key => $value) {
             $commandMetrics['dormancy_'.$key] = $value;
         }
+        $context->state->setUndergroundFacilitySnapshots(
+            $this->undergroundBenefits->loadTurnSnapshots($context->state->stableNationIds()),
+        );
+        $commandMetrics['underground_facility_snapshots'] = $context->state->undergroundFacilitySnapshotCount();
 
         return $commandMetrics;
     }
@@ -315,7 +325,7 @@ final class CompleteTurnEngine
      * @return array{
      *     population: int,
      *     farm_capacity: int,
-     *     industrial_facilities: list<array{cell_id: int, key: string, capacity: int}>,
+     *     industrial_facilities: list<array{cell_id: int, key: string, capacity: int, source_key?: string}>,
      *     oil_field_count: int,
      *     undersea_city_cells: list<MapCell>
      * }
@@ -362,6 +372,16 @@ final class CompleteTurnEngine
                     'capacity' => $capacity,
                 ];
             }
+        }
+        $farmCapacity += $this->undergroundBenefits->farmCapacityBonusForTurn($context->state, $nation->id);
+        $undergroundFactoryCapacity = $this->undergroundBenefits->factoryCapacityPerFacility();
+        foreach ($this->undergroundBenefits->factoryFacilitiesForTurn($context->state, $nation->id) as $facility) {
+            $industrialFacilities[] = [
+                'cell_id' => $facility['id'],
+                'source_key' => 'underground:'.$facility['id'],
+                'key' => 'factory',
+                'capacity' => $undergroundFactoryCapacity,
+            ];
         }
 
         return [
@@ -603,6 +623,18 @@ final class CompleteTurnEngine
             }
         }
 
+        $undergroundLaunch = $this->missiles->processUndergroundBases($context, $space);
+        $metrics['missile_shots_fired'] += $undergroundLaunch['shots_fired'];
+        $metrics['missile_money_spent'] += $undergroundLaunch['money_spent'];
+        $metrics['missile_meaningful_impacts'] += $undergroundLaunch['meaningful_impacts'];
+        $metrics['missile_ineffective_impacts'] += $undergroundLaunch['ineffective_impacts'];
+        foreach ($undergroundLaunch['changed_cell_ids'] as $changedCellId) {
+            $changed = $cellsById->get($changedCellId);
+            if ($changed instanceof MapCell) {
+                $changed->refresh()->load(['terrain', 'facility']);
+            }
+        }
+
         $launches = $this->missiles->finalize($context);
         $metrics['missile_launches'] = $launches['launches'];
         $metrics['missile_idle_counter_resets'] = $launches['idle_counter_resets'];
@@ -689,6 +721,12 @@ final class CompleteTurnEngine
             }
             $aggregates[$nationId]["{$key}_capacity"] +=
                 $cell->facility_scale * $cell->facility->scale_unit_people;
+        }
+        foreach ($nationIds as $nationId) {
+            $aggregates[$nationId]['farm_capacity'] +=
+                $this->undergroundBenefits->farmCapacityBonusForTurn($context->state, $nationId);
+            $aggregates[$nationId]['factory_capacity'] +=
+                $this->undergroundBenefits->factoryCapacityBonusForTurn($context->state, $nationId);
         }
         foreach ($aggregates as $nationId => $aggregate) {
             $context->state->setNationAggregate($nationId, $aggregate);
@@ -1545,6 +1583,10 @@ final class CompleteTurnEngine
         $capital = $cell->facility?->key === 'capital';
         $ordinaryMaximum = $capital
             ? $context->ruleset->settings['capital_growth_maximum_population']
+                + $this->undergroundBenefits->capitalMaximumBonusForTurn(
+                    $context->state,
+                    (int) $cell->owner_nation_id,
+                )
             : ($demographicsEnabled ? $this->demographics->naturalMaximum(
                 $context->ruleset->settings,
                 $ordinaryMaximum,

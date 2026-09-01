@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
@@ -17,6 +18,8 @@ use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Ruleset\CurrentRulesetGuard;
+use App\Domain\Underground\Facility\UndergroundCommandCatalog;
+use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -49,6 +52,8 @@ final class CommandQueueService
         private readonly TerritoryExpansionPolicy $territoryExpansion,
         private readonly CapitalCorePolicy $capitalCores,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
+        private readonly UndergroundFacilityService $undergroundFacilities,
+        private readonly UndergroundCommandCatalog $undergroundCommands,
     ) {}
 
     /**
@@ -68,8 +73,10 @@ final class CommandQueueService
         array $parameters = [],
         ?int $position = null,
         bool $quantityProvided = false,
+        ?int $targetLayer = null,
+        ?int $targetSlotIndex = null,
     ): array {
-        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $requestKey, $expectedVersion, $quantity, $parameters, $position, $quantityProvided): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $targetLayer, $targetSlotIndex, $requestKey, $expectedVersion, $quantity, $parameters, $position, $quantityProvided): array {
             $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
             $world = $this->lockWorldForQueue($nation);
@@ -91,7 +98,7 @@ final class CommandQueueService
                 ->with(['definition.rulesetVersion', 'requestRulesetVersion'])
                 ->first();
             if ($duplicate !== null) {
-                $duplicateDefinition = $duplicate->definition;
+                $duplicateDefinition = $this->definitionForItem($duplicate);
                 if ($commandKey !== $duplicateDefinition->key) {
                     throw new CommandRequestConflictException;
                 }
@@ -100,7 +107,8 @@ final class CommandQueueService
                     throw new CommandRequestConflictException;
                 }
                 $requestDefinition = $duplicateDefinition;
-                if ($requestDefinition->ruleset_version_id !== $requestRuleset->id) {
+                if ($requestDefinition instanceof CommandDefinition
+                    && $requestDefinition->ruleset_version_id !== $requestRuleset->id) {
                     $requestDefinition = CommandDefinition::query()
                         ->where('ruleset_version_id', $requestRuleset->id)
                         ->where('key', $duplicateDefinition->key)
@@ -111,23 +119,36 @@ final class CommandQueueService
                 }
                 try {
                     $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
-                    $this->quantitySemantics->validateForRegistration(
-                        $requestDefinition,
-                        $quantity,
-                        $quantityProvided,
-                    );
-                    $schemas = $requestDefinition->metadata['parameters'] ?? [];
-                    if (! is_array($schemas)) {
-                        throw new DomainException('Historical command parameter schema is malformed.');
+                    if ($requestDefinition instanceof UndergroundCommandDefinition) {
+                        if ($quantity !== 1 || $parameters !== []) {
+                            throw new DomainException('Underground facility commands do not accept quantity or parameters.');
+                        }
+                    } else {
+                        $this->quantitySemantics->validateForRegistration(
+                            $requestDefinition,
+                            $quantity,
+                            $quantityProvided,
+                        );
+                        $schemas = $requestDefinition->metadata['parameters'] ?? [];
+                        if (! is_array($schemas)) {
+                            throw new DomainException('Historical command parameter schema is malformed.');
+                        }
+                        $parameters = $this->parameters->validate($schemas, $parameters);
                     }
-                    $parameters = $this->parameters->validate($schemas, $parameters);
                 } catch (DomainException) {
                     throw new CommandRequestConflictException;
                 }
-                if ($requestDefinition->target_type === 'nation') {
+                if ($requestDefinition->target_type === 'underground_slot') {
+                    if ($targetX !== null || $targetY !== null || ! is_int($targetLayer) || ! is_int($targetSlotIndex)
+                        || $targetLayer !== $duplicate->target_layer || $targetSlotIndex !== $duplicate->target_slot_index) {
+                        throw new CommandRequestConflictException;
+                    }
+                } elseif ($requestDefinition->target_type === 'nation') {
                     $targetX = $duplicate->target_x;
                     $targetY = $duplicate->target_y;
-                } elseif (! is_int($targetX) || ! is_int($targetY)) {
+                    $targetLayer = null;
+                    $targetSlotIndex = null;
+                } elseif (! is_int($targetX) || ! is_int($targetY) || $targetLayer !== null || $targetSlotIndex !== null) {
                     throw new CommandRequestConflictException;
                 }
                 $requestFingerprint = $this->requestFingerprint(
@@ -135,6 +156,8 @@ final class CommandQueueService
                     $requestDefinition,
                     $targetX,
                     $targetY,
+                    $targetLayer,
+                    $targetSlotIndex,
                     $quantity,
                     $parameters,
                     $position,
@@ -144,7 +167,7 @@ final class CommandQueueService
                     throw new CommandRequestConflictException;
                 }
 
-                return ['queue' => $queue, 'item' => $duplicate->load('definition'), 'duplicate' => true];
+                return ['queue' => $queue, 'item' => $duplicate, 'duplicate' => true];
             }
 
             $definition = CommandDefinition::query()
@@ -152,31 +175,56 @@ final class CommandQueueService
                 ->where('key', $commandKey)
                 ->where('enabled', true)
                 ->first();
-            if ($definition === null) {
+            $undergroundDefinition = $this->undergroundCommands->find($commandKey);
+            if ($definition === null && $undergroundDefinition === null) {
                 throw new PlayerFacingCommandException('利用できないcommandです。');
             }
+            if ($definition !== null && $undergroundDefinition !== null) {
+                throw new DomainException('Surface and Underground command keys must be disjoint.');
+            }
+            $definition ??= $undergroundDefinition;
 
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
-            $this->quantitySemantics->validateForRegistration($definition, $quantity, $quantityProvided);
-            $schemas = $definition->metadata['parameters'] ?? [];
-            if (! is_array($schemas)) {
-                throw new DomainException('command parameter schemaが不正です。');
+            if ($definition instanceof UndergroundCommandDefinition) {
+                if ($quantity !== 1 || $parameters !== []) {
+                    throw new PlayerFacingCommandException('地下施設commandは数量や追加parameterを指定できません。');
+                }
+            } else {
+                $this->quantitySemantics->validateForRegistration($definition, $quantity, $quantityProvided);
+                $schemas = $definition->metadata['parameters'] ?? [];
+                if (! is_array($schemas)) {
+                    throw new DomainException('command parameter schemaが不正です。');
+                }
+                $parameters = $this->parameters->validate($schemas, $parameters);
             }
-            $parameters = $this->parameters->validate($schemas, $parameters);
             $ruleset = RulesetVersion::query()->whereKey($world->ruleset_version_id)
                 ->firstOrFail(['id', 'key', 'version']);
-            [$targetX, $targetY] = $this->resolveTargetCoordinates(
-                $lockedNation,
-                $mapSpace,
-                $definition,
-                $targetX,
-                $targetY,
-            );
+            $targetContext = 'surface_cell';
+            if ($definition->target_type === 'underground_slot') {
+                if ($targetX !== null || $targetY !== null || ! is_int($targetLayer) || ! is_int($targetSlotIndex)) {
+                    throw new PlayerFacingCommandException('地下施設commandにはlayerとslot_indexだけを指定してください。');
+                }
+                $this->undergroundFacilities->assertEntitled($user, $lockedNation, $targetLayer, $targetSlotIndex);
+                $targetContext = 'underground_slot';
+            } else {
+                if ($targetLayer !== null || $targetSlotIndex !== null) {
+                    throw new PlayerFacingCommandException('Surface commandへ地下施設枠を指定することはできません。');
+                }
+                [$targetX, $targetY] = $this->resolveTargetCoordinates(
+                    $lockedNation,
+                    $mapSpace,
+                    $definition,
+                    $targetX,
+                    $targetY,
+                );
+            }
             $requestFingerprint = $this->requestFingerprint(
                 $ruleset,
                 $definition,
                 $targetX,
                 $targetY,
+                $targetLayer,
+                $targetSlotIndex,
                 $quantity,
                 $parameters,
                 $position,
@@ -216,30 +264,42 @@ final class CommandQueueService
             // A queue item is a future plan. Registration proves only that the
             // coordinate and parameters are structurally valid; the locked
             // target state and assets are revalidated immediately before execution.
-            $target = $this->targetCell($mapSpace, $targetX, $targetY);
-            if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
-                throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
+            if ($definition instanceof CommandDefinition) {
+                $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
             }
-            $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
             $queue->setRelation('items', $activeItems);
-            $projectedTarget = $this->projectCellStateBeforePosition(
-                $target,
-                $queue,
-                $position,
-                $lockedNation,
-                $mapSpace,
-            );
-            $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effectForState(
-                $definition,
-                $lockedNation,
-                $projectedTarget,
-            );
-            if ($ownerOverbuildEffect === 'monument_flight') {
-                $targetNationId = $parameters['target_nation_id'] ?? null;
-                if (! is_int($targetNationId)) {
-                    throw new PlayerFacingCommandException('この位置への記念碑建設には対象島を選択してください。');
+            if ($targetContext === 'underground_slot') {
+                $projectedFacility = $this->undergroundFacilities->projectedFacilityKey(
+                    $queue,
+                    $targetLayer,
+                    $targetSlotIndex,
+                    $position,
+                );
+                $this->undergroundFacilities->assertProjectedCommand($definition, $projectedFacility);
+            } else {
+                $target = $this->targetCell($mapSpace, $targetX, $targetY);
+                if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
+                    throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
                 }
-                $this->nationTargets->validateMonumentFlightRegistration($lockedNation, $targetNationId);
+                $projectedTarget = $this->projectCellStateBeforePosition(
+                    $target,
+                    $queue,
+                    $position,
+                    $lockedNation,
+                    $mapSpace,
+                );
+                $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effectForState(
+                    $definition,
+                    $lockedNation,
+                    $projectedTarget,
+                );
+                if ($ownerOverbuildEffect === 'monument_flight') {
+                    $targetNationId = $parameters['target_nation_id'] ?? null;
+                    if (! is_int($targetNationId)) {
+                        throw new PlayerFacingCommandException('この位置への記念碑建設には対象島を選択してください。');
+                    }
+                    $this->nationTargets->validateMonumentFlightRegistration($lockedNation, $targetNationId);
+                }
             }
             $byPosition = $activeItems->keyBy(
                 static fn (NationCommandQueueItem $item): int => (int) $item->queue_position,
@@ -264,21 +324,34 @@ final class CommandQueueService
             });
             $proposedItem = new NationCommandQueueItem([
                 'queue_position' => $position,
+                'target_context' => $targetContext,
+                'underground_command_key' => $definition instanceof UndergroundCommandDefinition
+                    ? $definition->key
+                    : null,
                 'target_x' => $targetX,
                 'target_y' => $targetY,
+                'target_layer' => $targetLayer,
+                'target_slot_index' => $targetSlotIndex,
                 'quantity' => $quantity,
                 'parameters' => $parameters,
                 'status' => 'queued',
             ]);
-            $proposedItem->setRelation('definition', $definition);
+            if ($definition instanceof CommandDefinition) {
+                $proposedItem->setRelation('definition', $definition);
+            }
             $proposedItems->push($proposedItem);
-            $this->assertNoNewDangerousOverbuildEffects(
-                $queue,
-                $activeItems,
-                $proposedItems,
-                $lockedNation,
-                $mapSpace,
-            );
+            if ($targetContext === 'underground_slot') {
+                $this->undergroundFacilities->assertProjectedSequences($queue, $proposedItems);
+            }
+            if ($targetContext === 'surface_cell') {
+                $this->assertNoNewDangerousOverbuildEffects(
+                    $queue,
+                    $activeItems,
+                    $proposedItems,
+                    $lockedNation,
+                    $mapSpace,
+                );
+            }
             if ($shifted->isNotEmpty()) {
                 NationCommandQueueItem::query()->whereIn('id', $shifted->modelKeys())
                     ->update(['queue_position' => null]);
@@ -288,17 +361,22 @@ final class CommandQueueService
                 }
             }
 
-            if ($definition->ruleset_version_id !== $world->ruleset_version_id) {
+            if ($definition instanceof CommandDefinition
+                && $definition->ruleset_version_id !== $world->ruleset_version_id) {
                 throw new DomainException('Command definition no longer matches the locked World ruleset.');
             }
 
             $item = NationCommandQueueItem::query()->create([
                 'nation_command_queue_id' => $queue->id,
-                'command_definition_id' => $definition->id,
+                'command_definition_id' => $definition instanceof CommandDefinition ? $definition->id : null,
+                'underground_command_key' => $definition instanceof UndergroundCommandDefinition ? $definition->key : null,
                 'request_ruleset_version_id' => $ruleset->id,
                 'queue_position' => $position,
+                'target_context' => $targetContext,
                 'target_x' => $targetX,
                 'target_y' => $targetY,
+                'target_layer' => $targetLayer,
+                'target_slot_index' => $targetSlotIndex,
                 'quantity' => $quantity,
                 'parameters' => $parameters === [] ? (object) [] : $parameters,
                 'status' => 'queued',
@@ -310,7 +388,7 @@ final class CommandQueueService
             ]);
             $queue->increment('version');
             $queue->refresh();
-            $dispatchOption = $definition->key === 'monster_dispatch'
+            $dispatchOption = $definition instanceof CommandDefinition && $definition->key === 'monster_dispatch'
                 && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
                     ? $this->monsterDispatchOptions->resolve($definition, $quantity)
                     : null;
@@ -318,22 +396,26 @@ final class CommandQueueService
                 'command_key' => $commandKey,
                 'x' => $targetX,
                 'y' => $targetY,
+                'layer' => $targetLayer,
+                'slot_index' => $targetSlotIndex,
                 'quantity' => $quantity,
                 'monster_key' => $dispatchOption?->monsterDefinitionKey,
                 'cost_money' => $dispatchOption?->costMoney,
                 'request_ruleset_version_id' => $ruleset->id,
             ], static fn (mixed $value): bool => $value !== null));
 
-            return ['queue' => $queue, 'item' => $item->load('definition'), 'duplicate' => false];
+            return ['queue' => $queue, 'item' => $item, 'duplicate' => false];
         }, 3);
     }
 
     /** @param array<string, mixed> $parameters */
     private function requestFingerprint(
         RulesetVersion $ruleset,
-        CommandDefinition $definition,
-        int $targetX,
-        int $targetY,
+        CommandDefinition|UndergroundCommandDefinition $definition,
+        ?int $targetX,
+        ?int $targetY,
+        ?int $targetLayer,
+        ?int $targetSlotIndex,
         int $quantity,
         array $parameters,
         ?int $requestedPosition,
@@ -347,6 +429,10 @@ final class CommandQueueService
             'target_x' => $targetX,
             'target_y' => $targetY,
         ];
+        if ($definition instanceof UndergroundCommandDefinition) {
+            $payload['target_layer'] = $targetLayer;
+            $payload['target_slot_index'] = $targetSlotIndex;
+        }
 
         return hash('sha256', json_encode(
             $payload,
@@ -410,6 +496,7 @@ final class CommandQueueService
 
                 return $proposed;
             });
+            $this->undergroundFacilities->assertProjectedSequences($queue, $proposedItems);
             $this->assertNoNewDangerousOverbuildEffects(
                 $queue,
                 $activeItems,
@@ -453,6 +540,9 @@ final class CommandQueueService
                 throw new PlayerFacingCommandException('編集できないcommandです。');
             }
             $item->loadMissing('definition');
+            if ($item->target_context === 'underground_slot') {
+                throw new PlayerFacingCommandException('地下施設commandの数量は変更できません。');
+            }
             $this->quantitySemantics->assertEditable($item->definition);
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
             $oldQuantity = $item->quantity;
@@ -503,6 +593,7 @@ final class CommandQueueService
 
                 return $proposed;
             });
+            $this->undergroundFacilities->assertProjectedSequences($queue, $proposedItems);
             $this->assertNoNewDangerousOverbuildEffects(
                 $queue,
                 $activeItems,
@@ -554,6 +645,7 @@ final class CommandQueueService
 
                     return $proposed;
                 })->values();
+            $this->undergroundFacilities->assertProjectedSequences($queue, $proposedItems);
             $this->assertNoNewDangerousOverbuildEffects(
                 $queue,
                 $activeItems,
@@ -920,7 +1012,8 @@ final class CommandQueueService
         ];
 
         foreach ($queue->items as $item) {
-            if ($item->queue_position >= $beforePosition
+            if ($item->target_context !== 'surface_cell'
+                || $item->queue_position >= $beforePosition
                 || $item->target_x !== $cell->x
                 || $item->target_y !== $cell->y) {
                 continue;
@@ -1114,6 +1207,7 @@ final class CommandQueueService
             } else {
                 $candidate = $entry['generated'];
                 $item = new NationCommandQueueItem([
+                    'target_context' => 'surface_cell',
                     'target_x' => $candidate['x'],
                     'target_y' => $candidate['y'],
                     'status' => 'queued',
@@ -1180,7 +1274,7 @@ final class CommandQueueService
         );
         $effects = [];
         foreach ($queue->items as $item) {
-            if (! $item->exists) {
+            if (! $item->exists || $item->target_context !== 'surface_cell') {
                 continue;
             }
             $item->loadMissing('definition');
@@ -1200,6 +1294,26 @@ final class CommandQueueService
         }
 
         return $effects;
+    }
+
+    public function definitionForItem(
+        NationCommandQueueItem $item,
+    ): CommandDefinition|UndergroundCommandDefinition {
+        if ($item->target_context === 'underground_slot') {
+            if (! is_string($item->underground_command_key) || $item->command_definition_id !== null) {
+                throw new DomainException('Underground queue item command identity is invalid.');
+            }
+
+            return $this->undergroundCommands->get($item->underground_command_key);
+        }
+        $definition = $item->relationLoaded('definition')
+            ? $item->definition
+            : $item->definition()->first();
+        if (! $definition instanceof CommandDefinition || $item->underground_command_key !== null) {
+            throw new DomainException('Surface queue item command identity is invalid.');
+        }
+
+        return $definition;
     }
 
     /** @param array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null $visibleState */

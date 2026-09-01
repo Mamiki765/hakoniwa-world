@@ -23,6 +23,7 @@ use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
+use App\Models\NationUndergroundFacility;
 use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
@@ -246,6 +247,54 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(50, $capitalMaximum->metrics['population_increased']);
         $this->assertSame(25_000, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+
+        $capitalScale = $capital->fresh()->facility_scale;
+        $firstUndergroundCity = NationUndergroundFacility::query()->create([
+            'nation_id' => $nation->id,
+            'layer' => 1,
+            'slot_index' => 0,
+            'facility_key' => 'underground_city',
+        ]);
+        $this->settlement($capital, 'capital', 34_950);
+        [$oneUndergroundCityContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+        );
+        $oneUndergroundCity = $engine->execute('process_cells', $oneUndergroundCityContext);
+        $this->assertSame(50, $oneUndergroundCity->metrics['population_increased']);
+        $this->assertSame(35_000, $capital->fresh()->population);
+
+        NationUndergroundFacility::query()->create([
+            'nation_id' => $nation->id,
+            'layer' => 1,
+            'slot_index' => 1,
+            'facility_key' => 'underground_city',
+        ]);
+        $this->settlement($capital, 'capital', 44_950);
+        [$twoUndergroundCitiesContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+        );
+        $twoUndergroundCities = $engine->execute('process_cells', $twoUndergroundCitiesContext);
+        $this->assertSame(50, $twoUndergroundCities->metrics['population_increased']);
+        $this->assertSame(45_000, $capital->fresh()->population);
+        $this->assertSame($capitalScale, $capital->fresh()->facility_scale);
+
+        $firstUndergroundCity->delete();
+        [$removedUndergroundCityContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+        );
+        $removedUndergroundCity = $engine->execute('process_cells', $removedUndergroundCityContext);
+        $this->assertSame(0, $removedUndergroundCity->metrics['population_increased']);
+        $this->assertSame(0, $removedUndergroundCity->metrics['population_decreased']);
+        $this->assertSame(45_000, $capital->fresh()->population);
 
         $riotCells = [$firstCandidate, $secondCandidate, $this->ownedEmptyCell($nation, [$capital->id, $firstCandidate->id, $secondCandidate->id])];
         foreach (['farm', 'factory', 'missile_base'] as $index => $facilityKey) {

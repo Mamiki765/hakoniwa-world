@@ -207,6 +207,10 @@ export function useMapState() {
         selected.value = cell;
     }
 
+    function clearSelection(): void {
+        selected.value = null;
+    }
+
     function moveSelection(direction: number): void {
         if (selected.value === null) return;
         const next = neighbor(selected.value, direction);
@@ -225,6 +229,7 @@ export function useMapState() {
         loadVisibleRange,
         loadAllChunks,
         select,
+        clearSelection,
         moveSelection,
     };
 }

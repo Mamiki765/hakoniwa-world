@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\FacilityDefinition;
@@ -23,6 +24,7 @@ final class NationBasicStatusProjection
     public function __construct(
         private readonly NationLandAreaCalculator $landArea,
         private readonly FacilityCapacityService $facilityCapacities,
+        private readonly UndergroundFacilityBenefits $undergroundBenefits,
     ) {}
 
     /**
@@ -69,6 +71,8 @@ final class NationBasicStatusProjection
                 (int) $group->facility_scale,
             ) * (int) $group->getRawOriginal('aggregate');
         }
+        $status['farm_capacity_people'] += $this->undergroundBenefits->farmCapacityBonus($nation->id);
+        $status['factory_capacity_people'] += $this->undergroundBenefits->factoryCapacityBonus($nation->id);
 
         return $status;
     }
@@ -100,6 +104,7 @@ final class NationBasicStatusProjection
             ->groupBy('owner_nation_id');
         $areas = $this->landArea->forWorld($world);
         $foodTotals = $this->foodTotals($nationIds);
+        $undergroundCapacityBonuses = $this->undergroundBenefits->workforceCapacityBonuses($nationIds);
         $projection = [];
 
         foreach ($nations as $nation) {
@@ -108,6 +113,10 @@ final class NationBasicStatusProjection
                 $areas[$nation->id] ?? 0,
                 $foodTotals[$nation->id] ?? 0,
             );
+            $projection[$nation->id]['farm_capacity_people'] +=
+                $undergroundCapacityBonuses[$nation->id]['farm_capacity_people'];
+            $projection[$nation->id]['factory_capacity_people'] +=
+                $undergroundCapacityBonuses[$nation->id]['factory_capacity_people'];
         }
 
         return $projection;

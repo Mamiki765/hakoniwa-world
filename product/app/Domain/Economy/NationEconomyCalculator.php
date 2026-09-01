@@ -17,7 +17,7 @@ final class NationEconomyCalculator
      * reads and pass only the scalar projections needed by the canonical economy formula.
      *
      * @param  array<string, mixed>  $ruleset
-     * @param  list<array{cell_id: int, key: string, capacity: int}>  $industrialFacilities
+     * @param  list<array{cell_id: int, key: string, capacity: int, source_key?: string}>  $industrialFacilities
      * @param  array<string, int>  $secretarySkillLevels
      * @return array{
      *     population: int,
@@ -69,16 +69,17 @@ final class NationEconomyCalculator
 
         $factoryCapacity = 0;
         $mineCapacity = 0;
-        $seenCellIds = [];
+        $seenSources = [];
         foreach ($industrialFacilities as $facility) {
             $cellId = $facility['cell_id'];
             $key = $facility['key'];
             $capacity = $facility['capacity'];
-            if ($cellId < 1 || isset($seenCellIds[$cellId])
+            $sourceKey = $facility['source_key'] ?? 'surface:'.$cellId;
+            if ($cellId < 1 || $sourceKey === '' || isset($seenSources[$sourceKey])
                 || ! in_array($key, ['factory', 'mine'], true) || $capacity < 0) {
                 throw new DomainException('Industrial workforce projection inputs are invalid.');
             }
-            $seenCellIds[$cellId] = true;
+            $seenSources[$sourceKey] = true;
             if ($key === 'factory') {
                 $factoryCapacity += $capacity;
             } else {
@@ -133,7 +134,7 @@ final class NationEconomyCalculator
     }
 
     /**
-     * @param  list<array{cell_id: int, key: string, capacity: int}>  $facilities
+     * @param  list<array{cell_id: int, key: string, capacity: int, source_key?: string}>  $facilities
      * @return array{factory: int, mine: int}
      */
     private function allocateFactoryAndMineWorkers(array $facilities, int $availableWorkers): array
@@ -155,7 +156,8 @@ final class NationEconomyCalculator
         usort($allocations, static function (array $left, array $right): int {
             return $right['remainder'] <=> $left['remainder']
                 ?: $left['key'] <=> $right['key']
-                ?: $left['cell_id'] <=> $right['cell_id'];
+                ?: ($left['source_key'] ?? 'surface:'.$left['cell_id'])
+                    <=> ($right['source_key'] ?? 'surface:'.$right['cell_id']);
         });
         for ($index = 0; $index < $workers - $allocated; $index++) {
             $allocations[$index]['workers']++;

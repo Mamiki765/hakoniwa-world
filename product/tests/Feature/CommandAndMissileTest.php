@@ -14,6 +14,7 @@ use App\Application\NationLifecycleService;
 use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryNamingService;
 use App\Application\SecretaryTurnService;
+use App\Application\Underground\UndergroundProfileService;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Facility\MissileBaseRules;
@@ -34,6 +35,7 @@ use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
+use App\Models\NationUndergroundFacility;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -3672,6 +3674,112 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, $kill['actual_damage']);
         $this->assertSame($experiencePerDamage, $kill['firing_base_experience_requested']);
         $this->assertSame($experiencePerDamage, $kill['firing_base_experience_applied']);
+    }
+
+    public function test_underground_missile_capacity_uses_per_shot_source_attribution_and_canonical_secretary_monster_experience(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('underground-source');
+        $space = $this->surfaceMapSpace($world);
+        $undergroundBase = NationUndergroundFacility::query()->create([
+            'nation_id' => $firing->id,
+            'layer' => 1,
+            'slot_index' => 0,
+            'facility_key' => 'underground_missile_base',
+        ]);
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($firingUser->secretary()->sole());
+        $profile->refresh();
+        $combatLevelBefore = $profile->combat_level;
+        $combatXpBefore = $profile->combat_xp;
+        $secretary = $firingUser->secretary()->sole();
+        $secretaryExperienceBefore = $secretary->monster_experience;
+        $host = $this->monsterArena($world, $target);
+        $firstMonster = $this->monster($world, $host);
+        $firstMonster->update(['current_hp' => 1, 'spawned_max_hp' => 1]);
+        $experiencePerDamage = (int) $firstMonster->definition()->value('experience_per_damage');
+        $firstItem = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'spp_missile',
+            $host,
+        );
+        $firstContext = $this->context(
+            $world,
+            2,
+            hash('sha256', 'underground-only missile source'),
+            [$firing->id, $target->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($firstContext, [$firing->id, $target->id]);
+        app(DomesticCommandExecutor::class)->execute($firstContext);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $firstMetrics = $resolver->processUndergroundBases($firstContext, $space);
+        $resolver->finalize($firstContext);
+        app(SecretaryTurnService::class)->flushExperience($firstContext);
+
+        $this->assertSame(1, $firstMetrics['shots_fired']);
+        $this->assertSame('completed', $firstItem->fresh()->status);
+        $this->assertSame('killed', $firstMonster->fresh()->state);
+        $this->assertSame(
+            $secretaryExperienceBefore + $experiencePerDamage,
+            $secretary->fresh()->monster_experience,
+        );
+        $firstKill = json_decode((string) DB::table('audit_events')->where('event_type', 'monster.killed')
+            ->where('subject_id', $firstMonster->id)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('underground_missile_base', $firstKill['missile_source_kind']);
+        $this->assertSame($undergroundBase->id, $firstKill['missile_source_id']);
+        $this->assertSame(0, $firstKill['firing_base_experience_applied']);
+        $this->assertSame($experiencePerDamage, $firstKill['secretary_monster_experience_awarded']);
+
+        $surfaceBase = $this->missileBase($firing);
+        $secondMonster = $this->monster($world, $host->fresh(['terrain', 'facility', 'ownerNation']));
+        $secondMonster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
+        $firing->update(['money' => 2_000]);
+        $secondItem = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing->fresh(),
+            $space,
+            'spp_missile',
+            $host->fresh(['terrain', 'facility', 'ownerNation']),
+            2,
+        );
+        $secondContext = $this->context(
+            $world,
+            3,
+            hash('sha256', 'mixed surface underground missile sources'),
+            [$firing->id, $target->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($secondContext, [$firing->id, $target->id]);
+        app(DomesticCommandExecutor::class)->execute($secondContext);
+        $resolver->begin($this->missileCellIndex($world));
+        $surfaceMetrics = $resolver->processBase($secondContext, $space, $surfaceBase);
+        $undergroundMetrics = $resolver->processUndergroundBases($secondContext, $space);
+        $resolver->finalize($secondContext);
+        app(SecretaryTurnService::class)->flushExperience($secondContext);
+
+        $this->assertSame([1, 1], [$surfaceMetrics['shots_fired'], $undergroundMetrics['shots_fired']]);
+        $this->assertSame('completed', $secondItem->fresh()->status);
+        $this->assertSame($experiencePerDamage, $surfaceBase->fresh()->facility_experience);
+        $this->assertSame(
+            $secretaryExperienceBefore + 2 * $experiencePerDamage,
+            $secretary->fresh()->monster_experience,
+        );
+        $events = DB::table('audit_events')->whereIn('event_type', ['monster.damaged', 'monster.killed'])
+            ->where('subject_id', $secondMonster->id)->orderBy('id')->get()
+            ->map(static fn (object $event): array => json_decode(
+                (string) $event->metadata,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            ));
+        $this->assertSame(['surface_missile_base', 'underground_missile_base'], $events->pluck('missile_source_kind')->all());
+        $this->assertSame([$surfaceBase->id, $undergroundBase->id], $events->pluck('missile_source_id')->all());
+        $this->assertSame([$experiencePerDamage, 0], $events->pluck('firing_base_experience_applied')->all());
+        $this->assertSame([0, $experiencePerDamage], $events->pluck('secretary_monster_experience_awarded')->all());
+        $this->assertSame($combatLevelBefore, $profile->fresh()->combat_level);
+        $this->assertSame($combatXpBefore, $profile->fresh()->combat_xp);
     }
 
     public function test_water_ownership_cleanup_does_not_affect_land_facilities_or_empty_owned_water(): void

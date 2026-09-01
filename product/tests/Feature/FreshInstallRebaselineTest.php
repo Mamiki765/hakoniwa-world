@@ -30,6 +30,7 @@ use App\Models\TurnRun;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -54,6 +55,7 @@ final class FreshInstallRebaselineTest extends TestCase
         'underground_intro_requests',
         'underground_skill_allocations',
         'underground_owned_equipment',
+        'nation_underground_facilities',
     ];
 
     public function test_empty_postgresql_uses_direct_current_schema_and_v19_catalog_baseline(): void
@@ -71,7 +73,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(27, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(57, DB::table('migrations')->count());
+        $this->assertSame(58, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -104,6 +106,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_01_000000_publish_v19_territory_abandonment',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_01_010000_add_nation_underground_facilities',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -181,6 +186,13 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'definition_key'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'catalog_identity'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'equipped_slot'));
+        $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
+        $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'facility_key'));
+        $this->assertFalse(Schema::hasColumn('nation_underground_facilities', 'facility_scale'));
+        $this->assertTrue(Schema::hasColumn('nation_command_queue_items', 'target_context'));
+        $this->assertTrue(Schema::hasColumn('nation_command_queue_items', 'target_layer'));
+        $this->assertTrue(Schema::hasColumn('nation_command_queue_items', 'target_slot_index'));
+        $this->assertTrue(Schema::hasColumn('nation_command_queue_items', 'underground_command_key'));
         $this->assertSame(0, DB::table('auction_listings')->count());
         $this->assertSame(0, DB::table('auction_bids')->count());
         $this->assertSame(6, $ruleset->settings['trading_post']['npc']['duration_turns']);
@@ -222,6 +234,26 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'underground_intro_progress_branch_identity_check')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_trial_runs_content_identity_not_empty')->count());
+        $undergroundFacilityConstraints = [
+            'nation_command_queue_items_target_context_check',
+            'nation_underground_facilities_key_check',
+            'nation_underground_facilities_layer_check',
+            'nation_underground_facilities_slot_check',
+            'nation_underground_facilities_slot_unique',
+        ];
+        $this->assertSame($undergroundFacilityConstraints, DB::table('pg_constraint')
+            ->whereIn('conname', $undergroundFacilityConstraints)
+            ->orderBy('conname')->pluck('conname')->all());
+        $queueRulesetGuard = DB::selectOne(<<<'SQL'
+SELECT pg_get_functiondef(oid) AS definition
+  FROM pg_proc
+ WHERE proname = 'enforce_queue_item_world_ruleset_match'
+SQL);
+        $this->assertNotNull($queueRulesetGuard);
+        $this->assertStringContainsString(
+            "NEW.target_context = 'underground_slot'",
+            (string) $queueRulesetGuard->definition,
+        );
         $undergroundIndexes = [
             'underground_battle_logs_expires_at_index',
             'underground_battles_profile_finished_at_index',
@@ -390,6 +422,7 @@ SQL);
                 '2026_08_30_050000_rebaseline_3_0_0_underground_release',
                 '2026_08_31_000000_add_underground_awakening_progression',
                 '2026_09_01_000000_publish_v19_territory_abandonment',
+                '2026_09_01_010000_add_nation_underground_facilities',
             ],
             $this->pendingMigrations(),
         );
@@ -398,7 +431,8 @@ SQL);
         $this->assertSame([], $this->pendingMigrations());
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
-        $this->assertSame(57, DB::table('migrations')->count());
+        $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
+        $this->assertSame(58, DB::table('migrations')->count());
         $after = $this->businessSnapshot();
         foreach ($before as $table => $digest) {
             if (! in_array($table, ['worlds', 'nation_command_queue_items', 'audit_events'], true)) {
@@ -783,10 +817,64 @@ SQL);
         foreach (array_reverse(self::UNDERGROUND_RELEASE_TABLES) as $table) {
             Schema::drop($table);
         }
+        DB::statement(
+            'ALTER TABLE nation_command_queue_items '
+            .'DROP CONSTRAINT nation_command_queue_items_target_context_check',
+        );
+        Schema::table('nation_command_queue_items', function (Blueprint $table): void {
+            $table->dropColumn([
+                'target_context',
+                'target_layer',
+                'target_slot_index',
+                'underground_command_key',
+            ]);
+        });
+        DB::statement('ALTER TABLE nation_command_queue_items ALTER COLUMN command_definition_id SET NOT NULL');
+        DB::statement('ALTER TABLE nation_command_queue_items ALTER COLUMN target_x SET NOT NULL');
+        DB::statement('ALTER TABLE nation_command_queue_items ALTER COLUMN target_y SET NOT NULL');
+        DB::unprepared(<<<'SQL'
+CREATE OR REPLACE FUNCTION enforce_queue_item_world_ruleset_match()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    world_ruleset_id bigint;
+    definition_ruleset_id bigint;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM nation_command_queue_items
+        WHERE id = NEW.id
+    ) THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT worlds.ruleset_version_id, command_definitions.ruleset_version_id
+    INTO world_ruleset_id, definition_ruleset_id
+    FROM nation_command_queues
+    INNER JOIN nations ON nations.id = nation_command_queues.nation_id
+    INNER JOIN worlds ON worlds.id = nations.world_id
+    INNER JOIN command_definitions ON command_definitions.id = NEW.command_definition_id
+    WHERE nation_command_queues.id = NEW.nation_command_queue_id;
+
+    IF NOT FOUND OR world_ruleset_id IS DISTINCT FROM definition_ruleset_id THEN
+        RAISE EXCEPTION
+            'queue item % command definition ruleset % does not match World ruleset %',
+            NEW.id,
+            definition_ruleset_id,
+            world_ruleset_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END;
+$$
+SQL);
         DB::table('migrations')->whereIn('migration', [
             '2026_08_30_050000_rebaseline_3_0_0_underground_release',
             '2026_08_31_000000_add_underground_awakening_progression',
             '2026_09_01_000000_publish_v19_territory_abandonment',
+            '2026_09_01_010000_add_nation_underground_facilities',
         ])->delete();
     }
 
@@ -803,6 +891,9 @@ SQL);
         ]);
         $this->assertDatabaseMissing('migrations', [
             'migration' => '2026_09_01_000000_publish_v19_territory_abandonment',
+        ]);
+        $this->assertDatabaseMissing('migrations', [
+            'migration' => '2026_09_01_010000_add_nation_underground_facilities',
         ]);
     }
 

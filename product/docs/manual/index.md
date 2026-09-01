@@ -9,7 +9,7 @@
 - [上級編](/manual/advanced)：ターン順序、災害、上限、長期運営
 - [交易場](/manual/trading-post)：出品、入札、預託資金、落札と保管上限
 - [秘書について](/manual/secretary)：スキル、倉庫、装備、アイテムの効果
-- [箱庭ダンジョン](/manual/underground)：探索、能力値、成長方針、Skill Tree、装備
+- [地底・箱庭ダンジョン](/manual/underground)：地下施設の島開発、探索、能力値、成長方針、Skill Tree、装備
 
 ゲームの運営方針は[利用ルール](/community-guidelines)、使用素材などは[クレジット](/credits)で確認できます。
 

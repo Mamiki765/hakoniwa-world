@@ -6,6 +6,7 @@ use App\Application\CommandQuantitySemantics;
 use App\Application\CommandQueueService;
 use App\Application\LegacyCommandQueueOrder;
 use App\Application\NationCommandTargetService;
+use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
@@ -14,6 +15,8 @@ use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Ruleset\ResetRequiredException;
+use App\Domain\Underground\Facility\UndergroundCommandCatalog;
+use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Http\Controllers\Controller;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
@@ -42,6 +45,8 @@ final class CommandQueueController extends Controller
         MapSpace $mapSpace,
         CommandQueueService $service,
         FacilityCapacityService $capacities,
+        UndergroundFacilityService $undergroundFacilities,
+        UndergroundCommandCatalog $undergroundCommands,
     ): JsonResponse {
         try {
             $queue = $service->queueFor($request->user(), $nation, $mapSpace);
@@ -50,6 +55,79 @@ final class CommandQueueController extends Controller
                 $this->queueLimit($nation),
                 $request->integer('position', 1),
             ));
+            $hasLayer = $request->has('target_layer');
+            $hasSlot = $request->has('target_slot_index');
+            if ($hasLayer !== $hasSlot) {
+                throw new PlayerFacingCommandException('地下施設枠にはlayerとslot_indexの両方が必要です。');
+            }
+            $undergroundTarget = $hasLayer && $hasSlot;
+            $targetLayer = $undergroundTarget ? $request->integer('target_layer') : null;
+            $targetSlotIndex = $undergroundTarget ? $request->integer('target_slot_index') : null;
+            if ($undergroundTarget) {
+                if ($request->has('target_x') || $request->has('target_y')) {
+                    throw new PlayerFacingCommandException('Surface cellと地下施設枠を同時に指定できません。');
+                }
+                $undergroundFacilities->assertEntitled($request->user(), $nation, $targetLayer, $targetSlotIndex);
+                $projectedFacility = $undergroundFacilities->projectedFacilityKey(
+                    $queue,
+                    $targetLayer,
+                    $targetSlotIndex,
+                    $position,
+                );
+                $commands = collect($undergroundCommands->all())
+                    ->filter(static fn (UndergroundCommandDefinition $definition): bool => $projectedFacility === null
+                        ? $definition->action === 'build'
+                        : $definition->action === 'remove')
+                    ->map(
+                        function (UndergroundCommandDefinition $definition) use ($undergroundFacilities, $projectedFacility, $nation): array {
+                            $unavailableReason = null;
+                            try {
+                                $undergroundFacilities->assertProjectedCommand($definition, $projectedFacility);
+                            } catch (PlayerFacingCommandException $exception) {
+                                $unavailableReason = $exception->getMessage();
+                            }
+                            $shortfall = max(0, $definition->cost_money - $nation->money);
+                            $warnings = array_values(array_filter([
+                                $unavailableReason,
+                                $shortfall > 0 ? '現在の資金では実行できません。' : null,
+                            ]));
+
+                            return [
+                                'key' => $definition->key,
+                                'name' => $definition->name,
+                                'command_suffix' => null,
+                                'command_suffix_tone' => null,
+                                'confirmation_message' => null,
+                                'description' => $definition->description,
+                                'target_type' => 'underground_slot',
+                                'parameters' => (object) [],
+                                'quantity_semantics' => CommandQuantitySemantics::UNUSED,
+                                'quantity_default' => 1,
+                                'quantity_options' => [],
+                                'cost_money' => $definition->cost_money,
+                                'execution_phase' => 'underground_facility',
+                                'initial_facility_capacity' => null,
+                                'applicable' => true,
+                                'available' => $unavailableReason === null,
+                                'shortfall_money' => $shortfall,
+                                'unavailable_reason' => $unavailableReason,
+                                'execution_preview_status' => $warnings === []
+                                    ? 'currently_executable'
+                                    : 'currently_unavailable',
+                                'execution_warnings' => $warnings,
+                            ];
+                        },
+                    );
+                $quantityContract = $world->rulesetVersion->settings['development_plan_quantity'] ?? null;
+                if (! DevelopmentPlanQuantity::matchesContract($quantityContract)) {
+                    throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');
+                }
+
+                return response()->json(['data' => [
+                    'commands' => $commands,
+                    'quantity_contract' => $quantityContract,
+                ]]);
+            }
             $cell = null;
             if ($request->has(['target_x', 'target_y'])) {
                 $cell = MapCell::query()
@@ -209,6 +287,8 @@ final class CommandQueueController extends Controller
             'command_key' => ['required', 'string', 'max:64'],
             'target_x' => ['sometimes', 'nullable', 'integer'],
             'target_y' => ['sometimes', 'nullable', 'integer'],
+            'target_layer' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'target_slot_index' => ['sometimes', 'nullable', 'integer', 'between:0,3'],
             'request_key' => ['required', 'uuid'],
             'expected_version' => ['required', 'integer', 'min:1'],
             'quantity' => ['sometimes'],
@@ -236,6 +316,8 @@ final class CommandQueueController extends Controller
                 parameters: $validated['parameters'] ?? [],
                 position: $validated['position'] ?? null,
                 quantityProvided: $request->exists('quantity'),
+                targetLayer: $validated['target_layer'] ?? null,
+                targetSlotIndex: $validated['target_slot_index'] ?? null,
             );
 
             return response()->json(['data' => [
@@ -384,9 +466,12 @@ final class CommandQueueController extends Controller
         $mapSpace = MapSpace::query()->findOrFail($queue->map_space_id);
         $items = $this->legacyOrder->project($queue->items)
             ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace): array {
-                $cell = MapCell::query()->where('map_space_id', $queue->map_space_id)
-                    ->where('x', $item->target_x)->where('y', $item->target_y)
-                    ->with(['terrain', 'facility'])->first();
+                $definition = $service->definitionForItem($item);
+                $cell = $item->target_context === 'surface_cell'
+                    ? MapCell::query()->where('map_space_id', $queue->map_space_id)
+                        ->where('x', $item->target_x)->where('y', $item->target_y)
+                        ->with(['terrain', 'facility'])->first()
+                    : null;
                 $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
                     $cell,
                     $queue,
@@ -394,16 +479,16 @@ final class CommandQueueController extends Controller
                     $nation,
                     $mapSpace,
                 );
-                $effect = $projected === null
+                $effect = $projected === null || ! $definition instanceof CommandDefinition
                     ? null
-                    : $service->projectedOwnerOverbuildEffect($item->definition, $nation, $projected);
+                    : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                 $targetNationId = $item->parameters['target_nation_id'] ?? null;
                 $targetName = is_int($targetNationId) ? Nation::query()->whereKey($targetNationId)->value('name') : null;
 
                 return [
                     'id' => $item->id,
-                    'command_key' => $item->definition->key,
-                    'command_name' => $this->ownerCommandName($item->definition),
+                    'command_key' => $definition->key,
+                    'command_name' => $this->ownerCommandName($definition),
                     'command_suffix' => $effect === 'defense_self_destruct'
                         ? '（自爆）'
                         : ($effect === 'monument_flight' && is_string($targetName) ? "（{$targetName}）" : null),
@@ -411,13 +496,21 @@ final class CommandQueueController extends Controller
                     'queue_position' => $item->queue_position,
                     'target_x' => $item->target_x,
                     'target_y' => $item->target_y,
+                    'target_context' => $item->target_context,
+                    'target_layer' => $item->target_layer,
+                    'target_slot_index' => $item->target_slot_index,
                     'quantity' => $item->quantity,
-                    'quantity_semantics' => $this->quantitySemantics->for($item->definition),
-                    'quantity_label' => $this->quantitySemantics->label($item->definition, $item->quantity),
-                    'effective_cost_money' => $item->definition->key === 'monster_dispatch'
-                        && ($item->definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
-                            ? $this->monsterDispatchOptions->resolve($item->definition, $item->quantity)->costMoney
-                            : $item->definition->cost_money,
+                    'quantity_semantics' => $definition instanceof UndergroundCommandDefinition
+                        ? CommandQuantitySemantics::UNUSED
+                        : $this->quantitySemantics->for($definition),
+                    'quantity_label' => $definition instanceof UndergroundCommandDefinition
+                        ? null
+                        : $this->quantitySemantics->label($definition, $item->quantity),
+                    'effective_cost_money' => $definition instanceof CommandDefinition
+                        && $definition->key === 'monster_dispatch'
+                        && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
+                            ? $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney
+                            : $definition->cost_money,
                     'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                     'status' => $item->status,
                     'queued_at' => $item->queued_at?->toIso8601String(),
@@ -462,7 +555,7 @@ final class CommandQueueController extends Controller
         ]);
     }
 
-    private function ownerCommandName(CommandDefinition $definition): string
+    private function ownerCommandName(CommandDefinition|UndergroundCommandDefinition $definition): string
     {
         return $definition->key === 'build_decoy' ? 'ハリボテ建築' : $definition->name;
     }
