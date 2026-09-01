@@ -1,500 +1,339 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
-> 更新日: 2026-08-31 JST  
+> 更新日: 2026-09-02 JST  
 > 対象リポジトリ: `Mamiki765/hakoniwa-world`  
 > 配置先: `product/docs/handoffs/development-history-and-current-handoff.md`  
-> 用途: 開発経緯、現在も有効な設計判断、release boundary、次の作業開始点の引継ぎ
+> 用途: 現在有効なrelease boundary、Owner決定、次の作業開始点の引継ぎ
 >
 > この文書は、GitHub上のPR・commit・CI・review evidenceとOwnerの明示決定を照合した統合handoffです。
-> 仕様・実装・運用状態が食い違う場合は、最新のreview済みコード、immutable Ruleset、DB schema / forward migration、
-> ADR / decision、運用文書、Ownerの最新明示決定を優先してください。
+> 仕様・実装・運用状態が食い違う場合は、最新のreview済みcode、immutable Ruleset、DB schema / forward migration、
+> accepted ADR / decision、operations文書、Ownerの最新明示決定を優先してください。
 
 ## Maintenance ownership
 
-このhandoffは、OwnerとWeb版ChatGPTのdevelopment-advisor workflowが管理する開発状況の外部記憶です。
+このhandoffは、OwnerとWeb版ChatGPTのdevelopment-advisor workflowが管理する外部記憶です。
 
-Codexおよびimplementation agentはread-onlyの参考資料として利用してください。Ownerがhandoff更新そのものを明示的に依頼しない限り、編集・再生成・format・SHA更新・commitを行ってはいけません。
+Codexおよびimplementation agentはread-onlyとして利用してください。Ownerがhandoff更新そのものを明示的に依頼しない限り、編集・再生成・format・SHA更新・commitを行ってはいけません。
 
-implementation agentは完了した作業をcode、test、PR本文、CI、review evidenceとして報告し、handoffへの確定反映は別workflowで行います。
-
-このhandoffには一般開発に不要なhidden story lore、hidden identity、hidden battle条件を書きません。
+個別機能の詳細仕様はcurrent code、test、architecture文書を正本とします。このhandoffには一般開発に不要なhidden story lore、hidden identity、hidden battle条件を書きません。
 
 ---
 
 # 0. 情報の読み方
 
-- **GitHub確認**: PR、commit、branch、CI、review threadなどGitHubで確認した事実
+- **GitHub確認**: PR、commit、branch、CI、review threadから確認した事実
 - **Owner決定**: Ownerが会話または実装指示で明示した現行方針
-- **設計中**: 方針はあるが数値・ontology・runtime contractが未確定のもの
-- **将来候補**: 自動採用してはいけない案
+- **次release**: まだ未実装だが、次に実装することがOwner決定済みのもの
 - **未確認**: repositoryとOwner確認だけでは確定できないもの
 
 ## 0.1 正本の優先順位
 
 ```text
-最新のreview済みコード / immutable Ruleset / DB schema・forward migration
-  > ADR・decision・運用文書
+最新のreview済みcode / immutable Ruleset / DB schema・forward migration
+  > accepted ADR・decision・operations文書
   > Ownerの最新明示決定
-  > この統合handoff
-  > 古いhandoff / roadmap
+  > このhandoff
+  > historical handoff / roadmap
   > AIの記憶・推測
 ```
 
-古いhandoffの「次に行うこと」は、後続versionですでに完了・変更・撤回されている場合があります。古いTODOを現在の未完了作業として復活させないでください。
+古いhandoffのTODOを現在の未完了作業として自動復活させないでください。過去版の詳細はGit historyを参照してください。
 
 ---
 
 # 1. 現在地
 
-## 1.1 一行要約
+## 1.1 main / release状態
+
+**GitHub確認**
 
 ```text
 main:
-  application 3.0.0
-  merge commit a76f49013efdcea7a1b519873356fcd4386cbaaf
-  immutable surface Ruleset hakoniwa-2s-plus-v18 / version 18
-  checksum 40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b
+  application: 3.1.0
+  Ruleset: hakoniwa-2s-plus-v19 / version 19
+  checksum: b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9
 
-production:
-  Owner運用確認上、3.0.0 deploy後のhakoniwa-webでUnderground log prune wrapperを手動実行しexit 0
-  root host cronへ03:15 JSTのUnderground battle-detail pruneを登録済み
+3.1.0 release merge:
+  PR #118 Release 3.1.0
+  merge commit: 96b36706ebee211126ab24ca817ef3a5633e3613
 
-release/3.1.0:
-  PR #112 Trial 1 balance simulation foundation をmerge済み
-  #112 final head: 2dd43f6abee52f9233365fe2d40a4dbdfdd2b7c5
-  #112 merge commit: 84ec606be3b08451fa495082e2ff59c0a20f4bcf
-  exact-head Quality #427 / run 33355290402: success
-  Surface Ruleset / application versionは変更なし
-  Trial 1はまだplayer-facing正式releaseではない
+AGENTS.md整理:
+  main commit before this handoff update: e5718fbb70201f523ec689a4e3c00e9d4ae16cea
+  日本語の恒久原則へ整理済み
 ```
 
-このhandoff更新前の`release/3.1.0` headは`84ec606...`です。このdocs commitでbranch headは進むため、次作業開始時は新しいexact HEADを確認してください。
+このhandoff更新commitによりmain HEADはさらに進みます。次作業開始時は必ずremote mainのexact HEADを取得してください。
 
-## 1.2 3.0.0 release evidence
+## 1.2 production確認境界
 
-**GitHub確認**
+このhandoff更新時点で、3.1.0のproduction deploy、production migration、OCI操作を実行した証拠はこのworkflowにはありません。
+
+production作業前に、実際の稼働application version、migration ledger、未解決TurnRun、backup状態を再確認してください。mainへmerge済みであることをproduction適用済みの証拠にしないでください。
+
+## 1.3 3.1.0 release migration
+
+3.0.0から3.1.0へのsupported production upgradeは、次のcanonical migration 1本です。
 
 ```text
-PR #110 Stabilize 3.0.0 release
-  final head before merge: 4af03dc0688f2125ad9ab7fd6ce5d18f4e319b64
-  merge commit into release/3.0.0-alpha: 1eb5f0174dfde4174ad25f035873981290a6c041
-
-PR #111 Release 3.0.0 — 箱庭ダンジョン
-  base: main
-  head before merge: 1eb5f0174dfde4174ad25f035873981290a6c041
-  exact-head Quality #424 / run 33318491862: success
-  merge commit into main: a76f49013efdcea7a1b519873356fcd4386cbaaf
+product/database/migrations/2026_09_01_000000_rebaseline_3_1_0_release.php
 ```
 
-`product/config/hakoniwa.php`のmainは`application_version = 3.0.0`で、current Surface Rulesetはv18のままです。3.0.0 releaseでSurface Ruleset payloadは変更していません。
+PR #112〜#116の開発途中migrationはrelease stabilizationでretire済みです。
 
-## 1.3 3.0.0 production operator state
+3.1.0 stabilization evidence:
 
-**Owner確認**
-
-3.0.0 deploy後、既存OCI host上でUnderground battle-detail retention cleanupを追加済みです。
-
-手動確認結果:
-
-```text
-hakoniwa-web: healthy
-Pruned 0 expired Underground battle log(s).
-exit: 0
-```
-
-root crontabへ以下を登録済み:
-
-```cron
-CRON_TZ=Asia/Tokyo
-15 3 * * * /usr/bin/flock -n /run/lock/hakoniwa-underground-log-prune.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/home/ubuntu/apps /home/ubuntu/apps/hakoniwa-world/product/docker/cron/prune-underground-battle-logs.sh >> /var/log/hakoniwa-underground-log-prune.log 2>&1
-```
-
-このjobは期限切れの`underground_battle_logs`詳細だけを物理削除します。compact battle recordは保持します。shell側でautomatic retryを追加しないでください。
-
-既存production hostにはTurn cronとbackup cronも存在します。Turn retry contractは従来どおり、failed / blocked turnをcronが自動retryせず、原因確認後にoperatorが明示的manual retryします。
+- exact 3.0.0 / v18 -> 3.1.0 / v19 upgrade: pass
+- fresh install: pass
+- local `composer test:all`: 867 tests / 17,223 assertions / 25:29
+- stabilization exact-head Quality: run `33533539123` success
+- queued Surface / Underground definition resolutionはcanonical resolverへ集約済み
+- long-running Composer test scriptsは300秒process timeoutを無効化済み
 
 ---
 
-# 2. 3.0.0 Underground player contract
+# 2. 3.1.0で追加された主なplayer-facing機能
 
-## 2.1 基本loop
+## 2.1 封印の地 / Trial 1
 
-```text
-Secretaryメイン
-↓ 地下へ
-intro / Tutorial / 契約
-↓
-4 growth pathから1つ選択
-↓
-通常探索
-├ battle
-├ Combat Lv / EXP / STP
-├ Skill Tree / active skill
-├ 装備Shop / 宝物庫
-├ 宿
-└ 銀行
-```
-
-UndergroundはSurface Turnとは独立したside gameです。通常探索cooldownは10秒。1回の探索battleはcanonical combatでatomicに解決します。
-
-## 2.2 Battle persistence / result
-
-- battle最大100 rounds
-- HPは通常battle間でpersist
-- MPはpersistせず、各battle開始時10,000
-- 勝利: authored EXP + G
-- 敗北: EXP 0、carried shard balanceは`floor(balance / 2)`、bankは安全、HPは全快へ戻す
-- withdrawal / 100-round stalemate: base victory EXPの1/4、0G
-- `G`はGoldではなく輝石の欠片のgram表現
-- 詳細battle log retentionは1時間。期限後もcompact summaryは保持
-- player-facing recent battle historyはlatest 5
-
-## 2.3 Combat Lv / EXP / STP
-
-Player Combat Lvにgameplay上限はありません。laboratoryのrangeをplayer上限として流用しないでください。
-
-Lv2以降の自然成長と手動STP entitlement:
+player-facing名称:
 
 ```text
-戦技: 生命+1 武力+2 技巧+1 精神+1 敏捷+0 / STP+5
-護身: 生命+2 武力+1 技巧+1 精神+1 敏捷+0 / STP+5
-祝福: 生命+1 武力+1 技巧+1 精神+2 敏捷+0 / STP+5
-自由: 生命+1 武力+1 技巧+1 精神+1 敏捷+0 / STP+6
+封印の地
+└ 地下に眠る古代遺跡
 ```
 
-- growth pathとSkill Treeは独立mechanic
-- Lv1未使用STPは0
-- 敏捷は全pathで自然成長0。STP / equipmentで伸ばす
-- 自由はmanual STPが1/Lv多い代わりに、specialist pathの将来価値はmechanic側でも確保する方向
-
-## 2.4 5能力値
-
-- **生命 / vitality**: 最大HP、物理防御、護身系効果
-- **武力 / might**: 通常攻撃・物理攻撃の中心
-- **技巧 / finesse**: 通常攻撃の一部、戦技 / dagger系、critical、一部祝福攻撃
-- **精神 / spirit**: 魔法防御、祝福damage / heal / barrier。最大MPは増やさない
-- **敏捷 / agility**: initiative、evasion、action impairment resistance。現行ではextra actionなし
-
-## 2.5 Skill Tree / SP
-
-- player-facing tree: **戦技 / 護身 / 祝福**
-- internal `miracle` keyはstable identityとして保持
-- initial SP: 20
-- active skill最大5
-- growth pathとSkill Treeは独立
-- server-authoritative acquisition / SP消費 / active loadout
-- `recommended_stats` / UI上の`依存`はguide-onlyでcombat authorityではない
-- `輝石循環`のUI依存表記は`ー`
-- `短剣乱舞`はdagger / rapier requirement
-- `盾撃`はshield requirementなし
-
-祝福heal routeは無料ではありません。現行では`聖晶弾`→`治癒祈祷`で初回heal到達に11SPを要します。古い案を理由に0SPへ戻さないでください。
-
-## 2.6 Equipment / Shop / vault
-
-Formal 3.0.0 slots:
-
-```text
-weapon x1  必須
-armor x1
-accessory x1
-```
-
-- Secretary-owned one-row-per-instance persistence
-- vault capacity 500、equippedを含む
-- starter knife exactly once、初期weapon。売却不可 / 0G
-- equipped itemは売却不可
-- Shopはdeterministic Common 30 items
-  - weapons 12 = 4 styles × 3 ranks
-  - armor 3
-  - accessories 15 = 5 stats × 3 ranks
-- buyはcarried Gのみ
-- normal Shop sellは`floor(buy / 2)`
-- random affix / enchant / unique / Item Lv progressionは3.0.0 player contractではない
-
-## 2.7 Shallow hunting ground baseline
-
-代表enemy:
-
-```text
-地底鼠       25% EXP36   10G
-洞窟蟲       25% EXP40   12G
-腐食スライム 20% EXP46   14G
-再生肉塊     10% EXP52   16G
-狂信者       10% EXP58   18G
-迷い人の影    9% EXP72   22G
-輝石虫        1% EXP1150  0G
-```
-
-浅層Shop progression目安:
-
-```text
-Rank1 gross 280G  ≒ 6m20
-Rank2 cumulative net 980G  ≒ 17m
-Rank3 cumulative net 3060G ≒ 45m20
-```
-
----
-
-# 3. 3.0.0 migration / release boundary
-
-3.0.0 release migration:
-
-`product/database/migrations/2026_08_30_050000_rebaseline_3_0_0_underground_release.php`
-
-- source contractはproduction-equivalent 2.8.0 ledger 54 migrations
-- fresh 3.0.0 ledger 55 migrations
-- retired alpha Underground migrationsをproduction ledgerへ持ち込まない
-- existing Surface / Nation / player dataをresetしない
-- Underground profile / starter gearはlazy-created
-- `down()`はforward-only / backup restore recovery前提
-
-3.0.0 release後のproduction migrationを「まだ未公開alphaだからfreshでよい」と扱わないでください。以後は通常のmigration / explicit conversion boundaryです。
-
----
-
-# 4. 3.1.0 current track
-
-## 4.1 branch / integration state
-
-**GitHub確認**
-
-```text
-release/3.1.0
-  created from main 3.0.0 baseline a76f49013efdcea7a1b519873356fcd4386cbaaf
-
-PR #112 Trial 1 balance simulation foundation for 3.1.0
-  final head: 2dd43f6abee52f9233365fe2d40a4dbdfdd2b7c5
-  merge commit: 84ec606be3b08451fa495082e2ff59c0a20f4bcf
-  exact-head Quality #427 / run 33355290402: success
-  merged into release/3.1.0
-```
-
-#112は**simulation foundation**です。Trial 1 player-facing runtime、clear persistence、reward、Awakening、第二狩場、Underground facilityはまだ正式releaseされていません。
-
-## 4.2 Trial 1 simulation contract
-
-Trial 1 provisional/final-balance candidate:
-
-- 10 consecutive battles
-- HPはbattle間でcarry
-- 勝利後、次battle前に最大HPの20%回復、max HPでcap
-- MPは各battle 10,000へreset
-- defeat / withdrawalでTrial終了
-- battle最大100 rounds
-- Trial 1 clear前のinitial 20SPのみ
-- Rank 3 Shop gear
-- no Awakening
-- no enchant / random loot
-- Lv25 / Lv30 / Lv35 checkpoint
-
-20% interbattle healは、10% / 20% / 30%比較のうち4growthをLv30で30–70%帯へ残した唯一の候補です。正式runtimeへ持ち込む際も20%をcurrent candidateとします。
-
-## 4.3 Trial 1 final 1,000-seed result
-
-Lv30 / Rank3 / interbattle heal 20%:
-
-| Growth build | Clear | Defeat | Withdrawal | 平均boss round |
-|---|---:|---:|---:|---:|
-| 戦技 | 327 / 1000 | 673 | 0 | 19.222 |
-| 護身 | 436 / 1000 | 564 | 0 | 32.715 |
-| 祝福 | 476 / 1000 | 524 | 0 | 44.039 |
-| 自由 | 335 / 1000 | 665 | 0 | 35.577 |
-
-Owner意図は「Lv30 / Rank3で4pathともギリギリ突破可能」「祝福は10連戦の持久型として他pathよりやや高いclear率を許容」です。現candidateはこれを満たしています。
-
-祝福simulation buildはinitial 20SP中19SP使用です。
-
-Lv25は全build 0%。Lv35は戦技100%、護身100%、祝福99.9%、自由98.4%。「Lv30で勝負、+5Lvなら明確に楽」というescape curveを許容します。
-
-## 4.4 Wyvern final balance candidate
-
-Battle 10 boss: **ワイバーン**
-
-主要値:
-
-```text
-max HP: 1600
-physical defense: 60
-magical defense: 229
-weapon power: 180
-self regeneration: current trial manifest valueをauthorityとする
-```
-
-旧candidateのMDef 300は、祝福が倒されずに100-round withdrawalへ偏る壁になっていました。MDefを229へ調整し、長期戦pressureをphase transitionへ移した結果、selected final scenarioでは全build withdrawal 0です。
-
-Round 40 transition:
-
-```text
-天井が崩落し、ワイバーンは宙に舞い上がる……！
-```
-
-- round 40開始時に一度だけ発火
-- `飛翔`status
-- all outgoing damage +100%
-- transition自体はactionを消費しない
-- RNG consumptionを増やすためのfake actionにしない
-- build-specific bonus / anti-healではなく全build共通のlong-fight pressure
-
-final 1,000 seedsでflight transition発動:
-
-```text
-戦技: 0 / 1000
-護身: 0 / 1000
-祝福: 892 / 1000
-自由: 224 / 1000
-```
-
-これにより、祝福は低火力ゆえ第二phaseへ入りやすいが、回復阻害やhidden handicapなしで勝敗が付く設計になっています。
-
-## 4.5 #112 P2 final-HP correction
-
-Codex reviewで、stalemate / withdrawal時にも`final_hp = 0`としてoperator reportへ集計されるP2を検出しました。
-
-修正後:
-
-- actual defeatのみ`final_hp = 0`
-- clearは最終battle remaining HPを保持
-- stalemate / withdrawalも最終battle remaining HPを保持
-- `trial_end_average_hp_all_trials`へwithdrawal survivabilityが正しく反映
-
-selected final 1,000-seed scenarioは全build withdrawal 0のため、clear / defeat / withdrawal classificationとbalance結論は変わりません。heavy 1,000-seed report再生成は不要と判断し、focused regression + exact-head Qualityで検証しています。
-
----
-
-# 5. 次の3.1.0実装開始点
-
-## 5.1 最優先: Trial 1をsimulationから正式runtimeへ
-
-次sliceの中心は、#112のbalance candidateをplayer-facing Trial 1 runtimeへ昇格することです。
-
-最低限のscope:
-
-1. server-authoritative 10連戦progression
-2. HP carry + 勝利後20% heal
-3. per-battle canonical MP reset
-4. defeat / withdrawal stop
-5. attempt / clear persistenceを必要最小限で追加
-6. 20-round warning
-7. 40-round flight transitionのplayer-facing強調
-8. Trial 1 clear rewardをexactly-onceでsettle
-
-Round 20のOwner演出案:
-
-```text
-洞窟が崩れそうだ……
-```
-
-- warningのみ。能力変化なし
-- player-facingでは目立つ赤系表示
-
-Round 40:
-
-```text
-天井が崩落し、ワイバーンは宙に舞い上がる……！
-```
-
-- player-facingでも目立つ赤系表示
-- combat-side transitionは#112でfoundation済み
-
-## 5.2 Trial 1 clear reward / unlock direction
-
-**Owner決定 / current design direction**
-
-Trial 1を含むTrial progressionは、地下RPGを遊んだ報酬として地底領域を開放する構造です。
-
-```text
-Trial 1 clear -> 地底4slot unlock
-Trial 2 clear -> +4slot
-Trial 3 clear -> +4slot
-Trial 4 clear -> +4slot
-```
-
-Trial 1 clear後の3.1.0 direction:
-
-- SP +40
-- Awakening unlock
-- second hunting ground / deeper layer unlock
-- first Underground 4 cells / slots unlock
-
-SP +40はclear rewardとしてexactly-onceである必要があります。retry / duplicate request / replayで二重付与しないでください。
-
-## 5.3 Awakening — 設計中、未実装
-
-現時点のOwner design:
-
-- 強力だが恒常balanceを大きく歪めないboss / Trial向け切り札
+主な現行contract:
+
+- 全10戦
+- HPは戦闘間でcarry
+- 勝利後、次戦前に最大HPの20%を回復し、最大HPでcap
+- MPは各戦闘開始時にcurrent canonical maximumへreset
+- defeat / withdrawalでrun終了
+- Trial 1 clear前はAwakeningを使用できない
+- 初回clear時にSP +40
+- 初回clear story / unlockはexactly once
+- repeat clear可能
+- Trial 1 clear報酬EXPは800
+- GはTrial全体で浅層10戦より高い報酬となるようWyvernへ集約
+- Trial 1 clearで地底layer 1 / 4 slotsを解禁
+
+現在の実装には3.1.1で修正するplayer-flow問題があります。詳細は第5章を参照してください。
+
+## 2.2 Awakening
+
+Trial 1初回clear後に解禁されます。
+
+主な現行contract:
+
+- persistent Awakening gauge
+- gauge maximum: 1000
+- 一戦につき最大1回
+- default AI activation: gauge fullかつHP 20%以下、player action前、action非消費
+- 発動後は戦闘終了まで5主能力値+30%
 - 発動時HP / MP全回復
-- 5種主能力値を+30%（HP / MPそのものを直接+30%する意味ではない）
-- Awakening technique stockを1回分得る
-- techniqueはgrowth tendency / selected crystalごとに複数、目安3種
-- 1battle中に2回Awakeningする設計にはしない
-- Awakening gaugeはbattle間carryする方向
-- 雑魚戦で毎回使うのではなく、狩りで蓄積してTrial / bossへ持ち込む想定
+- status、debuff、cooldown等はcleanseしない
+- 戦闘終了後は通常能力へ戻し、persist HPは通常max HPへclamp
+- growth pathごとの固定Awakening techniqueあり
 
-未確定:
+Awakening gaugeの数値`current / max`表示は3.1.1で廃止し、progress barだけを表示します。内部maximum 1000やgain formulaは変更しません。
 
-- gauge exact threshold。会話中の`512`は例でありauthorityではない
-- round経過 / 被弾によるexact gain formula
-- multi-hitを何単位でgain扱いするか
-- exact AI activation contract。HP20% triggerは候補だが正式runtime未確定
-- 4growth × Awakening techniqueの具体効果
-- transformation visual
+## 2.3 地底map / facility
 
-将来gainを実装する場合、弱いenemyを意図的に引き延ばすことやmulti-hit enemyを充電器にすることが最適化にならないかsimulationしてください。
+- Trial 1初回clear後、1 layer = 4 slotsを表示
+- slot persistenceは固定4要素のlayer構造
+- Trial progression / layer unlockはSecretary-owned
+- facilityはNation-owned
+- Surface MapCellや3D coordinate persistenceは使用しない
+- Underground slotではUnderground commandだけを表示
+- Surface cellではUnderground commandを表示しない
 
-## 5.4 second hunting ground / Item Lv / enchant
-
-Trial 1 clear後にLv30+向け第二狩場を開放する方向です。
-
-- shallowより大幅に効率を上げる
-- enemyがenchant付きequipmentをdropし始める
-- ここからItem Level progressionを本格的に有効化
-- second areaを約10時間遊んだ時点でTrial 2-readyになるprogressionを目安にする
-- Trial 2自体は3.2.0へ分離してもよい
-
-具体的なenchant pool / rarity ontologyはOwner未確定です。implementation agentが勝手に正式ontologyを作らず、必要時にOwnerへ確認してください。
-
-## 5.5 地底表示 / facility — current visual direction
-
-地底はSurfaceと同サイズの第二hex mapを作る必要はありません。現在のOwnerイメージは、島画面で地上と伝言板の間に小さいside-view断面を置く方向です。
-
-基本形:
+facility:
 
 ```text
-土 土 管 土 土
-道 道 梯 道 道
+地底都市: 首都effective population maximum +10,000
+地底農場: aggregate farm workforce capacity +10,000
+地底工場: aggregate factory workforce capacity +30,000
+地底ミサイル基地: missile capacity +1
 ```
 
-- `管`: 地上入口 / 土管
-- `梯`: 下層へ続く固定軸
-- `道`: buildable slot、左右2ずつ = 1layer 4slot
-- Trial clearごとに4slotずつ下へunlock
+- build cost: 1000億
+- removal cost: 50億
+- build / removalはofficial Turnを1消費
+- 地底ミサイル基地はown Nation capital cellのSurface scan時を処理anchorとする
+- 地底ミサイルの怪獣討伐EXPはSecretaryのsurface側monster experienceへ入る
 
-専用tabは必須ではありません。小規模表示なので、Surface UIと伝言板の間に直接表示してよい方向です。
+## 2.4 Surface追加
 
-facilityのactual effect / cost / lifecycleは正式実装前に再確認してください。過去候補には地底都市、地底農場、地底工場、地底ミサイル基地、地底防衛施設等がありますが、古い数値を無確認でcurrent contractへ昇格しないでください。
-
-Secretary-owned progressionとNation-owned facility lifecycleを混同しないこと。少なくともTrial clear / unlocked depthのようなRPG progressionは島の通常施設破壊と同じ理由で消える設計にしない方向です。
+- 領土破棄
+- 自国領の海、浅瀬、荒地、人口・施設なし平地だけを対象
+- Turn消費なし
+- terrainは変えずownershipだけ解除
 
 ---
 
-# 6. 3.1.0で今はやらないもの
+# 3. Ruleset / authorityの現行境界
 
-次sliceへ勝手に混ぜないもの:
+3.1.0のcurrent Rulesetはv19ひとつです。
 
-- Trial 2 / 3 / 4正式runtime
-- 4growth分のAwakening technique全実装を一気に行うこと
-- enchant / rarity ontologyの独断確定
-- accessory 3枠化
-- party / multiplayer dungeon
-- player market
-- Surface Ruleset v18の変更
-- production OCI操作
-- main merge
+```text
+v19
+├ Surface command definitions
+├ Surface production definitions
+└ underground_facility_development
+```
+
+- Surface command catalogとUnderground command catalogはtarget context上分離する
+- version authorityは同じv19に属する
+- Ruleset外に第二のdefinition authorityや第二のcatalog versioningを作らない
+- productionで実際に使用されたv19 snapshotはimmutable
+- 詳細は`product/docs/architecture/ruleset-authoring.md`を正本とする
+
+今後のimplementation agentはAGENTS.mdの日本語版を読み、Ownerの制約を別systemへ迂回してはなりません。
+
+---
+
+# 4. 3.1.1 release方針
+
+## 4.1 releaseの目的
+
+3.1.1は、3.1.0で見つかったUnderground player-flowと表示の修正releaseです。
+
+新しいgameplay system、balance拡張、Ruleset変更、facility追加は行いません。
+
+## 4.2 封印の地の連戦flow修正
+
+**Owner決定**
+
+現在は各戦闘結果から`地下メインへ戻る`ことができ、10連戦中に地下メインへ戻って宿へ泊まり、再び途中戦から続行できる状態です。これは10連戦contractに反します。
+
+3.1.1では次のflowへ変更します。
+
+```text
+戦闘1勝利
+↓
+戦闘結果の最下部に「次の階層へ」
+↓
+戦闘2
+↓
+...
+↓
+戦闘10 / clear result
+```
+
+要件:
+
+- battle 1〜9の勝利結果に`次の階層へ`を表示
+- `次の階層へ`から直接次battleへ進む
+- battle間に地下メイン、宿、銀行、通常探索等を挟まない
+- client側の表示非表示だけに依存せず、server-authoritativeなrun progressionを維持する
+- defeat / withdrawalは従来どおりrun終了
+- battle 10 clearでは`次の階層へ`を表示しない
+
+## 4.3 地下メインへ戻った場合のrun reset
+
+**Owner決定**
+
+進行中のTrialから地下メインへ戻った場合、何戦目まで進んでいてもそのrunを途中保存しません。
+
+```text
+地下メインへ戻る
+↓
+進行中Trialを終了 / reset
+↓
+次回Trial開始はbattle 1
+```
+
+- battle indexをresumeしない
+- 宿を使って途中戦から再開できない
+- resetがduplicate requestやrefreshで不整合を起こさないようcurrent idempotency contractへ統合する
+- clear済みhistory、first-clear entitlement、rewardは巻き戻さない
+
+## 4.4 20% interbattle healの確認と表示
+
+**Owner決定**
+
+現行contractの20%回復がruntimeで実際に適用されているかを確認します。
+
+- 対象: 次battleがある勝利時
+- 回復量: current canonical max HPの20%
+- max HPでcap
+- heal後HPを次battleへcarry
+- MP reset contractは変更しない
+
+勝利結果または勝利ログへ、実際に回復が発生したことをplayerへ示す文言を追加します。
+
+```text
+体力が少し回復した
+```
+
+表示だけを追加して実際のhealが欠けたままにしないこと。逆にhealが発生しない場面で文言だけを表示しないこと。
+
+## 4.5 Awakening gauge表示
+
+**Owner決定**
+
+Awakening gaugeは数値をplayerへ表示しません。
+
+現状:
+
+```text
+0 / 1000
+```
+
+3.1.1:
+
+```text
+覚醒ゲージ
+[ progress barのみ ]
+```
+
+- `current / max`数値を削除
+- barの進捗だけで蓄積状況を示す
+- gauge未蓄積時は青、満タン時は金色という既存表示contractを維持
+- accessibility上必要なprogress semanticsは維持してよい
+- gauge maximum、gain formula、persistence、AI発動条件は変更しない
+
+---
+
+# 5. 3.1.1 non-goals
+
+3.1.1へ混ぜないもの:
+
+- Trial 2以降
+- 第二狩場
+- enchant / random drop / Item Lv progression
+- Awakening gauge balance変更
+- Awakening technique balance変更
+- Underground facility追加・数値変更
+- Surface Ruleset semantic change
+- v20追加
+- party / team battle
+- production deploy / OCI操作
+- unrelated cleanup / broad refactor
 - handoffのagent自主更新
 
-release/3.1.0は小branchを重ねて進め、各PRをOwner review後にmergeしてください。
+必要な修正がこの境界を超える場合は、実装前にOwnerへ報告してください。
+
+---
+
+# 6. 3.1.1 verification重点
+
+最低限確認するcontract:
+
+1. Trial battle 1〜9勝利後に`次の階層へ`が表示される
+2. `次の階層へ`で次のbattle indexへ進む
+3. battle 10 clearでは次階層actionを表示しない
+4. 連戦中に地下メイン / 宿を挟んで途中戦をresumeできない
+5. 地下メインへ戻ると進行中runがresetされ、次回はbattle 1
+6. first-clear reward / SP +40 / layer unlockをresetしない
+7. 20% healがexact current combat integer policyで適用される
+8. heal後HPが次battleへcarryされる
+9. 実際にhealした勝利結果に`体力が少し回復した`が出る
+10. defeat / withdrawalでは不正なheal表示を出さない
+11. Awakening gaugeの`0 / 1000`等の数値がplayer-facing UIから消える
+12. gauge bar、blue->gold、unlock visibility、accessibility semanticsは維持
+
+変更はUnderground player-flow / presentationが中心です。既存の代表runtime / player access / frontend testへregressionを追加し、無関係なtest matrixを増やさないでください。
 
 ---
 
@@ -511,39 +350,43 @@ PR #107  Underground exploration and player growth
 PR #108  Underground status and skill progression
 PR #109  Underground equipment progression and shallow balance
 PR #110  Stabilize 3.0.0 release
-PR #111  Release 3.0.0 — 箱庭ダンジョン
-PR #112  Trial 1 balance simulation foundation for 3.1.0
+PR #111  Release 3.0.0
+PR #112  Trial 1 balance simulation foundation
+PR #113  Trial 1 player-facing release / first-clear progression
+PR #114  Awakening core
+PR #115  territory abandonment / Underground surface map
+PR #116  Nation-owned Underground facilities
+PR #117  Stabilize 3.1.0 release
+PR #118  Release 3.1.0
 ```
 
-重要なrelease commits:
+重要commit:
 
 ```text
-#110 merge into release/3.0.0-alpha:
-  1eb5f0174dfde4174ad25f035873981290a6c041
-
-#111 merge into main:
+3.0.0 main merge:
   a76f49013efdcea7a1b519873356fcd4386cbaaf
 
-#112 final head:
-  2dd43f6abee52f9233365fe2d40a4dbdfdd2b7c5
+3.1.0 release stabilization merge into release/3.1.0:
+  a0568a90674b3b455bd884628e7dc2d80229bdea
 
-#112 merge into release/3.1.0:
-  84ec606be3b08451fa495082e2ff59c0a20f4bcf
+3.1.0 main merge:
+  96b36706ebee211126ab24ca817ef3a5633e3613
+
+AGENTS.md日本語整理:
+  e5718fbb70201f523ec689a4e3c00e9d4ae16cea
 ```
 
 ---
 
-# 8. 作業開始時checklist
+# 8. 次作業開始時checklist
 
-新しいimplementation sliceを開始する前に:
-
-1. `release/3.1.0`のexact HEADを確認
+1. remote mainをfetchし、このhandoff更新後のexact HEADから3.1.1作業を開始
 2. open PR / unresolved review threadを確認
-3. current application version / Surface Rulesetを確認
-4. handoffはread-onlyとして読む
-5. 今回scopeとnon-goalをOwner指示から固定
-6. heavy simulationはCIへ常設せず、small deterministic smokeとmanual balance runを分離
-7. production / OCI / main操作はOwner明示指示なしに行わない
-8. migrationが必要なら3.0.0 release済みboundaryを前提にforward-safeに設計
+3. application 3.1.0 / Ruleset v19 / checksumを確認
+4. productionの実versionとmigration ledgerを別途確認し、GitHub stateから推測しない
+5. 3.1.1 scopeを第4〜6章に固定
+6. Trial flow、20% heal、Awakening gauge UI以外へscopeを広げない
+7. handoffはread-onlyとして扱う
+8. merge / production deploy / OCI操作はOwnerの明示許可なしに行わない
 
-次の自然な開始点は、**Trial 1正式runtime + clear reward SP+40 + first 4 underground slots unlock**です。Awakening本体、第二狩場、enchant、facility効果はreviewableな別sliceへ分割してください。
+次の自然な開始点は、**3.1.1: 封印の地の連戦導線・途中run reset・20%回復表示・Awakening gauge数値非表示**です。
