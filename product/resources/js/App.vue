@@ -450,7 +450,18 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
     const ownerMapSpaceRequest = page.value === 'island' && currentNation !== null
         ? api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`)
         : Promise.resolve(null);
-    const [rankingResult, newsResult, eventResult, nationResult, previewResult, ownerMapSpacesResult] = await Promise.allSettled([
+    const ownerUndergroundMapRequest = page.value === 'island' && currentNation !== null
+        ? api<UndergroundSurfaceMap | null>('/api/v1/me/underground/surface-map')
+        : Promise.resolve(null);
+    const [
+        rankingResult,
+        newsResult,
+        eventResult,
+        nationResult,
+        previewResult,
+        ownerMapSpacesResult,
+        ownerUndergroundMapResult,
+    ] = await Promise.allSettled([
         api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
         api<MajorNewsFeed>(`/api/v1/public/worlds/${world.id}/major-news`),
         api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
@@ -459,6 +470,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
             ? Promise.resolve(null)
             : api<PublicNationDetail>(`/api/v1/public/nations/${currentPreview.id}`),
         ownerMapSpaceRequest,
+        ownerUndergroundMapRequest,
     ] as const);
 
     let refreshed = true;
@@ -507,6 +519,29 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         }
     } else {
         refreshed = false;
+    }
+
+    if (page.value === 'island') {
+        if (ownerUndergroundMapResult.status === 'fulfilled') {
+            const nextUndergroundMap = ownerUndergroundMapResult.value;
+            const selected = selectedUndergroundSlot.value;
+            const selectedSlot = selected === null
+                ? undefined
+                : nextUndergroundMap?.layers
+                    .find((layer) => layer.layer === selected.layer)
+                    ?.slots.find((slot) => slot.slot_index === selected.slot_index);
+            undergroundSurfaceMap.value = nextUndergroundMap;
+            selectedUndergroundSlot.value = selected === null || selectedSlot === undefined
+                ? null
+                : {
+                    layer: selected.layer,
+                    slot_index: selectedSlot.slot_index,
+                    coordinate_label: selectedSlot.coordinate_label,
+                    facility_key: selectedSlot.facility_key,
+                };
+        } else {
+            refreshed = false;
+        }
     }
 
     if (page.value === 'island' && refreshedNation !== null && refreshedNation.capital !== null && refreshedMapSpace !== null) {

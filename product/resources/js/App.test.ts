@@ -685,6 +685,7 @@ describe('application lobby and island entry', () => {
         let mapSpaceCalls = 0;
         let privateChunkCalls = 0;
         let ownerEventCalls = 0;
+        let undergroundMapCalls = 0;
         let failTurnRefreshChunk = true;
         let failExpansionRefreshChunk = true;
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -709,6 +710,16 @@ describe('application lobby and island entry', () => {
                     current_turn: nationCalls === 1 ? 1 : 2,
                     total_population: nationCalls === 1 ? 1000 : 1500,
                 });
+            }
+            if (path === '/api/v1/me/underground/surface-map') {
+                undergroundMapCalls++;
+                const nextMap = structuredClone(undergroundSurfaceMapFixture);
+                if (undergroundMapCalls > 1) {
+                    nextMap.layers[0]!.slots[0]!.facility_key = 'underground_city';
+                    nextMap.layers[0]!.slots[0]!.asset_key = 'underground.city';
+                }
+
+                return response(nextMap);
             }
             if (path === '/api/v1/worlds/1/map-spaces') {
                 mapSpaceCalls++;
@@ -753,6 +764,8 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
+        await wrapper.findAll('.underground-slot')[0]!.trigger('click');
+        await flushPromises();
         const initialChunkCalls = privateChunkCalls;
 
         await vi.advanceTimersByTimeAsync(1_000);
@@ -763,6 +776,10 @@ describe('application lobby and island entry', () => {
         expect(mapSpaceCalls).toBe(2);
         expect(privateChunkCalls).toBeGreaterThan(initialChunkCalls);
         expect(ownerEventCalls).toBe(2);
+        expect(undergroundMapCalls).toBe(2);
+        expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-label')).toContain('地底都市');
+        expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
+        expect(wrapper.find('.underground-target-summary').text()).toContain('建築済み施設枠');
         expect(wrapper.findComponent(HexMap).props('bounds')).toEqual(publicDetail.map_space.bounds);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
         const failedRefreshChunkCalls = privateChunkCalls;
