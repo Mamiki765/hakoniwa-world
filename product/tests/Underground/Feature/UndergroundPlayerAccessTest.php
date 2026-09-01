@@ -362,9 +362,11 @@ final class UndergroundPlayerAccessTest extends TestCase
             'command_key' => 'build_underground_farm',
         ])->assertConflict();
 
-        $projectedOccupied = $this->actingAs($user)->getJson(
+        $projectedOccupiedResponse = $this->actingAs($user)->getJson(
             "{$base}/command-definitions?target_layer=1&target_slot_index=0&position=2",
-        )->assertOk()->json('data.commands');
+        )->assertOk();
+        $projectedOccupied = $projectedOccupiedResponse->json('data.commands');
+        $this->assertTrue(array_is_list($projectedOccupied));
         $this->assertSame(['remove_underground_facility'], array_column($projectedOccupied, 'key'));
         $version = $reserved->json('data.queue.version');
         $this->actingAs($user)->postJson("{$base}/command-queue", [

@@ -117,7 +117,8 @@ final class CommandQueueController extends Controller
                                 'execution_warnings' => $warnings,
                             ];
                         },
-                    );
+                    )
+                    ->values();
                 $quantityContract = $world->rulesetVersion->settings['development_plan_quantity'] ?? null;
                 if (! DevelopmentPlanQuantity::matchesContract($quantityContract)) {
                     throw new DomainException('Worldのrulesetはuniversal quantity契約へ移行されていません。');
