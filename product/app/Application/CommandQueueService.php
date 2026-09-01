@@ -1094,6 +1094,8 @@ final class CommandQueueService
         }
         if ($definition->key === 'territory_expand') {
             $state['owner_nation_id'] = $nation->id;
+        } elseif ($definition->key === 'territory_abandon') {
+            $state['owner_nation_id'] = null;
         }
 
         return $state;

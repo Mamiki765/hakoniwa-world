@@ -33,7 +33,7 @@ Route::post('/logout', [OAuthController::class, 'logout'])->middleware('auth')->
 Route::get('/assets/hakoniwa-tiles/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 Route::get('/assets/hakoniwa-tiles/{theme}/{filename}', AssetController::class)
-    ->where(['theme' => 'snow|peridot', 'filename' => '[A-Za-z0-9_-]+\.(?:gif|png|webp)']);
+    ->where(['theme' => 'snow|underground|peridot', 'filename' => '[A-Za-z0-9_-]+\.(?:gif|png|webp)']);
 Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 
@@ -87,6 +87,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
     Route::prefix('/me/underground')->middleware('throttle:60,1')->group(function (): void {
         Route::get('/', [UndergroundIntroController::class, 'show']);
+        Route::get('/surface-map', [UndergroundIntroController::class, 'surfaceMap']);
         Route::post('/entry', [UndergroundIntroController::class, 'enter']);
         Route::post('/story/advance', [UndergroundIntroController::class, 'advance']);
         Route::post('/tutorial', [UndergroundIntroController::class, 'tutorial']);

@@ -1,6 +1,6 @@
 <?php
 
-$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v18.php';
+$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v19.php';
 
 return [
     'application_version' => '3.0.0',
@@ -28,6 +28,7 @@ return [
         'allowed_extensions' => ['gif', 'png', 'webp'],
         'themes' => [
             'snow' => 'snow',
+            'underground' => 'underground',
             'peridot' => 'peridot',
         ],
     ],

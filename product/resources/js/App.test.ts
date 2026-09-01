@@ -4,7 +4,7 @@ import App from './App.vue';
 import HexMap from './components/HexMap.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
-import type { MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing } from './types';
+import type { AssetDescriptor, MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing, UndergroundSurfaceMap, UndergroundSurfaceMapSlot } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
     status,
@@ -66,6 +66,45 @@ const ownerNationFixture: Nation = {
     can_request_dormancy: true, winter_theme_active: false, current_turn: 1, registered_turn: 1,
     survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only', total_population: 1000,
     territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
+};
+
+const undergroundAsset = (key: string, fallbackLabel: string): AssetDescriptor => ({
+    key, url: null, available: false, fallback_label: fallbackLabel, fallback_style: key.replaceAll('.', '-'),
+});
+const undergroundOffsets: UndergroundSurfaceMapSlot['offset_x'][] = [-2, -1, 1, 2];
+const undergroundSurfaceMapFixture: UndergroundSurfaceMap = {
+    unlocked_layers: 2,
+    facility_slots_per_layer: 4,
+    total_facility_slots: 8,
+    capital: { x: 12, y: 8 },
+    entrance: { asset_key: 'underground.entrance', counts_as_facility_slot: false },
+    assets: {
+        soil: undergroundAsset('underground.soil', '土'),
+        entrance: undergroundAsset('underground.entrance', '入口'),
+        ladder: undergroundAsset('underground.ladder', '梯'),
+        road: undergroundAsset('underground.road', '空'),
+        underground_city: undergroundAsset('underground.city', '都'),
+        underground_farm: undergroundAsset('underground.farm', '農'),
+        underground_factory: undergroundAsset('underground.factory', '工'),
+        underground_missile_base: undergroundAsset('underground.missile_base', '基'),
+    },
+    layers: [1, 2].map((layer) => {
+        const z = -(layer + 1);
+        return {
+            layer,
+            z,
+            ladder: { asset_key: 'underground.ladder' as const, counts_as_facility_slot: false as const },
+            slots: undergroundOffsets.map((offsetX, slotIndex) => ({
+                slot_index: slotIndex,
+                offset_x: offsetX,
+                coordinate: { x: 12 + offsetX, y: 8, z },
+                coordinate_label: `(${12 + offsetX}, 8, ${z})`,
+                relative_label: `(X${offsetX > 0 ? '+' : ''}${offsetX}, Y, ${z})`,
+                facility_key: null,
+                asset_key: 'underground.road',
+            })),
+        };
+    }),
 };
 
 const unnamedSecretaryFixture: Secretary = {
@@ -1090,6 +1129,7 @@ describe('application lobby and island entry', () => {
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
             if (path === '/api/v1/me/nation') return response(nation);
+            if (path === '/api/v1/me/underground/surface-map') return response(undergroundSurfaceMapFixture);
             if (path === '/api/v1/worlds/1/trading-post') return response({
                 world: { id: 1, current_turn: 1 },
                 nation: { id: 3, name: '自島', money: 62728, state: 'active' },
@@ -1222,6 +1262,18 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
         expect(wrapper.find('.nation-hud').text()).toContain('島主：自島主');
         expect(wrapper.find('.nation-hud').text()).toContain('自島コメント');
+        expect(wrapper.get('.underground-map-card').text()).toContain('2層・8施設枠');
+        expect(wrapper.findAll('.underground-layer')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-slot')).toHaveLength(8);
+        expect(wrapper.findAll('.underground-ladder')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-entrance')).toHaveLength(1);
+        expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('(10, 8, -2)');
+        expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('(X-2, Y, -2)');
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+        window.dispatchEvent(new Event('resize'));
+        await wrapper.vm.$nextTick();
+        expect(wrapper.findAll('.underground-layer-row').every((row) => row.element.children.length === 5)).toBe(true);
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,000人');
         expect(wrapper.find('.hud-primary').text()).toContain('面積17セル');
         expect(wrapper.find('.hud-primary').text()).toContain('食料10,000トン');

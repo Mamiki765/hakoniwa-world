@@ -10,6 +10,7 @@ use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
+use App\Domain\Underground\Area\UndergroundAreaCapacity;
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuildCombatResult;
@@ -524,7 +525,7 @@ final class UndergroundRuntimeTest extends TestCase
             'rank' => 1,
             'active_slot' => 1,
         ]);
-        $outcomes = array_fill(0, 13, 'player');
+        $outcomes = array_fill(0, 14, 'player');
         $outcomes[9] = ['winner' => 'player', 'rounds' => 20];
         $outcomes[10] = ['winner' => 'player', 'rounds' => 20];
         [$runtime, , $combat] = $this->runtimeWithOutcomes($outcomes);
@@ -561,11 +562,12 @@ final class UndergroundRuntimeTest extends TestCase
                 } finally {
                     config(['underground-runtime.combat.battle_log_retention_hours' => 1]);
                 }
-                $this->assertSame([430, 136, 20, 1], [
+                $this->assertSame([430, 136, 20, 1, 0], [
                     $profile->refresh()->combat_xp,
                     $profile->shard_balance,
                     $profile->skill_points_total,
                     $profile->skill_points_unspent,
+                    $profile->unlocked_area_layers,
                 ]);
                 $this->assertNull(UndergroundTrialProgress::query()
                     ->where('trial_key', 'trial_01')->sole()->first_cleared_at);
@@ -587,13 +589,14 @@ final class UndergroundRuntimeTest extends TestCase
 
         $profile->refresh();
         $firstClear = UndergroundTrialProgress::query()->where('trial_key', 'trial_01')->sole()->first_cleared_at;
-        $this->assertSame([800, 205, 60, 41, 0], [
+        $this->assertSame([800, 205, 60, 41, 1], [
             $profile->combat_xp,
             $profile->shard_balance,
             $profile->skill_points_total,
             $profile->skill_points_unspent,
             $profile->unlocked_area_layers,
         ]);
+        $this->assertSame(UndergroundAreaCapacity::FACILITY_SLOTS_PER_LAYER, $profile->facilitySlotCapacity());
         $this->assertNotNull($firstClear);
         $this->assertSame(1, UndergroundSkillAllocation::query()->count());
         $this->assertSame(800, (int) UndergroundBattle::query()
@@ -611,6 +614,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame([
             "{$secretary->name}は一つ目の封印の地を制覇した。",
             'SPを40入手した。',
+            '地底マップが4マス解禁された。',
             '覚醒を習得した。',
             '覚醒ゲージが解禁された。',
         ], $firstClearProjection['first_clear_story']['system_messages']);
@@ -624,14 +628,16 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertIsString($bossRequestId);
         $duplicate = $runtime->fightTrial($user, $run->run_key, $bossRequestId);
         $this->assertTrue($duplicate['duplicate']);
-        $this->assertSame([800, 205, 60, 41], [
+        $this->assertSame([800, 205, 60, 41, 1], [
             $profile->refresh()->combat_xp,
             $profile->shard_balance,
             $profile->skill_points_total,
             $profile->skill_points_unspent,
+            $profile->unlocked_area_layers,
         ]);
         $this->assertSame(11, count($combat->calls));
 
+        $profile->update(['unlocked_area_layers' => 0]);
         $repeat = $runtime->startTrial($user, 'trial_01');
         Carbon::setTestNow(Carbon::now()->addSeconds(10));
         $repeatFirst = $runtime->fightTrial($user, $repeat->run_key, (string) Str::uuid())['battle'];
@@ -639,7 +645,7 @@ final class UndergroundRuntimeTest extends TestCase
         Carbon::setTestNow(Carbon::now()->addSeconds(10));
         $repeatClear = $runtime->fightTrial($user, $repeat->run_key, (string) Str::uuid())['battle'];
 
-        $this->assertSame([1210, 286, 60, 41, 0], [
+        $this->assertSame([1210, 286, 60, 41, 1], [
             $profile->refresh()->combat_xp,
             $profile->shard_balance,
             $profile->skill_points_total,
@@ -653,6 +659,20 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertNull($runtime->projectTrialBattle($repeatClear)['first_clear_story']);
         $this->assertSame(0, UndergroundTrialProgress::query()->where('trial_key', 'trial_02')->count());
         $this->assertSame(13, count($combat->calls));
+
+        $profile->update(['unlocked_area_layers' => 3]);
+        $advancedRepeat = $runtime->startTrial($user, 'trial_01');
+        $advancedRepeat->update(['next_battle_index' => 10]);
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $advancedRepeatClear = $runtime->fightTrial(
+            $user,
+            $advancedRepeat->run_key,
+            (string) Str::uuid(),
+        )['battle'];
+        $this->assertSame(3, $profile->refresh()->unlocked_area_layers);
+        $this->assertSame(12, $profile->facilitySlotCapacity());
+        $this->assertNull($runtime->projectTrialBattle($advancedRepeatClear)['first_clear_story']);
+        $this->assertSame(14, count($combat->calls));
     }
 
     public function test_expired_log_pruning_preserves_history_idempotency_and_user_ownership(): void

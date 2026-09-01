@@ -531,6 +531,42 @@ export interface AssetDescriptor {
     fallback_style: string;
 }
 
+export interface UndergroundSurfaceMapSlot {
+    slot_index: number;
+    offset_x: -2 | -1 | 1 | 2;
+    coordinate: { x: number; y: number; z: number };
+    coordinate_label: string;
+    relative_label: string;
+    facility_key: 'underground_city' | 'underground_farm' | 'underground_factory' | 'underground_missile_base' | null;
+    asset_key: string;
+}
+
+export interface UndergroundSurfaceMapLayer {
+    layer: number;
+    z: number;
+    ladder: { asset_key: 'underground.ladder'; counts_as_facility_slot: false };
+    slots: UndergroundSurfaceMapSlot[];
+}
+
+export interface UndergroundSurfaceMap {
+    unlocked_layers: number;
+    facility_slots_per_layer: 4;
+    total_facility_slots: number;
+    capital: { x: number; y: number };
+    entrance: { asset_key: 'underground.entrance'; counts_as_facility_slot: false };
+    assets: {
+        soil: AssetDescriptor;
+        entrance: AssetDescriptor;
+        ladder: AssetDescriptor;
+        road: AssetDescriptor;
+        underground_city: AssetDescriptor;
+        underground_farm: AssetDescriptor;
+        underground_factory: AssetDescriptor;
+        underground_missile_base: AssetDescriptor;
+    };
+    layers: UndergroundSurfaceMapLayer[];
+}
+
 export interface MapCellDetail {
     key: string;
     label: string;
