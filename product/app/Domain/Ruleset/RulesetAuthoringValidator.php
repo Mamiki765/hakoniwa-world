@@ -43,6 +43,8 @@ final class RulesetAuthoringValidator
 
     private const FORMAL_V18_KEY = 'hakoniwa-2s-plus-v18';
 
+    private const FORMAL_V19_KEY = 'hakoniwa-2s-plus-v19';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -337,6 +339,7 @@ final class RulesetAuthoringValidator
         $this->validateTerrainQuantities($settings);
         $this->validateFacilities($settings, $commandKeys, $productionKeys);
         $this->validateCommands($settings, $resourceKeys, $facilityKeys, $authoredKey, $version);
+        $this->validateUndergroundFacilityDevelopment($settings, $authoredKey, $version);
         $this->validateProduction($settings, $resourceKeys, $facilityKeys);
         $this->validateVersionAdditions(
             $settings,
@@ -536,7 +539,7 @@ final class RulesetAuthoringValidator
         $itemSettings = $settings;
         $itemSettings['key'] = $authoredKey;
         (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($itemSettings);
-        if (in_array($authoredKey, [self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY], true)) {
+        if (in_array($authoredKey, [self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY], true)) {
             TradingPostRules::fromSettings($settings);
         }
 
@@ -589,10 +592,11 @@ final class RulesetAuthoringValidator
             16 => self::FORMAL_V16_KEY,
             17 => self::FORMAL_V17_KEY,
             18 => self::FORMAL_V18_KEY,
+            19 => self::FORMAL_V19_KEY,
             default => null,
         };
         if ($expectedKey === null || $authoredKey !== $expectedKey || ! $hasLifecycle) {
-            throw new DomainException('The v12-v18 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+            throw new DomainException('The v12-v19 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
         }
 
         $path = 'ruleset.nation_lifecycle';
@@ -680,10 +684,10 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($version, [13, 14, 15, 16, 17, 18], true)
-            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY], true)
+        if (! in_array($version, [13, 14, 15, 16, 17, 18, 19], true)
+            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY], true)
             || ! is_array($authored)) {
-            throw new DomainException('The v13-v18 Ruleset identity requires the KARMA contract.');
+            throw new DomainException('The v13-v19 Ruleset identity requires the KARMA contract.');
         }
         $expected = [
             'minimum' => -10,
@@ -715,7 +719,7 @@ final class RulesetAuthoringValidator
                 'random_stream_version' => 1,
             ],
         ];
-        if ($version === 18) {
+        if ($version >= 18) {
             $expected['impact_points']['undersea_city_destroyed'] = 3;
             $expected['foreign_wasteland_territory_expand'] = 1;
         }
@@ -826,7 +830,7 @@ final class RulesetAuthoringValidator
         if ($fraction !== ['numerator' => 1, 'denominator' => 2]) {
             throw new DomainException("{$path}.refugees.generated_fraction must be one half.");
         }
-        if ($rulesetVersion === 18
+        if ($rulesetVersion >= 18
             && ($refugees['excluded_facility_keys'] ?? null) !== ['undersea_city']) {
             throw new DomainException("{$path}.refugees must explicitly exclude undersea_city in v18.");
         }
@@ -1363,11 +1367,12 @@ final class RulesetAuthoringValidator
             16 => self::FORMAL_V16_KEY,
             17 => self::FORMAL_V17_KEY,
             18 => self::FORMAL_V18_KEY,
+            19 => self::FORMAL_V19_KEY,
             default => null,
         };
         if (($expectedKey !== null && $key !== $expectedKey)
-            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY], true))) {
-            throw new DomainException('The v11-v18 ruleset identity and version must be authored together.');
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY], true))) {
+            throw new DomainException('The v11-v19 ruleset identity and version must be authored together.');
         }
 
         return $version >= 11;
@@ -1384,8 +1389,8 @@ final class RulesetAuthoringValidator
         ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
-        if (in_array($version, [12, 13, 14, 15, 16, 17, 18], true)
-            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY], true)) {
+        if (in_array($version, [12, 13, 14, 15, 16, 17, 18, 19], true)
+            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 
@@ -1691,6 +1696,7 @@ final class RulesetAuthoringValidator
         int $authoredRulesetVersion,
     ): void {
         $underseaCityDefinitions = 0;
+        $territoryAbandonDefinitions = 0;
         foreach ($this->list($settings['command_definitions'], 'ruleset.command_definitions') as $index => $definition) {
             $path = "ruleset.command_definitions.{$index}";
             $definition = $this->map($definition, $path);
@@ -1742,7 +1748,8 @@ final class RulesetAuthoringValidator
             }
             if ($commandKey === 'build_undersea_city') {
                 $underseaCityDefinitions++;
-                if ($authoredRulesetVersion !== 18
+                $expectedSortOrder = $authoredRulesetVersion >= 19 ? 125 : 260;
+                if ($authoredRulesetVersion < 18
                     || $definition['target_terrain_keys'] !== ['sea']
                     || $definition['target_facility_keys'] !== []
                     || $definition['requires_empty_facility'] !== true
@@ -1750,9 +1757,28 @@ final class RulesetAuthoringValidator
                     || $definition['required_resources'] !== []
                     || $definition['result_terrain_key'] !== 'sea'
                     || $definition['result_facility_key'] !== 'undersea_city'
+                    || $definition['sort_order'] !== $expectedSortOrder
                     || ($metadata['minimum_capital_population'] ?? null) !== 3100
                     || ($metadata['capital_transfer_population'] ?? null) !== 3000) {
                     throw new DomainException("{$path} differs from the v18 undersea-city construction contract.");
+                }
+            }
+            if ($commandKey === 'territory_abandon') {
+                $territoryAbandonDefinitions++;
+                if ($authoredRulesetVersion < 19
+                    || $definition['target_type'] !== 'cell'
+                    || $definition['target_terrain_keys'] !== ['sea', 'shallow', 'wasteland', 'plain']
+                    || $definition['target_facility_keys'] !== []
+                    || $definition['requires_empty_facility'] !== true
+                    || $definition['cost_money'] !== 0
+                    || $definition['required_resources'] !== []
+                    || $definition['execution_phase'] !== 'terrain'
+                    || $definition['result_terrain_key'] !== null
+                    || $definition['result_facility_key'] !== null
+                    || $definition['sort_order'] !== 95
+                    || ($metadata['consumes_turn'] ?? null) !== false
+                    || ($metadata['parameters'] ?? null) !== []) {
+                    throw new DomainException("{$path} differs from the v19 territory-abandonment contract.");
                 }
             }
             if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)
@@ -1765,8 +1791,113 @@ final class RulesetAuthoringValidator
                 }
             }
         }
-        if ($authoredRulesetVersion === 18 && $underseaCityDefinitions !== 1) {
-            throw new DomainException('The v18 Ruleset requires exactly one build_undersea_city command.');
+        if ($authoredRulesetVersion >= 18 && $underseaCityDefinitions !== 1) {
+            throw new DomainException('The v18+ Ruleset requires exactly one build_undersea_city command.');
+        }
+        if ($authoredRulesetVersion >= 19 && $territoryAbandonDefinitions !== 1) {
+            throw new DomainException('The v19+ Ruleset requires exactly one territory_abandon command.');
+        }
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function validateUndergroundFacilityDevelopment(
+        array $settings,
+        string $authoredRulesetKey,
+        int $authoredRulesetVersion,
+    ): void {
+        $section = $settings['underground_facility_development'] ?? null;
+        if ($authoredRulesetVersion < 19) {
+            if ($section !== null) {
+                throw new DomainException('Underground facility development definitions require Ruleset v19+.');
+            }
+
+            return;
+        }
+        if ($authoredRulesetKey !== self::FORMAL_V19_KEY) {
+            return;
+        }
+
+        $section = $this->map($section, 'ruleset.underground_facility_development');
+        $this->requireKeys($section, ['facility_definitions', 'command_definitions'], 'ruleset.underground_facility_development');
+        $facilities = $this->map(
+            $section['facility_definitions'],
+            'ruleset.underground_facility_development.facility_definitions',
+        );
+        $expectedEffects = [
+            'underground_city' => ['capital_maximum_population_bonus' => 10_000],
+            'underground_farm' => ['farm_capacity_people' => 10_000],
+            'underground_factory' => ['factory_capacity_people' => 30_000],
+            'underground_missile_base' => ['missile_launch_capacity' => 1],
+        ];
+        if (array_keys($facilities) !== array_keys($expectedEffects)) {
+            throw new DomainException('Ruleset v19 Underground facility definition keys are invalid.');
+        }
+        foreach ($expectedEffects as $facilityKey => $expectedEffect) {
+            $path = "ruleset.underground_facility_development.facility_definitions.{$facilityKey}";
+            $facility = $this->map($facilities[$facilityKey], $path);
+            $this->requireKeys($facility, ['name', 'effect'], $path);
+            $this->persistedString($facility['name'], "{$path}.name");
+            $effect = $this->map($facility['effect'], "{$path}.effect");
+            foreach ($effect as $effectKey => $value) {
+                $this->persistedString($effectKey, "{$path}.effect key");
+                $this->integer($value, "{$path}.effect.{$effectKey}", 1);
+            }
+            if ($effect !== $expectedEffect) {
+                throw new DomainException("{$path}.effect differs from the v19 Underground facility contract.");
+            }
+        }
+
+        $expectedCommands = [
+            'build_underground_city' => ['build', 'underground_city', 1000, 1],
+            'build_underground_farm' => ['build', 'underground_farm', 1000, 2],
+            'build_underground_factory' => ['build', 'underground_factory', 1000, 3],
+            'build_underground_missile_base' => ['build', 'underground_missile_base', 1000, 4],
+            'remove_underground_facility' => ['remove', null, 50, 5],
+        ];
+        $definitions = $this->list(
+            $section['command_definitions'],
+            'ruleset.underground_facility_development.command_definitions',
+        );
+        $actualKeys = [];
+        foreach ($definitions as $index => $definition) {
+            $path = "ruleset.underground_facility_development.command_definitions.{$index}";
+            $definition = $this->map($definition, $path);
+            $this->requireKeys($definition, [
+                'key', 'name', 'description', 'target_type', 'cost_money', 'action',
+                'facility_key', 'execution_phase', 'sort_order', 'metadata',
+            ], $path);
+            $commandKey = $this->persistedString($definition['key'], "{$path}.key");
+            $this->persistedString($definition['name'], "{$path}.name");
+            $this->string($definition['description'], "{$path}.description");
+            $this->persistedString($definition['target_type'], "{$path}.target_type");
+            $this->persistedString($definition['action'], "{$path}.action");
+            $this->persistedString($definition['execution_phase'], "{$path}.execution_phase");
+            $this->integer($definition['cost_money'], "{$path}.cost_money", 0);
+            $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
+            $metadata = $this->map($definition['metadata'], "{$path}.metadata");
+            $this->requireKeys($metadata, ['consumes_turn', 'parameters', 'quantity_semantics'], "{$path}.metadata");
+            $this->boolean($metadata['consumes_turn'], "{$path}.metadata.consumes_turn");
+            $this->list($metadata['parameters'], "{$path}.metadata.parameters");
+            $this->persistedString($metadata['quantity_semantics'], "{$path}.metadata.quantity_semantics");
+
+            $expected = $expectedCommands[$commandKey] ?? null;
+            if ($expected === null
+                || $definition['target_type'] !== 'underground_slot'
+                || $definition['action'] !== $expected[0]
+                || $definition['facility_key'] !== $expected[1]
+                || $definition['cost_money'] !== $expected[2]
+                || $definition['sort_order'] !== $expected[3]
+                || $definition['execution_phase'] !== 'underground_facility'
+                || count($metadata) !== 3
+                || $metadata['consumes_turn'] !== true
+                || $metadata['parameters'] !== []
+                || $metadata['quantity_semantics'] !== 'unused') {
+                throw new DomainException("{$path} differs from the v19 Underground command contract.");
+            }
+            $actualKeys[] = $commandKey;
+        }
+        if ($actualKeys !== array_keys($expectedCommands)) {
+            throw new DomainException('Ruleset v19 Underground command definition keys are invalid.');
         }
     }
 
@@ -2306,7 +2437,7 @@ final class RulesetAuthoringValidator
         if ($attractionMaximum < $largestOrdinaryMaximum) {
             throw new DomainException("{$path}.settlement attraction maximum cannot be below an ordinary maximum.");
         }
-        if (($settings['version'] ?? null) === 18) {
+        if (($settings['version'] ?? 0) >= 18) {
             if (($settlement['population_facility_keys'] ?? null) !== [
                 'village', 'town', 'city', 'capital', 'undersea_city',
             ] || ($settlement['fixed_identity_facility_keys'] ?? null) !== ['capital', 'undersea_city']
@@ -2609,7 +2740,7 @@ final class RulesetAuthoringValidator
                 $this->facilityReferenceOrFuture($facilityKey, $facilityKeys, "{$firePath}.{$listKey}");
             }
         }
-        if (($settings['version'] ?? null) === 18
+        if (($settings['version'] ?? 0) >= 18
             && ($fire['unprotected_sea_facility_keys'] ?? null) !== ['undersea_city']) {
             throw new DomainException("{$firePath} must make undersea_city an unprotected normal-probability fire target.");
         }

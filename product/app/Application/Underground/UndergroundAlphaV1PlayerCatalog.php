@@ -532,6 +532,40 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return new AlphaV1BuildCatalog($manifest);
     }
 
+    public function trialOneCatalog(): AlphaV1BuildCatalog
+    {
+        try {
+            $trial = json_decode(
+                file_get_contents(config_path('underground/balance/trial1-v1.json')) ?: '',
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            );
+        } catch (JsonException $exception) {
+            throw new RuntimeException('Underground Trial 1 manifest is invalid.', previous: $exception);
+        }
+        if (! is_array($trial)
+            || ($trial['schema_version'] ?? null) !== 1
+            || ($trial['combat_identity'] ?? null) !== AlphaV1CombatRules::IDENTITY
+            || ! is_array($trial['skills'] ?? null)
+            || ! is_array($trial['statuses'] ?? null)
+            || ! is_array($trial['enemies'] ?? null)) {
+            throw new RuntimeException('Underground Trial 1 manifest is invalid.');
+        }
+
+        $manifest = $this->laboratoryCatalog()->manifest();
+        foreach (['skills', 'statuses', 'enemies'] as $section) {
+            foreach ($trial[$section] as $key => $definition) {
+                if (! is_string($key) || ! is_array($definition) || array_key_exists($key, $manifest[$section])) {
+                    throw new RuntimeException("Underground Trial 1 {$section} catalog is invalid.");
+                }
+                $manifest[$section][$key] = $definition;
+            }
+        }
+
+        return new AlphaV1BuildCatalog($manifest);
+    }
+
     /**
      * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
      * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
@@ -546,6 +580,61 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         string $playerDisplayName,
         ?int $currentHp = null,
         array $skillAllocations = [],
+    ): array {
+        return $this->playerCombatDefinition(
+            $this->explorationCatalog(),
+            $growthPathKey,
+            $combatLevel,
+            $allocatedStp,
+            $equipment,
+            $playerDisplayName,
+            $currentHp,
+            $skillAllocations,
+        );
+    }
+
+    /**
+     * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
+     * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
+     * @param  array<string, mixed>  $equipment
+     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>}
+     */
+    public function trialOneCombatDefinition(
+        string $growthPathKey,
+        int $combatLevel,
+        array $allocatedStp,
+        array $equipment,
+        string $playerDisplayName,
+        ?int $currentHp = null,
+        array $skillAllocations = [],
+    ): array {
+        return $this->playerCombatDefinition(
+            $this->trialOneCatalog(),
+            $growthPathKey,
+            $combatLevel,
+            $allocatedStp,
+            $equipment,
+            $playerDisplayName,
+            $currentHp,
+            $skillAllocations,
+        );
+    }
+
+    /**
+     * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
+     * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
+     * @param  array<string, mixed>  $equipment
+     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>}
+     */
+    private function playerCombatDefinition(
+        AlphaV1BuildCatalog $catalog,
+        string $growthPathKey,
+        int $combatLevel,
+        array $allocatedStp,
+        array $equipment,
+        string $playerDisplayName,
+        ?int $currentHp,
+        array $skillAllocations,
     ): array {
         $progressionStats = $this->currentStats($growthPathKey, $combatLevel, $allocatedStp);
         $combatStats = $this->combatStats($progressionStats, $equipment);
@@ -562,7 +651,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         $skillBuild = $this->playerSkillBuild($skillAllocations, $weaponStyle);
 
         return [
-            'catalog' => $this->explorationCatalog(),
+            'catalog' => $catalog,
             'player_snapshot' => [
                 'key' => 'secretary_runtime',
                 'label' => $playerDisplayName,

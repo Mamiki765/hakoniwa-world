@@ -6,6 +6,7 @@ use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundPlaytestService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
+use App\Application\Underground\UndergroundSurfaceMapProjection;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AcquireUndergroundSkillRequest;
 use App\Http\Requests\AdvanceUndergroundIntroRequest;
@@ -15,7 +16,10 @@ use App\Http\Requests\SelectUndergroundGrowthPathRequest;
 use App\Http\Requests\UndergroundBankTransferRequest;
 use App\Http\Requests\UndergroundIntroMutationRequest;
 use App\Http\Requests\UndergroundPlaytestRequest;
+use App\Http\Requests\UndergroundTrialFightRequest;
+use App\Http\Requests\UndergroundTrialRunRequest;
 use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
+use App\Http\Requests\UpdateUndergroundAwakeningMessageRequest;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +30,11 @@ final class UndergroundIntroController extends Controller
     public function show(Request $request, UndergroundIntroService $service): JsonResponse
     {
         return $this->respond(fn (): array => $service->state($request->user()));
+    }
+
+    public function surfaceMap(Request $request, UndergroundSurfaceMapProjection $projection): JsonResponse
+    {
+        return response()->json(['data' => $projection->forUser($request->user())]);
     }
 
     public function enter(
@@ -136,6 +145,37 @@ final class UndergroundIntroController extends Controller
         });
     }
 
+    public function startTrial(Request $request, UndergroundRuntimeService $service): JsonResponse
+    {
+        return $this->respond(fn (): array => $service->projectTrialRun(
+            $service->startTrial($request->user(), 'trial_01'),
+        ));
+    }
+
+    public function fightTrial(
+        UndergroundTrialFightRequest $request,
+        UndergroundRuntimeService $service,
+    ): JsonResponse {
+        return $this->respond(function () use ($request, $service): array {
+            $result = $service->fightTrial(
+                $request->user(),
+                $request->string('run_key')->value(),
+                $request->string('request_id')->value(),
+            );
+
+            return $service->projectTrialBattle($result['battle']);
+        });
+    }
+
+    public function withdrawTrial(
+        UndergroundTrialRunRequest $request,
+        UndergroundRuntimeService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->projectTrialRun(
+            $service->withdrawTrial($request->user(), $request->string('run_key')->value()),
+        ));
+    }
+
     public function restAtInn(
         UndergroundIntroMutationRequest $request,
         UndergroundIntroService $service,
@@ -198,6 +238,19 @@ final class UndergroundIntroController extends Controller
             $request->user(),
             $request->string('request_id')->value(),
             $slots,
+        ));
+    }
+
+    public function updateAwakeningMessage(
+        UpdateUndergroundAwakeningMessageRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        $message = $request->validated('message');
+
+        return $this->respond(fn (): array => $service->updateAwakeningMessage(
+            $request->user(),
+            $request->string('request_id')->value(),
+            is_string($message) ? $message : null,
         ));
     }
 

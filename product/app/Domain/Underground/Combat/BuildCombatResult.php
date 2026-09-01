@@ -13,6 +13,25 @@ final readonly class BuildCombatResult
      * @param  list<string>  $abnormalState
      * @param  list<array<string, mixed>>  $actionLog
      * @param  list<array<string, mixed>>  $generatedEquipment
+     * @param  array{
+     *   identity: string,
+     *   unlocked: bool,
+     *   gauge_before: int,
+     *   gauge_after: int,
+     *   gauge_gained: int,
+     *   triggered: bool,
+     *   normal_max_hp: int,
+     *   final_max_hp: int,
+     *   normal_stats: array<string, int>,
+     *   final_stats: array<string, int>,
+     *   technique: array{
+     *     key: string,
+     *     name: string,
+     *     summary: string,
+     *     consumes_action: bool,
+     *     used: bool
+     *   }|null
+     * }  $awakening
      */
     public function __construct(
         public string $rulesIdentity,
@@ -47,6 +66,7 @@ final readonly class BuildCombatResult
         public array $abnormalState,
         public array $actionLog,
         public array $generatedEquipment,
+        public array $awakening,
     ) {}
 
     /** @return array<string, mixed> */
@@ -86,6 +106,7 @@ final readonly class BuildCombatResult
             'abnormal_state' => $this->abnormalState,
             'action_log' => $this->actionLog,
             'generated_equipment' => $this->generatedEquipment,
+            'awakening' => $this->awakening,
         ];
     }
 }

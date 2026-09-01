@@ -2,8 +2,25 @@
 
 ## Scope
 
-The normal application configuration resolves only the current immutable Ruleset,
-`hakoniwa-2s-plus-v18`. Its identity and formal checksum are:
+The normal application configuration resolves only the current in-development Ruleset for
+release/3.1.0, `hakoniwa-2s-plus-v19`. Its identity and current formal checksum are:
+
+```text
+key: hakoniwa-2s-plus-v19
+version: 19
+checksum: b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9
+```
+
+v19 is the ver 3.1.0 contract under construction. It adds the turn-free `territory_abandon`
+command for safe empty owned cells, moves `build_undersea_city` to player-facing sort order
+125, and versions the isolated Underground facility/command definitions and their ongoing
+effects. Underground unlock entitlement remains Secretary-owned, constructed facilities are
+Nation-owned, and neither is represented as a surface Ruleset map cell. v19 may be refined as
+part of completing release/3.1.0; it freezes when that release reaches main/production.
+
+## Immutable v18 boundary
+
+The immediately preceding supported source remains the exact immutable v18 payload:
 
 ```text
 key: hakoniwa-2s-plus-v18
@@ -11,25 +28,8 @@ version: 18
 checksum: 40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b
 ```
 
-v18 is the first ver 2.8.0 gameplay contract. It adds `undersea_city`, its disguised sea
-presentation, atomic capital-population transfer, canonical settlement growth and food use,
-refugee exclusion, deterministic all-or-nothing industrial-goods/mineral maintenance,
-famine-equivalent loss and minimum-population removal, fire and seabed-disaster behavior,
-land-destruction compatibility, resource forecast consumption, and the +3/+1 KARMA ledger
-entries. It does not add ships, vision, treasure, Artifacts, or fire-mitigation Items.
-
-## Immutable v17 boundary
-
-The immediately preceding supported source remains the exact immutable v17 payload:
-
-```text
-key: hakoniwa-2s-plus-v17
-version: 17
-checksum: 8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3
-```
-
-v18 authoring explicitly reuses unchanged v17 fields and replaces only its bounded changed
-domains. It does not mutate the v17 source or payload and does not introduce recursive
+v19 authoring explicitly reuses unchanged v18 fields and replaces only its bounded changed
+domains. It does not mutate the v18 source or payload and does not introduce recursive
 inheritance or a dynamic historical catalog.
 
 Historical v15 remains immutable with formal checksum
@@ -40,12 +40,13 @@ Historical v14 remains immutable with checksum
 
 ## Dependency boundary
 
-`config/hakoniwa.php` loads only the thin v18 entrypoint. The entrypoint names every final
-top-level payload field explicitly, taking unchanged fields from exact v17 and changed fields
-from `config/hakoniwa/rulesets/v18/`. Current services obtain gameplay from
-`hakoniwa.ruleset`, and `hakoniwa:ruleset:validate` validates current v18 only.
+`config/hakoniwa.php` loads only the thin v19 entrypoint. The entrypoint takes unchanged fields
+from exact v18 and replaces identity, the Surface commands domain, and the separate
+`underground_facility_development` domain from `config/hakoniwa/rulesets/v19/`. Underground
+commands do not enter Surface `command_definitions`. Current services obtain gameplay from
+`hakoniwa.ruleset`, and `hakoniwa:ruleset:validate` validates current v19 only.
 
-The exact v17 entrypoint is retained only as the immutable supported migration source and
+The exact v18 entrypoint is retained as the immutable supported migration source and
 checksum proof. Older authored PHP and its former catalog/bootstrap remain retired; Git and
 immutable database snapshots are the authority for unsupported executable history. The
 exact v10 monster-dispatch duplicate-request compatibility continues to read persisted
@@ -53,16 +54,35 @@ Ruleset and command-definition snapshots rather than historical PHP.
 
 ## Installation and forward migration
 
-The schema dump is the canonical final 3.0.0 schema and migration ledger. A fresh install
-loads that schema directly, then current bootstrap installs and publishes only immutable v18.
+The schema dump is the canonical final 3.0.0 schema and 55-entry migration ledger. A fresh
+install loads that schema directly, then the single forward 3.1.0 release migration creates
+the final Awakening and Nation-owned Underground facility schema and publishes final v19.
+The facility schema has a non-null `ruleset_version_id`; no Underground MapCell or 3D map
+schema is created. The exact v18 source remains in code as the immutable supported upgrade input; a
+fresh database does not need a historical v18 catalog row.
 
-The only supported production application upgrade is exact ver 2.8.0 / v18 to 3.0.0. The
-forward-only 3.0.0 migration rejects an absent v18 ledger, any retired Underground alpha
-migration ledger, or any pre-existing Underground table. It verifies the current immutable
-v18 state without changing its payload, then creates the final Underground profile,
-intro/progression, battle/history, STP/SP/Skill Tree, equipment ownership, request-idempotency,
-constraint, index, and foreign-key schema directly. Existing World, Nation, player, command,
-Turn, event, audit, and surface Ruleset data are not reset or reinterpreted.
+The supported production application upgrade from ver 2.8.0 / v18 to 3.0.0 uses the
+forward-only 3.0.0 migration. It rejects an absent v18 ledger, any retired Underground alpha
+migration ledger, or any pre-existing Underground table. It verifies immutable v18 without
+changing its payload, then creates the final Underground profile, intro/progression,
+battle/history, STP/SP/Skill Tree, equipment ownership, request-idempotency, constraint,
+index, and foreign-key schema directly. Existing World, Nation, player, command, Turn,
+event, audit, and surface Ruleset data are not reset or reinterpreted.
+
+The supported 3.1.0 application upgrade starts from the exact 3.0.0 schema and v18 World and
+runs one forward migration. That migration creates the final schema directly, publishes the
+complete v19 payload once, rebinds current queued Surface commands and live definition
+references by stable key, switches the locked World atomically, and reconciles the Trial 1
+inconsistency by raising only profiles with a first clear and zero unlocked layers to layer 1.
+Existing values above layer 1 are never reduced, and historical commands, events, turns,
+battles, Ruleset snapshots, and other business data are preserved. Queued Underground commands
+resolve through their existing request Ruleset provenance, so the current Ruleset cannot
+reinterpret a reserved command or constructed facility.
+
+The four migrations used while PR112 through PR116 were under development were never applied
+to production and are not supported upgrade ledgers. The canonical release migration does not
+replay a pre-versioned facility schema or rewrite an intermediate v19 payload before reaching
+the final state.
 
 The ten Underground migrations authored during the 3.0.0-alpha branch were never deployed to
 production and are retired from the final release. Their final schema is represented by the

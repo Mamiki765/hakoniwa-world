@@ -2,10 +2,13 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundFacilityBenefits;
+use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CommandFailureReason;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
+use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
@@ -22,6 +25,7 @@ use App\Domain\Secretary\SecretaryRingFinanceBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
+use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -32,6 +36,7 @@ use App\Models\Nation;
 use App\Models\NationCapital;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
+use App\Models\NationMembership;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\TerrainDefinition;
@@ -45,7 +50,7 @@ final class DomesticCommandExecutor
     private const QUANTITY_COMMANDS = ['build_farm', 'build_factory', 'build_mine'];
 
     /** @var list<string> */
-    private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate'];
+    private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate', 'territory_abandon'];
 
     public function __construct(
         private readonly MapCellStateService $cells,
@@ -66,6 +71,9 @@ final class DomesticCommandExecutor
         private readonly SecretaryExperienceAwardService $secretaryExperience,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly UndergroundFacilityService $undergroundFacilities,
+        private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
+        private readonly UndergroundFacilityBenefits $undergroundBenefits,
     ) {}
 
     /**
@@ -113,7 +121,7 @@ final class DomesticCommandExecutor
                     ->orderBy('queue_position')
                     ->orderBy('id')
                     ->lockForUpdate()
-                    ->with('definition')
+                    ->with(['definition', 'requestRulesetVersion'])
                     ->first();
                 if ($item === null) {
                     break;
@@ -130,26 +138,64 @@ final class DomesticCommandExecutor
                     continue;
                 }
 
-                $cell = MapCell::query()
-                    ->where('map_space_id', $queue->map_space_id)
-                    ->where('x', $item->target_x)
-                    ->where('y', $item->target_y)
-                    ->lockForUpdate()
-                    ->with(['terrain', 'facility'])
-                    ->firstOrFail();
-                $definition = $item->definition;
-                $before = $this->cellSnapshot($cell);
-                $executionCost = $this->executionCost($nation, $item, $definition, $cell);
-                $this->deductCostAndResources($nation, $definition, $executionCost);
-                $meaningfulActivity = $this->apply(
-                    $context,
-                    $nation,
-                    $item,
-                    $definition,
-                    $cell,
-                    $executionCost,
-                );
-                $after = $this->cellSnapshot($cell->fresh(['terrain', 'facility']));
+                $definition = $this->queuedCommandDefinitions->resolve($item);
+                if ($item->target_context === 'underground_slot') {
+                    if (! $definition instanceof UndergroundCommandDefinition) {
+                        throw new DomainException('Underground queue item definition is invalid.');
+                    }
+                    $before = [
+                        'layer' => $item->target_layer,
+                        'slot_index' => $item->target_slot_index,
+                        'facility_key' => $this->undergroundFacilities->currentFacilityKey(
+                            $nation->id,
+                            $item->target_layer,
+                            $item->target_slot_index,
+                            true,
+                        ),
+                    ];
+                    $executionCost = $definition->cost_money;
+                    $this->deductCostAndResources($nation, $definition, $executionCost);
+                    $this->undergroundFacilities->execute(
+                        $nation,
+                        $definition,
+                        (int) $item->request_ruleset_version_id,
+                        $item->target_layer,
+                        $item->target_slot_index,
+                    );
+                    $after = [
+                        'layer' => $item->target_layer,
+                        'slot_index' => $item->target_slot_index,
+                        'facility_key' => $this->undergroundFacilities->currentFacilityKey(
+                            $nation->id,
+                            $item->target_layer,
+                            $item->target_slot_index,
+                        ),
+                    ];
+                    $meaningfulActivity = true;
+                } else {
+                    if (! $definition instanceof CommandDefinition) {
+                        throw new DomainException('Surface queue item definition is invalid.');
+                    }
+                    $cell = MapCell::query()
+                        ->where('map_space_id', $queue->map_space_id)
+                        ->where('x', $item->target_x)
+                        ->where('y', $item->target_y)
+                        ->lockForUpdate()
+                        ->with(['terrain', 'facility'])
+                        ->firstOrFail();
+                    $before = $this->cellSnapshot($cell);
+                    $executionCost = $this->executionCost($nation, $item, $definition, $cell);
+                    $this->deductCostAndResources($nation, $definition, $executionCost);
+                    $meaningfulActivity = $this->apply(
+                        $context,
+                        $nation,
+                        $item,
+                        $definition,
+                        $cell,
+                        $executionCost,
+                    );
+                    $after = $this->cellSnapshot($cell->fresh(['terrain', 'facility']));
+                }
                 $this->awardSecretaryDevelopmentExperience($context, $nation->id, $definition->key);
 
                 $consumedTurn = (bool) ($definition->metadata['consumes_turn'] ?? true);
@@ -194,7 +240,7 @@ final class DomesticCommandExecutor
                 } elseif ($meaningfulActivity) {
                     $context->state->recordImmediateNormalCommandSucceeded($nation->id);
                 }
-                $dispatchOption = $definition->key === 'monster_dispatch'
+                $dispatchOption = $definition instanceof CommandDefinition && $definition->key === 'monster_dispatch'
                     && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
                         ? $this->monsterDispatchOptions->resolve($definition, $item->quantity)
                         : null;
@@ -290,8 +336,9 @@ final class DomesticCommandExecutor
         NationCommandQueue $queue,
         NationCommandQueueItem $item,
     ): ?array {
-        $definition = $item->definition;
-        if ($definition->ruleset_version_id !== $nation->world()->value('ruleset_version_id')) {
+        $definition = $this->queuedCommandDefinitions->resolve($item);
+        if ($definition instanceof CommandDefinition
+            && $definition->ruleset_version_id !== $nation->world()->value('ruleset_version_id')) {
             return [
                 'reason' => CommandFailureReason::RulesetMismatch,
                 'observed' => $this->emptyObservedState(),
@@ -299,6 +346,15 @@ final class DomesticCommandExecutor
         }
         if ($definition->key === 'finance') {
             return null;
+        }
+        if ($definition instanceof UndergroundCommandDefinition) {
+            return $this->undergroundValidationFailure($nation, $item, $definition);
+        }
+        if ($item->target_context !== 'surface_cell') {
+            return [
+                'reason' => CommandFailureReason::InvalidParameter,
+                'observed' => $this->emptyObservedState(),
+            ];
         }
         if ($definition->target_type === 'nation') {
             return $this->nationCommandValidationFailure($context, $nation, $item, $definition);
@@ -399,6 +455,9 @@ final class DomesticCommandExecutor
                 return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
             }
         }
+        if ($definition->key === 'territory_abandon' && (int) $cell->population !== 0) {
+            return ['reason' => CommandFailureReason::PopulationExists, 'observed' => $observed];
+        }
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
             $matchingQuantityFacility = $this->isMatchingQuantityFacility($definition, $cell);
             if (! $matchingQuantityFacility
@@ -470,6 +529,57 @@ final class DomesticCommandExecutor
             if ((int) $amount < $required) {
                 return ['reason' => CommandFailureReason::InsufficientResource, 'observed' => $observed];
             }
+        }
+
+        return null;
+    }
+
+    /** @return array{reason: CommandFailureReason, observed: array<string, int|string|null>}|null */
+    private function undergroundValidationFailure(
+        Nation $nation,
+        NationCommandQueueItem $item,
+        UndergroundCommandDefinition $definition,
+    ): ?array {
+        $observed = $this->emptyObservedState();
+        if ($item->target_context !== 'underground_slot'
+            || $item->target_x !== null || $item->target_y !== null
+            || ! is_int($item->target_layer) || ! is_int($item->target_slot_index)) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
+        $membership = NationMembership::query()->whereKey($item->queued_by_membership_id)->lockForUpdate()->first();
+        if (! $membership instanceof NationMembership) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
+        try {
+            $this->undergroundFacilities->assertMembershipEntitled(
+                $membership,
+                $nation,
+                $item->target_layer,
+                $item->target_slot_index,
+            );
+        } catch (PlayerFacingCommandException) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
+        $facilityKey = $this->undergroundFacilities->currentFacilityKey(
+            $nation->id,
+            $item->target_layer,
+            $item->target_slot_index,
+            true,
+        );
+        $observed['facility'] = $facilityKey;
+        $observed['owner_nation_id'] = $nation->id;
+        try {
+            $this->undergroundFacilities->assertProjectedCommand($definition, $facilityKey);
+        } catch (PlayerFacingCommandException) {
+            return [
+                'reason' => $facilityKey === null
+                    ? CommandFailureReason::InvalidFacility
+                    : CommandFailureReason::FacilityExists,
+                'observed' => $observed,
+            ];
+        }
+        if ((int) $nation->money < $definition->cost_money) {
+            return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
         }
 
         return null;
@@ -578,6 +688,7 @@ final class DomesticCommandExecutor
             ->where('facility_operational_state', 'operational')
             ->whereHas('facility', fn ($query) => $query->whereIn('key', $baseKeys))
             ->exists();
+        $hasBase = $hasBase || $this->undergroundBenefits->missileBases($nation->id)->isNotEmpty();
         if (! $hasBase) {
             return ['reason' => CommandFailureReason::NoLaunchBase, 'observed' => $observed];
         }
@@ -624,7 +735,7 @@ final class DomesticCommandExecutor
 
     private function deductCostAndResources(
         Nation $nation,
-        CommandDefinition $definition,
+        CommandDefinition|UndergroundCommandDefinition $definition,
         int $executionCost,
     ): void {
         if ((int) $nation->money < $executionCost) {
@@ -690,6 +801,11 @@ final class DomesticCommandExecutor
         }
         if ($definition->key === 'territory_expand') {
             $this->applyTerritoryExpand($context, $nation, $item, $cell);
+
+            return true;
+        }
+        if ($definition->key === 'territory_abandon') {
+            $this->applyTerritoryAbandon($context, $nation, $cell);
 
             return true;
         }
@@ -1164,6 +1280,25 @@ final class DomesticCommandExecutor
                 'crime_points' => $points,
             ], 'admin');
         }
+    }
+
+    private function applyTerritoryAbandon(
+        TurnContext $context,
+        Nation $nation,
+        MapCell $cell,
+    ): void {
+        $terrainKey = $cell->terrain->key;
+        $cell->owner_nation_id = null;
+        $cell->version++;
+        $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+        $this->events->record($context, 'command.territory_abandoned', $cell, [
+            'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'terrain_key' => $terrainKey,
+        ], 'nation');
     }
 
     private function lockedCapitalCell(Nation $nation): MapCell
@@ -1734,23 +1869,26 @@ final class DomesticCommandExecutor
         CommandFailureReason $reason,
         array $observed,
     ): void {
+        $definition = $this->queuedCommandDefinitions->resolve($item);
         $metadata = [
             'nation_id' => $nation->id,
             'nation_name' => $nation->name,
-            'command_key' => $item->definition->key,
-            'command_name' => $item->definition->name,
+            'command_key' => $definition->key,
+            'command_name' => $definition->name,
             'x' => $item->target_x,
             'y' => $item->target_y,
+            'layer' => $item->target_layer,
+            'slot_index' => $item->target_slot_index,
             'failure_reason' => $reason->value,
             'observed' => $observed,
             'original_parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
             'quantity' => $item->quantity,
             'target_turn' => $context->targetTurn,
         ];
-        if ($item->definition->key === 'monster_dispatch'
-            && ($item->definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+        if ($definition instanceof CommandDefinition && $definition->key === 'monster_dispatch'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
             try {
-                $option = $this->monsterDispatchOptions->resolve($item->definition, $item->quantity);
+                $option = $this->monsterDispatchOptions->resolve($definition, $item->quantity);
                 $metadata['dispatch_selector'] = $option->selector;
                 $metadata['monster_key'] = $option->monsterDefinitionKey;
                 $metadata['cost_money'] = $option->costMoney;
@@ -1772,7 +1910,7 @@ final class DomesticCommandExecutor
         }
         $this->events->record($context, 'command.queue_removed', $item, [
             'nation_id' => $queue->nation_id,
-            'command_key' => $item->definition->key,
+            'command_key' => $definition->key,
             'reason' => $reason->value,
         ]);
     }

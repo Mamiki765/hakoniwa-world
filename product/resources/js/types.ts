@@ -531,6 +531,49 @@ export interface AssetDescriptor {
     fallback_style: string;
 }
 
+export interface UndergroundSurfaceMapSlot {
+    slot_index: number;
+    offset_x: -2 | -1 | 1 | 2;
+    coordinate: { x: number; y: number; z: number };
+    coordinate_label: string;
+    relative_label: string;
+    facility_key: 'underground_city' | 'underground_farm' | 'underground_factory' | 'underground_missile_base' | null;
+    asset_key: string;
+}
+
+export interface UndergroundFacilityTarget {
+    layer: number;
+    slot_index: number;
+    coordinate_label: string;
+    facility_key: UndergroundSurfaceMapSlot['facility_key'];
+}
+
+export interface UndergroundSurfaceMapLayer {
+    layer: number;
+    z: number;
+    ladder: { asset_key: 'underground.ladder'; counts_as_facility_slot: false };
+    slots: UndergroundSurfaceMapSlot[];
+}
+
+export interface UndergroundSurfaceMap {
+    unlocked_layers: number;
+    facility_slots_per_layer: 4;
+    total_facility_slots: number;
+    capital: { x: number; y: number };
+    entrance: { asset_key: 'underground.entrance'; counts_as_facility_slot: false };
+    assets: {
+        soil: AssetDescriptor;
+        entrance: AssetDescriptor;
+        ladder: AssetDescriptor;
+        road: AssetDescriptor;
+        underground_city: AssetDescriptor;
+        underground_farm: AssetDescriptor;
+        underground_factory: AssetDescriptor;
+        underground_missile_base: AssetDescriptor;
+    };
+    layers: UndergroundSurfaceMapLayer[];
+}
+
 export interface MapCellDetail {
     key: string;
     label: string;
@@ -596,7 +639,7 @@ export interface CommandDefinition {
     command_suffix_tone?: 'danger' | null;
     confirmation_message?: string | null;
     description: string;
-    target_type: 'cell' | 'nation';
+    target_type: 'cell' | 'nation' | 'underground_slot';
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_default: number | null;
     quantity_options: Array<{ value: number; key: string; label: string; cost_money?: number }>;
@@ -655,8 +698,11 @@ export interface CommandQueueItem {
     command_suffix?: string | null;
     command_suffix_tone?: 'danger' | null;
     queue_position: number;
+    target_context: 'surface_cell' | 'underground_slot';
     target_x: number | null;
     target_y: number | null;
+    target_layer: number | null;
+    target_slot_index: number | null;
     quantity: number;
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_label: string | null;

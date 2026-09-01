@@ -34,6 +34,7 @@ final class NationLifecycleService
         private readonly TurnEventRecorder $events,
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly NationLifecyclePrepareStateResolver $prepareState,
+        private readonly NationQueuedMeaningfulActivityQuery $meaningfulActivity,
     ) {}
 
     /** @return array{participants: int, active: int, dormant: int, recovery: int, resumed: int, recovery_resumed: int} */
@@ -49,7 +50,7 @@ final class NationLifecycleService
                 if (! is_int($nation->resume_at_turn) || $context->targetTurn < $nation->resume_at_turn) {
                     continue;
                 }
-                $hasMeaningfulQueue = $this->hasQueuedNonFinanceCommand($nation, $settings['finance_command_key']);
+                $hasMeaningfulQueue = $this->meaningfulActivity->exists($nation, $settings['finance_command_key']);
                 $nextState = $this->prepareState->resolve(
                     $nation->state,
                     $nation->state_reason,
@@ -71,7 +72,7 @@ final class NationLifecycleService
                 continue;
             }
             $hasMeaningfulQueue = $nation->state_reason !== 'manual'
-                && $this->hasQueuedNonFinanceCommand($nation, $settings['finance_command_key']);
+                && $this->meaningfulActivity->exists($nation, $settings['finance_command_key']);
             $nextState = $this->prepareState->resolve(
                 $nation->state,
                 $nation->state_reason,
@@ -541,15 +542,6 @@ final class NationLifecycleService
         }
 
         return true;
-    }
-
-    private function hasQueuedNonFinanceCommand(Nation $nation, string $financeKey): bool
-    {
-        return DB::table('nation_command_queue_items as item')
-            ->join('nation_command_queues as queue', 'queue.id', '=', 'item.nation_command_queue_id')
-            ->join('command_definitions as definition', 'definition.id', '=', 'item.command_definition_id')
-            ->where('queue.nation_id', $nation->id)->where('item.status', 'queued')
-            ->where('definition.key', '<>', $financeKey)->exists();
     }
 
     /** @return array{0: int|null, 1: string|null} */

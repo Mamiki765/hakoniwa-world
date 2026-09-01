@@ -40,6 +40,9 @@ final class TurnState
     /** @var array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int}> */
     private array $nationAggregates = [];
 
+    /** @var array<int, list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}>>|null */
+    private ?array $undergroundFacilitySnapshots = null;
+
     /** @var array<int, array{money: int, population: int, food: int}> */
     private array $nationStartSummaries = [];
 
@@ -154,6 +157,82 @@ final class TurnState
     public function stableNationIds(): array
     {
         return $this->stableNationIds;
+    }
+
+    /** @param array<array-key, mixed> $snapshots */
+    public function setUndergroundFacilitySnapshots(array $snapshots): void
+    {
+        $validatedSnapshots = [];
+        foreach ($snapshots as $nationId => $facilities) {
+            $nationId = $this->validatedNationId($nationId);
+            if (! is_array($facilities) || ! array_is_list($facilities)) {
+                throw new InvalidArgumentException("Underground facility snapshot for Nation {$nationId} must be a list.");
+            }
+            $occupiedSlots = [];
+            foreach ($facilities as $facility) {
+                if (! is_array($facility)) {
+                    throw new InvalidArgumentException('Underground facility snapshot is invalid.');
+                }
+                $id = $facility['id'] ?? null;
+                $rulesetVersionId = $facility['ruleset_version_id'] ?? null;
+                $layer = $facility['layer'] ?? null;
+                $slotIndex = $facility['slot_index'] ?? null;
+                $facilityKey = $facility['facility_key'] ?? null;
+                $effect = $facility['effect'] ?? null;
+                if (! is_int($id) || $id < 1 || ! is_int($rulesetVersionId) || $rulesetVersionId < 1
+                    || ! is_int($layer) || $layer < 1
+                    || ! is_int($slotIndex) || $slotIndex < 0 || $slotIndex > 3
+                    || ! is_string($facilityKey) || $facilityKey === ''
+                    || ! is_array($effect) || array_is_list($effect)) {
+                    throw new InvalidArgumentException('Underground facility snapshot is invalid.');
+                }
+                foreach ($effect as $effectKey => $effectValue) {
+                    if (! is_string($effectKey) || $effectKey === '' || ! is_int($effectValue) || $effectValue < 1) {
+                        throw new InvalidArgumentException('Underground facility snapshot effect is invalid.');
+                    }
+                }
+                $slotKey = $layer.':'.$slotIndex;
+                if (isset($occupiedSlots[$slotKey])) {
+                    throw new InvalidArgumentException("Underground facility snapshot contains duplicate slot {$slotKey}.");
+                }
+                $occupiedSlots[$slotKey] = true;
+                $validatedSnapshots[$nationId][] = [
+                    'id' => $id,
+                    'ruleset_version_id' => $rulesetVersionId,
+                    'layer' => $layer,
+                    'slot_index' => $slotIndex,
+                    'facility_key' => $facilityKey,
+                    'effect' => $effect,
+                ];
+            }
+            $validatedSnapshots[$nationId] ??= [];
+        }
+        $this->undergroundFacilitySnapshots = $validatedSnapshots;
+    }
+
+    public function hasUndergroundFacilitySnapshots(): bool
+    {
+        return $this->undergroundFacilitySnapshots !== null;
+    }
+
+    /** @return list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}> */
+    public function undergroundFacilitySnapshotsForNation(mixed $nationId): array
+    {
+        $nationId = $this->validatedNationId($nationId);
+        if ($this->undergroundFacilitySnapshots === null) {
+            throw new InvalidArgumentException('Underground facility snapshots have not been loaded.');
+        }
+
+        return $this->undergroundFacilitySnapshots[$nationId] ?? [];
+    }
+
+    public function undergroundFacilitySnapshotCount(): int
+    {
+        if ($this->undergroundFacilitySnapshots === null) {
+            throw new InvalidArgumentException('Underground facility snapshots have not been loaded.');
+        }
+
+        return array_sum(array_map('count', $this->undergroundFacilitySnapshots));
     }
 
     /** @param array<array-key, mixed> $nationIds */

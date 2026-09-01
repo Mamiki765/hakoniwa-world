@@ -24,7 +24,7 @@ class TileAssetTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['snow', 'peridot'] as $directory) {
+        foreach (['snow', 'peridot', 'underground'] as $directory) {
             $assetSubdirectory = $this->assetDirectory.DIRECTORY_SEPARATOR.$directory;
             foreach (glob($assetSubdirectory.DIRECTORY_SEPARATOR.'*') ?: [] as $file) {
                 unlink($file);
@@ -94,13 +94,15 @@ class TileAssetTest extends TestCase
         $this->assertStringContainsString('/undersea-city.gif?v=', (string) $resolver->resolve('tile.undersea_city', '海底都市')['url']);
     }
 
-    public function test_snow_theme_uses_only_same_basename_allowlisted_overrides_and_falls_back_to_normal(): void
+    public function test_themed_assets_use_only_allowlisted_external_files_and_fall_back_safely(): void
     {
         mkdir($this->assetDirectory.DIRECTORY_SEPARATOR.'snow', 0777, true);
         mkdir($this->assetDirectory.DIRECTORY_SEPARATOR.'peridot', 0777, true);
+        mkdir($this->assetDirectory.DIRECTORY_SEPARATOR.'underground', 0777, true);
         config([
             'hakoniwa.assets.themes.snow' => 'snow',
             'hakoniwa.assets.themes.peridot' => 'peridot',
+            'hakoniwa.assets.themes.underground' => 'underground',
         ]);
         foreach (['land0.gif', 'land1.gif', 'capital.gif', 'monument.png'] as $filename) {
             $this->writeGif($filename);
@@ -110,6 +112,20 @@ class TileAssetTest extends TestCase
         }
         foreach (['peridot/peridot.png', 'peridot/silhouette.png'] as $filename) {
             $this->writePng($filename);
+        }
+        $undergroundAssets = [
+            'underground.soil' => 'Ug.gif',
+            'underground.entrance' => 'Ug_dokan.gif',
+            'underground.ladder' => 'Ug_hasigo.gif',
+            'underground.road' => 'Ug_road.gif',
+            'underground.city' => 'Ug_tosi.gif',
+            'underground.farm' => 'Ug_farm.gif',
+            'underground.factory' => 'Ug_fact.gif',
+            'underground.missile_base' => 'Ug_kiti.gif',
+            'underground.oil' => 'Ug_oil.gif',
+        ];
+        foreach ($undergroundAssets as $filename) {
+            $this->writeGif('underground/'.$filename);
         }
         $resolver = app(AssetManifestResolver::class);
 
@@ -138,6 +154,18 @@ class TileAssetTest extends TestCase
         $this->assertNull($resolver->pathForFilename('unknown.png', 'peridot'));
         $this->get('/assets/hakoniwa-tiles/peridot/peridot.png')->assertOk()
             ->assertHeader('Content-Type', 'image/png');
+
+        foreach ($undergroundAssets as $assetKey => $filename) {
+            $asset = $resolver->resolve($assetKey, '地下', 'underground');
+            $this->assertTrue($asset['available'], $assetKey);
+            $this->assertStringContainsString("/underground/{$filename}?v=", (string) $asset['url']);
+        }
+        $this->assertNotNull($resolver->pathForFilename('Ug_road.gif', 'underground'));
+        $this->assertNull($resolver->pathForFilename('not-allowlisted.gif', 'underground'));
+        $this->get('/assets/hakoniwa-tiles/underground/Ug_road.gif')->assertOk()
+            ->assertHeader('Content-Type', 'image/gif');
+        unlink($this->assetDirectory.DIRECTORY_SEPARATOR.'underground'.DIRECTORY_SEPARATOR.'Ug_oil.gif');
+        $this->assertFalse($resolver->resolve('underground.oil', '将来用', 'underground')['available']);
     }
 
     public function test_awards_use_only_the_allowlisted_original_prize_zero_through_ten_assets(): void

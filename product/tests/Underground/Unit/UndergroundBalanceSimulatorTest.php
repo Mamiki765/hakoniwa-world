@@ -2,23 +2,224 @@
 
 namespace Tests\Underground\Unit;
 
+use App\Application\Underground\CanonicalUndergroundExplorationCombat;
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBalanceSimulator;
 use App\Application\Underground\UndergroundBuildBalanceSimulator;
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundReportSourceIdentity;
+use App\Application\Underground\UndergroundTrialBalanceSimulator;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuiltInCombatAi;
 use App\Domain\Underground\Combat\CanonicalCombatOrchestrator;
 use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use InvalidArgumentException;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 final class UndergroundBalanceSimulatorTest extends TestCase
 {
+    public function test_trial_sequence_replays_the_same_ten_battles_with_current_build_and_recovery_contracts(): void
+    {
+        [$contents, $manifest] = $this->trialManifest();
+        foreach ($manifest['enemies'] as &$enemy) {
+            $enemy['max_hp'] = 1;
+            $enemy['physical_defense'] = 0;
+            $enemy['magical_defense'] = 0;
+            $enemy['weapon_power'] = 1;
+            $enemy['skills'] = [];
+            $enemy['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']];
+            $enemy['modifiers'] = [];
+        }
+        unset($enemy);
+        $contents = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $simulator = $this->trialSimulator();
+        $first = $simulator->replay($manifest, 'free_black:lv30:heal3000', 41);
+        $second = $simulator->replay($manifest, 'free_black:lv30:heal3000', 41);
+
+        $this->assertSame($first, $second);
+        $this->assertTrue($first['result']['cleared']);
+        $this->assertCount(10, $first['result']['battles']);
+        $this->assertSame($first['result']['battles'][9]['remaining_hp'], $first['result']['final_hp']);
+        $maxHp = $first['result']['build']['max_hp'];
+        $nominalHeal = intdiv($maxHp * 3000, 10_000);
+        foreach ($first['result']['battles'] as $index => $battle) {
+            $expectedPostHeal = $index < 9
+                ? min($maxHp, $battle['remaining_hp'] + $nominalHeal)
+                : $battle['remaining_hp'];
+            $this->assertSame(AlphaV1CombatRules::MAX_MP, $battle['starting_mp']);
+            $this->assertSame($expectedPostHeal, $battle['post_heal_hp']);
+            $this->assertLessThanOrEqual($maxHp, $battle['post_heal_hp']);
+        }
+
+        $report = $simulator->run(
+            $manifest,
+            $contents,
+            hash('sha256', $contents),
+            'config/underground/balance/trial1-v1.json',
+            str_repeat('c', 40),
+            false,
+            41,
+            2,
+            'free_black:lv30:heal3000',
+        );
+        $this->assertTrue($report['trial_contract_passed']);
+        $this->assertSame(AlphaV1CombatRules::MAX_MP, $report['mp_contract']['starts_each_battle_at']);
+        $this->assertFalse($report['mp_contract']['persists_between_battles']);
+        $this->assertSame([], $report['abnormal_seeds']);
+        $this->assertSame(10, $report['scenarios'][0]['max_battles_observed']);
+        foreach ($report['builds'] as $levels) {
+            foreach ($levels as $build) {
+                $this->assertLessThanOrEqual(20, $build['skill_points_spent']);
+                $this->assertSame([3, 3, 3], array_column($build['equipment']['items'], 'rank'));
+            }
+        }
+        $this->assertArrayNotHasKey('battles', $report['scenarios'][0]);
+    }
+
+    public function test_trial_wyvern_enters_its_healer_pressure_phase_at_round_40_without_losing_its_action(): void
+    {
+        [, $manifest] = $this->trialManifest();
+        $this->assertSame(229, $manifest['enemies']['trial_wyvern']['magical_defense']);
+        $this->assertSame(10_000, $manifest['statuses']['wyvern_airborne']['effects'][0]['value_bps']);
+        foreach ($manifest['enemies'] as &$enemy) {
+            $enemy['max_hp'] = 1;
+            $enemy['physical_defense'] = 0;
+            $enemy['magical_defense'] = 0;
+            $enemy['weapon_power'] = 1;
+            $enemy['skills'] = [];
+            $enemy['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']];
+            $enemy['modifiers'] = [];
+        }
+        unset($enemy);
+        $wyvern = &$manifest['enemies']['trial_wyvern'];
+        $wyvern['base_stats'] = ['vitality' => 96, 'might' => 1, 'finesse' => 1, 'spirit' => 1, 'agility' => 1];
+        $wyvern['max_hp'] = 1_000_000;
+        $wyvern['normal_attack'] = [
+            'type' => 'damage', 'category' => 'physical', 'potency_bps' => 0,
+            'stat_coefficients' => [], 'weapon_coefficient_bps' => 0, 'fixed' => 1,
+            'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => false, 'hits' => 1,
+        ];
+        unset($wyvern);
+
+        $result = $this->trialSimulator()
+            ->replay($manifest, 'martial_red:lv30:heal2000', 41)['result'];
+        $boss = $result['battles'][9];
+        $transitionRows = array_values(array_filter(
+            $boss['action_log'],
+            static fn (array $row): bool => ($row['effect_type'] ?? null) === 'phase_transition',
+        ));
+        $enemyDecisions = array_values(array_filter(
+            $boss['action_log'],
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
+                && ($row['side'] ?? null) === 'enemy'
+                && ($row['round'] ?? null) === 40,
+        ));
+        $round39 = array_values(array_filter(
+            $boss['action_log'],
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end'
+                && ($row['round'] ?? null) === 39,
+        ))[0];
+        $round40 = array_values(array_filter(
+            $boss['action_log'],
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end'
+                && ($row['round'] ?? null) === 40,
+        ))[0];
+
+        $this->assertSame('stalemate', $boss['winner']);
+        $this->assertSame(1, $boss['phase_transition_count']);
+        $this->assertCount(1, $transitionRows);
+        $this->assertSame(40, $transitionRows[0]['round']);
+        $this->assertSame('wyvern_airborne', $transitionRows[0]['status']);
+        $this->assertSame(
+            '天井が崩落し、ワイバーンは宙に舞い上がる……！',
+            $transitionRows[0]['message'],
+        );
+        $this->assertCount(1, $enemyDecisions);
+        $this->assertNotContains('wyvern_airborne', array_column($round39['enemy']['statuses'], 'key'));
+        $this->assertContains('wyvern_airborne', array_column($round40['enemy']['statuses'], 'key'));
+    }
+
+    public function test_trial_sequence_stops_immediately_after_the_first_failed_battle(): void
+    {
+        [, $manifest] = $this->trialManifest();
+        $firstEnemyKey = $manifest['battle_sequence'][0];
+        $manifest['enemies'][$firstEnemyKey]['base_stats'] = [
+            'vitality' => 1,
+            'might' => 1,
+            'finesse' => 1,
+            'spirit' => 1,
+            'agility' => 96,
+        ];
+        $manifest['enemies'][$firstEnemyKey]['max_hp'] = 1_000_000;
+        $manifest['enemies'][$firstEnemyKey]['weapon_power'] = 100_000;
+        $manifest['enemies'][$firstEnemyKey]['normal_attack']['fixed'] = 100_000;
+        $manifest['enemies'][$firstEnemyKey]['skills'] = [];
+        $manifest['enemies'][$firstEnemyKey]['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $result = $this->trialSimulator()
+            ->replay($manifest, 'martial_red:lv30:heal2000', 7)['result'];
+
+        $this->assertFalse($result['cleared']);
+        $this->assertSame(1, $result['failed_battle']);
+        $this->assertCount(1, $result['battles']);
+        $this->assertFalse($result['continued_after_failure']);
+        $this->assertSame(0, $result['battles'][0]['interbattle_heal']);
+        $this->assertSame('defeat', $result['failure_result']);
+        $this->assertSame(0, $result['final_hp']);
+    }
+
+    public function test_trial_withdrawal_preserves_remaining_hp_in_the_all_trial_average(): void
+    {
+        [, $manifest] = $this->trialManifest();
+        $firstEnemyKey = $manifest['battle_sequence'][0];
+        $manifest['enemies'][$firstEnemyKey]['max_hp'] = 1_000_000;
+        $manifest['enemies'][$firstEnemyKey]['physical_defense'] = 0;
+        $manifest['enemies'][$firstEnemyKey]['magical_defense'] = 0;
+        $manifest['enemies'][$firstEnemyKey]['weapon_power'] = 1;
+        $manifest['enemies'][$firstEnemyKey]['normal_attack'] = [
+            'type' => 'damage', 'category' => 'physical', 'potency_bps' => 0,
+            'stat_coefficients' => [], 'weapon_coefficient_bps' => 0, 'fixed' => 1,
+            'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => false, 'hits' => 1,
+        ];
+        $manifest['enemies'][$firstEnemyKey]['skills'] = [];
+        $manifest['enemies'][$firstEnemyKey]['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $manifest['enemies'][$firstEnemyKey]['modifiers'] = [];
+        $contents = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $simulator = $this->trialSimulator();
+        $result = $simulator->replay($manifest, 'martial_red:lv30:heal2000', 41)['result'];
+
+        $this->assertFalse($result['cleared']);
+        $this->assertSame('stalemate', $result['failure_result']);
+        $this->assertSame(1, $result['stalemate_count']);
+        $this->assertGreaterThan(0, $result['battles'][0]['remaining_hp']);
+        $this->assertSame($result['battles'][0]['remaining_hp'], $result['final_hp']);
+
+        $scenario = $simulator->run(
+            $manifest,
+            $contents,
+            hash('sha256', $contents),
+            'config/underground/balance/trial1-v1.json',
+            str_repeat('d', 40),
+            false,
+            41,
+            1,
+            'martial_red:lv30:heal2000',
+        )['scenarios'][0];
+
+        $this->assertSame(0, $scenario['clear_count']);
+        $this->assertSame(1, $scenario['stalemate_count']);
+        $this->assertSame((float) $result['final_hp'], $scenario['trial_end_average_hp_all_trials']);
+    }
+
     public function test_alpha_v1_small_smoke_reports_build_damage_mp_scale_and_zero_abnormal_states(): void
     {
         $path = dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json';
@@ -35,6 +236,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
                 $generator,
                 new PriorityCombatAi,
                 new CanonicalCombatOrchestrator,
+                new UndergroundAwakening,
             ),
             new UndergroundBuildValidator($rules),
             $generator,
@@ -301,6 +503,38 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         return new UndergroundBalanceSimulator(
             $rules,
             new UndergroundCombatEngine($rules, new BuiltInCombatAi),
+        );
+    }
+
+    /** @return array{string, array<string, mixed>} */
+    private function trialManifest(): array
+    {
+        $path = dirname(__DIR__, 3).'/config/underground/balance/trial1-v1.json';
+        $contents = file_get_contents($path);
+        $this->assertIsString($contents);
+        $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($manifest);
+
+        return [$contents, $manifest];
+    }
+
+    private function trialSimulator(): UndergroundTrialBalanceSimulator
+    {
+        $rules = new AlphaV1CombatRules;
+        $validator = new UndergroundBuildValidator($rules);
+        $model = new AlphaV1CombatModel(
+            $rules,
+            $validator,
+            new DeterministicEquipmentGenerator($rules),
+            new PriorityCombatAi,
+            new CanonicalCombatOrchestrator,
+            new UndergroundAwakening,
+        );
+
+        return new UndergroundTrialBalanceSimulator(
+            new CanonicalUndergroundExplorationCombat($model),
+            new UndergroundAlphaV1PlayerCatalog($rules, $validator),
+            new UndergroundEquipmentCatalog,
         );
     }
 }

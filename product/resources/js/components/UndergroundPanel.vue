@@ -32,6 +32,7 @@ interface RoundAction {
     parried?: boolean;
     barrier_absorbed?: number;
     complete_guarded?: boolean;
+    lines?: string[];
 }
 
 interface RoundState {
@@ -51,7 +52,7 @@ interface CombatRound {
 
 interface Battle {
     id: string;
-    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration';
+    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial';
     player_display_name?: string;
     encounter_name: string;
     build_name?: string;
@@ -66,9 +67,52 @@ interface Battle {
     unspent_stp_after?: number;
     detail_available: boolean;
     actions?: SimpleAction[] | CombatRound[] | null;
-    summary?: Record<string, number | string> | null;
+    summary?: Record<string, boolean | number | string> | null;
     rewards?: { xp: number; shards: number; g?: number; drops?: unknown[] };
     detail_message?: string | null;
+    trial_run_key?: string | null;
+    trial_battle_index?: number | null;
+    trial_total_battles?: number | null;
+    trial_status?: 'active' | 'withdrawn' | 'defeated' | 'cleared' | null;
+    trial_next_battle_index?: number | null;
+    first_clear_story?: {
+        title: string;
+        body: string;
+        system_messages: string[];
+    } | null;
+    challenge_intro?: string | null;
+}
+
+interface TrialRun {
+    key: string;
+    label: string;
+    run_key: string;
+    status: 'active' | 'withdrawn' | 'defeated' | 'cleared';
+    next_battle_index: number;
+    total_battles: number;
+}
+
+interface TrialState {
+    key: string;
+    label: string;
+    total_battles: number;
+    first_cleared: boolean;
+    active_run: TrialRun | null;
+}
+
+interface AwakeningState {
+    identity: string;
+    unlocked: boolean;
+    current: number;
+    maximum: number;
+    custom_message: string | null;
+    default_message: string;
+    technique: {
+        key: string;
+        name: string;
+        summary: string;
+        consumes_action: boolean;
+    } | null;
 }
 
 interface GrowthPath {
@@ -102,6 +146,11 @@ interface PlaytestOptions {
 interface PendingBankMutation {
     fingerprint: string;
     requestId: string;
+}
+
+interface PendingTrialRequest {
+    requestId: string;
+    runKey: string;
 }
 
 type StatKey = 'vitality' | 'might' | 'finesse' | 'spirit' | 'agility';
@@ -189,6 +238,8 @@ interface UndergroundState {
     growth_paths: GrowthPath[] | null;
     growth_path: GrowthPath | null;
     playtest: PlaytestOptions | null;
+    trial: TrialState | null;
+    awakening: AwakeningState | null;
     battle: Battle | null;
 }
 
@@ -322,6 +373,7 @@ const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
 const pendingExplorationRequestId = ref<string | null>(null);
+const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const statusOpen = ref(false);
@@ -334,6 +386,8 @@ const loadoutDraft = ref<Array<string | null>>([null, null, null, null, null]);
 const pendingStpMutation = ref<PendingMutation | null>(null);
 const pendingSkillAcquire = ref<PendingMutation | null>(null);
 const pendingLoadoutMutation = ref<PendingMutation | null>(null);
+const pendingAwakeningMutation = ref<PendingMutation | null>(null);
+const awakeningMessageDraft = ref('');
 const equipmentView = ref<'main' | 'shop' | 'vault'>('main');
 const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
@@ -388,7 +442,14 @@ const summaryLabels: Record<string, string> = {
     mp_skill_recovery: 'スキル回復MP',
     skill_unavailable_due_to_mp: 'MP不足回数',
 };
-const hiddenSummaryKeys = new Set(['rounds', 'player_remaining_hp', 'enemy_remaining_hp', 'final_mp']);
+const hiddenSummaryKeys = new Set([
+    'rounds',
+    'player_remaining_hp',
+    'enemy_remaining_hp',
+    'final_mp',
+    'awakening_triggered',
+    'awakening_technique_used',
+]);
 
 watch(() => state.value?.playtest, (playtest) => {
     if (!playtest) return;
@@ -404,6 +465,11 @@ watch(() => state.value?.active_slots, (slots) => {
 watch(() => state.value?.skill_trees, (trees) => {
     if (!trees || trees.some((tree) => tree.key === activeSkillTreeKey.value)) return;
     activeSkillTreeKey.value = trees[0]?.key ?? 'martial';
+}, { deep: true, immediate: true });
+
+watch(() => state.value?.awakening, (awakening) => {
+    if (!awakening || pendingAwakeningMutation.value) return;
+    awakeningMessageDraft.value = awakening.custom_message ?? awakening.default_message;
 }, { deep: true, immediate: true });
 
 function requestId(): string {
@@ -523,6 +589,62 @@ async function runExplore(): Promise<void> {
     }
 }
 
+async function runTrial(): Promise<void> {
+    if (busy.value || !state.value?.trial) return;
+    innRested.value = false;
+    busy.value = true;
+    error.value = '';
+    try {
+        let pending = pendingTrialRequest.value;
+        if (!pending) {
+            let run = state.value.trial.active_run;
+            if (!run) {
+                run = await api<TrialRun>('/api/v1/me/underground/trial/start', { method: 'POST' });
+            }
+            pending = { requestId: requestId(), runKey: run.run_key };
+            pendingTrialRequest.value = pending;
+        }
+        const battle = await api<Battle>('/api/v1/me/underground/trial/fight', {
+            method: 'POST',
+            body: JSON.stringify({ run_key: pending.runKey, request_id: pending.requestId }),
+        });
+        await refresh(false);
+        selectedBattle.value = battle;
+        pendingTrialRequest.value = null;
+    } catch (caught) {
+        await refresh(false);
+        if (caught instanceof ApiError && [
+            'underground_trial_run_stale',
+            'underground_request_conflict',
+        ].includes(caught.code ?? '')) {
+            pendingTrialRequest.value = null;
+        }
+        error.value = caught instanceof Error ? caught.message : '封印の地へ入れませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function withdrawTrial(): Promise<void> {
+    const run = state.value?.trial?.active_run;
+    if (busy.value || !run) return;
+    busy.value = true;
+    error.value = '';
+    try {
+        await api<TrialRun>('/api/v1/me/underground/trial/withdraw', {
+            method: 'POST',
+            body: JSON.stringify({ run_key: run.run_key }),
+        });
+        pendingTrialRequest.value = null;
+        await refresh(false);
+    } catch (caught) {
+        await refresh(false);
+        error.value = caught instanceof Error ? caught.message : '封印の地から帰還できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
 async function restAtInn(): Promise<void> {
     const innRequestId = pendingInnRequestId.value ?? requestId();
     pendingInnRequestId.value = innRequestId;
@@ -591,6 +713,26 @@ async function saveLoadout(): Promise<void> {
     pendingLoadoutMutation.value = pending;
     if (await mutate('/api/v1/me/underground/skills/loadout', { slots: loadoutDraft.value }, pending.requestId, 'PUT')) {
         pendingLoadoutMutation.value = null;
+    }
+}
+
+async function saveAwakeningMessage(): Promise<void> {
+    const fingerprint = JSON.stringify({ message: awakeningMessageDraft.value });
+    const pending = pendingAwakeningMutation.value?.fingerprint === fingerprint
+        ? pendingAwakeningMutation.value
+        : { fingerprint, requestId: requestId() };
+    pendingAwakeningMutation.value = pending;
+    if (await mutate(
+        '/api/v1/me/underground/awakening/message',
+        { message: awakeningMessageDraft.value },
+        pending.requestId,
+        'PUT',
+    )) {
+        pendingAwakeningMutation.value = null;
+        const awakening = state.value?.awakening;
+        if (awakening) {
+            awakeningMessageDraft.value = awakening.custom_message ?? awakening.default_message;
+        }
     }
 }
 
@@ -671,11 +813,11 @@ function summaryLabel(key: string): string {
     return summaryLabels[key] ?? key;
 }
 
-function summaryValue(key: string, value: number | string): number | string {
+function summaryValue(key: string, value: boolean | number | string): boolean | number | string {
     return key === 'result' ? battleResultLabel(String(value) as Battle['result']) : value;
 }
 
-function visibleSummary(summary: Record<string, number | string>): Record<string, number | string> {
+function visibleSummary(summary: Record<string, boolean | number | string>): Record<string, boolean | number | string> {
     return Object.fromEntries(Object.entries(summary).filter(([key]) => !hiddenSummaryKeys.has(key)));
 }
 
@@ -716,6 +858,8 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
     const actor = action.actor_name ?? actorName(action.side, battle);
     const target = action.target_name ?? targetName(action.side, battle);
     const amount = action.amount ?? 0;
+    if (action.lines && action.lines.length > 0) return action.lines.join('\n');
+    if (action.type === 'warning' || action.type === 'phase_transition') return action.label;
     if (action.type === 'action' || action.type === 'decision') return `${actor}は「${action.label}」を使用した。`;
     if (action.type === 'mp_cost') return `${actor}はMPを${amount}消費した。`;
     if (action.type === 'mp_recovery') return `${actor}はMPを${amount}回復した。`;
@@ -785,6 +929,7 @@ onUnmounted(() => {
 
         <template v-if="state && currentBattle">
             <section id="underground-battle-start" class="underground-battle-log" aria-label="戦闘ログ">
+                <p v-if="currentBattle.challenge_intro" class="underground-trial-intro">{{ currentBattle.challenge_intro }}</p>
                 <header class="underground-battle-opening">
                     <p class="eyebrow">遭遇</p>
                     <h1>{{ currentBattle.encounter_name }}</h1>
@@ -798,7 +943,16 @@ onUnmounted(() => {
                     <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
                         <h2>Round {{ round.round }}</h2>
                         <ol class="underground-action-log">
-                            <li v-for="(action, index) in round.actions" :key="index">{{ actionNarrative(action, currentBattle) }}</li>
+                            <li
+                                v-for="(action, index) in round.actions"
+                                :key="index"
+                                :class="{
+                                    'underground-boss-warning': action.type === 'warning' || action.type === 'phase_transition',
+                                    'underground-awakening-event': action.type === 'awakening' || action.type === 'awakening_technique',
+                                }"
+                            >
+                                {{ actionNarrative(action, currentBattle) }}
+                            </li>
                         </ol>
                         <div v-if="round.end_state" class="underground-round-state">
                             <section class="underground-combatant-state">
@@ -850,6 +1004,13 @@ onUnmounted(() => {
                     </dl>
                     <a class="underground-log-jump" href="#underground-battle-start">先頭へ</a>
                 </footer>
+                <section v-if="currentBattle.first_clear_story" class="underground-first-clear-story" aria-labelledby="underground-first-clear-title">
+                    <h2 id="underground-first-clear-title">{{ currentBattle.first_clear_story.title }}</h2>
+                    <p class="underground-first-clear-body">{{ currentBattle.first_clear_story.body }}</p>
+                    <div class="underground-first-clear-results" role="status">
+                        <p v-for="message in currentBattle.first_clear_story.system_messages" :key="message">{{ message }}</p>
+                    </div>
+                </section>
             </section>
 
             <div v-if="state.stage === 'escape_pending'" class="underground-story underground-after-battle">
@@ -951,6 +1112,15 @@ onUnmounted(() => {
                         <div><dt>未使用STP</dt><dd>{{ state.unspent_stp }}</dd></div>
                         <div v-if="state.growth_path"><dt>成長方針</dt><dd>{{ state.growth_path.label }}</dd></div>
                     </dl>
+                    <section
+                        v-if="state.awakening?.unlocked"
+                        class="underground-awakening-gauge"
+                        :data-full="state.awakening.current >= state.awakening.maximum"
+                        aria-labelledby="underground-awakening-gauge-title"
+                    >
+                        <div><h2 id="underground-awakening-gauge-title">覚醒ゲージ</h2><strong>{{ state.awakening.current }} / {{ state.awakening.maximum }}</strong></div>
+                        <progress :max="state.awakening.maximum" :value="state.awakening.current" />
+                    </section>
                     <section v-if="state.growth_path" class="underground-growth-summary">
                         <h2>能力</h2>
                         <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.current_stats?.[key] ?? state.growth_path.stats[key] }}</dd></div></dl>
@@ -979,7 +1149,7 @@ onUnmounted(() => {
                         <p>{{ shopGreeting }}</p>
                         <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
                         <div class="underground-shop-entries">
-                            <button type="button" :disabled="busy || innResting" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
+                            <button type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ state.trial?.active_run ? '封印の地から帰還後に利用できます' : innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
                             <button type="button" :disabled="busy" @click="equipmentView = 'shop'">装備ショップ<small>武器・防具・アクセサリー</small></button>
                             <button type="button" :disabled="busy" @click="bankOpen = !bankOpen">銀行<small>預入・引出</small></button>
                             <button type="button" :disabled="busy" @click="equipmentView = 'vault'">宝物庫<small>所持品・装備変更</small></button>
@@ -1000,7 +1170,11 @@ onUnmounted(() => {
                     </section>
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <h2 id="underground-adventure-title">冒険</h2>
-                        <div class="underground-entries"><button type="button" :disabled="busy || exploreCooldownSeconds > 0" @click="runExplore">周囲を探索<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : '浅い洞窟' }}</small></button><button type="button" disabled>試練<small>準備中</small></button></div>
+                        <div class="underground-entries">
+                            <button type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run)" @click="runExplore">周囲を探索<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : '浅い洞窟' }}</small></button>
+                            <button type="button" :disabled="busy || exploreCooldownSeconds > 0 || !state.trial" @click="runTrial">封印の地<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : state.trial?.active_run ? `${state.trial.active_run.next_battle_index}/${state.trial.active_run.total_battles}戦目` : state.trial?.label }}</small></button>
+                        </div>
+                        <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
                     </section>
                     <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
                         <h2 id="underground-playtest-title">力試し（α）</h2>
@@ -1115,6 +1289,19 @@ onUnmounted(() => {
                         </li>
                     </ul>
                     <button class="button primary" type="button" :disabled="busy" @click="saveLoadout">slot 1～5を保存</button>
+                </section>
+
+                <section v-if="state.awakening?.unlocked && state.awakening.technique" class="underground-awakening-settings" aria-labelledby="underground-awakening-settings-title">
+                    <header>
+                        <div><p class="eyebrow">Awakening</p><h3 id="underground-awakening-settings-title">{{ state.awakening.technique.name }}</h3></div>
+                        <strong>覚醒中に1度だけ使用可能</strong>
+                    </header>
+                    <p>{{ state.awakening.technique.summary }}</p>
+                    <p>{{ state.awakening.technique.consumes_action ? '通常actionを消費します。' : '通常actionを消費せず、そのままAI行動を続けます。' }}</p>
+                    <label for="underground-awakening-message">覚醒時の最初の演出文</label>
+                    <textarea id="underground-awakening-message" v-model="awakeningMessageDraft" maxlength="100" rows="3" :disabled="busy"></textarea>
+                    <p class="underground-progression-note"><code>{secretary_name}</code> はbattle開始時の秘書名へ置換されます。空欄でdefaultへ戻ります。{{ awakeningMessageDraft.length }} / 100</p>
+                    <button class="button primary" type="button" :disabled="busy" @click="saveAwakeningMessage">覚醒演出文を保存</button>
                 </section>
             </section>
         </template>

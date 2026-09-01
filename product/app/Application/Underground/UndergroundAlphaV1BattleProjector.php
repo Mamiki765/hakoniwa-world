@@ -43,6 +43,45 @@ final class UndergroundAlphaV1BattleProjector
 
                 continue;
             }
+            if ($kind === 'awakening') {
+                $message = is_string($row['message'] ?? null) && $row['message'] !== ''
+                    ? $row['message']
+                    : "魔力が{$playerDisplayName}の全身を駆け巡る――！";
+                $rounds[$round]['actions'][] = [
+                    'type' => 'awakening',
+                    'side' => '秘書',
+                    'actor_name' => $playerDisplayName,
+                    'target_name' => $playerDisplayName,
+                    'label' => '覚醒',
+                    'lines' => [
+                        $message,
+                        "{$playerDisplayName}は覚醒した！",
+                        'HP/MPが全回復した！',
+                        '生命・武力・技巧・精神・敏捷が30%上昇した！',
+                    ],
+                    'amount' => 0,
+                ];
+
+                continue;
+            }
+            if ($kind === 'awakening_technique') {
+                $name = is_string($row['message'] ?? null) ? $row['message'] : '覚醒技';
+                $rounds[$round]['actions'][] = [
+                    'type' => 'awakening_technique',
+                    'side' => '秘書',
+                    'actor_name' => $playerDisplayName,
+                    'target_name' => $this->displayName(
+                        is_string($row['target_side'] ?? null) ? $row['target_side'] : 'enemy',
+                        $playerDisplayName,
+                        $enemyDisplayName,
+                    ),
+                    'label' => $name,
+                    'lines' => ["{$playerDisplayName}は覚醒技「{$name}」を発動した！"],
+                    'amount' => 0,
+                ];
+
+                continue;
+            }
             $rounds[$round]['actions'][] = $this->effect(
                 $row,
                 $catalog,
@@ -67,6 +106,8 @@ final class UndergroundAlphaV1BattleProjector
                 'mp_natural_recovery' => $result->mpNaturalRecovery,
                 'mp_skill_recovery' => $result->mpSkillRecovery,
                 'skill_unavailable_due_to_mp' => $result->skillUnavailableDueToMp,
+                'awakening_triggered' => $result->awakening['triggered'],
+                'awakening_technique_used' => (bool) ($result->awakening['technique']['used'] ?? false),
             ],
             'rounds' => array_values($rounds),
         ];
@@ -104,13 +145,18 @@ final class UndergroundAlphaV1BattleProjector
 
         $side = (string) ($row['side'] ?? '');
         $targetSide = is_string($row['target_side'] ?? null) ? $row['target_side'] : $side;
+        $message = is_string($row['message'] ?? null) && $row['message'] !== ''
+            ? $row['message']
+            : null;
 
         return [
             'type' => $type,
             'side' => $this->side($side),
             'actor_name' => $this->displayName($side, $playerDisplayName, $enemyDisplayName),
             'target_name' => $this->displayName($targetSide, $playerDisplayName, $enemyDisplayName),
-            'label' => $this->actionLabel($action, $catalog),
+            'label' => $type === 'phase_transition' && $message !== null
+                ? $message
+                : $this->actionLabel($action, $catalog),
             'amount' => abs($amount),
             'critical' => (bool) ($row['critical'] ?? false),
             'evaded' => (bool) ($row['evaded'] ?? false),
@@ -155,6 +201,9 @@ final class UndergroundAlphaV1BattleProjector
                 'fighting_spirit' => (int) ($roleStacks['fighting_spirit'] ?? 0),
                 'grace' => (int) ($roleStacks['grace'] ?? 0),
             ],
+            'awakened' => (bool) ($value['awakened'] ?? false),
+            'awakening_technique_used' => (bool) ($value['awakening_technique_used'] ?? false),
+            'awakening_guard_rounds_remaining' => (int) ($value['awakening_guard_rounds_remaining'] ?? 0),
         ];
     }
 
@@ -170,6 +219,12 @@ final class UndergroundAlphaV1BattleProjector
             'mp_cost' => 'MP消費',
             'mp_recovery' => 'MP回復',
             'taunt' => '挑発',
+            'awakening' => '覚醒',
+            'decisive_heavenrend' => '天断一閃',
+            'absolute_aegis' => '絶対護界',
+            'absolute_aegis_expired' => '絶対護界終了',
+            'life_requiem' => '生命讃歌',
+            'limitless_reprise' => '無窮再演',
         ];
         if (isset($plain[$action])) {
             return $plain[$action];

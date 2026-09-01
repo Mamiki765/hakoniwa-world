@@ -38,8 +38,39 @@ final class BuildCombatState
 
     public int $controlResistanceRounds = 0;
 
-    /** @var array<string, bool|int> */
+    /** @var array<string, bool|int|string> */
     public array $flags = [];
+
+    public bool $awakeningUnlocked = false;
+
+    public int $awakeningGauge = 0;
+
+    public int $awakeningGaugeBefore = 0;
+
+    public int $awakeningGaugeGained = 0;
+
+    public bool $awakened = false;
+
+    public ?string $awakeningMessage = null;
+
+    public ?string $awakeningTechniqueKey = null;
+
+    public bool $awakeningTechniqueUsed = false;
+
+    public int $awakeningGuardRoundsRemaining = 0;
+
+    public ?int $awakeningGuardAppliedRound = null;
+
+    /** @var array<string, int> */
+    public array $normalStats;
+
+    public int $normalMaxHp;
+
+    public int $equipmentMaxHp = 0;
+
+    public int $equipmentPhysicalDefense = 0;
+
+    public int $equipmentMagicalDefense = 0;
 
     /**
      * @param  'player'|'enemy'  $side
@@ -47,6 +78,7 @@ final class BuildCombatState
      * @param  list<string>  $skills
      * @param  list<array<string, mixed>>  $aiRules
      * @param  array<string, int|bool|string>  $modifiers
+     * @param  array{round: int, status: string, message: string}|null  $phaseTransition
      * @param  array<string, mixed>  $normalAttack
      */
     public function __construct(
@@ -54,18 +86,21 @@ final class BuildCombatState
         public readonly string $key,
         public readonly string $label,
         public readonly bool $boss,
-        public readonly int $maxHp,
-        public readonly array $stats,
-        public readonly int $physicalDefense,
-        public readonly int $magicalDefense,
+        public int $maxHp,
+        public array $stats,
+        public int $physicalDefense,
+        public int $magicalDefense,
         public readonly int $defenseReference,
         public readonly int $weaponPower,
         public readonly array $skills,
         public readonly array $aiRules,
         public readonly array $modifiers,
+        public readonly ?array $phaseTransition,
         public readonly array $normalAttack,
     ) {
         $this->hp = $maxHp;
+        $this->normalMaxHp = $maxHp;
+        $this->normalStats = $stats;
         foreach ($skills as $skill) {
             $this->cooldowns[$skill] = 0;
         }

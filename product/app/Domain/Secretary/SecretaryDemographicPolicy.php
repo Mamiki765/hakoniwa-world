@@ -12,6 +12,7 @@ final class SecretaryDemographicPolicy
         return in_array($settings['key'] ?? null, [
             'hakoniwa-2s-plus-v17',
             'hakoniwa-2s-plus-v18',
+            'hakoniwa-2s-plus-v19',
         ], true);
     }
 

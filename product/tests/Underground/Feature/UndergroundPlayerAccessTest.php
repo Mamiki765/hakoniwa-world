@@ -2,11 +2,19 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\NationCreationService;
 use App\Application\SecretaryService;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundIntroCatalog;
 use App\Application\Underground\UndergroundProfileService;
+use App\Domain\Underground\Area\UndergroundAreaCapacity;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\UndergroundAwakening;
+use App\Models\CommandDefinition;
+use App\Models\MapCell;
+use App\Models\NationCapital;
+use App\Models\NationCommandQueueItem;
+use App\Models\NationUndergroundFacility;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 use App\Models\UndergroundBattle;
@@ -17,26 +25,39 @@ use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
 use App\Models\UndergroundTrialProgress;
+use App\Models\UndergroundTrialRun;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 final class UndergroundPlayerAccessTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     public function test_player_routes_require_session_and_resolve_only_the_current_users_secretary(): void
     {
         $this->getJson('/api/v1/me/underground')->assertUnauthorized();
+        $this->getJson('/api/v1/me/underground/surface-map')->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/entry', ['request_id' => (string) Str::uuid()])
             ->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/explore', ['request_id' => (string) Str::uuid()])
             ->assertUnauthorized();
+        $this->postJson('/api/v1/me/underground/trial/start')->assertUnauthorized();
+        $this->postJson('/api/v1/me/underground/trial/fight', [
+            'run_key' => (string) Str::uuid(),
+            'request_id' => (string) Str::uuid(),
+        ])->assertUnauthorized();
+        $this->postJson('/api/v1/me/underground/trial/withdraw', [
+            'run_key' => (string) Str::uuid(),
+        ])->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/inn/rest', ['request_id' => (string) Str::uuid()])
             ->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/bank/transfer', [
@@ -54,6 +75,10 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->putJson('/api/v1/me/underground/skills/loadout', [
             'request_id' => (string) Str::uuid(),
             'slots' => ['holy_bolt', null, null, null, null],
+        ])->assertUnauthorized();
+        $this->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => '覚醒',
         ])->assertUnauthorized();
         $this->getJson('/api/v1/me/underground/equipment/shop')->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/equipment/shop/purchase', [
@@ -77,6 +102,293 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->actingAs($other)->getJson('/api/v1/me/underground')
             ->assertOk()
             ->assertJsonPath('data.stage', 'not_started');
+    }
+
+    public function test_surface_map_is_hidden_until_trial_one_first_clear_and_projects_fixed_capital_relative_slots(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '地底表示島', '地底表示島主');
+        $secretary = Secretary::query()->where('user_id', $user->id)->sole();
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+
+        $this->actingAs($user)->getJson('/api/v1/me/underground/surface-map')
+            ->assertOk()->assertJsonPath('data', null);
+
+        $profile->update(['unlocked_area_layers' => 1]);
+        $progress = UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => null,
+        ]);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/surface-map')
+            ->assertOk()->assertJsonPath('data', null);
+
+        $progress->update(['first_cleared_at' => Carbon::now()]);
+        $capital = NationCapital::query()->where('nation_id', $nation->id)->sole();
+        foreach ([1 => 4, 2 => 8, 3 => 12] as $unlockedLayers => $slotCapacity) {
+            $profile->update(['unlocked_area_layers' => $unlockedLayers]);
+            $data = $this->actingAs($user)->getJson('/api/v1/me/underground/surface-map')
+                ->assertOk()->json('data');
+
+            $this->assertSame($unlockedLayers, $data['unlocked_layers']);
+            $this->assertSame(UndergroundAreaCapacity::FACILITY_SLOTS_PER_LAYER, $data['facility_slots_per_layer']);
+            $this->assertSame($slotCapacity, $data['total_facility_slots']);
+            $this->assertCount($unlockedLayers, $data['layers']);
+            $this->assertSame(['x' => $capital->x, 'y' => $capital->y], $data['capital']);
+            $this->assertFalse($data['entrance']['counts_as_facility_slot']);
+            $this->assertArrayNotHasKey('map_cells', $data);
+            $this->assertArrayNotHasKey('world', $data);
+
+            foreach ($data['layers'] as $layerIndex => $layer) {
+                $layerNumber = $layerIndex + 1;
+                $expectedZ = -($layerNumber + 1);
+                $this->assertSame($layerNumber, $layer['layer']);
+                $this->assertSame($expectedZ, $layer['z']);
+                $this->assertFalse($layer['ladder']['counts_as_facility_slot']);
+                $this->assertCount(4, $layer['slots']);
+                $this->assertSame([-2, -1, 1, 2], array_column($layer['slots'], 'offset_x'));
+
+                foreach ($layer['slots'] as $slotIndex => $slot) {
+                    $this->assertSame($slotIndex, $slot['slot_index']);
+                    $this->assertSame($capital->x + [-2, -1, 1, 2][$slotIndex], $slot['coordinate']['x']);
+                    $this->assertSame($capital->y, $slot['coordinate']['y']);
+                    $this->assertSame($expectedZ, $slot['coordinate']['z']);
+                    $this->assertNull($slot['facility_key']);
+                    $this->assertSame('underground.road', $slot['asset_key']);
+                    $slotKeys = array_keys($slot);
+                    sort($slotKeys);
+                    $this->assertSame(
+                        ['asset_key', 'coordinate', 'coordinate_label', 'facility_key', 'offset_x', 'relative_label', 'slot_index'],
+                        $slotKeys,
+                    );
+                }
+            }
+        }
+
+        $this->assertSame('(X-2, Y, -2)', $data['layers'][0]['slots'][0]['relative_label']);
+        $this->assertSame('(X+2, Y, -2)', $data['layers'][0]['slots'][3]['relative_label']);
+        $this->assertSame(-3, $data['layers'][1]['z']);
+
+        $capitalCellBefore = $capital->cell()->firstOrFail()->only([
+            'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'population',
+        ]);
+        foreach ([
+            'underground_city',
+            'underground_farm',
+            'underground_factory',
+            'underground_missile_base',
+        ] as $slotIndex => $facilityKey) {
+            NationUndergroundFacility::query()->create([
+                'nation_id' => $nation->id,
+                'ruleset_version_id' => $world->ruleset_version_id,
+                'layer' => 1,
+                'slot_index' => $slotIndex,
+                'facility_key' => $facilityKey,
+            ]);
+        }
+        NationUndergroundFacility::query()->create([
+            'nation_id' => $nation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'layer' => 2,
+            'slot_index' => 0,
+            'facility_key' => 'underground_farm',
+        ]);
+        $built = $this->actingAs($user)->getJson('/api/v1/me/underground/surface-map')->assertOk()->json('data');
+        $this->assertSame([
+            'underground.city',
+            'underground.farm',
+            'underground.factory',
+            'underground.missile_base',
+        ], array_column($built['layers'][0]['slots'], 'asset_key'));
+        $this->assertSame('underground.road', $built['layers'][1]['slots'][1]['asset_key']);
+        $this->assertSame($capitalCellBefore, $capital->cell()->firstOrFail()->only([
+            'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'population',
+        ]));
+        try {
+            DB::transaction(static function () use ($nation, $world): void {
+                NationUndergroundFacility::query()->create([
+                    'nation_id' => $nation->id,
+                    'ruleset_version_id' => $world->ruleset_version_id,
+                    'layer' => 1,
+                    'slot_index' => 0,
+                    'facility_key' => 'underground_farm',
+                ]);
+            });
+            $this->fail('A Nation Underground slot accepted duplicate occupancy.');
+        } catch (QueryException) {
+            $this->assertSame(5, NationUndergroundFacility::query()->where('nation_id', $nation->id)->count());
+        }
+
+        $nation->delete();
+        $this->assertSame(0, NationUndergroundFacility::query()->count());
+        $nextNation = app(NationCreationService::class)->create($user, $world, '次の地下開発島', '次の地下開発島主');
+        $next = $this->actingAs($user)->getJson('/api/v1/me/underground/surface-map')->assertOk()->json('data');
+        $this->assertSame($nextNation->id, $user->nationMemberships()->where('role', 'owner')->sole()->nation_id);
+        $this->assertSame(3, $profile->fresh()->unlocked_area_layers);
+        $this->assertSame(
+            ['underground.road'],
+            array_values(array_unique(array_merge(...array_map(
+                static fn (array $layer): array => array_column($layer['slots'], 'asset_key'),
+                $next['layers'],
+            )))),
+        );
+    }
+
+    public function test_underground_facility_commands_are_isolated_projected_and_only_reserved_before_turn_execution(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '地下開発島', '地下開発島主');
+        $secretary = Secretary::query()->where('user_id', $user->id)->sole();
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+        $profile->update(['unlocked_area_layers' => 1]);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $space = $this->surfaceMapSpace($world);
+        $surfaceCell = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}";
+        $undergroundKeys = [
+            'build_underground_city',
+            'build_underground_farm',
+            'build_underground_factory',
+            'build_underground_missile_base',
+            'remove_underground_facility',
+        ];
+        $this->assertSame(0, CommandDefinition::query()->whereIn('key', $undergroundKeys)->count());
+
+        $surfaceTargets = [
+            'capital' => $surfaceCell,
+            'plain' => MapCell::query()->where('map_space_id', $space->id)
+                ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail(),
+            'sea' => MapCell::query()->where('map_space_id', $space->id)
+                ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))->firstOrFail(),
+        ];
+        foreach ($surfaceTargets as $surfaceTarget) {
+            $surfaceCommands = $this->actingAs($user)->getJson(
+                "{$base}/command-definitions?target_x={$surfaceTarget->x}&target_y={$surfaceTarget->y}&position=1",
+            )->assertOk()->json('data.commands');
+            $this->assertNotEmpty($surfaceCommands);
+            $this->assertSame([], array_values(array_intersect(
+                $undergroundKeys,
+                array_column($surfaceCommands, 'key'),
+            )));
+        }
+        $plainCommands = collect($this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_x={$surfaceTargets['plain']->x}&target_y={$surfaceTargets['plain']->y}&position=1",
+        )->assertOk()->json('data.commands'))->keyBy('key');
+        $this->assertTrue($plainCommands->get('land_clear')['available']);
+        $this->assertTrue($plainCommands->get('build_farm')['available']);
+
+        $emptyCommands = $this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_layer=1&target_slot_index=0&position=1",
+        )->assertOk()->json('data.commands');
+        $this->assertSame(array_slice($undergroundKeys, 0, 4), array_column($emptyCommands, 'key'));
+        $this->assertSame(['underground_slot'], array_values(array_unique(array_column($emptyCommands, 'target_type'))));
+        $this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_layer=2&target_slot_index=0&position=1",
+        )->assertUnprocessable();
+        $this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_layer=1&target_slot_index=4&position=1",
+        )->assertUnprocessable();
+        $this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_layer=1&target_slot_index=-1&position=1",
+        )->assertUnprocessable();
+
+        $queue = $this->actingAs($user)->getJson("{$base}/command-queue")->assertOk()->json('data');
+        $moneyBefore = (int) $nation->money;
+        $requestKey = (string) Str::uuid();
+        $buildPayload = [
+            'command_key' => 'build_underground_city',
+            'target_layer' => 1,
+            'target_slot_index' => 0,
+            'position' => 1,
+            'request_key' => $requestKey,
+            'expected_version' => $queue['version'],
+            'quantity' => 1,
+            'parameters' => [],
+        ];
+        $this->actingAs($user)->postJson("{$base}/command-queue", [
+            ...$buildPayload,
+            'command_key' => 'remove_underground_facility',
+        ])->assertUnprocessable();
+        $this->actingAs($user)->postJson("{$base}/command-queue", [
+            ...$buildPayload,
+            'target_x' => $surfaceCell->x,
+            'target_y' => $surfaceCell->y,
+        ])->assertUnprocessable();
+        $this->actingAs($user)->postJson("{$base}/command-queue", [
+            'command_key' => 'build_underground_city',
+            'target_x' => $surfaceCell->x,
+            'target_y' => $surfaceCell->y,
+            'position' => 1,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => $queue['version'],
+            'quantity' => 1,
+            'parameters' => [],
+        ])->assertUnprocessable();
+        $this->actingAs($user)->postJson("{$base}/command-queue", [
+            ...$buildPayload,
+            'command_key' => 'land_clear',
+        ])->assertUnprocessable();
+
+        $reserved = $this->actingAs($user)->postJson("{$base}/command-queue", $buildPayload)
+            ->assertCreated()
+            ->assertJsonPath('data.duplicate', false);
+        $this->assertSame($moneyBefore, (int) $nation->fresh()->money);
+        $this->assertSame(0, NationUndergroundFacility::query()->where('nation_id', $nation->id)->count());
+        $item = NationCommandQueueItem::query()->sole();
+        $this->assertSame([
+            'underground_slot', null, null, 1, 0, null, 'build_underground_city',
+        ], [
+            $item->target_context,
+            $item->target_x,
+            $item->target_y,
+            $item->target_layer,
+            $item->target_slot_index,
+            $item->command_definition_id,
+            $item->underground_command_key,
+        ]);
+        $this->actingAs($user)->postJson("{$base}/command-queue", $buildPayload)
+            ->assertOk()->assertJsonPath('data.duplicate', true);
+        $this->assertSame(1, NationCommandQueueItem::query()->count());
+        $this->actingAs($user)->postJson("{$base}/command-queue", [
+            ...$buildPayload,
+            'command_key' => 'build_underground_farm',
+        ])->assertConflict();
+
+        $projectedOccupiedResponse = $this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_layer=1&target_slot_index=0&position=2",
+        )->assertOk();
+        $projectedOccupied = $projectedOccupiedResponse->json('data.commands');
+        $this->assertTrue(array_is_list($projectedOccupied));
+        $this->assertSame(['remove_underground_facility'], array_column($projectedOccupied, 'key'));
+        $version = $reserved->json('data.queue.version');
+        $this->actingAs($user)->postJson("{$base}/command-queue", [
+            ...$buildPayload,
+            'request_key' => (string) Str::uuid(),
+            'position' => 2,
+            'expected_version' => $version,
+        ])->assertUnprocessable();
+        $this->actingAs($user)->postJson("{$base}/command-queue", [
+            'command_key' => 'remove_underground_facility',
+            'target_layer' => 1,
+            'target_slot_index' => 0,
+            'position' => 2,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => $version,
+            'quantity' => 1,
+            'parameters' => [],
+        ])->assertCreated();
+        $projectedEmpty = $this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_layer=1&target_slot_index=0&position=3",
+        )->assertOk()->json('data.commands');
+        $this->assertSame(array_slice($undergroundKeys, 0, 4), array_column($projectedEmpty, 'key'));
     }
 
     public function test_tutorial_is_a_legal_deterministic_single_settlement_then_escape_returns_to_secretary(): void
@@ -465,6 +777,27 @@ final class UndergroundPlayerAccessTest extends TestCase
             'secretary_id' => $otherSecretary->id,
             'shard_balance' => 9000,
             'banked_shard_balance' => 8000,
+        ]);
+
+        $trialRun = UndergroundTrialRun::query()->create([
+            'underground_profile_id' => $profile->id,
+            'run_key' => (string) Str::uuid(),
+            'trial_key' => 'trial_01',
+            'trial_content_identity' => 'secretary-underground-trial-01-v1',
+            'next_battle_index' => 2,
+            'status' => UndergroundTrialRun::STATUS_ACTIVE,
+            'started_at' => Carbon::now(),
+        ]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/inn/rest', [
+            'request_id' => (string) Str::uuid(),
+        ])->assertConflict()->assertJsonPath('code', 'underground_trial_active');
+        $this->assertSame([2350, 123], [
+            $profile->fresh()->shard_balance,
+            $profile->current_hp,
+        ]);
+        $trialRun->update([
+            'status' => UndergroundTrialRun::STATUS_WITHDRAWN,
+            'ended_at' => Carbon::now(),
         ]);
 
         $innRequest = (string) Str::uuid();
@@ -1365,6 +1698,119 @@ final class UndergroundPlayerAccessTest extends TestCase
             'build_key' => 'pure_attacker',
             'enemy_key' => 'depth_stalker',
         ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+    }
+
+    public function test_trial_api_exposes_named_first_challenge_and_replays_the_same_result(): void
+    {
+        Carbon::setTestNow('2026-08-30 13:00:00+09:00');
+        [$user, $secretary] = $this->secretaryUser('封印探索者');
+        $this->openEquipmentProfile($secretary);
+
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.trial.label', '地下に眠る古代遺跡')
+            ->assertJsonPath('data.trial.first_cleared', false)
+            ->assertJsonPath('data.trial.active_run', null);
+        $run = $this->actingAs($user)->postJson('/api/v1/me/underground/trial/start')
+            ->assertOk()
+            ->assertJsonPath('data.label', '地下に眠る古代遺跡')
+            ->assertJsonPath('data.next_battle_index', 1)
+            ->json('data');
+        $requestId = (string) Str::uuid();
+        $payload = ['run_key' => $run['run_key'], 'request_id' => $requestId];
+        $first = $this->actingAs($user)->postJson('/api/v1/me/underground/trial/fight', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.context', 'trial')
+            ->assertJsonPath('data.player_display_name', '封印探索者')
+            ->assertJsonPath('data.trial_battle_index', 1)
+            ->assertJsonPath('data.first_clear_story', null)
+            ->assertJsonPath(
+                'data.challenge_intro',
+                "　崩れかけた石壁の向こうに広がっていた不思議な空間。\n"
+                ."　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n"
+                .'　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
+            );
+        $this->actingAs($user)->postJson('/api/v1/me/underground/trial/fight', $payload)
+            ->assertOk()
+            ->assertExactJson($first->json());
+        $this->actingAs($user)->getJson('/api/v1/me/underground/battles')
+            ->assertOk()
+            ->assertJsonPath('data.0.context', 'trial')
+            ->assertJsonPath('data.0.challenge_intro', $first->json('data.challenge_intro'));
+        $this->assertSame(1, UndergroundBattle::query()
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
+            ->where('request_id', $requestId)
+            ->count());
+    }
+
+    public function test_awakening_projection_and_plain_text_message_setting_require_first_clear(): void
+    {
+        Carbon::setTestNow('2026-08-30 13:30:00+09:00');
+        [$user, $secretary] = $this->secretaryUser('設定秘書');
+        $profile = $this->openEquipmentProfile($secretary);
+
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.awakening.unlocked', false)
+            ->assertJsonPath('data.awakening.current', 0)
+            ->assertJsonPath('data.awakening.technique', null);
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => 'まだ使えない',
+        ])->assertConflict()->assertJsonPath('code', 'underground_awakening_locked');
+
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now()->subMinute(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $profile->update(['awakening_gauge' => 384]);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.awakening.unlocked', true)
+            ->assertJsonPath('data.awakening.current', 384)
+            ->assertJsonPath('data.awakening.maximum', UndergroundAwakening::GAUGE_MAX)
+            ->assertJsonPath('data.awakening.default_message', UndergroundAwakening::DEFAULT_MESSAGE)
+            ->assertJsonPath('data.awakening.technique.key', 'decisive_heavenrend')
+            ->assertJsonPath('data.awakening.technique.name', '天断一閃')
+            ->assertJsonPath('data.awakening.technique.consumes_action', true);
+
+        $requestId = (string) Str::uuid();
+        $custom = '<script>{secretary_name}</script>が覚醒した。';
+        $saved = $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => $requestId,
+            'message' => $custom,
+        ])->assertOk()->assertJsonPath('data.awakening.custom_message', $custom);
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => $requestId,
+            'message' => $custom,
+        ])->assertOk()->assertExactJson($saved->json());
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => $requestId,
+            'message' => '別の意図',
+        ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->assertSame($custom, $profile->refresh()->awakening_message);
+        $this->assertSame(
+            '<script>設定秘書</script>が覚醒した。',
+            app(UndergroundAwakening::class)->renderMessage($profile->awakening_message, $secretary->name),
+        );
+
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => '',
+        ])->assertOk()
+            ->assertJsonPath('data.awakening.custom_message', null)
+            ->assertJsonPath('data.awakening.default_message', UndergroundAwakening::DEFAULT_MESSAGE);
+        $this->assertNull($profile->refresh()->awakening_message);
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => "invalid\nmessage",
+        ])->assertUnprocessable()->assertJsonValidationErrors('message');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/message', [
+            'request_id' => (string) Str::uuid(),
+            'message' => str_repeat('界', 101),
+        ])->assertUnprocessable()->assertJsonValidationErrors('message');
     }
 
     public function test_refresh_resumes_meaningful_stage_and_intro_history_is_private_and_owner_scoped(): void

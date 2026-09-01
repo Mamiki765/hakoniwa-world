@@ -12,6 +12,7 @@ use App\Models\MapCell;
 use App\Models\MonsterInstance;
 use App\Models\Nation;
 use App\Models\NationMonsterKillStat;
+use App\Models\NationUndergroundFacility;
 use App\Models\ResourceDefinition;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -39,16 +40,24 @@ final class MonsterDamageService
         ?MapCell $firingBase,
         MapCell $hostCell,
         TurnContext $context,
+        ?NationUndergroundFacility $undergroundFiringBase = null,
     ): MonsterDamageResult {
         if ($amount < 1 || $damageType === '') {
             throw new DomainException('Monster damage requires a positive amount and explicit damage type.');
         }
-        if ($firingBase !== null && $killerNation === null) {
+        if (($firingBase !== null || $undergroundFiringBase !== null) && $killerNation === null) {
             throw new DomainException('Monster damage cannot credit a firing base without its owning Nation.');
         }
+        if ($firingBase !== null && $undergroundFiringBase !== null) {
+            throw new DomainException('Monster damage cannot credit two firing sources for one hit.');
+        }
         if ($this->isSecretaryBowDamage($damageType)
-            && ($killerNation === null || $firingBase !== null)) {
+            && ($killerNation === null || $firingBase !== null || $undergroundFiringBase !== null)) {
             throw new DomainException('Secretary Bow damage requires one attacking Nation and no firing base.');
+        }
+        if ($undergroundFiringBase !== null
+            && $undergroundFiringBase->nation_id !== $killerNation?->id) {
+            throw new DomainException('Underground firing-base ownership does not match its attacking Nation.');
         }
 
         return DB::transaction(function () use (
@@ -57,6 +66,7 @@ final class MonsterDamageService
             $damageType,
             $killerNation,
             $firingBase,
+            $undergroundFiringBase,
             $hostCell,
             $context,
         ): MonsterDamageResult {
@@ -89,6 +99,12 @@ final class MonsterDamageService
                 ? null
                 : Nation::query()->whereKey($hostCell->owner_nation_id)->first(['id', 'name']);
             $experiencePerDamage = $this->experiencePerDamage($locked);
+            $sourceKind = $undergroundFiringBase !== null
+                ? 'underground_missile_base'
+                : ($firingBase !== null ? 'surface_missile_base' : null);
+            $sourceId = $undergroundFiringBase !== null
+                ? $undergroundFiringBase->id
+                : $firingBase?->id;
             if ($this->hardening->isHardened($locked->definition, $context->targetTurn)) {
                 $this->events->record($context, 'monster.damage_blocked', $locked, [
                     'monster_key' => $locked->definition->key,
@@ -105,6 +121,8 @@ final class MonsterDamageService
                     'experience_per_damage' => $experiencePerDamage,
                     'firing_base_experience_requested' => 0,
                     'firing_base_experience_applied' => 0,
+                    'missile_source_kind' => $sourceKind,
+                    'missile_source_id' => $sourceId,
                     'secretary_monster_experience_awarded' => 0,
                     'hardening' => true,
                 ]);
@@ -128,6 +146,7 @@ final class MonsterDamageService
                 $damageType,
                 $killerNation,
                 $firingBase,
+                $undergroundFiringBase,
                 $context,
             );
             if ($afterHp > 0) {
@@ -154,6 +173,8 @@ final class MonsterDamageService
                     'firing_base_experience_requested' => $damageExperience['base_requested'],
                     'firing_base_experience_applied' => $damageExperience['base_applied'],
                     'firing_base_id' => $firingBase?->id,
+                    'missile_source_kind' => $sourceKind,
+                    'missile_source_id' => $sourceId,
                     'secretary_monster_experience_awarded' => $damageExperience['secretary_awarded'],
                 ]);
 
@@ -256,6 +277,8 @@ final class MonsterDamageService
                 'firing_base_experience_requested' => $damageExperience['base_requested'],
                 'firing_base_experience_applied' => $damageExperience['base_applied'],
                 'firing_base_id' => $firingBase?->id,
+                'missile_source_kind' => $sourceKind,
+                'missile_source_id' => $sourceId,
                 'secretary_monster_experience_awarded' => $damageExperience['secretary_awarded'],
                 'kill_stat_id' => $killStat?->id,
                 'previous_kill_count' => $previousKillCount,
@@ -335,6 +358,7 @@ SQL, [
         string $damageType,
         ?Nation $killerNation,
         ?MapCell $firingBase,
+        ?NationUndergroundFacility $undergroundFiringBase,
         TurnContext $context,
     ): array {
         if ($actualDamage < 0 || $experiencePerDamage < 0
@@ -352,6 +376,16 @@ SQL, [
                 'base_applied' => $this->baseExperience->credit($firingBase, $killerNation, $requested, $context),
                 'secretary_awarded' => 0,
             ];
+        }
+        if ($undergroundFiringBase !== null) {
+            if (! $killerNation instanceof Nation) {
+                throw new DomainException('Underground firing-base monster experience requires its owning Nation.');
+            }
+            $awarded = $requested > 0
+                ? $this->secretaryExperience->awardMonster($context, (int) $killerNation->id, $requested)
+                : 0;
+
+            return ['base_requested' => 0, 'base_applied' => 0, 'secretary_awarded' => $awarded];
         }
         if ($this->isSecretaryBowDamage($damageType)) {
             if (! $killerNation instanceof Nation) {

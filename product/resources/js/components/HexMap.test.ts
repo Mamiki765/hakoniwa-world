@@ -72,11 +72,11 @@ describe('staggered square-image map', () => {
             limit: 20,
             explicit_count: 5,
             items: [
-                { id: 5, command_key: 'excavate', command_name: '掘削', queue_position: 5, target_x: 4, target_y: 7, quantity: 99, quantity_semantics: 'selector', quantity_label: '油田', parameters: {}, status: 'queued', queued_at: null },
-                { id: 1, command_key: 'landfill', command_name: '埋め立て', queue_position: 1, target_x: 4, target_y: 7, quantity: 1, quantity_semantics: 'unused', quantity_label: null, parameters: {}, status: 'queued', queued_at: null },
-                { id: 3, command_key: 'plant', command_name: '植林', queue_position: 3, target_x: 4, target_y: 7, quantity: 6, quantity_semantics: 'ordinary', quantity_label: '6回', parameters: {}, status: 'queued', queued_at: null },
-                { id: 2, command_key: 'level', command_name: '整地', queue_position: 2, target_x: 8, target_y: 8, quantity: 1, quantity_semantics: 'unused', quantity_label: null, parameters: {}, status: 'queued', queued_at: null },
-                { id: 7, command_key: 'dispatch', command_name: '怪獣派遣', queue_position: 7, target_x: null, target_y: null, quantity: 4, quantity_semantics: 'selector', quantity_label: 'いのら', parameters: {}, status: 'queued', queued_at: null },
+                { id: 5, command_key: 'excavate', command_name: '掘削', queue_position: 5, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 99, quantity_semantics: 'selector', quantity_label: '油田', parameters: {}, status: 'queued', queued_at: null },
+                { id: 1, command_key: 'landfill', command_name: '埋め立て', queue_position: 1, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 1, quantity_semantics: 'unused', quantity_label: null, parameters: {}, status: 'queued', queued_at: null },
+                { id: 3, command_key: 'plant', command_name: '植林', queue_position: 3, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 6, quantity_semantics: 'ordinary', quantity_label: '6回', parameters: {}, status: 'queued', queued_at: null },
+                { id: 2, command_key: 'level', command_name: '整地', queue_position: 2, target_context: 'surface_cell', target_x: 8, target_y: 8, target_layer: null, target_slot_index: null, quantity: 1, quantity_semantics: 'unused', quantity_label: null, parameters: {}, status: 'queued', queued_at: null },
+                { id: 7, command_key: 'dispatch', command_name: '怪獣派遣', queue_position: 7, target_context: 'surface_cell', target_x: null, target_y: null, target_layer: null, target_slot_index: null, quantity: 4, quantity_semantics: 'selector', quantity_label: 'いのら', parameters: {}, status: 'queued', queued_at: null },
             ],
             plan: [],
         };

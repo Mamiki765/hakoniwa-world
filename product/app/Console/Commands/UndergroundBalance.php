@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Application\Underground\UndergroundBalanceSimulator;
 use App\Application\Underground\UndergroundBuildBalanceSimulator;
 use App\Application\Underground\UndergroundReportSourceIdentity;
+use App\Application\Underground\UndergroundTrialBalanceSimulator;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
@@ -23,11 +24,12 @@ final class UndergroundBalance extends Command
         {--commit-sha= : Exact source commit when Git metadata is unavailable}
         {--output= : Write JSON atomically to this path}';
 
-    protected $description = 'Run the DB-free Underground combat balance laboratory';
+    protected $description = 'Run the DB-free Underground combat and Trial balance laboratory';
 
     public function handle(
         UndergroundBalanceSimulator $simulator,
         UndergroundBuildBalanceSimulator $buildSimulator,
+        UndergroundTrialBalanceSimulator $trialSimulator,
         UndergroundReportSourceIdentity $sourceIdentity,
     ): int {
         try {
@@ -47,9 +49,11 @@ final class UndergroundBalance extends Command
 
             $scenario = $this->optionalString('scenario');
             $replaySeed = $this->optionalInteger('replay-seed');
-            $selectedSimulator = ($manifest['combat_identity'] ?? null) === AlphaV1CombatRules::IDENTITY
-                ? $buildSimulator
-                : $simulator;
+            $selectedSimulator = ($manifest['simulation_type'] ?? null) === UndergroundTrialBalanceSimulator::SIMULATION_TYPE
+                ? $trialSimulator
+                : (($manifest['combat_identity'] ?? null) === AlphaV1CombatRules::IDENTITY
+                    ? $buildSimulator
+                    : $simulator);
             if ($replaySeed !== null) {
                 if ($scenario === null) {
                     throw new InvalidArgumentException('--scenario is required with --replay-seed.');

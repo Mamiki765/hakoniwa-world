@@ -81,6 +81,19 @@ final class AssetManifestResolver
     ];
 
     /** @var array<string, string> */
+    private const UNDERGROUND_ASSETS = [
+        'underground.soil' => 'Ug.gif',
+        'underground.entrance' => 'Ug_dokan.gif',
+        'underground.ladder' => 'Ug_hasigo.gif',
+        'underground.road' => 'Ug_road.gif',
+        'underground.city' => 'Ug_tosi.gif',
+        'underground.farm' => 'Ug_farm.gif',
+        'underground.factory' => 'Ug_fact.gif',
+        'underground.missile_base' => 'Ug_kiti.gif',
+        'underground.oil' => 'Ug_oil.gif',
+    ];
+
+    /** @var array<string, string> */
     private const SECRETARY_FALLBACKS = [
         'peridot' => 'peridot.png',
         'silhouette' => 'silhouette.png',
@@ -93,7 +106,11 @@ final class AssetManifestResolver
     public function resolve(string $assetKey, string $fallbackLabel, ?string $theme = null): array
     {
         $filename = self::MANIFEST[$assetKey] ?? null;
-        $themeFilename = $theme === 'snow' ? (self::SNOW_OVERRIDES[$assetKey] ?? null) : null;
+        $themeFilename = match ($theme) {
+            'snow' => self::SNOW_OVERRIDES[$assetKey] ?? null,
+            'underground' => self::UNDERGROUND_ASSETS[$assetKey] ?? null,
+            default => null,
+        };
         $themeDirectory = $theme === null ? null : config("hakoniwa.assets.themes.{$theme}");
         $themePath = is_string($themeFilename) && is_string($themeDirectory)
             ? $this->validatedPath($themeFilename, $themeDirectory)
@@ -101,9 +118,13 @@ final class AssetManifestResolver
         $path = $themePath ?? ($filename === null ? null : $this->validatedPath($filename));
         $resolvedFilename = $themePath === null ? $filename : $themeDirectory.'/'.$themeFilename;
 
-        if ($filename !== null && $path === null && ! isset($this->loggedFailures[$assetKey])) {
+        if (($filename !== null || $themeFilename !== null)
+            && $path === null && ! isset($this->loggedFailures[$assetKey])) {
             $this->loggedFailures[$assetKey] = true;
-            Log::warning('Tile asset rejected; CSS fallback will be used.', ['asset_key' => $assetKey, 'filename' => $filename]);
+            Log::warning('Tile asset rejected; CSS fallback will be used.', [
+                'asset_key' => $assetKey,
+                'filename' => $themeFilename ?? $filename,
+            ]);
         }
 
         return [
@@ -140,6 +161,7 @@ final class AssetManifestResolver
             $directory = config("hakoniwa.assets.themes.{$theme}");
             $allowedFilenames = match ($theme) {
                 'snow' => self::SNOW_OVERRIDES,
+                'underground' => self::UNDERGROUND_ASSETS,
                 'peridot' => self::SECRETARY_FALLBACKS,
                 default => [],
             };

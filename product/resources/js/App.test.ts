@@ -4,7 +4,7 @@ import App from './App.vue';
 import HexMap from './components/HexMap.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
-import type { MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing } from './types';
+import type { AssetDescriptor, MapCell, MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing, UndergroundSurfaceMap, UndergroundSurfaceMapSlot } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
     status,
@@ -66,6 +66,50 @@ const ownerNationFixture: Nation = {
     can_request_dormancy: true, winter_theme_active: false, current_turn: 1, registered_turn: 1,
     survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only', total_population: 1000,
     territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
+};
+
+const undergroundAsset = (key: string, fallbackLabel: string): AssetDescriptor => ({
+    key, url: null, available: false, fallback_label: fallbackLabel, fallback_style: key.replaceAll('.', '-'),
+});
+const surfaceCellFixture: MapCell = {
+    x: 12, y: 8, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
+    display_name: '平地', owner_nation_id: 3, owner_nation_number: 1, owner_name: '自島', details: [], monster: null,
+    asset: undergroundAsset('tile.plain', '平'), overlays: [], aria_label: '平地 (12, 8)', version: 1, updated_at: null,
+};
+const undergroundOffsets: UndergroundSurfaceMapSlot['offset_x'][] = [-2, -1, 1, 2];
+const undergroundSurfaceMapFixture: UndergroundSurfaceMap = {
+    unlocked_layers: 2,
+    facility_slots_per_layer: 4,
+    total_facility_slots: 8,
+    capital: { x: 12, y: 8 },
+    entrance: { asset_key: 'underground.entrance', counts_as_facility_slot: false },
+    assets: {
+        soil: undergroundAsset('underground.soil', '土'),
+        entrance: undergroundAsset('underground.entrance', '入口'),
+        ladder: undergroundAsset('underground.ladder', '梯'),
+        road: undergroundAsset('underground.road', '空'),
+        underground_city: undergroundAsset('underground.city', '都'),
+        underground_farm: undergroundAsset('underground.farm', '農'),
+        underground_factory: undergroundAsset('underground.factory', '工'),
+        underground_missile_base: undergroundAsset('underground.missile_base', '基'),
+    },
+    layers: [1, 2].map((layer) => {
+        const z = -(layer + 1);
+        return {
+            layer,
+            z,
+            ladder: { asset_key: 'underground.ladder' as const, counts_as_facility_slot: false as const },
+            slots: undergroundOffsets.map((offsetX, slotIndex) => ({
+                slot_index: slotIndex,
+                offset_x: offsetX,
+                coordinate: { x: 12 + offsetX, y: 8, z },
+                coordinate_label: `(${12 + offsetX}, 8, ${z})`,
+                relative_label: `(X${offsetX > 0 ? '+' : ''}${offsetX}, Y, ${z})`,
+                facility_key: null,
+                asset_key: 'underground.road',
+            })),
+        };
+    }),
 };
 
 const unnamedSecretaryFixture: Secretary = {
@@ -641,6 +685,7 @@ describe('application lobby and island entry', () => {
         let mapSpaceCalls = 0;
         let privateChunkCalls = 0;
         let ownerEventCalls = 0;
+        let undergroundMapCalls = 0;
         let failTurnRefreshChunk = true;
         let failExpansionRefreshChunk = true;
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -665,6 +710,16 @@ describe('application lobby and island entry', () => {
                     current_turn: nationCalls === 1 ? 1 : 2,
                     total_population: nationCalls === 1 ? 1000 : 1500,
                 });
+            }
+            if (path === '/api/v1/me/underground/surface-map') {
+                undergroundMapCalls++;
+                const nextMap = structuredClone(undergroundSurfaceMapFixture);
+                if (undergroundMapCalls > 1) {
+                    nextMap.layers[0]!.slots[0]!.facility_key = 'underground_city';
+                    nextMap.layers[0]!.slots[0]!.asset_key = 'underground.city';
+                }
+
+                return response(nextMap);
             }
             if (path === '/api/v1/worlds/1/map-spaces') {
                 mapSpaceCalls++;
@@ -709,6 +764,8 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
+        await wrapper.findAll('.underground-slot')[0]!.trigger('click');
+        await flushPromises();
         const initialChunkCalls = privateChunkCalls;
 
         await vi.advanceTimersByTimeAsync(1_000);
@@ -719,6 +776,10 @@ describe('application lobby and island entry', () => {
         expect(mapSpaceCalls).toBe(2);
         expect(privateChunkCalls).toBeGreaterThan(initialChunkCalls);
         expect(ownerEventCalls).toBe(2);
+        expect(undergroundMapCalls).toBe(2);
+        expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-label')).toContain('地底都市');
+        expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
+        expect(wrapper.find('.underground-target-summary').text()).toContain('建築済み施設枠');
         expect(wrapper.findComponent(HexMap).props('bounds')).toEqual(publicDetail.map_space.bounds);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
         const failedRefreshChunkCalls = privateChunkCalls;
@@ -1090,6 +1151,7 @@ describe('application lobby and island entry', () => {
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
             if (path === '/api/v1/me/nation') return response(nation);
+            if (path === '/api/v1/me/underground/surface-map') return response(undergroundSurfaceMapFixture);
             if (path === '/api/v1/worlds/1/trading-post') return response({
                 world: { id: 1, current_turn: 1 },
                 nation: { id: 3, name: '自島', money: 62728, state: 'active' },
@@ -1222,6 +1284,39 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
         expect(wrapper.find('.nation-hud').text()).toContain('島主：自島主');
         expect(wrapper.find('.nation-hud').text()).toContain('自島コメント');
+        expect(wrapper.get('.underground-map-card').text()).toContain('2層・8施設枠');
+        expect(wrapper.findAll('.underground-layer')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-slot')).toHaveLength(8);
+        expect(wrapper.findAll('.underground-ladder')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-entrance')).toHaveLength(1);
+        expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('(10, 8, -2)');
+        expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('(X-2, Y, -2)');
+        expect(wrapper.findAll('.underground-entrance button')).toHaveLength(0);
+        expect(wrapper.findAll('.underground-ladder button')).toHaveLength(0);
+        await wrapper.findAll('.underground-slot')[0]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
+        expect(wrapper.get('.underground-target-summary').text()).toContain('地下1層・slot 0');
+        const undergroundCommandRequest = fetchMock.mock.calls
+            .map(([input]) => String(input))
+            .find((path) => path.includes('command-definitions') && path.includes('target_layer=1'));
+        expect(undergroundCommandRequest).toContain('target_slot_index=0');
+        expect(undergroundCommandRequest).not.toContain('target_x');
+        wrapper.getComponent(HexMap).vm.$emit('select', surfaceCellFixture);
+        await flushPromises();
+        expect(wrapper.findAll('.underground-slot').every((slot) => slot.attributes('aria-pressed') === 'false')).toBe(true);
+        expect(wrapper.find('.underground-target-summary').exists()).toBe(false);
+        const surfaceCommandRequest = fetchMock.mock.calls
+            .map(([input]) => String(input))
+            .filter((path) => path.includes('command-definitions')).at(-1);
+        expect(surfaceCommandRequest).toContain('target_x=12');
+        expect(surfaceCommandRequest).toContain('target_y=8');
+        expect(surfaceCommandRequest).not.toContain('target_layer');
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+        window.dispatchEvent(new Event('resize'));
+        await wrapper.vm.$nextTick();
+        expect(wrapper.findAll('.underground-layer-row').every((row) => row.element.children.length === 5)).toBe(true);
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,000人');
         expect(wrapper.find('.hud-primary').text()).toContain('面積17セル');
         expect(wrapper.find('.hud-primary').text()).toContain('食料10,000トン');
@@ -1588,7 +1683,7 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/story/advance')).toHaveLength(1);
     });
 
-    it('shows the unlocked Underground projection with disabled future entries and escaped battle history', async () => {
+    it('shows the unlocked Underground projection, named seal story, and escaped battle history', async () => {
         const serverSecretary = structuredClone(unnamedSecretaryFixture);
         serverSecretary.name = 'ペリドット';
         serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
@@ -1675,7 +1770,16 @@ describe('application lobby and island entry', () => {
             }, armor: null, accessory: null } },
             shopkeeper_name: '<b>店員</b>', true_name_branch: false,
             tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
-            contract_completed: true, growth_paths: null, growth_path: growthPath, playtest, battle: null,
+            contract_completed: true, growth_paths: null, growth_path: growthPath, playtest,
+            trial: {
+                key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10,
+                first_cleared: false,
+                active_run: null as null | {
+                    key: string; label: string; run_key: string; status: string;
+                    next_battle_index: number; total_battles: number;
+                },
+            },
+            battle: null,
             next_battle_at: null as string | null,
         };
         const summary = {
@@ -1743,8 +1847,47 @@ describe('application lobby and island entry', () => {
             }],
             rewards: { xp: 1150, shards: 0 },
         };
+        const trialRun = {
+            key: 'trial_01', label: '地下に眠る古代遺跡',
+            run_key: '77777777-7777-4777-8777-777777777777', status: 'active',
+            next_battle_index: 1, total_battles: 10,
+        };
+        const trialBattle = {
+            ...explorationBattle,
+            id: '88888888-8888-4888-8888-888888888888', context: 'trial',
+            encounter_name: 'ワイバーン', xp_awarded: 370, shard_delta: 69,
+            rounds_count: 40,
+            rounds: [
+                {
+                    round: 20,
+                    actions: [{ type: 'warning', side: 'system', label: '洞窟が崩れそうだ……', amount: 0 }],
+                    end_state: null,
+                },
+                {
+                    round: 40,
+                    actions: [{ type: 'phase_transition', side: '対戦相手', actor_name: 'ワイバーン', label: '天井が崩落し、ワイバーンは宙に舞い上がる……！', amount: 0 }],
+                    end_state: null,
+                },
+            ],
+            combat_level_before: 6, combat_level_after: 6, stp_awarded: 0, unspent_stp_after: 25,
+            trial_run_key: trialRun.run_key, trial_battle_index: 10, trial_total_battles: 10,
+            trial_status: 'cleared', trial_next_battle_index: 1,
+            challenge_intro: '　崩れかけた石壁の向こうに広がっていた不思議な空間。\n　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
+            first_clear_story: {
+                title: '●封印の解放',
+                body: '　ワイバーンの肉体が自らの魔力に耐え切れず、内から光を放ちながら崩壊していくその瞬間。',
+                system_messages: ['ペリドットは一つ目の封印の地を制覇した。', 'SPを40入手した。'],
+            },
+        };
+        const repeatTrialBattle = {
+            ...trialBattle,
+            id: '99999999-9999-4999-8999-999999999999',
+            challenge_intro: null,
+            first_clear_story: null,
+        };
         let battleDetailGets = 0;
         let explorationAttempts = 0;
+        let trialFightAttempts = 0;
         let innAttempts = 0;
         let bankTransferAttempts = 0;
         let releaseInnRetry!: () => void;
@@ -1764,6 +1907,27 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
             if (path === '/api/v1/me/underground') return response(openState);
             if (path === '/api/v1/me/underground/entry' && init?.method === 'POST') return response(openState);
+            if (path === '/api/v1/me/underground/trial/start' && init?.method === 'POST') {
+                openState = { ...openState, trial: { ...openState.trial, active_run: trialRun } };
+                return response(trialRun);
+            }
+            if (path === '/api/v1/me/underground/trial/fight' && init?.method === 'POST') {
+                trialFightAttempts++;
+                openState = {
+                    ...openState,
+                    skill_points_total: 60,
+                    skill_points_unspent: 60,
+                    trial: { ...openState.trial, first_cleared: true, active_run: null },
+                };
+                if (trialFightAttempts === 1) throw new TypeError('Trial response lost');
+                if (trialFightAttempts === 3) {
+                    return new Response(JSON.stringify({
+                        code: 'underground_trial_run_stale',
+                        message: '封印の地の進行状態が更新されています。',
+                    }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+                }
+                return response(trialFightAttempts === 4 ? repeatTrialBattle : trialBattle);
+            }
             if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
                 const payload = JSON.parse(String(init.body)) as { request_id: string };
                 const duplicate = explorationResults.get(payload.request_id);
@@ -1889,7 +2053,53 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
         expect(wrapper.findAll('.underground-entries button')[0]!.attributes('disabled')).toBeUndefined();
-        expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeDefined();
+        expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeUndefined();
+        expect(wrapper.findAll('.underground-entries button')[1]!.text()).toContain('封印の地');
+        expect(wrapper.findAll('.underground-entries button')[1]!.text()).toContain('地下に眠る古代遺跡');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Trial response lost');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        const trialStartRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/start' && init?.method === 'POST'
+        ));
+        expect(trialStartRequests).toHaveLength(1);
+        const trialFightRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/fight' && init?.method === 'POST'
+        ));
+        expect(trialFightRequests).toHaveLength(2);
+        expect(JSON.parse(String(trialFightRequests[1]?.[1]?.body)))
+            .toEqual(JSON.parse(String(trialFightRequests[0]?.[1]?.body)));
+        expect(wrapper.get('.underground-trial-intro').text()).toContain('崩れかけた石壁の向こう');
+        expect(wrapper.get('.underground-first-clear-story h2').text()).toBe('●封印の解放');
+        expect(wrapper.get('.underground-first-clear-results').text()).toContain('ペリドットは一つ目の封印の地を制覇した。');
+        expect(wrapper.get('.underground-first-clear-results').text()).toContain('SPを40入手した。');
+        expect(wrapper.findAll('.underground-boss-warning')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-boss-warning')[0]!.text()).toBe('洞窟が崩れそうだ……');
+        expect(wrapper.findAll('.underground-boss-warning')[1]!.text()).toBe('天井が崩落し、ワイバーンは宙に舞い上がる……！');
+        expect(wrapper.get('.underground-battle-log').text().indexOf('崩れかけた石壁の向こう'))
+            .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('遭遇'));
+        expect(wrapper.get('.underground-battle-log').text().indexOf('戦闘終了'))
+            .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('封印の解放'));
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('封印の地の進行状態が更新されています。');
+        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await flushPromises();
+        const recoveredTrialStarts = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/start' && init?.method === 'POST'
+        ));
+        expect(recoveredTrialStarts).toHaveLength(3);
+        const recoveredTrialFights = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/fight' && init?.method === 'POST'
+        ));
+        expect(recoveredTrialFights).toHaveLength(4);
+        expect(JSON.parse(String(recoveredTrialFights[3]?.[1]?.body)).request_id)
+            .not.toBe(JSON.parse(String(recoveredTrialFights[2]?.[1]?.body)).request_id);
+        expect(wrapper.find('.underground-first-clear-story').exists()).toBe(false);
+        await wrapper.get('.underground-battle-back').trigger('click');
         expect(wrapper.findAll('.underground-history li')).toHaveLength(5);
         expect(wrapper.get('.underground-history').text()).toContain('履歴5');
         expect(wrapper.get('.underground-history').text()).not.toContain('履歴6');
@@ -2072,6 +2282,112 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0G・ドロップなし');
         wrapper.unmount();
+    });
+
+    it('renders and saves the unlocked awakening gauge technique and plain-text battle event', async () => {
+        const growthPath = {
+            key: 'free_black', label: '自由', color: 'black', description: ['自由型'], default_build_key: 'balanced',
+            stats: { vitality: 20, might: 20, finesse: 20, spirit: 20, agility: 20 },
+            max_hp: 500, max_mp: 10000, natural_recovery: 300,
+            natural_growth: { vitality: 1, might: 1, finesse: 1, spirit: 1, agility: 0 },
+            unspent_stp_per_level: 6, points_per_level: 10,
+        };
+        let state = {
+            stage: 'underground_open', secretary_name: '表示秘書', combat_level: 1,
+            combat_xp: 0, next_level_xp: 100, next_level_requirement: 100, xp_to_next_level: 100,
+            shard_balance: 0, banked_shard_balance: 0, current_hp: 500, unspent_stp: 0,
+            allocated_stp: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 },
+            current_stats: growthPath.stats, combat_stats: growthPath.stats, status_breakdown: null,
+            equipment: null, equipment_summary: null,
+            skill_points_total: 20, skill_points_unspent: 20, skill_points_spent: 0,
+            skill_tree_identity: 'secretary-underground-skill-tree-alpha-v1', skill_trees: [],
+            active_slots: [null, null, null, null, null], passive_modifiers: {},
+            shopkeeper_name: '案内係', true_name_branch: false,
+            tutorial_projection: { stats: growthPath.stats, weapon: 'starter knife' },
+            contract_completed: true, growth_paths: null, growth_path: growthPath, playtest: null,
+            trial: { key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10, first_cleared: true, active_run: null },
+            awakening: {
+                identity: 'secretary-underground-awakening-v1', unlocked: true, current: 1000, maximum: 1000,
+                custom_message: '<b>{secretary_name}</b>、限界突破！' as string | null,
+                default_message: '魔力が{secretary_name}の全身を駆け巡る――！',
+                technique: {
+                    key: 'limitless_reprise', name: '無窮再演',
+                    summary: 'MPを全回復し、通常active skillのcooldownを全解除。そのまま行動。',
+                    consumes_action: false,
+                },
+            },
+            battle: null, next_battle_at: null,
+        };
+        const battle = {
+            id: '77777777-7777-4777-8777-777777777777', context: 'exploration',
+            player_display_name: '表示秘書', encounter_name: '迷い人の影', result: 'victory',
+            rounds_count: 1, xp_awarded: 0, shard_delta: 0, detail_available: true,
+            summary: { result: 'victory', awakening_triggered: true, awakening_technique_used: true },
+            rounds: [{
+                round: 1,
+                actions: [{
+                    type: 'awakening', side: '秘書', actor_name: '表示秘書', target_name: '表示秘書', label: '覚醒',
+                    lines: ['<img src=x onerror=alert(1)>', '表示秘書は覚醒した！', 'HP/MPが全回復した！', '生命・武力・技巧・精神・敏捷が30%上昇した！'],
+                    amount: 0,
+                }],
+                end_state: null,
+            }],
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground' && init?.method === undefined) return response(state);
+            if (path === '/api/v1/me/underground/battles') return response([battle]);
+            if (path === `/api/v1/me/underground/battles/${battle.id}`) return response(battle);
+            if (path === '/api/v1/me/underground/awakening/message' && init?.method === 'PUT') {
+                const payload = JSON.parse(String(init.body)) as { message: string };
+                state = {
+                    ...state,
+                    awakening: {
+                        ...state.awakening,
+                        custom_message: payload.message.trim() === '' ? null : payload.message,
+                    },
+                };
+                return response(state);
+            }
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        expect(wrapper.get('.underground-awakening-gauge').attributes('data-full')).toBe('true');
+        expect(wrapper.get('.underground-awakening-gauge').text()).toContain('1000 / 1000');
+        expect(wrapper.get<HTMLProgressElement>('.underground-awakening-gauge progress').element.value).toBe(1000);
+        await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
+        expect(wrapper.get('.underground-awakening-settings').text()).toContain('無窮再演');
+        expect(wrapper.get('.underground-awakening-settings').text()).toContain('覚醒中に1度だけ使用可能');
+        expect(wrapper.get('.underground-awakening-settings').text()).toContain('通常actionを消費せず');
+        expect(wrapper.get<HTMLTextAreaElement>('#underground-awakening-message').element.value)
+            .toBe('<b>{secretary_name}</b>、限界突破！');
+        await wrapper.get('#underground-awakening-message').setValue('<script>表示秘書</script>覚醒');
+        await wrapper.get('.underground-awakening-settings .button').trigger('click');
+        await flushPromises();
+        const save = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/underground/awakening/message' && init?.method === 'PUT'
+        ));
+        expect(JSON.parse(String(save?.[1]?.body))).toEqual({
+            request_id: expect.any(String), message: '<script>表示秘書</script>覚醒',
+        });
+        expect(wrapper.find('.underground-awakening-settings script').exists()).toBe(false);
+
+        await wrapper.get('#underground-awakening-message').setValue('');
+        await wrapper.get('.underground-awakening-settings .button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get<HTMLTextAreaElement>('#underground-awakening-message').element.value)
+            .toBe(state.awakening.default_message);
+
+        await wrapper.get('.underground-history li button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-awakening-event').text()).toContain('<img src=x onerror=alert(1)>');
+        expect(wrapper.find('.underground-awakening-event img').exists()).toBe(false);
+        expect(wrapper.get('.underground-awakening-event').text()).toContain('生命・武力・技巧・精神・敏捷が30%上昇した！');
+        expect(wrapper.get('.underground-combat-summary').text()).not.toContain('awakening_triggered');
     });
 
     it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {

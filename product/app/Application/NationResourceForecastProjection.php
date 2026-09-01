@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
@@ -22,6 +23,8 @@ final class NationResourceForecastProjection
         private readonly SecretaryTurnService $secretaries,
         private readonly FacilityCapacityService $facilityCapacities,
         private readonly NationLifecyclePrepareStateResolver $prepareState,
+        private readonly UndergroundFacilityBenefits $undergroundBenefits,
+        private readonly NationQueuedMeaningfulActivityQuery $meaningfulActivity,
     ) {}
 
     /**
@@ -126,6 +129,17 @@ final class NationResourceForecastProjection
                 'capacity' => $this->facilityCapacities->capacityPeople($definition, (int) $row->facility_scale),
             ];
         }
+        foreach ($this->undergroundBenefits->factoryFacilities($nation->id) as $facility) {
+            $industrialFacilities[] = [
+                'cell_id' => $facility['id'],
+                'source_key' => 'underground:'.$facility['id'],
+                'key' => 'factory',
+                'capacity' => $this->undergroundBenefits->effectValue(
+                    $facility,
+                    'factory_capacity_people',
+                ),
+            ];
+        }
         $economy = $this->economy->calculate(
             $ruleset->settings,
             $effectiveNationState,
@@ -221,13 +235,8 @@ final class NationResourceForecastProjection
         $resumeDue = $nation->resume_at_turn !== null && $targetTurn >= $nation->resume_at_turn;
         $needsQueueProjection = ($nation->state === 'recovery' && $resumeDue)
             || ($nation->state === 'dormant' && $nation->state_reason !== 'manual');
-        $hasQueuedNonFinanceCommand = $needsQueueProjection && DB::table('nation_command_queue_items as item')
-            ->join('nation_command_queues as queue', 'queue.id', '=', 'item.nation_command_queue_id')
-            ->join('command_definitions as definition', 'definition.id', '=', 'item.command_definition_id')
-            ->where('queue.nation_id', $nation->id)
-            ->where('item.status', 'queued')
-            ->where('definition.key', '<>', $financeKey)
-            ->exists();
+        $hasQueuedNonFinanceCommand = $needsQueueProjection
+            && $this->meaningfulActivity->exists($nation, $financeKey);
 
         return $this->prepareState->resolve(
             $nation->state,

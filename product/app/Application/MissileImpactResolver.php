@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -20,6 +21,7 @@ use App\Models\MapSpace;
 use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
+use App\Models\NationUndergroundFacility;
 use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Support\Collection;
@@ -37,14 +39,14 @@ final class MissileImpactResolver
      *     cost: int,
      *     ineffective: int,
      *     impacts: list<array<string, mixed>>,
-     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>,
+     *     firing_bases: array<string, array<string, int|string>>,
      *     prepared: bool,
      *     footprint: list<string>,
      *     turn_start_monster: bool,
      *     missile_boundary_monster: bool,
      *     population_start: array<int, int>,
      *     population_remaining: array<int, int>,
-     *     population_sync_base_id: int|null,
+     *     population_sync_source_key: string|null,
      *     spp_candidates: array<int, array{start_hp: int, host_nation_id: int}>,
      *     spp_qualified_monster_ids: array<int, true>,
      *     spp_evaluated: bool
@@ -54,6 +56,9 @@ final class MissileImpactResolver
 
     /** @var array<int, true> */
     private array $changedCellIds = [];
+
+    /** @var array<int, true> */
+    private array $processedUndergroundBaseIds = [];
 
     /** @var array<string, MapCell>|null */
     private ?array $surfaceCellsByCoordinate = null;
@@ -73,6 +78,7 @@ final class MissileImpactResolver
         private readonly SecretaryExperienceAwardService $secretaryExperience,
         private readonly SecretaryItemProbability $itemProbability,
         private readonly SecretaryDemographicPolicy $demographics,
+        private readonly UndergroundFacilityBenefits $undergroundBenefits,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -80,6 +86,7 @@ final class MissileImpactResolver
     {
         $this->launches = [];
         $this->changedCellIds = [];
+        $this->processedUndergroundBaseIds = [];
         $this->surfaceCellsByCoordinate = $surfaceCellsByCoordinate;
     }
 
@@ -132,27 +139,30 @@ final class MissileImpactResolver
                 }
                 if (! $launch['prepared']) {
                     $this->prepareLaunchContext($context, $space, $nation, $intent, $settings, $launch);
-                    $launch['population_sync_base_id'] = $base->id;
-                } elseif ($launch['population_sync_base_id'] !== $base->id) {
+                    $launch['population_sync_source_key'] = 'surface:'.$base->id;
+                } elseif ($launch['population_sync_source_key'] !== 'surface:'.$base->id) {
                     $this->synchronizeLaunchPopulation($space, $launch);
-                    $launch['population_sync_base_id'] = $base->id;
+                    $launch['population_sync_source_key'] = 'surface:'.$base->id;
                 }
                 $nation->decrement('money', $cost);
                 $nation->refresh();
-                $impact = $this->impact($context, $space, $nation, $base, $intent, $settings);
+                $impact = $this->impact($context, $space, $nation, $base, null, $intent, $settings);
                 $this->recordKarmaForImpact($context, $nation, $intent, $launch, $impact);
                 $context->state->consumeLaunchIntentShots($intent, 1);
                 $remainingCapacity--;
                 $launch['fired']++;
                 $launch['cost'] += $cost;
                 $launch['impacts'][] = $impact;
-                $launch['firing_bases'][$base->id] ??= [
+                $sourceKey = 'surface:'.$base->id;
+                $launch['firing_bases'][$sourceKey] ??= [
+                    'source_kind' => 'surface_missile_base',
+                    'source_id' => $base->id,
                     'x' => $base->x,
                     'y' => $base->y,
                     'facility_key' => (string) $base->facility->key,
                     'fired_shots' => 0,
                 ];
-                $launch['firing_bases'][$base->id]['fired_shots']++;
+                $launch['firing_bases'][$sourceKey]['fired_shots']++;
                 $metrics['shots_fired']++;
                 $metrics['money_spent'] += $cost;
                 if ($impact['meaningful']) {
@@ -160,6 +170,114 @@ final class MissileImpactResolver
                 } elseif (! in_array($impact['effect'], ['defense_intercepted', 'secretary_intercepted'], true)) {
                     $launch['ineffective']++;
                     $metrics['ineffective_impacts']++;
+                }
+            }
+        }
+
+        $changed = array_map('intval', array_keys($this->changedCellIds));
+        sort($changed, SORT_NUMERIC);
+        $this->changedCellIds = [];
+
+        return [...$metrics, 'changed_cell_ids' => $changed];
+    }
+
+    /**
+     * Add Nation-owned Underground missile bases as capacity sources while
+     * retaining the canonical missile intent, cost, RNG, impact, and failure path.
+     *
+     * @return array{shots_fired: int, money_spent: int, meaningful_impacts: int, ineffective_impacts: int, changed_cell_ids: list<int>}
+     */
+    public function processUndergroundBasesForNation(
+        TurnContext $context,
+        MapSpace $space,
+        int $nationId,
+    ): array {
+        $metrics = [
+            'shots_fired' => 0, 'money_spent' => 0,
+            'meaningful_impacts' => 0, 'ineffective_impacts' => 0,
+        ];
+        $baseIds = $this->undergroundBenefits->missileBaseIdsForTurn(
+            $context->state,
+            [$nationId],
+        );
+
+        foreach ($baseIds as $baseId) {
+            if (isset($this->processedUndergroundBaseIds[$baseId])) {
+                continue;
+            }
+            $this->processedUndergroundBaseIds[$baseId] = true;
+            $base = NationUndergroundFacility::query()->whereKey($baseId)
+                ->where('facility_key', 'underground_missile_base')
+                ->lockForUpdate()->first();
+            if ($base === null) {
+                continue;
+            }
+            $nation = Nation::query()->whereKey($base->nation_id)->lockForUpdate()->first();
+            if ($nation === null || $nation->world_id !== $context->world->id
+                || ! in_array($nation->state, ['active', 'recovery'], true)) {
+                continue;
+            }
+            $remainingCapacity = 1;
+            foreach ($context->state->launchIntentsForNation($nation->id) as $intent) {
+                if ($remainingCapacity < 1) {
+                    continue;
+                }
+                if (! in_array($intent->definitionKey, self::MISSILE_KEYS, true) || $intent->queueItemId === null) {
+                    throw new DomainException('The turn contains an invalid PR22 missile launch intent.');
+                }
+                $settings = $context->ruleset->settings['military']['missiles'][$intent->definitionKey] ?? null;
+                if (! is_array($settings) || ! is_int($settings['cost_money_per_shot'] ?? null)) {
+                    throw new DomainException('The active ruleset has invalid missile settings.');
+                }
+                $launch = &$this->launch($intent, $nation);
+                while ($remainingCapacity > 0) {
+                    if ($intent->remainingShots() < 1) {
+                        break;
+                    }
+                    $base->refresh();
+                    if ($base->nation_id !== $nation->id
+                        || $base->facility_key !== 'underground_missile_base') {
+                        break;
+                    }
+                    $cost = $settings['cost_money_per_shot'];
+                    $nation->refresh();
+                    if ((int) $nation->money < $cost) {
+                        break;
+                    }
+                    $sourceKey = 'underground:'.$base->id;
+                    if (! $launch['prepared']) {
+                        $this->prepareLaunchContext($context, $space, $nation, $intent, $settings, $launch);
+                        $launch['population_sync_source_key'] = $sourceKey;
+                    } elseif ($launch['population_sync_source_key'] !== $sourceKey) {
+                        $this->synchronizeLaunchPopulation($space, $launch);
+                        $launch['population_sync_source_key'] = $sourceKey;
+                    }
+                    $nation->decrement('money', $cost);
+                    $nation->refresh();
+                    $impact = $this->impact($context, $space, $nation, null, $base, $intent, $settings);
+                    $this->recordKarmaForImpact($context, $nation, $intent, $launch, $impact);
+                    $context->state->consumeLaunchIntentShots($intent, 1);
+                    $remainingCapacity--;
+                    $launch['fired']++;
+                    $launch['cost'] += $cost;
+                    $launch['impacts'][] = $impact;
+                    $launch['firing_bases'][$sourceKey] ??= [
+                        'source_kind' => 'underground_missile_base',
+                        'source_id' => $base->id,
+                        'layer' => $base->layer,
+                        'slot_index' => $base->slot_index,
+                        'facility_key' => $base->facility_key,
+                        'fired_shots' => 0,
+                    ];
+                    $launch['firing_bases'][$sourceKey]['fired_shots']++;
+                    $metrics['shots_fired']++;
+                    $metrics['money_spent'] += $cost;
+                    if ($impact['meaningful']) {
+                        $metrics['meaningful_impacts']++;
+                    } elseif (! in_array($impact['effect'], ['defense_intercepted', 'secretary_intercepted'], true)) {
+                        $launch['ineffective']++;
+                        $metrics['ineffective_impacts']++;
+                    }
                 }
             }
         }
@@ -188,7 +306,7 @@ final class MissileImpactResolver
                 'prepared' => false, 'footprint' => [],
                 'turn_start_monster' => false, 'missile_boundary_monster' => false,
                 'population_start' => [], 'population_remaining' => [],
-                'population_sync_base_id' => null,
+                'population_sync_source_key' => null,
                 'spp_candidates' => [], 'spp_qualified_monster_ids' => [], 'spp_evaluated' => false,
             ];
             $this->evaluateSppSelfDestructSetup($context, $launch);
@@ -303,7 +421,7 @@ final class MissileImpactResolver
                 ];
                 $this->awardFinalDefenseArrivalExperience($context, $cell);
                 $impact = $this->defenseInterception($context, $space, $cell, $base, 'missile')
-                    ?? $this->ordinaryImpact($context, null, null, $cell, $base, 'missile', null);
+                    ?? $this->ordinaryImpact($context, null, null, null, $cell, $base, 'missile', null);
                 if (in_array($impact['effect'], ['defense_intercepted', 'secretary_intercepted'], true)) {
                     $metrics['karma_sanction_intercepted']++;
                 } elseif ($impact['meaningful']) {
@@ -634,10 +752,14 @@ final class MissileImpactResolver
         TurnContext $context,
         MapSpace $space,
         Nation $firingNation,
-        MapCell $firingBase,
+        ?MapCell $firingBase,
+        ?NationUndergroundFacility $undergroundFiringBase,
         LaunchIntent $intent,
         array $settings,
     ): array {
+        if (($firingBase === null) === ($undergroundFiringBase === null)) {
+            throw new DomainException('A missile impact requires exactly one launch source.');
+        }
         $radius = $settings['deviation_radius'] ?? null;
         if (! is_int($radius) || $radius < 0) {
             throw new DomainException('Missile deviation radius is invalid.');
@@ -705,6 +827,7 @@ final class MissileImpactResolver
             $context,
             $firingNation,
             $firingBase,
+            $undergroundFiringBase,
             $cell,
             $base,
             $intent->definitionKey,
@@ -844,6 +967,7 @@ final class MissileImpactResolver
         TurnContext $context,
         ?Nation $firingNation,
         ?MapCell $firingBase,
+        ?NationUndergroundFacility $undergroundFiringBase,
         MapCell $cell,
         array $base,
         string $missileKey,
@@ -876,6 +1000,7 @@ final class MissileImpactResolver
                 $firingBase?->facility_experience !== null ? $firingBase : null,
                 $cell,
                 $context,
+                $undergroundFiringBase,
             );
             $terrainScorched = $result->killed
                 ? $this->scorchWasteland($context, $cell)
@@ -1286,6 +1411,10 @@ final class MissileImpactResolver
         foreach ($cells as $cell) {
             $maximum = $cell->facility?->key === 'capital'
                 ? $context->ruleset->settings['capital_growth_maximum_population']
+                    + $this->undergroundBenefits->capitalMaximumBonusForTurn(
+                        $context->state,
+                        $recipient->id,
+                    )
                 : $attractionMaximum;
             $applied = min($remaining, max(0, $maximum - $cell->population));
             if ($applied < 1) {
@@ -1419,14 +1548,14 @@ final class MissileImpactResolver
      *     cost: int,
      *     ineffective: int,
      *     impacts: list<array<string, mixed>>,
-     *     firing_bases: array<int, array{x: int, y: int, facility_key: string, fired_shots: int}>,
+     *     firing_bases: array<string, array<string, int|string>>,
      *     prepared: bool,
      *     footprint: list<string>,
      *     turn_start_monster: bool,
      *     missile_boundary_monster: bool,
      *     population_start: array<int, int>,
      *     population_remaining: array<int, int>,
-     *     population_sync_base_id: int|null,
+     *     population_sync_source_key: string|null,
      *     spp_candidates: array<int, array{start_hp: int, host_nation_id: int}>,
      *     spp_qualified_monster_ids: array<int, true>,
      *     spp_evaluated: bool
@@ -1445,7 +1574,7 @@ final class MissileImpactResolver
                 'prepared' => false, 'footprint' => [],
                 'turn_start_monster' => false, 'missile_boundary_monster' => false,
                 'population_start' => [], 'population_remaining' => [],
-                'population_sync_base_id' => null,
+                'population_sync_source_key' => null,
                 'spp_candidates' => [], 'spp_qualified_monster_ids' => [], 'spp_evaluated' => false,
             ];
         }

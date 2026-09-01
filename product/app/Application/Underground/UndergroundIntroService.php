@@ -5,6 +5,7 @@ namespace App\Application\Underground;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\CombatResult;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use App\Domain\Underground\Intro\UndergroundIntroStage;
@@ -16,6 +17,8 @@ use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
+use App\Models\UndergroundTrialProgress;
+use App\Models\UndergroundTrialRun;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +41,7 @@ final readonly class UndergroundIntroService
         private UndergroundRuntimeService $runtime,
         private UndergroundStarterEquipmentService $starterEquipment,
         private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
+        private UndergroundAwakening $awakening,
     ) {}
 
     /** @return array<string, mixed> */
@@ -322,6 +326,16 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ): void {
             $this->assertShopUnlocked($profile, $intro);
+            if (UndergroundTrialRun::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
+                ->lockForUpdate()
+                ->exists()) {
+                throw new UndergroundRuntimeException(
+                    'underground_trial_active',
+                    '封印の地へ挑戦中は宿で休めません。帰還後に利用してください。',
+                );
+            }
             $cost = $this->alphaV1Catalog->innCost();
             if ($profile->shard_balance < $cost) {
                 throw new UndergroundRuntimeException(
@@ -590,6 +604,47 @@ final readonly class UndergroundIntroService
     }
 
     /** @return array<string, mixed> */
+    public function updateAwakeningMessage(User $user, string $requestId, ?string $message): array
+    {
+        try {
+            $normalized = $this->awakening->normalizeMessage($message);
+        } catch (InvalidArgumentException) {
+            throw new UndergroundRuntimeException(
+                'underground_awakening_message_invalid',
+                '覚醒演出文は改行なしの100文字以内で入力してください。',
+            );
+        }
+
+        return $this->mutate(
+            $user,
+            $requestId,
+            'awakening_message',
+            ['message' => $normalized],
+            function (
+                Secretary $secretary,
+                UndergroundProfile $profile,
+                UndergroundIntroProgress $intro,
+            ) use ($normalized): void {
+                $this->assertGrowthUnlocked($profile, $intro);
+                $unlocked = UndergroundTrialProgress::query()
+                    ->where('underground_profile_id', $profile->id)
+                    ->where('trial_key', $this->runtimeCatalog->firstTrialKey())
+                    ->whereNotNull('first_cleared_at')
+                    ->lockForUpdate()
+                    ->exists();
+                if (! $unlocked) {
+                    throw new UndergroundRuntimeException(
+                        'underground_awakening_locked',
+                        '覚醒演出文は一つ目の封印の地を初回制覇すると設定できます。',
+                    );
+                }
+                $profile->awakening_message = $normalized;
+                $profile->save();
+            },
+        );
+    }
+
+    /** @return array<string, mixed> */
     public function main(User $user): array
     {
         $state = $this->state($user);
@@ -619,6 +674,7 @@ final readonly class UndergroundIntroService
                 UndergroundBattle::ACTIVITY_STORY,
                 UndergroundBattle::ACTIVITY_PLAYTEST,
                 UndergroundBattle::ACTIVITY_EXPLORATION,
+                UndergroundBattle::ACTIVITY_TRIAL,
             ])
             ->withExists([
                 'log as active_log_exists' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
@@ -649,6 +705,7 @@ final readonly class UndergroundIntroService
                     UndergroundBattle::ACTIVITY_STORY,
                     UndergroundBattle::ACTIVITY_PLAYTEST,
                     UndergroundBattle::ACTIVITY_EXPLORATION,
+                    UndergroundBattle::ACTIVITY_TRIAL,
                 ])
                 ->with(['log' => fn ($query) => $query->where('expires_at', '>', Carbon::now())])
                 ->first()
@@ -1148,6 +1205,18 @@ final readonly class UndergroundIntroService
             }
         }
 
+        $trialState = $stage === UndergroundIntroStage::UNDERGROUND_OPEN
+            && $profile instanceof UndergroundProfile
+            && $profile->growth_path_key !== null
+                ? $this->runtime->projectTrialState($profile)
+                : null;
+        $awakeningState = $trialState !== null
+                ? $this->runtime->projectAwakeningState(
+                    $profile,
+                    ($trialState['first_cleared'] ?? false) === true,
+                )
+                : null;
+
         return [
             'stage' => $stage,
             'secretary_name' => $secretary->name,
@@ -1200,6 +1269,8 @@ final readonly class UndergroundIntroService
                 && config('app.env') !== 'production'
                     ? $this->alphaV1Catalog->playtestOptions($profile->growth_path_key)
                     : null,
+            'trial' => $trialState,
+            'awakening' => $awakeningState,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
         ];
     }
@@ -1234,6 +1305,9 @@ final readonly class UndergroundIntroService
         }
         if ($battle->activity_type === UndergroundBattle::ACTIVITY_EXPLORATION) {
             return $this->runtime->projectExplorationBattle($battle, $withActions);
+        }
+        if ($battle->activity_type === UndergroundBattle::ACTIVITY_TRIAL) {
+            return $this->runtime->projectTrialBattle($battle, $withActions);
         }
         $snapshot = $battle->snapshot;
         $displayName = $snapshot['encounter_display_name'] ?? null;

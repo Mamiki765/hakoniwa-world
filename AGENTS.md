@@ -28,6 +28,35 @@ amounts. Flavor is presentation-only, such as names, descriptions, player-facing
 `product/docs/architecture/ruleset-authoring.md` is the detailed authority. Do not duplicate
 its large example set in this file.
 
+### Ruleset release lifecycle
+
+Do not turn a one-off release incident, a specific version number, or a temporary workaround
+into a permanent Agent rule. Keep this file limited to reusable behavior constraints and
+decision principles. Before proposing a new Ruleset version, distinguish the
+Ruleset currently on `main`, the current Ruleset on the work base/release branch, and the
+Ruleset actually released to and used by production. Source labels such as
+`published_rulesets`, an authored payload, or a publication migration do not by themselves
+prove that a release-branch Ruleset is frozen.
+
+A Ruleset still being completed on a release branch and not yet released to main/production
+may be revised to form that release's final contract. It freezes when the release reaches
+production; later semantic changes require the next Ruleset version. Whether an unreleased
+migration may be edited follows the Owner-confirmed production baseline, not repository state
+alone. See `product/docs/architecture/ruleset-authoring.md` for the detailed lifecycle.
+
+### Subagent delegation
+
+Bounded, low-risk repository investigation, focused failure investigation, mechanical edits,
+documentation consistency checks, small implementations of an already-decided contract, and
+independent regression checks may be delegated; `gpt-5.6-luna` at `max` is the default for
+that class of subtask. The main agent retains architecture and Owner-intent interpretation,
+Ruleset/migration boundaries, production/deploy safety, cross-cutting integration, and final
+review and verification judgment.
+
+Subagents must not reinterpret or expand the Owner contract. The main agent must inspect work
+before adoption. Do not delegate production mutation, destructive database operations, or an
+unresolved Owner decision.
+
 ### Development handoff
 
 `product/docs/handoffs/development-history-and-current-handoff.md` is read-only context for
@@ -126,8 +155,8 @@ data change must provide a forward migration or an explicit, reviewed conversion
 Ruleset changes must state their effect on existing Worlds and keep the production World
 runnable through compatible runtime support or an explicit migration.
 
-Published ruleset rows, settings, command definitions, and production definitions are
-immutable audit records before and after go-live. Never overwrite a published payload.
+Ruleset rows, settings, command definitions, and production definitions actually released to
+and used by production are immutable audit records. Never overwrite a production payload.
 Before deploy, verify that the next non-dry TurnRun is not pending, running, or failed.
 Resolve such a run before deploy; never retry it automatically across a release. Preserve
 the same-target-turn, same-ruleset, same-seed manual retry boundary and audit records.
