@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundSurfaceMapProjection;
 use App\Domain\Monster\MonsterDisplayOrderResolver;
 use App\Domain\World\HakoniwaCalendar;
 use App\Models\MapCell;
@@ -24,6 +25,7 @@ final class PublicWorldService
         private readonly PublicRankingAchievementProjection $achievements,
         private readonly HakoniwaCalendar $calendar,
         private readonly MonsterDisplayOrderResolver $monsterDisplayOrders,
+        private readonly UndergroundSurfaceMapProjection $undergroundMaps,
     ) {}
 
     /** @return array<string, mixed> */
@@ -130,6 +132,7 @@ final class PublicWorldService
             ],
             'capital' => $capital === null ? null : ['x' => $capital->x, 'y' => $capital->y],
             'secretary_id' => $secretaryId === null ? null : (int) $secretaryId,
+            'underground_surface_map' => $this->undergroundMaps->forNation($nation),
             'monster_final_blow_count' => $monsterKillStats->sum('kill_count'),
             'monster_kill_stats' => $monsterKillStats,
             'map_space' => [

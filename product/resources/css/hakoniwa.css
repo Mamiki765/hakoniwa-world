@@ -338,12 +338,11 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-growth-summary dl div { padding: .45rem; text-align: center; }
 .underground-awakening-gauge { padding: .7rem .8rem; border: 1px solid #3d6fb4; border-radius: 10px; background: color-mix(in srgb, var(--surface) 88%, #3d6fb4 12%); }
 .underground-awakening-gauge > div { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
-.underground-awakening-gauge strong { font-variant-numeric: tabular-nums; }
 .underground-awakening-gauge progress { width: 100%; height: .8rem; overflow: hidden; border: 0; border-radius: 999px; appearance: none; background: var(--line); }
 .underground-awakening-gauge progress::-webkit-progress-bar { border-radius: 999px; background: var(--line); }
 .underground-awakening-gauge progress::-webkit-progress-value { border-radius: 999px; background: #3d6fb4; }
 .underground-awakening-gauge progress::-moz-progress-bar { background: #3d6fb4; }
-.underground-awakening-gauge[data-full="true"] { border-color: #c9a227; background: #fff7c7; }
+.underground-awakening-gauge[data-full="true"] { border-color: #8b783d; background: #fff7c7; }
 .underground-awakening-gauge[data-full="true"] progress::-webkit-progress-value { background: #c9a227; }
 .underground-awakening-gauge[data-full="true"] progress::-moz-progress-bar { background: #c9a227; }
 .underground-equipment dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; margin: 0; }
@@ -394,6 +393,9 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-first-clear-body { max-width: 58rem; white-space: pre-wrap; line-height: 1.9; }
 .underground-first-clear-results { display: grid; gap: .35rem; padding-top: 1rem; border-top: 1px solid var(--line); font-weight: 700; }
 .underground-trial-intro { margin: 0 0 1.25rem; padding: 1.25rem; white-space: pre-wrap; line-height: 1.9; border: 1px solid var(--line); background: var(--surface); }
+.underground-interbattle-heal { color: #2f7449; font-weight: 700; }
+.underground-battle-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .65rem; }
+.underground-battle-actions small { display: block; }
 .underground-battle-back { justify-self: center; }
 .underground-growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .underground-growth-card { --crystal: var(--line); display: grid; align-content: start; gap: .75rem; padding: 1rem; border: 2px solid var(--crystal); border-radius: 12px; }

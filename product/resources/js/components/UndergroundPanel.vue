@@ -75,6 +75,7 @@ interface Battle {
     trial_total_battles?: number | null;
     trial_status?: 'active' | 'withdrawn' | 'defeated' | 'cleared' | null;
     trial_next_battle_index?: number | null;
+    interbattle_heal_amount?: number;
     first_clear_story?: {
         title: string;
         body: string;
@@ -392,6 +393,21 @@ const equipmentView = ref<'main' | 'shop' | 'vault'>('main');
 const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const canAdvanceTrial = computed(() => {
+    const battle = currentBattle.value;
+    const activeRun = state.value?.trial?.active_run;
+    return battle?.context === 'trial'
+        && battle.result === 'victory'
+        && battle.trial_status === 'active'
+        && activeRun !== null
+        && activeRun !== undefined
+        && activeRun.run_key === battle.trial_run_key
+        && activeRun.next_battle_index === battle.trial_next_battle_index
+        && typeof battle.trial_battle_index === 'number'
+        && typeof battle.trial_next_battle_index === 'number'
+        && battle.trial_next_battle_index > battle.trial_battle_index
+        && battle.trial_next_battle_index <= activeRun.total_battles;
+});
 const exploreCooldownSeconds = computed(() => {
     const nextBattleAt = state.value?.next_battle_at;
     if (!nextBattleAt) return 0;
@@ -989,6 +1005,7 @@ onUnmounted(() => {
                     <h2>{{ battleResultLabel(currentBattle.result) }}</h2>
                     <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
                     <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
+                    <p v-if="(currentBattle.interbattle_heal_amount ?? 0) > 0" class="underground-interbattle-heal">体力が少し回復した</p>
                     <div
                         v-if="currentBattle.combat_level_after !== undefined && currentBattle.combat_level_after !== currentBattle.combat_level_before"
                         class="underground-level-up"
@@ -1021,7 +1038,18 @@ onUnmounted(() => {
                 <p v-for="line in trueNameAfter" :key="line">{{ line }}</p>
                 <button class="button primary" type="button" :disabled="busy" @click="mutate('/api/v1/me/underground/story/advance', { action: 'special_loss_aftermath_complete' })">OK</button>
             </div>
-            <button v-else class="button secondary underground-battle-back" type="button" @click="closeBattle">地下メインへ戻る</button>
+            <div v-else class="underground-battle-actions">
+                <button
+                    v-if="canAdvanceTrial"
+                    class="button primary underground-trial-next"
+                    type="button"
+                    :disabled="busy || exploreCooldownSeconds > 0"
+                    @click="runTrial"
+                >
+                    次の階層へ<small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
+                </button>
+                <button class="button secondary underground-battle-back" type="button" @click="closeBattle">地下メインへ戻る</button>
+            </div>
         </template>
 
         <template v-else-if="state?.stage === 'initial_descent'">
@@ -1118,7 +1146,7 @@ onUnmounted(() => {
                         :data-full="state.awakening.current >= state.awakening.maximum"
                         aria-labelledby="underground-awakening-gauge-title"
                     >
-                        <div><h2 id="underground-awakening-gauge-title">覚醒ゲージ</h2><strong>{{ state.awakening.current }} / {{ state.awakening.maximum }}</strong></div>
+                        <div><h2 id="underground-awakening-gauge-title">覚醒ゲージ</h2></div>
                         <progress :max="state.awakening.maximum" :value="state.awakening.current" />
                     </section>
                     <section v-if="state.growth_path" class="underground-growth-summary">

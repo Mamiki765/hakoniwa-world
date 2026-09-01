@@ -431,6 +431,7 @@ STORY;
             'current_hp_before' => (int) ($snapshot['current_hp_before'] ?? 0),
             'current_hp_after' => (int) ($snapshot['current_hp_after'] ?? 0),
             'max_hp_after' => (int) ($snapshot['max_hp_after'] ?? 0),
+            'interbattle_heal_amount' => (int) ($snapshot['interbattle_heal_amount'] ?? 0),
             'summary' => $summary,
             'rounds' => $withRounds && $hasPresentationLog ? $log->actions : null,
             'detail_available' => $withRounds
@@ -821,10 +822,11 @@ STORY;
             $profile->allocatedStp(),
             $equipment,
         );
+        $remainingHpAfterBattle = min($result->playerRemainingHp, $maxHpAfter);
         $profile->current_hp = match ($resultType) {
             UndergroundBattle::RESULT_DEFEAT => $maxHpAfter,
             UndergroundBattle::RESULT_VICTORY => $isTrialBoss
-                ? min($result->playerRemainingHp, $maxHpAfter)
+                ? $remainingHpAfterBattle
                 : min(
                     $maxHpAfter,
                     $result->playerRemainingHp + intdiv(
@@ -832,8 +834,11 @@ STORY;
                         10_000,
                     ),
                 ),
-            default => min($result->playerRemainingHp, $maxHpAfter),
+            default => $remainingHpAfterBattle,
         };
+        $interbattleHealAmount = $resultType === UndergroundBattle::RESULT_VICTORY && ! $isTrialBoss
+            ? $profile->current_hp - $remainingHpAfterBattle
+            : 0;
         $profile->awakening_gauge = $result->awakening['gauge_after'];
         $firstClear = $this->settleTrial($profile, $trialRun, $resultType, $isTrialBoss, $finishedAt);
         $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
@@ -923,6 +928,7 @@ STORY;
                 'max_hp_before' => $maxHpBefore,
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
+                'interbattle_heal_amount' => $interbattleHealAmount,
                 'banked_shard_balance' => $profile->banked_shard_balance,
                 'awakening' => $result->awakening,
                 'trial_total_battles' => count($trial['encounters']),

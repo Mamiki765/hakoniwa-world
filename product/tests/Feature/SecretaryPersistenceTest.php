@@ -7,6 +7,7 @@ use App\Application\NationCreationService;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Secretary;
 use App\Models\SecretarySkill;
+use App\Models\UndergroundProfile;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -261,6 +262,10 @@ final class SecretaryPersistenceTest extends TestCase
             $secretary->skills()->where('skill_key', $skillKey)->update(['level' => $level]);
         }
         $secretary->update(['monster_experience' => 120]);
+        UndergroundProfile::query()->create([
+            'secretary_id' => $secretary->id,
+            'combat_level' => 37,
+        ]);
 
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
             'biography' => "海辺で出会った秘書。\n**この記号はMarkdownとして解釈しない。**",
@@ -271,6 +276,7 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.passive_level_total', 20)
             ->assertJsonPath('data.capacity_bonus_percent', 20)
             ->assertJsonPath('data.monster_experience', 120)
+            ->assertJsonPath('data.combat_level', 37)
             ->assertJsonCount(5, 'data.equipment.slots');
 
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
@@ -372,12 +378,30 @@ final class SecretaryPersistenceTest extends TestCase
             'credit' => 'Owner / all rights reserved',
         ], ['Accept' => 'application/json'])
             ->assertOk()
-            ->assertJsonPath('data.main_image.display', 'none')
+            ->assertJsonPath('data.main_image.display', 'uploaded')
             ->assertJsonPath('data.editable_image_metadata.creation_method', 'self_made');
         $firstPath = (string) $secretary->fresh()->main_image_path;
         $this->assertMatchesRegularExpression('/\A[0-9a-f]{64}\.png\z/', $firstPath);
         $this->assertStringNotContainsString('first-original-name', $firstPath);
         Storage::disk('secretary_images')->assertExists($firstPath);
+
+        auth()->logout();
+        $this->getJson("/api/v1/secretaries/{$secretary->id}")
+            ->assertOk()
+            ->assertJsonPath('data.viewer_preferences.configured', false)
+            ->assertJsonPath('data.main_image.display', 'uploaded')
+            ->assertJsonPath('data.main_image.creation_method_label', '自作');
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/main-image', [
+            'creation_method' => 'commissioned_or_permitted',
+            'credit' => 'Commissioned artist',
+        ])->assertOk()
+            ->assertJsonPath('data.main_image.display', 'uploaded');
+        auth()->logout();
+        $this->getJson("/api/v1/secretaries/{$secretary->id}")
+            ->assertOk()
+            ->assertJsonPath('data.viewer_preferences.configured', false)
+            ->assertJsonPath('data.main_image.display', 'uploaded')
+            ->assertJsonPath('data.main_image.creation_method_label', '依頼・使用許諾済み');
 
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/image-preferences', [
             'show_ai_generated_images' => false,
@@ -386,7 +410,7 @@ final class SecretaryPersistenceTest extends TestCase
         $this->actingAs($owner->refresh())->getJson("/api/v1/me/secretary?world_id={$world->id}")
             ->assertOk()
             ->assertJsonPath('data.profile.main_image.display', 'uploaded')
-            ->assertJsonPath('data.profile.main_image.creation_method_label', '自作');
+            ->assertJsonPath('data.profile.main_image.creation_method_label', '依頼・使用許諾済み');
 
         $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
             'image' => UploadedFile::fake()->createWithContent('second.png', $this->png()),

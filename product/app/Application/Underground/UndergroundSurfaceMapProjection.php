@@ -3,6 +3,7 @@
 namespace App\Application\Underground;
 
 use App\Domain\Underground\Area\UndergroundAreaCapacity;
+use App\Models\Nation;
 use App\Models\NationCapital;
 use App\Models\NationMembership;
 use App\Models\NationUndergroundFacility;
@@ -26,16 +27,6 @@ final readonly class UndergroundSurfaceMapProjection
             ->where('user_id', $user->id)
             ->with(['undergroundProfile.trialProgresses'])
             ->first();
-        $profile = $secretary?->undergroundProfile;
-        if (! $profile instanceof UndergroundProfile || $profile->unlocked_area_layers < 1) {
-            return null;
-        }
-        $trialOne = $profile->trialProgresses
-            ->first(fn (UndergroundTrialProgress $progress): bool => $progress->trial_key === 'trial_01');
-        if (! $trialOne instanceof UndergroundTrialProgress || $trialOne->first_cleared_at === null) {
-            return null;
-        }
-
         $nationId = NationMembership::query()
             ->join('nations', 'nations.id', '=', 'nation_memberships.nation_id')
             ->where('nation_memberships.user_id', $user->id)
@@ -46,6 +37,41 @@ final readonly class UndergroundSurfaceMapProjection
         if ($nationId === null) {
             return null;
         }
+
+        return $this->project($secretary, (int) $nationId);
+    }
+
+    /** @return array<string, mixed>|null */
+    public function forNation(Nation $nation): ?array
+    {
+        $ownerUserId = NationMembership::query()
+            ->where('nation_id', $nation->id)
+            ->where('role', 'owner')
+            ->value('user_id');
+        if ($ownerUserId === null) {
+            return null;
+        }
+        $secretary = Secretary::query()
+            ->where('user_id', (int) $ownerUserId)
+            ->with(['undergroundProfile.trialProgresses'])
+            ->first();
+
+        return $this->project($secretary, (int) $nation->id);
+    }
+
+    /** @return array<string, mixed>|null */
+    private function project(?Secretary $secretary, int $nationId): ?array
+    {
+        $profile = $secretary?->undergroundProfile;
+        if (! $profile instanceof UndergroundProfile || $profile->unlocked_area_layers < 1) {
+            return null;
+        }
+        $trialOne = $profile->trialProgresses
+            ->first(fn (UndergroundTrialProgress $progress): bool => $progress->trial_key === 'trial_01');
+        if (! $trialOne instanceof UndergroundTrialProgress || $trialOne->first_cleared_at === null) {
+            return null;
+        }
+
         $capital = NationCapital::query()->where('nation_id', $nationId)->first();
         if (! $capital instanceof NationCapital) {
             return null;

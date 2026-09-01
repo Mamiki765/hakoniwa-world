@@ -34,6 +34,7 @@ const publicDetail: PublicNationDetail = {
     registered_turn: 1, survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only',
     last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '箱庭諸島２S＋', current_turn: 1 },
     capital: { x: 12, y: 8 }, secretary_id: 11,
+    underground_surface_map: null,
     monster_final_blow_count: 1,
     monster_kill_stats: [{
         key: 'inora', name: 'いのら', kill_count: 1, first_killed_turn: 12, last_killed_turn: 12,
@@ -105,8 +106,8 @@ const undergroundSurfaceMapFixture: UndergroundSurfaceMap = {
                 coordinate: { x: 12 + offsetX, y: 8, z },
                 coordinate_label: `(${12 + offsetX}, 8, ${z})`,
                 relative_label: `(X${offsetX > 0 ? '+' : ''}${offsetX}, Y, ${z})`,
-                facility_key: null,
-                asset_key: 'underground.road',
+                facility_key: layer === 1 && slotIndex === 0 ? 'underground_farm' : null,
+                asset_key: layer === 1 && slotIndex === 0 ? 'underground.farm' : 'underground.road',
             })),
         };
     }),
@@ -126,6 +127,7 @@ const unnamedSecretaryFixture: Secretary = {
         passive_level_total: 1,
         capacity_bonus_percent: 1,
         monster_experience: 0,
+        combat_level: 1,
         biography: '',
         main_image: {
             display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null,
@@ -939,6 +941,7 @@ describe('application lobby and island entry', () => {
             ...publicDetail,
             monster_final_blow_count: 66,
             monster_kill_stats: monsterKillStats,
+            underground_surface_map: undergroundSurfaceMapFixture,
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
@@ -951,6 +954,7 @@ describe('application lobby and island entry', () => {
                 ...unnamedSecretaryFixture.profile,
                 name: '公開秘書',
                 is_owner: false,
+                combat_level: 7,
                 biography: "公開経歴1行目\n公開経歴2行目",
                 viewer_preferences: {
                     configured: false, show_ai_generated_images: null,
@@ -979,15 +983,26 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.monster-kill-marks').text()).toContain('怪獣10 × 11');
         expect(wrapper.findAll('.monster-kill-marks > span')).toHaveLength(11);
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
+        const publicUndergroundMap = wrapper.get('.preview-page > .underground-map-card');
+        expect(publicUndergroundMap.findAll('.underground-layer-row')).toHaveLength(2);
+        expect(publicUndergroundMap.findAll('.underground-layer-row')[0]!.findAll(':scope > *')).toHaveLength(5);
+        expect(publicUndergroundMap.text()).not.toContain('(X-2, Y, -2)');
+        await publicUndergroundMap.find('.underground-slot').trigger('click');
+        expect(publicUndergroundMap.get('.underground-map-detail').text()).toContain('座標(10, 8, -2)');
         expect(wrapper.find('.preview-page > .message-board').exists()).toBe(true);
+        const previewMap = wrapper.get('.preview-page > .preview-grid').element;
+        const previewUnderground = publicUndergroundMap.element;
         const previewBoard = wrapper.get('.preview-page > .message-board').element;
         const previewLog = wrapper.get('.preview-page > .island-events-panel').element;
+        expect(previewMap.compareDocumentPosition(previewUnderground) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(previewUnderground.compareDocumentPosition(previewBoard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(previewBoard.compareDocumentPosition(previewLog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toBe(true);
 
         await wrapper.get('.preview-secretary-link').trigger('click');
         await flushPromises();
         expect(wrapper.get('.secretary-name').text()).toBe('公開秘書');
+        expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv7');
         expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['メイン']);
         expect(wrapper.get('.secretary-biography-text').text()).toContain('公開経歴2行目');
         expect(wrapper.findAll('.secretary-profile-equipment li')).toHaveLength(5);
@@ -1289,13 +1304,25 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-slot')).toHaveLength(8);
         expect(wrapper.findAll('.underground-ladder')).toHaveLength(2);
         expect(wrapper.findAll('.underground-entrance')).toHaveLength(1);
-        expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('(10, 8, -2)');
-        expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('(X-2, Y, -2)');
+        expect(wrapper.findAll('.underground-ceiling-row')[0]!.element.children).toHaveLength(5);
+        expect(wrapper.findAll('.underground-layer-row').every((row) => row.element.children.length === 5)).toBe(true);
+        expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('地底農場');
+        expect(wrapper.findAll('.underground-slot').every((slot) => !slot.text().includes('(') && !slot.text().includes('X'))).toBe(true);
+        expect(wrapper.find('.underground-map-detail').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entrance button')).toHaveLength(0);
         expect(wrapper.findAll('.underground-ladder button')).toHaveLength(0);
+        const workspaceElement = wrapper.get('.island-workspace-region').element;
+        const undergroundMapElement = wrapper.get('.underground-map-card').element;
+        const messageBoardElement = wrapper.get('.message-board').element;
+        expect(Boolean(workspaceElement.compareDocumentPosition(undergroundMapElement) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+        expect(Boolean(undergroundMapElement.compareDocumentPosition(messageBoardElement) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
         await wrapper.findAll('.underground-slot')[0]!.trigger('click');
         await flushPromises();
         expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
+        expect(wrapper.findAll('.underground-slot')[0]!.classes()).toContain('selected');
+        expect(wrapper.get('.underground-map-detail').text()).toContain('地底農場');
+        expect(wrapper.get('.underground-map-detail').text()).toContain('座標(10, 8, -2)');
+        expect(wrapper.get('.underground-map-detail').text()).not.toContain('(X-2, Y, -2)');
         expect(wrapper.get('.underground-target-summary').text()).toContain('地下1層・slot 0');
         const undergroundCommandRequest = fetchMock.mock.calls
             .map(([input]) => String(input))
@@ -1792,6 +1819,15 @@ describe('application lobby and island entry', () => {
             ...summary,
             id: `66666666-6666-4666-8666-66666666666${index + 2}`,
             encounter_name: `履歴${index + 2}`,
+            context: index < 2 ? 'trial' : 'tutorial',
+            result: index === 0 ? 'defeat' : index === 1 ? 'withdrawal' : 'victory',
+            detail_available: index >= 2,
+            trial_run_key: index < 2 ? '77777777-7777-4777-8777-777777777777' : null,
+            trial_battle_index: index < 2 ? index + 3 : null,
+            trial_total_battles: index < 2 ? 10 : null,
+            trial_status: index === 0 ? 'defeated' : index === 1 ? 'withdrawn' : null,
+            trial_next_battle_index: index < 2 ? 1 : null,
+            interbattle_heal_amount: 0,
         }))];
         const playtestBattle = {
             id: '44444444-4444-4444-8444-444444444444', context: 'playtest',
@@ -1852,6 +1888,16 @@ describe('application lobby and island entry', () => {
             run_key: '77777777-7777-4777-8777-777777777777', status: 'active',
             next_battle_index: 1, total_battles: 10,
         };
+        const interbattleTrialBattle = {
+            ...explorationBattle,
+            id: '77777777-7777-4777-8777-777777777778', context: 'trial',
+            encounter_name: '試練の地底鼠', xp_awarded: 35, shard_delta: 10,
+            combat_level_before: 1, combat_level_after: 1, stp_awarded: 0, unspent_stp_after: 3,
+            trial_run_key: trialRun.run_key, trial_battle_index: 1, trial_total_battles: 10,
+            trial_status: 'active', trial_next_battle_index: 2, interbattle_heal_amount: 80,
+            challenge_intro: '　崩れかけた石壁の向こうに広がっていた不思議な空間。\n　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
+            first_clear_story: null,
+        };
         const trialBattle = {
             ...explorationBattle,
             id: '88888888-8888-4888-8888-888888888888', context: 'trial',
@@ -1871,8 +1917,8 @@ describe('application lobby and island entry', () => {
             ],
             combat_level_before: 6, combat_level_after: 6, stp_awarded: 0, unspent_stp_after: 25,
             trial_run_key: trialRun.run_key, trial_battle_index: 10, trial_total_battles: 10,
-            trial_status: 'cleared', trial_next_battle_index: 1,
-            challenge_intro: '　崩れかけた石壁の向こうに広がっていた不思議な空間。\n　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
+            trial_status: 'cleared', trial_next_battle_index: 1, interbattle_heal_amount: 0,
+            challenge_intro: null,
             first_clear_story: {
                 title: '●封印の解放',
                 body: '　ワイバーンの肉体が自らの魔力に耐え切れず、内から光を放ちながら崩壊していくその瞬間。',
@@ -1913,20 +1959,33 @@ describe('application lobby and island entry', () => {
             }
             if (path === '/api/v1/me/underground/trial/fight' && init?.method === 'POST') {
                 trialFightAttempts++;
-                openState = {
-                    ...openState,
-                    skill_points_total: 60,
-                    skill_points_unspent: 60,
-                    trial: { ...openState.trial, first_cleared: true, active_run: null },
-                };
-                if (trialFightAttempts === 1) throw new TypeError('Trial response lost');
-                if (trialFightAttempts === 3) {
+                if (trialFightAttempts <= 2) {
+                    openState = {
+                        ...openState,
+                        current_hp: 280,
+                        trial: {
+                            ...openState.trial,
+                            active_run: { ...trialRun, next_battle_index: 2 },
+                        },
+                    };
+                    if (trialFightAttempts === 1) throw new TypeError('Trial response lost');
+                    return response(interbattleTrialBattle);
+                }
+                if (trialFightAttempts === 4) {
+                    openState = { ...openState, trial: { ...openState.trial, active_run: null } };
                     return new Response(JSON.stringify({
                         code: 'underground_trial_run_stale',
                         message: '封印の地の進行状態が更新されています。',
                     }), { status: 409, headers: { 'Content-Type': 'application/json' } });
                 }
-                return response(trialFightAttempts === 4 ? repeatTrialBattle : trialBattle);
+                openState = {
+                    ...openState,
+                    current_hp: 321,
+                    skill_points_total: 60,
+                    skill_points_unspent: 60,
+                    trial: { ...openState.trial, first_cleared: true, active_run: null },
+                };
+                return response(trialFightAttempts === 5 ? repeatTrialBattle : trialBattle);
             }
             if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
                 const payload = JSON.parse(String(init.body)) as { request_id: string };
@@ -2072,6 +2131,15 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(trialFightRequests[1]?.[1]?.body)))
             .toEqual(JSON.parse(String(trialFightRequests[0]?.[1]?.body)));
         expect(wrapper.get('.underground-trial-intro').text()).toContain('崩れかけた石壁の向こう');
+        expect(wrapper.get('.underground-interbattle-heal').text()).toBe('体力が少し回復した');
+        expect(wrapper.get('.underground-trial-next').text()).toContain('次の階層へ');
+        await wrapper.get('.underground-trial-next').trigger('click');
+        await flushPromises();
+        expect(fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/trial/fight' && init?.method === 'POST'
+        ))).toHaveLength(3);
+        expect(wrapper.find('.underground-trial-next').exists()).toBe(false);
+        expect(wrapper.find('.underground-interbattle-heal').exists()).toBe(false);
         expect(wrapper.get('.underground-first-clear-story h2').text()).toBe('●封印の解放');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('ペリドットは一つ目の封印の地を制覇した。');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('SPを40入手した。');
@@ -2095,14 +2163,26 @@ describe('application lobby and island entry', () => {
         const recoveredTrialFights = fetchMock.mock.calls.filter(([path, init]) => (
             String(path) === '/api/v1/me/underground/trial/fight' && init?.method === 'POST'
         ));
-        expect(recoveredTrialFights).toHaveLength(4);
-        expect(JSON.parse(String(recoveredTrialFights[3]?.[1]?.body)).request_id)
-            .not.toBe(JSON.parse(String(recoveredTrialFights[2]?.[1]?.body)).request_id);
+        expect(recoveredTrialFights).toHaveLength(5);
+        expect(JSON.parse(String(recoveredTrialFights[4]?.[1]?.body)).request_id)
+            .not.toBe(JSON.parse(String(recoveredTrialFights[3]?.[1]?.body)).request_id);
         expect(wrapper.find('.underground-first-clear-story').exists()).toBe(false);
         await wrapper.get('.underground-battle-back').trigger('click');
         expect(wrapper.findAll('.underground-history li')).toHaveLength(5);
         expect(wrapper.get('.underground-history').text()).toContain('履歴5');
         expect(wrapper.get('.underground-history').text()).not.toContain('履歴6');
+        await wrapper.findAll('.underground-history li button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-battle-result h2').text()).toBe('敗北');
+        expect(wrapper.find('.underground-trial-next').exists()).toBe(false);
+        expect(wrapper.find('.underground-interbattle-heal').exists()).toBe(false);
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.findAll('.underground-history li button')[2]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-battle-result h2').text()).toBe('撤退');
+        expect(wrapper.find('.underground-trial-next').exists()).toBe(false);
+        expect(wrapper.find('.underground-interbattle-heal').exists()).toBe(false);
+        await wrapper.get('.underground-battle-back').trigger('click');
         await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
         expect(wrapper.get('.underground-status-table').text()).toContain('初期値');
         await wrapper.findAll('.underground-stp-control button')[1]!.trigger('click');
@@ -2357,7 +2437,9 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         expect(wrapper.get('.underground-awakening-gauge').attributes('data-full')).toBe('true');
-        expect(wrapper.get('.underground-awakening-gauge').text()).toContain('1000 / 1000');
+        expect(wrapper.get('.underground-awakening-gauge').text()).toBe('覚醒ゲージ');
+        expect(wrapper.get('.underground-awakening-gauge').text()).not.toContain('1000 / 1000');
+        expect(wrapper.get('.underground-awakening-gauge progress').attributes('max')).toBe('1000');
         expect(wrapper.get<HTMLProgressElement>('.underground-awakening-gauge progress').element.value).toBe(1000);
         await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
         expect(wrapper.get('.underground-awakening-settings').text()).toContain('無窮再演');

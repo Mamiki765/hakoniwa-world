@@ -203,6 +203,15 @@ final class UndergroundPlayerAccessTest extends TestCase
             'underground.missile_base',
         ], array_column($built['layers'][0]['slots'], 'asset_key'));
         $this->assertSame('underground.road', $built['layers'][1]['slots'][1]['asset_key']);
+        $publicMap = $this->getJson("/api/v1/public/nations/{$nation->id}")
+            ->assertOk()
+            ->assertJsonPath('data.underground_surface_map.unlocked_layers', 3)
+            ->json('data.underground_surface_map');
+        $this->assertSame(
+            array_column($built['layers'][0]['slots'], 'facility_key'),
+            array_column($publicMap['layers'][0]['slots'], 'facility_key'),
+        );
+        $this->assertArrayNotHasKey('map_cells', $publicMap);
         $this->assertSame($capitalCellBefore, $capital->cell()->firstOrFail()->only([
             'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'population',
         ]));
