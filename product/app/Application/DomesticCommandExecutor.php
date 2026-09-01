@@ -40,6 +40,7 @@ use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
+use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
@@ -122,7 +123,7 @@ final class DomesticCommandExecutor
                     ->orderBy('queue_position')
                     ->orderBy('id')
                     ->lockForUpdate()
-                    ->with('definition')
+                    ->with(['definition', 'requestRulesetVersion'])
                     ->first();
                 if ($item === null) {
                     break;
@@ -159,6 +160,7 @@ final class DomesticCommandExecutor
                     $this->undergroundFacilities->execute(
                         $nation,
                         $definition,
+                        (int) $item->request_ruleset_version_id,
                         $item->target_layer,
                         $item->target_slot_index,
                     );
@@ -1923,7 +1925,14 @@ final class DomesticCommandExecutor
                 throw new DomainException('Underground queue item command identity is invalid.');
             }
 
-            return $this->undergroundCommands->get($item->underground_command_key);
+            $ruleset = $item->relationLoaded('requestRulesetVersion')
+                ? $item->requestRulesetVersion
+                : $item->requestRulesetVersion()->first();
+            if (! $ruleset instanceof RulesetVersion) {
+                throw new DomainException('Underground queue item Ruleset provenance is missing.');
+            }
+
+            return $this->undergroundCommands->get($ruleset->settings, $item->underground_command_key);
         }
         $definition = $item->relationLoaded('definition')
             ? $item->definition

@@ -26,15 +26,19 @@ final readonly class UndergroundCommandDefinition
         public ?string $facility_key,
         public array $effect,
         public int $sort_order,
+        string $target_type,
+        string $execution_phase,
+        bool $consumes_turn,
+        string $quantity_semantics,
     ) {
-        $this->target_type = 'underground_slot';
-        $this->execution_phase = 'underground_facility';
+        $this->target_type = $target_type;
+        $this->execution_phase = $execution_phase;
         $this->requires_empty_facility = $this->action === 'build';
         $this->required_resources = [];
         $this->metadata = [
-            'consumes_turn' => true,
+            'consumes_turn' => $consumes_turn,
             'parameters' => [],
-            'quantity_semantics' => 'unused',
+            'quantity_semantics' => $quantity_semantics,
             'underground_action' => $this->action,
             'underground_facility_key' => $this->facility_key,
             'underground_facility_effect' => $this->effect,

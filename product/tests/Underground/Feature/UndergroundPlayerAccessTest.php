@@ -182,6 +182,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         ] as $slotIndex => $facilityKey) {
             NationUndergroundFacility::query()->create([
                 'nation_id' => $nation->id,
+                'ruleset_version_id' => $world->ruleset_version_id,
                 'layer' => 1,
                 'slot_index' => $slotIndex,
                 'facility_key' => $facilityKey,
@@ -189,6 +190,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         }
         NationUndergroundFacility::query()->create([
             'nation_id' => $nation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'layer' => 2,
             'slot_index' => 0,
             'facility_key' => 'underground_farm',
@@ -205,9 +207,10 @@ final class UndergroundPlayerAccessTest extends TestCase
             'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'population',
         ]));
         try {
-            DB::transaction(static function () use ($nation): void {
+            DB::transaction(static function () use ($nation, $world): void {
                 NationUndergroundFacility::query()->create([
                     'nation_id' => $nation->id,
+                    'ruleset_version_id' => $world->ruleset_version_id,
                     'layer' => 1,
                     'slot_index' => 0,
                     'facility_key' => 'underground_farm',

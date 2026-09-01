@@ -14,48 +14,60 @@ final class UndergroundFacilityBenefits
 
     public function capitalMaximumBonus(int $nationId): int
     {
-        return $this->count($nationId, 'underground_city')
-            * $this->perFacility('underground_city', 'capital_maximum_population_bonus');
+        return $this->sumLiveEffects($nationId, 'underground_city', 'capital_maximum_population_bonus');
     }
 
     public function capitalMaximumBonusForTurn(TurnState $state, int $nationId): int
     {
-        return $this->countForTurn($state, $nationId, 'underground_city')
-            * $this->perFacility('underground_city', 'capital_maximum_population_bonus');
+        return $this->sumTurnEffects(
+            $state,
+            $nationId,
+            'underground_city',
+            'capital_maximum_population_bonus',
+        );
     }
 
     public function farmCapacityBonus(int $nationId): int
     {
-        return $this->count($nationId, 'underground_farm')
-            * $this->perFacility('underground_farm', 'farm_capacity_people');
+        return $this->sumLiveEffects($nationId, 'underground_farm', 'farm_capacity_people');
     }
 
     public function farmCapacityBonusForTurn(TurnState $state, int $nationId): int
     {
-        return $this->countForTurn($state, $nationId, 'underground_farm')
-            * $this->perFacility('underground_farm', 'farm_capacity_people');
-    }
-
-    public function factoryCapacityPerFacility(): int
-    {
-        return $this->perFacility('underground_factory', 'factory_capacity_people');
+        return $this->sumTurnEffects($state, $nationId, 'underground_farm', 'farm_capacity_people');
     }
 
     public function factoryCapacityBonus(int $nationId): int
     {
-        return $this->count($nationId, 'underground_factory') * $this->factoryCapacityPerFacility();
+        return $this->sumLiveEffects($nationId, 'underground_factory', 'factory_capacity_people');
     }
 
     public function factoryCapacityBonusForTurn(TurnState $state, int $nationId): int
     {
-        return $this->countForTurn($state, $nationId, 'underground_factory')
-            * $this->factoryCapacityPerFacility();
+        return $this->sumTurnEffects($state, $nationId, 'underground_factory', 'factory_capacity_people');
     }
 
-    /** @return list<array{id: int, layer: int, slot_index: int, facility_key: string}> */
+    /** @return list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}> */
+    public function factoryFacilities(int $nationId): array
+    {
+        return $this->liveSnapshots([$nationId], 'underground_factory')[$nationId] ?? [];
+    }
+
+    /** @return list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}> */
     public function factoryFacilitiesForTurn(TurnState $state, int $nationId): array
     {
         return $this->facilitiesForTurn($state, $nationId, 'underground_factory');
+    }
+
+    /** @param array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>} $facility */
+    public function effectValue(array $facility, string $effectKey): int
+    {
+        $value = $facility['effect'][$effectKey] ?? null;
+        if (! is_int($value) || $value < 1) {
+            throw new DomainException("Underground facility effect {$facility['facility_key']}.{$effectKey} is invalid.");
+        }
+
+        return $value;
     }
 
     /**
@@ -64,22 +76,13 @@ final class UndergroundFacilityBenefits
      */
     public function missileBaseIdsForTurn(TurnState $state, array $nationIds): array
     {
-        if (! $state->hasUndergroundFacilitySnapshots()) {
-            return NationUndergroundFacility::query()
-                ->whereIn('nation_id', $nationIds)
-                ->where('facility_key', 'underground_missile_base')
-                ->orderBy('nation_id')
-                ->orderBy('layer')
-                ->orderBy('slot_index')
-                ->pluck('id')
-                ->map(static fn ($id): int => (int) $id)
-                ->all();
-        }
-
         sort($nationIds, SORT_NUMERIC);
         $baseIds = [];
         foreach ($nationIds as $nationId) {
             foreach ($this->facilitiesForTurn($state, $nationId, 'underground_missile_base') as $facility) {
+                if ($this->effectValue($facility, 'missile_launch_capacity') !== 1) {
+                    throw new DomainException('Each Underground missile base must provide exactly one launch-capacity shot.');
+                }
                 $baseIds[] = $facility['id'];
             }
         }
@@ -89,34 +92,11 @@ final class UndergroundFacilityBenefits
 
     /**
      * @param  list<int>  $nationIds
-     * @return array<int, list<array{id: int, layer: int, slot_index: int, facility_key: string}>>
+     * @return array<int, list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}>>
      */
     public function loadTurnSnapshots(array $nationIds): array
     {
-        $snapshots = [];
-        foreach ($nationIds as $nationId) {
-            $snapshots[$nationId] = [];
-        }
-        if ($snapshots === []) {
-            return [];
-        }
-
-        $facilities = NationUndergroundFacility::query()
-            ->whereIn('nation_id', $nationIds)
-            ->orderBy('nation_id')
-            ->orderBy('layer')
-            ->orderBy('slot_index')
-            ->get(['id', 'nation_id', 'layer', 'slot_index', 'facility_key']);
-        foreach ($facilities as $facility) {
-            $snapshots[(int) $facility->nation_id][] = [
-                'id' => (int) $facility->id,
-                'layer' => (int) $facility->layer,
-                'slot_index' => (int) $facility->slot_index,
-                'facility_key' => (string) $facility->facility_key,
-            ];
-        }
-
-        return $snapshots;
+        return $this->liveSnapshots($nationIds);
     }
 
     /**
@@ -127,32 +107,22 @@ final class UndergroundFacilityBenefits
     {
         $bonuses = [];
         foreach ($nationIds as $nationId) {
-            $bonuses[$nationId] = [
-                'farm_capacity_people' => 0,
-                'factory_capacity_people' => 0,
-            ];
+            $bonuses[$nationId] = ['farm_capacity_people' => 0, 'factory_capacity_people' => 0];
         }
-        if ($bonuses === []) {
-            return [];
-        }
-
-        $rows = NationUndergroundFacility::query()
-            ->selectRaw('nation_id, facility_key, COUNT(*) AS aggregate')
-            ->whereIn('nation_id', $nationIds)
-            ->whereIn('facility_key', ['underground_farm', 'underground_factory'])
-            ->groupBy('nation_id', 'facility_key')
-            ->get();
-        foreach ($rows as $row) {
-            $field = match ($row->facility_key) {
-                'underground_farm' => 'farm_capacity_people',
-                'underground_factory' => 'factory_capacity_people',
-                default => throw new DomainException('Underground workforce facility key is invalid.'),
-            };
-            $effectKey = $row->facility_key === 'underground_farm'
-                ? 'farm_capacity_people'
-                : 'factory_capacity_people';
-            $bonuses[$row->nation_id][$field] = (int) $row->getRawOriginal('aggregate')
-                * $this->perFacility($row->facility_key, $effectKey);
+        foreach ($this->liveSnapshots($nationIds) as $nationId => $facilities) {
+            foreach ($facilities as $facility) {
+                if ($facility['facility_key'] === 'underground_farm') {
+                    $bonuses[$nationId]['farm_capacity_people'] += $this->effectValue(
+                        $facility,
+                        'farm_capacity_people',
+                    );
+                } elseif ($facility['facility_key'] === 'underground_factory') {
+                    $bonuses[$nationId]['factory_capacity_people'] += $this->effectValue(
+                        $facility,
+                        'factory_capacity_people',
+                    );
+                }
+            }
         }
 
         return $bonuses;
@@ -169,40 +139,31 @@ final class UndergroundFacilityBenefits
             ->get();
     }
 
-    public function missileCapacityPerFacility(): int
+    private function sumLiveEffects(int $nationId, string $facilityKey, string $effectKey): int
     {
-        return $this->perFacility('underground_missile_base', 'missile_launch_capacity');
+        return array_sum(array_map(
+            fn (array $facility): int => $this->effectValue($facility, $effectKey),
+            $this->liveSnapshots([$nationId], $facilityKey)[$nationId] ?? [],
+        ));
     }
 
-    private function count(int $nationId, string $facilityKey): int
-    {
-        return NationUndergroundFacility::query()
-            ->where('nation_id', $nationId)
-            ->where('facility_key', $facilityKey)
-            ->count();
+    private function sumTurnEffects(
+        TurnState $state,
+        int $nationId,
+        string $facilityKey,
+        string $effectKey,
+    ): int {
+        return array_sum(array_map(
+            fn (array $facility): int => $this->effectValue($facility, $effectKey),
+            $this->facilitiesForTurn($state, $nationId, $facilityKey),
+        ));
     }
 
-    private function countForTurn(TurnState $state, int $nationId, string $facilityKey): int
-    {
-        return count($this->facilitiesForTurn($state, $nationId, $facilityKey));
-    }
-
-    /** @return list<array{id: int, layer: int, slot_index: int, facility_key: string}> */
+    /** @return list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}> */
     private function facilitiesForTurn(TurnState $state, int $nationId, string $facilityKey): array
     {
         if (! $state->hasUndergroundFacilitySnapshots()) {
-            return NationUndergroundFacility::query()
-                ->where('nation_id', $nationId)
-                ->where('facility_key', $facilityKey)
-                ->orderBy('layer')
-                ->orderBy('slot_index')
-                ->get(['id', 'layer', 'slot_index', 'facility_key'])
-                ->map(static fn (NationUndergroundFacility $facility): array => [
-                    'id' => (int) $facility->id,
-                    'layer' => (int) $facility->layer,
-                    'slot_index' => (int) $facility->slot_index,
-                    'facility_key' => (string) $facility->facility_key,
-                ])->all();
+            return $this->liveSnapshots([$nationId], $facilityKey)[$nationId] ?? [];
         }
 
         return array_values(array_filter(
@@ -211,13 +172,42 @@ final class UndergroundFacilityBenefits
         ));
     }
 
-    private function perFacility(string $facilityKey, string $effectKey): int
+    /**
+     * @param  list<int>  $nationIds
+     * @return array<int, list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}>>
+     */
+    private function liveSnapshots(array $nationIds, ?string $facilityKey = null): array
     {
-        $value = $this->commands->forFacility($facilityKey)->effect[$effectKey] ?? null;
-        if (! is_int($value) || $value < 1) {
-            throw new DomainException("Underground facility catalog effect {$facilityKey}.{$effectKey} is invalid.");
+        $snapshots = [];
+        foreach ($nationIds as $nationId) {
+            $snapshots[$nationId] = [];
+        }
+        if ($snapshots === []) {
+            return [];
         }
 
-        return $value;
+        $query = NationUndergroundFacility::query()
+            ->whereIn('nation_id', $nationIds)
+            ->with('rulesetVersion')
+            ->orderBy('nation_id')
+            ->orderBy('layer')
+            ->orderBy('slot_index');
+        if ($facilityKey !== null) {
+            $query->where('facility_key', $facilityKey);
+        }
+        foreach ($query->get(['id', 'nation_id', 'ruleset_version_id', 'layer', 'slot_index', 'facility_key']) as $facility) {
+            $ruleset = $facility->rulesetVersion;
+            $effect = $this->commands->forFacility($ruleset->settings, $facility->facility_key)->effect;
+            $snapshots[(int) $facility->nation_id][] = [
+                'id' => (int) $facility->id,
+                'ruleset_version_id' => (int) $facility->ruleset_version_id,
+                'layer' => (int) $facility->layer,
+                'slot_index' => (int) $facility->slot_index,
+                'facility_key' => (string) $facility->facility_key,
+                'effect' => $effect,
+            ];
+        }
+
+        return $snapshots;
     }
 }

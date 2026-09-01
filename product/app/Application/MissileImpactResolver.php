@@ -191,16 +191,11 @@ final class MissileImpactResolver
         TurnContext $context,
         MapSpace $space,
         int $nationId,
-    ): array
-    {
+    ): array {
         $metrics = [
             'shots_fired' => 0, 'money_spent' => 0,
             'meaningful_impacts' => 0, 'ineffective_impacts' => 0,
         ];
-        $capacity = $this->undergroundBenefits->missileCapacityPerFacility();
-        if ($capacity !== 1) {
-            throw new DomainException('Each Underground missile base must provide exactly one launch-capacity shot.');
-        }
         $baseIds = $this->undergroundBenefits->missileBaseIdsForTurn(
             $context->state,
             [$nationId],
@@ -222,7 +217,7 @@ final class MissileImpactResolver
                 || ! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
             }
-            $remainingCapacity = $capacity;
+            $remainingCapacity = 1;
             foreach ($context->state->launchIntentsForNation($nation->id) as $intent) {
                 if ($remainingCapacity < 1) {
                     continue;

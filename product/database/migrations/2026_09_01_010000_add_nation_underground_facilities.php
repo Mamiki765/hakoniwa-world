@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('nation_underground_facilities', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('nation_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('ruleset_version_id')->constrained('ruleset_versions')->restrictOnDelete();
             $table->unsignedSmallInteger('layer');
             $table->unsignedSmallInteger('slot_index');
             $table->string('facility_key', 64);

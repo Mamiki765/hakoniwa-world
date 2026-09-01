@@ -67,11 +67,14 @@ class DomesticCommandExecutionTest extends TestCase
         $service = app(CommandQueueService::class);
         $queueVersion = (int) ($nation->commandQueue()->value('version') ?? 1);
         $items = [];
+        $requestKeys = [];
         foreach ([
             ['build_underground_city', 1],
             ['remove_underground_facility', 2],
             ['build_underground_factory', 3],
         ] as [$commandKey, $position]) {
+            $requestKey = (string) Str::uuid();
+            $requestKeys[] = $requestKey;
             $result = $service->add(
                 user: $user,
                 nation: $nation->fresh(),
@@ -79,7 +82,7 @@ class DomesticCommandExecutionTest extends TestCase
                 commandKey: $commandKey,
                 targetX: null,
                 targetY: null,
-                requestKey: (string) Str::uuid(),
+                requestKey: $requestKey,
                 expectedVersion: $queueVersion,
                 quantity: 1,
                 parameters: [],
@@ -93,11 +96,63 @@ class DomesticCommandExecutionTest extends TestCase
         }
         $this->assertSame(3_000, (int) $nation->fresh()->money);
         $this->assertSame(0, NationUndergroundFacility::query()->count());
+        $v19RulesetId = (int) $world->ruleset_version_id;
+        $v19Settings = $world->rulesetVersion()->sole()->settings;
+        $futureSettings = $v19Settings;
+        $futureSettings['key'] = 'test-hakoniwa-2s-plus-v20-underground';
+        $futureSettings['version'] = 20;
+        foreach ($futureSettings['underground_facility_development']['command_definitions'] as &$futureCommand) {
+            if ($futureCommand['key'] === 'build_underground_city') {
+                $futureCommand['cost_money'] = 1;
+            }
+        }
+        unset($futureCommand);
+        RulesetVersion::query()->create([
+            'key' => $futureSettings['key'],
+            'version' => $futureSettings['version'],
+            'settings' => $futureSettings,
+            'is_active' => true,
+        ]);
+        $duplicate = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'build_underground_city',
+            targetX: null,
+            targetY: null,
+            requestKey: $requestKeys[0],
+            expectedVersion: $queueVersion,
+            quantity: 1,
+            parameters: [],
+            position: 1,
+            quantityProvided: true,
+            targetLayer: 1,
+            targetSlotIndex: 0,
+        );
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($v19RulesetId, (int) $duplicate['item']->request_ruleset_version_id);
+        config(['hakoniwa.ruleset' => $futureSettings]);
 
         $executor = app(DomesticCommandExecutor::class);
-        $first = $executor->execute($this->context($world, [$nation->id], hash('sha256', 'underground build'), targetTurn: 2));
+        $buildSeed = hash('sha256', 'underground build');
+        try {
+            DB::transaction(function () use ($executor, $world, $nation, $buildSeed): never {
+                $executor->execute($this->context($world, [$nation->id], $buildSeed, targetTurn: 2));
+
+                throw new \RuntimeException('rollback underground build attempt');
+            });
+            $this->fail('Expected the Underground build attempt to roll back.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('rollback underground build attempt', $exception->getMessage());
+        }
+        $this->assertSame(0, NationUndergroundFacility::query()->count());
+        $this->assertSame(3_000, (int) $nation->fresh()->money);
+        $this->assertSame('queued', $items[0]->fresh()->status);
+        $first = $executor->execute($this->context($world, [$nation->id], $buildSeed, targetTurn: 2));
         $this->assertSame([1, 0], [$first['successes'], $first['failures']]);
         $this->assertSame('underground_city', NationUndergroundFacility::query()->sole()->facility_key);
+        $this->assertSame($v19RulesetId, NationUndergroundFacility::query()->sole()->ruleset_version_id);
+        config(['hakoniwa.ruleset' => $v19Settings]);
         $this->assertSame(2_000, (int) $nation->fresh()->money);
         $this->assertSame(['completed', 'queued', 'queued'], array_map(
             static fn (NationCommandQueueItem $item): string => $item->fresh()->status,
@@ -136,6 +191,7 @@ class DomesticCommandExecutionTest extends TestCase
         )['item'];
         NationUndergroundFacility::query()->create([
             'nation_id' => $nation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'layer' => 1,
             'slot_index' => 1,
             'facility_key' => 'underground_city',

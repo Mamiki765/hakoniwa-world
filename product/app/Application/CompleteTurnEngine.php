@@ -375,13 +375,15 @@ final class CompleteTurnEngine
             }
         }
         $farmCapacity += $this->undergroundBenefits->farmCapacityBonusForTurn($context->state, $nation->id);
-        $undergroundFactoryCapacity = $this->undergroundBenefits->factoryCapacityPerFacility();
         foreach ($this->undergroundBenefits->factoryFacilitiesForTurn($context->state, $nation->id) as $facility) {
             $industrialFacilities[] = [
                 'cell_id' => $facility['id'],
                 'source_key' => 'underground:'.$facility['id'],
                 'key' => 'factory',
-                'capacity' => $undergroundFactoryCapacity,
+                'capacity' => $this->undergroundBenefits->effectValue(
+                    $facility,
+                    'factory_capacity_people',
+                ),
             ];
         }
 

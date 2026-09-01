@@ -10,7 +10,6 @@ use App\Domain\Nation\NationLifecyclePrepareStateResolver;
 use App\Models\FacilityDefinition;
 use App\Models\Nation;
 use App\Models\NationResource;
-use App\Models\NationUndergroundFacility;
 use App\Models\ResourceDefinition;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
@@ -129,16 +128,15 @@ final class NationResourceForecastProjection
                 'capacity' => $this->facilityCapacities->capacityPeople($definition, (int) $row->facility_scale),
             ];
         }
-        $undergroundFactoryCapacity = $this->undergroundBenefits->factoryCapacityPerFacility();
-        foreach (NationUndergroundFacility::query()
-            ->where('nation_id', $nation->id)
-            ->where('facility_key', 'underground_factory')
-            ->orderBy('id')->get(['id']) as $facility) {
+        foreach ($this->undergroundBenefits->factoryFacilities($nation->id) as $facility) {
             $industrialFacilities[] = [
-                'cell_id' => (int) $facility->id,
-                'source_key' => 'underground:'.(int) $facility->id,
+                'cell_id' => $facility['id'],
+                'source_key' => 'underground:'.$facility['id'],
                 'key' => 'factory',
-                'capacity' => $undergroundFactoryCapacity,
+                'capacity' => $this->undergroundBenefits->effectValue(
+                    $facility,
+                    'factory_capacity_people',
+                ),
             ];
         }
         $economy = $this->economy->calculate(

@@ -251,6 +251,7 @@ class TurnCellProcessingTest extends TestCase
         $capitalScale = $capital->fresh()->facility_scale;
         $firstUndergroundCity = NationUndergroundFacility::query()->create([
             'nation_id' => $nation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'layer' => 1,
             'slot_index' => 0,
             'facility_key' => 'underground_city',
@@ -268,6 +269,7 @@ class TurnCellProcessingTest extends TestCase
 
         NationUndergroundFacility::query()->create([
             'nation_id' => $nation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'layer' => 1,
             'slot_index' => 1,
             'facility_key' => 'underground_city',
@@ -324,6 +326,7 @@ class TurnCellProcessingTest extends TestCase
 
         NationUndergroundFacility::query()->create([
             'nation_id' => $nation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'layer' => 1,
             'slot_index' => 0,
             'facility_key' => 'underground_city',

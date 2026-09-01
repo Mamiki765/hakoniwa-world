@@ -74,7 +74,7 @@ final class CommandQueueController extends Controller
                     $targetSlotIndex,
                     $position,
                 );
-                $commands = collect($undergroundCommands->all())
+                $commands = collect($undergroundCommands->all($world->rulesetVersion->settings))
                     ->filter(static fn (UndergroundCommandDefinition $definition): bool => $projectedFacility === null
                         ? $definition->action === 'build'
                         : $definition->action === 'remove')

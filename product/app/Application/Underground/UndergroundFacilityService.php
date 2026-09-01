@@ -10,6 +10,7 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\NationUndergroundFacility;
+use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
@@ -100,7 +101,7 @@ final readonly class UndergroundFacilityService
                     $item->target_slot_index,
                 );
             }
-            $definition = $this->catalog->get($item->underground_command_key);
+            $definition = $this->definitionForItem($item);
             $this->assertProjectedCommand($definition, $facilityKeys[$slotKey]);
             $facilityKeys[$slotKey] = $definition->action === 'remove'
                 ? null
@@ -129,7 +130,7 @@ final readonly class UndergroundFacilityService
             if (! is_string($item->underground_command_key)) {
                 continue;
             }
-            $definition = $this->catalog->get($item->underground_command_key);
+            $definition = $this->definitionForItem($item);
             $action = $definition->action;
             if ($action === 'build' && $facilityKey === null) {
                 $facilityKey = $definition->facility_key;
@@ -152,8 +153,13 @@ final readonly class UndergroundFacilityService
         }
     }
 
-    public function execute(Nation $nation, UndergroundCommandDefinition $definition, int $layer, int $slotIndex): void
-    {
+    public function execute(
+        Nation $nation,
+        UndergroundCommandDefinition $definition,
+        int $rulesetVersionId,
+        int $layer,
+        int $slotIndex,
+    ): void {
         $current = $this->currentFacilityKey($nation->id, $layer, $slotIndex, true);
         $this->assertProjectedCommand($definition, $current);
         if ($definition->action === 'remove') {
@@ -170,9 +176,25 @@ final readonly class UndergroundFacilityService
         }
         NationUndergroundFacility::query()->create([
             'nation_id' => $nation->id,
+            'ruleset_version_id' => $rulesetVersionId,
             'layer' => $layer,
             'slot_index' => $slotIndex,
             'facility_key' => $definition->facility_key,
         ]);
+    }
+
+    private function definitionForItem(NationCommandQueueItem $item): UndergroundCommandDefinition
+    {
+        if (! is_string($item->underground_command_key)) {
+            throw new DomainException('Underground queue item command identity is invalid.');
+        }
+        $ruleset = $item->relationLoaded('requestRulesetVersion')
+            ? $item->requestRulesetVersion
+            : $item->requestRulesetVersion()->first();
+        if (! $ruleset instanceof RulesetVersion) {
+            throw new DomainException('Underground queue item Ruleset provenance is missing.');
+        }
+
+        return $this->catalog->get($ruleset->settings, $item->underground_command_key);
     }
 }

@@ -339,6 +339,7 @@ final class RulesetAuthoringValidator
         $this->validateTerrainQuantities($settings);
         $this->validateFacilities($settings, $commandKeys, $productionKeys);
         $this->validateCommands($settings, $resourceKeys, $facilityKeys, $authoredKey, $version);
+        $this->validateUndergroundFacilityDevelopment($settings, $authoredKey, $version);
         $this->validateProduction($settings, $resourceKeys, $facilityKeys);
         $this->validateVersionAdditions(
             $settings,
@@ -1795,6 +1796,108 @@ final class RulesetAuthoringValidator
         }
         if ($authoredRulesetVersion >= 19 && $territoryAbandonDefinitions !== 1) {
             throw new DomainException('The v19+ Ruleset requires exactly one territory_abandon command.');
+        }
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function validateUndergroundFacilityDevelopment(
+        array $settings,
+        string $authoredRulesetKey,
+        int $authoredRulesetVersion,
+    ): void {
+        $section = $settings['underground_facility_development'] ?? null;
+        if ($authoredRulesetVersion < 19) {
+            if ($section !== null) {
+                throw new DomainException('Underground facility development definitions require Ruleset v19+.');
+            }
+
+            return;
+        }
+        if ($authoredRulesetKey !== self::FORMAL_V19_KEY) {
+            return;
+        }
+
+        $section = $this->map($section, 'ruleset.underground_facility_development');
+        $this->requireKeys($section, ['facility_definitions', 'command_definitions'], 'ruleset.underground_facility_development');
+        $facilities = $this->map(
+            $section['facility_definitions'],
+            'ruleset.underground_facility_development.facility_definitions',
+        );
+        $expectedEffects = [
+            'underground_city' => ['capital_maximum_population_bonus' => 10_000],
+            'underground_farm' => ['farm_capacity_people' => 10_000],
+            'underground_factory' => ['factory_capacity_people' => 30_000],
+            'underground_missile_base' => ['missile_launch_capacity' => 1],
+        ];
+        if (array_keys($facilities) !== array_keys($expectedEffects)) {
+            throw new DomainException('Ruleset v19 Underground facility definition keys are invalid.');
+        }
+        foreach ($expectedEffects as $facilityKey => $expectedEffect) {
+            $path = "ruleset.underground_facility_development.facility_definitions.{$facilityKey}";
+            $facility = $this->map($facilities[$facilityKey], $path);
+            $this->requireKeys($facility, ['name', 'effect'], $path);
+            $this->persistedString($facility['name'], "{$path}.name");
+            $effect = $this->map($facility['effect'], "{$path}.effect");
+            foreach ($effect as $effectKey => $value) {
+                $this->persistedString($effectKey, "{$path}.effect key");
+                $this->integer($value, "{$path}.effect.{$effectKey}", 1);
+            }
+            if ($effect !== $expectedEffect) {
+                throw new DomainException("{$path}.effect differs from the v19 Underground facility contract.");
+            }
+        }
+
+        $expectedCommands = [
+            'build_underground_city' => ['build', 'underground_city', 1000, 1],
+            'build_underground_farm' => ['build', 'underground_farm', 1000, 2],
+            'build_underground_factory' => ['build', 'underground_factory', 1000, 3],
+            'build_underground_missile_base' => ['build', 'underground_missile_base', 1000, 4],
+            'remove_underground_facility' => ['remove', null, 50, 5],
+        ];
+        $definitions = $this->list(
+            $section['command_definitions'],
+            'ruleset.underground_facility_development.command_definitions',
+        );
+        $actualKeys = [];
+        foreach ($definitions as $index => $definition) {
+            $path = "ruleset.underground_facility_development.command_definitions.{$index}";
+            $definition = $this->map($definition, $path);
+            $this->requireKeys($definition, [
+                'key', 'name', 'description', 'target_type', 'cost_money', 'action',
+                'facility_key', 'execution_phase', 'sort_order', 'metadata',
+            ], $path);
+            $commandKey = $this->persistedString($definition['key'], "{$path}.key");
+            $this->persistedString($definition['name'], "{$path}.name");
+            $this->string($definition['description'], "{$path}.description");
+            $this->persistedString($definition['target_type'], "{$path}.target_type");
+            $this->persistedString($definition['action'], "{$path}.action");
+            $this->persistedString($definition['execution_phase'], "{$path}.execution_phase");
+            $this->integer($definition['cost_money'], "{$path}.cost_money", 0);
+            $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
+            $metadata = $this->map($definition['metadata'], "{$path}.metadata");
+            $this->requireKeys($metadata, ['consumes_turn', 'parameters', 'quantity_semantics'], "{$path}.metadata");
+            $this->boolean($metadata['consumes_turn'], "{$path}.metadata.consumes_turn");
+            $this->list($metadata['parameters'], "{$path}.metadata.parameters");
+            $this->persistedString($metadata['quantity_semantics'], "{$path}.metadata.quantity_semantics");
+
+            $expected = $expectedCommands[$commandKey] ?? null;
+            if ($expected === null
+                || $definition['target_type'] !== 'underground_slot'
+                || $definition['action'] !== $expected[0]
+                || $definition['facility_key'] !== $expected[1]
+                || $definition['cost_money'] !== $expected[2]
+                || $definition['sort_order'] !== $expected[3]
+                || $definition['execution_phase'] !== 'underground_facility'
+                || count($metadata) !== 3
+                || $metadata['consumes_turn'] !== true
+                || $metadata['parameters'] !== []
+                || $metadata['quantity_semantics'] !== 'unused') {
+                throw new DomainException("{$path} differs from the v19 Underground command contract.");
+            }
+            $actualKeys[] = $commandKey;
+        }
+        if ($actualKeys !== array_keys($expectedCommands)) {
+            throw new DomainException('Ruleset v19 Underground command definition keys are invalid.');
         }
     }
 

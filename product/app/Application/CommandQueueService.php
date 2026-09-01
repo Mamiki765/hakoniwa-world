@@ -82,6 +82,8 @@ final class CommandQueueService
             $world = $this->lockWorldForQueue($nation);
             [$lockedNation, $membership] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $this->assertMapSpace($lockedNation, $mapSpace);
+            $ruleset = RulesetVersion::query()->whereKey($world->ruleset_version_id)
+                ->firstOrFail(['id', 'key', 'version', 'settings']);
             $queue = NationCommandQueue::query()->firstOrCreate(
                 ['nation_id' => $lockedNation->id],
                 ['map_space_id' => $mapSpace->id, 'version' => 1],
@@ -175,7 +177,7 @@ final class CommandQueueService
                 ->where('key', $commandKey)
                 ->where('enabled', true)
                 ->first();
-            $undergroundDefinition = $this->undergroundCommands->find($commandKey);
+            $undergroundDefinition = $this->undergroundCommands->find($ruleset->settings, $commandKey);
             if ($definition === null && $undergroundDefinition === null) {
                 throw new PlayerFacingCommandException('利用できないcommandです。');
             }
@@ -197,8 +199,6 @@ final class CommandQueueService
                 }
                 $parameters = $this->parameters->validate($schemas, $parameters);
             }
-            $ruleset = RulesetVersion::query()->whereKey($world->ruleset_version_id)
-                ->firstOrFail(['id', 'key', 'version']);
             $targetContext = 'surface_cell';
             if ($definition->target_type === 'underground_slot') {
                 if ($targetX !== null || $targetY !== null || ! is_int($targetLayer) || ! is_int($targetSlotIndex)) {
@@ -335,10 +335,12 @@ final class CommandQueueService
                 'quantity' => $quantity,
                 'parameters' => $parameters,
                 'status' => 'queued',
+                'request_ruleset_version_id' => $ruleset->id,
             ]);
             if ($definition instanceof CommandDefinition) {
                 $proposedItem->setRelation('definition', $definition);
             }
+            $proposedItem->setRelation('requestRulesetVersion', $ruleset);
             $proposedItems->push($proposedItem);
             if ($targetContext === 'underground_slot') {
                 $this->undergroundFacilities->assertProjectedSequences($queue, $proposedItems);
@@ -1304,7 +1306,14 @@ final class CommandQueueService
                 throw new DomainException('Underground queue item command identity is invalid.');
             }
 
-            return $this->undergroundCommands->get($item->underground_command_key);
+            $ruleset = $item->relationLoaded('requestRulesetVersion')
+                ? $item->requestRulesetVersion
+                : $item->requestRulesetVersion()->first();
+            if (! $ruleset instanceof RulesetVersion) {
+                throw new DomainException('Underground queue item Ruleset provenance is missing.');
+            }
+
+            return $this->undergroundCommands->get($ruleset->settings, $item->underground_command_key);
         }
         $definition = $item->relationLoaded('definition')
             ? $item->definition

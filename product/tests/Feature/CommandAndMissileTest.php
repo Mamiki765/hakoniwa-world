@@ -3682,6 +3682,7 @@ class CommandAndMissileTest extends TestCase
         $space = $this->surfaceMapSpace($world);
         $undergroundBase = NationUndergroundFacility::query()->create([
             'nation_id' => $firing->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'layer' => 1,
             'slot_index' => 0,
             'facility_key' => 'underground_missile_base',
@@ -3796,12 +3797,14 @@ class CommandAndMissileTest extends TestCase
         $surfaceBase = $this->missileBase($surfaceNation);
         $laterUndergroundBase = NationUndergroundFacility::query()->create([
             'nation_id' => $undergroundNation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'layer' => 2,
             'slot_index' => 0,
             'facility_key' => 'underground_missile_base',
         ]);
         $earlierUndergroundBase = NationUndergroundFacility::query()->create([
             'nation_id' => $undergroundNation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'layer' => 1,
             'slot_index' => 3,
             'facility_key' => 'underground_missile_base',

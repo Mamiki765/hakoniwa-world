@@ -16,7 +16,7 @@ The facility feature does not add a second scheduler, a second missile engine, U
 
 Surface Ruleset v19 is the in-development Ruleset for release/3.1.0. It may still be revised as needed while release/3.1.0 is in development and freezes only when 3.1.0 is released to main/production.
 
-This PR does not need to change Surface Ruleset v19 and does not add v20. The five facility commands belong to `UndergroundCommandCatalog`, backed by `config/underground-facilities.php`, and are deliberately absent from Surface `command_definitions`. A queued Underground item still records the current World's Ruleset version as request provenance, but it has no Ruleset-bound `command_definition_id`. Leaving v19 unchanged in this PR does not prohibit later v19 changes before the 3.1.0 release freeze.
+This PR adds Underground facility and command definitions to the in-development v19 payload and does not add v20. They remain in the dedicated `underground_facility_development` section and are deliberately absent from Surface `command_definitions`. A queued Underground item has no Surface `command_definition_id`; its existing `request_ruleset_version_id` and `underground_command_key` reproduce the exact Underground definition used at reservation. This PR changes v19 only because v19 has not yet reached main/production; v19 freezes when 3.1.0 is released.
 
 This separation is enforced on both boundaries:
 
@@ -34,11 +34,12 @@ The canonical Underground facility target is `(nation_id, layer, slot_index)`. P
 `nation_underground_facilities` stores occupied Nation-owned slots:
 
 - `nation_id`
+- `ruleset_version_id`
 - `layer`
 - `slot_index` (`0..3`)
 - `facility_key`
 
-Empty slots have no row. A unique constraint on `(nation_id, layer, slot_index)` prevents concurrent double occupancy. The Nation foreign key cascades on deletion, so a replacement Nation never inherits the previous Nation's facilities. Secretary-owned `unlocked_area_layers` remains independent and is not deleted with a Nation.
+Empty slots have no row. `ruleset_version_id + facility_key` identifies the versioned facility definition, so a later Ruleset cannot silently change an existing facility's effect; moving existing facilities to another definition requires an explicit migration. A unique constraint on `(nation_id, layer, slot_index)` prevents concurrent double occupancy. The Nation foreign key cascades on deletion, so a replacement Nation never inherits the previous Nation's facilities. Secretary-owned `unlocked_area_layers` remains independent and is not deleted with a Nation.
 
 The entrance and fixed ladders are presentation elements, not facility targets. Only the four slots in each unlocked layer can be selected.
 
@@ -46,7 +47,7 @@ The entrance and fixed ladders are presentation elements, not facility targets. 
 
 Reservation uses the existing Nation development queue, request fingerprint, version check, ordering, and locking. It does not debit money or mutate a facility.
 
-The queue stores `target_context`, `target_layer`, `target_slot_index`, and `underground_command_key` for Underground items. A small slot projection evaluates prior queued Underground commands for the same slot, allowing sequences such as remove then build while rejecting impossible projected sequences. Surface cell projection remains separate.
+The queue stores `target_context`, `target_layer`, `target_slot_index`, `underground_command_key`, and the existing request Ruleset provenance for Underground items. Queue projection, duplicate reconstruction, and Turn execution resolve the command from that recorded Ruleset snapshot, never from a latest unversioned config. A small slot projection evaluates prior queued Underground commands for the same slot, allowing sequences such as remove then build while rejecting impossible projected sequences. Surface cell projection remains separate.
 
 At official Turn execution, `DomesticCommandExecutor` revalidates ownership, Secretary entitlement, Trial 1 first clear, unlocked layer, slot range, and current occupancy. Money debit and facility mutation occur in the existing Turn transaction. Success consumes one Turn; failure follows the existing domestic-command failure, queue-removal, and automatic-finance semantics.
 
@@ -54,7 +55,7 @@ At official Turn execution, `DomesticCommandExecutor` revalidates ownership, Sec
 
 Effects are derived from Nation-owned facility counts; Surface `MapCell` rows and Surface facility scales are unchanged.
 
-- `underground_city`: adds 10,000 to the capital population growth ceiling. It neither adds population at construction nor truncates current population when removed.
+- `underground_city`: adds 10,000 to the capital population growth ceiling. It does not add population at construction or truncate on removal; while population exceeds the new effective maximum, the existing above-maximum contract reduces it by 100 per official Turn until the maximum is reached.
 - `underground_farm`: adds 10,000 to aggregate farm employment capacity and participates in the existing workforce and wheat-production calculation.
 - `underground_factory`: adds 30,000 to aggregate factory employment capacity and participates in the existing workforce and industrial-production calculation.
 - `underground_missile_base`: contributes one shot source to the existing missile pipeline, with no facility scale.
@@ -67,6 +68,8 @@ Each launched shot retains one source identity:
 - `underground_missile_base` with the Underground facility row id
 
 Surface and Underground capacity is additive, while missile types, costs, salvo restrictions, RNG order, deviation, impacts, terrain damage, monster interaction, and failure behavior remain in the canonical missile path.
+
+An Underground base has no MapCell, but its Nation's canonical capital cell is its processing anchor. Bases run once in stable `layer, slot_index` order when that capital cell is reached in the ordinary Surface scan; missile finalization and the later Secretary bow stage remain after all launch sources.
 
 When an Underground-sourced shot satisfies the same monster-hit experience condition as a Surface missile base, its existing missile-base experience amount is passed to `SecretaryExperienceAwardService::awardMonster`. This preserves canonical Secretary modifiers, caps, audit, and persistence. The shot does not also award Surface base experience, and it never changes `underground_profiles.combat_xp`, Combat Lv, STP, or Underground battle growth.
 

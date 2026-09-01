@@ -22,7 +22,7 @@ final readonly class Ver310TerritoryAbandonmentRulesetUpgrade
 
     public const TARGET_VERSION = 19;
 
-    public const TARGET_CHECKSUM = '3f6cc0bbede129ab08cd14093de3d19bbd08879cfb6d87cb792b21a46bcc16d0';
+    public const TARGET_CHECKSUM = 'b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9';
 
     private const WORLD_KEY = 'shared-world';
 

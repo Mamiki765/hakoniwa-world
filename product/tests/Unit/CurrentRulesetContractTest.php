@@ -15,7 +15,7 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V18_CHECKSUM = '40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b';
 
-    private const V19_CHECKSUM = '3f6cc0bbede129ab08cd14093de3d19bbd08879cfb6d87cb792b21a46bcc16d0';
+    private const V19_CHECKSUM = 'b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9';
 
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
     private const V16_COVERAGE = [
@@ -63,6 +63,32 @@ final class CurrentRulesetContractTest extends TestCase
         );
         $this->assertSame(['sea', 'shallow', 'wasteland', 'plain'], $territoryAbandon['target_terrain_keys']);
         $this->assertFalse($territoryAbandon['metadata']['consumes_turn']);
+        $underground = $current['underground_facility_development'];
+        $this->assertSame([
+            'underground_city',
+            'underground_farm',
+            'underground_factory',
+            'underground_missile_base',
+        ], array_keys($underground['facility_definitions']));
+        $this->assertSame([
+            'build_underground_city',
+            'build_underground_farm',
+            'build_underground_factory',
+            'build_underground_missile_base',
+            'remove_underground_facility',
+        ], array_column($underground['command_definitions'], 'key'));
+        $this->assertSame([], array_values(array_intersect(
+            array_column($current['command_definitions'], 'key'),
+            array_column($underground['command_definitions'], 'key'),
+        )));
+        $this->assertSame(
+            ['capital_maximum_population_bonus' => 10_000],
+            $underground['facility_definitions']['underground_city']['effect'],
+        );
+        $this->assertSame(
+            ['missile_launch_capacity' => 1],
+            $underground['facility_definitions']['underground_missile_base']['effect'],
+        );
 
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
         $this->assertSame('hakoniwa-2s-plus-v19', $summary['key']);
@@ -74,7 +100,7 @@ final class CurrentRulesetContractTest extends TestCase
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void
     {
         $this->assertSame(
-            10,
+            11,
             app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'))['domains'],
         );
         $coverage = app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'));

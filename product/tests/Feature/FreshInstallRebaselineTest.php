@@ -20,6 +20,7 @@ use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMonsterKillStat;
+use App\Models\NationUndergroundFacility;
 use App\Models\ProductionDefinition;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
@@ -73,7 +74,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(27, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(58, DB::table('migrations')->count());
+        $this->assertSame(59, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -109,6 +110,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_01_010000_add_nation_underground_facilities',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_01_020000_version_underground_facility_definitions',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -188,6 +192,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'equipped_slot'));
         $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
         $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'facility_key'));
+        $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'ruleset_version_id'));
         $this->assertFalse(Schema::hasColumn('nation_underground_facilities', 'facility_scale'));
         $this->assertTrue(Schema::hasColumn('nation_command_queue_items', 'target_context'));
         $this->assertTrue(Schema::hasColumn('nation_command_queue_items', 'target_layer'));
@@ -377,6 +382,51 @@ SQL);
         $this->assertSame(1, $starter->equipped_slot);
     }
 
+    public function test_existing_pr116_schema_is_forward_versioned_without_reinterpreting_surface_definitions(): void
+    {
+        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '地下定義移行国', '地下定義移行島主');
+        $ruleset = $world->rulesetVersion()->sole();
+        $facility = NationUndergroundFacility::query()->create([
+            'nation_id' => $nation->id,
+            'ruleset_version_id' => $ruleset->id,
+            'layer' => 1,
+            'slot_index' => 0,
+            'facility_key' => 'underground_city',
+        ]);
+        $target = config('hakoniwa.ruleset');
+        $previous = $target;
+        unset($previous['underground_facility_development']);
+        $surfaceDefinitions = $previous['command_definitions'];
+
+        Schema::table('nation_underground_facilities', function (Blueprint $table): void {
+            $table->dropForeign(['ruleset_version_id']);
+        });
+        Schema::table('nation_underground_facilities', function (Blueprint $table): void {
+            $table->dropColumn('ruleset_version_id');
+        });
+        $ruleset->update(['settings' => $previous]);
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_01_020000_version_underground_facility_definitions',
+        )->delete();
+
+        $this->assertSame(
+            ['2026_09_01_020000_version_underground_facility_definitions'],
+            $this->pendingMigrations(),
+        );
+        $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
+
+        $this->assertSame([], $this->pendingMigrations());
+        $this->assertEquals($target, $ruleset->fresh()->settings);
+        $this->assertEquals($surfaceDefinitions, $ruleset->fresh()->settings['command_definitions']);
+        $this->assertSame($ruleset->id, NationUndergroundFacility::query()
+            ->whereKey($facility->id)->value('ruleset_version_id'));
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'nation_underground_facilities_ruleset_version_id_foreign')->count());
+    }
+
     public function test_exact_2_8_0_v18_upgrade_preserves_business_data_and_remains_runnable(): void
     {
         $targetSettings = config('hakoniwa.ruleset');
@@ -423,6 +473,7 @@ SQL);
                 '2026_08_31_000000_add_underground_awakening_progression',
                 '2026_09_01_000000_publish_v19_territory_abandonment',
                 '2026_09_01_010000_add_nation_underground_facilities',
+                '2026_09_01_020000_version_underground_facility_definitions',
             ],
             $this->pendingMigrations(),
         );
@@ -432,7 +483,7 @@ SQL);
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
         $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
-        $this->assertSame(58, DB::table('migrations')->count());
+        $this->assertSame(59, DB::table('migrations')->count());
         $after = $this->businessSnapshot();
         foreach ($before as $table => $digest) {
             if (! in_array($table, ['worlds', 'nation_command_queue_items', 'audit_events'], true)) {
@@ -875,6 +926,7 @@ SQL);
             '2026_08_31_000000_add_underground_awakening_progression',
             '2026_09_01_000000_publish_v19_territory_abandonment',
             '2026_09_01_010000_add_nation_underground_facilities',
+            '2026_09_01_020000_version_underground_facility_definitions',
         ])->delete();
     }
 
@@ -894,6 +946,9 @@ SQL);
         ]);
         $this->assertDatabaseMissing('migrations', [
             'migration' => '2026_09_01_010000_add_nation_underground_facilities',
+        ]);
+        $this->assertDatabaseMissing('migrations', [
+            'migration' => '2026_09_01_020000_version_underground_facility_definitions',
         ]);
     }
 

@@ -17,10 +17,12 @@ The v18 source remains the complete immutable predecessor. v19 changes only thes
 
 - `v19/world-and-map.php` (identity only)
 - `v19/commands-and-production.php`
+- `v19/underground-facilities.php`
 
-The entrypoint replaces only identity and commands. Unchanged world generation, economy,
-surface facilities, Secretary, Underground, and Trading Post behavior is reused as-is from
-v18. There is
+The entrypoint replaces identity, Surface commands/production, and adds the isolated
+`underground_facility_development` definition section. Unchanged world generation, other
+economy and Surface facilities, Secretary, Underground dungeon, and Trading Post behavior is
+reused as-is from v18. There is
 no recursive merge, implicit flattening, reflection, generic Ruleset inheritance, or dynamic
 historical catalog.
 
@@ -45,8 +47,10 @@ fire/disaster eligibility, missile resistance and destruction classification, an
 category identities.
 
 For v19 this additionally includes the `territory_abandon` identity, its safe owned-cell
-eligibility, ownership-only result, and non-turn-consuming execution contract. Command sort
-order is also behavior because it determines the player-facing command sequence.
+eligibility, ownership-only result, and non-turn-consuming execution contract. It also
+includes the isolated Underground facility/command identities, slot target, build/remove
+action, official-Turn consumption, and command ordering. Command sort order is behavior
+because it determines the player-facing command sequence.
 
 ### Data
 
@@ -56,7 +60,8 @@ experience, prices, capacities, rates, levels, per-level amounts, weights, and l
 For v18 this includes the 100-billion-yen (`cost_money = 1000`) command cost, 3,100/3,000-person transfer values,
 1,000-unit maintenance bases, 2:1 substitution ratio, 3,000-person minimum, and +3/+1 KARMA
 amounts. Existing settlement growth and famine ranges remain unchanged inputs inherited from
-v17.
+v17. For v19 it also includes Underground build/remove costs and the city, farm, factory, and
+missile-capacity effect amounts.
 
 ### Flavor
 
@@ -92,7 +97,7 @@ key. The inspector rejects:
 - an unused selector; or
 - a changed-domain leaf whose value or type differs from the final payload.
 
-The immutable checksum separately owns empty arrays, key presence, array order, shapes,
+The Ruleset checksum separately owns empty arrays, key presence, array order, shapes,
 types, nulls, and values. Classification metadata never enters the published payload.
 
 ## Change discipline
@@ -103,10 +108,14 @@ are immutable. The v17 key, version, full payload, and checksum
 `8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3`
 are immutable. The v18 key, version, full payload, and checksum
 `40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b`
-are immutable. The current v19 key, version, full payload, and checksum
-`3f6cc0bbede129ab08cd14093de3d19bbd08879cfb6d87cb792b21a46bcc16d0`
-are immutable after publication. Later gameplay contracts require v20 or later.
+are immutable. v19 is the in-development Ruleset for release/3.1.0; its current checksum is
+`b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9`.
+It may change while that release branch is completed, even if source calls it published or a
+publication migration exists. The production baseline, not a PR or source label, determines
+freeze state.
 
-A changed checksum under an already-published identity fails closed. A later gameplay,
-balance, RNG, or persistence-interpretation change requires a new Ruleset identity and a
-reviewed forward migration; it must not be hidden in an authoring refactor.
+When 3.1.0 reaches main/production and the production World uses v19, its key, version, full
+payload, and checksum freeze. A later gameplay, balance, RNG, or
+persistence-interpretation change then requires v20 plus a reviewed forward migration; it
+must not be hidden in an authoring refactor. Editing a production-unapplied migration still
+requires an Owner-confirmed production baseline.

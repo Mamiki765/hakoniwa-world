@@ -40,7 +40,7 @@ final class TurnState
     /** @var array<int, array{population: int, farm_capacity: int, factory_capacity: int, mine_capacity: int, owned_land_cells: int}> */
     private array $nationAggregates = [];
 
-    /** @var array<int, list<array{id: int, layer: int, slot_index: int, facility_key: string}>>|null */
+    /** @var array<int, list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}>>|null */
     private ?array $undergroundFacilitySnapshots = null;
 
     /** @var array<int, array{money: int, population: int, food: int}> */
@@ -174,13 +174,22 @@ final class TurnState
                     throw new InvalidArgumentException('Underground facility snapshot is invalid.');
                 }
                 $id = $facility['id'] ?? null;
+                $rulesetVersionId = $facility['ruleset_version_id'] ?? null;
                 $layer = $facility['layer'] ?? null;
                 $slotIndex = $facility['slot_index'] ?? null;
                 $facilityKey = $facility['facility_key'] ?? null;
-                if (! is_int($id) || $id < 1 || ! is_int($layer) || $layer < 1
+                $effect = $facility['effect'] ?? null;
+                if (! is_int($id) || $id < 1 || ! is_int($rulesetVersionId) || $rulesetVersionId < 1
+                    || ! is_int($layer) || $layer < 1
                     || ! is_int($slotIndex) || $slotIndex < 0 || $slotIndex > 3
-                    || ! is_string($facilityKey) || $facilityKey === '') {
+                    || ! is_string($facilityKey) || $facilityKey === ''
+                    || ! is_array($effect) || array_is_list($effect)) {
                     throw new InvalidArgumentException('Underground facility snapshot is invalid.');
+                }
+                foreach ($effect as $effectKey => $effectValue) {
+                    if (! is_string($effectKey) || $effectKey === '' || ! is_int($effectValue) || $effectValue < 1) {
+                        throw new InvalidArgumentException('Underground facility snapshot effect is invalid.');
+                    }
                 }
                 $slotKey = $layer.':'.$slotIndex;
                 if (isset($occupiedSlots[$slotKey])) {
@@ -189,9 +198,11 @@ final class TurnState
                 $occupiedSlots[$slotKey] = true;
                 $validatedSnapshots[$nationId][] = [
                     'id' => $id,
+                    'ruleset_version_id' => $rulesetVersionId,
                     'layer' => $layer,
                     'slot_index' => $slotIndex,
                     'facility_key' => $facilityKey,
+                    'effect' => $effect,
                 ];
             }
             $validatedSnapshots[$nationId] ??= [];
@@ -204,7 +215,7 @@ final class TurnState
         return $this->undergroundFacilitySnapshots !== null;
     }
 
-    /** @return list<array{id: int, layer: int, slot_index: int, facility_key: string}> */
+    /** @return list<array{id: int, ruleset_version_id: int, layer: int, slot_index: int, facility_key: string, effect: array<string, int>}> */
     public function undergroundFacilitySnapshotsForNation(mixed $nationId): array
     {
         $nationId = $this->validatedNationId($nationId);
