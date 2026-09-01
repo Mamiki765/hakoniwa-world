@@ -5,6 +5,7 @@ namespace App\Application\Underground;
 use App\Domain\Underground\Area\UndergroundAreaCapacity;
 use App\Models\NationCapital;
 use App\Models\NationMembership;
+use App\Models\NationUndergroundFacility;
 use App\Models\Secretary;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
@@ -49,11 +50,16 @@ final readonly class UndergroundSurfaceMapProjection
         if (! $capital instanceof NationCapital) {
             return null;
         }
+        $facilities = NationUndergroundFacility::query()
+            ->where('nation_id', $nationId)
+            ->get()
+            ->keyBy(static fn (NationUndergroundFacility $facility): string => $facility->layer.':'.$facility->slot_index);
         $layers = [];
         for ($layer = 1; $layer <= $profile->unlocked_area_layers; $layer++) {
             $z = -($layer + 1);
             $slots = [];
             foreach (self::SLOT_X_OFFSETS as $slotIndex => $offset) {
+                $facilityKey = $facilities->get($layer.':'.$slotIndex)?->facility_key;
                 $relativeX = $offset > 0 ? 'X+'.$offset : 'X'.$offset;
                 $slots[] = [
                     'slot_index' => $slotIndex,
@@ -65,8 +71,14 @@ final readonly class UndergroundSurfaceMapProjection
                     ],
                     'coordinate_label' => sprintf('(%d, %d, %d)', $capital->x + $offset, $capital->y, $z),
                     'relative_label' => sprintf('(%s, Y, %d)', $relativeX, $z),
-                    'facility_key' => null,
-                    'asset_key' => 'underground.road',
+                    'facility_key' => $facilityKey,
+                    'asset_key' => match ($facilityKey) {
+                        'underground_city' => 'underground.city',
+                        'underground_farm' => 'underground.farm',
+                        'underground_factory' => 'underground.factory',
+                        'underground_missile_base' => 'underground.missile_base',
+                        default => 'underground.road',
+                    },
                 ];
             }
             $layers[] = [

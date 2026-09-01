@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
 use App\Application\KarmaTurnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
+use App\Application\Underground\UndergroundProfileService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -24,13 +26,16 @@ use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
+use App\Models\NationUndergroundFacility;
 use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
+use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
@@ -40,6 +45,206 @@ class DomesticCommandExecutionTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_underground_build_remove_and_rebuild_share_the_official_development_queue_and_one_turn_semantics(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '地下queue国');
+        $nation->update(['money' => 3_000]);
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($user->secretary()->sole());
+        $profile->update(['unlocked_area_layers' => 1]);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $space = $this->surfaceMapSpace($world);
+        $surfaceCell = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $surfaceBefore = $surfaceCell->only([
+            'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'population',
+        ]);
+        $service = app(CommandQueueService::class);
+        $queueVersion = (int) ($nation->commandQueue()->value('version') ?? 1);
+        $items = [];
+        $requestKeys = [];
+        foreach ([
+            ['build_underground_city', 1],
+            ['remove_underground_facility', 2],
+            ['build_underground_factory', 3],
+        ] as [$commandKey, $position]) {
+            $requestKey = (string) Str::uuid();
+            $requestKeys[] = $requestKey;
+            $result = $service->add(
+                user: $user,
+                nation: $nation->fresh(),
+                mapSpace: $space,
+                commandKey: $commandKey,
+                targetX: null,
+                targetY: null,
+                requestKey: $requestKey,
+                expectedVersion: $queueVersion,
+                quantity: 1,
+                parameters: [],
+                position: $position,
+                quantityProvided: true,
+                targetLayer: 1,
+                targetSlotIndex: 0,
+            );
+            $items[] = $result['item'];
+            $queueVersion = (int) $result['queue']->version;
+        }
+        $this->assertSame(3_000, (int) $nation->fresh()->money);
+        $this->assertSame(0, NationUndergroundFacility::query()->count());
+        $v19RulesetId = (int) $world->ruleset_version_id;
+        $v19Settings = $world->rulesetVersion()->sole()->settings;
+        $futureSettings = $v19Settings;
+        $futureSettings['key'] = 'test-hakoniwa-2s-plus-v20-underground';
+        $futureSettings['version'] = 20;
+        foreach ($futureSettings['underground_facility_development']['command_definitions'] as &$futureCommand) {
+            if ($futureCommand['key'] === 'build_underground_city') {
+                $futureCommand['cost_money'] = 1;
+            }
+        }
+        unset($futureCommand);
+        RulesetVersion::query()->create([
+            'key' => $futureSettings['key'],
+            'version' => $futureSettings['version'],
+            'settings' => $futureSettings,
+            'is_active' => true,
+        ]);
+        $duplicate = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'build_underground_city',
+            targetX: null,
+            targetY: null,
+            requestKey: $requestKeys[0],
+            expectedVersion: $queueVersion,
+            quantity: 1,
+            parameters: [],
+            position: 1,
+            quantityProvided: true,
+            targetLayer: 1,
+            targetSlotIndex: 0,
+        );
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($v19RulesetId, (int) $duplicate['item']->request_ruleset_version_id);
+        config(['hakoniwa.ruleset' => $futureSettings]);
+
+        $executor = app(DomesticCommandExecutor::class);
+        $buildSeed = hash('sha256', 'underground build');
+        try {
+            DB::transaction(function () use ($executor, $world, $nation, $buildSeed): never {
+                $executor->execute($this->context($world, [$nation->id], $buildSeed, targetTurn: 2));
+
+                throw new \RuntimeException('rollback underground build attempt');
+            });
+            $this->fail('Expected the Underground build attempt to roll back.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('rollback underground build attempt', $exception->getMessage());
+        }
+        $this->assertSame(0, NationUndergroundFacility::query()->count());
+        $this->assertSame(3_000, (int) $nation->fresh()->money);
+        $this->assertSame('queued', $items[0]->fresh()->status);
+        $first = $executor->execute($this->context($world, [$nation->id], $buildSeed, targetTurn: 2));
+        $this->assertSame([1, 0], [$first['successes'], $first['failures']]);
+        $this->assertSame('underground_city', NationUndergroundFacility::query()->sole()->facility_key);
+        $this->assertSame($v19RulesetId, NationUndergroundFacility::query()->sole()->ruleset_version_id);
+        config(['hakoniwa.ruleset' => $v19Settings]);
+        $this->assertSame(2_000, (int) $nation->fresh()->money);
+        $this->assertSame(['completed', 'queued', 'queued'], array_map(
+            static fn (NationCommandQueueItem $item): string => $item->fresh()->status,
+            $items,
+        ));
+
+        $second = $executor->execute($this->context($world, [$nation->id], hash('sha256', 'underground remove'), targetTurn: 3));
+        $this->assertSame([1, 0], [$second['successes'], $second['failures']]);
+        $this->assertSame(0, NationUndergroundFacility::query()->count());
+        $this->assertSame(1_950, (int) $nation->fresh()->money);
+
+        $third = $executor->execute($this->context($world, [$nation->id], hash('sha256', 'underground rebuild'), targetTurn: 4));
+        $this->assertSame([1, 0], [$third['successes'], $third['failures']]);
+        $this->assertSame('underground_factory', NationUndergroundFacility::query()->sole()->facility_key);
+        $this->assertSame(950, (int) $nation->fresh()->money);
+        $this->assertSame(['completed', 'completed', 'completed'], array_map(
+            static fn (NationCommandQueueItem $item): string => $item->fresh()->status,
+            $items,
+        ));
+        $this->assertSame($surfaceBefore, $surfaceCell->fresh()->only([
+            'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'population',
+        ]));
+
+        $nation->update(['money' => 2_000]);
+        $blockedBuild = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'build_underground_farm',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $nation->commandQueue()->value('version'),
+            targetLayer: 1,
+            targetSlotIndex: 1,
+        )['item'];
+        NationUndergroundFacility::query()->create([
+            'nation_id' => $nation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'layer' => 1,
+            'slot_index' => 1,
+            'facility_key' => 'underground_city',
+        ]);
+        $blocked = $executor->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'underground execution occupancy conflict'),
+            targetTurn: 5,
+        ));
+        $this->assertSame([0, 1], [$blocked['successes'], $blocked['failures']]);
+        $this->assertSame(1, $blocked['automatic_finance']);
+        $this->assertSame(['failed', 'facility_exists'], [
+            $blockedBuild->fresh()->status,
+            $blockedBuild->fresh()->failure_code,
+        ]);
+        $this->assertSame(2_010, (int) $nation->fresh()->money);
+        $this->assertSame('underground_city', NationUndergroundFacility::query()
+            ->where('nation_id', $nation->id)->where('layer', 1)->where('slot_index', 1)
+            ->sole()->facility_key);
+
+        $nation->update(['money' => 999]);
+        $unfundedBuild = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'build_underground_farm',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $nation->commandQueue()->value('version'),
+            targetLayer: 1,
+            targetSlotIndex: 2,
+        )['item'];
+        $unfunded = $executor->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'underground insufficient funds'),
+            targetTurn: 6,
+        ));
+        $this->assertSame([0, 1], [$unfunded['successes'], $unfunded['failures']]);
+        $this->assertSame(1, $unfunded['automatic_finance']);
+        $this->assertSame(['failed', 'insufficient_funds'], [
+            $unfundedBuild->fresh()->status,
+            $unfundedBuild->fresh()->failure_code,
+        ]);
+        $this->assertSame(1_009, (int) $nation->fresh()->money);
+        $this->assertDatabaseMissing('nation_underground_facilities', [
+            'nation_id' => $nation->id,
+            'layer' => 1,
+            'slot_index' => 2,
+        ]);
+    }
 
     public function test_current_owner_facility_overbuilds_reuse_huge_meteor_damage_and_keep_source_metadata_private(): void
     {

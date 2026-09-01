@@ -20,6 +20,9 @@ final class CurrentRulesetAuthoringInspector
         'trading-post.php',
     ];
 
+    /** @var list<string> */
+    private const V19_ADDITIONAL_DOMAIN_FILES = ['underground-facilities.php'];
+
     /** @var array<string, string> */
     private const V17_DOMAIN_OVERRIDES = [
         'world-and-map.php' => 'v17/world-and-map.php',
@@ -45,6 +48,7 @@ final class CurrentRulesetAuthoringInspector
         ...self::V18_DOMAIN_OVERRIDES,
         'world-and-map.php' => 'v19/world-and-map.php',
         'commands-and-production.php' => 'v19/commands-and-production.php',
+        'underground-facilities.php' => 'v19/underground-facilities.php',
     ];
 
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
@@ -63,7 +67,10 @@ final class CurrentRulesetAuthoringInspector
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
-        foreach (self::DOMAIN_FILES as $file) {
+        $domainFiles = $rulesetKey === 'hakoniwa-2s-plus-v19'
+            ? [...self::DOMAIN_FILES, ...self::V19_ADDITIONAL_DOMAIN_FILES]
+            : self::DOMAIN_FILES;
+        foreach ($domainFiles as $file) {
             $relativePath = match ($rulesetKey) {
                 'hakoniwa-2s-plus-v19' => self::V19_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v18' => self::V18_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
@@ -149,7 +156,7 @@ final class CurrentRulesetAuthoringInspector
         }
 
         return [
-            'domains' => count(self::DOMAIN_FILES),
+            'domains' => count($domainFiles),
             'leaves' => count($publishedLeaves),
             'behavior' => $counts['behavior'],
             'data' => $counts['data'],

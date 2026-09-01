@@ -31,6 +31,7 @@ import type {
     Secretary,
     SecretaryEquipmentOptions,
     SecretaryProfile,
+    UndergroundFacilityTarget,
     UndergroundSurfaceMap,
     World,
 } from './types';
@@ -104,6 +105,7 @@ const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
 const authoritativeCommandQueue = ref<CommandQueue | null>(null);
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
+const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
 const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits'
         ? 'credits'
@@ -185,6 +187,18 @@ const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as cons
 const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 const map = useMapState();
+
+async function selectUndergroundSlot(target: UndergroundFacilityTarget): Promise<void> {
+    map.clearSelection();
+    selectedUndergroundSlot.value = target;
+    await nextTick();
+    scrollIslandWorkspaceTo('.command-panel');
+}
+
+function selectSurfaceCell(cell: Parameters<typeof map.select>[0]): void {
+    selectedUndergroundSlot.value = null;
+    map.select(cell);
+}
 const islandWorkspaceScroll = ref<HTMLElement | null>(null);
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
 const abandonmentConfirmed = computed(() => nation.value !== null
@@ -205,7 +219,7 @@ const turnStatusMessage = computed(() => matchTurnStatus(worldSummary.value?.tur
 function scrollIslandWorkspaceTo(selector: string): void {
     const scroller = islandWorkspaceScroll.value;
     const section = scroller?.querySelector<HTMLElement>(selector);
-    if (!scroller || !section) return;
+    if (!scroller || !section || typeof scroller.scrollTo !== 'function') return;
 
     scroller.scrollTo({
         left: section.offsetLeft,
@@ -436,7 +450,18 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
     const ownerMapSpaceRequest = page.value === 'island' && currentNation !== null
         ? api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`)
         : Promise.resolve(null);
-    const [rankingResult, newsResult, eventResult, nationResult, previewResult, ownerMapSpacesResult] = await Promise.allSettled([
+    const ownerUndergroundMapRequest = page.value === 'island' && currentNation !== null
+        ? api<UndergroundSurfaceMap | null>('/api/v1/me/underground/surface-map')
+        : Promise.resolve(null);
+    const [
+        rankingResult,
+        newsResult,
+        eventResult,
+        nationResult,
+        previewResult,
+        ownerMapSpacesResult,
+        ownerUndergroundMapResult,
+    ] = await Promise.allSettled([
         api<PublicRankingEntry[]>(`/api/v1/public/worlds/${world.id}/rankings`),
         api<MajorNewsFeed>(`/api/v1/public/worlds/${world.id}/major-news`),
         api<PublicEventPage>(`/api/v1/public/worlds/${world.id}/events`),
@@ -445,6 +470,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
             ? Promise.resolve(null)
             : api<PublicNationDetail>(`/api/v1/public/nations/${currentPreview.id}`),
         ownerMapSpaceRequest,
+        ownerUndergroundMapRequest,
     ] as const);
 
     let refreshed = true;
@@ -493,6 +519,29 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         }
     } else {
         refreshed = false;
+    }
+
+    if (page.value === 'island') {
+        if (ownerUndergroundMapResult.status === 'fulfilled') {
+            const nextUndergroundMap = ownerUndergroundMapResult.value;
+            const selected = selectedUndergroundSlot.value;
+            const selectedSlot = selected === null
+                ? undefined
+                : nextUndergroundMap?.layers
+                    .find((layer) => layer.layer === selected.layer)
+                    ?.slots.find((slot) => slot.slot_index === selected.slot_index);
+            undergroundSurfaceMap.value = nextUndergroundMap;
+            selectedUndergroundSlot.value = selected === null || selectedSlot === undefined
+                ? null
+                : {
+                    layer: selected.layer,
+                    slot_index: selectedSlot.slot_index,
+                    coordinate_label: selectedSlot.coordinate_label,
+                    facility_key: selectedSlot.facility_key,
+                };
+        } else {
+            refreshed = false;
+        }
     }
 
     if (page.value === 'island' && refreshedNation !== null && refreshedNation.capital !== null && refreshedMapSpace !== null) {
@@ -755,6 +804,7 @@ async function openOwnIsland(): Promise<void> {
         if (spacesResult.status === 'rejected') throw spacesResult.reason;
         const spaces = spacesResult.value;
         undergroundSurfaceMap.value = undergroundMapResult.status === 'fulfilled' ? undergroundMapResult.value : null;
+        selectedUndergroundSlot.value = null;
         mapSpace.value = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
         if (mapSpace.value !== null) {
             await map.loadAround(mapSpace.value, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
@@ -778,6 +828,7 @@ async function openPreview(nationId: number): Promise<void> {
         const detail = await api<PublicNationDetail>(`/api/v1/public/nations/${nationId}`);
         if (detail.capital === null) throw new Error('首都がまだありません。');
         previewNation.value = detail;
+        selectedUndergroundSlot.value = null;
         mapSpace.value = detail.map_space;
         await map.loadAround(detail.map_space, detail.capital.x, detail.capital.y, {
             kind: 'public',
@@ -1799,7 +1850,12 @@ async function abandonNation(): Promise<void> {
                     </div>
                 </details>
             </header>
-            <UndergroundSurfaceMapView v-if="undergroundSurfaceMap" :map="undergroundSurfaceMap" />
+            <UndergroundSurfaceMapView
+                v-if="undergroundSurfaceMap"
+                :map="undergroundSurfaceMap"
+                :selected="selectedUndergroundSlot"
+                @select="selectUndergroundSlot"
+            />
             <div class="island-workspace-region">
                 <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
                     <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
@@ -1819,6 +1875,7 @@ async function abandonNation(): Promise<void> {
                             :nation-id="nation.id"
                             :map-space-id="mapSpace.id"
                             :selected="map.selected.value"
+                            :selected-underground="selectedUndergroundSlot"
                             @queue="authoritativeCommandQueue = $event"
                         />
                         <div class="map-column">
@@ -1832,7 +1889,7 @@ async function abandonNation(): Promise<void> {
                                 :loading="map.loading.value"
                                 :error="map.error.value"
                                 :empty-chunks="map.emptyChunks.value"
-                                @select="map.select"
+                                @select="selectSurfaceCell"
                                 @move="map.moveSelection"
                                 @request-range="map.loadVisibleRange"
                                 @request-all="map.loadAllChunks"

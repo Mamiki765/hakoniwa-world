@@ -2,19 +2,21 @@
 
 ## Scope
 
-The normal application configuration resolves only the current immutable Ruleset,
-`hakoniwa-2s-plus-v19`. Its identity and formal checksum are:
+The normal application configuration resolves only the current in-development Ruleset for
+release/3.1.0, `hakoniwa-2s-plus-v19`. Its identity and current formal checksum are:
 
 ```text
 key: hakoniwa-2s-plus-v19
 version: 19
-checksum: 3f6cc0bbede129ab08cd14093de3d19bbd08879cfb6d87cb792b21a46bcc16d0
+checksum: b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9
 ```
 
-v19 is the ver 3.1.0 surface contract. It adds the turn-free `territory_abandon` command for
-safe empty owned cells and moves `build_undersea_city` to player-facing sort order 125. It
-inherits all other v18 gameplay unchanged; Underground slot display and Trial progression
-continue to use Secretary-owned state rather than surface Ruleset map cells.
+v19 is the ver 3.1.0 contract under construction. It adds the turn-free `territory_abandon`
+command for safe empty owned cells, moves `build_undersea_city` to player-facing sort order
+125, and versions the isolated Underground facility/command definitions and their ongoing
+effects. Underground unlock entitlement remains Secretary-owned, constructed facilities are
+Nation-owned, and neither is represented as a surface Ruleset map cell. v19 may be refined as
+part of completing release/3.1.0; it freezes when that release reaches main/production.
 
 ## Immutable v18 boundary
 
@@ -39,9 +41,10 @@ Historical v14 remains immutable with checksum
 ## Dependency boundary
 
 `config/hakoniwa.php` loads only the thin v19 entrypoint. The entrypoint takes unchanged fields
-from exact v18 and replaces identity plus the commands domain from
-`config/hakoniwa/rulesets/v19/`. Current services obtain gameplay from `hakoniwa.ruleset`, and
-`hakoniwa:ruleset:validate` validates current v19 only.
+from exact v18 and replaces identity, the Surface commands domain, and the separate
+`underground_facility_development` domain from `config/hakoniwa/rulesets/v19/`. Underground
+commands do not enter Surface `command_definitions`. Current services obtain gameplay from
+`hakoniwa.ruleset`, and `hakoniwa:ruleset:validate` validates current v19 only.
 
 The exact v18 entrypoint is retained as the immutable supported migration source and
 checksum proof. Older authored PHP and its former catalog/bootstrap remain retired; Git and
@@ -52,10 +55,10 @@ Ruleset and command-definition snapshots rather than historical PHP.
 ## Installation and forward migration
 
 The schema dump is the canonical final 3.0.0 schema and migration ledger. A fresh install
-loads that schema directly, then the forward v19 migration publishes only the current v19
-definitions without creating another surface map schema. The exact v18 source remains in
-code as the immutable supported upgrade input; a fresh database does not need a historical
-v18 catalog row.
+loads that schema directly, then the forward 3.1.0 migrations publish current v19 and create
+the Nation-owned Underground facility schema with a non-null `ruleset_version_id`; no
+Underground or 3D map schema is created. The exact v18 source remains in code as the immutable
+supported upgrade input; a fresh database does not need a historical v18 catalog row.
 
 The supported production application upgrade from ver 2.8.0 / v18 to 3.0.0 uses the
 forward-only 3.0.0 migration. It rejects an absent v18 ledger, any retired Underground alpha
@@ -70,6 +73,10 @@ and live definition references by stable key, switches the locked World atomical
 reconciles the development-only Trial 1 inconsistency by raising only profiles with a first
 clear and zero unlocked layers to layer 1. Existing values above layer 1 are never reduced,
 and historical commands, events, turns, battles, and Ruleset snapshots are preserved.
+The subsequent development-only forward migration upgrades the earlier PR116 facility schema
+and v19 payload by backfilling each facility row to the exact v19 definition identity. Queued
+Underground commands continue to resolve through their existing request Ruleset provenance,
+so future definitions cannot reinterpret an existing queue item or constructed facility.
 
 The ten Underground migrations authored during the 3.0.0-alpha branch were never deployed to
 production and are retired from the final release. Their final schema is represented by the

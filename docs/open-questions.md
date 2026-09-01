@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| Underground 3.0.0 / post-release | UG-04 | E-01/UG-01〜03によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Treeまで実装済み。party・market・facility・surface bridgeはUG-04で停止する。 |
+| Underground 3.0.0 / post-release | UG-04/UG-05 | E-01/UG-01〜03によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Treeまで実装済み。Nation-owned facility・surface bridgeはUG-04で決定済み。party・marketはUG-05で停止する。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
@@ -55,7 +55,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: 各Worldは不変の`ruleset_version_id`を参照し、公開済みruleset payloadを上書きしない。pre-release runtimeは最新active rulesetだけを保証し、historical Worldはread-only、mutationは`reset_required`とする。
+- Decision: 各Worldは固定した`ruleset_version_id`を参照し、productionへrelease済みのruleset payloadを上書きしない。release branchで制作中かつproduction未releaseのRulesetはrelease完成形のため変更でき、source上の`published_rulesets`名やpublication migrationだけではfreezeを意味しない。pre-release runtimeは最新active rulesetだけを保証し、historical Worldはread-only、mutationは`reset_required`とする。
 - Implementation provenance: PR16でpre-release reset/runtime例外を記録し、PR17で`CurrentRulesetGuard`とlatest-only runtimeを実装し、PR19まで同じ境界を維持した。
 - Rebaseline: PR23で`hakoniwa-2s-plus-v1`をcanonical rulesetとし、go-live後はpre-release reset例外を終了する。以後のdata保護契約はRELEASE-01を正本とする。
 - Decision record: `docs/architecture/configuration-management.md`、`docs/architecture/target-architecture.md`、`docs/decisions/ADR-0008-first-production-release.md`
@@ -288,11 +288,19 @@
 - Remaining boundary: STP/Skill Tree reset、SP refund、Trial 1/2の実SP grant、growth path変更、Trial content/balance、random drop、affix、unique、enhancement、enchant、manual combat、party、market、facility、surface benefit、production deployは、このrelease-stabilization PRでは実装・実行しない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
-### UG-04 party・market・facility・surface bridge
+### UG-04 Nation-owned facility・surface bridge
+
+- Status: Decided
+- Implemented: PR116
+- Decision: 解禁layer entitlementはSecretary-owned、地下施設はNation-ownedとする。canonical targetは`(layer, slot_index)`、1 layerは4 slot、入口・梯子はtarget外とし、MapCell/MapSpace/3D persistenceは作らない。build/removeは通常Nation developmentとしてofficial Turnを1 Turn消費し、建築1000億、撤去50億、refundなし、直接overbuildなし、同種複数可とする。施設効果は地底都市が首都effective maximum +10,000、地底農場がaggregate farm workforce capacity +10,000、地底工場がaggregate factory workforce capacity +30,000、地底ミサイル基地が既存pipelineのlaunch capacity +1。Surfaceへはaggregate benefitだけを渡し、facility scaleやUnderground MapCellへ変換しない。地下command/facility定義は制作中のRuleset v19にversioned contractとして含め、Surface command catalogとは分離する。
+- Provenance: UG-02で決定したownership境界を維持し、PR116のOwner decisionでplacement/lifecycle/effect/Surface bridge/Ruleset関係を確定した。
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`product/docs/architecture/underground-facility-development.md`
+
+### UG-05 party・market
 
 - Status: Open
-- Required before: 借用秘書、複数人party、地底market、facility効果、または地上gameへ利益を渡す最初の実装
-- Open decision: party snapshot/同時利用/報酬配分、market transaction、不正対策、Nation-owned地下facilityのplacement/lifecycle、地上benefitの上限/逓減/移行、published Rulesetとの関係を決める。facilityのownerはNation、解禁layer entitlementのownerはSecretaryという境界自体はUG-02で決定済み。
+- Required before: 借用秘書、複数人party、または地底marketの最初の実装
+- Open decision: party snapshot/同時利用/報酬配分、market transaction、不正対策を決める。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。
 - Options: 早期頭打ちの段階式、逓減curve、限定utility/cosmetic中心を比較し、非参加playerへ不可逆な不利益を作らない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
 

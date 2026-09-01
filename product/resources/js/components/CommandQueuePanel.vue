@@ -9,6 +9,7 @@ import type {
     CommandQueueItem,
     EffectivePlanSlot,
     MapCell,
+    UndergroundFacilityTarget,
 } from '../types';
 import CellDetails from './CellDetails.vue';
 
@@ -28,6 +29,7 @@ const props = defineProps<{
     nationId: number;
     mapSpaceId: number;
     selected: MapCell | null;
+    selectedUnderground?: UndergroundFacilityTarget | null;
 }>();
 const emit = defineEmits<{
     queue: [queue: CommandQueue];
@@ -78,7 +80,15 @@ const pendingCostMoney = computed(() => {
 });
 
 watch(
-    () => [props.selected?.x, props.selected?.y, props.nationId, props.mapSpaceId, selectedPosition.value],
+    () => [
+        props.selected?.x,
+        props.selected?.y,
+        props.selectedUnderground?.layer,
+        props.selectedUnderground?.slot_index,
+        props.nationId,
+        props.mapSpaceId,
+        selectedPosition.value,
+    ],
     () => requestRefresh(),
     { immediate: true },
 );
@@ -96,12 +106,18 @@ async function refresh(): Promise<void> {
     activeRefreshController?.abort();
     const controller = new AbortController();
     activeRefreshController = controller;
-    const selected = props.selected === null ? null : { x: props.selected.x, y: props.selected.y };
+    const underground = props.selectedUnderground ?? null;
+    const selected = underground !== null || props.selected === null
+        ? null
+        : { x: props.selected.x, y: props.selected.y };
     const path = basePath(props.nationId, props.mapSpaceId);
     const query = new URLSearchParams({ position: String(selectedPosition.value) });
     if (selected !== null) {
         query.set('target_x', String(selected.x));
         query.set('target_y', String(selected.y));
+    } else if (underground !== null) {
+        query.set('target_layer', String(underground.layer));
+        query.set('target_slot_index', String(underground.slot_index));
     }
 
     refreshing.value = true;
@@ -128,7 +144,7 @@ async function refresh(): Promise<void> {
 }
 
 function chooseCommand(definition: CommandDefinition): void {
-    if (!definition.available || (definition.target_type === 'cell' && props.selected === null)) return;
+    if (!definition.available || !hasSelectedTarget(definition)) return;
     if (definition.confirmation_message) {
         confirmation.value = {
             message: definition.confirmation_message,
@@ -254,10 +270,13 @@ async function addCommand(
     requestedQuantity: number,
     parameters: Record<string, number>,
 ): Promise<boolean> {
-    if ((definition.target_type === 'cell' && props.selected === null) || !definition.available) return false;
+    if (!hasSelectedTarget(definition) || !definition.available) return false;
     if (busy.value) return false;
     const context = queueContext();
-    const selected = props.selected === null ? null : { x: props.selected.x, y: props.selected.y };
+    const underground = props.selectedUnderground ?? null;
+    const selected = underground !== null || props.selected === null
+        ? null
+        : { x: props.selected.x, y: props.selected.y };
     const submittedPosition = selectedPosition.value;
     const path = basePath(context.nationId, context.mapSpaceId);
     beginMutation();
@@ -269,6 +288,8 @@ async function addCommand(
                 command_key: definition.key,
                 target_x: definition.target_type === 'cell' ? selected?.x : null,
                 target_y: definition.target_type === 'cell' ? selected?.y : null,
+                target_layer: definition.target_type === 'underground_slot' ? underground?.layer : null,
+                target_slot_index: definition.target_type === 'underground_slot' ? underground?.slot_index : null,
                 position: submittedPosition,
                 request_key: crypto.randomUUID(),
                 expected_version: queue.value.version,
@@ -440,6 +461,17 @@ function quantityIsValid(value: number | null): value is number {
         && value <= quantityContract.value.maximum;
 }
 
+function hasSelectedTarget(definition: CommandDefinition): boolean {
+    if (definition.target_type === 'cell') {
+        return props.selected !== null && (props.selectedUnderground ?? null) === null;
+    }
+    if (definition.target_type === 'underground_slot') {
+        return (props.selectedUnderground ?? null) !== null && props.selected === null;
+    }
+
+    return (props.selectedUnderground ?? null) === null;
+}
+
 function queueContext(): QueueContext {
     return { nationId: props.nationId, mapSpaceId: props.mapSpaceId };
 }
@@ -513,7 +545,13 @@ onBeforeUnmount(() => {
     <div class="command-workspace">
         <aside class="command-panel" aria-label="セル情報と開発コマンド" :aria-busy="busy">
             <div class="command-panel-body">
-                <CellDetails :cell="selected" />
+                <section v-if="selectedUnderground" class="underground-target-summary" aria-label="選択中の地下施設枠">
+                    <p class="eyebrow">UNDERGROUND SLOT</p>
+                    <h3>地下{{ selectedUnderground.layer }}層・slot {{ selectedUnderground.slot_index }}</h3>
+                    <p>{{ selectedUnderground.coordinate_label }}</p>
+                    <p>{{ selectedUnderground.facility_key === null ? '空き施設枠' : '建築済み施設枠' }}</p>
+                </section>
+                <CellDetails v-else :cell="selected" />
                 <section class="available-commands">
                     <h3>適用できるコマンド</h3>
                     <p
@@ -595,7 +633,9 @@ onBeforeUnmount(() => {
                             <span v-for="warning in definition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</span>
                         </button>
                     </div>
-                    <p v-else class="empty-state">このセルで登録できるコマンドはありません。</p>
+                    <p v-else class="empty-state">
+                        {{ selectedUnderground ? 'この地下施設枠で登録できるコマンドはありません。' : 'このセルで登録できるコマンドはありません。' }}
+                    </p>
                 </section>
             </div>
         </aside>
@@ -609,7 +649,7 @@ onBeforeUnmount(() => {
                     </div>
                     <span>{{ queue.explicit_count }}件登録</span>
                 </div>
-                <div class="bulk-actions" aria-label="開発計画の一括操作">
+                <div v-if="!selectedUnderground" class="bulk-actions" aria-label="開発計画の一括操作">
                     <button type="button" :disabled="busy" @click="bulkInsert('clear_all')">全て整地</button>
                     <button type="button" :disabled="busy" @click="bulkInsert('level_all')">全て地ならし</button>
                     <button type="button" :disabled="busy" @click="bulkInsert('reclaim_clear_all')">浅瀬全て埋め立て＋整地</button>
@@ -644,7 +684,10 @@ onBeforeUnmount(() => {
                                 <template v-if="slot.kind === 'explicit' && slot.quantity_semantics === 'ordinary'"> ×{{ slot.quantity }}</template>
                                 <template v-else-if="slot.kind === 'explicit' && slot.quantity_semantics === 'selector'">（{{ slot.quantity_label }}）</template>
                             </strong>
-                            <small v-if="slot.kind === 'explicit'">
+                            <small v-if="slot.kind === 'explicit' && slot.target_context === 'underground_slot'">
+                                地下{{ slot.target_layer }}層・slot {{ slot.target_slot_index }}
+                            </small>
+                            <small v-else-if="slot.kind === 'explicit'">
                                 x={{ slot.target_x }}, y={{ slot.target_y }}
                             </small>
                             <small v-else>自動</small>

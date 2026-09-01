@@ -541,6 +541,13 @@ export interface UndergroundSurfaceMapSlot {
     asset_key: string;
 }
 
+export interface UndergroundFacilityTarget {
+    layer: number;
+    slot_index: number;
+    coordinate_label: string;
+    facility_key: UndergroundSurfaceMapSlot['facility_key'];
+}
+
 export interface UndergroundSurfaceMapLayer {
     layer: number;
     z: number;
@@ -632,7 +639,7 @@ export interface CommandDefinition {
     command_suffix_tone?: 'danger' | null;
     confirmation_message?: string | null;
     description: string;
-    target_type: 'cell' | 'nation';
+    target_type: 'cell' | 'nation' | 'underground_slot';
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_default: number | null;
     quantity_options: Array<{ value: number; key: string; label: string; cost_money?: number }>;
@@ -691,8 +698,11 @@ export interface CommandQueueItem {
     command_suffix?: string | null;
     command_suffix_tone?: 'danger' | null;
     queue_position: number;
+    target_context: 'surface_cell' | 'underground_slot';
     target_x: number | null;
     target_y: number | null;
+    target_layer: number | null;
+    target_slot_index: number | null;
     quantity: number;
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_label: string | null;

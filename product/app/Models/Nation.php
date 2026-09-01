@@ -102,4 +102,10 @@ class Nation extends Model
     {
         return $this->hasMany(NationMonsterCycleStat::class);
     }
+
+    /** @return HasMany<NationUndergroundFacility, $this> */
+    public function undergroundFacilities(): HasMany
+    {
+        return $this->hasMany(NationUndergroundFacility::class);
+    }
 }

@@ -4,7 +4,7 @@ import App from './App.vue';
 import HexMap from './components/HexMap.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
-import type { AssetDescriptor, MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing, UndergroundSurfaceMap, UndergroundSurfaceMapSlot } from './types';
+import type { AssetDescriptor, MapCell, MapChunk, Nation, PublicNationDetail, Secretary, TradingPostData, TradingPostListing, UndergroundSurfaceMap, UndergroundSurfaceMapSlot } from './types';
 
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data, message: status === 401 ? 'Unauthenticated.' : undefined }), {
     status,
@@ -71,6 +71,11 @@ const ownerNationFixture: Nation = {
 const undergroundAsset = (key: string, fallbackLabel: string): AssetDescriptor => ({
     key, url: null, available: false, fallback_label: fallbackLabel, fallback_style: key.replaceAll('.', '-'),
 });
+const surfaceCellFixture: MapCell = {
+    x: 12, y: 8, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
+    display_name: '平地', owner_nation_id: 3, owner_nation_number: 1, owner_name: '自島', details: [], monster: null,
+    asset: undergroundAsset('tile.plain', '平'), overlays: [], aria_label: '平地 (12, 8)', version: 1, updated_at: null,
+};
 const undergroundOffsets: UndergroundSurfaceMapSlot['offset_x'][] = [-2, -1, 1, 2];
 const undergroundSurfaceMapFixture: UndergroundSurfaceMap = {
     unlocked_layers: 2,
@@ -680,6 +685,7 @@ describe('application lobby and island entry', () => {
         let mapSpaceCalls = 0;
         let privateChunkCalls = 0;
         let ownerEventCalls = 0;
+        let undergroundMapCalls = 0;
         let failTurnRefreshChunk = true;
         let failExpansionRefreshChunk = true;
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -704,6 +710,16 @@ describe('application lobby and island entry', () => {
                     current_turn: nationCalls === 1 ? 1 : 2,
                     total_population: nationCalls === 1 ? 1000 : 1500,
                 });
+            }
+            if (path === '/api/v1/me/underground/surface-map') {
+                undergroundMapCalls++;
+                const nextMap = structuredClone(undergroundSurfaceMapFixture);
+                if (undergroundMapCalls > 1) {
+                    nextMap.layers[0]!.slots[0]!.facility_key = 'underground_city';
+                    nextMap.layers[0]!.slots[0]!.asset_key = 'underground.city';
+                }
+
+                return response(nextMap);
             }
             if (path === '/api/v1/worlds/1/map-spaces') {
                 mapSpaceCalls++;
@@ -748,6 +764,8 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
+        await wrapper.findAll('.underground-slot')[0]!.trigger('click');
+        await flushPromises();
         const initialChunkCalls = privateChunkCalls;
 
         await vi.advanceTimersByTimeAsync(1_000);
@@ -758,6 +776,10 @@ describe('application lobby and island entry', () => {
         expect(mapSpaceCalls).toBe(2);
         expect(privateChunkCalls).toBeGreaterThan(initialChunkCalls);
         expect(ownerEventCalls).toBe(2);
+        expect(undergroundMapCalls).toBe(2);
+        expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-label')).toContain('地底都市');
+        expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
+        expect(wrapper.find('.underground-target-summary').text()).toContain('建築済み施設枠');
         expect(wrapper.findComponent(HexMap).props('bounds')).toEqual(publicDetail.map_space.bounds);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
         const failedRefreshChunkCalls = privateChunkCalls;
@@ -1269,6 +1291,27 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-entrance')).toHaveLength(1);
         expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('(10, 8, -2)');
         expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('(X-2, Y, -2)');
+        expect(wrapper.findAll('.underground-entrance button')).toHaveLength(0);
+        expect(wrapper.findAll('.underground-ladder button')).toHaveLength(0);
+        await wrapper.findAll('.underground-slot')[0]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
+        expect(wrapper.get('.underground-target-summary').text()).toContain('地下1層・slot 0');
+        const undergroundCommandRequest = fetchMock.mock.calls
+            .map(([input]) => String(input))
+            .find((path) => path.includes('command-definitions') && path.includes('target_layer=1'));
+        expect(undergroundCommandRequest).toContain('target_slot_index=0');
+        expect(undergroundCommandRequest).not.toContain('target_x');
+        wrapper.getComponent(HexMap).vm.$emit('select', surfaceCellFixture);
+        await flushPromises();
+        expect(wrapper.findAll('.underground-slot').every((slot) => slot.attributes('aria-pressed') === 'false')).toBe(true);
+        expect(wrapper.find('.underground-target-summary').exists()).toBe(false);
+        const surfaceCommandRequest = fetchMock.mock.calls
+            .map(([input]) => String(input))
+            .filter((path) => path.includes('command-definitions')).at(-1);
+        expect(surfaceCommandRequest).toContain('target_x=12');
+        expect(surfaceCommandRequest).toContain('target_y=8');
+        expect(surfaceCommandRequest).not.toContain('target_layer');
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
         window.dispatchEvent(new Event('resize'));
         await wrapper.vm.$nextTick();
