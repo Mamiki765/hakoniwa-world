@@ -1,414 +1,184 @@
-# Project instructions
+# AGENTS.md
 
-## Work area
+## このファイルの目的
 
-The new application must be implemented only under `product/`.
+このファイルは、`hakoniwa-world`で作業する実装・調査Agentの恒久的な行動原則を定める。
 
-## Agent guardrails
+本文はOwnerが直接確認できる日本語を正本とする。
+コード上の識別子、コマンド、ファイルパスなどは必要に応じて英語表記を使用してよい。
 
-### Production migrations
+個別機能の仕様、特定releaseの事情、過去の事故、具体的なテスト手順はここへ書かない。
+それらはcode、test、architecture、operations、release文書、Git履歴を正本とする。
 
-Existing migrations are append-only by default. Unless the Owner explicitly identifies the
-production baseline, do not modify, delete, squash, or rebaseline an existing migration.
-Schema or persisted-data changes require a new forward migration. Repository state is not
-evidence of production migration state.
+---
 
-Retire an existing migration only when the Owner has identified that baseline and the
-schema/data effects and supported runtime, fresh-install, test, and upgrade paths prove that
-they no longer depend on it.
+## 1. Ownerの指示と解釈
 
-### Current Ruleset classification
+- Ownerが明示した目的、制約、作業範囲、停止条件を優先する。
+- Ownerの指示を、実装上都合のよい別の意味へ読み替えない。
+- 明示された制約を回避するため、制約対象と実質的に同等の仕組みを別の場所や別authorityとして新設しない。
+- Ownerの要求と既存設計が衝突する場合、独自解釈で迂回せず作業を止め、衝突点と選択肢を報告する。
+- 依頼されていない機能、cleanup、再設計、将来対応を「ついでに」追加しない。
+- Ownerが終了させた互換性や非目標を、Agent判断で復活させない。
 
-Behavior describes how the application acts or interprets a value: paths, identities,
-selectors, timing, state transitions, RNG semantics, and semantic sentinels. Data is an input
-to unchanged Behavior, such as HP, prices, probabilities, capacities, durations, and effect
-amounts. Flavor is presentation-only, such as names, descriptions, player-facing labels, and
-`unit_label` values.
+---
 
-`product/docs/architecture/ruleset-authoring.md` is the detailed authority. Do not duplicate
-its large example set in this file.
+## 2. 作業範囲
 
-### Ruleset release lifecycle
+- アプリケーションのruntime、schema、frontend、testsは原則として`product/`配下で扱う。
+- rootの設定・文書・CIは、依頼された作業に直接必要な場合だけ変更する。
+- 一つのPRへ無関係な機能、広範なrefactor、別systemの仕様変更を混ぜない。
+- 必要な変更が当初の小さな境界を超える場合、実装を続ける前にOwnerへ報告する。
+- merge、production deploy、OCI操作、production DB操作はOwnerの明示許可なしに行わない。
 
-Do not turn a one-off release incident, a specific version number, or a temporary workaround
-into a permanent Agent rule. Keep this file limited to reusable behavior constraints and
-decision principles. Before proposing a new Ruleset version, distinguish the
-Ruleset currently on `main`, the current Ruleset on the work base/release branch, and the
-Ruleset actually released to and used by production. Source labels such as
-`published_rulesets`, an authored payload, or a publication migration do not by themselves
-prove that a release-branch Ruleset is frozen.
+---
 
-A Ruleset still being completed on a release branch and not yet released to main/production
-may be revised to form that release's final contract. It freezes when the release reaches
-production; later semantic changes require the next Ruleset version. Whether an unreleased
-migration may be edited follows the Owner-confirmed production baseline, not repository state
-alone. See `product/docs/architecture/ruleset-authoring.md` for the detailed lifecycle.
+## 3. 正本と文書
 
-### Subagent delegation
+作業開始時は、依頼内容に必要な範囲で次を確認する。
 
-Bounded, low-risk repository investigation, focused failure investigation, mechanical edits,
-documentation consistency checks, small implementations of an already-decided contract, and
-independent regression checks may be delegated; `gpt-5.6-luna` at `max` is the default for
-that class of subtask. The main agent retains architecture and Owner-intent interpretation,
-Ruleset/migration boundaries, production/deploy safety, cross-cutting integration, and final
-review and verification judgment.
+- `product/docs/handoffs/development-history-and-current-handoff.md`
+- `docs/README.md`
+- `docs/open-questions.md`
+- 対象機能のcurrent architecture、ADR、operations、Ruleset文書
+- 現在のcode、schema、migration、tests
 
-Subagents must not reinterpret or expand the Owner contract. The main agent must inspect work
-before adoption. Do not delegate production mutation, destructive database operations, or an
-unresolved Owner decision.
+次の扱いを守る。
 
-### Development handoff
+- handoffはOwnerの明示指示なしに編集、再生成、整形、commitしない。
+- historical文書、audit文書、roadmap、future proposalをcurrent authorityとして扱わない。
+- ファイル名や更新日時だけで正本かどうかを判断しない。
+- 文書とcurrent code・schema・accepted ADRが矛盾する場合、黙って片方へ合わせず矛盾を報告する。
+- 詳細仕様をAGENTS.mdへ複製しない。
 
-`product/docs/handoffs/development-history-and-current-handoff.md` is read-only context for
-Codex and implementation agents. Do not modify, regenerate, format, or commit it unless the
-Owner explicitly requests a handoff update.
+---
 
-The Owner and the Web ChatGPT development-advisor workflow maintain that document separately
-after implementation, review evidence, and Owner decisions have been examined.
+## 4. Production dataとmigration
 
-### Documentation navigation
+- production dataを削除、reset、または黙って別の意味へ再解釈しない。
+- 既存migrationはappend-onlyを原則とする。
+- Ownerがproduction baselineを明示していない限り、既存migrationを変更、削除、統合、rebaselineしない。
+- repositoryの状態、application version、schema dump、Git履歴だけをproduction適用状態の証拠にしない。
+- 未適用migrationを整理する場合は、Owner確認済みproduction baselineと、fresh install・supported upgradeの検証を根拠にする。
+- persisted dataやcanonical identityを変更する場合、既存データの変換、retry、idempotency、auditへの影響を確認する。
+- releaseを跨ぐ未解決Turnを自動retryしない。既存のmanual retry契約とaudit記録を維持する。
+- production操作をsubagentへ委譲しない。
 
-After reading this file, start with
-`product/docs/handoffs/development-history-and-current-handoff.md`, then `docs/README.md`,
-then `docs/open-questions.md`. Follow the guide to select only the current, task-specific
-architecture, operations, ADR, code, and Ruleset sources needed for the work. Do not load all
-documentation indiscriminately.
+詳細なdeploy・backup・restore・migration手順はoperations文書を正本とする。
 
-Historical implementation, audit/reference-analysis, and future/roadmap documents are not
-current authority. Do not judge freshness from filenames or modification dates alone. If a
-document conflicts with current reviewed code, the immutable Ruleset, schema/current
-migration contract, or an accepted active ADR, report the conflict instead of silently
-reconciling it. Keep `docs/README.md` as navigation; do not duplicate gameplay specifications
-there.
+---
 
-### Player manual
+## 5. Version管理された設定とRuleset
 
-Prioritize information that changes a player's decisions; do not exhaustively document
-internal processing. Describe ordering, RNG consumption, fail-closed behavior, transactions,
-or rare race conditions only when players need them to make decisions or understand visible
-behavior. Do not pre-document behavior that causes no disadvantage or loss of control when
-unknown and can be learned through ordinary play.
+詳細なRuleset authoringは
+`product/docs/architecture/ruleset-authoring.md`
+を正本とする。
 
-## Read-only references
+分類の要点だけを次のように扱う。
 
-Everything under `_references/` is third-party reference material.
+- Behavior: 処理経路、identity、selector、順序、timing、state transition、RNG、解釈方法
+- Data: 既存Behaviorへ渡す数値や入力値
+- Flavor: gameplayや永続状態を変えない名称、説明、表示文言
 
-Never modify, format, rename, delete, or commit files under `_references/`.
+運用上は次を守る。
 
-## Reference roles
+- productionで実際に使用されたimmutable snapshotを上書きしない。
+- source名、変数名、`published`という表記だけでfreeze状態を推測しない。
+- 未release設定の変更可否は、Owner確認済みproduction baselineと現在のrelease境界から判断する。
+- versioning上の制約を避けるため、Ruleset外に第二のdefinition authority、第二のcatalog、第二の設定体系を作らない。
+- UIやtarget contextを分離する必要があっても、version authorityまで自動的に分離したと解釈しない。
+- 判断が明確でない場合は、実装前にOwnerへ確認する。
 
-`_references/hakoniwa-2plus/source` is used to study:
+特定のRuleset version、特定release、特定PRの事情はAGENTS.mdへ記載しない。
 
-- shared-world behavior
-- player and nation placement
-- territory and borders
-- turn processing
-- disasters
-- missiles
-- world expansion
-- legacy game rules
+---
 
-`_references/yamanity/repository` is used to study:
+## 6. Design gate
 
-- Laravel architecture
-- Vue user interface
-- Docker development environment
-- entity and persistence separation
-- JSON-based management
-- administration features
-- maintainability
+- 実装前に、依頼範囲に関係する`docs/open-questions.md`の項目を確認する。
+- Required beforeへ到達したOpen項目を、Agentが暗黙に決定したり迂回実装したりしない。
+- Open項目に該当する場合、実装を止め、選択肢と影響をOwnerへ提示する。
+- Deferred項目は早期実装せず、必要最小限のextension boundaryだけを残す。
+- Ownerが既に決定したcontractをsubagentやreviewerが再解釈しない。
 
-Neither reference implementation is the target architecture.
+---
 
-Do not translate the C source directly into PHP.
+## 7. 実装の再利用
 
-Do not copy third-party images, text, or substantial code into `product/`.
+- 新しいvariantを実装するときは、まず既存のcanonical runtime pathを確認する。
+- 既存pathを再利用し、固有の差分だけを局所化する。
+- Item、怪獣、command、facilityなどが異なるという理由だけで、専用execution engineやparallel subsystemを作らない。
+- 別pathが必要なのは、ordering、RNG、transaction、lock、persistence、eventなど実行契約そのものが異なる場合に限る。
+- 小さな差分を理由に、将来用のgeneric frameworkを先行実装しない。
+- 同じ責務の判定・definition解決・projectionを複数箇所へコピーしない。
+- 共通contractが実在するときだけ、小さく明確なshared abstractionへ集約する。
+- canonical identityをnullable化したり代替identityを追加したりする場合、局所的なschema変更として扱わず、そのidentityを読む全経路を横断確認する。
 
-Extract behavior into documentation and tests before implementing it independently.
+---
 
-## Encoding
+## 8. Testとreview
 
-Preserve the original encoding of files under `_references/`.
+Testは、現在サポートする次のcontractを守るために追加する。
 
-All newly created source code, documentation, database text, APIs, and user input must use UTF-8.
+- production gameplay
+- 過去に実際に発生したregression
+- persistence・migration・installの整合性
+- transaction、retry、idempotency、concurrency、lock
+- security、authorization
+- player-visibleまたはoperator-visibleな挙動
 
-## Current phase
+次を守る。
 
-Game implementation under `product/` has been explicitly approved by the repository owner.
+- 既存の代表testへregressionを追加することを優先する。
+- 同じinvariantを複数layerや全variantで重複検証しない。
+- production pathのない理論上の異常状態や、unsupported historical runtimeのためだけにtestを増やさない。
+- 状態×command×targetの総当たりmatrixを安易に作らない。
+- focused testから始め、変更domainに必要なsuiteとstatic checkを実行する。
+- release、rebaseline、migration、shared runtime変更ではrepository-wide verificationを行う。
+- exact-head CIを最終authorityとして確認する。
+- source、test設定、dependency、runtime環境が変わっていなければ、同じ検証を理由なく繰り返さない。
 
-The shared-world MVP is being implemented through roadmap-scoped pull requests. The current approval includes the game state, commands, turn processing, economic loop, and the supporting API, UI, persistence, tests, documentation, and operations needed by those roadmap slices.
+Review findingは、少なくとも次のどれかを具体的に示す。
 
-Keep each implementation within its approved roadmap scope. Do not implement a `Deferred` item early without separate explicit approval. The design gates in `docs/open-questions.md` remain in force: when an `Open` item reaches its `Required before` gate, report the options and obtain a decision instead of deciding it implicitly or implementing around it.
+- supported production pathから到達可能
+- persistent dataを損なう
+- migration・install契約を壊す
+- security・authorization上の問題
+- transaction・concurrency・lock上の問題
+- current playerまたはoperatorへの回帰
 
-## Production data boundary
+単なる好み、unsupported history、DBやrequestで拒否される不可能状態だけを理由にP1/P2としない。
 
-PR23 is the first production-release baseline. Development Worlds and provisional data may
-be fresh-reset only until all three go-live conditions have occurred:
+具体的なtest command、suite構成、CI shard構成はComposer設定とtesting文書を正本とする。
 
-1. the production World has been generated for the final time;
-2. Nation registration has been opened to general users; and
-3. the first official production turn has started.
+---
 
-After that boundary, existing Worlds, Nations, cells, command queues, TurnRuns, and events
-are production data. Do not destroy or silently reinterpret them. Every schema or gameplay
-data change must provide a forward migration or an explicit, reviewed conversion path.
-Ruleset changes must state their effect on existing Worlds and keep the production World
-runnable through compatible runtime support or an explicit migration.
+## 9. Subagent
 
-Ruleset rows, settings, command definitions, and production definitions actually released to
-and used by production are immutable audit records. Never overwrite a production payload.
-Before deploy, verify that the next non-dry TurnRun is not pending, running, or failed.
-Resolve such a run before deploy; never retry it automatically across a release. Preserve
-the same-target-turn, same-ruleset, same-seed manual retry boundary and audit records.
+- boundedで低riskな調査、機械的編集、focused failure調査、文書整合確認、独立regression確認はsubagentへ委譲してよい。
+- 利用可能な場合、Lunaをこの種の作業の既定subagentとして使用してよい。
+- architecture、Owner intent、Ruleset・migration境界、production安全、cross-cutting integration、最終review判断はmain agentが保持する。
+- subagentはOwner contractを再解釈、拡張、迂回してはならない。
+- main agentはsubagentの成果を確認してから採用する。
+- production mutation、破壊的DB操作、未決のOwner判断は委譲しない。
 
-The pre-release reset exception ends permanently at go-live. Do not copy it into future
-roadmaps or use PR23 rebaseline work as precedent for resetting production player data.
+---
 
-## Compatibility policy
+## 10. Referencesとencoding
 
-Production compatibility carries the immediately preceding supported source into the
-current version through an explicit forward migration. The current runtime and normal CI
-are not required to execute, reproduce, or directly upgrade unsupported historical
-versions. Preserve historical application source in Git history and preserve historical
-production and audit records in the database.
+- `_references/`配下はread-onlyとする。
+- `_references/`のファイルを編集、整形、rename、削除、commitしない。
+- third-party実装を直接翻訳・複製せず、必要な挙動だけを独立して実装する。
+- third-partyの画像、文章、相当量のcodeを`product/`へコピーしない。
+- 新規code、文書、DB text、API、user inputはUTF-8を使用する。
 
-Historical provenance retained in a supported current database is current production data.
-It must remain interpretable for read-only presentation, integrity checks, and request
-idempotency even when its originating runtime version is no longer supported. Do not add
-runtime or tests for an unsupported historical version unless the Owner explicitly restores
-that support.
+---
 
-## Design gates
+## 11. AGENTS.mdの保守
 
-Before starting implementation work, read `docs/open-questions.md`.
-
-If an `Open` item is related to the implementation scope and its `Required before` gate has been reached, do not decide it implicitly or implement around it. Report the item, the viable options, and the effect on the planned implementation.
-
-For `Deferred` items, preserve only a clear extension boundary. Do not implement the deferred feature early as part of the MVP.
-
-## Pull request scope and cross-cutting changes
-
-Do not combine substantial TurnRunner implementation with unrelated coordinate-system
-changes, existing-game-data migrations, World-reset redesigns, or broad rendering
-changes in the same pull request.
-
-Schema migrations that create or update TurnRunner-owned tables, indexes, constraints,
-and audit records are part of the TurnRunner scope.
-
-Small compatibility, integrity, safety, and operator-reporting changes directly required
-by the TurnRunner schema or behavior may be included in the same pull request only when
-they are explicitly identified, narrowly scoped to the integration boundary, and covered
-by regression tests.
-
-Unrelated refactoring, broad UI redesign, coordinate conversion, World-reset redesign,
-or migration of existing gameplay data must be split into a separate or stacked pull
-request.
-
-If a required compatibility change grows beyond a small and reviewable boundary, stop
-and propose the split before implementing it.
-
-## Tool-call batching
-
-In Code Mode, within each bounded stage, run independent, functions.exec-available tool calls concurrently in one functions.exec call. Use await Promise.allSettled([...]) when partial results are useful, and inspect every result; use await Promise.all([...]) only when any failure should abort the batch. Keep dependencies, waits/resumes, approvals, conflicting or interdependent mutations, and adaptive investigations where each result may change the next step sequential. Do not split otherwise batchable inspections across outer tool calls.
-
-## Implementation reuse policy
-
-Before introducing a new service, resolver, policy, handler, or execution path for a
-feature variant, identify:
-
-- the existing canonical runtime path for the same subsystem;
-- which behavior is already shared;
-- the smallest behavior that is actually unique to the new variant; and
-- why that difference cannot be expressed as authored configuration, an existing
-  capability, or a local mutation/result difference.
-
-The default is to reuse the canonical path and localize only the unique behavior.
-
-A new Item, monster, command, facility, disaster, or Ruleset variant does not receive a
-parallel execution engine merely because its behavior differs.
-
-Prefer:
-
-canonical path + explicit local delta
-
-over:
-
-variant-specific copy of the canonical path.
-
-If a separate execution path is proposed, identify the concrete contract that requires it.
-Separate paths are justified when ordering, RNG streams, transaction or lock boundaries,
-persistence semantics, or event semantics are materially different.
-
-Do not create a generic framework merely to avoid a small explicit conditional or to
-prepare for hypothetical future variants.
-
-Reuse existing concrete code first. Extract a shared abstraction only when the common
-contract already exists in current supported behavior and the abstraction is clearer than
-the duplicated paths.
-
-Aoi Inora is the reference example: it remains an ordinary monster for movement candidate
-selection, occupancy, movement limits, protection, defense contact, damage, kill handling,
-and the normal monster action flow.
-
-Its unique contracts are limited to its distant-sea World spawn, ability to traverse water,
-and neutral-sea result when consuming a destination. Those differences do not justify a
-separate monster engine.
-
-## Test scope policy
-
-Add a test only when it protects at least one of:
-
-- a new supported production contract;
-- a previously observed real regression;
-- a production-reachable integrity boundary;
-- a production-reachable transaction, concurrency, or lock boundary;
-- a current security or authorization boundary; or
-- a currently supported install, upgrade, or release boundary.
-
-Prefer extending an existing representative contract test. Do not add another fixture,
-matrix, or file for the same invariant. Do not add tests solely for unsupported historical
-applications or Rulesets, direct upgrades outside the product contract, states rejected by
-request validation or database integrity, theoretical integer or identifier maxima, the same
-invariant at every internal layer, every Item/command/monster variant of a shared subsystem,
-speculative future compatibility, or precautionary abnormal cases without a production
-path. A bug fix does not require a new test file when an existing contract test can contain
-the regression.
-
-## Test impact forecast policy
-
-Before implementing a feature or fix, produce a test impact forecast.
-
-The forecast must identify:
-
-- the supported production contract being added or changed;
-- the existing test file or representative contract that should own it;
-- the expected number of new test files and identifiers;
-- every expensive fixture expected to be added or executed:
-  - fresh database installation;
-  - migration or upgrade;
-  - production-size World construction;
-  - World expansion;
-  - official non-dry Turn;
-  - concurrency or lock orchestration;
-  - performance profile;
-- the expected runtime impact; and
-- if a new test file or expensive fixture is proposed, why an existing representative
-  test cannot cover the contract.
-
-The runtime forecast may be qualitative when no reliable measurement exists yet (e.g.
-negligible / small / significant). Do not run expensive benchmarks solely to make the
-forecast numerically precise.
-
-The default forecast is:
-
-- zero new test files;
-- extension of an existing representative contract test;
-- one representative integration path for one new production contract; and
-- small unit tests only for pure logic that does not require database, World, or Turn setup.
-
-This is a planning budget, not a hard cap. Necessary tests may exceed it, but the reason
-must be stated before implementation.
-
-A new Item, monster, command, facility, or Ruleset variant does not duplicate the shared
-subsystem test suite. Test only the behavior that is unique to that variant. Shared
-persistence, transaction, locking, equipment, targeting, damage, or retry contracts remain
-owned by their existing representative tests.
-
-For state or policy systems, do not create a Cartesian matrix of every state × every
-command × every target type. Test the shared policy once per materially different action
-category, then add a small number of representative end-to-end transitions.
-
-A new performance test must define an actual regression contract, such as a query or
-runtime bound. Tests that only report timing, assert that queries are greater than zero, or
-repeat intermediate sizes without a distinct product boundary are not allowed.
-
-Before opening a PR, compare actual test growth with the forecast:
-
-| Metric | Forecast | Actual | Reason for difference |
-|---|---:|---:|---|
-| New test files | | | |
-| New identifiers | | | |
-| Production World constructions | | | |
-| Official Turn executions | | | |
-| Migration/fresh-install executions | | | |
-| Estimated runtime delta | | | |
-
-If actual growth materially exceeds the forecast, consolidate fixtures and representative
-contracts before declaring the implementation complete.
-
-Reviewers requesting another test must identify:
-
-- the supported production contract that is currently unprotected;
-- why an existing representative test cannot own the regression; and
-- the least expensive layer that can prove the contract.
-
-Do not request a full integration matrix when a representative integration test plus a
-focused unit or policy test proves the same production contract.
-
-Important:
-
-- Do not interpret this as a numerical test cap.
-- Do not remove necessary current-contract tests merely to satisfy the forecast.
-- Do not modify gameplay or runtime behavior for this policy addition.
-- This policy is intended to force cost and ownership consideration before tests are added,
-  not to discourage legitimate regression coverage.
-
-## Review scope policy
-
-A review finding must show at least one of:
-
-- reachability from a supported production path;
-- damage to the current migration or install contract;
-- risk to persistent data;
-- a security or authorization risk;
-- a transaction, concurrency, or lock risk;
-- a current player-visible regression; or
-- a current operator-contract regression.
-
-Do not require P1 or P2 work solely because an unsupported historical version no longer
-runs, a rollback outside the product contract is unavailable, an impossible state rejected
-by database or request boundaries is unhandled, a theoretical maximum is untested, the
-same validation is not duplicated in every internal layer, only representative variants are
-tested, or an explicit Owner decision ended compatibility. An Owner-declared product
-constraint is not missing compatibility.
-
-## Verification policy
-
-Local backend full suites are separate verification units:
-
-- Surface full is `composer test:surface` and contains `tests/Unit` plus `tests/Feature`; it does not contain `tests/Underground`.
-- Underground full is `composer test:underground` and contains only `tests/Underground`.
-- Repository-wide verification is `composer test:all`; `composer test` remains its compatibility alias.
-
-For an Underground-only feature or fix, run focused tests, Underground full, relevant static/frontend checks, and exact-head Quality CI. Do not add a local Surface full run. For a Surface-only feature or fix, run focused tests, Surface full, relevant static/frontend checks, and exact-head Quality CI. Do not add a local Underground full run.
-
-Run both local full suites or `composer test:all` only for a release, rebaseline, test-infrastructure change, Surface/Underground shared-runtime cross-cutting change, or explicit Owner request, and only when there is a concrete reason. Exact-head Quality CI remains repository-wide and must cover both suites with complete shard coverage, duplicate zero, missing zero, and serial/shard identifier equivalence. A test-infrastructure change may prove the separation contract with focused script/config tests and exact-head CI without adding an otherwise unnecessary long local repository-wide serial run.
-
-For an ordinary feature or fix PR, exact-head sharded Quality CI plus appropriate focused
-local tests and static checks may provide complete verification. A 30-minute-class local
-full serial run is not automatically required. Require local full serial primarily for a
-release or rebaseline, migration or test-infrastructure changes, shard-planner changes,
-broad cross-cutting runtime changes, or an explicit Owner request. Do not request another
-local serial run without a concrete reason when focused local verification and exact-head
-full sharded CI are appropriate.
-
-Do not reacquire verification evidence for the same conditions and content without a new
-decision need. Exact-head evidence may be reused while the source tree or commit, test
-configuration, dependency lock state, runtime or container image, database/test environment,
-and performance-relevant hardware or execution environment are unchanged. If the Owner
-declares an environment change, or repository evidence shows a new PC, CI runner, runtime
-image, dependency, or test infrastructure, do not treat old performance numbers as the same
-baseline. When more timing evidence is needed, profile the relevant test group, known slow
-shard, or suspected files first. Run full serial on the meaningful final candidate state, or
-after a cross-cutting change when there is a concrete reason.
-
-## Coordinate system
-
-The canonical surface-map coordinate system is the staggered square-tile `x`/`y` grid defined by `docs/decisions/ADR-0003-hex-coordinate-system.md`.
-
-- Use `x`, `y`, `chunk_x`, `chunk_y`, `local_x`, `local_y`, `target_x`, and `target_y` in current code and public interfaces.
-- The initial world is `0..59` on both axes with 60 cells in every row.
-- Even absolute `y` rows are rendered 16px to the right; never derive parity from a capital-relative row.
-- Keep the six-neighbor direction numbering identical in Backend and Frontend.
-- Cube conversion is permitted only as a private distance-calculation detail.
-- Historical migrations may name the retired coordinate columns only to backfill or roll back them.
+- AGENTS.mdには、長期間再利用できる行動原則だけを書く。
+- 特定version、特定release、PR番号、固有機能名、過去の個別bug、一時的な回避策を追加しない。
+- 過去事故の教訓を残す場合、固有名詞や事件経緯ではなく汎用原則へ抽象化する。
+- 数値、仕様、手順、コマンド一覧、テスト表は、それぞれのcode・test・architecture・operations文書へ置く。
+- 新しい事故が起きるたびにお守り文言を追記しない。既存原則へ統合するか、code・constraint・regression testで防止する。
+- 更新時は単純追記ではなく、重複や古い記述を削除して全体を短く保つ。
