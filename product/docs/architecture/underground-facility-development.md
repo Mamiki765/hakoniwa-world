@@ -14,9 +14,9 @@ The facility feature does not add a second scheduler, a second missile engine, U
 
 ## Surface Ruleset boundary
 
-The published Surface Ruleset v19 is immutable and is not republished or replaced by this release-branch feature.
+Surface Ruleset v19 is the in-development Ruleset for release/3.1.0. It may still be revised as needed while release/3.1.0 is in development and freezes only when 3.1.0 is released to main/production.
 
-The five facility commands belong to `UndergroundCommandCatalog`, backed by `config/underground-facilities.php`. They are deliberately absent from Surface `command_definitions`. A queued Underground item still records the current World's Ruleset version as request provenance, but it has no Ruleset-bound `command_definition_id` and does not alter that published Ruleset payload.
+This PR does not need to change Surface Ruleset v19 and does not add v20. The five facility commands belong to `UndergroundCommandCatalog`, backed by `config/underground-facilities.php`, and are deliberately absent from Surface `command_definitions`. A queued Underground item still records the current World's Ruleset version as request provenance, but it has no Ruleset-bound `command_definition_id`. Leaving v19 unchanged in this PR does not prohibit later v19 changes before the 3.1.0 release freeze.
 
 This separation is enforced on both boundaries:
 
