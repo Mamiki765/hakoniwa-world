@@ -10,7 +10,7 @@ use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
 use App\Application\Ver270SecretaryItemRulesetUpgrade;
 use App\Application\Ver280UnderseaCityRulesetUpgrade;
-use App\Application\Ver310TerritoryAbandonmentRulesetUpgrade;
+use App\Application\Ver310RulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
 use App\Domain\World\WorldGenerationProfile;
@@ -20,7 +20,6 @@ use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMonsterKillStat;
-use App\Models\NationUndergroundFacility;
 use App\Models\ProductionDefinition;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
@@ -74,7 +73,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(27, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(59, DB::table('migrations')->count());
+        $this->assertSame(56, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -103,16 +102,7 @@ final class FreshInstallRebaselineTest extends TestCase
             'migration' => '2026_08_30_050000_rebaseline_3_0_0_underground_release',
         ]);
         $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_08_31_000000_add_underground_awakening_progression',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_01_000000_publish_v19_territory_abandonment',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_01_010000_add_nation_underground_facilities',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_01_020000_version_underground_facility_definitions',
+            'migration' => '2026_09_01_000000_rebaseline_3_1_0_release',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -382,52 +372,7 @@ SQL);
         $this->assertSame(1, $starter->equipped_slot);
     }
 
-    public function test_existing_pr116_schema_is_forward_versioned_without_reinterpreting_surface_definitions(): void
-    {
-        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
-        $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, '地下定義移行国', '地下定義移行島主');
-        $ruleset = $world->rulesetVersion()->sole();
-        $facility = NationUndergroundFacility::query()->create([
-            'nation_id' => $nation->id,
-            'ruleset_version_id' => $ruleset->id,
-            'layer' => 1,
-            'slot_index' => 0,
-            'facility_key' => 'underground_city',
-        ]);
-        $target = config('hakoniwa.ruleset');
-        $previous = $target;
-        unset($previous['underground_facility_development']);
-        $surfaceDefinitions = $previous['command_definitions'];
-
-        Schema::table('nation_underground_facilities', function (Blueprint $table): void {
-            $table->dropForeign(['ruleset_version_id']);
-        });
-        Schema::table('nation_underground_facilities', function (Blueprint $table): void {
-            $table->dropColumn('ruleset_version_id');
-        });
-        $ruleset->update(['settings' => $previous]);
-        DB::table('migrations')->where(
-            'migration',
-            '2026_09_01_020000_version_underground_facility_definitions',
-        )->delete();
-
-        $this->assertSame(
-            ['2026_09_01_020000_version_underground_facility_definitions'],
-            $this->pendingMigrations(),
-        );
-        $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
-
-        $this->assertSame([], $this->pendingMigrations());
-        $this->assertEquals($target, $ruleset->fresh()->settings);
-        $this->assertEquals($surfaceDefinitions, $ruleset->fresh()->settings['command_definitions']);
-        $this->assertSame($ruleset->id, NationUndergroundFacility::query()
-            ->whereKey($facility->id)->value('ruleset_version_id'));
-        $this->assertSame(1, DB::table('pg_constraint')
-            ->where('conname', 'nation_underground_facilities_ruleset_version_id_foreign')->count());
-    }
-
-    public function test_exact_2_8_0_v18_upgrade_preserves_business_data_and_remains_runnable(): void
+    public function test_exact_3_0_0_v18_upgrade_runs_one_release_migration_and_preserves_business_data(): void
     {
         $targetSettings = config('hakoniwa.ruleset');
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
@@ -446,7 +391,7 @@ SQL);
             ->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
             ->firstOrFail();
-        app(CommandQueueService::class)->add(
+        $queued = app(CommandQueueService::class)->add(
             user: $user,
             nation: $nation,
             mapSpace: $space,
@@ -455,51 +400,86 @@ SQL);
             targetY: $target->y,
             requestKey: (string) Str::uuid(),
             expectedVersion: 1,
-        );
+        )['item'];
+        $profile = UndergroundProfile::query()->create([
+            'secretary_id' => $user->secretary()->sole()->id,
+            'combat_level' => 7,
+            'combat_xp' => 1234,
+            'shard_balance' => 321,
+            'banked_shard_balance' => 456,
+            'current_hp' => 789,
+            'unlocked_area_layers' => 0,
+        ]);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => now()->subDay(),
+            'first_cleared_at' => now(),
+        ]);
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $rulesetId = $ruleset->id;
         $databasePayloadChecksum = $this->rulesetChecksum($ruleset->settings);
-        $formalChecksum = $this->rulesetChecksum(config('hakoniwa.ruleset'));
+        $sourceChecksum = $this->rulesetChecksum(config('hakoniwa.ruleset'));
+        $sourceDefinitionId = (int) $queued->command_definition_id;
+        $requestRulesetId = (int) $queued->request_ruleset_version_id;
         $before = $this->businessSnapshot();
 
-        $this->returnDatabaseToExact280Source();
+        $this->returnDatabaseToExact300Source();
         config([
             'hakoniwa.ruleset' => $targetSettings,
             'hakoniwa.published_rulesets' => [$targetSettings['key'] => $targetSettings],
         ]);
         $this->assertSame(
-            [
-                '2026_08_30_050000_rebaseline_3_0_0_underground_release',
-                '2026_08_31_000000_add_underground_awakening_progression',
-                '2026_09_01_000000_publish_v19_territory_abandonment',
-                '2026_09_01_010000_add_nation_underground_facilities',
-                '2026_09_01_020000_version_underground_facility_definitions',
-            ],
+            ['2026_09_01_000000_rebaseline_3_1_0_release'],
             $this->pendingMigrations(),
         );
+        $this->assertSame(55, DB::table('migrations')->count());
         $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
 
         $this->assertSame([], $this->pendingMigrations());
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
         $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
-        $this->assertSame(59, DB::table('migrations')->count());
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_gauge'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_message'));
+        $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'ruleset_version_id'));
+        $this->assertSame(56, DB::table('migrations')->count());
         $after = $this->businessSnapshot();
         foreach ($before as $table => $digest) {
-            if (! in_array($table, ['worlds', 'nation_command_queue_items', 'audit_events'], true)) {
+            if (! in_array($table, [
+                'worlds', 'ruleset_versions', 'command_definitions', 'production_definitions',
+                'monster_definitions', 'nation_command_queue_items', 'audit_events', 'underground_profiles',
+            ], true)) {
                 $this->assertSame($digest, $after[$table], $table.' changed outside the v19 activation boundary.');
             }
         }
-        $targetRuleset = RulesetVersion::query()->where('key', Ver310TerritoryAbandonmentRulesetUpgrade::TARGET_KEY)->sole();
+        $targetRuleset = RulesetVersion::query()->where('key', Ver310RulesetUpgrade::TARGET_KEY)->sole();
         $this->assertSame($targetRuleset->id, $world->fresh()->ruleset_version_id);
         $this->assertSame($rulesetId, $ruleset->fresh()->id);
-        $this->assertSame(Ver280UnderseaCityRulesetUpgrade::TARGET_CHECKSUM, $formalChecksum);
+        $this->assertSame(Ver280UnderseaCityRulesetUpgrade::TARGET_CHECKSUM, $sourceChecksum);
+        $this->assertSame(Ver310RulesetUpgrade::TARGET_CHECKSUM, $this->rulesetChecksum(config('hakoniwa.ruleset')));
         $this->assertEquals(config('hakoniwa.ruleset'), $targetRuleset->settings);
         app(RulesetPublisher::class)->assertPublished(config('hakoniwa.ruleset'));
         $this->assertSame(
             $databasePayloadChecksum,
             $this->rulesetChecksum($ruleset->fresh()->settings),
         );
+        $queued->refresh();
+        $this->assertNotSame($sourceDefinitionId, (int) $queued->command_definition_id);
+        $this->assertSame($targetRuleset->id, $queued->definition()->value('ruleset_version_id'));
+        $this->assertSame($requestRulesetId, (int) $queued->request_ruleset_version_id);
+        $this->assertSame([
+            7, 1234, 321, 456, 789, 1, 0, null,
+        ], [
+            $profile->fresh()->combat_level,
+            $profile->fresh()->combat_xp,
+            $profile->fresh()->shard_balance,
+            $profile->fresh()->banked_shard_balance,
+            $profile->fresh()->current_hp,
+            $profile->fresh()->unlocked_area_layers,
+            $profile->fresh()->awakening_gauge,
+            $profile->fresh()->awakening_message,
+        ]);
 
         $run = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
@@ -740,7 +720,7 @@ SQL);
     public function test_exact_v18_to_v19_upgrade_rebinds_commands_and_reconciles_trial_one_layers_without_decrement(): void
     {
         $targetSettings = config('hakoniwa.ruleset');
-        RulesetVersion::query()->where('key', Ver310TerritoryAbandonmentRulesetUpgrade::TARGET_KEY)->delete();
+        RulesetVersion::query()->where('key', Ver310RulesetUpgrade::TARGET_KEY)->delete();
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
         config([
             'hakoniwa.ruleset' => $sourceSettings,
@@ -798,10 +778,10 @@ SQL);
         ]);
         $this->assertSame(
             'production_v18_to_v19',
-            app(Ver310TerritoryAbandonmentRulesetUpgrade::class)->run(),
+            app(Ver310RulesetUpgrade::class)->run(),
         );
 
-        $target = RulesetVersion::query()->where('key', Ver310TerritoryAbandonmentRulesetUpgrade::TARGET_KEY)->sole();
+        $target = RulesetVersion::query()->where('key', Ver310RulesetUpgrade::TARGET_KEY)->sole();
         $queued->refresh();
         $this->assertSame($target->id, $world->fresh()->ruleset_version_id);
         $this->assertNotSame($sourceDefinitionId, (int) $queued->command_definition_id);
@@ -825,7 +805,7 @@ SQL);
             'sort_order' => 125,
         ]);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v19_activated')->count());
-        $this->assertSame('already_current_v19', app(Ver310TerritoryAbandonmentRulesetUpgrade::class)->run());
+        $this->assertSame('already_current_v19', app(Ver310RulesetUpgrade::class)->run());
         $this->assertSame(1, $profile->fresh()->unlocked_area_layers);
         $this->assertSame(3, $advancedProfile->fresh()->unlocked_area_layers);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v19_activated')->count());
@@ -868,6 +848,45 @@ SQL);
         foreach (array_reverse(self::UNDERGROUND_RELEASE_TABLES) as $table) {
             Schema::drop($table);
         }
+        $this->returnQueueToSurfaceOnlySchema();
+        DB::table('migrations')->whereIn('migration', [
+            '2026_08_30_050000_rebaseline_3_0_0_underground_release',
+            '2026_09_01_000000_rebaseline_3_1_0_release',
+        ])->delete();
+    }
+
+    private function returnDatabaseToExact300Source(): void
+    {
+        Schema::drop('nation_underground_facilities');
+        $this->returnQueueToSurfaceOnlySchema();
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_intro_requests
+  DROP CONSTRAINT underground_intro_requests_operation_check,
+  ADD CONSTRAINT underground_intro_requests_operation_check
+  CHECK (operation IN (
+    'entry', 'advance', 'tutorial', 'shopkeeper_name', 'scripted_loss',
+    'contract', 'growth_path', 'inn_rest', 'bank_transfer', 'playtest',
+    'stp_allocate', 'skill_acquire', 'active_loadout',
+    'equipment_purchase', 'equipment_sell', 'equipment_equip', 'equipment_unequip'
+  ))
+SQL);
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_profiles
+  DROP CONSTRAINT underground_profiles_awakening_message_check,
+  DROP CONSTRAINT underground_profiles_awakening_gauge_check
+SQL);
+        Schema::table('underground_profiles', function (Blueprint $table): void {
+            $table->dropColumn(['awakening_message', 'awakening_gauge']);
+        });
+        RulesetVersion::query()->where('key', Ver310RulesetUpgrade::TARGET_KEY)->delete();
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_01_000000_rebaseline_3_1_0_release',
+        )->delete();
+    }
+
+    private function returnQueueToSurfaceOnlySchema(): void
+    {
         DB::statement(
             'ALTER TABLE nation_command_queue_items '
             .'DROP CONSTRAINT nation_command_queue_items_target_context_check',
@@ -921,13 +940,6 @@ BEGIN
 END;
 $$
 SQL);
-        DB::table('migrations')->whereIn('migration', [
-            '2026_08_30_050000_rebaseline_3_0_0_underground_release',
-            '2026_08_31_000000_add_underground_awakening_progression',
-            '2026_09_01_000000_publish_v19_territory_abandonment',
-            '2026_09_01_010000_add_nation_underground_facilities',
-            '2026_09_01_020000_version_underground_facility_definitions',
-        ])->delete();
     }
 
     private function assertUndergroundReleaseTablesAbsent(): void
@@ -939,16 +951,7 @@ SQL);
             'migration' => '2026_08_30_050000_rebaseline_3_0_0_underground_release',
         ]);
         $this->assertDatabaseMissing('migrations', [
-            'migration' => '2026_08_31_000000_add_underground_awakening_progression',
-        ]);
-        $this->assertDatabaseMissing('migrations', [
-            'migration' => '2026_09_01_000000_publish_v19_territory_abandonment',
-        ]);
-        $this->assertDatabaseMissing('migrations', [
-            'migration' => '2026_09_01_010000_add_nation_underground_facilities',
-        ]);
-        $this->assertDatabaseMissing('migrations', [
-            'migration' => '2026_09_01_020000_version_underground_facility_definitions',
+            'migration' => '2026_09_01_000000_rebaseline_3_1_0_release',
         ]);
     }
 

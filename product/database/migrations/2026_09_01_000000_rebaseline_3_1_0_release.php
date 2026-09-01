@@ -1,5 +1,6 @@
 <?php
 
+use App\Application\Ver310RulesetUpgrade;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +12,35 @@ return new class extends Migration
 
     public function up(): void
     {
+        Schema::table('underground_profiles', function (Blueprint $table): void {
+            $table->unsignedSmallInteger('awakening_gauge')->default(0);
+            $table->string('awakening_message', 100)->nullable();
+        });
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_profiles
+  ADD CONSTRAINT underground_profiles_awakening_gauge_check
+  CHECK (awakening_gauge >= 0 AND awakening_gauge <= 1000),
+  ADD CONSTRAINT underground_profiles_awakening_message_check
+  CHECK (
+    awakening_message IS NULL
+    OR (
+      char_length(awakening_message) BETWEEN 1 AND 100
+      AND awakening_message !~ E'[\\r\\n]'
+    )
+  )
+SQL);
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_intro_requests
+  DROP CONSTRAINT underground_intro_requests_operation_check,
+  ADD CONSTRAINT underground_intro_requests_operation_check
+  CHECK (operation IN (
+    'entry', 'advance', 'tutorial', 'shopkeeper_name', 'scripted_loss',
+    'contract', 'growth_path', 'inn_rest', 'bank_transfer', 'playtest',
+    'stp_allocate', 'skill_acquire', 'active_loadout', 'awakening_message',
+    'equipment_purchase', 'equipment_sell', 'equipment_equip', 'equipment_unequip'
+  ))
+SQL);
+
         Schema::create('nation_underground_facilities', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('nation_id')->constrained()->cascadeOnDelete();
@@ -94,10 +124,12 @@ ALTER TABLE nation_command_queue_items
       ) AND target_x IS NULL AND target_y IS NULL AND target_layer >= 1 AND target_slot_index BETWEEN 0 AND 3)
   )
 SQL);
+
+        app(Ver310RulesetUpgrade::class)->run();
     }
 
     public function down(): void
     {
-        throw new RuntimeException('Nation-owned Underground facilities and command targets are forward-only.');
+        throw new RuntimeException('The ver 3.1.0 release migration is forward-only.');
     }
 };

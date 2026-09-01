@@ -51,18 +51,22 @@
             "@test:all"
         ],
         "test:surface": [
+            "Composer\\Config::disableProcessTimeout",
             "@php artisan config:clear --ansi @no_additional_args",
             "@php -d memory_limit=512M vendor/bin/phpunit tests/Unit tests/Feature"
         ],
         "test:underground": [
+            "Composer\\Config::disableProcessTimeout",
             "@php artisan config:clear --ansi @no_additional_args",
             "@php -d memory_limit=512M vendor/bin/phpunit tests/Underground"
         ],
         "test:all": [
+            "Composer\\Config::disableProcessTimeout",
             "@php artisan config:clear --ansi @no_additional_args",
             "@php -d memory_limit=512M vendor/bin/phpunit"
         ],
         "test:parallel": [
+            "Composer\\Config::disableProcessTimeout",
             "bash tests/scripts/run_parallel_tests.sh"
         ],
         "analyse": [

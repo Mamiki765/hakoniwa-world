@@ -54,6 +54,7 @@ final class CommandQueueService
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
         private readonly UndergroundFacilityService $undergroundFacilities,
         private readonly UndergroundCommandCatalog $undergroundCommands,
+        private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
     ) {}
 
     /**
@@ -1301,28 +1302,7 @@ final class CommandQueueService
     public function definitionForItem(
         NationCommandQueueItem $item,
     ): CommandDefinition|UndergroundCommandDefinition {
-        if ($item->target_context === 'underground_slot') {
-            if (! is_string($item->underground_command_key) || $item->command_definition_id !== null) {
-                throw new DomainException('Underground queue item command identity is invalid.');
-            }
-
-            $ruleset = $item->relationLoaded('requestRulesetVersion')
-                ? $item->requestRulesetVersion
-                : $item->requestRulesetVersion()->first();
-            if (! $ruleset instanceof RulesetVersion) {
-                throw new DomainException('Underground queue item Ruleset provenance is missing.');
-            }
-
-            return $this->undergroundCommands->get($ruleset->settings, $item->underground_command_key);
-        }
-        $definition = $item->relationLoaded('definition')
-            ? $item->definition
-            : $item->definition()->first();
-        if (! $definition instanceof CommandDefinition || $item->underground_command_key !== null) {
-            throw new DomainException('Surface queue item command identity is invalid.');
-        }
-
-        return $definition;
+        return $this->queuedCommandDefinitions->resolve($item);
     }
 
     /** @param array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null $visibleState */

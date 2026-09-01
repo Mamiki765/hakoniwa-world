@@ -1,6 +1,6 @@
 # Ruleset authoring
 
-The immutable `hakoniwa-2s-plus-v19.php` entrypoint explicitly reuses unchanged v18 fields
+The in-development `hakoniwa-2s-plus-v19.php` entrypoint explicitly reuses unchanged v18 fields
 and composes only the changed identity and command fragments under `v19/`. The standalone
 `hakoniwa-2s-plus-v18.php` payload remains immutable as the exact source accepted by the
 forward-only v18-to-v19 migration. Historical `roadmap-pr*` snapshots and formal
@@ -29,10 +29,12 @@ The configured current identity is in `config/hakoniwa.php`. Verify its source w
 php artisan hakoniwa:ruleset:validate --key=hakoniwa-2s-plus-v19
 ```
 
-Validation does not publish, migrate, or update a World. A future gameplay/balance change
-requires a new unique version, an explicitly registered complete payload, review, immutable
-publication, and a separate World migration. Reusing a key succeeds only when the saved
-snapshot and all definitions already match exactly; drift fails closed.
+Validation does not publish, migrate, or update a World. v19 may be completed on
+`release/3.1.0` until that release reaches main/production. After production freezes v19, a
+gameplay or balance change requires a new unique version, an explicitly registered complete
+payload, review, immutable publication, and a separate World migration. Reusing a frozen key
+succeeds only when the saved snapshot and all definitions already match exactly; drift fails
+closed.
 
 See `product/docs/archive/rulesets/index.md` for the historical index and
 `product/docs/architecture/ruleset-authoring.md` for current domain and
