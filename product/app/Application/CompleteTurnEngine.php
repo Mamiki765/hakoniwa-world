@@ -27,6 +27,7 @@ use App\Models\MapCell;
 use App\Models\MapChunk;
 use App\Models\MapSpace;
 use App\Models\Nation;
+use App\Models\NationCapital;
 use App\Models\NationResource;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
@@ -516,6 +517,10 @@ final class CompleteTurnEngine
         $metrics['missile_boundary_monsters'] = $this->karma->snapshotMissileBoundary($context);
         $this->missiles->begin($cellsByCoordinate);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
+        $capitalNationIdsByCellId = NationCapital::query()
+            ->whereIn('nation_id', $activeNations->keys()->all())
+            ->whereIn('map_cell_id', $context->state->surfaceCellIds())
+            ->pluck('nation_id', 'map_cell_id');
         $separateNormalMonsterPass = ($context->ruleset->settings['turn_resolution']['normal_monster_stage'] ?? null)
             === SecretaryItemGameplayContract::REQUIRED_NORMAL_MONSTER_STAGE;
 
@@ -549,6 +554,24 @@ final class CompleteTurnEngine
                     }
                 }
                 $cell->refresh()->load(['terrain', 'facility']);
+            }
+            $capitalNationId = $capitalNationIdsByCellId->get($cell->id);
+            if ($capitalNationId !== null) {
+                $launch = $this->missiles->processUndergroundBasesForNation(
+                    $context,
+                    $space,
+                    (int) $capitalNationId,
+                );
+                $metrics['missile_shots_fired'] += $launch['shots_fired'];
+                $metrics['missile_money_spent'] += $launch['money_spent'];
+                $metrics['missile_meaningful_impacts'] += $launch['meaningful_impacts'];
+                $metrics['missile_ineffective_impacts'] += $launch['ineffective_impacts'];
+                foreach ($launch['changed_cell_ids'] as $changedCellId) {
+                    $changed = $cellsById->get($changedCellId);
+                    if ($changed instanceof MapCell) {
+                        $changed->refresh()->load(['terrain', 'facility']);
+                    }
+                }
             }
             if ($cell->owner_nation_id === null || ! $activeNations->has($cell->owner_nation_id)) {
                 continue;
@@ -620,18 +643,6 @@ final class CompleteTurnEngine
             }
             if (! $famine && $this->appearSettlement($context, $space, $cell, $cellsByCoordinate)) {
                 $metrics['settlements_appeared']++;
-            }
-        }
-
-        $undergroundLaunch = $this->missiles->processUndergroundBases($context, $space);
-        $metrics['missile_shots_fired'] += $undergroundLaunch['shots_fired'];
-        $metrics['missile_money_spent'] += $undergroundLaunch['money_spent'];
-        $metrics['missile_meaningful_impacts'] += $undergroundLaunch['meaningful_impacts'];
-        $metrics['missile_ineffective_impacts'] += $undergroundLaunch['ineffective_impacts'];
-        foreach ($undergroundLaunch['changed_cell_ids'] as $changedCellId) {
-            $changed = $cellsById->get($changedCellId);
-            if ($changed instanceof MapCell) {
-                $changed->refresh()->load(['terrain', 'facility']);
             }
         }
 
@@ -1646,6 +1657,22 @@ final class CompleteTurnEngine
                 'decrease' => $discarded ? $before : $loss,
                 'stage_transition' => $discarded ? 0 : $this->syncSettlementStage($context, $cell),
             ];
+        }
+        if ($declineContract !== null && $capital && $before > $ordinaryMaximum) {
+            $loss = min($declineContract['loss_per_turn'], $before - $ordinaryMaximum);
+            $cell->population = $before - $loss;
+            $cell->version++;
+            $this->saveChangedCell($context, $cell);
+            $this->events->record($context, $declineContract['event_type'], $cell, [
+                'nation_id' => $cell->owner_nation_id,
+                'reason' => 'above_effective_capital_maximum',
+                'before' => $before,
+                'after' => $cell->population,
+                'actual_loss' => $loss,
+                'effective_capital_maximum' => $ordinaryMaximum,
+            ]);
+
+            return ['increase' => 0, 'decrease' => $loss, 'stage_transition' => 0];
         }
         $maximumPopulation = $attraction && $cell->facility?->key !== 'capital'
             ? $attractionMaximum

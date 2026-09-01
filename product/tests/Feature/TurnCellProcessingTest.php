@@ -285,7 +285,7 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame($capitalScale, $capital->fresh()->facility_scale);
 
         $firstUndergroundCity->delete();
-        [$removedUndergroundCityContext] = $this->context(
+        [$removedUndergroundCityContext, $removedUndergroundCityRun] = $this->context(
             $world,
             $nation,
             [$capital->id],
@@ -293,8 +293,52 @@ class TurnCellProcessingTest extends TestCase
         );
         $removedUndergroundCity = $engine->execute('process_cells', $removedUndergroundCityContext);
         $this->assertSame(0, $removedUndergroundCity->metrics['population_increased']);
-        $this->assertSame(0, $removedUndergroundCity->metrics['population_decreased']);
-        $this->assertSame(45_000, $capital->fresh()->population);
+        $this->assertSame(100, $removedUndergroundCity->metrics['population_decreased']);
+        $this->assertSame(44_900, $capital->fresh()->population);
+        $decline = $this->event($removedUndergroundCityRun, 'population.decreased');
+        $this->assertSame('above_effective_capital_maximum', $decline['reason']);
+        $this->assertSame(35_000, $decline['effective_capital_maximum']);
+        $this->assertSame(100, $decline['actual_loss']);
+
+        [$subsequentDeclineContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+        );
+        $subsequentDecline = $engine->execute('process_cells', $subsequentDeclineContext);
+        $this->assertSame(100, $subsequentDecline->metrics['population_decreased']);
+        $this->assertSame(44_800, $capital->fresh()->population);
+
+        $this->settlement($capital, 'capital', 35_000);
+        [$atEffectiveMaximumContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+        );
+        $atEffectiveMaximum = $engine->execute('process_cells', $atEffectiveMaximumContext);
+        $this->assertSame(0, $atEffectiveMaximum->metrics['population_increased']);
+        $this->assertSame(0, $atEffectiveMaximum->metrics['population_decreased']);
+        $this->assertSame(35_000, $capital->fresh()->population);
+
+        NationUndergroundFacility::query()->create([
+            'nation_id' => $nation->id,
+            'layer' => 1,
+            'slot_index' => 0,
+            'facility_key' => 'underground_city',
+        ]);
+        [$rebuiltUndergroundCityContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+        );
+        $rebuiltUndergroundCity = $engine->execute('process_cells', $rebuiltUndergroundCityContext);
+        $this->assertSame(100, $rebuiltUndergroundCity->metrics['population_increased']);
+        $this->assertSame(0, $rebuiltUndergroundCity->metrics['population_decreased']);
+        $this->assertSame(35_100, $capital->fresh()->population);
+        $this->assertSame($capitalScale, $capital->fresh()->facility_scale);
 
         $riotCells = [$firstCandidate, $secondCandidate, $this->ownedEmptyCell($nation, [$capital->id, $firstCandidate->id, $secondCandidate->id])];
         foreach (['farm', 'factory', 'missile_base'] as $index => $facilityKey) {

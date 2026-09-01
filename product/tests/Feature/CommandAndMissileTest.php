@@ -3714,11 +3714,13 @@ class CommandAndMissileTest extends TestCase
         app(DomesticCommandExecutor::class)->execute($firstContext);
         $resolver = app(MissileImpactResolver::class);
         $resolver->begin($this->missileCellIndex($world));
-        $firstMetrics = $resolver->processUndergroundBases($firstContext, $space);
+        $firstMetrics = $resolver->processUndergroundBasesForNation($firstContext, $space, $firing->id);
+        $duplicateMetrics = $resolver->processUndergroundBasesForNation($firstContext, $space, $firing->id);
         $resolver->finalize($firstContext);
         app(SecretaryTurnService::class)->flushExperience($firstContext);
 
         $this->assertSame(1, $firstMetrics['shots_fired']);
+        $this->assertSame(0, $duplicateMetrics['shots_fired']);
         $this->assertSame('completed', $firstItem->fresh()->status);
         $this->assertSame('killed', $firstMonster->fresh()->state);
         $this->assertSame(
@@ -3755,7 +3757,7 @@ class CommandAndMissileTest extends TestCase
         app(DomesticCommandExecutor::class)->execute($secondContext);
         $resolver->begin($this->missileCellIndex($world));
         $surfaceMetrics = $resolver->processBase($secondContext, $space, $surfaceBase);
-        $undergroundMetrics = $resolver->processUndergroundBases($secondContext, $space);
+        $undergroundMetrics = $resolver->processUndergroundBasesForNation($secondContext, $space, $firing->id);
         $resolver->finalize($secondContext);
         app(SecretaryTurnService::class)->flushExperience($secondContext);
 
@@ -3780,6 +3782,81 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame([0, $experiencePerDamage], $events->pluck('secretary_monster_experience_awarded')->all());
         $this->assertSame($combatLevelBefore, $profile->fresh()->combat_level);
         $this->assertSame($combatXpBefore, $profile->fresh()->combat_xp);
+    }
+
+    public function test_underground_missile_bases_follow_their_capital_cell_anchor_and_stable_slot_order(): void
+    {
+        $world = $this->lightweightWorld();
+        [$undergroundUser, $undergroundNation] = $this->nation($world, '地下発射国');
+        [$surfaceUser, $surfaceNation] = $this->nation($world, '地上発射国');
+        [, $targetNation] = $this->nation($world, '共同標的国');
+        $undergroundNation->update(['money' => 2_000]);
+        $surfaceNation->update(['money' => 1_000]);
+        $space = $this->surfaceMapSpace($world);
+        $surfaceBase = $this->missileBase($surfaceNation);
+        $laterUndergroundBase = NationUndergroundFacility::query()->create([
+            'nation_id' => $undergroundNation->id,
+            'layer' => 2,
+            'slot_index' => 0,
+            'facility_key' => 'underground_missile_base',
+        ]);
+        $earlierUndergroundBase = NationUndergroundFacility::query()->create([
+            'nation_id' => $undergroundNation->id,
+            'layer' => 1,
+            'slot_index' => 3,
+            'facility_key' => 'underground_missile_base',
+        ]);
+        $host = $this->monsterArena($world, $targetNation);
+        $monster = $this->monster($world, $host, 'red_inora');
+        $undergroundItem = $this->queue(
+            app(CommandQueueService::class),
+            $undergroundUser,
+            $undergroundNation,
+            $space,
+            'spp_missile',
+            $host,
+            2,
+        );
+        $surfaceItem = $this->queue(
+            app(CommandQueueService::class),
+            $surfaceUser,
+            $surfaceNation,
+            $space,
+            'spp_missile',
+            $host,
+        );
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'capital anchored underground missile order'),
+            [$undergroundNation->id, $surfaceNation->id, $targetNation->id],
+        );
+        $undergroundCapital = MapCell::query()
+            ->whereKey($undergroundNation->capital()->value('map_cell_id'))
+            ->with(['terrain', 'facility', 'ownerNation'])
+            ->firstOrFail();
+
+        $this->executeCellResolution($context, $undergroundCapital, $surfaceBase, $host);
+
+        $this->assertSame('completed', $undergroundItem->fresh()->status);
+        $this->assertSame('completed', $surfaceItem->fresh()->status);
+        $this->assertSame('killed', $monster->fresh()->state);
+        $events = DB::table('audit_events')->whereIn('event_type', ['monster.damaged', 'monster.killed'])
+            ->where('subject_id', $monster->id)->orderBy('id')->get()
+            ->map(static fn (object $event): array => json_decode(
+                (string) $event->metadata,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            ));
+        $this->assertSame(
+            ['underground_missile_base', 'underground_missile_base', 'surface_missile_base'],
+            $events->pluck('missile_source_kind')->all(),
+        );
+        $this->assertSame(
+            [$earlierUndergroundBase->id, $laterUndergroundBase->id, $surfaceBase->id],
+            $events->pluck('missile_source_id')->all(),
+        );
     }
 
     public function test_water_ownership_cleanup_does_not_affect_land_facilities_or_empty_owned_water(): void

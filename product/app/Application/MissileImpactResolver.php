@@ -57,6 +57,9 @@ final class MissileImpactResolver
     /** @var array<int, true> */
     private array $changedCellIds = [];
 
+    /** @var array<int, true> */
+    private array $processedUndergroundBaseIds = [];
+
     /** @var array<string, MapCell>|null */
     private ?array $surfaceCellsByCoordinate = null;
 
@@ -83,6 +86,7 @@ final class MissileImpactResolver
     {
         $this->launches = [];
         $this->changedCellIds = [];
+        $this->processedUndergroundBaseIds = [];
         $this->surfaceCellsByCoordinate = $surfaceCellsByCoordinate;
     }
 
@@ -183,7 +187,11 @@ final class MissileImpactResolver
      *
      * @return array{shots_fired: int, money_spent: int, meaningful_impacts: int, ineffective_impacts: int, changed_cell_ids: list<int>}
      */
-    public function processUndergroundBases(TurnContext $context, MapSpace $space): array
+    public function processUndergroundBasesForNation(
+        TurnContext $context,
+        MapSpace $space,
+        int $nationId,
+    ): array
     {
         $metrics = [
             'shots_fired' => 0, 'money_spent' => 0,
@@ -195,10 +203,14 @@ final class MissileImpactResolver
         }
         $baseIds = $this->undergroundBenefits->missileBaseIdsForTurn(
             $context->state,
-            $context->state->stableNationIds(),
+            [$nationId],
         );
 
         foreach ($baseIds as $baseId) {
+            if (isset($this->processedUndergroundBaseIds[$baseId])) {
+                continue;
+            }
+            $this->processedUndergroundBaseIds[$baseId] = true;
             $base = NationUndergroundFacility::query()->whereKey($baseId)
                 ->where('facility_key', 'underground_missile_base')
                 ->lockForUpdate()->first();
