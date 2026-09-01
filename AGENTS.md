@@ -30,7 +30,9 @@ its large example set in this file.
 
 ### Ruleset release lifecycle
 
-Do not increment a Ruleset version per PR. Before proposing a new version, distinguish the
+Do not turn a one-off release incident, a specific version number, or a temporary workaround
+into a permanent Agent rule. Keep this file limited to reusable behavior constraints and
+decision principles. Before proposing a new Ruleset version, distinguish the
 Ruleset currently on `main`, the current Ruleset on the work base/release branch, and the
 Ruleset actually released to and used by production. Source labels such as
 `published_rulesets`, an authored payload, or a publication migration do not by themselves
