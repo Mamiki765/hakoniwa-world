@@ -24,6 +24,7 @@ final class NationResourceForecastProjection
         private readonly FacilityCapacityService $facilityCapacities,
         private readonly NationLifecyclePrepareStateResolver $prepareState,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
+        private readonly NationQueuedMeaningfulActivityQuery $meaningfulActivity,
     ) {}
 
     /**
@@ -234,13 +235,8 @@ final class NationResourceForecastProjection
         $resumeDue = $nation->resume_at_turn !== null && $targetTurn >= $nation->resume_at_turn;
         $needsQueueProjection = ($nation->state === 'recovery' && $resumeDue)
             || ($nation->state === 'dormant' && $nation->state_reason !== 'manual');
-        $hasQueuedNonFinanceCommand = $needsQueueProjection && DB::table('nation_command_queue_items as item')
-            ->join('nation_command_queues as queue', 'queue.id', '=', 'item.nation_command_queue_id')
-            ->join('command_definitions as definition', 'definition.id', '=', 'item.command_definition_id')
-            ->where('queue.nation_id', $nation->id)
-            ->where('item.status', 'queued')
-            ->where('definition.key', '<>', $financeKey)
-            ->exists();
+        $hasQueuedNonFinanceCommand = $needsQueueProjection
+            && $this->meaningfulActivity->exists($nation, $financeKey);
 
         return $this->prepareState->resolve(
             $nation->state,

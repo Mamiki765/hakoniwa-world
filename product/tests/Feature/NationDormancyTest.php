@@ -4,15 +4,20 @@ namespace Tests\Feature;
 
 use App\Application\CommandQueueService;
 use App\Application\NationCreationService;
+use App\Application\NationQueuedMeaningfulActivityQuery;
 use App\Application\TurnRunner;
+use App\Application\Underground\UndergroundProfileService;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\NationMembership;
 use App\Models\NationResource;
+use App\Models\NationUndergroundFacility;
 use App\Models\Secretary;
 use App\Models\TurnRun;
+use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
@@ -177,6 +182,92 @@ final class NationDormancyTest extends TestCase
             ->assertOk()->json('data.resource_forecast.rows.0');
         $this->assertGreaterThan(0, $queuedResumeForecast['production']);
         $this->assertGreaterThan(0, $queuedResumeForecast['consumption']);
+    }
+
+    public function test_idle_dormancy_treats_versioned_underground_queue_as_meaningful_activity(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($owner, $world, '地底復帰島', '地底復帰島主');
+        $nation->update(['money' => 2_000, 'idle_counter' => 37]);
+        $nation->capital()->firstOrFail()->cell()->update(['population' => 10_000]);
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($owner->secretary()->sole());
+        $profile->update(['unlocked_area_layers' => 1]);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $item = app(CommandQueueService::class)->add(
+            user: $owner,
+            nation: $nation->fresh(),
+            mapSpace: $this->surfaceMapSpace($world),
+            commandKey: 'build_underground_city',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+            targetLayer: 1,
+            targetSlotIndex: 0,
+        )['item'];
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+        ]);
+        $this->assertTrue(app(NationQueuedMeaningfulActivityQuery::class)->exists($nation->fresh(), 'finance'));
+        $undergroundForecast = $this->actingAs($owner)->getJson('/api/v1/me/nation')
+            ->assertOk()->json('data.resource_forecast.rows.0');
+        $this->assertGreaterThan(0, $undergroundForecast['consumption']);
+
+        $financeOwner = User::factory()->create();
+        $financeNation = app(NationCreationService::class)->create(
+            $financeOwner,
+            $world,
+            '資金のみ休眠島',
+            '資金のみ休眠島主',
+        );
+        $financeNation->update(['idle_counter' => 11]);
+        $financeItem = app(CommandQueueService::class)->add(
+            user: $financeOwner,
+            nation: $financeNation->fresh(),
+            mapSpace: $this->surfaceMapSpace($world),
+            commandKey: 'finance',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        )['item'];
+        $financeNation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+        ]);
+        $financeForecast = $this->actingAs($financeOwner)->getJson('/api/v1/me/nation')
+            ->assertOk()->json('data.resource_forecast.rows.0');
+        $this->assertSame(0, $financeForecast['production']);
+        $this->assertSame(0, $financeForecast['consumption']);
+
+        $run = app(TurnRunner::class)->run($world->fresh());
+
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame('active', $nation->fresh()->state);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame(0, (int) $nation->fresh()->idle_counter);
+        $this->assertDatabaseHas('nation_underground_facilities', [
+            'nation_id' => $nation->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'layer' => 1,
+            'slot_index' => 0,
+            'facility_key' => 'underground_city',
+        ]);
+        $this->assertSame('dormant', $financeNation->fresh()->state);
+        $this->assertSame('queued', $financeItem->fresh()->status);
+        $this->assertSame(12, (int) $financeNation->fresh()->idle_counter);
+        $this->assertSame(1, NationUndergroundFacility::query()->where('nation_id', $nation->id)->count());
     }
 
     public function test_recovery_exposes_exact_remaining_turns_and_exits_only_on_t_plus_85(): void
