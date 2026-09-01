@@ -84,7 +84,8 @@ separate from private/no-store inquiry attachments.
 
 | Secretary image state | Viewer preference | Display |
 |---|---|---|
-| any state | unset | No image and the one-line setup notice |
+| non-AI uploaded image | unset | uploaded image and the one-line setup notice |
+| AI-generated image or no image | unset | No image and the one-line setup notice |
 | no image | configured viewer; AI images shown | silhouette or Peridot chosen by the target Secretary's owning User |
 | no image | configured; AI images hidden | No image |
 | AI-generated uploaded image | configured; AI images hidden | No image; stored file remains intact and is never replaced by a fallback |

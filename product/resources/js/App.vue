@@ -191,6 +191,7 @@ const map = useMapState();
 async function selectUndergroundSlot(target: UndergroundFacilityTarget): Promise<void> {
     map.clearSelection();
     selectedUndergroundSlot.value = target;
+    if (page.value !== 'island') return;
     await nextTick();
     scrollIslandWorkspaceTo('.command-panel');
 }
@@ -1850,12 +1851,6 @@ async function abandonNation(): Promise<void> {
                     </div>
                 </details>
             </header>
-            <UndergroundSurfaceMapView
-                v-if="undergroundSurfaceMap"
-                :map="undergroundSurfaceMap"
-                :selected="selectedUndergroundSlot"
-                @select="selectUndergroundSlot"
-            />
             <div class="island-workspace-region">
                 <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
                     <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
@@ -1898,6 +1893,12 @@ async function abandonNation(): Promise<void> {
                     </div>
                 </div>
             </div>
+            <UndergroundSurfaceMapView
+                v-if="undergroundSurfaceMap"
+                :map="undergroundSurfaceMap"
+                :selected="selectedUndergroundSlot"
+                @select="selectUndergroundSlot"
+            />
             <MessageBoard
                 :key="`development:${nation.id}`"
                 :nation-id="nation.id"
@@ -1962,6 +1963,12 @@ async function abandonNation(): Promise<void> {
                     @request-all="map.loadAllChunks"
                 />
             </div>
+            <UndergroundSurfaceMapView
+                v-if="previewNation.underground_surface_map"
+                :map="previewNation.underground_surface_map"
+                :selected="selectedUndergroundSlot"
+                @select="selectUndergroundSlot"
+            />
             <MessageBoard
                 :key="`public:${previewNation.id}`"
                 :nation-id="previewNation.id"
@@ -2045,8 +2052,8 @@ async function abandonNation(): Promise<void> {
                         <section class="secretary-profile-summary" aria-label="秘書基本情報">
                             <dl>
                                 <div><dt>内政Lv</dt><dd>{{ viewedSecretaryProfile.domestic_level }}</dd></div>
-                                <div v-if="viewedSecretaryProfile.is_owner && secretary?.underground?.combat_level !== null && secretary?.underground?.combat_level !== undefined">
-                                    <dt>戦闘Lv</dt><dd>{{ secretary.underground.combat_level }}</dd>
+                                <div v-if="viewedSecretaryProfile.combat_level !== null">
+                                    <dt>戦闘Lv</dt><dd>{{ viewedSecretaryProfile.combat_level }}</dd>
                                 </div>
                                 <div><dt>資金・食糧最大</dt><dd>+{{ viewedSecretaryProfile.capacity_bonus_percent }}%</dd></div>
                                 <div><dt>討伐経験値</dt><dd>{{ viewedSecretaryProfile.monster_experience }}</dd></div>

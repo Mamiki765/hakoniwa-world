@@ -59,6 +59,7 @@ export interface SecretaryProfile {
     passive_level_total: number;
     capacity_bonus_percent: number;
     monster_experience: number;
+    combat_level: number | null;
     biography: string;
     main_image: {
         display: 'uploaded' | 'silhouette' | 'peridot' | 'none';
@@ -415,6 +416,7 @@ export interface PublicNationDetail extends PublicNationSummary {
     world: { id: number; name: string; current_turn: number };
     capital: { x: number; y: number } | null;
     secretary_id: number | null;
+    underground_surface_map: UndergroundSurfaceMap | null;
     monster_final_blow_count: number;
     monster_kill_stats: Array<{
         key: string;

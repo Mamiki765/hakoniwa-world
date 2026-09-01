@@ -75,6 +75,52 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertTrue($profile->next_battle_at?->equalTo($third->finished_at->addSeconds(10)) ?? false);
     }
 
+    public function test_trial_interbattle_heal_uses_current_max_caps_and_carries_only_to_the_next_battle(): void
+    {
+        Carbon::setTestNow('2026-09-02 09:00:00+09:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes([
+            ['winner' => 'player', 'remaining_hp' => 200, 'final_mp' => 123],
+            ['winner' => 'player', 'remaining_hp' => 395, 'final_mp' => 456],
+            ['winner' => 'player', 'remaining_hp' => 300, 'final_mp' => 789],
+        ]);
+        $run = $runtime->startTrial($user, 'trial_01');
+
+        $first = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
+        $firstMaxHp = $first->snapshot['max_hp_after'];
+        $nominalHeal = intdiv($firstMaxHp * 2_000, 10_000);
+        $this->assertSame($nominalHeal, $first->snapshot['interbattle_heal_amount']);
+        $this->assertSame(200 + $nominalHeal, $first->snapshot['current_hp_after']);
+        $this->assertSame($nominalHeal, $runtime->projectTrialBattle($first)['interbattle_heal_amount']);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $second = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
+        $secondMaxHp = $second->snapshot['max_hp_after'];
+        $this->assertSame($secondMaxHp, $second->snapshot['current_hp_after']);
+        $this->assertSame(
+            $secondMaxHp - min(395, $secondMaxHp),
+            $second->snapshot['interbattle_heal_amount'],
+        );
+        $this->assertGreaterThan(0, $second->snapshot['interbattle_heal_amount']);
+
+        $run->update(['next_battle_index' => 10]);
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $boss = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
+        $this->assertSame(0, $boss->snapshot['interbattle_heal_amount']);
+        $this->assertSame(300, $boss->snapshot['current_hp_after']);
+        $this->assertSame(0, $runtime->projectTrialBattle($boss)['interbattle_heal_amount']);
+        $this->assertSame([
+            $firstMaxHp,
+            $first->snapshot['current_hp_after'],
+            $second->snapshot['current_hp_after'],
+        ], array_column($combat->calls, 'current_hp'));
+        foreach ($combat->calls as $call) {
+            $this->assertArrayNotHasKey('current_mp', $call['player_snapshot']);
+        }
+        $this->assertSame($profile->refresh()->current_hp, $boss->snapshot['current_hp_after']);
+    }
+
     public function test_exploration_duplicate_request_replays_once_before_cooldown_without_trial_contamination(): void
     {
         Carbon::setTestNow('2026-08-29 10:00:00+09:00');

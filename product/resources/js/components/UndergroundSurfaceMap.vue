@@ -18,6 +18,12 @@ const emit = defineEmits<{
 const soilStyle = computed(() => props.map.assets.soil.available && props.map.assets.soil.url
     ? { backgroundImage: `url(${props.map.assets.soil.url})` }
     : undefined);
+const selectedSlot = computed(() => {
+    if (props.selected === null) return null;
+    return props.map.layers
+        .find((layer) => layer.layer === props.selected?.layer)
+        ?.slots.find((slot) => slot.slot_index === props.selected?.slot_index) ?? null;
+});
 
 function slotAsset(slot: UndergroundSurfaceMapSlot): AssetDescriptor {
     return slot.facility_key === null
@@ -57,54 +63,63 @@ function facilityLabel(slot: UndergroundSurfaceMapSlot): string {
             </div>
             <p>{{ map.unlocked_layers }}層・{{ map.total_facility_slots }}施設枠</p>
         </header>
-        <p class="underground-map-note">
-            首都 ({{ map.capital.x }}, {{ map.capital.y }}) の地下。梯子と入口は施設枠に含まれません。
-        </p>
-        <div class="underground-entrance" aria-label="地上との入口">
-            <img v-if="map.assets.entrance.available && map.assets.entrance.url" :src="map.assets.entrance.url" alt="地底入口">
-            <span v-else aria-hidden="true">入口</span>
-        </div>
-        <ol class="underground-layers">
-            <li v-for="layer in map.layers" :key="layer.layer" class="underground-layer">
-                <p><strong>地下{{ layer.layer }}層</strong> <span>z = {{ layer.z }}</span></p>
-                <div class="underground-layer-row" :style="soilStyle">
-                    <button
-                        v-for="slot in layer.slots.slice(0, 2)"
-                        :key="slot.slot_index"
-                        type="button"
-                        class="underground-slot"
-                        :class="{ selected: isSelected(layer.layer, slot.slot_index) }"
-                        :aria-pressed="isSelected(layer.layer, slot.slot_index)"
-                        :aria-label="`${facilityLabel(slot)} ${slot.coordinate_label}`"
-                        @click="selectSlot(layer.layer, slot)"
-                    >
-                        <img v-if="slotAsset(slot).available && slotAsset(slot).url" :src="slotAsset(slot).url ?? ''" :alt="facilityLabel(slot)">
-                        <span v-else class="underground-slot-fallback" aria-hidden="true">{{ slotAsset(slot).fallback_label }}</span>
-                        <strong>{{ slot.coordinate_label }}</strong>
-                        <small>{{ slot.relative_label }}</small>
-                    </button>
-                    <div class="underground-ladder" aria-label="固定梯子（施設枠外）">
-                        <img v-if="map.assets.ladder.available && map.assets.ladder.url" :src="map.assets.ladder.url" alt="梯子">
-                        <span v-else aria-hidden="true">梯</span>
-                    </div>
-                    <button
-                        v-for="slot in layer.slots.slice(2)"
-                        :key="slot.slot_index"
-                        type="button"
-                        class="underground-slot"
-                        :class="{ selected: isSelected(layer.layer, slot.slot_index) }"
-                        :aria-pressed="isSelected(layer.layer, slot.slot_index)"
-                        :aria-label="`${facilityLabel(slot)} ${slot.coordinate_label}`"
-                        @click="selectSlot(layer.layer, slot)"
-                    >
-                        <img v-if="slotAsset(slot).available && slotAsset(slot).url" :src="slotAsset(slot).url ?? ''" :alt="facilityLabel(slot)">
-                        <span v-else class="underground-slot-fallback" aria-hidden="true">{{ slotAsset(slot).fallback_label }}</span>
-                        <strong>{{ slot.coordinate_label }}</strong>
-                        <small>{{ slot.relative_label }}</small>
-                    </button>
+        <p class="underground-map-note">梯子と入口は施設枠に含まれません。</p>
+        <div class="underground-map" aria-label="地底施設マップ">
+            <div class="underground-ceiling-row" :style="soilStyle" aria-label="地上への入口">
+                <span v-for="position in 2" :key="`left-soil-${position}`" class="underground-soil" aria-hidden="true"></span>
+                <div class="underground-entrance">
+                    <img v-if="map.assets.entrance.available && map.assets.entrance.url" :src="map.assets.entrance.url" alt="地上への入口">
+                    <span v-else aria-hidden="true">入口</span>
                 </div>
-            </li>
-        </ol>
+                <span v-for="position in 2" :key="`right-soil-${position}`" class="underground-soil" aria-hidden="true"></span>
+            </div>
+            <ol class="underground-layers">
+                <li v-for="layer in map.layers" :key="layer.layer" class="underground-layer">
+                    <div class="underground-layer-row" :style="soilStyle" :aria-label="`地下${layer.layer}層`">
+                        <button
+                            v-for="slot in layer.slots.slice(0, 2)"
+                            :key="slot.slot_index"
+                            type="button"
+                            class="underground-slot"
+                            :class="{ selected: isSelected(layer.layer, slot.slot_index) }"
+                            :aria-pressed="isSelected(layer.layer, slot.slot_index)"
+                            :aria-label="`${facilityLabel(slot)}、地下${layer.layer}層の施設枠${slot.slot_index + 1}`"
+                            @click="selectSlot(layer.layer, slot)"
+                        >
+                            <img v-if="slotAsset(slot).available && slotAsset(slot).url" :src="slotAsset(slot).url ?? ''" :alt="facilityLabel(slot)">
+                            <span v-else class="underground-slot-fallback" aria-hidden="true">{{ slotAsset(slot).fallback_label }}</span>
+                            <span class="underground-slot-label">{{ facilityLabel(slot) }}</span>
+                        </button>
+                        <div class="underground-ladder" aria-label="固定梯子（施設枠外）">
+                            <img v-if="map.assets.ladder.available && map.assets.ladder.url" :src="map.assets.ladder.url" alt="梯子">
+                            <span v-else aria-hidden="true">梯</span>
+                        </div>
+                        <button
+                            v-for="slot in layer.slots.slice(2)"
+                            :key="slot.slot_index"
+                            type="button"
+                            class="underground-slot"
+                            :class="{ selected: isSelected(layer.layer, slot.slot_index) }"
+                            :aria-pressed="isSelected(layer.layer, slot.slot_index)"
+                            :aria-label="`${facilityLabel(slot)}、地下${layer.layer}層の施設枠${slot.slot_index + 1}`"
+                            @click="selectSlot(layer.layer, slot)"
+                        >
+                            <img v-if="slotAsset(slot).available && slotAsset(slot).url" :src="slotAsset(slot).url ?? ''" :alt="facilityLabel(slot)">
+                            <span v-else class="underground-slot-fallback" aria-hidden="true">{{ slotAsset(slot).fallback_label }}</span>
+                            <span class="underground-slot-label">{{ facilityLabel(slot) }}</span>
+                        </button>
+                    </div>
+                </li>
+            </ol>
+        </div>
+        <section v-if="selectedSlot" class="underground-map-detail" aria-label="選択中の地下施設情報">
+            <p class="eyebrow">選択中</p>
+            <h3>{{ facilityLabel(selectedSlot) }}</h3>
+            <dl>
+                <div><dt>階層</dt><dd>地下{{ selected?.layer }}層</dd></div>
+                <div><dt>座標</dt><dd>{{ selectedSlot.coordinate_label }}</dd></div>
+            </dl>
+        </section>
     </section>
 </template>
 
@@ -125,13 +140,32 @@ function facilityLabel(slot: UndergroundSurfaceMapSlot): string {
 .underground-map-card h2,
 .underground-map-card p { margin: 0; }
 .underground-map-note { margin-top: 0.4rem !important; font-size: 0.86rem; }
+.underground-map {
+    width: min(100%, 25rem);
+    margin: 0.75rem auto 0;
+    overflow: hidden;
+    border: 1px solid #5e4934;
+    border-radius: 0.4rem;
+    background: #443019;
+}
+.underground-ceiling-row,
+.underground-layer-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0;
+    background-color: #443019;
+    background-repeat: repeat;
+}
+.underground-soil,
 .underground-entrance {
     display: grid;
     place-items: center;
-    width: 2.75rem;
-    height: 2.1rem;
-    margin: 0.65rem auto 0;
-    border-radius: 0.4rem 0.4rem 0 0;
+    min-width: 0;
+    aspect-ratio: 1;
+    border: 1px solid color-mix(in srgb, #5e4934 76%, transparent);
+}
+.underground-soil { background: color-mix(in srgb, #5e4934 28%, transparent); }
+.underground-entrance {
     background: linear-gradient(#bdc6c4, #67716f);
     color: #fff;
     font-size: 0.68rem;
@@ -140,59 +174,64 @@ function facilityLabel(slot: UndergroundSurfaceMapSlot): string {
 .underground-entrance img,
 .underground-ladder img,
 .underground-slot img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
-.underground-layers { display: grid; gap: 0.55rem; margin: 0; padding: 0; list-style: none; }
-.underground-layer > p { display: flex; justify-content: space-between; margin-bottom: 0.2rem; font-size: 0.8rem; }
-.underground-layer-row {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) 2.6rem repeat(2, minmax(0, 1fr));
-    gap: 0.35rem;
-    align-items: stretch;
-    padding: 0.45rem;
-    border-radius: 0.45rem;
-    background-color: #443019;
-    background-repeat: repeat;
-}
+.underground-layers { margin: 0; padding: 0; list-style: none; }
 .underground-slot {
     appearance: none;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-items: center;
     min-width: 0;
-    padding: 0.35rem 0.2rem;
-    border: 1px solid #8b7b62;
-    border-radius: 0.3rem;
+    aspect-ratio: 1;
+    padding: 0.25rem;
+    border: 1px solid #6f6250;
+    border-radius: 0;
     background: #6d665a;
     color: #fff;
     text-align: center;
     cursor: pointer;
 }
 .underground-slot.selected {
-    border-color: #ffe07a;
-    outline: 0.2rem solid color-mix(in srgb, #ffe07a 72%, transparent);
-    background: #514224;
+    z-index: 1;
+    border-color: #b62f35;
+    outline: 0.18rem solid color-mix(in srgb, #b62f35 82%, transparent);
+    outline-offset: -0.18rem;
+    background: #514044;
 }
 .underground-slot:focus-visible {
-    outline: 0.2rem solid #fff3b0;
-    outline-offset: 0.1rem;
+    z-index: 2;
+    outline: 0.18rem solid #fff3b0;
+    outline-offset: -0.18rem;
 }
 .underground-slot img,
-.underground-slot-fallback { display: grid; place-items: center; width: 2rem; height: 2rem; margin: 0 auto 0.2rem; }
+.underground-slot-fallback { display: grid; place-items: center; width: 100%; min-height: 0; overflow: hidden; }
 .underground-slot-fallback { border-radius: 0.2rem; background: #8b8b7a; font-weight: 700; }
-.underground-slot strong,
-.underground-slot small { display: block; overflow-wrap: anywhere; line-height: 1.25; }
-.underground-slot strong { font-size: 0.72rem; }
-.underground-slot small { margin-top: 0.12rem; color: #eee2c7; font-size: 0.64rem; }
+.underground-slot-label { overflow-wrap: anywhere; line-height: 1.15; font-size: 0.65rem; }
 .underground-ladder {
     display: grid;
     place-items: center;
-    min-height: 4.9rem;
+    min-width: 0;
+    aspect-ratio: 1;
     border-inline: 0.25rem solid #8f4d29;
     background: repeating-linear-gradient(to bottom, transparent 0 0.55rem, #c7773c 0.55rem 0.75rem);
     color: #fff;
     font-weight: 800;
 }
+.underground-map-detail {
+    display: grid;
+    gap: 0.35rem;
+    width: min(100%, 25rem);
+    margin: 0.75rem auto 0;
+    padding: 0.75rem;
+    border-left: 0.22rem solid #b62f35;
+    background: color-mix(in srgb, var(--surface, #fff) 92%, #b62f35);
+}
+.underground-map-detail h3 { margin: 0; }
+.underground-map-detail dl { display: grid; gap: 0.25rem; margin: 0; }
+.underground-map-detail dl div { display: grid; grid-template-columns: 4rem 1fr; gap: 0.5rem; }
+.underground-map-detail dd { margin: 0; }
 @media (max-width: 420px) {
     .underground-map-card { padding-inline: 0.55rem; }
-    .underground-layer-row { grid-template-columns: repeat(2, minmax(0, 1fr)) 1.8rem repeat(2, minmax(0, 1fr)); gap: 0.18rem; padding: 0.28rem; }
-    .underground-slot { padding-inline: 0.08rem; }
-    .underground-slot strong { font-size: 0.62rem; }
-    .underground-slot small { font-size: 0.56rem; }
+    .underground-slot { padding: 0.14rem; }
+    .underground-slot-label { font-size: 0.56rem; }
 }
 </style>

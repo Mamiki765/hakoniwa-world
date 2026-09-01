@@ -23,7 +23,7 @@ final readonly class SecretaryProfilePresenter
         ?User $viewer,
         ?SecretaryItemEffectProjection $projection = null,
     ): array {
-        $secretary->loadMissing(['skills', 'itemInstances', 'user']);
+        $secretary->loadMissing(['skills', 'itemInstances', 'user', 'undergroundProfile']);
         $skillRows = $secretary->skills->keyBy('skill_key');
         $actualKeys = $skillRows->keys()->sort()->values()->all();
         $ruleset = config('hakoniwa.ruleset');
@@ -57,6 +57,7 @@ final readonly class SecretaryProfilePresenter
             'passive_level_total' => $level,
             'capacity_bonus_percent' => $level,
             'monster_experience' => (int) $secretary->monster_experience,
+            'combat_level' => $secretary->undergroundProfile?->combat_level,
             'biography' => $secretary->profile_biography,
             'main_image' => $image,
             'editable_image_metadata' => $isOwner && $secretary->main_image_path !== null ? [
@@ -85,16 +86,13 @@ final readonly class SecretaryProfilePresenter
         bool $viewerPreferencesConfigured,
         ?string $targetOwnerFallback,
     ): array {
-        if (! $viewerPreferencesConfigured) {
-            return $this->noImage();
-        }
         if ($secretary->main_image_path === null) {
-            return $viewer?->show_ai_generated_secretary_images === true
+            return $viewerPreferencesConfigured && $viewer?->show_ai_generated_secretary_images === true
                 ? $this->fallbackImage((string) $targetOwnerFallback)
                 : $this->noImage();
         }
         if ($secretary->main_image_creation_method === 'ai_generated'
-            && $viewer?->show_ai_generated_secretary_images !== true) {
+            && (! $viewerPreferencesConfigured || $viewer?->show_ai_generated_secretary_images !== true)) {
             return $this->noImage();
         }
 
