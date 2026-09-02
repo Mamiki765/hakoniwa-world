@@ -43,12 +43,14 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $second = $simulator->replay($manifest, 'free_black:lv30:heal3000', 41);
 
         $this->assertSame($first, $second);
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $first['combat_identity']);
         $this->assertTrue($first['result']['cleared']);
         $this->assertCount(10, $first['result']['battles']);
         $this->assertSame($first['result']['battles'][9]['remaining_hp'], $first['result']['final_hp']);
         $maxHp = $first['result']['build']['max_hp'];
         $nominalHeal = intdiv($maxHp * 3000, 10_000);
         foreach ($first['result']['battles'] as $index => $battle) {
+            $this->assertSame(AlphaV1CombatRules::IDENTITY, $battle['combat_identity']);
             $expectedPostHeal = $index < 9
                 ? min($maxHp, $battle['remaining_hp'] + $nominalHeal)
                 : $battle['remaining_hp'];
@@ -73,12 +75,77 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertFalse($report['mp_contract']['persists_between_battles']);
         $this->assertSame([], $report['abnormal_seeds']);
         $this->assertSame(10, $report['scenarios'][0]['max_battles_observed']);
+        $this->assertSame([20, 25, 30, 35], $report['checkpoints']);
+        $this->assertSame([1.0, 1.2, 1.5, 2.0, 2.5, 3.0], array_column(
+            $report['agility_balance']['ratio_curve'],
+            'ratio',
+        ));
+        $this->assertSame([10_000, 10_045, 10_112, 10_211, 10_298, 10_367], array_column(
+            $report['agility_balance']['ratio_curve'],
+            'expected_damage_multiplier_bps',
+        ));
+        $this->assertSame([10_000, 9_855, 9_680, 9_467, 9_315, 9_200], array_column(
+            $report['agility_balance']['ratio_curve'],
+            'expected_incoming_damage_multiplier_bps',
+        ));
+        $this->assertCount(440, $report['agility_balance']['trial_one_ratios']);
+        $this->assertSame([
+            'trial_rat_vanguard' => 30,
+            'trial_cave_hunter' => 16,
+            'trial_corrosive_guard' => 10,
+            'trial_regenerating_hulk' => 10,
+            'trial_crystal_adept' => 12,
+            'trial_fanatic_captain' => 12,
+            'trial_razor_bat' => 20,
+            'trial_ash_knight' => 10,
+            'trial_gate_golem' => 10,
+            'trial_wyvern' => 12,
+        ], array_column($report['battle_sequence'], 'agility', 'key'));
         foreach ($report['builds'] as $levels) {
             foreach ($levels as $build) {
                 $this->assertLessThanOrEqual(20, $build['skill_points_spent']);
                 $this->assertSame([3, 3, 3], array_column($build['equipment']['items'], 'rank'));
             }
         }
+        foreach ([20, 25, 30] as $level) {
+            $levelKey = 'lv'.$level;
+            $mightAttack = $report['builds']['matched_might_attack'][$levelKey];
+            $mightVitality = $report['builds']['matched_might_vitality'][$levelKey];
+            $mightAgility = $report['builds']['matched_might_agility'][$levelKey];
+            $spiritAttack = $report['builds']['matched_spirit_attack'][$levelKey];
+            $spiritVitality = $report['builds']['matched_spirit_vitality'][$levelKey];
+            $spiritAgility = $report['builds']['matched_spirit_agility'][$levelKey];
+
+            $this->assertSame(0, $mightAttack['allocated_stp']['agility']);
+            $this->assertSame(0, $spiritAttack['allocated_stp']['agility']);
+            $this->assertSame($mightAttack['max_hp'], $mightAgility['max_hp']);
+            $this->assertSame($spiritAttack['max_hp'], $spiritAgility['max_hp']);
+            $this->assertSame($mightVitality['max_hp'], $spiritVitality['max_hp']);
+            $this->assertGreaterThan($mightAttack['max_hp'], $mightVitality['max_hp']);
+            $this->assertSame($mightAttack['combat_stats']['agility'], $mightVitality['combat_stats']['agility']);
+            $this->assertSame($spiritAttack['combat_stats']['agility'], $spiritVitality['combat_stats']['agility']);
+            $this->assertSame($mightAgility['combat_stats']['agility'], $spiritAgility['combat_stats']['agility']);
+            $this->assertGreaterThan($mightAttack['combat_stats']['agility'], $mightAgility['combat_stats']['agility']);
+        }
+        $mightAttack = $report['builds']['matched_might_attack']['lv20'];
+        $spiritAttack = $report['builds']['matched_spirit_attack']['lv20'];
+        $this->assertSame(1028, $mightAttack['max_hp']);
+        $this->assertSame($mightAttack['max_hp'], $spiritAttack['max_hp']);
+        $this->assertSame($mightAttack['combat_stats']['agility'], $spiritAttack['combat_stats']['agility']);
+        $this->assertSame([
+            'iron_core_crystal_staff',
+            'iron_breastplate',
+            'spirit_accessory_rank_3',
+        ], $spiritAttack['equipment_keys']);
+        $ownerBaseline = $report['builds']['owner_blessing_hp1000_zero_agility']['lv20'];
+        $this->assertSame(1004, $ownerBaseline['max_hp']);
+        $this->assertSame(0, $ownerBaseline['allocated_stp']['agility']);
+        $this->assertSame('blessing_green', $ownerBaseline['growth_path']);
+        $this->assertSame([
+            'iron_core_crystal_staff',
+            'iron_breastplate',
+            'spirit_accessory_rank_3',
+        ], $ownerBaseline['equipment_keys']);
         $this->assertArrayNotHasKey('battles', $report['scenarios'][0]);
     }
 
@@ -86,6 +153,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
     {
         [, $manifest] = $this->trialManifest();
         $this->assertSame(229, $manifest['enemies']['trial_wyvern']['magical_defense']);
+        $this->assertSame(12, $manifest['enemies']['trial_wyvern']['base_stats']['agility']);
         $this->assertSame(10_000, $manifest['statuses']['wyvern_airborne']['effects'][0]['value_bps']);
         foreach ($manifest['enemies'] as &$enemy) {
             $enemy['max_hp'] = 1;
@@ -254,6 +322,10 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         );
 
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $report['combat_identity']);
+        $this->assertSame(
+            AlphaV1CombatRules::IDENTITY,
+            $simulator->replay($manifest, 'pressure:pure_attacker:early', 41)['combat_identity'],
+        );
         $this->assertSame(AlphaV1CombatRules::GENERATOR_IDENTITY, $report['generator_identity']);
         $this->assertSame(300, $report['selected_mp_natural_recovery']);
         $this->assertTrue($report['laboratory_contract_passed']);
@@ -535,6 +607,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             new CanonicalUndergroundExplorationCombat($model),
             new UndergroundAlphaV1PlayerCatalog($rules, $validator),
             new UndergroundEquipmentCatalog,
+            $rules,
         );
     }
 }

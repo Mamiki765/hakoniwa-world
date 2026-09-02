@@ -65,28 +65,40 @@ STORY;
         private UndergroundAlphaV1BattleProjector $alphaV1Projector,
         private UndergroundStarterEquipmentService $starterEquipment,
         private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
+        private UndergroundEquipmentDropService $equipmentDrops,
         private UndergroundAwakening $awakening,
     ) {}
 
     /** @return array{battle: UndergroundBattle, duplicate: bool} */
-    public function explore(User $user, string $requestId): array
+    public function explore(User $user, string $requestId, ?string $huntingGroundKey = null): array
     {
         $this->assertRequestId($requestId);
+        $huntingGroundKey ??= $this->alphaV1Catalog->explorationHuntingGroundKey();
+        $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
         $fingerprint = $this->fingerprint([
             'activity_type' => 'exploration',
-            'activity_key' => $this->alphaV1Catalog->explorationHuntingGroundKey(),
+            'activity_key' => $huntingGroundKey,
             'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
+            'content_identity' => $huntingGround['content_identity'],
         ]);
 
         return DB::transaction(function () use (
             $user,
             $requestId,
             $fingerprint,
+            $huntingGroundKey,
+            $huntingGround,
         ): array {
             $profile = $this->lockedProfileForUser($user);
             $this->assertExplorationUnlocked($profile);
+            $this->assertHuntingGroundUnlocked($profile, $huntingGround);
             $this->assertRequestNotUsedByIntro($profile, $requestId);
-            $duplicate = $this->duplicateBattle($profile, $requestId, $fingerprint);
+            $duplicate = $this->duplicateBattle(
+                $profile,
+                $requestId,
+                $fingerprint,
+                $huntingGroundKey,
+            );
             if ($duplicate instanceof UndergroundBattle) {
                 return ['battle' => $duplicate, 'duplicate' => true];
             }
@@ -100,15 +112,16 @@ STORY;
             $seed = $this->battleSeed->forRequest(
                 $profile->id,
                 $requestId,
-                $this->alphaV1Catalog->explorationIdentity(),
+                $huntingGround['content_identity'],
             );
             $random = new UndergroundRandom($seed);
             $encounterKey = $this->alphaV1Catalog->weightedExplorationEncounter(
                 $random->integer(
-                    'runtime:encounter:'.$this->alphaV1Catalog->explorationHuntingGroundKey(),
+                    'runtime:encounter:'.$huntingGroundKey,
                     1,
                     10_000,
                 ),
+                $huntingGroundKey,
             );
 
             return [
@@ -116,6 +129,7 @@ STORY;
                     $profile,
                     $requestId,
                     $fingerprint,
+                    $huntingGroundKey,
                     $encounterKey,
                     $seed,
                 ),
@@ -360,6 +374,36 @@ STORY;
     }
 
     /** @return array<string, mixed> */
+    public function projectHuntingGroundState(UndergroundProfile $profile): array
+    {
+        $clearedTrials = UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->whereNotNull('first_cleared_at')
+            ->pluck('trial_key')
+            ->all();
+        $grounds = array_map(static function (array $ground) use ($clearedTrials): array {
+            $requiredTrial = $ground['required_trial_key'];
+            $locked = is_string($requiredTrial) && ! in_array($requiredTrial, $clearedTrials, true);
+
+            return [
+                'key' => $ground['key'],
+                'name' => $ground['name'],
+                'locked' => $locked,
+                'unlock_condition' => $requiredTrial === 'trial_01'
+                    ? '試練1を初回clear'
+                    : null,
+                'item_level_min' => $ground['item_level_min'],
+                'item_level_max' => $ground['item_level_max'],
+            ];
+        }, $this->alphaV1Catalog->explorationHuntingGrounds());
+
+        return [
+            'default_key' => $this->alphaV1Catalog->explorationHuntingGroundKey(),
+            'grounds' => $grounds,
+        ];
+    }
+
+    /** @return array<string, mixed> */
     public function projectTrialState(UndergroundProfile $profile): array
     {
         $trialKey = $this->catalog->firstTrialKey();
@@ -442,6 +486,14 @@ STORY;
                 : null,
             'finished_at' => $battle->finished_at->toAtomString(),
             'rewards' => ['xp' => $battle->xp_awarded, 'shards' => $battle->shard_delta],
+            'hunting_ground' => $context === UndergroundBattle::ACTIVITY_EXPLORATION
+                && is_array($snapshot['hunting_ground'] ?? null)
+                    ? $snapshot['hunting_ground']
+                    : null,
+            'drop' => $context === UndergroundBattle::ACTIVITY_EXPLORATION
+                && is_array($snapshot['drop'] ?? null)
+                    ? $snapshot['drop']
+                    : null,
             'trial_key' => $context === UndergroundBattle::ACTIVITY_TRIAL ? $battle->activity_key : null,
             'trial_run_key' => $context === UndergroundBattle::ACTIVITY_TRIAL ? $battle->trial_run_key : null,
             'trial_battle_index' => $context === UndergroundBattle::ACTIVITY_TRIAL
@@ -513,10 +565,12 @@ STORY;
         UndergroundProfile $profile,
         string $requestId,
         string $fingerprint,
+        string $huntingGroundKey,
         string $encounterKey,
         int $seed,
     ): UndergroundBattle {
-        $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey);
+        $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
         $secretary = $profile->secretary;
         if (! is_string($secretary->name) || $secretary->name === '') {
             throw new UndergroundRuntimeException(
@@ -628,7 +682,7 @@ STORY;
             'request_fingerprint' => $fingerprint,
             'runtime_identity' => $this->alphaV1Catalog->explorationIdentity(),
             'activity_type' => UndergroundBattle::ACTIVITY_EXPLORATION,
-            'activity_key' => $this->alphaV1Catalog->explorationHuntingGroundKey(),
+            'activity_key' => $huntingGroundKey,
             'encounter_key' => $encounterKey,
             'trial_run_key' => null,
             'trial_battle_index' => null,
@@ -648,6 +702,13 @@ STORY;
             'private_seed' => $seed,
             'snapshot' => [
                 'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
+                'hunting_ground' => [
+                    'key' => $huntingGround['key'],
+                    'name' => $huntingGround['name'],
+                    'content_identity' => $huntingGround['content_identity'],
+                    'item_level_min' => $huntingGround['item_level_min'],
+                    'item_level_max' => $huntingGround['item_level_max'],
+                ],
                 'combat_rules_identity' => $result->rulesIdentity,
                 'player_display_name' => $secretary->name,
                 'encounter_display_name' => $encounter['label'],
@@ -682,10 +743,29 @@ STORY;
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
                 'awakening' => $result->awakening,
+                'drop' => [
+                    'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                    'status' => 'pending',
+                ],
             ],
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
         ]);
+        $snapshot = $battle->snapshot;
+        $snapshot['drop'] = $resultType === UndergroundBattle::RESULT_VICTORY
+            ? $this->equipmentDrops->settleVictory(
+                $profile,
+                $battle,
+                $huntingGroundKey,
+                $encounter,
+                $seed,
+            )
+            : [
+                'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                'status' => 'ineligible',
+            ];
+        $battle->snapshot = $snapshot;
+        $battle->save();
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
             'actions' => $projection['rounds'],
@@ -1115,6 +1195,7 @@ STORY;
         UndergroundProfile $profile,
         string $requestId,
         string $fingerprint,
+        string $huntingGroundKey,
     ): ?UndergroundBattle {
         $battle = UndergroundBattle::query()
             ->where('underground_profile_id', $profile->id)
@@ -1124,7 +1205,11 @@ STORY;
         if (! $battle instanceof UndergroundBattle) {
             return null;
         }
-        if (! hash_equals($battle->request_fingerprint, $fingerprint)) {
+        $legacyShallowReplay = $huntingGroundKey === $this->alphaV1Catalog->explorationHuntingGroundKey()
+            && $battle->activity_type === UndergroundBattle::ACTIVITY_EXPLORATION
+            && $battle->activity_key === $huntingGroundKey
+            && $battle->runtime_identity === 'secretary-underground-exploration-alpha-v1';
+        if (! hash_equals($battle->request_fingerprint, $fingerprint) && ! $legacyShallowReplay) {
             throw new UndergroundRuntimeException(
                 'underground_request_conflict',
                 '同じrequest IDが別の戦闘に使用されています。',
@@ -1184,6 +1269,28 @@ STORY;
             );
         }
         $this->alphaV1Catalog->growthPath($profile->growth_path_key);
+    }
+
+    /** @param array<string, mixed> $huntingGround */
+    private function assertHuntingGroundUnlocked(
+        UndergroundProfile $profile,
+        array $huntingGround,
+    ): void {
+        $requiredTrial = $huntingGround['required_trial_key'] ?? null;
+        if ($requiredTrial === null) {
+            return;
+        }
+        if (! is_string($requiredTrial)
+            || ! UndergroundTrialProgress::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('trial_key', $requiredTrial)
+                ->whereNotNull('first_cleared_at')
+                ->exists()) {
+            throw new UndergroundRuntimeException(
+                'underground_hunting_ground_locked',
+                '黒晶洞は試練1を初回clearすると解禁されます。',
+            );
+        }
     }
 
     private function assertRequestNotUsedByIntro(UndergroundProfile $profile, string $requestId): void

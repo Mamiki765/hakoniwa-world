@@ -31,6 +31,19 @@ try {
     file_put_contents($databasePath, (string) $backend->pid, LOCK_EX);
 
     $user = User::query()->findOrFail((int) $payload['user_id']);
+    if (($payload['force_drop'] ?? false) === true) {
+        foreach (['standard', 'elite', 'rare'] as $profileKey) {
+            config([
+                "underground-alpha-v1.exploration.drop.profiles.{$profileKey}.presence_bps" => 10_000,
+                "underground-alpha-v1.exploration.drop.profiles.{$profileKey}.rarity_weights" => [
+                    'common' => 10_000,
+                    'uncommon' => 0,
+                    'rare' => 0,
+                    'epic' => 0,
+                ],
+            ]);
+        }
+    }
     if (($payload['operation'] ?? 'explore') === 'name_shopkeeper') {
         $result = app(UndergroundIntroService::class)->nameShopkeeper(
             $user,
@@ -159,6 +172,7 @@ try {
         $result = app(UndergroundRuntimeService::class)->explore(
             $user,
             (string) $payload['request_id'],
+            isset($payload['hunting_ground_key']) ? (string) $payload['hunting_ground_key'] : null,
         );
         $battle = $result['battle'];
         if (! $battle instanceof UndergroundBattle) {
@@ -175,6 +189,7 @@ try {
             'result' => $battle->result,
             'xp_awarded' => $battle->xp_awarded,
             'shard_delta' => $battle->shard_delta,
+            'drop_status' => $battle->snapshot['drop']['status'] ?? null,
         ], JSON_THROW_ON_ERROR));
     }
 } catch (UndergroundRuntimeException $exception) {

@@ -2,93 +2,70 @@
 
 ## Scope
 
-The normal application configuration resolves only the current in-development Ruleset for
-release/3.1.0, `hakoniwa-2s-plus-v19`. Its identity and current formal checksum are:
+This document defines how to establish the current Ruleset baseline without hard-coding a
+particular generation. Exact keys, versions, checksums, release numbers, and migration names
+belong to current code, release-specific handoff material, migrations, tests, and Git history.
 
-```text
-key: hakoniwa-2s-plus-v19
-version: 19
-checksum: b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9
-```
+Do not copy a concrete generation into this document merely because it is current today.
 
-v19 is the ver 3.1.0 contract under construction. It adds the turn-free `territory_abandon`
-command for safe empty owned cells, moves `build_undersea_city` to player-facing sort order
-125, and versions the isolated Underground facility/command definitions and their ongoing
-effects. Underground unlock entitlement remains Secretary-owned, constructed facilities are
-Nation-owned, and neither is represented as a surface Ruleset map cell. v19 may be refined as
-part of completing release/3.1.0; it freezes when that release reaches main/production.
+## Repository baseline
 
-## Immutable v18 boundary
+For the repository state being reviewed, resolve the exact current Ruleset from:
 
-The immediately preceding supported source remains the exact immutable v18 payload:
+1. `config/hakoniwa.php` for the configured application and Ruleset entrypoint;
+2. that entrypoint and its bounded changed-domain fragments;
+3. the current Ruleset validator and checksum/contract tests; and
+4. the exact Git head under review.
 
-```text
-key: hakoniwa-2s-plus-v18
-version: 18
-checksum: 40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b
-```
+Repository state proves what the code would author and validate. It does not by itself prove
+what production is currently using.
 
-v19 authoring explicitly reuses unchanged v18 fields and replaces only its bounded changed
-domains. It does not mutate the v18 source or payload and does not introduce recursive
-inheritance or a dynamic historical catalog.
+## Production baseline
 
-Historical v15 remains immutable with formal checksum
-`d361856e81bb6fe8752a5f1c448d8cbbdb87b6471d5142b36a06b756923fda70` and authored-file
-SHA-256 `4a033f2f0fd2ff3e241162f18842360f133741de07ceb32f9eb65a0e606b4283`.
-Historical v14 remains immutable with checksum
-`af9afe5bf055f4d2ecc4349de058f6dfc6281194dd3d52238167ced07c9d8274`.
+Production freeze and supported-upgrade decisions require Owner-confirmed production evidence.
+Do not infer production state from `main`, a merged PR, an application version string, a schema
+dump, a migration filename, or a source label such as `published`.
+
+Let the Owner-confirmed production Ruleset at release start be `N`. Its key, version, full
+payload, definitions, and checksum are immutable.
+
+If the release needs a semantic Ruleset change, the only normal new generation for that
+release is `N+1`. While the release remains unapplied to production, all of its Ruleset work
+is integrated into that same `N+1` draft. See `ruleset-authoring.md` for the complete version
+budget and classification rules.
 
 ## Dependency boundary
 
-`config/hakoniwa.php` loads only the thin v19 entrypoint. The entrypoint takes unchanged fields
-from exact v18 and replaces identity, the Surface commands domain, and the separate
-`underground_facility_development` domain from `config/hakoniwa/rulesets/v19/`. Underground
-commands do not enter Surface `command_definitions`. Current services obtain gameplay from
-`hakoniwa.ruleset`, and `hakoniwa:ruleset:validate` validates current v19 only.
+Normal application configuration loads one canonical current Ruleset entrypoint. A release
+draft may explicitly reuse unchanged fields from the exact immutable predecessor and replace
+only reviewed changed domains.
 
-The exact v18 entrypoint is retained as the immutable supported migration source and
-checksum proof. Older authored PHP and its former catalog/bootstrap remain retired; Git and
-immutable database snapshots are the authority for unsupported executable history. The
-exact v10 monster-dispatch duplicate-request compatibility continues to read persisted
-Ruleset and command-definition snapshots rather than historical PHP.
+It must not introduce recursive inheritance, a dynamic historical catalog, a second runtime
+Ruleset authority, or an unversioned gameplay definition source.
+
+Historical source bytes, published database snapshots, and provenance remain available from
+their recorded authorities. Unsupported historical PHP is not reconstructed from Markdown.
 
 ## Installation and forward migration
 
-The schema dump is the canonical final 3.0.0 schema and 55-entry migration ledger. A fresh
-install loads that schema directly, then the single forward 3.1.0 release migration creates
-the final Awakening and Nation-owned Underground facility schema and publishes final v19.
-The facility schema has a non-null `ruleset_version_id`; no Underground MapCell or 3D map
-schema is created. The exact v18 source remains in code as the immutable supported upgrade input; a
-fresh database does not need a historical v18 catalog row.
+Fresh installation uses the repository's canonical schema/install path and publishes the
+configured current Ruleset according to the current installer contract.
 
-The supported production application upgrade from ver 2.8.0 / v18 to 3.0.0 uses the
-forward-only 3.0.0 migration. It rejects an absent v18 ledger, any retired Underground alpha
-migration ledger, or any pre-existing Underground table. It verifies immutable v18 without
-changing its payload, then creates the final Underground profile, intro/progression,
-battle/history, STP/SP/Skill Tree, equipment ownership, request-idempotency, constraint,
-index, and foreign-key schema directly. Existing World, Nation, player, command, Turn,
-event, audit, and surface Ruleset data are not reset or reinterpreted.
+A supported production upgrade starts only from the exact Owner-confirmed source state. A
+forward migration that introduces a new Ruleset must verify that source, publish one complete
+new payload, preserve historical snapshots/provenance, and switch current live references by
+the reviewed stable-key and transaction contract. It must not invent an unsupported upgrade
+chain or reinterpret queued/historical work under a newer Ruleset.
 
-The supported 3.1.0 application upgrade starts from the exact 3.0.0 schema and v18 World and
-runs one forward migration. That migration creates the final schema directly, publishes the
-complete v19 payload once, rebinds current queued Surface commands and live definition
-references by stable key, switches the locked World atomically, and reconciles the Trial 1
-inconsistency by raising only profiles with a first clear and zero unlocked layers to layer 1.
-Existing values above layer 1 are never reduced, and historical commands, events, turns,
-battles, Ruleset snapshots, and other business data are preserved. Queued Underground commands
-resolve through their existing request Ruleset provenance, so the current Ruleset cannot
-reinterpret a reserved command or constructed facility.
+The exact supported source, migration file, schema effects, preflight, and recovery procedure
+are release-specific facts. Read them from the current migration, tests, handoff, and
+operations runbook rather than accumulating them here release after release.
 
-The four migrations used while PR112 through PR116 were under development were never applied
-to production and are not supported upgrade ledgers. The canonical release migration does not
-replay a pre-versioned facility schema or rewrite an intermediate v19 payload before reaching
-the final state.
+## Historical values
 
-The ten Underground migrations authored during the 3.0.0-alpha branch were never deployed to
-production and are retired from the final release. Their final schema is represented by the
-single 3.0.0 upgrade migration and the current schema dump; alpha database state is not a
-supported production source.
+Exact historical Ruleset numbers, checksums, migration ledgers, retired source files, and
+release transitions are valid historical evidence and should remain in versioned code,
+migrations, tests, Git, archives, ADRs, and audit documents where they describe a specific
+past boundary.
 
-Historical Worlds and records remain readable and fail closed for mutation under the current
-Ruleset guard. A v17-or-earlier database must first use ver 2.8.0 to reach exact v18; this tree
-does not directly upgrade it.
+They are not permanent "current" policy and should not be promoted into this document.

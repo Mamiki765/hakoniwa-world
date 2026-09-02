@@ -40,7 +40,7 @@ return [
     'trials' => [
         'trial_01' => [
             'label' => '地下に眠る古代遺跡',
-            'content_identity' => 'secretary-underground-trial-01-v1',
+            'content_identity' => 'secretary-underground-trial-01-v2',
             'interbattle_heal_bps' => 2000,
             'first_clear_skill_points' => 40,
             'encounters' => [

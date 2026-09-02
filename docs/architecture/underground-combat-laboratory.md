@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryからPR109の正式equipment、装備Shop、宝物庫、通常探索までを扱うcurrent task-specific architecture authorityである。manual combat、AI editor、Trial content、random equipment/drop、affix、unique、enhancement、enchant、party、market、facility、surface bridgeは定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryからapplication `3.2.0`の正式runtime、Trial 1・覚醒、装備Shop・宝物庫、アクセサリー3枠、浅層・黒晶洞とgenerated equipment dropまでを扱うcurrent task-specific architecture authorityである。manual combat、custom AI、再振り、Trial 2以降、unique、enhancement、enchant、party、marketは定義しない。
 
-application versionは`3.0.0`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth/skill/equipment stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR107は通常探索とgrowth settlement、PR108はstatus/STP/SP/Skill Tree、PR109はSecretary-owned equipment、装備Shop、宝物庫とactual equipmentを用いる通常探索をalpha-v1 canonical pathへ接続する。Trial、party、market、facility、surface bridgeは解禁しない。
+application versionは`3.2.0`である。surface Ruleset `hakoniwa-2s-plus-v19`とUnderground laboratory/runtime identityは別物であり、3.2.0はSurface Ruleset payloadを変更しない。profile、run、history、intro/growth/skill/equipment stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。3.2.0のcombat、exploration、equipment identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 
@@ -74,7 +74,11 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 標準Lv1の各能力20・装備補正0では最大HPをexactly 500とする。最大HPは同倍率で伸びる500の基準、基準生命との差分、装備HPから導出する。最大MPは常に10,000であり、combat level、基礎能力、アイテムLvでは増えない。通常攻撃と防御はMP 0、戦闘開始時は10,000、自然回復はalpha-v1 balance dataの300 MP / roundである。150 / 200 / 250 / 300 / 400を100-round持久fixtureで比較し、20-round帯のrotationを維持しながら長期戦では通常攻撃へfallbackし、400のほぼ無制限rotationを避ける値として300を選んだ。skill recovery、overflow、MP不足action、最初の枯渇roundは別metricとして集計する。
 
-敏捷はinitiative、evasion、interrupt/action-delay resistanceへ使うが、追加行動を作らない。critical/evasionのstat contributionは進行倍率のreferenceで正規化し、level上昇だけで確率capへ近づかない。
+敏捷はinitiative、evasion、interrupt/action-delay resistanceへ使い、damage actionにはaction単位の敏捷comboを追加する。initiativeは実効敏捷が高い側を先とし、同値時だけ既存tie-breakを使う。evasionと敏捷comboは絶対値ではなく`max(0, (self - opponent) / (self + opponent))`相当の相対差を使う。このbounded式が敏捷比の増加に従って自然に漸近するため、有限の敏捷比で成長を止めるhard saturationは設けない。相手以下なら敏捷由来evasionとcomboは0である。既存`evasion_bps`は相対敏捷bonusへ加算してから既存total capを適用する。action impairment resistanceは従来どおり進行倍率のreferenceで正規化する。
+
+敏捷comboはactionごとに1回だけ2・3・4連続ヒットを抽選し、通常のcritical・variance・防御・guard等を解決したpost-mitigation damageへ最終倍率を掛ける。action、damage event、critical、status、覚醒ゲージ、native multi-hit数は追加せず、native multi-hitにも同じaction単位のcombo結果を使う。logはnative damage行を増やさず、回避または完全防御ではない最初のdamage行に補助表示用hit数を1回だけ持つ。
+
+このevasion・damage・RNG semantics変更後のactive combat identityは`secretary-underground-alpha-v2`とする。`AlphaV1*`のclass名と`foundation-v1.json`等のfile名は既存canonical implementation lineageであり、persisted identityのauthorityには使わない。通常探索・Trial・story・playtest・manual simulatorの新規結果はv2をsnapshot/reportへ保存する。既存v1 battle snapshotはhistorical recordとしてそのまま投影できるためmigrationは行わず、parallel combat engineも追加しない。
 
 ### Alpha-v1 damage and recovery order
 
@@ -84,10 +88,11 @@ alpha-v1は`attack - defense`を使わず、次の順序を固定する。
 2. weapon coefficient、fixed componentを加え、skill potencyを掛けて整数切捨てする。
 3. target max-HP componentがあればsource stat由来capを先に適用する。
 4. category/all/status modifierと消費stack bonusを適用する。
-5. critical判定と倍率、95〜105% variance、evasion判定の順に専用label RNGを消費する。
+5. action単位の敏捷combo、critical判定と倍率、95〜105% variance、evasion判定の順に専用label RNGを消費する。
 6. `defense reference / (defense reference + effective defense)`でphysical/magical mitigationを算出する。referenceはlevel/item-level benchmarkと同じcurveで伸びる。
 7. damage-taken modifier、guard、parryを適用し、合成後の軽減は75% capを越えない。
-8. barrierを先に消費し、残りをHPへ適用する。HPを越えるdamageはclampし、合法なhitは最低1 damageとする。
+8. 敏捷comboが成立した場合はpost-mitigation damageへ2・3・4倍の最終倍率を一度適用する。
+9. barrierを先に消費し、残りをHPへ適用する。HPを越えるdamageはclampし、合法なhitは最低1 damageとする。
 
 damage prevention metricはHP clamp前のpost-mitigation damageを基準にし、defense / guard / evasion / barrierが実際に防いだ量だけを数える。残HPを越えたoverkillは防御量へ含めない。
 
@@ -288,3 +293,17 @@ PR109は護身用ナイフを含むSecretary-owned equipmentを`1 row = 1 owned 
 通常探索はsynthetic starter injectionを廃止し、progression stats、actual equipped weapon/armor/accessory、passive Skill effects、active loadout、built-in AIを同じcanonical combat snapshotへ渡す。weapon style requirementに適合しないactive skillはruntime snapshotとAI ruleから除外するが、persisted active slotは保持し、適合武器へ戻した時に再利用する。Tutorial、story battle、開発環境限定playtest、PR105 laboratory fixtureはcurrent equipmentへ依存させない。
 
 正式な浅層benchmarkはLv1 Rank 1一式、Lv10 Rank 2一式、Lv20 Rank 3一式とcurrent progressionで観測する。雑魚、厄介、強敵の相対分類とHP持越しattritionを優先し、特定seedの勝率をhard gateにしない。99% complete guardの輝石虫は別軸として維持する。productionではplaytest entryを表示せず、通常探索だけをplayer-facing runtimeとして公開する。random drop、affix、unique、enhancement、enchant、Trialは後続sliceへ残す。
+
+## release/3.2.0 hack-and-slash equipment foundation
+
+release/3.2.0はPR109のowned instanceと宝物庫をforward migrationし、装備枠を武器1・防具1・アクセサリー3の計5枠へ拡張する。既存の`accessory`はrow identity、grant key、取得日時を維持したまま`accessory_1`へ変換し、equip APIはアクセサリーの`target_slot`を受ける。省略時は`accessory_1`を使い、3枠のstatsとmodifierをcanonical combat snapshotへそれぞれ1回だけ加算する。装備変更時のcurrent HPは増加させず、新しいmax HPまでのclampだけを行う。
+
+固定Shop catalog v1は解決可能なまま保持し、v2に試練1初回clear後のItem Lv 40 Novice装備を追加する。generated instanceは固定definitionと同じowned tableへ、non-nullのdefinition/catalog identity、stable instance/generator identity、source battle、immutable JSONB payloadを保存し、表示・売却・combat projection時に再生成しない。runtime generatorはItem Lv 1-60のanchor補間、RegularからRelicまでのrarity slot、80-100% quality、accessory倍率、既存combat modifierだけを扱い、Uniqueと新しいeffect engineは導入しない。
+
+## release/3.2.0 hunting grounds and equipment drops
+
+通常探索は`secretary-underground-exploration-alpha-v2`をselector identityとし、requestの`hunting_ground_key`をserver-side allowlist、request fingerprint、battle snapshotへ含める。省略時は`shallow_caves`を選び、既存浅層のcontent identityとbattle seedを維持する。第二狩場`black_crystal_cave`は試練1の`first_cleared_at`だけを解放条件とし、新しい進行tableやactivity typeを作らない。黒晶洞の敵定義と報酬は狩場固有のversioned contentへ置き、PR122で確定したcombat identity、Trial 1、Wyvernを変更しない。
+
+通常探索の勝利は`secretary-underground-exploration-drop-alpha-v1`のdrop contractを使い、1 battleにつき最大1個のgenerated装備を抽選する。presence、rarity、Item Lv、category、weapon style/accessory main stat、affixはbattle seedから独立したdomainで導出し、combat RNGへ影響させない。Trial、敗北、撤退では装備dropを行わない。generated payloadはbattle settlementと同じprofile lock・database transaction内でowned instanceへ保存し、`source_battle_id`とgrant keyのunique contractによりretry・並行requestでも二重付与しない。
+
+宝物庫が500枠の場合もbattle、XP、Gはrollbackしない。生成結果は付与せず、battle snapshotへ`drop.status=vault_full`と失われたitemの名称、Item Lv、rarity、affix概要を保存する。付与成功時も同じ自己完結summaryを保存し、history表示でcurrent generator/catalogを再実行しない。浅層と黒晶洞は同じruntime generator、owned equipment、combat projectionを再利用し、drop専用combat engine、proc、status、追加action、別RNG semanticsを導入しない。

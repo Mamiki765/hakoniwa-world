@@ -7,6 +7,7 @@ use App\Application\SecretaryService;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundIntroCatalog;
 use App\Application\Underground\UndergroundProfileService;
+use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
 use App\Domain\Underground\Area\UndergroundAreaCapacity;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\UndergroundAwakening;
@@ -792,7 +793,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'underground_profile_id' => $profile->id,
             'run_key' => (string) Str::uuid(),
             'trial_key' => 'trial_01',
-            'trial_content_identity' => 'secretary-underground-trial-01-v1',
+            'trial_content_identity' => 'secretary-underground-trial-01-v2',
             'next_battle_index' => 2,
             'status' => UndergroundTrialRun::STATUS_ACTIVE,
             'started_at' => Carbon::now(),
@@ -933,7 +934,8 @@ final class UndergroundPlayerAccessTest extends TestCase
         $requestId = (string) Str::uuid();
         $first = $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
             'request_id' => $requestId,
-        ])->assertOk()
+        ]);
+        $first->assertOk()
             ->assertJsonPath('data.stage', 'special_loss_complete')
             ->assertJsonPath('data.battle.context', 'scripted_loss')
             ->assertJsonPath('data.battle.player_display_name', 'Special secretary')
@@ -952,19 +954,24 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonStructure(['data' => ['battle' => ['actions' => [
                 '*' => ['round', 'actions', 'end_state'],
             ]]]]);
-        $storyActions = $first->json('data.battle.actions.0.actions');
-        $this->assertIsArray($storyActions);
-        $damageIndex = array_search('damage', array_column($storyActions, 'type'), true);
-        $stackIndex = array_search('role_stack_gain', array_column($storyActions, 'type'), true);
-        $counterIndex = array_search('counter', array_column($storyActions, 'type'), true);
-        $this->assertIsInt($damageIndex);
-        $this->assertIsInt($stackIndex);
-        $this->assertIsInt($counterIndex);
-        $this->assertLessThan($stackIndex, $damageIndex);
-        $this->assertLessThan($counterIndex, $stackIndex);
-        $this->assertSame('counter', $storyActions[$counterIndex]['type']);
-        $this->assertSame('反撃', $storyActions[$counterIndex]['label']);
-        $this->assertGreaterThan(500, $storyActions[$counterIndex]['amount']);
+        $firstRoundActions = $first->json('data.battle.actions.0.actions');
+        $this->assertIsArray($firstRoundActions);
+        $barrierDamage = collect($firstRoundActions)->first(
+            static fn (array $action): bool => $action['type'] === 'damage',
+        );
+        $fatalDamage = collect($firstRoundActions)->first(
+            static fn (array $action): bool => $action['type'] === 'counter',
+        );
+        $this->assertIsArray($barrierDamage);
+        $this->assertSame('精密斬り', $barrierDamage['label']);
+        $this->assertFalse($barrierDamage['evaded']);
+        $this->assertSame(0, $barrierDamage['amount']);
+        $this->assertSame(4, $barrierDamage['barrier_absorbed']);
+        $this->assertNull($barrierDamage['agility_combo_hits']);
+        $this->assertIsArray($fatalDamage);
+        $this->assertSame('反撃', $fatalDamage['label']);
+        $this->assertFalse($fatalDamage['evaded']);
+        $this->assertGreaterThan(500, $fatalDamage['amount']);
         $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
             'request_id' => $requestId,
         ])->assertOk()->assertExactJson($first->json());
@@ -984,7 +991,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertNull($profile->current_hp);
         $storyBattle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->sole();
-        $this->assertSame('secretary-underground-alpha-v1', $storyBattle->runtime_identity);
+        $this->assertSame('secretary-underground-alpha-v2', $storyBattle->runtime_identity);
         $this->assertSame(1254, $storyBattle->snapshot['enemy_combat_level_equivalent']);
         $this->assertSame(1_137_700, $storyBattle->snapshot['enemy_scale_bps']);
         $storyDefinition = app(UndergroundAlphaV1PlayerCatalog::class)->trueNameStoryBattle();
@@ -1080,7 +1087,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             $encounters['crystal_bug']['xp'] / ($vanillaWeightedXp / $vanillaWeight),
             0.2,
         );
-        $crystalBug = config('underground-alpha-v1.exploration.encounters.crystal_bug');
+        $crystalBug = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.crystal_bug');
         $this->assertIsArray($crystalBug);
         $this->assertSame('輝石虫', $crystalBug['label']);
         $this->assertSame(
@@ -1197,6 +1204,8 @@ final class UndergroundPlayerAccessTest extends TestCase
         $playtestBattle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_PLAYTEST)
             ->sole();
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->runtime_identity);
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->snapshot['combat_rules_identity']);
         $this->assertTrue($playtestBattle->log?->expires_at->equalTo($playtestBattle->finished_at->addHour()) ?? false);
         config([
             'underground-alpha-v1.playtest.builds' => [],
@@ -1258,7 +1267,22 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.equipment_summary.used', 1)
             ->assertJsonPath('data.equipment_summary.capacity', 500)
             ->assertJsonPath('data.equipment_summary.equipped.weapon.key', 'starter_knife')
+            ->assertJsonPath('data.default_hunting_ground_key', 'shallow_caves')
+            ->assertJsonPath('data.hunting_grounds.0.key', 'shallow_caves')
+            ->assertJsonPath('data.hunting_grounds.0.locked', false)
+            ->assertJsonPath('data.hunting_grounds.1.key', 'black_crystal_cave')
+            ->assertJsonPath('data.hunting_grounds.1.locked', true)
+            ->assertJsonPath('data.hunting_grounds.1.unlock_condition', '試練1を初回clear')
             ->assertJsonMissingPath('data.equipment_summary.items');
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
+            'request_id' => (string) Str::uuid(),
+            'hunting_ground_key' => 'unknown_ground',
+        ])->assertConflict()->assertJsonPath('code', 'underground_hunting_ground_not_supported');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
+            'request_id' => (string) Str::uuid(),
+            'hunting_ground_key' => 'black_crystal_cave',
+        ])->assertConflict()->assertJsonPath('code', 'underground_hunting_ground_locked');
         $this->assertFalse($main->json('data.equipment_summary.equipped.weapon.shop_sold'));
         $starterId = (int) $main->json('data.equipment_summary.equipped.weapon.id');
         $this->assertSame([], UndergroundBattle::query()
@@ -1267,12 +1291,12 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->sole()->snapshot);
         $shop = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/shop')
             ->assertOk()
-            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v1')
+            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v2')
             ->assertJsonPath('data.currency_label', '輝石の欠片 G')
             ->assertJsonPath('data.shard_balance', 5_000)
             ->assertJsonPath('data.banked_shard_balance', 5_000)
             ->assertJsonPath('data.bank_auto_withdraw', false);
-        $this->assertCount(30, $shop->json('data.items'));
+        $this->assertCount(40, $shop->json('data.items'));
         $this->assertCount(1, $shop->json('data.owned_items'));
         foreach ($shop->json('data.items') as $shopItem) {
             $this->assertSame(intdiv($shopItem['buy_price'], 2), $shopItem['sell_price']);
@@ -1282,6 +1306,16 @@ final class UndergroundPlayerAccessTest extends TestCase
             $shop->json('data.owned_items.0.sell_price'),
             $shop->json('data.owned_items.0.sellable'),
         ]);
+        $blackDagger = collect($shop->json('data.items'))->firstWhere('key', 'black_crystal_dagger');
+        $this->assertSame([true, '試練1を初回clear', 'ノービス'], [
+            $blackDagger['locked'],
+            $blackDagger['unlock_requirement'],
+            $blackDagger['rarity_label'],
+        ]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
+            'request_id' => (string) Str::uuid(),
+            'definition_key' => 'black_crystal_dagger',
+        ])->assertConflict()->assertJsonPath('code', 'underground_equipment_locked');
 
         $forgedRequest = (string) Str::uuid();
         $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
@@ -1389,7 +1423,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->actingAs($user)->putJson('/api/v1/me/underground/equipment/equipped', [
             'request_id' => (string) Str::uuid(),
             'item_id' => $accessory->id,
-        ])->assertOk()->assertJsonPath('data.vault.equipped.accessory.key', 'vitality_accessory_rank_1');
+        ])->assertOk()->assertJsonPath('data.vault.equipped.accessory_1.key', 'vitality_accessory_rank_1');
         $this->assertSame(484, $profile->fresh()->current_hp);
         $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
@@ -1404,6 +1438,11 @@ final class UndergroundPlayerAccessTest extends TestCase
             $profile->allocated_finesse_stp,
             $profile->allocated_spirit_stp,
             $profile->allocated_agility_stp,
+        ]);
+        config([
+            'underground-alpha-v1.exploration.drop.profiles.standard.presence_bps' => 0,
+            'underground-alpha-v1.exploration.drop.profiles.elite.presence_bps' => 0,
+            'underground-alpha-v1.exploration.drop.profiles.rare.presence_bps' => 0,
         ]);
         $explorationRequest = (string) Str::uuid();
         $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
@@ -1475,7 +1514,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         ])->assertConflict()->assertJsonPath('code', 'underground_equipment_not_sellable');
         $this->actingAs($user)->deleteJson('/api/v1/me/underground/equipment/equipped/accessory', [
             'request_id' => (string) Str::uuid(),
-        ])->assertOk()->assertJsonPath('data.vault.equipped.accessory', null);
+        ])->assertOk()->assertJsonPath('data.vault.equipped.accessory_1', null);
         $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
             'request_id' => (string) Str::uuid(),
             'definition_key' => 'leather_armor',
@@ -1528,6 +1567,190 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertOk()->assertJsonCount(50, 'data.items');
         $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?page=11')
             ->assertConflict()->assertJsonPath('code', 'underground_vault_page_invalid');
+    }
+
+    public function test_three_accessory_slots_and_trial_one_shop_unlock_keep_fixed_catalog_compatibility(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Three slot equipment secretary');
+        $profile = $this->openEquipmentProfile($secretary, 20_000, 0);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
+        $starter = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('definition_key', 'starter_knife')
+            ->sole();
+        $starter->catalog_identity = 'secretary-underground-shop-equipment-alpha-v1';
+        $starter->save();
+
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.equipment_summary.equipped.weapon.catalog_identity', 'secretary-underground-shop-equipment-alpha-v1')
+            ->assertJsonPath('data.equipment_summary.equipped.accessory_1', null)
+            ->assertJsonPath('data.equipment_summary.equipped.accessory_2', null)
+            ->assertJsonPath('data.equipment_summary.equipped.accessory_3', null);
+
+        $legacyRequestId = (string) Str::uuid();
+        UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'iron_dagger',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v1',
+            'equipped_slot' => null,
+            'grant_key' => null,
+            'instance_kind' => 'fixed',
+            'acquired_at' => Carbon::now(),
+        ]);
+        $legacyFingerprint = hash('sha256', json_encode([
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v1',
+            'operation' => 'equipment_purchase',
+            'payload' => ['definition_key' => 'iron_dagger'],
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+        UndergroundIntroRequest::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => $legacyRequestId,
+            'request_fingerprint' => $legacyFingerprint,
+            'operation' => 'equipment_purchase',
+            'resulting_stage' => 'underground_open',
+            'underground_battle_id' => null,
+        ]);
+        $balanceBeforeLegacyReplay = $profile->shard_balance;
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
+            'request_id' => $legacyRequestId,
+            'definition_key' => 'iron_dagger',
+        ])->assertOk()->assertJsonPath('data.shard_balance', $balanceBeforeLegacyReplay);
+        $this->assertSame(1, UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('definition_key', 'iron_dagger')
+            ->count());
+
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/shop')
+            ->assertOk()
+            ->assertJsonPath('data.items.30.locked', false);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
+            'request_id' => (string) Str::uuid(),
+            'definition_key' => 'black_crystal_dagger',
+        ])->assertOk();
+
+        $items = [];
+        foreach (['vitality', 'might', 'finesse'] as $stat) {
+            $key = $stat.'_accessory_rank_1';
+            $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
+                'request_id' => (string) Str::uuid(),
+                'definition_key' => $key,
+            ])->assertOk();
+            $items[] = UndergroundOwnedEquipment::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('definition_key', $key)
+                ->sole();
+        }
+
+        foreach ($items as $index => $item) {
+            $slot = 'accessory_'.($index + 1);
+            $this->actingAs($user)->putJson('/api/v1/me/underground/equipment/equipped', [
+                'request_id' => (string) Str::uuid(),
+                'item_id' => $item->id,
+                'target_slot' => $slot,
+            ])->assertOk()->assertJsonPath("data.vault.equipped.{$slot}.id", $item->id);
+        }
+        $this->assertSame(492, $profile->fresh()->current_hp);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.equipment_summary.equipped.accessory_1.key', 'vitality_accessory_rank_1')
+            ->assertJsonPath('data.equipment_summary.equipped.accessory_2.key', 'might_accessory_rank_1')
+            ->assertJsonPath('data.equipment_summary.equipped.accessory_3.key', 'finesse_accessory_rank_1');
+
+        $this->actingAs($user)->putJson('/api/v1/me/underground/equipment/equipped', [
+            'request_id' => (string) Str::uuid(),
+            'item_id' => $items[0]->id,
+            'target_slot' => 'weapon',
+        ])->assertConflict()->assertJsonPath('code', 'underground_equipment_slot_invalid');
+        $this->actingAs($user)->deleteJson('/api/v1/me/underground/equipment/equipped/accessory_2', [
+            'request_id' => (string) Str::uuid(),
+        ])->assertOk()->assertJsonPath('data.vault.equipped.accessory_2', null);
+    }
+
+    public function test_generated_payload_is_persisted_projected_and_used_by_canonical_combat_without_regeneration(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Generated equipment secretary');
+        $profile = $this->openEquipmentProfile($secretary, 5_000, 0);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
+        $sourceBattle = UndergroundBattle::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TUTORIAL)
+            ->sole();
+        $generated = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
+            30,
+            'shallow_caves',
+            'epic',
+            'armor',
+            null,
+            null,
+            23,
+            'generated-equipment-feature-test',
+        );
+        $item = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => $generated['key'],
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'equipped_slot' => null,
+            'grant_key' => 'drop:generated-equipment-test',
+            'instance_kind' => 'generated',
+            'instance_identity' => $generated['instance_identity'],
+            'generator_identity' => $generated['generator_identity'],
+            'generated_payload' => $generated,
+            'source_battle_id' => $sourceBattle->id,
+            'acquired_at' => Carbon::now(),
+        ]);
+
+        $vault = $this->actingAs($user)
+            ->getJson('/api/v1/me/underground/equipment/vault')
+            ->assertOk();
+        $projected = collect($vault->json('data.items'))->firstWhere('id', $item->id);
+        $this->assertSame([
+            'generated',
+            $generated['instance_identity'],
+            'secretary-underground-drop-equipment-alpha-v1',
+            'epic',
+            'レリック',
+        ], [
+            $projected['instance_kind'],
+            $projected['instance_identity'],
+            $projected['generator_identity'],
+            $projected['rarity'],
+            $projected['rarity_label'],
+        ]);
+        $this->assertEquals(array_map(
+            static fn (array $affix): array => Arr::only(
+                $affix,
+                ['key', 'label', 'kind', 'target', 'value', 'quality_bps'],
+            ),
+            $generated['affixes'],
+        ), $projected['affixes']);
+        $this->assertArrayNotHasKey('source', $projected);
+        $this->assertArrayNotHasKey('base', $projected);
+        $this->assertEquals($generated['stats'], $projected['stats']);
+        $this->assertEquals($generated['modifiers'], $projected['modifiers']);
+
+        $this->actingAs($user)->putJson('/api/v1/me/underground/equipment/equipped', [
+            'request_id' => (string) Str::uuid(),
+            'item_id' => $item->id,
+        ])->assertOk()->assertJsonPath('data.vault.equipped.armor.instance_identity', $generated['instance_identity']);
+
+        $exploreRequest = (string) Str::uuid();
+        $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
+            'request_id' => $exploreRequest,
+        ])->assertOk();
+        $battle = UndergroundBattle::query()->where('request_id', $exploreRequest)->sole();
+        $this->assertSame($generated['instance_identity'], collect(
+            $battle->snapshot['equipment']['items'],
+        )->firstWhere('equipped_slot', 'armor')['instance_identity']);
+        $this->assertEquals($generated['modifiers'], $battle->snapshot['equipment']['modifiers']);
+        $this->assertCount(count($generated['affixes']), $battle->snapshot['equipment']['affixes']);
+        $this->assertEquals($generated, $item->fresh()->generated_payload);
     }
 
     public function test_player_runtime_filters_active_skills_by_actual_weapon_without_clearing_the_saved_slot(): void
@@ -1640,6 +1863,8 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.context', 'exploration')
             ->assertJsonPath('data.player_display_name', 'Exploration secretary')
             ->assertJsonPath('data.id', $requestId)
+            ->assertJsonPath('data.hunting_ground.key', 'shallow_caves')
+            ->assertJsonPath('data.hunting_ground.name', '浅い洞窟')
             ->assertJsonMissingPath('data.private_seed')
             ->assertJsonMissingPath('data.snapshot');
         $this->actingAs($user)->postJson('/api/v1/me/underground/explore', $payload)
@@ -1672,7 +1897,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             $battle->snapshot['combat_stats'],
         );
         $this->assertSame('starter_knife', $battle->snapshot['equipment']['key']);
-        $this->assertSame('secretary-underground-shop-equipment-alpha-v1', $battle->snapshot['equipment']['catalog_identity']);
+        $this->assertSame('secretary-underground-shop-equipment-alpha-v2', $battle->snapshot['equipment']['catalog_identity']);
         $this->assertSame(['starter_knife'], array_column($battle->snapshot['equipment']['items'], 'key'));
         $this->assertSame(400, $battle->snapshot['current_hp_before']);
         $this->assertSame(10_000, $battle->snapshot['battle_start_mp']);

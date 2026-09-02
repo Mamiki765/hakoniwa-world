@@ -4,20 +4,19 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-final class EquipUndergroundEquipmentRequest extends FormRequest
+final class UndergroundExploreRequest extends FormRequest
 {
     public function authorize(): bool
     {
         return $this->user() !== null;
     }
 
-    /** @return array<string, mixed> */
+    /** @return array<string, list<mixed>> */
     public function rules(): array
     {
         return [
             'request_id' => ['required', 'uuid'],
-            'item_id' => ['required', 'integer', 'min:1'],
-            'target_slot' => ['nullable', 'string', 'in:weapon,armor,accessory_1,accessory_2,accessory_3'],
+            'hunting_ground_key' => ['sometimes', 'string', 'max:64'],
         ];
     }
 }

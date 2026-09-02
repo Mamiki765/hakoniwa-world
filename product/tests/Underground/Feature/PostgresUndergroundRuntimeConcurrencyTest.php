@@ -72,6 +72,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $this->assertSame([$profile->id, $profile->id], array_column($results, 'profile_id'));
         $this->assertCount(1, array_unique(array_column($results, 'battle_id')));
         $this->assertSame([$requestId, $requestId], array_column($results, 'request_id'));
+        $this->assertSame(['granted', 'granted'], array_column($results, 'drop_status'));
 
         $duplicateFlags = array_map(
             static fn (array $result): bool => (bool) $result['duplicate'],
@@ -83,8 +84,16 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $battle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_EXPLORATION)
             ->sole();
+        $drop = UndergroundOwnedEquipment::query()
+            ->where('source_battle_id', $battle->id)
+            ->sole();
         $persistedProfile = $profile->fresh();
         $this->assertNotNull($persistedProfile);
+        $this->assertSame('generated', $drop->instance_kind);
+        $this->assertSame($battle->id, $drop->source_battle_id);
+        $this->assertSame('granted', $battle->snapshot['drop']['status'] ?? null);
+        $this->assertSame(1, UndergroundOwnedEquipment::query()
+            ->where('source_battle_id', $battle->id)->count());
         $this->assertSame(1, $battle->log()->count());
         $this->assertSame(0, UndergroundTrialProgress::query()
             ->where('underground_profile_id', $profile->id)->count());
@@ -454,7 +463,8 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
     {
         $payload = [
             'operation' => 'explore',
-            'hunting_ground' => 'shallow_caves',
+            'hunting_ground_key' => 'shallow_caves',
+            'force_drop' => true,
             'request_id' => $requestId,
         ];
 

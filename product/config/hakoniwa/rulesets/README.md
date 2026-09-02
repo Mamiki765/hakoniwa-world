@@ -1,41 +1,38 @@
 # Ruleset authoring
 
-The in-development `hakoniwa-2s-plus-v19.php` entrypoint explicitly reuses unchanged v18 fields
-and composes only the changed identity and command fragments under `v19/`. The standalone
-`hakoniwa-2s-plus-v18.php` payload remains immutable as the exact source accepted by the
-forward-only v18-to-v19 migration. Historical `roadmap-pr*` snapshots and formal
-`hakoniwa-2s-plus-v1.php` through `v15.php` are preserved by Git and retired from the current
-tree. Pre-MVP prototypes also live only in repository history. Test fixtures live under
-`tests/` and must never be registered or published as gameplay Rulesets.
+The configured current Ruleset identity and entrypoint are defined by
+`config/hakoniwa.php`. This README intentionally does not pin a concrete key or generation.
 
-`config/hakoniwa.php`, tests, and the operator validator load only current v19. There is no
-generic historical-authoring catalog or inheritance framework. Historical source bytes,
-resolved payloads, checksums, and published database snapshots remain immutable in their
-recorded Git/database authority; Markdown summaries do not reproduce them.
+Normal application, tests, and operator validation load only that configured current
+Ruleset. Historical source bytes, resolved payloads, checksums, and published database
+snapshots remain immutable in their recorded Git/database authority. Markdown summaries do
+not reproduce them, and test fixtures must never be registered or published as gameplay
+Rulesets.
 
-The ver 2.4.0 source-dependency rebaseline had one explicit exception: the then-current
-`hakoniwa-2s-plus-v11` authored PHP source was mechanically rewritten from its inherited
-representation into a standalone representation only after strict resolved-array equality
-and the unchanged formal checksum were proven. This exception changes source representation
-only. The v11 key/version, resolved payload, checksum, published database snapshot and
-definitions, gameplay, and balance remain immutable. The previous v11 source representation
-remains preserved in Git history. This exception is not precedent for changing gameplay or
-balance under an existing Ruleset identity; any future semantic change requires a new unique
-Ruleset version and publication.
+When a release begins from an Owner-confirmed production Ruleset `N`:
 
-The configured current identity is in `config/hakoniwa.php`. Verify its source with:
+- semantic Ruleset changes may be authored as the single release draft `N+1`;
+- unchanged fields are reused from the exact immutable predecessor and only bounded changed
+  domains are composed into the new complete payload;
+- the release does not create a generic historical-authoring catalog or inheritance
+  framework; and
+- later features, PRs, and stabilization in that same unreleased release continue to amend
+  the same `N+1` draft rather than advancing another generation.
 
-```text
-php artisan hakoniwa:ruleset:validate --key=hakoniwa-2s-plus-v19
-```
+If no semantic Ruleset change is required, the release remains on `N`. One release may
+introduce at most one new generation unless the Owner explicitly authorizes otherwise. If an
+agent believes another generation is required, it must stop before implementation and ask the
+Owner rather than creating it automatically.
 
-Validation does not publish, migrate, or update a World. v19 may be completed on
-`release/3.1.0` until that release reaches main/production. After production freezes v19, a
-gameplay or balance change requires a new unique version, an explicitly registered complete
-payload, review, immutable publication, and a separate World migration. Reusing a frozen key
-succeeds only when the saved snapshot and all definitions already match exactly; drift fails
-closed.
+Validation does not publish, migrate, or update a World. A source label such as `published`,
+a PR, or repository state does not prove production freeze; use the Owner-confirmed
+production baseline. Once a Ruleset is actually used by production, semantic changes require
+a later generation and reviewed forward migration rather than rewriting the frozen identity.
+
+Historical representation-only exceptions and retired Ruleset generations are preserved in
+Git/history documents for provenance. They are not precedent for changing gameplay or balance
+under an existing production identity.
 
 See `product/docs/archive/rulesets/index.md` for the historical index and
-`product/docs/architecture/ruleset-authoring.md` for current domain and
-behavior/data/flavor authoring rules.
+`product/docs/architecture/ruleset-authoring.md` for current domain classification and
+release-version discipline.

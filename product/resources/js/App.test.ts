@@ -247,6 +247,7 @@ function publicResponse(path: string): Response | null {
 beforeEach(() => {
     document.documentElement.dataset.theme = 'system';
     document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
+    window.localStorage.removeItem('hakoniwa.underground.selected-hunting-ground');
     const meta = document.createElement('meta');
     meta.name = 'hakoniwa-application-version';
     meta.content = '3.0.0';
@@ -256,6 +257,7 @@ beforeEach(() => {
 afterEach(() => {
     document.documentElement.dataset.theme = 'system';
     document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
+    window.localStorage.removeItem('hakoniwa.underground.selected-hunting-ground');
     document.querySelector('meta[name="hakoniwa-application-version"]')?.remove();
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -1299,20 +1301,26 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
         expect(wrapper.find('.nation-hud').text()).toContain('島主：自島主');
         expect(wrapper.find('.nation-hud').text()).toContain('自島コメント');
-        expect(wrapper.get('.underground-map-card').text()).toContain('2層・8施設枠');
+        const undergroundMap = wrapper.get('.underground-map-card');
+        expect(undergroundMap.text()).toContain('首都地下');
+        expect(undergroundMap.text()).not.toContain('UNDERGROUND');
+        expect(undergroundMap.text()).not.toContain('地底マップ');
+        expect(undergroundMap.text()).not.toContain('2層・8施設枠');
+        expect(undergroundMap.text()).not.toContain('梯子と入口は施設枠に含まれません。');
         expect(wrapper.findAll('.underground-layer')).toHaveLength(2);
         expect(wrapper.findAll('.underground-slot')).toHaveLength(8);
         expect(wrapper.findAll('.underground-ladder')).toHaveLength(2);
         expect(wrapper.findAll('.underground-entrance')).toHaveLength(1);
         expect(wrapper.findAll('.underground-ceiling-row')[0]!.element.children).toHaveLength(5);
         expect(wrapper.findAll('.underground-layer-row').every((row) => row.element.children.length === 5)).toBe(true);
-        expect(wrapper.findAll('.underground-slot')[0]!.text()).toContain('地底農場');
+        expect(undergroundMap.text()).not.toContain('地底農場');
+        expect(wrapper.findAll('.underground-slot-label')).toHaveLength(0);
         expect(wrapper.findAll('.underground-slot').every((slot) => !slot.text().includes('(') && !slot.text().includes('X'))).toBe(true);
         expect(wrapper.find('.underground-map-detail').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entrance button')).toHaveLength(0);
         expect(wrapper.findAll('.underground-ladder button')).toHaveLength(0);
         const workspaceElement = wrapper.get('.island-workspace-region').element;
-        const undergroundMapElement = wrapper.get('.underground-map-card').element;
+        const undergroundMapElement = undergroundMap.element;
         const messageBoardElement = wrapper.get('.message-board').element;
         expect(Boolean(workspaceElement.compareDocumentPosition(undergroundMapElement) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
         expect(Boolean(undergroundMapElement.compareDocumentPosition(messageBoardElement) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -1798,6 +1806,17 @@ describe('application lobby and island entry', () => {
             shopkeeper_name: '<b>店員</b>', true_name_branch: false,
             tutorial_projection: { stats: { vitality: 10, might: 10, finesse: 10, spirit: 10, agility: 10 }, weapon: 'starter knife' },
             contract_completed: true, growth_paths: null, growth_path: growthPath, playtest,
+            default_hunting_ground_key: 'shallow_caves',
+            hunting_grounds: [
+                {
+                    key: 'shallow_caves', name: '浅い洞窟', locked: false, unlock_condition: null,
+                    item_level_min: 5, item_level_max: 30,
+                },
+                {
+                    key: 'black_crystal_cave', name: '黒晶洞', locked: true,
+                    unlock_condition: '試練1を初回clear', item_level_min: 30, item_level_max: 60,
+                },
+            ],
             trial: {
                 key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10,
                 first_cleared: false,
@@ -1882,6 +1901,42 @@ describe('application lobby and island entry', () => {
                 },
             }],
             rewards: { xp: 1150, shards: 0 },
+            hunting_ground: {
+                key: 'shallow_caves', name: '浅い洞窟',
+                content_identity: 'secretary-underground-exploration-alpha-v1',
+                item_level_min: 5, item_level_max: 30,
+            },
+            drop: {
+                identity: 'secretary-underground-exploration-drop-alpha-v1',
+                status: 'granted',
+                item: {
+                    instance_identity: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                    name: '浅層の短剣', category: 'weapon', item_level: 15,
+                    rarity: 'common', rarity_label: 'レギュラー',
+                    affixes: [{
+                        key: 'miracle_damage_bps', label: '魔法攻撃力アップ',
+                        target: 'miracle_damage_bps', value: 250,
+                    }],
+                },
+            },
+        };
+        const blackCrystalExplorationBattle = {
+            ...explorationBattle,
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            encounter_name: '黒晶虫',
+            hunting_ground: {
+                key: 'black_crystal_cave', name: '黒晶洞',
+                content_identity: 'secretary-underground-black-crystal-cave-alpha-v1',
+                item_level_min: 30, item_level_max: 60,
+            },
+            drop: {
+                ...explorationBattle.drop,
+                item: {
+                    ...explorationBattle.drop.item,
+                    instance_identity: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                    name: '黒晶の短剣', item_level: 50,
+                },
+            },
         };
         const trialRun = {
             key: 'trial_01', label: '地下に眠る古代遺跡',
@@ -1895,6 +1950,7 @@ describe('application lobby and island entry', () => {
             combat_level_before: 1, combat_level_after: 1, stp_awarded: 0, unspent_stp_after: 3,
             trial_run_key: trialRun.run_key, trial_battle_index: 1, trial_total_battles: 10,
             trial_status: 'active', trial_next_battle_index: 2, interbattle_heal_amount: 80,
+            hunting_ground: null, drop: null,
             challenge_intro: '　崩れかけた石壁の向こうに広がっていた不思議な空間。\n　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。\n　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。',
             first_clear_story: null,
         };
@@ -1911,13 +1967,17 @@ describe('application lobby and island entry', () => {
                 },
                 {
                     round: 40,
-                    actions: [{ type: 'phase_transition', side: '対戦相手', actor_name: 'ワイバーン', label: '天井が崩落し、ワイバーンは宙に舞い上がる……！', amount: 0 }],
+                    actions: [
+                        { type: 'damage', side: '秘書', actor_name: 'ペリドット', target_name: 'ワイバーン', label: '通常攻撃', amount: 420, agility_combo_hits: 2 },
+                        { type: 'phase_transition', side: '対戦相手', actor_name: 'ワイバーン', label: '天井が崩落し、ワイバーンは宙に舞い上がる……！', amount: 0 },
+                    ],
                     end_state: null,
                 },
             ],
             combat_level_before: 6, combat_level_after: 6, stp_awarded: 0, unspent_stp_after: 25,
             trial_run_key: trialRun.run_key, trial_battle_index: 10, trial_total_battles: 10,
             trial_status: 'cleared', trial_next_battle_index: 1, interbattle_heal_amount: 0,
+            hunting_ground: null, drop: null,
             challenge_intro: null,
             first_clear_story: {
                 title: '●封印の解放',
@@ -1983,19 +2043,35 @@ describe('application lobby and island entry', () => {
                     current_hp: 321,
                     skill_points_total: 60,
                     skill_points_unspent: 60,
+                    hunting_grounds: openState.hunting_grounds.map((ground) => (
+                        ground.key === 'black_crystal_cave' ? { ...ground, locked: false } : ground
+                    )),
                     trial: { ...openState.trial, first_cleared: true, active_run: null },
                 };
                 return response(trialFightAttempts === 5 ? repeatTrialBattle : trialBattle);
             }
             if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
-                const payload = JSON.parse(String(init.body)) as { request_id: string };
+                const payload = JSON.parse(String(init.body)) as {
+                    request_id: string;
+                    hunting_ground_key: string;
+                };
                 const duplicate = explorationResults.get(payload.request_id);
                 if (duplicate) return response(duplicate);
-                explorationResults.set(payload.request_id, explorationBattle);
+                const battle = payload.hunting_ground_key === 'black_crystal_cave'
+                    ? blackCrystalExplorationBattle
+                    : explorationBattle;
+                explorationResults.set(payload.request_id, battle);
                 explorationAttempts++;
-                openState = { ...openState, next_battle_at: new Date(Date.now() + 10_000).toISOString() };
-                if (explorationAttempts === 1) throw new TypeError('Explore response lost');
-                return response(explorationBattle);
+                openState = {
+                    ...openState,
+                    next_battle_at: explorationAttempts === 2
+                        ? null
+                        : new Date(Date.now() + 10_000).toISOString(),
+                };
+                if (explorationAttempts === 1 || explorationAttempts === 3) {
+                    throw new TypeError('Explore response lost');
+                }
+                return response(battle);
             }
             if (path === '/api/v1/me/underground/inn/rest' && init?.method === 'POST') {
                 const payload = JSON.parse(String(init.body)) as { request_id: string };
@@ -2088,6 +2164,7 @@ describe('application lobby and island entry', () => {
             return response(null, 404);
         });
         vi.stubGlobal('fetch', fetchMock);
+        window.localStorage.setItem('hakoniwa.underground.selected-hunting-ground', 'black_crystal_cave');
         const wrapper = mount(App, { attachTo: document.body });
         await flushPromises();
         await wrapper.findAll('.site-header nav button')
@@ -2111,14 +2188,18 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
         expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-entries button')[0]!.attributes('disabled')).toBeUndefined();
-        expect(wrapper.findAll('.underground-entries button')[1]!.attributes('disabled')).toBeUndefined();
-        expect(wrapper.findAll('.underground-entries button')[1]!.text()).toContain('封印の地');
-        expect(wrapper.findAll('.underground-entries button')[1]!.text()).toContain('地下に眠る古代遺跡');
-        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        expect(wrapper.get('.underground-explore-button').attributes('disabled')).toBeUndefined();
+        expect(wrapper.get('.underground-explore-button').text()).toContain('周囲を探索');
+        expect(wrapper.get('.underground-explore-button').text()).toContain('浅い洞窟');
+        expect(wrapper.find('.underground-ground-selector').exists()).toBe(false);
+        expect(window.localStorage.getItem('hakoniwa.underground.selected-hunting-ground')).toBe('shallow_caves');
+        expect(wrapper.get('.underground-trial-entry').attributes('disabled')).toBeUndefined();
+        expect(wrapper.get('.underground-trial-entry').text()).toContain('封印の地');
+        expect(wrapper.get('.underground-trial-entry').text()).toContain('地下に眠る古代遺跡');
+        await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Trial response lost');
-        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         const trialStartRequests = fetchMock.mock.calls.filter(([path, init]) => (
             String(path) === '/api/v1/me/underground/trial/start' && init?.method === 'POST'
@@ -2146,15 +2227,23 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-boss-warning')).toHaveLength(2);
         expect(wrapper.findAll('.underground-boss-warning')[0]!.text()).toBe('洞窟が崩れそうだ……');
         expect(wrapper.findAll('.underground-boss-warning')[1]!.text()).toBe('天井が崩落し、ワイバーンは宙に舞い上がる……！');
+        expect(wrapper.findAll('.underground-agility-combo')).toHaveLength(1);
+        expect(wrapper.get('.underground-agility-combo').text()).toBe('2連続ヒット！');
+        expect(wrapper.get('.underground-agility-combo').element.parentElement?.textContent).toContain('ワイバーンに420ダメージ。');
         expect(wrapper.get('.underground-battle-log').text().indexOf('崩れかけた石壁の向こう'))
             .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('遭遇'));
         expect(wrapper.get('.underground-battle-log').text().indexOf('戦闘終了'))
             .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('封印の解放'));
         await wrapper.get('.underground-battle-back').trigger('click');
-        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        expect(wrapper.findAll('.underground-ground-selector option').map((option) => option.text()))
+            .toEqual(['浅い洞窟', '黒晶洞']);
+        await wrapper.get<HTMLSelectElement>('.underground-ground-selector').setValue('black_crystal_cave');
+        expect(wrapper.get('.underground-explore-button').text()).toContain('黒晶洞');
+        expect(window.localStorage.getItem('hakoniwa.underground.selected-hunting-ground')).toBe('black_crystal_cave');
+        await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('封印の地の進行状態が更新されています。');
-        await wrapper.findAll('.underground-entries button')[1]!.trigger('click');
+        await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         const recoveredTrialStarts = fetchMock.mock.calls.filter(([path, init]) => (
             String(path) === '/api/v1/me/underground/trial/start' && init?.method === 'POST'
@@ -2221,7 +2310,8 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         const loadoutCall = fetchMock.mock.calls.find(([path, init]) => String(path) === '/api/v1/me/underground/skills/loadout' && init?.method === 'PUT');
         expect(JSON.parse(String(loadoutCall?.[1]?.body)).slots).toEqual(['holy_bolt', null, null, null, null]);
-        await wrapper.findAll('.underground-entries button')[0]!.trigger('click');
+        await wrapper.get<HTMLSelectElement>('.underground-ground-selector').setValue('shallow_caves');
+        await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Explore response lost');
         const failedExplorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
@@ -2230,26 +2320,58 @@ describe('application lobby and island entry', () => {
         expect(failedExplorationRequests).toHaveLength(1);
         const failedExplorationPayload = JSON.parse(String(failedExplorationRequests[0]?.[1]?.body)) as {
             request_id: string;
+            hunting_ground_key: string;
         };
-        await wrapper.findAll('.underground-entries button')[0]!.trigger('click');
+        await wrapper.get<HTMLSelectElement>('.underground-ground-selector').setValue('black_crystal_cave');
+        await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         const explorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
             String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
         ));
         expect(explorationRequests).toHaveLength(2);
-        expect(JSON.parse(String(explorationRequests[1]?.[1]?.body))).toEqual({
-            request_id: failedExplorationPayload.request_id,
+        const changedGroundPayload = JSON.parse(String(explorationRequests[1]?.[1]?.body)) as {
+            request_id: string;
+            hunting_ground_key: string;
+        };
+        expect(changedGroundPayload).toEqual({
+            request_id: expect.any(String),
+            hunting_ground_key: 'black_crystal_cave',
         });
+        expect(changedGroundPayload.request_id).not.toBe(failedExplorationPayload.request_id);
         const explorationLog = wrapper.get('.underground-battle-log').text();
         expect(explorationLog).toContain('輝石虫は完全防御し、HPダメージは0。');
         expect(explorationLog.indexOf('Round 1')).toBeLessThan(explorationLog.indexOf('戦闘終了'));
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +1150・輝石の欠片 +0G');
+        expect(wrapper.get('.underground-battle-result').text()).toContain('狩場: 黒晶洞');
+        expect(wrapper.get('.underground-equipment-drop').text()).toContain('レギュラー・Item Lv 50・黒晶の短剣');
+        expect(wrapper.get('.underground-equipment-drop').text()).toContain('魔法攻撃力アップ');
         expect(wrapper.get('.underground-level-up').attributes('role')).toBe('status');
         expect(wrapper.get('.underground-level-up strong').text()).toBe('LEVEL UP！');
         expect(wrapper.get('.underground-level-up').text()).toContain('戦闘Lv 1 → 6');
         expect(wrapper.get('.underground-level-up').text()).toContain('未使用STP +25（合計 25）');
+        expect(wrapper.get('.underground-exploration-repeat').text()).toContain('もう一度ここを探索する');
+        await wrapper.get('.underground-exploration-repeat').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Explore response lost');
+        await wrapper.get('.underground-exploration-repeat').trigger('click');
+        await flushPromises();
+        const repeatedExplorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
+        ));
+        expect(repeatedExplorationRequests).toHaveLength(4);
+        const repeatPayload = JSON.parse(String(repeatedExplorationRequests[2]?.[1]?.body)) as {
+            request_id: string;
+            hunting_ground_key: string;
+        };
+        expect(repeatPayload).toEqual({
+            request_id: expect.any(String),
+            hunting_ground_key: 'black_crystal_cave',
+        });
+        expect(repeatPayload.request_id).not.toBe(changedGroundPayload.request_id);
+        expect(JSON.parse(String(repeatedExplorationRequests[3]?.[1]?.body))).toEqual(repeatPayload);
         await wrapper.get('.underground-battle-back').trigger('click');
-        const exploreButton = wrapper.findAll('.underground-entries button')[0]!;
+        expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value).toBe('black_crystal_cave');
+        const exploreButton = wrapper.get('.underground-explore-button');
         expect(exploreButton.attributes('disabled')).toBeDefined();
         expect(exploreButton.text()).toMatch(/あと(?:9|10)秒/);
         expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
@@ -2362,6 +2484,12 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0G・ドロップなし');
         wrapper.unmount();
+        const restoredWrapper = mount(UndergroundPanel);
+        await flushPromises();
+        expect(restoredWrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value)
+            .toBe('black_crystal_cave');
+        expect(restoredWrapper.get('.underground-explore-button').text()).toContain('黒晶洞');
+        restoredWrapper.unmount();
     });
 
     it('renders and saves the unlocked awakening gauge technique and plain-text battle event', async () => {
@@ -2572,6 +2700,21 @@ describe('application lobby and island entry', () => {
                 notice: 'α版の戦闘検証用完成形ビルドです。正式な育成・装備状態ではありません。',
                 default_build_key: 'pure_tank', builds: [], enemies: [],
             } : null,
+            default_hunting_ground_key: stage === 'underground_open' ? 'shallow_caves' : null,
+            hunting_grounds: stage === 'underground_open' ? [
+                {
+                    key: 'shallow_caves', name: '浅い洞窟', locked: false, unlock_condition: null,
+                    item_level_min: 5, item_level_max: 30,
+                },
+                {
+                    key: 'black_crystal_cave', name: '黒晶洞', locked: true,
+                    unlock_condition: '試練1を初回clear', item_level_min: 30, item_level_max: 60,
+                },
+            ] : null,
+            trial: stage === 'underground_open' ? {
+                key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10,
+                first_cleared: false, active_run: null,
+            } : null,
             battle,
         });
         const tutorialBattle = {
@@ -2690,8 +2833,12 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-summary').text()).toContain('MP10000 / 10000');
         expect(wrapper.get('.underground-growth-summary').text()).toContain('自然回復 300 MP / ラウンド');
         const adventureButtons = wrapper.findAll('.underground-entries button');
+        expect(adventureButtons).toHaveLength(2);
         expect(adventureButtons[0]?.attributes('disabled')).toBeUndefined();
-        expect(adventureButtons[1]?.attributes('disabled')).toBeDefined();
+        expect(adventureButtons[0]?.text()).toContain('周囲を探索');
+        expect(adventureButtons[0]?.text()).toContain('浅い洞窟');
+        expect(wrapper.find('.underground-ground-selector').exists()).toBe(false);
+        expect(adventureButtons[1]?.text()).toContain('封印の地');
         expect(stage).toBe('underground_open');
     });
 

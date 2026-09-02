@@ -42,8 +42,8 @@ published Rulesetの意味を文書やOwner scopeから推測で上書きしな�
 
 | Task | 最初に読む | 必要なら次に読む | 通常は読まなくてよい |
 |---|---|---|---|
-| Ruleset authoring / classification | [`product/config/hakoniwa.php`](../product/config/hakoniwa.php)、current [`v18 entrypoint`](../product/config/hakoniwa/rulesets/hakoniwa-2s-plus-v18.php)、[`ruleset-authoring.md`](../product/docs/architecture/ruleset-authoring.md) | [`current-ruleset-baseline.md`](../product/docs/architecture/current-ruleset-baseline.md)、changed domain fragment、`CurrentRulesetAuthoringInspector` | [`configuration-management.md`](architecture/configuration-management.md)はv1〜v9/MVP-eraのcurrent-state記述が混在する。[`product/docs/archive/rulesets/`](../product/docs/archive/rulesets/index.md)、[`ruleset-configuration-layers.md`](../product/docs/architecture/ruleset-configuration-layers.md)、旧Rulesetのrelease資料も通常不要 |
-| Migration / install / supported upgrade | [`current-ruleset-baseline.md`](../product/docs/architecture/current-ruleset-baseline.md)、current migrations [`3.0.0 rebaseline`](../product/database/migrations/2026_08_30_050000_rebaseline_3_0_0_underground_release.php) / [`3.1.0 rebaseline`](../product/database/migrations/2026_09_01_000000_rebaseline_3_1_0_release.php)、`Ver280UnderseaCityRulesetUpgrade` / `Ver310RulesetUpgrade` | [`pgsql-schema.sql`](../product/database/schema/pgsql-schema.sql)、`FreshInstallRebaselineTest`、release preflight / backup runbook | [`install-upgrade-rebaseline.md`](../product/docs/architecture/install-upgrade-rebaseline.md)とversion別migration runbookは歴史・互換性理由が必要なときだけ |
+| Ruleset authoring / classification | [`product/config/hakoniwa.php`](../product/config/hakoniwa.php)からcurrent entrypointを解決し、[`ruleset-authoring.md`](../product/docs/architecture/ruleset-authoring.md)を読む | [`current-ruleset-baseline.md`](../product/docs/architecture/current-ruleset-baseline.md)、current changed-domain fragment、`CurrentRulesetAuthoringInspector` | [`configuration-management.md`](architecture/configuration-management.md)はv1〜v9/MVP-eraのcurrent-state記述が混在する。[`product/docs/archive/rulesets/`](../product/docs/archive/rulesets/index.md)、[`ruleset-configuration-layers.md`](../product/docs/architecture/ruleset-configuration-layers.md)、旧Rulesetのrelease資料も通常不要 |
+| Migration / install / supported upgrade | [`current-ruleset-baseline.md`](../product/docs/architecture/current-ruleset-baseline.md)、current `database/migrations/`、対象releaseのupgrade/preflight service | [`pgsql-schema.sql`](../product/database/schema/pgsql-schema.sql)、`FreshInstallRebaselineTest`、release preflight / backup runbook | [`install-upgrade-rebaseline.md`](../product/docs/architecture/install-upgrade-rebaseline.md)とversion別migration runbookは歴史・互換性理由が必要なときだけ |
 | Turn pipeline / RNG / retry | `TurnPipeline::CANONICAL_PHASE_KEYS`、`TurnRunner`、`CompleteTurnEngine`、current Rulesetのturn fragments | `TurnRandomStreamFactory`、TurnRun schema、[`turn-cron.md`](operations/turn-cron.md) | [`turn-randomness.md`](architecture/turn-randomness.md)は固定algorithmの由来が必要な場合だけ読む。pre-missile/stub scopeを現状として使わない。[`turn-pipeline.md`](architecture/turn-pipeline.md)と[`turn-runner-scaffold.md`](architecture/turn-runner-scaffold.md)もcurrent phase authorityではない |
 | Command queue / command execution | `CommandQueueService`、`CommandQueueController`、`CompleteTurnEngine`、current Rulesetの`command_definitions` | request fingerprint、queue DB constraints、task対象commandのcanonical service | [`roadmap-pr2-systems.md`](architecture/roadmap-pr2-systems.md)、[`command-api.md`](architecture/command-api.md)、PR14/PR22 auditは由来・regression調査時だけ |
 | World / Map / coordinate / expansion | [`ADR-0003`](decisions/ADR-0003-hex-coordinate-system.md)、current Ruleset world fragment、current schema、`WorldExpansionService`、`RegistrationWorldExpansionPlanner` | `NationCreationService`、`MapChunkService`、current API / projection code | [`world-and-map-space.md`](architecture/world-and-map-space.md)、[`registration-and-world-expansion.md`](architecture/registration-and-world-expansion.md)、[`chunk-storage.md`](architecture/chunk-storage.md)はpre-expansion/pre-Turn記述が混在するため由来確認時だけ。[`roadmap-pr4-staggered-xy.md`](roadmap-pr4-staggered-xy.md)とtest planは移行史 |
@@ -110,7 +110,7 @@ current authorityとして単独使用せず、先にcurrent code / immutable Ru
 
 ## Known `UNKNOWN / CONFLICT`
 
-次の6文書は現行code / Ruleset / ADR / handoffと矛盾または安全に解けない時点混在があり、このPRでは元文書を修正していない。
+次の5文書は現行code / Ruleset / ADR / handoffと矛盾または安全に解けない時点混在があり、この整理では元文書を修正していない。
 current authorityとして使わず、[`documentation-inventory.md`](documentation-inventory.md)のNotesを確認する。
 
 - [`README.md`](../README.md)
@@ -118,6 +118,5 @@ current authorityとして使わず、[`documentation-inventory.md`](documentati
 - [`docs/architecture/nation-lifecycle.md`](architecture/nation-lifecycle.md)
 - [`docs/architecture/turn-runner-scaffold.md`](architecture/turn-runner-scaffold.md)
 - [`docs/architecture/world-expansion-foundation.md`](architecture/world-expansion-foundation.md)
-- [`product/config/hakoniwa/rulesets/README.md`](../product/config/hakoniwa/rulesets/README.md)
 
 矛盾を見つけた場合は都合よく統合せず、対象path、対立するcode / Ruleset / ADR、影響するtaskを報告する。

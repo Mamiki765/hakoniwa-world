@@ -129,7 +129,7 @@ final class UndergroundPersistenceTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame([
             'starter_knife',
-            'secretary-underground-shop-equipment-alpha-v1',
+            'secretary-underground-shop-equipment-alpha-v2',
             'weapon',
             UndergroundStarterEquipmentService::GRANT_KEY,
         ], [
