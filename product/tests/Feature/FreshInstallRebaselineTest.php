@@ -67,7 +67,7 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v19')->sole();
 
-        $this->assertSame('3.1.0', config('hakoniwa.application_version'));
+        $this->assertSame('3.2.0', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v19'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v19', $ruleset->key);
         $this->assertSame(19, $ruleset->version);
@@ -535,6 +535,93 @@ SQL);
         $run = app(TurnRunner::class)->run($world->fresh());
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
         $this->assertSame(2, $world->fresh()->current_turn);
+    }
+
+    public function test_exact_3_1_0_upgrade_runs_single_3_2_equipment_migration_and_preserves_owned_identity(): void
+    {
+        $user = User::factory()->create();
+        $secretary = Secretary::query()->create(['user_id' => $user->id]);
+        $profile = UndergroundProfile::query()->create([
+            'secretary_id' => $secretary->id,
+            'unlocked_area_layers' => 2,
+            'combat_level' => 12,
+            'combat_xp' => 3456,
+            'shard_balance' => 789,
+            'banked_shard_balance' => 1234,
+            'current_hp' => 321,
+        ]);
+        $accessory = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'vitality_accessory_rank_1',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v1',
+            'equipped_slot' => 'accessory_1',
+            'grant_key' => 'exact-3-1-upgrade-accessory',
+            'instance_kind' => 'fixed',
+            'acquired_at' => now()->subHour(),
+        ]);
+        $profileBefore = [
+            $profile->unlocked_area_layers,
+            $profile->combat_level,
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->banked_shard_balance,
+            $profile->current_hp,
+        ];
+        $accessoryId = $accessory->id;
+        $acquiredAt = $accessory->acquired_at->toIso8601String();
+
+        $this->returnDatabaseToExact310Source();
+
+        $this->assertSame(
+            ['2026_09_02_000000_expand_underground_hackslash_equipment'],
+            $this->pendingMigrations(),
+        );
+        $this->assertSame(56, DB::table('migrations')->count());
+        $this->assertFalse(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
+        $this->assertSame(
+            'accessory',
+            DB::table('underground_owned_equipment')->where('id', $accessoryId)->value('equipped_slot'),
+        );
+
+        $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
+
+        $this->assertSame([], $this->pendingMigrations());
+        $this->assertSame(57, DB::table('migrations')->count());
+        $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
+        $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'generated_payload'));
+        $upgraded = UndergroundOwnedEquipment::query()->findOrFail($accessoryId);
+        $this->assertSame([
+            'vitality_accessory_rank_1',
+            'secretary-underground-shop-equipment-alpha-v1',
+            'accessory_1',
+            'exact-3-1-upgrade-accessory',
+            'fixed',
+            null,
+            null,
+            null,
+            null,
+            $acquiredAt,
+        ], [
+            $upgraded->definition_key,
+            $upgraded->catalog_identity,
+            $upgraded->equipped_slot,
+            $upgraded->grant_key,
+            $upgraded->instance_kind,
+            $upgraded->instance_identity,
+            $upgraded->generator_identity,
+            $upgraded->generated_payload,
+            $upgraded->source_battle_id,
+            $upgraded->acquired_at->toIso8601String(),
+        ]);
+        $profile->refresh();
+        $this->assertSame($profileBefore, [
+            $profile->unlocked_area_layers,
+            $profile->combat_level,
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->banked_shard_balance,
+            $profile->current_hp,
+        ]);
     }
 
     public function test_3_0_0_migration_rejects_every_noncanonical_2_8_0_ledger_before_schema_change(): void
