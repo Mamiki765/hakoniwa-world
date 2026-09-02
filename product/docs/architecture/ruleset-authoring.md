@@ -2,29 +2,27 @@
 
 ## Purpose and authority
 
-The current application authors one canonical runtime Ruleset: `hakoniwa-2s-plus-v19`.
-The thin entrypoint at `config/hakoniwa/rulesets/hakoniwa-2s-plus-v19.php` explicitly composes
-unchanged fields from immutable v18 and changed fields from the bounded v19 domain fragments.
-It does not load an unsupported historical or roadmap Ruleset and does not introduce a
-second runtime schema.
+The application authors one canonical runtime Ruleset. The exact configured key, version,
+and entrypoint are resolved from `config/hakoniwa.php` and current code; this permanent
+authoring document does not pin a concrete Ruleset generation.
+
+When a release needs a semantic Ruleset change, its draft entrypoint may explicitly compose
+unchanged fields from the exact immutable production predecessor `N` and only the bounded
+changed-domain fragments for `N+1`. It does not load unsupported historical or roadmap
+Rulesets and does not introduce a second runtime schema.
 
 Git is the complete implementation history. The Markdown archive under
 `docs/archive/rulesets/` is a human-readable index, not an executable payload source.
 
 ## Domain-first layout
 
-The v18 source remains the complete immutable predecessor. v19 changes only these fragments:
+The production predecessor remains the complete immutable source. A release draft replaces
+only the domains that actually change and reuses all unchanged fields exactly. Concrete
+entrypoint and fragment names belong to current code and release-specific history rather than
+this permanent policy document.
 
-- `v19/world-and-map.php` (identity only)
-- `v19/commands-and-production.php`
-- `v19/underground-facilities.php`
-
-The entrypoint replaces identity, Surface commands/production, and adds the isolated
-`underground_facility_development` definition section. Unchanged world generation, other
-economy and Surface facilities, Secretary, Underground dungeon, and Trading Post behavior is
-reused as-is from v18. There is
-no recursive merge, implicit flattening, reflection, generic Ruleset inheritance, or dynamic
-historical catalog.
+There is no recursive merge, implicit flattening, reflection, generic Ruleset inheritance,
+or dynamic historical catalog.
 
 Each changed domain returns a `payload` fragment and adjacent `behavior`, `data`, and
 `flavor` classification selectors.
@@ -40,34 +38,23 @@ eligibility, target selection, state transitions, transaction and retry semantic
 timing, RNG stream identity/version, selectors, policy/effect/progression types, stable keys,
 ordering identities, settlement order, and cap application order.
 
-For v18 this includes the `undersea_city` identity, disguised presentation, sea/territory
-target eligibility, capital-population transfer, fixed settlement identity, refugee exclusion,
-maintenance payment and ordering policies, famine deduplication, minimum-population removal,
-fire/disaster eligibility, missile resistance and destruction classification, and KARMA ledger
-category identities.
-
-For v19 this additionally includes the `territory_abandon` identity, its safe owned-cell
-eligibility, ownership-only result, and non-turn-consuming execution contract. It also
-includes the isolated Underground facility/command identities, slot target, build/remove
-action, official-Turn consumption, and command ordering. Command sort order is behavior
-because it determines the player-facing command sequence.
+Examples include facility or command identities, disguised presentation behavior,
+target eligibility, ownership transitions, maintenance ordering, disaster eligibility,
+missile resistance/destruction classification, command execution timing, and command sort
+order when that order determines the player-facing command sequence.
 
 ### Data
 
 Data is the value supplied to an unchanged algorithm. It includes probabilities, HP,
-experience, prices, capacities, rates, levels, per-level amounts, weights, and limits.
-
-For v18 this includes the 100-billion-yen (`cost_money = 1000`) command cost, 3,100/3,000-person transfer values,
-1,000-unit maintenance bases, 2:1 substitution ratio, 3,000-person minimum, and +3/+1 KARMA
-amounts. Existing settlement growth and famine ranges remain unchanged inputs inherited from
-v17. For v19 it also includes Underground build/remove costs and the city, farm, factory, and
-missile-capacity effect amounts.
+experience, prices, capacities, rates, levels, per-level amounts, weights, limits, build or
+removal costs, and effect amounts.
 
 ### Flavor
 
 Flavor can change without changing gameplay results, database state, target selection, or
 RNG results. It includes names, descriptions, player-facing labels, unit labels, and display
-text. The Japanese skill and Item names are flavor; their stable keys are behavior.
+text. Japanese skill and Item names are flavor when their stable keys and gameplay meaning do
+not change.
 
 ## Decision procedure
 
@@ -100,22 +87,32 @@ key. The inspector rejects:
 The Ruleset checksum separately owns empty arrays, key presence, array order, shapes,
 types, nulls, and values. Classification metadata never enters the published payload.
 
-## Change discipline
+## Release version discipline
 
-The v16 key, version, full payload, and checksum
-`331d2d0e9456fa87a37ea0765313ecd9828b5d4912fa2b6637620806df80487d`
-are immutable. The v17 key, version, full payload, and checksum
-`8b0781a52e1d4b534a1e80acca4d63731fc7a80680bf27ea5edcaf1c0233e3b3`
-are immutable. The v18 key, version, full payload, and checksum
-`40bb900705776bf82e69e11b4f6f9aeed433988599aa0690cfd6088964e16f8b`
-are immutable. v19 is the in-development Ruleset for release/3.1.0; its current checksum is
-`b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9`.
-It may change while that release branch is completed, even if source calls it published or a
-publication migration exists. The production baseline, not a PR or source label, determines
-freeze state.
+Let the Owner-confirmed production Ruleset at release start be `N`.
 
-When 3.1.0 reaches main/production and the production World uses v19, its key, version, full
-payload, and checksum freeze. A later gameplay, balance, RNG, or
-persistence-interpretation change then requires v20 plus a reviewed forward migration; it
-must not be hidden in an authoring refactor. Editing a production-unapplied migration still
-requires an Owner-confirmed production baseline.
+- If the release has no semantic Ruleset change, it remains on `N`.
+- If a semantic change is required, the release may introduce `N+1`.
+- One release introduces at most one new Ruleset generation unless the Owner explicitly
+  authorizes otherwise.
+- While the release is not production-applied, `N+1` is the single release draft. Later
+  features, PRs, balance changes, and stabilization in that same release amend the same
+  `N+1`; they do not create `N+2`, `N+3`, or another generation per work slice.
+- Source labels such as `published`, a PR, a migration file, or repository state alone do not
+  prove that a draft has frozen. Production evidence and the Owner-confirmed production
+  baseline determine freeze state.
+- Once `N+1` is actually used by production, its key, version, full payload, definitions, and
+  checksum are immutable. A later release that needs a semantic change creates the next
+  generation rather than rewriting that frozen snapshot.
+- If an agent believes one release requires more than one new generation, it must stop before
+  implementation and report the reason and options to the Owner.
+- The same version budget applies to subagents; they may not independently advance the
+  generation.
+
+A gameplay, balance, RNG, or persistence-interpretation change must not be hidden in an
+authoring refactor. Editing a production-unapplied migration still requires an
+Owner-confirmed production baseline.
+
+Concrete historical generations and checksums belong to code, tests, migrations, Git, and
+historical/audit documents. They are intentionally not copied into this permanent authoring
+policy.
