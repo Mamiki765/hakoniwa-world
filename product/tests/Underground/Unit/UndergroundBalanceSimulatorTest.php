@@ -96,7 +96,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             'trial_razor_bat' => 30,
             'trial_ash_knight' => 16,
             'trial_gate_golem' => 10,
-            'trial_wyvern' => 15,
+            'trial_wyvern' => 26,
         ], array_column($report['battle_sequence'], 'agility', 'key'));
         foreach ($report['builds'] as $levels) {
             foreach ($levels as $build) {
@@ -111,7 +111,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
     {
         [, $manifest] = $this->trialManifest();
         $this->assertSame(229, $manifest['enemies']['trial_wyvern']['magical_defense']);
-        $this->assertSame(15, $manifest['enemies']['trial_wyvern']['base_stats']['agility']);
+        $this->assertSame(26, $manifest['enemies']['trial_wyvern']['base_stats']['agility']);
         $this->assertSame(10_000, $manifest['statuses']['wyvern_airborne']['effects'][0]['value_bps']);
         foreach ($manifest['enemies'] as &$enemy) {
             $enemy['max_hp'] = 1;
