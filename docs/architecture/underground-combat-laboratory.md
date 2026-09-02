@@ -293,3 +293,9 @@ PR109は護身用ナイフを含むSecretary-owned equipmentを`1 row = 1 owned 
 通常探索はsynthetic starter injectionを廃止し、progression stats、actual equipped weapon/armor/accessory、passive Skill effects、active loadout、built-in AIを同じcanonical combat snapshotへ渡す。weapon style requirementに適合しないactive skillはruntime snapshotとAI ruleから除外するが、persisted active slotは保持し、適合武器へ戻した時に再利用する。Tutorial、story battle、開発環境限定playtest、PR105 laboratory fixtureはcurrent equipmentへ依存させない。
 
 正式な浅層benchmarkはLv1 Rank 1一式、Lv10 Rank 2一式、Lv20 Rank 3一式とcurrent progressionで観測する。雑魚、厄介、強敵の相対分類とHP持越しattritionを優先し、特定seedの勝率をhard gateにしない。99% complete guardの輝石虫は別軸として維持する。productionではplaytest entryを表示せず、通常探索だけをplayer-facing runtimeとして公開する。random drop、affix、unique、enhancement、enchant、Trialは後続sliceへ残す。
+
+## release/3.2.0 hack-and-slash equipment foundation
+
+release/3.2.0はPR109のowned instanceと宝物庫をforward migrationし、装備枠を武器1・防具1・アクセサリー3の計5枠へ拡張する。既存の`accessory`はrow identity、grant key、取得日時を維持したまま`accessory_1`へ変換し、equip APIはアクセサリーの`target_slot`を受ける。省略時は`accessory_1`を使い、3枠のstatsとmodifierをcanonical combat snapshotへそれぞれ1回だけ加算する。装備変更時のcurrent HPは増加させず、新しいmax HPまでのclampだけを行う。
+
+固定Shop catalog v1は解決可能なまま保持し、v2に試練1初回clear後のItem Lv 40 Novice装備を追加する。generated instanceは固定definitionと同じowned tableへ、non-nullのdefinition/catalog identity、stable instance/generator identity、source battle、immutable JSONB payloadを保存し、表示・売却・combat projection時に再生成しない。runtime generatorはItem Lv 1-60のanchor補間、RegularからRelicまでのrarity slot、80-100% quality、accessory倍率、既存combat modifierだけを扱い、Uniqueと新しいeffect engineは導入しない。
