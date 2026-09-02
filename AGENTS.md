@@ -139,9 +139,10 @@ Testは、現在サポートする次のcontractを守るために追加する�
 - production pathのない理論上の異常状態や、unsupported historical runtimeのためだけにtestを増やさない。
 - 状態×command×targetの総当たりmatrixを安易に作らない。
 - focused testから始め、変更domainに必要なsuiteとstatic checkを実行する。
-- release、rebaseline、migration、shared runtime変更ではrepository-wide verificationを行う。
-- exact-head CIを最終authorityとして確認する。
-- source、test設定、dependency、runtime環境が変わっていなければ、同じ検証を理由なく繰り返さない。
+- repository-wide PHPUnitは、exact-head CIが同じtest identifier集合を全件実行する場合、原則としてCIへ委譲する。
+- localではfocused testを優先し、migration、concurrency、environment固有の検証、CI failureの再現など、CIだけでは不足する確認を追加する。
+- source、dependency、test設定が変わっていない場合、CIと同じ全PHPUnitをlocalで重複実行しない。
+- repository-wide回帰はexact-head CIを最終authorityとして確認する。
 
 Review findingは、少なくとも次のどれかを具体的に示す。
 
