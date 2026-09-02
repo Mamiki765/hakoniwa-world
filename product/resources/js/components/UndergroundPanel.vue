@@ -812,10 +812,22 @@ async function runBankAction(action: 'deposit' | 'withdraw' | 'deposit_all' | 'w
     }
 }
 
-function changeStpDraft(stat: StatKey, delta: number): void {
-    const next = stpDraft.value[stat] + delta;
-    if (next < 0 || stpDraftTotal.value + delta > (state.value?.unspent_stp ?? 0)) return;
+function maximumStpDraft(stat: StatKey): number {
+    return Math.min(2_147_483_647, stpDraft.value[stat] + stpDraftRemaining.value);
+}
+
+function setStpDraft(stat: StatKey, event: Event): void {
+    const input = event.currentTarget;
+    if (!(input instanceof HTMLInputElement)) return;
+    const current = stpDraft.value[stat];
+    const parsed = input.value === '' ? 0 : Number(input.value);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+        input.value = String(current);
+        return;
+    }
+    const next = Math.min(parsed, maximumStpDraft(stat));
     stpDraft.value = { ...stpDraft.value, [stat]: next };
+    if (next !== parsed) input.value = String(next);
 }
 
 async function confirmStp(): Promise<void> {
@@ -1399,7 +1411,7 @@ onUnmounted(() => {
                                 <td>+{{ state.status_breakdown[key].allocated_stp }}</td>
                                 <td>+{{ state.status_breakdown[key].equipment }}</td>
                                 <td>{{ state.status_breakdown[key].final }}</td>
-                                <td class="underground-stp-control"><button type="button" :disabled="busy || stpDraft[key] === 0" :aria-label="`${label}の仮配分を1減らす`" @click="changeStpDraft(key, -1)">−</button><output>{{ stpDraft[key] }}</output><button type="button" :disabled="busy || stpDraftRemaining === 0" :aria-label="`${label}の仮配分を1増やす`" @click="changeStpDraft(key, 1)">＋</button></td>
+                                <td class="underground-stp-control"><input type="number" min="0" :max="maximumStpDraft(key)" step="1" inputmode="numeric" :value="stpDraft[key]" :disabled="busy" :aria-label="`${label}の今回の配分`" @input="setStpDraft(key, $event)"></td>
                             </tr>
                         </tbody>
                     </table>
