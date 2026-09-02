@@ -110,7 +110,7 @@ current authorityとして単独使用せず、先にcurrent code / immutable Ru
 
 ## Known `UNKNOWN / CONFLICT`
 
-次の6文書は現行code / Ruleset / ADR / handoffと矛盾または安全に解けない時点混在があり、このPRでは元文書を修正していない。
+次の5文書は現行code / Ruleset / ADR / handoffと矛盾または安全に解けない時点混在があり、この整理では元文書を修正していない。
 current authorityとして使わず、[`documentation-inventory.md`](documentation-inventory.md)のNotesを確認する。
 
 - [`README.md`](../README.md)
@@ -118,6 +118,5 @@ current authorityとして使わず、[`documentation-inventory.md`](documentati
 - [`docs/architecture/nation-lifecycle.md`](architecture/nation-lifecycle.md)
 - [`docs/architecture/turn-runner-scaffold.md`](architecture/turn-runner-scaffold.md)
 - [`docs/architecture/world-expansion-foundation.md`](architecture/world-expansion-foundation.md)
-- [`product/config/hakoniwa/rulesets/README.md`](../product/config/hakoniwa/rulesets/README.md)
 
 矛盾を見つけた場合は都合よく統合せず、対象path、対立するcode / Ruleset / ADR、影響するtaskを報告する。
