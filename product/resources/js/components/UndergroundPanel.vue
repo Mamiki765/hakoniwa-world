@@ -83,6 +83,35 @@ interface Battle {
         system_messages: string[];
     } | null;
     challenge_intro?: string | null;
+    hunting_ground?: {
+        key: string;
+        name: string;
+        content_identity: string;
+        item_level_min: number;
+        item_level_max: number;
+    } | null;
+    drop?: {
+        identity: string;
+        status: 'none' | 'ineligible' | 'granted' | 'vault_full';
+        item?: {
+            instance_identity: string;
+            name: string;
+            category: 'weapon' | 'armor' | 'accessory';
+            item_level: number;
+            rarity: 'common' | 'uncommon' | 'rare' | 'epic';
+            rarity_label: string;
+            affixes: Array<{ key: string; label: string; target: string; value: number }>;
+        };
+    } | null;
+}
+
+interface HuntingGround {
+    key: string;
+    name: string;
+    locked: boolean;
+    unlock_condition: string | null;
+    item_level_min: number;
+    item_level_max: number;
 }
 
 interface TrialRun {
@@ -199,6 +228,11 @@ interface PendingMutation {
     requestId: string;
 }
 
+interface PendingExplorationRequest {
+    requestId: string;
+    huntingGroundKey: string;
+}
+
 interface UndergroundState {
     stage: Stage;
     secretary_name: string;
@@ -240,6 +274,8 @@ interface UndergroundState {
     growth_paths: GrowthPath[] | null;
     growth_path: GrowthPath | null;
     playtest: PlaytestOptions | null;
+    default_hunting_ground_key?: string | null;
+    hunting_grounds?: HuntingGround[] | null;
     trial: TrialState | null;
     awakening: AwakeningState | null;
     battle: Battle | null;
@@ -379,7 +415,7 @@ const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
-const pendingExplorationRequestId = ref<string | null>(null);
+const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
 const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
@@ -588,21 +624,27 @@ async function runPlaytest(): Promise<void> {
     }
 }
 
-async function runExplore(): Promise<void> {
+async function runExplore(huntingGroundKey: string): Promise<void> {
     if (busy.value) return;
     innRested.value = false;
-    const explorationRequestId = pendingExplorationRequestId.value ?? requestId();
-    pendingExplorationRequestId.value = explorationRequestId;
+    const pending = pendingExplorationRequest.value ?? {
+        requestId: requestId(),
+        huntingGroundKey,
+    };
+    pendingExplorationRequest.value = pending;
     busy.value = true;
     error.value = '';
     try {
         const battle = await api<Battle>('/api/v1/me/underground/explore', {
             method: 'POST',
-            body: JSON.stringify({ request_id: explorationRequestId }),
+            body: JSON.stringify({
+                request_id: pending.requestId,
+                hunting_ground_key: pending.huntingGroundKey,
+            }),
         });
         await refresh(false);
         selectedBattle.value = battle;
-        pendingExplorationRequestId.value = null;
+        pendingExplorationRequest.value = null;
     } catch (caught) {
         if (caught instanceof ApiError && caught.status === 409) await refresh(false);
         error.value = caught instanceof Error ? caught.message : '周囲を探索できませんでした。';
@@ -1010,8 +1052,16 @@ onUnmounted(() => {
                 <footer id="underground-battle-result" class="underground-battle-result">
                     <p class="eyebrow">戦闘終了</p>
                     <h2>{{ battleResultLabel(currentBattle.result) }}</h2>
+                    <p v-if="currentBattle.hunting_ground">狩場: {{ currentBattle.hunting_ground.name }}</p>
                     <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
                     <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
+                    <p v-if="currentBattle.drop?.status === 'granted' && currentBattle.drop.item" class="underground-equipment-drop" role="status">
+                        装備drop: {{ currentBattle.drop.item.rarity_label }}・Item Lv {{ currentBattle.drop.item.item_level }}・{{ currentBattle.drop.item.name }}
+                        <span v-if="currentBattle.drop.item.affixes.length > 0">（{{ currentBattle.drop.item.affixes.map((affix) => affix.label).join('、') }}）</span>
+                    </p>
+                    <p v-if="currentBattle.drop?.status === 'vault_full' && currentBattle.drop.item" class="underground-equipment-drop lost" role="alert">
+                        宝物庫が満杯のため、{{ currentBattle.drop.item.rarity_label }}・Item Lv {{ currentBattle.drop.item.item_level }}・{{ currentBattle.drop.item.name }}を持ち帰れませんでした。
+                    </p>
                     <p v-if="(currentBattle.interbattle_heal_amount ?? 0) > 0" class="underground-interbattle-heal">体力が少し回復した</p>
                     <div
                         v-if="currentBattle.combat_level_after !== undefined && currentBattle.combat_level_after !== currentBattle.combat_level_before"
@@ -1204,7 +1254,18 @@ onUnmounted(() => {
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <h2 id="underground-adventure-title">冒険</h2>
                         <div class="underground-entries">
-                            <button type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run)" @click="runExplore">周囲を探索<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : '浅い洞窟' }}</small></button>
+                            <button
+                                v-for="ground in state.hunting_grounds ?? []"
+                                :key="ground.key"
+                                type="button"
+                                :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || ground.locked"
+                                @click="runExplore(ground.key)"
+                            >
+                                {{ ground.name }}を探索
+                                <small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
+                                <small v-else-if="ground.locked">{{ ground.unlock_condition }}</small>
+                                <small v-else>Item Lv {{ ground.item_level_min }}〜{{ ground.item_level_max }}</small>
+                            </button>
                             <button type="button" :disabled="busy || exploreCooldownSeconds > 0 || !state.trial" @click="runTrial">封印の地<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : state.trial?.active_run ? `${state.trial.active_run.next_battle_index}/${state.trial.active_run.total_battles}戦目` : state.trial?.label }}</small></button>
                         </div>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>

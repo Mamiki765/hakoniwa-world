@@ -14,6 +14,7 @@ use App\Http\Requests\AllocateUndergroundStpRequest;
 use App\Http\Requests\NameUndergroundShopkeeperRequest;
 use App\Http\Requests\SelectUndergroundGrowthPathRequest;
 use App\Http\Requests\UndergroundBankTransferRequest;
+use App\Http\Requests\UndergroundExploreRequest;
 use App\Http\Requests\UndergroundIntroMutationRequest;
 use App\Http\Requests\UndergroundPlaytestRequest;
 use App\Http\Requests\UndergroundTrialFightRequest;
@@ -132,13 +133,17 @@ final class UndergroundIntroController extends Controller
     }
 
     public function explore(
-        UndergroundIntroMutationRequest $request,
+        UndergroundExploreRequest $request,
         UndergroundRuntimeService $service,
     ): JsonResponse {
         return $this->respond(function () use ($request, $service): array {
+            $validated = $request->validated();
             $result = $service->explore(
                 $request->user(),
                 $request->string('request_id')->value(),
+                array_key_exists('hunting_ground_key', $validated)
+                    ? (string) $validated['hunting_ground_key']
+                    : null,
             );
 
             return $service->projectExplorationBattle($result['battle']);

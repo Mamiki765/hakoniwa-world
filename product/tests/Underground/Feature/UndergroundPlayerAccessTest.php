@@ -1087,7 +1087,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             $encounters['crystal_bug']['xp'] / ($vanillaWeightedXp / $vanillaWeight),
             0.2,
         );
-        $crystalBug = config('underground-alpha-v1.exploration.encounters.crystal_bug');
+        $crystalBug = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.crystal_bug');
         $this->assertIsArray($crystalBug);
         $this->assertSame('輝石虫', $crystalBug['label']);
         $this->assertSame(
@@ -1267,7 +1267,22 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.equipment_summary.used', 1)
             ->assertJsonPath('data.equipment_summary.capacity', 500)
             ->assertJsonPath('data.equipment_summary.equipped.weapon.key', 'starter_knife')
+            ->assertJsonPath('data.default_hunting_ground_key', 'shallow_caves')
+            ->assertJsonPath('data.hunting_grounds.0.key', 'shallow_caves')
+            ->assertJsonPath('data.hunting_grounds.0.locked', false)
+            ->assertJsonPath('data.hunting_grounds.1.key', 'black_crystal_cave')
+            ->assertJsonPath('data.hunting_grounds.1.locked', true)
+            ->assertJsonPath('data.hunting_grounds.1.unlock_condition', '試練1を初回clear')
             ->assertJsonMissingPath('data.equipment_summary.items');
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
+            'request_id' => (string) Str::uuid(),
+            'hunting_ground_key' => 'unknown_ground',
+        ])->assertConflict()->assertJsonPath('code', 'underground_hunting_ground_not_supported');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
+            'request_id' => (string) Str::uuid(),
+            'hunting_ground_key' => 'black_crystal_cave',
+        ])->assertConflict()->assertJsonPath('code', 'underground_hunting_ground_locked');
         $this->assertFalse($main->json('data.equipment_summary.equipped.weapon.shop_sold'));
         $starterId = (int) $main->json('data.equipment_summary.equipped.weapon.id');
         $this->assertSame([], UndergroundBattle::query()
@@ -1423,6 +1438,11 @@ final class UndergroundPlayerAccessTest extends TestCase
             $profile->allocated_finesse_stp,
             $profile->allocated_spirit_stp,
             $profile->allocated_agility_stp,
+        ]);
+        config([
+            'underground-alpha-v1.exploration.drop.profiles.standard.presence_bps' => 0,
+            'underground-alpha-v1.exploration.drop.profiles.elite.presence_bps' => 0,
+            'underground-alpha-v1.exploration.drop.profiles.rare.presence_bps' => 0,
         ]);
         $explorationRequest = (string) Str::uuid();
         $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
@@ -1843,6 +1863,8 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.context', 'exploration')
             ->assertJsonPath('data.player_display_name', 'Exploration secretary')
             ->assertJsonPath('data.id', $requestId)
+            ->assertJsonPath('data.hunting_ground.key', 'shallow_caves')
+            ->assertJsonPath('data.hunting_ground.name', '浅い洞窟')
             ->assertJsonMissingPath('data.private_seed')
             ->assertJsonMissingPath('data.snapshot');
         $this->actingAs($user)->postJson('/api/v1/me/underground/explore', $payload)

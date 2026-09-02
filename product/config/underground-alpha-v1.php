@@ -79,8 +79,8 @@ return [
         ],
     ],
     'exploration' => [
-        'identity' => 'secretary-underground-exploration-alpha-v1',
-        'hunting_ground_key' => 'shallow_caves',
+        'identity' => 'secretary-underground-exploration-alpha-v2',
+        'default_hunting_ground_key' => 'shallow_caves',
         'max_rounds' => 100,
         'starter_weapon' => [
             'key' => 'starter_knife',
@@ -120,83 +120,230 @@ return [
             ['conditions' => [['type' => 'skill_ready', 'skill' => 'precision_cut']], 'action' => 'skill:precision_cut'],
             ['conditions' => [['type' => 'skill_ready', 'skill' => 'holy_bolt']], 'action' => 'skill:holy_bolt'],
         ],
-        'encounters' => [
-            'subterranean_rat' => [
-                'label' => '地底鼠', 'weight' => 2500, 'xp' => 36, 'shards' => 10,
-                'enemy' => [
-                    'label' => '地底鼠', 'boss' => false,
-                    'base_stats' => ['vitality' => 15, 'might' => 18, 'finesse' => 18, 'spirit' => 12, 'agility' => 37],
-                    'max_hp' => 260, 'physical_defense' => 45, 'magical_defense' => 40, 'weapon_power' => 16,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
-                    'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+        'drop' => [
+            'identity' => 'secretary-underground-exploration-drop-alpha-v1',
+            'profiles' => [
+                'standard' => [
+                    'presence_bps' => 2006,
+                    'rarity_weights' => ['common' => 9118, 'uncommon' => 683, 'rare' => 194, 'epic' => 5],
+                ],
+                'elite' => [
+                    'presence_bps' => 3815,
+                    'rarity_weights' => ['common' => 7864, 'uncommon' => 1573, 'rare' => 524, 'epic' => 39],
+                ],
+                'rare' => [
+                    'presence_bps' => 10000,
+                    'rarity_weights' => ['common' => 5000, 'uncommon' => 3000, 'rare' => 1500, 'epic' => 500],
                 ],
             ],
-            'cave_vermin' => [
-                'label' => '洞窟蟲', 'weight' => 2500, 'xp' => 40, 'shards' => 12,
-                'enemy' => [
-                    'label' => '洞窟蟲', 'boss' => false,
-                    'base_stats' => ['vitality' => 22, 'might' => 22, 'finesse' => 18, 'spirit' => 18, 'agility' => 20],
-                    'max_hp' => 340, 'physical_defense' => 55, 'magical_defense' => 50, 'weapon_power' => 18,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 7000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
-                    'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
-                ],
-            ],
-            'corrosive_slime' => [
-                'label' => '腐食スライム', 'weight' => 2000, 'xp' => 46, 'shards' => 14,
-                'enemy' => [
-                    'label' => '腐食スライム', 'boss' => false,
-                    'base_stats' => ['vitality' => 38, 'might' => 18, 'finesse' => 12, 'spirit' => 22, 'agility' => 10],
-                    'max_hp' => 520, 'physical_defense' => 65, 'magical_defense' => 60, 'weapon_power' => 17,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
-                    'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
-                ],
-            ],
-            'regenerating_mass' => [
-                'label' => '再生肉塊', 'weight' => 1000, 'xp' => 52, 'shards' => 16,
-                'enemy' => [
-                    'label' => '再生肉塊', 'boss' => false,
-                    'base_stats' => ['vitality' => 34, 'might' => 26, 'finesse' => 14, 'spirit' => 16, 'agility' => 10],
-                    'max_hp' => 500, 'physical_defense' => 60, 'magical_defense' => 55, 'weapon_power' => 25,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 7000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
-                    'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
-                    'modifiers' => ['self_regeneration_target_hp_bps' => 150],
-                ],
-            ],
-            'fanatic' => [
-                'label' => '狂信者', 'weight' => 1000, 'xp' => 58, 'shards' => 18,
-                'enemy' => [
-                    'label' => '狂信者', 'boss' => false,
-                    'base_stats' => ['vitality' => 24, 'might' => 34, 'finesse' => 18, 'spirit' => 12, 'agility' => 12],
-                    'max_hp' => 450, 'physical_defense' => 60, 'magical_defense' => 55, 'weapon_power' => 28,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
-                    'skills' => ['pressure_heavy', 'enemy_telegraph'],
-                    'ai_rules' => [
-                        ['conditions' => [['type' => 'self_has_status', 'status' => 'telegraph']], 'action' => 'skill:pressure_heavy'],
-                        ['conditions' => [['type' => 'round_modulo', 'modulo' => 3, 'equals' => 2]], 'action' => 'skill:enemy_telegraph'],
-                        ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+            'category_weights' => ['weapon' => 2000, 'armor' => 2000, 'accessory' => 6000],
+            'weapon_styles' => ['dagger', 'rapier', 'longsword', 'crystal_staff'],
+            'accessory_main_stats' => ['vitality', 'might', 'finesse', 'spirit', 'agility'],
+        ],
+        'grounds' => [
+            'shallow_caves' => [
+                'content_identity' => 'secretary-underground-exploration-alpha-v1',
+                'name' => '浅い洞窟',
+                'required_trial_key' => null,
+                'item_level_min' => 5,
+                'item_level_max' => 30,
+                'encounters' => [
+                    'subterranean_rat' => [
+                        'label' => '地底鼠', 'weight' => 2500, 'xp' => 36, 'shards' => 10,
+                        'drop_profile' => 'standard', 'item_level_min' => 5, 'item_level_max' => 15,
+                        'enemy' => [
+                            'label' => '地底鼠', 'boss' => false,
+                            'base_stats' => ['vitality' => 15, 'might' => 18, 'finesse' => 18, 'spirit' => 12, 'agility' => 37],
+                            'max_hp' => 260, 'physical_defense' => 45, 'magical_defense' => 40, 'weapon_power' => 16,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+                        ],
                     ],
-                    'modifiers' => [],
+                    'cave_vermin' => [
+                        'label' => '洞窟蟲', 'weight' => 2500, 'xp' => 40, 'shards' => 12,
+                        'drop_profile' => 'standard', 'item_level_min' => 5, 'item_level_max' => 15,
+                        'enemy' => [
+                            'label' => '洞窟蟲', 'boss' => false,
+                            'base_stats' => ['vitality' => 22, 'might' => 22, 'finesse' => 18, 'spirit' => 18, 'agility' => 20],
+                            'max_hp' => 340, 'physical_defense' => 55, 'magical_defense' => 50, 'weapon_power' => 18,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 7000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+                        ],
+                    ],
+                    'corrosive_slime' => [
+                        'label' => '腐食スライム', 'weight' => 2000, 'xp' => 46, 'shards' => 14,
+                        'drop_profile' => 'standard', 'item_level_min' => 5, 'item_level_max' => 15,
+                        'enemy' => [
+                            'label' => '腐食スライム', 'boss' => false,
+                            'base_stats' => ['vitality' => 38, 'might' => 18, 'finesse' => 12, 'spirit' => 22, 'agility' => 10],
+                            'max_hp' => 520, 'physical_defense' => 65, 'magical_defense' => 60, 'weapon_power' => 17,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+                        ],
+                    ],
+                    'regenerating_mass' => [
+                        'label' => '再生肉塊', 'weight' => 1000, 'xp' => 52, 'shards' => 16,
+                        'drop_profile' => 'elite', 'item_level_min' => 10, 'item_level_max' => 25,
+                        'enemy' => [
+                            'label' => '再生肉塊', 'boss' => false,
+                            'base_stats' => ['vitality' => 34, 'might' => 26, 'finesse' => 14, 'spirit' => 16, 'agility' => 10],
+                            'max_hp' => 500, 'physical_defense' => 60, 'magical_defense' => 55, 'weapon_power' => 25,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 7000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+                            'modifiers' => ['self_regeneration_target_hp_bps' => 150],
+                        ],
+                    ],
+                    'fanatic' => [
+                        'label' => '狂信者', 'weight' => 1000, 'xp' => 58, 'shards' => 18,
+                        'drop_profile' => 'elite', 'item_level_min' => 10, 'item_level_max' => 25,
+                        'enemy' => [
+                            'label' => '狂信者', 'boss' => false,
+                            'base_stats' => ['vitality' => 24, 'might' => 34, 'finesse' => 18, 'spirit' => 12, 'agility' => 12],
+                            'max_hp' => 450, 'physical_defense' => 60, 'magical_defense' => 55, 'weapon_power' => 28,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => ['pressure_heavy', 'enemy_telegraph'],
+                            'ai_rules' => [
+                                ['conditions' => [['type' => 'self_has_status', 'status' => 'telegraph']], 'action' => 'skill:pressure_heavy'],
+                                ['conditions' => [['type' => 'round_modulo', 'modulo' => 3, 'equals' => 2]], 'action' => 'skill:enemy_telegraph'],
+                                ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+                            ],
+                            'modifiers' => [],
+                        ],
+                    ],
+                    'lost_shadow' => [
+                        'label' => '迷い人の影', 'weight' => 900, 'xp' => 72, 'shards' => 22,
+                        'drop_profile' => 'elite', 'item_level_min' => 20, 'item_level_max' => 30,
+                        'enemy' => [
+                            'label' => '迷い人の影', 'boss' => false,
+                            'base_stats' => ['vitality' => 28, 'might' => 34, 'finesse' => 20, 'spirit' => 2, 'agility' => 16],
+                            'max_hp' => 1000, 'physical_defense' => 110, 'magical_defense' => 100, 'weapon_power' => 44,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 10500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => true, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+                        ],
+                    ],
+                    'crystal_bug' => [
+                        'label' => '輝石虫', 'weight' => 100, 'xp' => 1150, 'shards' => 0,
+                        'drop_profile' => 'rare', 'item_level_min' => 25, 'item_level_max' => 30,
+                        'enemy' => [
+                            'label' => '輝石虫', 'boss' => false,
+                            'base_stats' => ['vitality' => 20, 'might' => 5, 'finesse' => 5, 'spirit' => 60, 'agility' => 10],
+                            'max_hp' => 1, 'physical_defense' => 0, 'magical_defense' => 0, 'weapon_power' => 1,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 1000, 'stat_coefficients' => ['might' => 10000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+                            'modifiers' => ['complete_guard_chance_bps' => 9900],
+                        ],
+                    ],
                 ],
             ],
-            'lost_shadow' => [
-                'label' => '迷い人の影', 'weight' => 900, 'xp' => 72, 'shards' => 22,
-                'enemy' => [
-                    'label' => '迷い人の影', 'boss' => false,
-                    'base_stats' => ['vitality' => 28, 'might' => 34, 'finesse' => 20, 'spirit' => 2, 'agility' => 16],
-                    'max_hp' => 1000, 'physical_defense' => 110, 'magical_defense' => 100, 'weapon_power' => 44,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 10500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => true, 'dodgeable' => true, 'hits' => 1],
-                    'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
-                ],
-            ],
-            'crystal_bug' => [
-                'label' => '輝石虫', 'weight' => 100, 'xp' => 1150, 'shards' => 0,
-                'enemy' => [
-                    'label' => '輝石虫', 'boss' => false,
-                    'base_stats' => ['vitality' => 20, 'might' => 5, 'finesse' => 5, 'spirit' => 60, 'agility' => 10],
-                    'max_hp' => 1, 'physical_defense' => 0, 'magical_defense' => 0, 'weapon_power' => 1,
-                    'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 1000, 'stat_coefficients' => ['might' => 10000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
-                    'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
-                    'modifiers' => ['complete_guard_chance_bps' => 9900],
+            'black_crystal_cave' => [
+                'content_identity' => 'secretary-underground-black-crystal-cave-alpha-v1',
+                'name' => '黒晶洞',
+                'required_trial_key' => 'trial_01',
+                'item_level_min' => 30,
+                'item_level_max' => 60,
+                'encounters' => [
+                    'black_crystal_bat' => [
+                        'label' => '黒晶蝙蝠', 'weight' => 2500, 'xp' => 145, 'shards' => 37,
+                        'drop_profile' => 'standard', 'item_level_min' => 30, 'item_level_max' => 38,
+                        'enemy' => [
+                            'label' => '黒晶蝙蝠', 'boss' => false,
+                            'base_stats' => ['vitality' => 18, 'might' => 26, 'finesse' => 22, 'spirit' => 8, 'agility' => 26],
+                            'max_hp' => 1400, 'physical_defense' => 100, 'magical_defense' => 90, 'weapon_power' => 125,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+                        ],
+                    ],
+                    'black_crystal_beast' => [
+                        'label' => '黒晶獣', 'weight' => 2000, 'xp' => 160, 'shards' => 42,
+                        'drop_profile' => 'standard', 'item_level_min' => 30, 'item_level_max' => 40,
+                        'enemy' => [
+                            'label' => '黒晶獣', 'boss' => false,
+                            'base_stats' => ['vitality' => 24, 'might' => 32, 'finesse' => 18, 'spirit' => 12, 'agility' => 14],
+                            'max_hp' => 1650, 'physical_defense' => 125, 'magical_defense' => 110, 'weapon_power' => 135,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 7000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+                        ],
+                    ],
+                    'crystal_shell_bug' => [
+                        'label' => '晶殻蟲', 'weight' => 1500, 'xp' => 170, 'shards' => 47,
+                        'drop_profile' => 'standard', 'item_level_min' => 32, 'item_level_max' => 40,
+                        'enemy' => [
+                            'label' => '晶殻蟲', 'boss' => false,
+                            'base_stats' => ['vitality' => 40, 'might' => 22, 'finesse' => 8, 'spirit' => 20, 'agility' => 10],
+                            'max_hp' => 1950, 'physical_defense' => 200, 'magical_defense' => 125, 'weapon_power' => 125,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+                        ],
+                    ],
+                    'black_crystal_mage' => [
+                        'label' => '黒晶術師', 'weight' => 1000, 'xp' => 185, 'shards' => 55,
+                        'drop_profile' => 'standard', 'item_level_min' => 34, 'item_level_max' => 40,
+                        'enemy' => [
+                            'label' => '黒晶術師', 'boss' => false,
+                            'base_stats' => ['vitality' => 18, 'might' => 10, 'finesse' => 20, 'spirit' => 42, 'agility' => 10],
+                            'max_hp' => 1550, 'physical_defense' => 100, 'magical_defense' => 190, 'weapon_power' => 140,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'miracle', 'potency_bps' => 7000, 'stat_coefficients' => ['spirit' => 10000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']], 'modifiers' => [],
+                        ],
+                    ],
+                    'crystal_berserker' => [
+                        'label' => '破晶の狂戦士', 'weight' => 1200, 'xp' => 280, 'shards' => 78,
+                        'drop_profile' => 'elite', 'item_level_min' => 35, 'item_level_max' => 47,
+                        'enemy' => [
+                            'label' => '破晶の狂戦士', 'boss' => false,
+                            'base_stats' => ['vitality' => 30, 'might' => 40, 'finesse' => 10, 'spirit' => 10, 'agility' => 10],
+                            'max_hp' => 2300, 'physical_defense' => 165, 'magical_defense' => 140, 'weapon_power' => 170,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 6500, 'stat_coefficients' => ['might' => 10000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => ['pressure_heavy', 'enemy_telegraph'],
+                            'ai_rules' => [
+                                ['conditions' => [['type' => 'self_has_status', 'status' => 'telegraph']], 'action' => 'skill:pressure_heavy'],
+                                ['conditions' => [['type' => 'round_modulo', 'modulo' => 3, 'equals' => 2]], 'action' => 'skill:enemy_telegraph'],
+                                ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+                            ],
+                            'modifiers' => [],
+                        ],
+                    ],
+                    'black_crystal_regenerator' => [
+                        'label' => '黒晶再生体', 'weight' => 800, 'xp' => 330, 'shards' => 98,
+                        'drop_profile' => 'elite', 'item_level_min' => 40, 'item_level_max' => 50,
+                        'enemy' => [
+                            'label' => '黒晶再生体', 'boss' => false,
+                            'base_stats' => ['vitality' => 42, 'might' => 22, 'finesse' => 8, 'spirit' => 18, 'agility' => 10],
+                            'max_hp' => 2800, 'physical_defense' => 180, 'magical_defense' => 165, 'weapon_power' => 160,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 7000, 'stat_coefficients' => ['might' => 7000, 'finesse' => 3000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+                            'modifiers' => ['self_regeneration_target_hp_bps' => 150],
+                        ],
+                    ],
+                    'black_crystal_warden' => [
+                        'label' => '黒晶の番人', 'weight' => 900, 'xp' => 600, 'shards' => 157,
+                        'drop_profile' => 'elite', 'item_level_min' => 45, 'item_level_max' => 60,
+                        'enemy' => [
+                            'label' => '黒晶の番人', 'boss' => false,
+                            'base_stats' => ['vitality' => 36, 'might' => 34, 'finesse' => 10, 'spirit' => 10, 'agility' => 10],
+                            'max_hp' => 3700, 'physical_defense' => 240, 'magical_defense' => 215, 'weapon_power' => 215,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 7000, 'stat_coefficients' => ['might' => 10000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => ['pressure_heavy', 'enemy_telegraph'],
+                            'ai_rules' => [
+                                ['conditions' => [['type' => 'self_has_status', 'status' => 'telegraph']], 'action' => 'skill:pressure_heavy'],
+                                ['conditions' => [['type' => 'round_modulo', 'modulo' => 4, 'equals' => 3]], 'action' => 'skill:enemy_telegraph'],
+                                ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+                            ],
+                            'modifiers' => ['damage_taken_reduction_bps' => 300],
+                        ],
+                    ],
+                    'black_crystal_bug' => [
+                        'label' => '黒晶虫', 'weight' => 100, 'xp' => 1400, 'shards' => 0,
+                        'drop_profile' => 'rare', 'item_level_min' => 50, 'item_level_max' => 60,
+                        'enemy' => [
+                            'label' => '黒晶虫', 'boss' => false,
+                            'base_stats' => ['vitality' => 20, 'might' => 5, 'finesse' => 5, 'spirit' => 60, 'agility' => 10],
+                            'max_hp' => 1, 'physical_defense' => 0, 'magical_defense' => 0, 'weapon_power' => 1,
+                            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 1000, 'stat_coefficients' => ['might' => 10000], 'weapon_coefficient_bps' => 10000, 'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+                            'skills' => [], 'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+                            'modifiers' => ['complete_guard_chance_bps' => 9900],
+                        ],
+                    ],
                 ],
             ],
         ],

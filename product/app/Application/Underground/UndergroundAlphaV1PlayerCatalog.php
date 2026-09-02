@@ -243,7 +243,62 @@ final readonly class UndergroundAlphaV1PlayerCatalog
 
     public function explorationHuntingGroundKey(): string
     {
-        return $this->string($this->explorationConfig(), 'hunting_ground_key');
+        return $this->string($this->explorationConfig(), 'default_hunting_ground_key');
+    }
+
+    /**
+     * @return list<array{
+     *   key: string,
+     *   content_identity: string,
+     *   name: string,
+     *   required_trial_key: string|null,
+     *   item_level_min: int,
+     *   item_level_max: int
+     * }>
+     */
+    public function explorationHuntingGrounds(): array
+    {
+        $configured = $this->explorationConfig()['grounds'];
+        $grounds = [];
+        foreach ($configured as $key => $ground) {
+            if (! is_string($key) || ! is_array($ground)) {
+                throw new RuntimeException('Underground hunting ground configuration is invalid.');
+            }
+            $grounds[] = $this->validatedHuntingGround($key, $ground);
+        }
+        if ($grounds === [] || ! in_array(
+            $this->explorationHuntingGroundKey(),
+            array_column($grounds, 'key'),
+            true,
+        )) {
+            throw new RuntimeException('Underground default hunting ground is invalid.');
+        }
+
+        return $grounds;
+    }
+
+    /**
+     * @return array{
+     *   key: string,
+     *   content_identity: string,
+     *   name: string,
+     *   required_trial_key: string|null,
+     *   item_level_min: int,
+     *   item_level_max: int
+     * }
+     */
+    public function explorationHuntingGround(string $key): array
+    {
+        foreach ($this->explorationHuntingGrounds() as $ground) {
+            if ($ground['key'] === $key) {
+                return $ground;
+            }
+        }
+
+        throw new UndergroundRuntimeException(
+            'underground_hunting_ground_not_supported',
+            '狩場を確認してください。',
+        );
     }
 
     public function explorationMaxRounds(): int
@@ -452,10 +507,23 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return $this->maxHp($this->combatStats($progressionStats, $equipment), $equipment);
     }
 
-    /** @return list<array{key: string, label: string, weight: int, xp: int, shards: int}> */
-    public function explorationEncounters(): array
+    /**
+     * @return list<array{
+     *   key: string,
+     *   label: string,
+     *   weight: int,
+     *   xp: int,
+     *   shards: int,
+     *   drop_profile: string,
+     *   item_level_min: int,
+     *   item_level_max: int
+     * }>
+     */
+    public function explorationEncounters(?string $huntingGroundKey = null): array
     {
-        $configured = $this->explorationConfig()['encounters'] ?? null;
+        $groundKey = $huntingGroundKey ?? $this->explorationHuntingGroundKey();
+        $ground = $this->configuredHuntingGround($groundKey);
+        $configured = $ground['encounters'] ?? null;
         if (! is_array($configured) || $configured === []) {
             throw new RuntimeException('Underground exploration encounters are invalid.');
         }
@@ -467,6 +535,11 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 || ! is_int($entry['weight'] ?? null) || $entry['weight'] < 1
                 || ! is_int($entry['xp'] ?? null) || $entry['xp'] < 0
                 || ! is_int($entry['shards'] ?? null) || $entry['shards'] < 0
+                || ! in_array($entry['drop_profile'] ?? null, ['standard', 'elite', 'rare'], true)
+                || ! is_int($entry['item_level_min'] ?? null) || $entry['item_level_min'] < 1
+                || ! is_int($entry['item_level_max'] ?? null)
+                || $entry['item_level_max'] < $entry['item_level_min']
+                || $entry['item_level_max'] > 60
                 || ! is_array($entry['enemy'] ?? null)) {
                 throw new RuntimeException("Underground exploration encounter [{$key}] is invalid.");
             }
@@ -477,6 +550,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 'weight' => $entry['weight'],
                 'xp' => $entry['xp'],
                 'shards' => $entry['shards'],
+                'drop_profile' => $entry['drop_profile'],
+                'item_level_min' => $entry['item_level_min'],
+                'item_level_max' => $entry['item_level_max'],
             ];
         }
         if ($weightTotal !== 10_000) {
@@ -490,10 +566,21 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return $encounters;
     }
 
-    /** @return array{key: string, label: string, weight: int, xp: int, shards: int} */
-    public function explorationEncounter(string $key): array
+    /**
+     * @return array{
+     *   key: string,
+     *   label: string,
+     *   weight: int,
+     *   xp: int,
+     *   shards: int,
+     *   drop_profile: string,
+     *   item_level_min: int,
+     *   item_level_max: int
+     * }
+     */
+    public function explorationEncounter(string $key, ?string $huntingGroundKey = null): array
     {
-        foreach ($this->explorationEncounters() as $encounter) {
+        foreach ($this->explorationEncounters($huntingGroundKey) as $encounter) {
             if ($encounter['key'] === $key) {
                 return $encounter;
             }
@@ -502,13 +589,13 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         throw new UndergroundRuntimeException('underground_encounter_not_supported', '探索先の敵を解決できません。');
     }
 
-    public function weightedExplorationEncounter(int $roll): string
+    public function weightedExplorationEncounter(int $roll, ?string $huntingGroundKey = null): string
     {
         if ($roll < 1 || $roll > 10_000) {
             throw new RuntimeException('Underground exploration encounter roll is invalid.');
         }
         $upper = 0;
-        foreach ($this->explorationEncounters() as $encounter) {
+        foreach ($this->explorationEncounters($huntingGroundKey) as $encounter) {
             $upper += $encounter['weight'];
             if ($roll <= $upper) {
                 return $encounter['key'];
@@ -521,12 +608,17 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     public function explorationCatalog(): AlphaV1BuildCatalog
     {
         $manifest = $this->laboratoryCatalog()->manifest();
-        foreach ($this->explorationConfig()['encounters'] as $key => $entry) {
-            if (! is_string($key) || ! is_array($entry) || ! is_array($entry['enemy'] ?? null)
-                || array_key_exists($key, $manifest['enemies'])) {
+        foreach ($this->explorationConfig()['grounds'] as $ground) {
+            if (! is_array($ground) || ! is_array($ground['encounters'] ?? null)) {
                 throw new RuntimeException('Underground exploration enemy catalog is invalid.');
             }
-            $manifest['enemies'][$key] = $entry['enemy'];
+            foreach ($ground['encounters'] as $key => $entry) {
+                if (! is_string($key) || ! is_array($entry) || ! is_array($entry['enemy'] ?? null)
+                    || array_key_exists($key, $manifest['enemies'])) {
+                    throw new RuntimeException('Underground exploration enemy catalog is invalid.');
+                }
+                $manifest['enemies'][$key] = $entry['enemy'];
+            }
         }
 
         return new AlphaV1BuildCatalog($manifest);
@@ -800,11 +892,115 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return $playtest;
     }
 
+    /**
+     * @return array{
+     *   identity: string,
+     *   profiles: array<string, array{presence_bps: int, rarity_weights: array<string, int>}>,
+     *   category_weights: array<string, int>,
+     *   weapon_styles: list<string>,
+     *   accessory_main_stats: list<string>
+     * }
+     */
+    public function explorationDropConfig(): array
+    {
+        $drop = $this->explorationConfig()['drop'] ?? null;
+        if (! is_array($drop)
+            || ! is_string($drop['identity'] ?? null) || $drop['identity'] === ''
+            || ! is_array($drop['profiles'] ?? null)
+            || ! is_array($drop['category_weights'] ?? null)
+            || ! is_array($drop['weapon_styles'] ?? null)
+            || ! array_is_list($drop['weapon_styles'])
+            || ! is_array($drop['accessory_main_stats'] ?? null)
+            || ! array_is_list($drop['accessory_main_stats'])) {
+            throw new RuntimeException('Underground exploration drop configuration is invalid.');
+        }
+        $rarities = ['common', 'uncommon', 'rare', 'epic'];
+        foreach (['standard', 'elite', 'rare'] as $profileKey) {
+            $profile = $drop['profiles'][$profileKey] ?? null;
+            $weights = is_array($profile) ? ($profile['rarity_weights'] ?? null) : null;
+            if (! is_array($profile)
+                || ! is_int($profile['presence_bps'] ?? null)
+                || $profile['presence_bps'] < 0 || $profile['presence_bps'] > 10_000
+                || ! is_array($weights)
+                || array_keys($weights) !== $rarities
+                || array_filter($weights, static fn (mixed $weight): bool => ! is_int($weight) || $weight < 0) !== []
+                || array_sum($weights) !== 10_000) {
+                throw new RuntimeException("Underground exploration drop profile [{$profileKey}] is invalid.");
+            }
+        }
+        if (array_keys($drop['profiles']) !== ['standard', 'elite', 'rare']
+            || array_keys($drop['category_weights']) !== ['weapon', 'armor', 'accessory']
+            || array_filter(
+                $drop['category_weights'],
+                static fn (mixed $weight): bool => ! is_int($weight) || $weight < 0,
+            ) !== []
+            || array_sum($drop['category_weights']) !== 10_000
+            || $drop['weapon_styles'] !== ['dagger', 'rapier', 'longsword', 'crystal_staff']
+            || $drop['accessory_main_stats'] !== AlphaV1CombatRules::STATS) {
+            throw new RuntimeException('Underground exploration drop pool is invalid.');
+        }
+
+        return $drop;
+    }
+
+    /** @return array<string, mixed> */
+    private function configuredHuntingGround(string $key): array
+    {
+        $ground = $this->explorationConfig()['grounds'][$key] ?? null;
+        if (! is_array($ground)) {
+            throw new UndergroundRuntimeException(
+                'underground_hunting_ground_not_supported',
+                '狩場を確認してください。',
+            );
+        }
+        $this->validatedHuntingGround($key, $ground);
+
+        return $ground;
+    }
+
+    /**
+     * @param  array<string, mixed>  $ground
+     * @return array{
+     *   key: string,
+     *   content_identity: string,
+     *   name: string,
+     *   required_trial_key: string|null,
+     *   item_level_min: int,
+     *   item_level_max: int
+     * }
+     */
+    private function validatedHuntingGround(string $key, array $ground): array
+    {
+        $requiredTrial = $ground['required_trial_key'] ?? null;
+        if ($key === ''
+            || ! is_string($ground['content_identity'] ?? null) || $ground['content_identity'] === ''
+            || ! is_string($ground['name'] ?? null) || $ground['name'] === ''
+            || ($requiredTrial !== null && (! is_string($requiredTrial) || $requiredTrial === ''))
+            || ! is_int($ground['item_level_min'] ?? null) || $ground['item_level_min'] < 1
+            || ! is_int($ground['item_level_max'] ?? null)
+            || $ground['item_level_max'] < $ground['item_level_min']
+            || $ground['item_level_max'] > 60
+            || ! is_array($ground['encounters'] ?? null) || $ground['encounters'] === []) {
+            throw new RuntimeException("Underground hunting ground [{$key}] is invalid.");
+        }
+
+        return [
+            'key' => $key,
+            'content_identity' => $ground['content_identity'],
+            'name' => $ground['name'],
+            'required_trial_key' => $requiredTrial,
+            'item_level_min' => $ground['item_level_min'],
+            'item_level_max' => $ground['item_level_max'],
+        ];
+    }
+
     /** @return array<string, mixed> */
     private function explorationConfig(): array
     {
         $exploration = $this->data()['exploration'];
-        if (! is_array($exploration['encounters'] ?? null)
+        if (! is_array($exploration['grounds'] ?? null)
+            || $exploration['grounds'] === []
+            || ! is_array($exploration['drop'] ?? null)
             || ! is_array($exploration['starter_weapon'] ?? null)
             || ! is_array($exploration['player_ai_rules'] ?? null)
             || ! is_array($exploration['player_skill_ai_rules'] ?? null)) {

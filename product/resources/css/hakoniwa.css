@@ -385,6 +385,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-round-state .underground-ko { grid-column: 1 / -1; color: var(--coral-dark); font-weight: 900; }
 .underground-battle-result { display: grid; gap: .6rem; padding: 1.4rem 0 .5rem; border-top: 3px double var(--line); }
 .underground-battle-result h2, .underground-battle-result p { margin: 0; }
+.underground-equipment-drop { padding: .65rem .8rem; border: 1px solid #b28b2d; background: color-mix(in srgb, var(--surface) 82%, #f2d675 18%); font-weight: 800; }
+.underground-equipment-drop.lost { border-color: var(--danger); background: var(--danger-surface); color: var(--danger-strong); }
 .underground-level-up { display: grid; gap: .15rem; max-width: 100%; padding: .8rem 1rem; border: 2px solid var(--danger); background: var(--danger-surface); color: var(--danger-strong); overflow-wrap: anywhere; }
 .underground-level-up strong { font-size: clamp(1.9rem, 8vw, 3.6rem); font-weight: 950; line-height: 1; letter-spacing: .04em; }
 .underground-level-up span { color: var(--ink); font-weight: 850; }

@@ -1090,7 +1090,7 @@ final class UndergroundCombatBuildTest extends TestCase
         [$manifest] = $this->catalog();
         $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
         $weapon = $configuration['exploration']['starter_weapon'];
-        $crystalBug = $configuration['exploration']['encounters']['crystal_bug']['enemy'];
+        $crystalBug = $configuration['exploration']['grounds']['shallow_caves']['encounters']['crystal_bug']['enemy'];
         $crystalBug['max_hp'] = 1_000_000;
         $crystalBug['base_stats'] = [
             'vitality' => 95, 'might' => 1, 'finesse' => 1, 'spirit' => 2, 'agility' => 1,
@@ -1156,7 +1156,7 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(2_000, $completeGuards + $passedHits);
 
         [$skillManifest] = $this->catalog();
-        $skillManifest['enemies']['crystal_bug'] = $configuration['exploration']['encounters']['crystal_bug']['enemy'];
+        $skillManifest['enemies']['crystal_bug'] = $configuration['exploration']['grounds']['shallow_caves']['encounters']['crystal_bug']['enemy'];
         $skillCatalog = new AlphaV1BuildCatalog($skillManifest);
         $skillSnapshot = [
             'key' => 'secretary_runtime',

@@ -299,3 +299,11 @@ PR109は護身用ナイフを含むSecretary-owned equipmentを`1 row = 1 owned 
 release/3.2.0はPR109のowned instanceと宝物庫をforward migrationし、装備枠を武器1・防具1・アクセサリー3の計5枠へ拡張する。既存の`accessory`はrow identity、grant key、取得日時を維持したまま`accessory_1`へ変換し、equip APIはアクセサリーの`target_slot`を受ける。省略時は`accessory_1`を使い、3枠のstatsとmodifierをcanonical combat snapshotへそれぞれ1回だけ加算する。装備変更時のcurrent HPは増加させず、新しいmax HPまでのclampだけを行う。
 
 固定Shop catalog v1は解決可能なまま保持し、v2に試練1初回clear後のItem Lv 40 Novice装備を追加する。generated instanceは固定definitionと同じowned tableへ、non-nullのdefinition/catalog identity、stable instance/generator identity、source battle、immutable JSONB payloadを保存し、表示・売却・combat projection時に再生成しない。runtime generatorはItem Lv 1-60のanchor補間、RegularからRelicまでのrarity slot、80-100% quality、accessory倍率、既存combat modifierだけを扱い、Uniqueと新しいeffect engineは導入しない。
+
+## release/3.2.0 hunting grounds and equipment drops
+
+通常探索は`secretary-underground-exploration-alpha-v2`をselector identityとし、requestの`hunting_ground_key`をserver-side allowlist、request fingerprint、battle snapshotへ含める。省略時は`shallow_caves`を選び、既存浅層のcontent identityとbattle seedを維持する。第二狩場`black_crystal_cave`は試練1の`first_cleared_at`だけを解放条件とし、新しい進行tableやactivity typeを作らない。黒晶洞の敵定義と報酬は狩場固有のversioned contentへ置き、PR122で確定したcombat identity、Trial 1、Wyvernを変更しない。
+
+通常探索の勝利は`secretary-underground-exploration-drop-alpha-v1`のdrop contractを使い、1 battleにつき最大1個のgenerated装備を抽選する。presence、rarity、Item Lv、category、weapon style/accessory main stat、affixはbattle seedから独立したdomainで導出し、combat RNGへ影響させない。Trial、敗北、撤退では装備dropを行わない。generated payloadはbattle settlementと同じprofile lock・database transaction内でowned instanceへ保存し、`source_battle_id`とgrant keyのunique contractによりretry・並行requestでも二重付与しない。
+
+宝物庫が500枠の場合もbattle、XP、Gはrollbackしない。生成結果は付与せず、battle snapshotへ`drop.status=vault_full`と失われたitemの名称、Item Lv、rarity、affix概要を保存する。付与成功時も同じ自己完結summaryを保存し、history表示でcurrent generator/catalogを再実行しない。浅層と黒晶洞は同じruntime generator、owned equipment、combat projectionを再利用し、drop専用combat engine、proc、status、追加action、別RNG semanticsを導入しない。
