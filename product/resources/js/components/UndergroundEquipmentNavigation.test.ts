@@ -97,6 +97,7 @@ describe('Underground equipment navigation', () => {
         const bulkPayloads: Array<Record<string, unknown>> = [];
         let bulkAttempts = 0;
         let vaultLoads = 0;
+        const vaultPaths: string[] = [];
         const previewItem = item({ name: 'プレビュー対象', rarity_label: 'サーバー希少', sell_price: 180 });
         const bulkSellOptions = {
             rarities: [{ key: 'common', label: 'サーバー通常' }, { key: 'rare', label: 'サーバー希少' }],
@@ -105,11 +106,13 @@ describe('Underground equipment navigation', () => {
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
-            if (path === '/api/v1/me/underground/equipment/vault?page=1' && (!init?.method || init.method === 'GET')) {
+            if (path.startsWith('/api/v1/me/underground/equipment/vault?page=') && (!init?.method || init.method === 'GET')) {
                 vaultLoads += 1;
+                vaultPaths.push(path);
+                const page = path.endsWith('=2') ? 2 : 1;
                 return response({
                     catalog_identity: 'test-catalog', used: 1, capacity: 500, equipped,
-                    items: [previewItem], page: 1, per_page: 50, last_page: 1, total: 1,
+                    items: [previewItem], page, per_page: 50, last_page: 2, total: 51,
                     bulk_sell_options: bulkSellOptions,
                 });
             }
@@ -138,6 +141,13 @@ describe('Underground equipment navigation', () => {
         const optionInputs = wrapper.findAll('fieldset input[type="checkbox"]');
         expect(optionInputs).toHaveLength(7);
         expect(optionInputs.every((input) => (input.element as HTMLInputElement).checked)).toBe(true);
+
+        await wrapper.get('.underground-vault-toolbar button:last-child').trigger('click');
+        await flushPromises();
+        expect(vaultPaths).toEqual([
+            '/api/v1/me/underground/equipment/vault?page=1',
+            '/api/v1/me/underground/equipment/vault?page=2',
+        ]);
 
         await wrapper.get('input[type="number"]').setValue('30');
         await wrapper.get('.underground-bulk-preview-button').trigger('click');
@@ -180,7 +190,8 @@ describe('Underground equipment navigation', () => {
         expect(bulkPayloads[0]).not.toHaveProperty('weapon_styles');
         expect(wrapper.find('.underground-bulk-confirm-dialog').exists()).toBe(false);
         expect(wrapper.find('.underground-bulk-sale-preview').exists()).toBe(false);
-        expect(vaultLoads).toBe(2);
+        expect(vaultLoads).toBe(3);
+        expect(vaultPaths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1');
         expect(wrapper.emitted('updated')).toHaveLength(1);
         wrapper.unmount();
     });

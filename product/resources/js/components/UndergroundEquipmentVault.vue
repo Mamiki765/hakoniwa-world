@@ -314,7 +314,7 @@ async function confirmBulkSale(): Promise<void> {
         bulkPending.value = null;
         bulkConfirmOpen.value = false;
         bulkPreview.value = null;
-        await loadVault();
+        await loadVault(1);
     } catch (caught) {
         error.value = bulkMutationError(caught);
         if (isBulkConflict(caught)) {
