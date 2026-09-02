@@ -1,145 +1,227 @@
-# Trial 1 balance simulation v1
+# Trial 1 相対敏捷 report（1000-seed rebaseline + final 100-seed sanity）
 
 ## Status and source
 
-This is a simulation-only foundation for Owner review. It does not release Trial 1 to players, change persistence, grant SP, add awakening, change Item Lv progression, or modify the Surface Ruleset.
+このreportは、相対敏捷combo・相対回避とTrial 1のenemy敏捷rebaselineをcanonical Underground combat pathで確認したmanual simulation evidenceである。旧Trialのclear率は比較観測であり、新しい敏捷仕様を旧値へ弱めるacceptance gateにはしない。
 
-- Source commit: `5ac91899f19655685b64107f4a62deb11358c9c2`
+- Final sanity source commit: `5f81beae4722b81679153a590c095ee02ba3b97e`
+- Rebaseline 1000-seed source commit: `eeedc919c6ee582942382a88e10a1cdca3d3c764`
+- Historical checked-in 1000-seed source commit: `5ac91899f19655685b64107f4a62deb11358c9c2`
+- Simulator: `underground-trial-balance-v2`
 - Manifest: `config/underground/balance/trial1-v1.json`
-- Manifest SHA-256: `6c65f49c9eb8008c1b2ce9fc36ba5ed9501a4b3c423679ba643209c025d598ff`
-- Seeds: `0..999` for every scenario
-- Machine-readable report: [underground-trial1-v1-1000-seeds.json](underground-trial1-v1-1000-seeds.json)
-- Contract result: passed; abnormal/invalid results 0; battle count, defeat-stop, and HP-cap violations 0
+- Final manifest SHA-256: `0c102d7a1bd67d4afb3bfc8a3306b824c72d944587f8d5530d8d7912b8d703dc`
+- Rebaseline manifest SHA-256: `46b945795f905f862514ce8939f04932b46a48ee7367706d4b494e3420b624ab`
+- Historical checked-in manifest SHA-256: `6c65f49c9eb8008c1b2ce9fc36ba5ed9501a4b3c423679ba643209c025d598ff`
+- Final sanity seeds: 52 scenariosそれぞれ`0..99`
+- Rebaseline seeds: 52 scenariosそれぞれ`0..999`
+- Builds: primary 4、同量STP比較6、Owner実績祝福1
+- Final working tree: `working_tree_dirty=false`
+- Final compact summary: 本文のcurve・build/level aggregate・Trial各戦aggregate・比較値。最終100-seed完全JSONはrepositoryへ保存しない
+- Historical machine-readable report（変更なし）: [underground-trial1-v1-1000-seeds.json](underground-trial1-v1-1000-seeds.json)
+- Final result: `trial_contract_passed=true`、`laboratory_contract_passed=true`、abnormal seed / stalemate / failure後継続はいずれも0
+- Final combat identity: `secretary-underground-alpha-v2`
 
-The current canonical combat contract starts every battle at 10,000 MP and recovers 300 MP per round. MP does not persist between battles. HP does persist, followed by the configured between-battle recovery capped at max HP. A 100-round stalemate remains the current withdrawal result and therefore fails the Trial.
+MPは各戦闘10,000で開始し、roundごとに300回復する。MPは戦闘間で持ち越さず、HPだけを持ち越して指定率の回復を行う。主比較は現行contractの20%回復である。
 
-## 1. Provisional ten-battle sequence
+## 1. 採用した相対敏捷curve
 
-| # | Enemy | Main pressure | HP | Physical / magical defense | Weapon power |
-|---:|---|---|---:|---:|---:|
-| 1 | 試練の地底鼠 | Fast ordinary physical opener | 700 | 70 / 65 | 82 |
-| 2 | 洞窟狩人 | Stronger physical attack | 850 | 80 / 75 | 92 |
-| 3 | 腐食鎧兵 | Armor break | 1,000 | 120 / 85 | 95 |
-| 4 | 再生する巨躯 | Sustained pressure and 0.25% max-HP regeneration | 1,150 | 95 / 85 | 102 |
-| 5 | 晶術士 | Miracle pressure | 1,000 | 75 / 120 | 95 |
-| 6 | 狂信隊長 | Telegraph followed by a heavy strike | 1,200 | 100 / 85 | 95 |
-| 7 | 刃翼蝙蝠 | Three-hit physical attack | 1,050 | 80 / 75 | 100 |
-| 8 | 灰晶騎士 | Physical attack mixed with miracle bursts | 1,400 | 120 / 110 | 100 |
-| 9 | 門衛石像 | Defense/DPS check and 0.10% max-HP regeneration | 1,200 | 125 / 115 | 100 |
-| 10 | ワイバーン | Boss; telegraph, breath, tail bleed, multi-hit pressure, regeneration, round-40 flight | 1,600 | 60 / 229 | 180 |
+内部優位値は`max(0, (self - opponent) / (self + opponent))`相当である。このbounded式自体が敏捷比に応じて自然に漸近するため、4倍など有限の敏捷比で成長を止めるhard saturationは置かない。実装上の10,000 bpsは正の相手敏捷に対して到達しない数学的上限であり、早期capではない。
 
-Battles 1–9 are authored only for simulation and are not a proposal to register all of these as final production enemies.
+2/3/4連続ヒット率は互いに排他的なaction単位の発生率である。
 
-## 2. Provisional Wyvern
+| 自分/相手 | 先攻 | 回避率 | 2連続 | 3連続 | 4連続 | 期待damage倍率 | 期待被damage倍率 |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1.0 | 同値時tie-break | 0.00% | 0.00% | 0.00% | 0.00% | 1.0000 | 1.0000 |
+| 1.2 | 自分 | 1.45% | 0.45% | 0.00% | 0.00% | 1.0045 | 0.9855 |
+| 1.5 | 自分 | 3.20% | 0.88% | 0.12% | 0.00% | 1.0112 | 0.9680 |
+| 2.0 | 自分 | 5.33% | 1.21% | 0.45% | 0.00% | 1.0211 | 0.9467 |
+| 2.5 | 自分 | 6.85% | 1.45% | 0.54% | 0.15% | 1.0298 | 0.9315 |
+| 3.0 | 自分 | 8.00% | 1.63% | 0.57% | 0.30% | 1.0367 | 0.9200 |
+| 4.0（継続確認） | 自分 | 9.60% | 1.88% | 0.62% | 0.50% | 1.0462 | 0.9040 |
+| 1,000,000 / 1 | 自分 | 15.99% | 2.87% | 0.83% | 1.29% | 1.0840 | 0.8401 |
 
-The Wyvern has 1,600 HP, 60 physical defense, 229 magical defense, 180 weapon power, 1% damage reduction, and 1.10% max-HP regeneration per round. Its normal physical pressure is supplemented by:
+既存`evasion_bps`は相対敏捷bonusへ加算した後、従来のtotal evasion cap 35%を適用する。action impairment resistanceは変更していない。
 
-- a telegraph every five rounds followed by a defendable breath;
-- a tail attack every three rounds that can apply the canonical stacking bleed;
-- a three-hit wing/claw pattern between larger attacks; and
-- regeneration that makes low-DPS combat drift toward the canonical 100-round withdrawal; and
-- at the start of round 40, `天井が崩落し、ワイバーンは宙に舞い上がる……！` is emitted and the Wyvern gains `飛翔`, doubling all outgoing damage for the remainder of the battle.
+## 2. Lv30同量STP比較
 
-The transition reuses the canonical status and damage-modifier path. It does not consume the Wyvern's action or an RNG draw, so the normal round-40 action still occurs. This keeps the mechanic deterministic and localized without a separate boss engine or build-specific anti-heal rule.
+自由型のLv30 STP entitlement 174から、攻撃・生命・敏捷へ同じ17 STPを移した6 buildを使う。同じ物理trio内、同じ精神trio内ではgrowth path、装備、skill、敏捷以外の比較条件を一致させた。
 
-## 3. Clear rate by checkpoint and build
+| Build | 生命 | 攻撃stat | 敏捷 | 最大HP | 物理防御 |
+|---|---:|---:|---:|---:|---:|
+| 武力17 STP | 93 | 武力201 | 12 | 1,204 | 424 |
+| 生命17 STP（武力core） | 110 | 武力184 | 12 | 1,340 | 492 |
+| 敏捷17 STP（武力core） | 93 | 武力184 | 29 | 1,204 | 424 |
+| 精神17 STP | 93 | 精神204 | 12 | 1,204 | 424 |
+| 生命17 STP（精神core） | 110 | 精神187 | 12 | 1,340 | 492 |
+| 敏捷17 STP（精神core） | 93 | 精神187 | 29 | 1,204 | 424 |
 
-All rows use Rank 3 Shop equipment, a legal current STP entitlement, the current initial 20 SP limit, no awakening, no enchant, and the formal weapon/armor/accessory slots. The primary between-battle recovery is 20% max HP.
+攻撃専門投資では、精密斬りの算定powerが`252 → 269`（+6.746%）、聖晶弾が`202 → 217`（+7.426%）になる。敏捷29から最終enemy敏捷`[30, 16, 10, 10, 12, 12, 20, 10, 10, 12]`へのcombo期待値を10戦均等で見ると+2.548%である。
 
-| Growth build | Lv25 | Lv30 | Lv35 | Lv30 interpretation |
-|---|---:|---:|---:|---|
-| 戦技（赤） | 0.0% | 32.7% | 100.0% | Lower edge of the target band |
-| 護身（青） | 0.0% | 43.6% | 100.0% | In the target band |
-| 祝福（緑） | 0.0% | 47.6% | 99.9% | Highest, but only 4.0 points above Guardianship |
-| 自由（黒） | 0.0% | 33.5% | 98.4% | Lower edge of the target band |
+- 武力専門への寄与率: `2.548 / 6.746 = 37.77%`
+- 精神専門への寄与率: `2.548 / 7.426 = 34.31%`
 
-The intended progression curve is present for every build: Lv25 is clearly too early, Lv30 is a close attempt, and Lv35 is clearly easier. The 30–70% range is an observation target, not an acceptance gate.
+同じ分布で敏捷由来回避は平均5.860%、回避によるEHP増加は`1 / (1 - 0.05860) - 1 = 6.2248%`となる。Lv30/item level 20のcanonical defense reference 361を用いると、生命17 STPのdodgeable physical damageに対するEHPは、HPと物理防御の両方を含めて`(1340 / 1204) × ((361 + 492) / (361 + 424)) - 1 = 20.9366%`増える。
 
-## 4. Where builds fail
+- 生命専門への寄与率: `6.2248 / 20.9366 = 29.73%`
 
-At Lv30 and 20% recovery, all four builds reached battle 10 in all 1,000 seeds. Every failure occurred against the Wyvern:
+したがってLv30同量STPで、敏捷は攻撃専門statの34〜38%、生命の物理耐久寄与の約30%を持ち、さらに先攻と既存の行動阻害耐性を得る。これはstat単独の寄与を分離する比較であり、undodgeableなワイバーンの息吹、回復AI、carry HP等を含む実戦結果は後節のsimulationで別に確認する。
 
-| Build | Clears | Battle 10 defeats | Battle 10 withdrawals |
-|---|---:|---:|---:|
-| 戦技 | 327 | 673 | 0 |
-| 護身 | 436 | 564 | 0 |
-| 祝福 | 476 | 524 | 0 |
-| 自由 | 335 | 665 | 0 |
+## 3. Trial 1 enemy敏捷rebaseline
 
-At Lv25, 戦技 also failed at battle 8 in 4 seeds and battle 9 in 154 seeds; the other three builds reached the boss in all seeds. At Lv35, 祝福 had 1 battle-10 defeat and 自由 had 16.
+係数をTrial旧clear率へ合わせて弱めず、無敏捷buildも残す方針でenemy分布を確認した。旧combatから新敏捷・旧enemy値へ変えた最初の1000-seed比較で、最大差はLv30精神敏捷型のワイバーン戦だった。
 
-The early sequence therefore preserves meaningful HP attrition, but the final candidate is primarily boss-gated at the requested Lv30 checkpoint.
+- 被damage: `2542.693 → 1966.064`（-22.68%）
+- round: `51.304 → 43.943`（-14.35%）
 
-## 5. Tuning evidence
+中盤enemyを一律に高速化すると敏捷STP 0 buildまで不必要に難化するため、差の主因だったワイバーンだけを`8 → 12`へ変更した。敏捷12は無敏捷buildの基礎敏捷12と同値で、双方とも敏捷差bonusを得ず、同値時だけ既存tie-breakを使う。一方、敏捷へ投資したbuildは引き続き優位を得る。
 
-The magical-defense search changed no other combat input. In the 300-seed Lv30 / Rank 3 / 20% recovery comparison without the flight phase, Blessing cleared all 300 seeds at each candidate and averaged 43.003 boss rounds at magical defense 225, 43.620 at 227, and 44.270 at 229. Magical defense 229 was selected because it sits near the center of the requested 43–45-round range while removing the conspicuous 300-point dedicated wall.
+最終reportで旧combatとの差が最大の箇所もLv30精神敏捷型のワイバーン戦だが、次まで縮小した。
 
-The round-40 damage bonus was then compared over 200 common seeds. A +25% bonus left Blessing at 94.0% clear with 9 withdrawals; +50% produced 76.0%; +75% produced 57.0% with 1 withdrawal; and +100% produced 47.5% with no withdrawal. The +100% candidate was selected because it was the only tested value that made Blessing only slightly stronger than the next build rather than dominant.
+- 被damage: `2542.693 → 2079.006`（-18.24%）
+- round: `51.304 → 46.170`（-10.01%）
 
-The selected candidate remained stable in the 300-seed confirmation: Blessing cleared 146, was defeated in 154, withdrew in 0, averaged 43.893 boss rounds, and triggered the transition 265 times. Guardianship was next at 124 clears (41.33%).
+| # | Enemy | 旧AGI | 最終AGI | 性格 |
+|---:|---|---:|---:|---|
+| 1 | 試練の地底鼠 | 30 | 30 | 高速 |
+| 2 | 洞窟狩人 | 16 | 16 | 中速 |
+| 3 | 腐食鎧兵 | 10 | 10 | 鈍重 |
+| 4 | 再生する巨躯 | 10 | 10 | 鈍重 |
+| 5 | 晶術士 | 12 | 12 | 標準 |
+| 6 | 狂信隊長 | 12 | 12 | 標準 |
+| 7 | 刃翼蝙蝠 | 20 | 20 | 高速multi-hit |
+| 8 | 灰晶騎士 | 10 | 10 | 重装 |
+| 9 | 門衛石像 | 10 | 10 | 鈍重 |
+| 10 | ワイバーン | 8 | 12 | 無敏捷buildと同値へrebaseline |
 
-## 6. Blessing advantage and healer pressure
+HP、防御、weapon power、skill、AI、回復等の他parameterは変更していない。
 
-In the final 1,000-seed run, Blessing cleared 47.6%, compared with 43.6% for Guardianship, 33.5% for Free, and 32.7% for Martial. The requested advantage is therefore 4.0 percentage points over the next build. Blessing produced 1,138.221 average in-combat healing per Trial and 997 battle-level MP exhaustion observations.
+## 4. 代表buildの実敏捷比
 
-The old 599/1,000 round-100 withdrawals became 0/1,000. The flight transition occurred in 892 Blessing trials and converted the low-damage long-fight tail into 524 defeats while preserving 476 clears. Martial and Guardianship never reached round 40; Free reached it in 224 trials but retained its prior 33.5% clear rate. The pressure is therefore tied to battle duration, not to a hidden healer identity check.
+player実敏捷は次のとおりである。
 
-## 7. Recovery comparison at Lv30
+| Build | Lv20 | Lv25 | Lv30 | Lv35 |
+|---|---:|---:|---:|---:|
+| 戦技（赤） | 27 | 29 | 31 | 34 |
+| 護身（青） | 21 | 24 | 26 | 29 |
+| 祝福（緑） | 21 | 24 | 26 | 29 |
+| 自由（黒） | 23 | 26 | 29 | 32 |
+
+各cellは`Lv20 / Lv25 / Lv30 / Lv35`の`player agility / enemy agility`である。
+
+| Enemy | AGI | 戦技 | 護身 | 祝福 | 自由 |
+|---|---:|---:|---:|---:|---:|
+| 試練の地底鼠 | 30 | 0.90 / 0.97 / 1.03 / 1.13 | 0.70 / 0.80 / 0.87 / 0.97 | 0.70 / 0.80 / 0.87 / 0.97 | 0.77 / 0.87 / 0.97 / 1.07 |
+| 洞窟狩人 | 16 | 1.69 / 1.81 / 1.94 / 2.13 | 1.31 / 1.50 / 1.63 / 1.81 | 1.31 / 1.50 / 1.63 / 1.81 | 1.44 / 1.63 / 1.81 / 2.00 |
+| 腐食鎧兵 | 10 | 2.70 / 2.90 / 3.10 / 3.40 | 2.10 / 2.40 / 2.60 / 2.90 | 2.10 / 2.40 / 2.60 / 2.90 | 2.30 / 2.60 / 2.90 / 3.20 |
+| 再生する巨躯 | 10 | 2.70 / 2.90 / 3.10 / 3.40 | 2.10 / 2.40 / 2.60 / 2.90 | 2.10 / 2.40 / 2.60 / 2.90 | 2.30 / 2.60 / 2.90 / 3.20 |
+| 晶術士 | 12 | 2.25 / 2.42 / 2.58 / 2.83 | 1.75 / 2.00 / 2.17 / 2.42 | 1.75 / 2.00 / 2.17 / 2.42 | 1.92 / 2.17 / 2.42 / 2.67 |
+| 狂信隊長 | 12 | 2.25 / 2.42 / 2.58 / 2.83 | 1.75 / 2.00 / 2.17 / 2.42 | 1.75 / 2.00 / 2.17 / 2.42 | 1.92 / 2.17 / 2.42 / 2.67 |
+| 刃翼蝙蝠 | 20 | 1.35 / 1.45 / 1.55 / 1.70 | 1.05 / 1.20 / 1.30 / 1.45 | 1.05 / 1.20 / 1.30 / 1.45 | 1.15 / 1.30 / 1.45 / 1.60 |
+| 灰晶騎士 | 10 | 2.70 / 2.90 / 3.10 / 3.40 | 2.10 / 2.40 / 2.60 / 2.90 | 2.10 / 2.40 / 2.60 / 2.90 | 2.30 / 2.60 / 2.90 / 3.20 |
+| 門衛石像 | 10 | 2.70 / 2.90 / 3.10 / 3.40 | 2.10 / 2.40 / 2.60 / 2.90 | 2.10 / 2.40 / 2.60 / 2.90 | 2.30 / 2.60 / 2.90 / 3.20 |
+| ワイバーン | 12 | 2.25 / 2.42 / 2.58 / 2.83 | 1.75 / 2.00 / 2.17 / 2.42 | 1.75 / 2.00 / 2.17 / 2.42 | 1.92 / 2.17 / 2.42 / 2.67 |
+
+## 5. Primary buildの最終100-seed sanity
+
+主比較は20%戦闘間回復である。最終係数1600で各条件100 seedを確認した。勝率の精密な再推定ではなく、係数2000で完了済みの1000-seed rebaselineから大幅な傾向変化がないことを見るsanity checkである。
+
+| Build | Lv20 | Lv25 | Lv30 旧 → 最終100 | Lv35 |
+|---|---:|---:|---:|---:|
+| 戦技（赤） | 0.0% | 0.0% | 32.7% → 85.0% | 100.0% |
+| 護身（青） | 0.0% | 1.0% | 43.6% → 83.0% | 100.0% |
+| 祝福（緑） | 0.0% | 2.0% | 47.6% → 79.0% | 100.0% |
+| 自由（黒） | 0.0% | 2.0% | 33.5% → 63.0% | 100.0% |
+
+Lv30 clear率は上昇したが、敏捷へ10%投資したbuildが新しい攻撃・防御・先攻を実戦で得た結果である。この数字だけを理由に敏捷係数を旧仕様並みへ戻していない。
+
+Lv30の回復率比較は次のとおりである。
 
 | Build | 10% | 20% | 30% |
 |---|---:|---:|---:|
-| 戦技 | 0.0% | 32.7% | 99.8% |
-| 護身 | 41.6% | 43.6% | 43.6% |
-| 祝福 | 15.0% | 47.6% | 53.2% |
-| 自由 | 9.2% | 33.5% | 82.9% |
+| 戦技 | 0.0% | 85.0% | 100.0% |
+| 護身 | 82.0% | 83.0% | 83.0% |
+| 祝福 | 51.0% | 79.0% | 82.0% |
+| 自由 | 34.0% | 63.0% | 97.0% |
 
-The Guardianship result barely changes because its defense often caps HP before the next battle. Blessing gains less from 30% because in-combat healing already provides attrition control. Martial and Free are very sensitive to common recovery because they carry more unrecovered damage into the late sequence.
+係数2000の1000-seed結果との最大clear率差はLv30戦技の-6.7 point、平均被damageの最大差は2.34%であった。clear率差10 point以上または平均被damage差10%以上のscenarioはなく、追加1000 seedの条件には該当しなかった。
 
-## 8. Recommended recovery
+`damage_prevented`のoverkill除外後もcombat outcome、RNG、実damageは変わらず、上記clear率・被damage・roundは同一だった。補正後のLv30 / 20%回復における平均prevented damageは、戦技`6970.02`、護身`4969.08`、祝福`9100.88`、自由`9750.51`である。
 
-Keep 20% max HP as the next simulation and implementation candidate.
+## 6. 無敏捷・同量STP buildの旧1000 → 最終100比較
 
-- 10% makes Martial and Free effectively non-viable at Lv30.
-- 30% removes most of the intended attrition for Martial and pushes Free well above the target band.
-- 20% keeps all four builds in the 30–70% observation band without a build-specific recovery rule.
+次は20%回復で、旧combatの各1000 seedと最終係数の各100 seed sanityを並べる。最終列は精密な勝率推定ではなく傾向確認である。敏捷buildも攻撃・生命buildと同じSTP量を使う。
 
-## 9. Owner intent assessment
+| Lv | Build | clear率 旧 → 最終 | boss到達 旧 → 最終 | 平均被damage 旧 → 最終 | 平均round 旧 → 最終 | 平均prevented 最終 |
+|---:|---|---:|---:|---:|---:|---:|
+| 20 | 物理・攻撃 | 0.0% → 0.0% | 887 → 91 | 2714.3 → 2734.6 | 118.72 → 118.22 | 7572.67 |
+| 20 | 物理・生命 | 0.0% → 0.0% | 985 → 98 | 2953.9 → 2964.2 | 126.86 → 126.08 | 8221.63 |
+| 20 | 物理・敏捷 | 0.0% → 0.0% | 860 → 100 | 2703.4 → 2714.5 | 123.36 → 123.23 | 7939.91 |
+| 20 | 精神・攻撃 | 0.0% → 0.0% | 1000 → 100 | 4119.8 → 4218.6 | 144.56 → 144.77 | 11553.10 |
+| 20 | 精神・生命 | 0.0% → 0.0% | 1000 → 100 | 4251.2 → 4361.9 | 149.98 → 150.52 | 11973.66 |
+| 20 | 精神・敏捷 | 0.0% → 0.0% | 1000 → 100 | 4097.8 → 3970.0 | 149.17 → 146.04 | 11376.41 |
+| 25 | 物理・攻撃 | 64.9% → 44.0% | 1000 → 100 | 2662.1 → 2729.7 | 112.11 → 112.19 | 7654.31 |
+| 25 | 物理・生命 | 88.6% → 61.0% | 1000 → 100 | 2784.5 → 2899.2 | 117.68 → 118.73 | 8197.91 |
+| 25 | 物理・敏捷 | 41.8% → 87.0% | 1000 → 100 | 2735.5 → 2510.3 | 118.74 → 113.25 | 7667.05 |
+| 25 | 精神・攻撃 | 0.2% → 0.0% | 1000 → 100 | 4017.4 → 4176.6 | 132.90 → 134.06 | 11305.13 |
+| 25 | 精神・生命 | 0.0% → 0.0% | 1000 → 100 | 4335.1 → 4381.8 | 141.20 → 141.10 | 11877.04 |
+| 25 | 精神・敏捷 | 0.0% → 1.0% | 1000 → 100 | 4010.1 → 3892.7 | 138.61 → 135.82 | 11137.05 |
+| 30 | 物理・攻撃 | 100.0% → 100.0% | 1000 → 100 | 2276.2 → 2317.5 | 98.41 → 98.15 | 6711.94 |
+| 30 | 物理・生命 | 100.0% → 100.0% | 1000 → 100 | 2446.4 → 2493.8 | 105.31 → 104.92 | 7224.64 |
+| 30 | 物理・敏捷 | 100.0% → 100.0% | 1000 → 100 | 2332.4 → 2179.7 | 105.17 → 101.09 | 6795.40 |
+| 30 | 精神・攻撃 | 96.5% → 91.0% | 1000 → 100 | 3317.8 → 3466.7 | 117.20 → 117.72 | 9869.63 |
+| 30 | 精神・生命 | 50.5% → 44.0% | 1000 → 100 | 4117.7 → 4275.3 | 131.22 → 132.35 | 11690.93 |
+| 30 | 精神・敏捷 | 33.1% → 69.0% | 1000 → 100 | 4027.6 → 3500.2 | 131.36 → 123.25 | 10306.45 |
 
-The final candidate meets the numerical intent of “barely clearable around Lv30 with Rank 3” for all four representative builds and shows a strong level curve. Blessing is the highest-clear build by a narrow margin, and its old withdrawal tail has been replaced with deterministic long-fight pressure. The same content, canonical combat path, and SP20 contract remain in force for every build.
+敏捷なしの攻撃・生命特化も、最終100 seedの全Lv25/30 scenarioでワイバーンへ100/100到達しており、有効な選択肢として残る。敏捷投資はLv25物理・Lv30精神で明確な差を作る一方、攻撃または生命への特化を一律に置換してはいない。
 
-This approves a simulation candidate only. It does not authorize the larger Trial 1 runtime, persistence, rewards, story, or player-facing release.
+## 7. Owner実績のLv20 HP約1000祝福build
 
-## 10. Parameters adjusted during tuning
+Owner実績を再現するため、祝福成長、生命25%・精神75%・敏捷0%、Lv20の杖・胸当て・精神3アクセ、聖晶弾・治癒祈祷・治癒学4を固定した。自動AI simulationは旧combatでもLv20 clearを再現しないが、全seedでワイバーンへ到達する同じ負荷条件として比較できる。
 
-Only simulation inputs were tuned:
+| Lv | 最大HP | clear 旧 → 最終 | boss到達 旧 → 最終 | 平均被damage 旧 → 最終 | 平均round 旧 → 最終 | 平均prevented 最終 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 20 | 1,004 | 0 / 1000 → 0 / 100 | 1000 → 100 | 3968.98 → 4071.15 | 135.88 → 136.31 | 11077.46 |
+| 25 | 1,092 | 356 / 1000 → 27 / 100 | 1000 → 100 | 3826.67 → 3994.34 | 125.84 → 127.28 | 10913.24 |
+| 30 | 1,180 | 999 / 1000 → 100 / 100 | 1000 → 100 | 2862.12 → 2959.48 | 106.72 → 106.73 | 8535.45 |
 
-- enemy HP, physical/magical defense, weapon power, and attack potency;
-- the order and mix of physical, miracle, armor-break, telegraph, multi-hit, and regeneration pressure;
-- Wyvern HP, split defenses, weapon power, damage reduction, regeneration, action cadence, and the round-40 flight damage bonus;
-- representative legal STP allocations and initial-20-SP loadouts for the four simulation builds; and
-- the compared between-battle recovery rates of 10%, 20%, and 30%.
+Lv25は旧35.6%に対し最終sanity 27.0%、Lv30は実質同等、Lv20は旧新とも全seedでboss到達後に敗北した。ワイバーン敏捷12は「元の無敏捷極振りがほぼ同じ〜やや難」に収まるrebaselineである。
 
-The player growth formula, STP entitlement, Skill Tree costs/effects, Rank 3 equipment definitions, equipment slots, canonical RNG, combat transaction path, MP contract, persistence, application version, and Surface Ruleset were not changed.
+## 8. Trial各戦の最終観測
 
-## 11. Minimum next scope for a formal Trial 1
+表は最終係数の20%回復、全11 buildのLv20 / 25 / 30、合計3,300 starting entriesを実際のentered数で加重した100-seed sanity値である。
 
-After Owner review, the smallest follow-up should be split into reviewable steps:
+| # | Enemy | AGI | entered | 勝率 | 平均round | 平均被damage | 平均prevented |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1 | 試練の地底鼠 | 30 | 3,300 | 100.00% | 6.478 | 103.432 | 313.173 |
+| 2 | 洞窟狩人 | 16 | 3,300 | 100.00% | 7.823 | 131.774 | 409.088 |
+| 3 | 腐食鎧兵 | 10 | 3,300 | 100.00% | 10.219 | 152.812 | 467.905 |
+| 4 | 再生する巨躯 | 10 | 3,300 | 100.00% | 11.194 | 181.700 | 580.615 |
+| 5 | 晶術士 | 12 | 3,300 | 100.00% | 9.829 | 228.022 | 599.062 |
+| 6 | 狂信隊長 | 12 | 3,300 | 99.61% | 14.914 | 272.665 | 854.856 |
+| 7 | 刃翼蝙蝠 | 20 | 3,287 | 99.33% | 9.815 | 180.990 | 575.830 |
+| 8 | 灰晶騎士 | 10 | 3,265 | 97.98% | 15.270 | 301.053 | 892.498 |
+| 9 | 門衛石像 | 10 | 3,199 | 99.69% | 13.526 | 224.550 | 709.998 |
+| 10 | ワイバーン | 12 | 3,189 | 35.72% | 33.512 | 1,498.184 | 3,770.036 |
 
-1. approve or retune the remaining ten-enemy content using this resolved Wyvern/Blessing candidate as evidence;
-2. author a versioned Trial 1 runtime definition that reuses the existing canonical combat and Trial state machine;
-3. implement server-authoritative ten-battle progression with HP carry, 20% capped recovery, per-battle canonical MP reset, defeat/withdrawal stop, deterministic retry identity, and focused production-reachable tests; and
-4. add only the minimal attempt/clear persistence and player-facing entry/result flow explicitly approved for that slice.
+## 9. Combat semantics and scope
 
-SP +40, awakening, the post-clear story, second hunting ground, enchanted drops, Item Lv progression, underground map/facilities, pipes, and Trial 2 remain separate later scopes.
+- comboはdamage actionごとに1回だけ抽選し、post-mitigation damageへ2/3/4倍を一度適用する。
+- action、damage event、critical、status、Awakening gauge、native hit数は増やさない。
+- native multi-hitにも同じaction単位combo結果を使う。
+- 小さい赤字の`N連続ヒット！`は、回避または完全防御ではない最初のdamage行へ1回だけ表示する。damage log自体は増やさない。
+- initiativeは実効敏捷が高い側を先とし、同値時だけ既存tie-breakを使う。
+- `evasion_bps` stacking、complete guard、action impairment、canonical transaction/RNG pathを維持する。
+- `damage_prevented`は各hit時点のHP＋barrierを上限とし、combo時のmitigation deltaとevasionの双方からoverkillを除外する。combat outcome、RNG、実damageは変更しない。
+- evasion・damage・RNG semanticsの変更を旧snapshotと区別するため、combat identityを`secretary-underground-alpha-v2`へversionした。通常探索・Trial・story・playtestの新規battle snapshot/reportはv2を保存し、既存v1 snapshotは履歴として書き換えないためmigrationは不要である。
+- Trial content identityは同じrelease draftの`secretary-underground-trial-01-v2`へ更新し、追加世代を作らない。
+- migration、Surface Ruleset変更、parallel combat engineはない。
 
-## Test impact forecast versus actual
+## 10. Reproduction
 
-| Metric | Forecast | Actual | Reason for difference |
-|---|---:|---:|---|
-| New test files | 0 | 0 | Extended the existing representative simulator test |
-| New test identifiers | about 2 | 1 | One representative test covers timing, exact presentation text, status application, and the preserved round-40 enemy action |
-| Fresh DB / migration executions | 0 | 0 | Pure simulation; no persistence path |
-| Production World constructions | 0 | 0 | Underground-only pure simulation |
-| Official Turn executions | 0 | 0 | No Surface/Turn dependency |
-| Heavy simulation in CI | 0 | 0 | CI smoke uses two seeds; the 1,000-seed matrix is manual only |
-| Focused-test runtime delta | small | small | The 12-test representative file completed in 7.63 seconds locally |
+```powershell
+php artisan underground:balance --manifest=config/underground/balance/trial1-v1.json --seed-start=0 --count=100 --commit-sha=5f81beae4722b81679153a590c095ee02ba3b97e
+```
+
+完全JSONはaggregate抽出時だけ一時生成し、repositoryへcommitしない。保存対象は上記provenanceと本文のcompact summaryのみとする。
+
+基礎combatの10,000-seed確認は係数2000候補のsource `eeedc919c6ee582942382a88e10a1cdca3d3c764`で完了済みだが、その巨大な完全reportは保存しない。既存のhistorical 10,000-seed report（source `763e8b4582d972506a5361872d02659dab95923e`）は変更していない。最終の回避係数だけを2000から1600へ補正したため、Owner判断により基礎10,000 seedは再実行せず、curveのfocused regressionとTrial各条件100 seedでsanityを確認した。heavy simulationはmanual evidenceに限定し、CIではdeterministic focused smoke、curve、combo semantics、matched STP contractを検証する。

@@ -13,6 +13,7 @@ use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
+use App\Domain\Underground\Combat\UndergroundRandom;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
@@ -191,7 +192,8 @@ final class UndergroundCombatBuildTest extends TestCase
         );
         $this->assertSame(0, $overkill->playerRemainingHp);
         $this->assertGreaterThan(0, $nonlethal->playerRemainingHp);
-        $this->assertSame($nonlethal->damagePrevented, $overkill->damagePrevented);
+        $this->assertSame(0, $overkill->damagePrevented);
+        $this->assertGreaterThan($overkill->damagePrevented, $nonlethal->damagePrevented);
 
         $retaliation = $manifest;
         $retaliation['builds']['pure_tank']['ai_rules'] = [[
@@ -217,6 +219,313 @@ final class UndergroundCombatBuildTest extends TestCase
         ));
         $this->assertSame('player', $retaliated->winner);
         $this->assertCount(1, $enemyHits);
+    }
+
+    public function test_relative_agility_curve_naturally_approaches_combo_and_evasion_limits_without_replacing_modifier_cap(): void
+    {
+        $rules = new AlphaV1CombatRules;
+        $expected = [
+            100 => [0, 0, 0, 0, 10_000, 10_000],
+            120 => [145, 45, 0, 0, 10_045, 9_855],
+            150 => [320, 88, 12, 0, 10_112, 9_680],
+            200 => [533, 121, 45, 0, 10_211, 9_467],
+            250 => [685, 145, 54, 15, 10_298, 9_315],
+            300 => [800, 163, 57, 30, 10_367, 9_200],
+        ];
+        foreach ($expected as $selfAgility => $values) {
+            $profile = $rules->agilityProfile($selfAgility, 100);
+            $this->assertSame($values, [
+                $profile['evasion_bonus_bps'],
+                $profile['two_hit_rate_bps'],
+                $profile['three_hit_rate_bps'],
+                $profile['four_hit_rate_bps'],
+                $profile['expected_damage_multiplier_bps'],
+                $profile['expected_incoming_damage_multiplier_bps'],
+            ]);
+        }
+
+        $extremeProfile = $rules->agilityProfile(1_000_000, 1);
+        $this->assertSame([9_999, 1_599, 287, 83, 129, 10_840, 8_401], [
+            $extremeProfile['relative_advantage_bps'],
+            $extremeProfile['evasion_bonus_bps'],
+            $extremeProfile['two_hit_rate_bps'],
+            $extremeProfile['three_hit_rate_bps'],
+            $extremeProfile['four_hit_rate_bps'],
+            $extremeProfile['expected_damage_multiplier_bps'],
+            $extremeProfile['expected_incoming_damage_multiplier_bps'],
+        ]);
+        $this->assertGreaterThan(
+            $rules->agilityProfile(4, 1)['expected_damage_multiplier_bps'],
+            $extremeProfile['expected_damage_multiplier_bps'],
+        );
+        $this->assertSame(500, $rules->evasionChanceBps(50, 100, 500));
+        $this->assertSame(1_100, $rules->evasionChanceBps(300, 100, 300));
+        $this->assertSame(0, $rules->evasionChanceBps(300, 100, -1_000));
+        $this->assertSame(AlphaV1CombatRules::EVASION_CAP_BPS, $rules->evasionChanceBps(1_000_000, 1, 3_100));
+    }
+
+    public function test_agility_combo_multiplies_one_native_multi_hit_action_without_extra_events(): void
+    {
+        [$manifest] = $this->catalog();
+        $manifest['normal_attack'] = [
+            'type' => 'damage',
+            'category' => 'physical',
+            'potency_bps' => 10_000,
+            'stat_coefficients' => ['might' => 10_000],
+            'weapon_coefficient_bps' => 0,
+            'fixed' => 0,
+            'target_max_hp_bps' => 0,
+            'can_crit' => false,
+            'dodgeable' => false,
+            'hits' => 3,
+        ];
+        $manifest['enemies']['agility_target'] = [
+            'label' => '敏捷試験体',
+            'boss' => false,
+            'base_stats' => ['vitality' => 1, 'might' => 1, 'finesse' => 1, 'spirit' => 1, 'agility' => 100],
+            'max_hp' => 1_000_000,
+            'physical_defense' => 137,
+            'magical_defense' => 0,
+            'weapon_power' => 1,
+            'normal_attack' => $manifest['normal_attack'],
+            'skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'defend']],
+            'modifiers' => [],
+        ];
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $snapshot = [
+            'key' => 'agility_secretary',
+            'label' => '敏捷秘書',
+            'stats' => ['vitality' => 20, 'might' => 40, 'finesse' => 20, 'spirit' => 20, 'agility' => 300],
+            'active_skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'modifiers' => [],
+            'equipment' => $configuration['exploration']['starter_weapon'],
+        ];
+        $baselineSnapshot = $snapshot;
+        $baselineSnapshot['stats']['agility'] = 101;
+        $combo = null;
+        $baseline = null;
+        foreach (range(0, 500) as $seed) {
+            $candidate = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'agility_target', $seed, 1, 0);
+            $candidateBaseline = $this->model()->fightPlayerSnapshot(
+                $catalog,
+                $baselineSnapshot,
+                'agility_target',
+                $seed,
+                1,
+                0,
+            );
+            if (collect($candidate->actionLog)->contains(fn (array $row): bool => isset($row['agility_combo_hits']))
+                && ! collect($candidateBaseline->actionLog)->contains(fn (array $row): bool => isset($row['agility_combo_hits']))) {
+                $combo = $candidate;
+                $baseline = $candidateBaseline;
+                break;
+            }
+        }
+        $this->assertInstanceOf(BuildCombatResult::class, $combo);
+        $this->assertInstanceOf(BuildCombatResult::class, $baseline);
+
+        $comboRows = array_values(array_filter(
+            $combo->actionLog,
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage',
+        ));
+        $baselineRows = array_values(array_filter(
+            $baseline->actionLog,
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage',
+        ));
+        $comboNotices = array_values(array_filter(
+            $comboRows,
+            static fn (array $row): bool => isset($row['agility_combo_hits']),
+        ));
+        $comboHits = $comboNotices[0]['agility_combo_hits'];
+        $this->assertContains($comboHits, [2, 3, 4]);
+        $this->assertCount(3, $comboRows);
+        $this->assertCount(3, $baselineRows);
+        $this->assertCount(1, $comboNotices);
+        $this->assertSame(1, $combo->actionUsage['normal_attack']);
+        $this->assertSame(0, $combo->awakening['gauge_gained']);
+        foreach ($comboRows as $index => $row) {
+            $this->assertSame($baselineRows[$index]['amount'] * $comboHits, $row['amount']);
+        }
+        $projected = (new UndergroundAlphaV1BattleProjector)->project($combo, $catalog);
+        $projectedComboNotices = collect($projected['rounds'])
+            ->flatMap(static fn (array $round): array => $round['actions'])
+            ->filter(static fn (array $action): bool => is_int($action['agility_combo_hits'] ?? null));
+        $this->assertCount(1, $projectedComboNotices);
+        $this->assertSame($comboHits, $projectedComboNotices->first()['agility_combo_hits']);
+
+        $dodgeable = $manifest;
+        $dodgeable['normal_attack']['dodgeable'] = true;
+        $dodgeable['normal_attack']['hits'] = 1;
+        $dodgeable['enemies']['agility_target']['modifiers']['evasion_bps'] = 3_500;
+        $comboRateBps = array_sum(array_intersect_key(
+            (new AlphaV1CombatRules)->agilityProfile(300, 100),
+            array_flip(['two_hit_rate_bps', 'three_hit_rate_bps', 'four_hit_rate_bps']),
+        ));
+        $evadedComboSeed = null;
+        foreach (range(0, 5_000) as $seed) {
+            $random = new UndergroundRandom($seed);
+            $comboRoll = $random->integer(
+                'alpha-v1:agility-combo:agility_secretary:normal_attack:round:1',
+                1,
+                10_000,
+            );
+            $evasionRoll = $random->integer(
+                'alpha-v1:evasion:agility_target:normal_attack:1',
+                1,
+                10_000,
+            );
+            if ($comboRoll <= $comboRateBps && $evasionRoll <= 3_500) {
+                $evadedComboSeed = $seed;
+                break;
+            }
+        }
+        $this->assertIsInt($evadedComboSeed);
+        $evadedCombo = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($dodgeable),
+            $snapshot,
+            'agility_target',
+            $evadedComboSeed,
+            1,
+            0,
+        );
+        $evadedRow = collect($evadedCombo->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($evadedRow);
+        $this->assertTrue($evadedRow['evaded']);
+        $this->assertArrayNotHasKey('agility_combo_hits', $evadedRow);
+
+        $completeGuard = $dodgeable;
+        $completeGuard['enemies']['agility_target']['modifiers'] = [
+            'complete_guard_chance_bps' => 10_000,
+        ];
+        $completeGuardedCombo = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($completeGuard),
+            $snapshot,
+            'agility_target',
+            $evadedComboSeed,
+            1,
+            0,
+        );
+        $completeGuardedRow = collect($completeGuardedCombo->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($completeGuardedRow);
+        $this->assertTrue($completeGuardedRow['complete_guarded']);
+        $this->assertArrayNotHasKey('agility_combo_hits', $completeGuardedRow);
+    }
+
+    public function test_terminal_agility_combo_caps_mitigation_and_evasion_prevention_at_absorbable_damage(): void
+    {
+        [$manifest] = $this->catalog();
+        $terminalAttack = [
+            'type' => 'damage',
+            'category' => 'physical',
+            'potency_bps' => 10_000,
+            'stat_coefficients' => [],
+            'weapon_coefficient_bps' => 0,
+            'fixed' => 500,
+            'target_max_hp_bps' => 0,
+            'can_crit' => false,
+            'dodgeable' => false,
+            'hits' => 1,
+        ];
+        $manifest['enemies']['terminal_combo_enemy'] = [
+            'label' => '終端combo試験体',
+            'boss' => false,
+            'base_stats' => ['vitality' => 1, 'might' => 1, 'finesse' => 1, 'spirit' => 1, 'agility' => 300],
+            'max_hp' => 1_000_000,
+            'physical_defense' => 0,
+            'magical_defense' => 0,
+            'weapon_power' => 1,
+            'normal_attack' => $terminalAttack,
+            'skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'modifiers' => [],
+        ];
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $snapshot = [
+            'key' => 'terminal_combo_player',
+            'label' => '低HP秘書',
+            'stats' => ['vitality' => 20, 'might' => 20, 'finesse' => 20, 'spirit' => 20, 'agility' => 1],
+            'current_hp' => 5,
+            'active_skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'modifiers' => ['evasion_bps' => AlphaV1CombatRules::EVASION_CAP_BPS],
+            'equipment' => $configuration['exploration']['starter_weapon'],
+        ];
+        $rules = new AlphaV1CombatRules;
+        $profile = $rules->agilityProfile(300, 2);
+        $comboRateBps = $profile['two_hit_rate_bps']
+            + $profile['three_hit_rate_bps']
+            + $profile['four_hit_rate_bps'];
+        $comboEvasionSeed = null;
+        foreach (range(0, 5_000) as $seed) {
+            $random = new UndergroundRandom($seed);
+            $comboRoll = $random->integer(
+                'alpha-v1:agility-combo:terminal_combo_enemy:normal_attack:round:1',
+                1,
+                10_000,
+            );
+            $evasionRoll = $random->integer(
+                'alpha-v1:evasion:terminal_combo_player:normal_attack:1',
+                1,
+                10_000,
+            );
+            if ($comboRoll <= $comboRateBps && $evasionRoll <= AlphaV1CombatRules::EVASION_CAP_BPS) {
+                $comboEvasionSeed = $seed;
+
+                break;
+            }
+        }
+        $this->assertIsInt($comboEvasionSeed);
+
+        $terminal = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($manifest),
+            $snapshot,
+            'terminal_combo_enemy',
+            $comboEvasionSeed,
+            1,
+            0,
+        );
+        $terminalRow = collect($terminal->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($terminalRow);
+        $this->assertGreaterThan(1, $terminalRow['agility_combo_hits']);
+        $this->assertSame('enemy', $terminal->winner);
+        $this->assertSame(0, $terminal->playerRemainingHp);
+        $this->assertSame(5, $terminal->damageReceived);
+        $this->assertSame(0, $terminal->damagePrevented);
+
+        $evasive = $manifest;
+        $evasive['enemies']['terminal_combo_enemy']['normal_attack']['dodgeable'] = true;
+        $evaded = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($evasive),
+            $snapshot,
+            'terminal_combo_enemy',
+            $comboEvasionSeed,
+            1,
+            0,
+        );
+        $evadedRow = collect($evaded->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($evadedRow);
+        $this->assertTrue($evadedRow['evaded']);
+        $this->assertArrayNotHasKey('agility_combo_hits', $evadedRow);
+        $this->assertSame(5, $evaded->playerRemainingHp);
+        $this->assertSame(0, $evaded->damageReceived);
+        $this->assertSame(5, $evaded->damagePrevented);
     }
 
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void
@@ -1268,13 +1577,18 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertContains('counter_stance', $actions);
         $this->assertContains('counter', $actions);
         $this->assertContains('round_end', $actions);
-        $counterRows = array_values(array_filter(
+        $evadedRows = array_values(array_filter(
             $first->actionLog,
-            static fn (array $row): bool => $row['action'] === 'counter',
+            static fn (array $row): bool => ($row['evaded'] ?? false) === true,
         ));
-        $counter = $counterRows[array_key_last($counterRows)];
-        $this->assertSame('counter', $counter['action']);
-        $this->assertGreaterThan(500, $counter['amount']);
+        $this->assertSame([], $evadedRows);
+        $barrierDamage = collect($first->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'precision_cut'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($barrierDamage);
+        $this->assertSame(4, $barrierDamage['barrier_absorbed']);
+        $this->assertArrayNotHasKey('agility_combo_hits', $barrierDamage);
         $this->assertSame([], $first->abnormalState);
     }
 

@@ -459,7 +459,7 @@ final readonly class AlphaV1CombatModel
         if (! is_array($stats)) {
             throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] stats are invalid.");
         }
-        $stats = $this->rules->scaledStats($stats, [], $scaleBps);
+        $stats = $this->rules->scaledStats($stats, [], $scaleBps, false);
         foreach (['label', 'max_hp', 'physical_defense', 'magical_defense', 'weapon_power', 'skills', 'ai_rules', 'normal_attack'] as $key) {
             if (! array_key_exists($key, $enemy)) {
                 throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] is invalid.");
@@ -589,8 +589,7 @@ final readonly class AlphaV1CombatModel
 
     private function initiative(BuildCombatState $state): int
     {
-        $agilityBps = (int) ($state->modifiers['agility_bps'] ?? 0);
-        $value = $state->stat('agility') + intdiv($state->stat('agility') * $agilityBps, 10_000);
+        $value = $this->effectiveAgility($state);
         foreach ($state->statuses as $status) {
             foreach ($status['effects'] as $effect) {
                 if (($effect['type'] ?? null) === 'initiative_modifier') {
@@ -688,6 +687,7 @@ final readonly class AlphaV1CombatModel
             if ($actor->side === 'player') {
                 $actionUsage['normal_attack']++;
             }
+            $agilityComboHits = $this->agilityComboHits($actor, $target, $random, $round, 'normal_attack');
             $this->applyDamage(
                 $actor,
                 $target,
@@ -698,6 +698,7 @@ final readonly class AlphaV1CombatModel
                 $metrics,
                 $actionUsage,
                 $actionLog,
+                $agilityComboHits,
             );
 
             return;
@@ -718,6 +719,11 @@ final readonly class AlphaV1CombatModel
         if (is_string($consumeStatus)) {
             unset($actor->statuses[$consumeStatus]);
         }
+        $hasDamageEffect = in_array('damage', array_column($skill['effects'], 'type'), true);
+        $agilityComboHits = $hasDamageEffect
+            ? $this->agilityComboHits($actor, $target, $random, $round, $skillKey)
+            : 1;
+        $agilityComboPending = $agilityComboHits > 1;
         foreach ($skill['effects'] as $effect) {
             if (! $actor->alive() || ! $target->alive()) {
                 break;
@@ -734,7 +740,12 @@ final readonly class AlphaV1CombatModel
                 $actionUsage,
                 $mpHistory,
                 $actionLog,
+                $agilityComboHits,
+                $agilityComboPending,
             );
+            if (($effect['type'] ?? null) === 'damage') {
+                $agilityComboPending = false;
+            }
         }
         if (($skill['grace_on_use'] ?? false) === true && ($actor->modifiers['grace_enabled'] ?? false) === true) {
             $this->grantRoleStack($actor, 'grace', $catalog->balanceInt('role_stack_cap'), $round, $actionLog);
@@ -760,6 +771,8 @@ final readonly class AlphaV1CombatModel
         array &$actionUsage,
         array &$mpHistory,
         array &$actionLog,
+        int $agilityComboHits,
+        bool $showAgilityCombo,
     ): void {
         $effectTarget = ($effect['target'] ?? 'enemy') === 'self' ? $actor : $target;
         match ($effect['type'] ?? null) {
@@ -773,6 +786,8 @@ final readonly class AlphaV1CombatModel
                 $metrics,
                 $actionUsage,
                 $actionLog,
+                $agilityComboHits,
+                $showAgilityCombo,
             ),
             'heal' => $this->applyHeal($actor, $effectTarget, $effect, $round, $skillKey, $metrics, $actionLog),
             'barrier' => $this->applyBarrier($actor, $effectTarget, $effect, $round, $skillKey, $actionLog),
@@ -865,8 +880,11 @@ final readonly class AlphaV1CombatModel
         array &$metrics,
         array &$actionUsage,
         array &$actionLog,
+        int $agilityComboHits = 1,
+        bool $showAgilityCombo = true,
     ): void {
         $hits = max(1, (int) ($effect['hits'] ?? 1));
+        $agilityComboLogged = false;
         for ($hit = 1; $hit <= $hits && $actor->alive() && $target->alive(); $hit++) {
             $coefficients = is_array($effect['stat_coefficients'] ?? null) ? $effect['stat_coefficients'] : [];
             $effectivePower = $this->rules->weightedStats($this->currentStats($actor), $coefficients);
@@ -964,15 +982,18 @@ final readonly class AlphaV1CombatModel
             // A failed complete-guard roll is the metal enemy's damage window, not a second evasion roll.
             $evasion = $completeGuardChance > 0
                 ? 0
-                : min(
-                    AlphaV1CombatRules::EVASION_CAP_BPS,
-                    max(0, $this->scaledProbabilityContribution($target, 'agility', 1_200)
-                        + (int) ($target->modifiers['evasion_bps'] ?? 0)),
+                : $this->rules->evasionChanceBps(
+                    $this->effectiveAgility($target),
+                    $this->effectiveAgility($actor),
+                    (int) ($target->modifiers['evasion_bps'] ?? 0),
                 );
             if (($effect['dodgeable'] ?? true) === true
                 && $random->integer("alpha-v1:evasion:{$target->key}:{$actionKey}:{$hit}", 1, 10_000) <= $evasion) {
                 if ($target->side === 'player') {
-                    $metrics['damage_prevented'] += $preMitigation;
+                    $metrics['damage_prevented'] += min(
+                        $target->hp + $target->barrier,
+                        $preMitigation * $agilityComboHits,
+                    );
                 }
                 $actionLog[] = $this->logRow(
                     $round,
@@ -1012,7 +1033,14 @@ final readonly class AlphaV1CombatModel
                     10_000,
                 ));
             }
-            $postMitigation = max(1, intdiv($preMitigation * $combinedBps, 10_000));
+            $postMitigationBeforeCombo = max(1, intdiv($preMitigation * $combinedBps, 10_000));
+            $postMitigation = $postMitigationBeforeCombo * $agilityComboHits;
+            $absorbableDamage = $target->hp + $target->barrier;
+            $preventedByMitigation = max(
+                0,
+                min($absorbableDamage, $preMitigation * $agilityComboHits)
+                    - min($absorbableDamage, $postMitigation),
+            );
             $settled = $this->settlePostMitigationDamage(
                 $target,
                 $postMitigation,
@@ -1023,8 +1051,10 @@ final readonly class AlphaV1CombatModel
             $reportedDamage = $settled['reported_damage'];
             $barrierAbsorbed = $settled['barrier_absorbed'];
             if ($target->side === 'player') {
-                $metrics['damage_prevented'] += max(0, $preMitigation - $postMitigation);
+                $metrics['damage_prevented'] += $preventedByMitigation;
             }
+            $loggedAgilityComboHits = $showAgilityCombo && ! $agilityComboLogged ? $agilityComboHits : 1;
+            $agilityComboLogged = true;
             $actionLog[] = $this->logRow(
                 $round,
                 $actor,
@@ -1037,6 +1067,7 @@ final readonly class AlphaV1CombatModel
                 $barrierAbsorbed,
                 'damage',
                 $target->side,
+                agilityComboHits: $loggedAgilityComboHits,
             );
             if ($guarded || $barrierAbsorbed > 0) {
                 if (($target->modifiers['fighting_spirit_enabled'] ?? false) === true) {
@@ -1711,6 +1742,13 @@ final readonly class AlphaV1CombatModel
         ];
 
         if ($growthPath === 'martial_red') {
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $technique['key'],
+            );
             $this->applyDamage(
                 $player,
                 $enemy,
@@ -1731,6 +1769,7 @@ final readonly class AlphaV1CombatModel
                 $metrics,
                 $actionUsage,
                 $actionLog,
+                $agilityComboHits,
             );
         } elseif ($growthPath === 'guardianship_blue') {
             $player->awakeningGuardRoundsRemaining = UndergroundAwakening::GUARDIAN_DURATION_ROUNDS;
@@ -1827,6 +1866,47 @@ final readonly class AlphaV1CombatModel
             $state->stat($stat) * $basisPointsAtReference,
             max(1, $state->defenseReference),
         ));
+    }
+
+    private function effectiveAgility(BuildCombatState $state): int
+    {
+        $agility = $state->stat('agility');
+        $agilityBps = (int) ($state->modifiers['agility_bps'] ?? 0);
+
+        return max(1, $agility + intdiv($agility * $agilityBps, 10_000));
+    }
+
+    private function agilityComboHits(
+        BuildCombatState $actor,
+        BuildCombatState $target,
+        UndergroundRandom $random,
+        int $round,
+        string $actionKey,
+    ): int {
+        $profile = $this->rules->agilityProfile(
+            $this->effectiveAgility($actor),
+            $this->effectiveAgility($target),
+        );
+        $comboRateBps = $profile['two_hit_rate_bps']
+            + $profile['three_hit_rate_bps']
+            + $profile['four_hit_rate_bps'];
+        if ($comboRateBps === 0) {
+            return 1;
+        }
+
+        $roll = $random->integer(
+            "alpha-v1:agility-combo:{$actor->key}:{$actionKey}:round:{$round}",
+            1,
+            10_000,
+        );
+        if ($roll <= $profile['four_hit_rate_bps']) {
+            return 4;
+        }
+        if ($roll <= $profile['four_hit_rate_bps'] + $profile['three_hit_rate_bps']) {
+            return 3;
+        }
+
+        return $roll <= $comboRateBps ? 2 : 1;
     }
 
     private function statusModifier(BuildCombatState $state, string $type, string $category): int
@@ -1953,8 +2033,9 @@ final readonly class AlphaV1CombatModel
         string $effectType = 'state',
         ?string $targetSide = null,
         bool $completeGuarded = false,
+        int $agilityComboHits = 1,
     ): array {
-        return [
+        $row = [
             'kind' => 'effect',
             'effect_type' => $effectType,
             'round' => $round,
@@ -1971,5 +2052,10 @@ final readonly class AlphaV1CombatModel
             'actor_hp' => $actor->hp,
             'actor_mp' => $actor->mp,
         ];
+        if ($agilityComboHits > 1) {
+            $row['agility_combo_hits'] = $agilityComboHits;
+        }
+
+        return $row;
     }
 }

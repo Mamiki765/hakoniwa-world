@@ -792,7 +792,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'underground_profile_id' => $profile->id,
             'run_key' => (string) Str::uuid(),
             'trial_key' => 'trial_01',
-            'trial_content_identity' => 'secretary-underground-trial-01-v1',
+            'trial_content_identity' => 'secretary-underground-trial-01-v2',
             'next_battle_index' => 2,
             'status' => UndergroundTrialRun::STATUS_ACTIVE,
             'started_at' => Carbon::now(),
@@ -933,7 +933,8 @@ final class UndergroundPlayerAccessTest extends TestCase
         $requestId = (string) Str::uuid();
         $first = $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
             'request_id' => $requestId,
-        ])->assertOk()
+        ]);
+        $first->assertOk()
             ->assertJsonPath('data.stage', 'special_loss_complete')
             ->assertJsonPath('data.battle.context', 'scripted_loss')
             ->assertJsonPath('data.battle.player_display_name', 'Special secretary')
@@ -952,19 +953,24 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonStructure(['data' => ['battle' => ['actions' => [
                 '*' => ['round', 'actions', 'end_state'],
             ]]]]);
-        $storyActions = $first->json('data.battle.actions.0.actions');
-        $this->assertIsArray($storyActions);
-        $damageIndex = array_search('damage', array_column($storyActions, 'type'), true);
-        $stackIndex = array_search('role_stack_gain', array_column($storyActions, 'type'), true);
-        $counterIndex = array_search('counter', array_column($storyActions, 'type'), true);
-        $this->assertIsInt($damageIndex);
-        $this->assertIsInt($stackIndex);
-        $this->assertIsInt($counterIndex);
-        $this->assertLessThan($stackIndex, $damageIndex);
-        $this->assertLessThan($counterIndex, $stackIndex);
-        $this->assertSame('counter', $storyActions[$counterIndex]['type']);
-        $this->assertSame('反撃', $storyActions[$counterIndex]['label']);
-        $this->assertGreaterThan(500, $storyActions[$counterIndex]['amount']);
+        $firstRoundActions = $first->json('data.battle.actions.0.actions');
+        $this->assertIsArray($firstRoundActions);
+        $barrierDamage = collect($firstRoundActions)->first(
+            static fn (array $action): bool => $action['type'] === 'damage',
+        );
+        $fatalDamage = collect($firstRoundActions)->first(
+            static fn (array $action): bool => $action['type'] === 'counter',
+        );
+        $this->assertIsArray($barrierDamage);
+        $this->assertSame('精密斬り', $barrierDamage['label']);
+        $this->assertFalse($barrierDamage['evaded']);
+        $this->assertSame(0, $barrierDamage['amount']);
+        $this->assertSame(4, $barrierDamage['barrier_absorbed']);
+        $this->assertNull($barrierDamage['agility_combo_hits']);
+        $this->assertIsArray($fatalDamage);
+        $this->assertSame('反撃', $fatalDamage['label']);
+        $this->assertFalse($fatalDamage['evaded']);
+        $this->assertGreaterThan(500, $fatalDamage['amount']);
         $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
             'request_id' => $requestId,
         ])->assertOk()->assertExactJson($first->json());
@@ -984,7 +990,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertNull($profile->current_hp);
         $storyBattle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->sole();
-        $this->assertSame('secretary-underground-alpha-v1', $storyBattle->runtime_identity);
+        $this->assertSame('secretary-underground-alpha-v2', $storyBattle->runtime_identity);
         $this->assertSame(1254, $storyBattle->snapshot['enemy_combat_level_equivalent']);
         $this->assertSame(1_137_700, $storyBattle->snapshot['enemy_scale_bps']);
         $storyDefinition = app(UndergroundAlphaV1PlayerCatalog::class)->trueNameStoryBattle();
@@ -1197,6 +1203,8 @@ final class UndergroundPlayerAccessTest extends TestCase
         $playtestBattle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_PLAYTEST)
             ->sole();
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->runtime_identity);
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->snapshot['combat_rules_identity']);
         $this->assertTrue($playtestBattle->log?->expires_at->equalTo($playtestBattle->finished_at->addHour()) ?? false);
         config([
             'underground-alpha-v1.playtest.builds' => [],

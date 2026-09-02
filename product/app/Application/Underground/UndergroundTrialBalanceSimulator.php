@@ -13,12 +13,36 @@ final readonly class UndergroundTrialBalanceSimulator
 {
     public const SIMULATION_TYPE = 'trial_sequence';
 
-    public const SIMULATOR_VERSION = 'underground-trial-balance-v1';
+    public const SIMULATOR_VERSION = 'underground-trial-balance-v2';
+
+    /** @var list<string> */
+    private const PRIMARY_BUILD_KEYS = ['martial_red', 'guardianship_blue', 'blessing_green', 'free_black'];
+
+    /** @var list<string> */
+    private const STP_COMPARISON_BUILD_KEYS = [
+        'matched_might_attack',
+        'matched_might_vitality',
+        'matched_might_agility',
+        'matched_spirit_attack',
+        'matched_spirit_vitality',
+        'matched_spirit_agility',
+        'owner_blessing_hp1000_zero_agility',
+    ];
+
+    /** @var list<string> */
+    private const ZERO_AGILITY_BUILD_KEYS = [
+        'matched_might_attack',
+        'matched_might_vitality',
+        'matched_spirit_attack',
+        'matched_spirit_vitality',
+        'owner_blessing_hp1000_zero_agility',
+    ];
 
     public function __construct(
         private AtomicUndergroundExplorationCombat $combat,
         private UndergroundAlphaV1PlayerCatalog $players,
         private UndergroundEquipmentCatalog $equipment,
+        private AlphaV1CombatRules $rules,
     ) {}
 
     /**
@@ -68,6 +92,7 @@ final readonly class UndergroundTrialBalanceSimulator
                     && $report['heal_overflow_count'] === 0,
                 true,
             );
+        $builds = $this->buildReport($normalized);
 
         return [
             'schema_version' => 1,
@@ -94,8 +119,9 @@ final readonly class UndergroundTrialBalanceSimulator
             'checkpoints' => $normalized['checkpoints'],
             'recovery_comparison_bps' => $normalized['recovery_comparison_bps'],
             'recovery_comparison_levels' => $normalized['recovery_comparison_levels'],
-            'builds' => $this->buildReport($normalized),
+            'builds' => $builds,
             'battle_sequence' => $this->sequenceReport($normalized),
+            'agility_balance' => $this->agilityBalanceReport($normalized, $builds),
             'scenarios' => $reports,
             'owner_target_observation' => $this->ownerTargetObservation($reports, $normalized),
             'abnormal_seeds' => array_slice($abnormalSeeds, 0, 10),
@@ -126,6 +152,7 @@ final readonly class UndergroundTrialBalanceSimulator
         return [
             'simulation_type' => self::SIMULATION_TYPE,
             'simulator_version' => self::SIMULATOR_VERSION,
+            'combat_identity' => AlphaV1CombatRules::IDENTITY,
             'trial_identity' => $normalized['trial_identity'],
             'scenario' => $scenario,
             'seed' => $seed,
@@ -350,6 +377,7 @@ final readonly class UndergroundTrialBalanceSimulator
                 'key' => $enemyKey,
                 'label' => $normalized['enemies'][$enemyKey]['label'],
                 'seed' => $result->seed,
+                'combat_identity' => $result->rulesIdentity,
                 'winner' => $result->winner,
                 'rounds' => $result->rounds,
                 'remaining_hp' => $remainingHp,
@@ -491,6 +519,74 @@ final readonly class UndergroundTrialBalanceSimulator
     }
 
     /**
+     * @param  array<string, mixed>  $normalized
+     * @param  array<string, array<string, array<string, mixed>>>  $builds
+     * @return array<string, mixed>
+     */
+    private function agilityBalanceReport(array $normalized, array $builds): array
+    {
+        $ratioCurve = [];
+        foreach ([[100, 100], [120, 100], [150, 100], [200, 100], [250, 100], [300, 100]] as [$self, $opponent]) {
+            $ratioCurve[] = $this->agilityObservation($self, $opponent);
+        }
+
+        $trialRatios = [];
+        foreach ($builds as $buildKey => $levels) {
+            foreach ($levels as $levelKey => $build) {
+                $selfAgility = (int) $build['combat_stats']['agility'];
+                foreach ($normalized['sequence'] as $index => $enemyKey) {
+                    $enemy = $normalized['enemies'][$enemyKey];
+                    $observation = $this->agilityObservation(
+                        $selfAgility,
+                        (int) $enemy['base_stats']['agility'],
+                    );
+                    $trialRatios[] = [
+                        'build_key' => $buildKey,
+                        'build_label' => $build['label'],
+                        'level' => (int) substr($levelKey, 2),
+                        'battle_index' => $index + 1,
+                        'enemy_key' => $enemyKey,
+                        'enemy_label' => $enemy['label'],
+                        ...$observation,
+                    ];
+                }
+            }
+        }
+
+        return [
+            'relative_advantage_formula' => 'max(0, (self - opponent) / (self + opponent))',
+            'relative_advantage_cap_bps' => AlphaV1CombatRules::RELATIVE_AGILITY_ADVANTAGE_CAP_BPS,
+            'evasion_total_cap_bps' => AlphaV1CombatRules::EVASION_CAP_BPS,
+            'evasion_modifier_stacking' => 'relative_agility_bonus_plus_evasion_bps_then_total_cap',
+            'ratio_curve' => $ratioCurve,
+            'saturation' => $this->agilityObservation(1_000_000, 1),
+            'trial_one_ratios' => $trialRatios,
+        ];
+    }
+
+    /** @return array<string, int|float|string> */
+    private function agilityObservation(int $selfAgility, int $opponentAgility): array
+    {
+        $profile = $this->rules->agilityProfile($selfAgility, $opponentAgility);
+
+        return [
+            'self_agility' => $selfAgility,
+            'opponent_agility' => $opponentAgility,
+            'ratio' => round($selfAgility / $opponentAgility, 4),
+            'initiative' => $selfAgility > $opponentAgility
+                ? 'self'
+                : ($selfAgility < $opponentAgility ? 'opponent' : 'tie_break'),
+            ...$profile,
+            'evasion_rate' => $profile['evasion_bonus_bps'] / 10_000,
+            'two_hit_rate' => $profile['two_hit_rate_bps'] / 10_000,
+            'three_hit_rate' => $profile['three_hit_rate_bps'] / 10_000,
+            'four_hit_rate' => $profile['four_hit_rate_bps'] / 10_000,
+            'expected_damage_multiplier' => $profile['expected_damage_multiplier_bps'] / 10_000,
+            'expected_incoming_damage_multiplier' => $profile['expected_incoming_damage_multiplier_bps'] / 10_000,
+        ];
+    }
+
+    /**
      * @param  array<string, int>  $weights
      * @return array<string, int>
      */
@@ -575,9 +671,9 @@ final readonly class UndergroundTrialBalanceSimulator
             || $naturalRecovery !== 300) {
             throw new InvalidArgumentException('Trial simulation manifest contract is invalid.');
         }
-        foreach ([25, 30, 35] as $checkpoint) {
+        foreach ([20, 25, 30, 35] as $checkpoint) {
             if (! in_array($checkpoint, $checkpoints, true)) {
-                throw new InvalidArgumentException('Trial simulation must include Lv25, Lv30, and Lv35.');
+                throw new InvalidArgumentException('Trial simulation must include Lv20, Lv25, Lv30, and Lv35.');
             }
         }
         $primaryHeal = $comparison['primary_bps'] ?? null;
@@ -587,12 +683,13 @@ final readonly class UndergroundTrialBalanceSimulator
             || ! is_array($comparisonLevels) || ! in_array(30, $comparisonLevels, true)) {
             throw new InvalidArgumentException('Trial healing comparison contract is invalid.');
         }
-        $expectedBuilds = ['martial_red', 'guardianship_blue', 'blessing_green', 'free_black'];
+        $expectedBuilds = [...self::PRIMARY_BUILD_KEYS, ...self::STP_COMPARISON_BUILD_KEYS];
         if (array_keys($builds) !== $expectedBuilds) {
-            throw new InvalidArgumentException('Trial simulation must define all four growth paths in stable order.');
+            throw new InvalidArgumentException('Trial simulation must define the four representative, six matched-STP, and owner baseline builds in stable order.');
         }
         foreach ($builds as $key => &$build) {
-            if (! is_array($build) || ($build['growth_path'] ?? null) !== $key
+            $growthPath = $build['growth_path'] ?? null;
+            if (! is_array($build) || ! in_array($growthPath, self::PRIMARY_BUILD_KEYS, true)
                 || ! is_string($build['label'] ?? null) || $build['label'] === ''
                 || ! is_array($build['stp_weights_bps'] ?? null)
                 || array_keys($build['stp_weights_bps']) !== AlphaV1CombatRules::STATS
@@ -603,6 +700,14 @@ final readonly class UndergroundTrialBalanceSimulator
                 || count($build['equipment_keys']) !== 3
                 || array_filter($build['equipment_keys'], 'is_string') !== $build['equipment_keys']) {
                 throw new InvalidArgumentException("Trial build [{$key}] is invalid.");
+            }
+            if (in_array($key, self::ZERO_AGILITY_BUILD_KEYS, true)
+                && $build['stp_weights_bps']['agility'] !== 0) {
+                throw new InvalidArgumentException("Trial zero-agility build [{$key}] must allocate no STP to agility.");
+            }
+            if (in_array($key, ['matched_might_agility', 'matched_spirit_agility'], true)
+                && $build['stp_weights_bps']['agility'] !== 1000) {
+                throw new InvalidArgumentException("Trial agility comparison build [{$key}] must allocate 10 percent of STP to agility.");
             }
         }
         unset($build);
@@ -648,6 +753,9 @@ final readonly class UndergroundTrialBalanceSimulator
             foreach ($normalized['checkpoints'] as $level) {
                 $scenario = $this->scenario($buildKey, $level, $normalized['primary_heal_bps']);
                 $scenarios[$scenario['id']] = $scenario;
+            }
+            if (! in_array($buildKey, self::PRIMARY_BUILD_KEYS, true)) {
+                continue;
             }
             foreach ($normalized['recovery_comparison_levels'] as $level) {
                 foreach ($normalized['recovery_comparison_bps'] as $healBps) {
@@ -716,6 +824,7 @@ final readonly class UndergroundTrialBalanceSimulator
                 'physical_defense' => $enemy['physical_defense'],
                 'magical_defense' => $enemy['magical_defense'],
                 'weapon_power' => $enemy['weapon_power'],
+                'agility' => $enemy['base_stats']['agility'],
                 'skills' => $enemy['skills'],
                 'ai_rules' => $enemy['ai_rules'],
                 'modifiers' => $enemy['modifiers'],
@@ -735,7 +844,7 @@ final readonly class UndergroundTrialBalanceSimulator
     {
         $byId = array_column($reports, null, 'id');
         $builds = [];
-        foreach (array_keys($normalized['builds']) as $buildKey) {
+        foreach (self::PRIMARY_BUILD_KEYS as $buildKey) {
             $lv25 = $byId[$this->scenario($buildKey, 25, 2000)['id']]['clear_rate'] ?? null;
             $lv30 = $byId[$this->scenario($buildKey, 30, 2000)['id']]['clear_rate'] ?? null;
             $lv35 = $byId[$this->scenario($buildKey, 35, 2000)['id']]['clear_rate'] ?? null;

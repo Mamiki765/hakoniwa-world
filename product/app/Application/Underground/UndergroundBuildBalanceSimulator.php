@@ -229,6 +229,7 @@ final readonly class UndergroundBuildBalanceSimulator
         return [
             'schema_version' => 2,
             'simulator_version' => AlphaV1CombatRules::SIMULATOR_VERSION,
+            'combat_identity' => AlphaV1CombatRules::IDENTITY,
             'scenario_id' => $scenarioId,
             'result' => $result->toArray(),
         ];
