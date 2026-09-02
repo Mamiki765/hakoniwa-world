@@ -718,6 +718,10 @@ async function confirmRespec(): Promise<void> {
         pendingRespecMutation.value = null;
         stpDraft.value = { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 };
         pendingStpMutation.value = null;
+        pendingSkillAcquire.value = null;
+        pendingLoadoutMutation.value = null;
+        loadoutDraft.value = state.value?.active_slots.map((slot) => slot?.key ?? null)
+            ?? [null, null, null, null, null];
         selectedRespecPathKey.value = null;
         respecConfirmOpen.value = false;
     }
