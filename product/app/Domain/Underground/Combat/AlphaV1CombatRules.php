@@ -34,7 +34,7 @@ final class AlphaV1CombatRules
 
     public const AGILITY_EVASION_SCALE_BPS = 2_000;
 
-    public const AGILITY_TWO_HIT_SCALE_BPS = 600;
+    public const AGILITY_TWO_HIT_SCALE_BPS = 550;
 
     public const AGILITY_THREE_HIT_THRESHOLD_BPS = 1_500;
 
