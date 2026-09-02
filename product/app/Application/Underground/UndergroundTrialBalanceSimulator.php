@@ -23,6 +23,7 @@ final readonly class UndergroundTrialBalanceSimulator
         'blessing_vitality_zero_agility',
         'blessing_spirit_zero_agility',
         'martial_attack_zero_agility',
+        'blessing_vitality_spirit_zero_agility',
     ];
 
     public function __construct(
@@ -670,7 +671,7 @@ final readonly class UndergroundTrialBalanceSimulator
         }
         $expectedBuilds = [...self::PRIMARY_BUILD_KEYS, ...self::ZERO_AGILITY_BUILD_KEYS];
         if (array_keys($builds) !== $expectedBuilds) {
-            throw new InvalidArgumentException('Trial simulation must define the four representative and three zero-agility builds in stable order.');
+            throw new InvalidArgumentException('Trial simulation must define the four representative and four zero-agility builds in stable order.');
         }
         foreach ($builds as $key => &$build) {
             $growthPath = $build['growth_path'] ?? null;

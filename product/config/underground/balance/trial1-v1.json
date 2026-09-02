@@ -62,7 +62,7 @@
         "blessing_vitality_zero_agility": {
             "label": "祝福・生命特化（敏捷STP 0）",
             "growth_path": "blessing_green",
-            "stp_weights_bps": {"vitality": 2000, "might": 0, "finesse": 3500, "spirit": 4500, "agility": 0},
+            "stp_weights_bps": {"vitality": 10000, "might": 0, "finesse": 0, "spirit": 0, "agility": 0},
             "skill_allocations": {
                 "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
                 "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
@@ -73,7 +73,7 @@
         "blessing_spirit_zero_agility": {
             "label": "祝福・精神特化（敏捷STP 0）",
             "growth_path": "blessing_green",
-            "stp_weights_bps": {"vitality": 1000, "might": 0, "finesse": 3500, "spirit": 5500, "agility": 0},
+            "stp_weights_bps": {"vitality": 0, "might": 0, "finesse": 0, "spirit": 10000, "agility": 0},
             "skill_allocations": {
                 "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
                 "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
@@ -84,13 +84,24 @@
         "martial_attack_zero_agility": {
             "label": "戦技・攻撃特化（敏捷STP 0）",
             "growth_path": "martial_red",
-            "stp_weights_bps": {"vitality": 1500, "might": 6500, "finesse": 2000, "spirit": 0, "agility": 0},
+            "stp_weights_bps": {"vitality": 0, "might": 10000, "finesse": 0, "spirit": 0, "agility": 0},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
                 "martial_weapon_mastery": {"rank": 5, "active_slot": null},
                 "martial_critical_training": {"rank": 2, "active_slot": null}
             },
             "equipment_keys": ["polished_steel_dagger", "iron_breastplate", "might_accessory_rank_3"]
+        },
+        "blessing_vitality_spirit_zero_agility": {
+            "label": "祝福・生命精神特化（敏捷STP 0・Lv20 HP約1000）",
+            "growth_path": "blessing_green",
+            "stp_weights_bps": {"vitality": 2500, "might": 0, "finesse": 0, "spirit": 7500, "agility": 0},
+            "skill_allocations": {
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
+                "miracle_healing_study": {"rank": 4, "active_slot": null}
+            },
+            "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
         }
     },
     "battle_sequence": [

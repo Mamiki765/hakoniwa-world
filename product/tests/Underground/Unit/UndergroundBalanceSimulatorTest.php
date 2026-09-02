@@ -86,7 +86,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $report['agility_balance']['ratio_curve'],
             'expected_incoming_damage_multiplier_bps',
         ));
-        $this->assertCount(280, $report['agility_balance']['trial_one_ratios']);
+        $this->assertCount(320, $report['agility_balance']['trial_one_ratios']);
         $this->assertSame([
             'trial_rat_vanguard' => 30,
             'trial_cave_hunter' => 22,
@@ -105,14 +105,15 @@ final class UndergroundBalanceSimulatorTest extends TestCase
                 $this->assertSame([3, 3, 3], array_column($build['equipment']['items'], 'rank'));
             }
         }
-        $vitalityBuild = $report['builds']['blessing_vitality_zero_agility']['lv20'];
-        $this->assertSame(0, $vitalityBuild['allocated_stp']['agility']);
-        $this->assertSame(964, $vitalityBuild['max_hp']);
+        $vitalitySpiritBuild = $report['builds']['blessing_vitality_spirit_zero_agility']['lv20'];
+        $this->assertSame(0, $vitalitySpiritBuild['allocated_stp']['agility']);
+        $this->assertSame(1004, $vitalitySpiritBuild['max_hp']);
         $this->assertSame([
             'iron_core_crystal_staff',
             'iron_breastplate',
             'spirit_accessory_rank_3',
-        ], $vitalityBuild['equipment_keys']);
+        ], $vitalitySpiritBuild['equipment_keys']);
+        $this->assertSame(0, $report['builds']['blessing_vitality_zero_agility']['lv20']['allocated_stp']['agility']);
         $this->assertSame(0, $report['builds']['blessing_spirit_zero_agility']['lv20']['allocated_stp']['agility']);
         $this->assertSame(0, $report['builds']['martial_attack_zero_agility']['lv20']['allocated_stp']['agility']);
         $this->assertArrayNotHasKey('battles', $report['scenarios'][0]);
