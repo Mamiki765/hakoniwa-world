@@ -15,6 +15,16 @@ final readonly class UndergroundTrialBalanceSimulator
 
     public const SIMULATOR_VERSION = 'underground-trial-balance-v2';
 
+    /** @var list<string> */
+    private const PRIMARY_BUILD_KEYS = ['martial_red', 'guardianship_blue', 'blessing_green', 'free_black'];
+
+    /** @var list<string> */
+    private const ZERO_AGILITY_BUILD_KEYS = [
+        'blessing_vitality_zero_agility',
+        'blessing_spirit_zero_agility',
+        'martial_attack_zero_agility',
+    ];
+
     public function __construct(
         private AtomicUndergroundExplorationCombat $combat,
         private UndergroundAlphaV1PlayerCatalog $players,
@@ -646,9 +656,9 @@ final readonly class UndergroundTrialBalanceSimulator
             || $naturalRecovery !== 300) {
             throw new InvalidArgumentException('Trial simulation manifest contract is invalid.');
         }
-        foreach ([25, 30, 35] as $checkpoint) {
+        foreach ([20, 25, 30, 35] as $checkpoint) {
             if (! in_array($checkpoint, $checkpoints, true)) {
-                throw new InvalidArgumentException('Trial simulation must include Lv25, Lv30, and Lv35.');
+                throw new InvalidArgumentException('Trial simulation must include Lv20, Lv25, Lv30, and Lv35.');
             }
         }
         $primaryHeal = $comparison['primary_bps'] ?? null;
@@ -658,12 +668,13 @@ final readonly class UndergroundTrialBalanceSimulator
             || ! is_array($comparisonLevels) || ! in_array(30, $comparisonLevels, true)) {
             throw new InvalidArgumentException('Trial healing comparison contract is invalid.');
         }
-        $expectedBuilds = ['martial_red', 'guardianship_blue', 'blessing_green', 'free_black'];
+        $expectedBuilds = [...self::PRIMARY_BUILD_KEYS, ...self::ZERO_AGILITY_BUILD_KEYS];
         if (array_keys($builds) !== $expectedBuilds) {
-            throw new InvalidArgumentException('Trial simulation must define all four growth paths in stable order.');
+            throw new InvalidArgumentException('Trial simulation must define the four representative and three zero-agility builds in stable order.');
         }
         foreach ($builds as $key => &$build) {
-            if (! is_array($build) || ($build['growth_path'] ?? null) !== $key
+            $growthPath = $build['growth_path'] ?? null;
+            if (! is_array($build) || ! in_array($growthPath, self::PRIMARY_BUILD_KEYS, true)
                 || ! is_string($build['label'] ?? null) || $build['label'] === ''
                 || ! is_array($build['stp_weights_bps'] ?? null)
                 || array_keys($build['stp_weights_bps']) !== AlphaV1CombatRules::STATS
@@ -674,6 +685,10 @@ final readonly class UndergroundTrialBalanceSimulator
                 || count($build['equipment_keys']) !== 3
                 || array_filter($build['equipment_keys'], 'is_string') !== $build['equipment_keys']) {
                 throw new InvalidArgumentException("Trial build [{$key}] is invalid.");
+            }
+            if (in_array($key, self::ZERO_AGILITY_BUILD_KEYS, true)
+                && $build['stp_weights_bps']['agility'] !== 0) {
+                throw new InvalidArgumentException("Trial zero-agility build [{$key}] must allocate no STP to agility.");
             }
         }
         unset($build);
@@ -719,6 +734,9 @@ final readonly class UndergroundTrialBalanceSimulator
             foreach ($normalized['checkpoints'] as $level) {
                 $scenario = $this->scenario($buildKey, $level, $normalized['primary_heal_bps']);
                 $scenarios[$scenario['id']] = $scenario;
+            }
+            if (! in_array($buildKey, self::PRIMARY_BUILD_KEYS, true)) {
+                continue;
             }
             foreach ($normalized['recovery_comparison_levels'] as $level) {
                 foreach ($normalized['recovery_comparison_bps'] as $healBps) {
@@ -807,7 +825,7 @@ final readonly class UndergroundTrialBalanceSimulator
     {
         $byId = array_column($reports, null, 'id');
         $builds = [];
-        foreach (array_keys($normalized['builds']) as $buildKey) {
+        foreach (self::PRIMARY_BUILD_KEYS as $buildKey) {
             $lv25 = $byId[$this->scenario($buildKey, 25, 2000)['id']]['clear_rate'] ?? null;
             $lv30 = $byId[$this->scenario($buildKey, 30, 2000)['id']]['clear_rate'] ?? null;
             $lv35 = $byId[$this->scenario($buildKey, 35, 2000)['id']]['clear_rate'] ?? null;
