@@ -19,11 +19,21 @@ final readonly class UndergroundTrialBalanceSimulator
     private const PRIMARY_BUILD_KEYS = ['martial_red', 'guardianship_blue', 'blessing_green', 'free_black'];
 
     /** @var list<string> */
+    private const STP_COMPARISON_BUILD_KEYS = [
+        'matched_might_attack',
+        'matched_might_vitality',
+        'matched_might_agility',
+        'matched_spirit_attack',
+        'matched_spirit_vitality',
+        'matched_spirit_agility',
+    ];
+
+    /** @var list<string> */
     private const ZERO_AGILITY_BUILD_KEYS = [
-        'blessing_vitality_zero_agility',
-        'blessing_spirit_zero_agility',
-        'martial_attack_zero_agility',
-        'blessing_vitality_spirit_zero_agility',
+        'matched_might_attack',
+        'matched_might_vitality',
+        'matched_spirit_attack',
+        'matched_spirit_vitality',
     ];
 
     public function __construct(
@@ -669,9 +679,9 @@ final readonly class UndergroundTrialBalanceSimulator
             || ! is_array($comparisonLevels) || ! in_array(30, $comparisonLevels, true)) {
             throw new InvalidArgumentException('Trial healing comparison contract is invalid.');
         }
-        $expectedBuilds = [...self::PRIMARY_BUILD_KEYS, ...self::ZERO_AGILITY_BUILD_KEYS];
+        $expectedBuilds = [...self::PRIMARY_BUILD_KEYS, ...self::STP_COMPARISON_BUILD_KEYS];
         if (array_keys($builds) !== $expectedBuilds) {
-            throw new InvalidArgumentException('Trial simulation must define the four representative and four zero-agility builds in stable order.');
+            throw new InvalidArgumentException('Trial simulation must define the four representative and six matched-STP builds in stable order.');
         }
         foreach ($builds as $key => &$build) {
             $growthPath = $build['growth_path'] ?? null;
@@ -690,6 +700,10 @@ final readonly class UndergroundTrialBalanceSimulator
             if (in_array($key, self::ZERO_AGILITY_BUILD_KEYS, true)
                 && $build['stp_weights_bps']['agility'] !== 0) {
                 throw new InvalidArgumentException("Trial zero-agility build [{$key}] must allocate no STP to agility.");
+            }
+            if (in_array($key, ['matched_might_agility', 'matched_spirit_agility'], true)
+                && $build['stp_weights_bps']['agility'] !== 1000) {
+                throw new InvalidArgumentException("Trial agility comparison build [{$key}] must allocate 10 percent of STP to agility.");
             }
         }
         unset($build);

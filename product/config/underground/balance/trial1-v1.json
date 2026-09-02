@@ -59,43 +59,65 @@
             },
             "equipment_keys": ["steel_rapier", "iron_breastplate", "finesse_accessory_rank_3"]
         },
-        "blessing_vitality_zero_agility": {
-            "label": "祝福・生命特化（敏捷STP 0）",
-            "growth_path": "blessing_green",
-            "stp_weights_bps": {"vitality": 10000, "might": 0, "finesse": 0, "spirit": 0, "agility": 0},
-            "skill_allocations": {
-                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
-                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
-                "miracle_healing_study": {"rank": 4, "active_slot": null}
-            },
-            "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
-        },
-        "blessing_spirit_zero_agility": {
-            "label": "祝福・精神特化（敏捷STP 0）",
-            "growth_path": "blessing_green",
-            "stp_weights_bps": {"vitality": 0, "might": 0, "finesse": 0, "spirit": 10000, "agility": 0},
-            "skill_allocations": {
-                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
-                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
-                "miracle_healing_study": {"rank": 4, "active_slot": null}
-            },
-            "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
-        },
-        "martial_attack_zero_agility": {
-            "label": "戦技・攻撃特化（敏捷STP 0）",
-            "growth_path": "martial_red",
-            "stp_weights_bps": {"vitality": 0, "might": 10000, "finesse": 0, "spirit": 0, "agility": 0},
+        "matched_might_attack": {
+            "label": "HP一致・武力10%投資（敏捷STP 0）",
+            "growth_path": "free_black",
+            "stp_weights_bps": {"vitality": 2000, "might": 8000, "finesse": 0, "spirit": 0, "agility": 0},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
                 "martial_weapon_mastery": {"rank": 5, "active_slot": null},
                 "martial_critical_training": {"rank": 2, "active_slot": null}
             },
-            "equipment_keys": ["polished_steel_dagger", "iron_breastplate", "might_accessory_rank_3"]
+            "equipment_keys": ["steel_rapier", "iron_breastplate", "might_accessory_rank_3"]
         },
-        "blessing_vitality_spirit_zero_agility": {
-            "label": "祝福・生命精神特化（敏捷STP 0・Lv20 HP約1000）",
-            "growth_path": "blessing_green",
-            "stp_weights_bps": {"vitality": 2500, "might": 0, "finesse": 0, "spirit": 7500, "agility": 0},
+        "matched_might_vitality": {
+            "label": "武力core・生命10%投資（敏捷STP 0）",
+            "growth_path": "free_black",
+            "stp_weights_bps": {"vitality": 3000, "might": 7000, "finesse": 0, "spirit": 0, "agility": 0},
+            "skill_allocations": {
+                "martial_precision_cut": {"rank": 1, "active_slot": 1},
+                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
+                "martial_critical_training": {"rank": 2, "active_slot": null}
+            },
+            "equipment_keys": ["steel_rapier", "iron_breastplate", "might_accessory_rank_3"]
+        },
+        "matched_might_agility": {
+            "label": "武力core・敏捷10%投資",
+            "growth_path": "free_black",
+            "stp_weights_bps": {"vitality": 2000, "might": 7000, "finesse": 0, "spirit": 0, "agility": 1000},
+            "skill_allocations": {
+                "martial_precision_cut": {"rank": 1, "active_slot": 1},
+                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
+                "martial_critical_training": {"rank": 2, "active_slot": null}
+            },
+            "equipment_keys": ["steel_rapier", "iron_breastplate", "might_accessory_rank_3"]
+        },
+        "matched_spirit_attack": {
+            "label": "HP一致・精神10%投資（敏捷STP 0）",
+            "growth_path": "free_black",
+            "stp_weights_bps": {"vitality": 2000, "might": 0, "finesse": 0, "spirit": 8000, "agility": 0},
+            "skill_allocations": {
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
+                "miracle_healing_study": {"rank": 4, "active_slot": null}
+            },
+            "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
+        },
+        "matched_spirit_vitality": {
+            "label": "精神core・生命10%投資（敏捷STP 0）",
+            "growth_path": "free_black",
+            "stp_weights_bps": {"vitality": 3000, "might": 0, "finesse": 0, "spirit": 7000, "agility": 0},
+            "skill_allocations": {
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
+                "miracle_healing_study": {"rank": 4, "active_slot": null}
+            },
+            "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
+        },
+        "matched_spirit_agility": {
+            "label": "精神core・敏捷10%投資",
+            "growth_path": "free_black",
+            "stp_weights_bps": {"vitality": 2000, "might": 0, "finesse": 0, "spirit": 7000, "agility": 1000},
             "skill_allocations": {
                 "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
                 "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
@@ -164,7 +186,7 @@
         },
         "trial_cave_hunter": {
             "label": "洞窟狩人", "boss": false,
-            "base_stats": {"vitality": 24, "might": 28, "finesse": 18, "spirit": 14, "agility": 22},
+            "base_stats": {"vitality": 24, "might": 28, "finesse": 18, "spirit": 14, "agility": 16},
             "max_hp": 850, "physical_defense": 80, "magical_defense": 75, "weapon_power": 92,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7000, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
@@ -185,28 +207,28 @@
         },
         "trial_crystal_adept": {
             "label": "晶術士", "boss": false,
-            "base_stats": {"vitality": 18, "might": 12, "finesse": 20, "spirit": 38, "agility": 18},
+            "base_stats": {"vitality": 18, "might": 12, "finesse": 20, "spirit": 38, "agility": 12},
             "max_hp": 1000, "physical_defense": 75, "magical_defense": 120, "weapon_power": 95,
             "normal_attack": {"type": "damage", "category": "miracle", "potency_bps": 6800, "stat_coefficients": {"spirit": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial_arcane_burst"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial_arcane_burst"}], "action": "skill:trial_arcane_burst"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial_fanatic_captain": {
             "label": "狂信隊長", "boss": false,
-            "base_stats": {"vitality": 24, "might": 38, "finesse": 16, "spirit": 10, "agility": 20},
+            "base_stats": {"vitality": 24, "might": 38, "finesse": 16, "spirit": 10, "agility": 12},
             "max_hp": 1200, "physical_defense": 100, "magical_defense": 85, "weapon_power": 95,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7000, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": ["enemy_telegraph", "pressure_heavy"], "ai_rules": [{"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:pressure_heavy"}, {"conditions": [{"type": "round_modulo", "modulo": 4, "equals": 3}], "action": "skill:enemy_telegraph"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial_razor_bat": {
             "label": "刃翼蝙蝠", "boss": false,
-            "base_stats": {"vitality": 18, "might": 28, "finesse": 24, "spirit": 10, "agility": 30},
+            "base_stats": {"vitality": 18, "might": 28, "finesse": 24, "spirit": 10, "agility": 20},
             "max_hp": 1050, "physical_defense": 80, "magical_defense": 75, "weapon_power": 100,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6200, "stat_coefficients": {"might": 6000, "finesse": 4000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": ["trial_razor_flurry"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial_razor_flurry"}], "action": "skill:trial_razor_flurry"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial_ash_knight": {
             "label": "灰晶騎士", "boss": false,
-            "base_stats": {"vitality": 30, "might": 28, "finesse": 12, "spirit": 20, "agility": 16},
+            "base_stats": {"vitality": 30, "might": 28, "finesse": 12, "spirit": 20, "agility": 10},
             "max_hp": 1400, "physical_defense": 120, "magical_defense": 110, "weapon_power": 100,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7200, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial_arcane_burst"], "ai_rules": [{"conditions": [{"type": "round_modulo", "modulo": 3, "equals": 0}, {"type": "skill_ready", "skill": "trial_arcane_burst"}], "action": "skill:trial_arcane_burst"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
@@ -220,7 +242,7 @@
         },
         "trial_wyvern": {
             "label": "ワイバーン", "boss": true,
-            "base_stats": {"vitality": 30, "might": 34, "finesse": 16, "spirit": 12, "agility": 26},
+            "base_stats": {"vitality": 30, "might": 34, "finesse": 16, "spirit": 12, "agility": 8},
             "max_hp": 1600, "physical_defense": 60, "magical_defense": 229, "weapon_power": 180,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7600, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": ["enemy_telegraph", "trial_wyvern_breath", "trial_wyvern_tail", "trial_razor_flurry"],
