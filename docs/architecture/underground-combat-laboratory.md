@@ -74,9 +74,9 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 標準Lv1の各能力20・装備補正0では最大HPをexactly 500とする。最大HPは同倍率で伸びる500の基準、基準生命との差分、装備HPから導出する。最大MPは常に10,000であり、combat level、基礎能力、アイテムLvでは増えない。通常攻撃と防御はMP 0、戦闘開始時は10,000、自然回復はalpha-v1 balance dataの300 MP / roundである。150 / 200 / 250 / 300 / 400を100-round持久fixtureで比較し、20-round帯のrotationを維持しながら長期戦では通常攻撃へfallbackし、400のほぼ無制限rotationを避ける値として300を選んだ。skill recovery、overflow、MP不足action、最初の枯渇roundは別metricとして集計する。
 
-敏捷はinitiative、evasion、interrupt/action-delay resistanceへ使い、damage actionにはaction単位の敏捷comboを追加する。initiativeは実効敏捷が高い側を先とし、同値時だけ既存tie-breakを使う。evasionと敏捷comboは絶対値ではなく`max(0, (self - opponent) / (self + opponent))`相当の相対差を使い、内部capへ飽和させる。相手以下なら敏捷由来evasionとcomboは0である。既存`evasion_bps`は相対敏捷bonusへ加算してから既存total capを適用する。action impairment resistanceは従来どおり進行倍率のreferenceで正規化する。
+敏捷はinitiative、evasion、interrupt/action-delay resistanceへ使い、damage actionにはaction単位の敏捷comboを追加する。initiativeは実効敏捷が高い側を先とし、同値時だけ既存tie-breakを使う。evasionと敏捷comboは絶対値ではなく`max(0, (self - opponent) / (self + opponent))`相当の相対差を使う。このbounded式が敏捷比の増加に従って自然に漸近するため、有限の敏捷比で成長を止めるhard saturationは設けない。相手以下なら敏捷由来evasionとcomboは0である。既存`evasion_bps`は相対敏捷bonusへ加算してから既存total capを適用する。action impairment resistanceは従来どおり進行倍率のreferenceで正規化する。
 
-敏捷comboはactionごとに1回だけ2・3・4連続ヒットを抽選し、通常のcritical・variance・防御・guard等を解決したpost-mitigation damageへ最終倍率を掛ける。action、damage event、critical、status、覚醒ゲージ、native multi-hit数は追加せず、native multi-hitにも同じaction単位のcombo結果を使う。logはnative damage行を増やさず、最初のdamage行に補助表示用hit数を1回だけ持つ。
+敏捷comboはactionごとに1回だけ2・3・4連続ヒットを抽選し、通常のcritical・variance・防御・guard等を解決したpost-mitigation damageへ最終倍率を掛ける。action、damage event、critical、status、覚醒ゲージ、native multi-hit数は追加せず、native multi-hitにも同じaction単位のcombo結果を使う。logはnative damage行を増やさず、回避または完全防御ではない最初のdamage行に補助表示用hit数を1回だけ持つ。
 
 ### Alpha-v1 damage and recovery order
 
