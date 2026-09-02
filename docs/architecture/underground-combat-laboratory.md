@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryからPR109の正式equipment、装備Shop、宝物庫、通常探索までを扱うcurrent task-specific architecture authorityである。manual combat、AI editor、Trial content、random equipment/drop、affix、unique、enhancement、enchant、party、market、facility、surface bridgeは定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryからapplication `3.2.0`の正式runtime、Trial 1・覚醒、装備Shop・宝物庫、アクセサリー3枠、浅層・黒晶洞とgenerated equipment dropまでを扱うcurrent task-specific architecture authorityである。manual combat、custom AI、再振り、Trial 2以降、unique、enhancement、enchant、party、marketは定義しない。
 
-application versionは`3.0.0`である。surface Ruleset `hakoniwa-2s-plus-v18`とUnderground laboratory/runtime identityは別物であり、Ruleset payloadは変更しない。profile、run、history、intro/growth/skill/equipment stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。PR107は通常探索とgrowth settlement、PR108はstatus/STP/SP/Skill Tree、PR109はSecretary-owned equipment、装備Shop、宝物庫とactual equipmentを用いる通常探索をalpha-v1 canonical pathへ接続する。Trial、party、market、facility、surface bridgeは解禁しない。
+application versionは`3.2.0`である。surface Ruleset `hakoniwa-2s-plus-v19`とUnderground laboratory/runtime identityは別物であり、3.2.0はSurface Ruleset payloadを変更しない。profile、run、history、intro/growth/skill/equipment stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。3.2.0のcombat、exploration、equipment identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 

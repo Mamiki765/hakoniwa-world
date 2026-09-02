@@ -259,8 +259,8 @@
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; alpha-v0/alpha-v1 pure combat laboratory、Secretary-owned persistence/runtime foundation、application `3.0.0`の正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree・正式equipment・装備Shop・宝物庫導線。surface bridgeは未実装。
-- Decision: 地下roadmapを`release/3.0.0-alpha`として開始する。Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。PR101〜105のfoundationを再利用し、PR106は正式intro/growth/playtest、PR107はnormal exploration/growth settlement/宿/銀行、PR108はstatus/STP/SP/戦技・護身・祝福Skill Tree、PR109はSecretary-owned equipment instance、500枠宝物庫、装備Shopの購入・半額売却・装備変更と浅層balanceをcurrent User自身のSecretaryへ接続する。Trial、party、market、facility、surface bridgeは公開しない。
+- Implemented: Partially; application `3.2.0`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層と黒晶洞、Item Lv・rarity・affix・generated dropを実装済み。再振り、custom AI、party、marketは未実装。
+- Decision: 地下roadmapを`release/3.0.0-alpha`として開始し、Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。後続releaseもSecretary-owned progression、canonical combat、versioned content identity、request idempotencyを再利用し、Surface RulesetやWorld Turnへ地下戦闘runtimeを混在させない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ## Underground RPG gates
@@ -283,9 +283,9 @@
 ### UG-03 first player-accessible alpha
 
 - Status: Decided
-- Implemented: Yes; application `3.0.0`。current authenticated User自身のSecretary画面からだけ入れるserver-authoritative finite-state intro、通常探索、growth settlement、status/STP、有限SP、戦技・護身・祝福Skill Tree、正式equipment、装備Shop、500枠宝物庫を実装する。Tutorial rewardはXP +5 / 欠片0で一度だけ、scripted lossはprogression/economyへ影響しない。開発環境の「力試し（α）」も報酬なしとし、productionではmain payloadとplaytest APIの双方を閉じる。通常探索と取得済みactive/passiveおよび実際の装備instanceはcanonical pure core/modelとPR103 battle historyを再利用する。Trialは公開しない。
+- Implemented: Yes; application `3.2.0`。current authenticated User自身のSecretary画面からだけ入れるserver-authoritative finite-state intro、通常探索、growth settlement、status/STP、有限SP、戦技・護身・祝福Skill Tree、Trial 1・覚醒、正式equipment、装備Shop、アクセサリー3枠、500枠宝物庫、浅層と黒晶洞のgenerated dropを実装する。Tutorial rewardはXP +5 / 欠片0で一度だけ、scripted lossはprogression/economyへ影響しない。開発環境の「力試し（α）」も報酬なしとし、productionではmain payloadとplaytest APIの双方を閉じる。通常探索、Trial、取得済みactive/passive、実際の装備instanceはcanonical pure core/modelとPR103 battle historyを再利用する。
 - Decided backend portion: defeatは輝石の欠片を`floor(balance / 2)`まで減らしてrunを終了する。trialのdefeatまたはbattle後の明示的な帰還は次回battle 1へresetするが、既に解禁したtrialは失わない。browser close/logoutはtrialの戦闘間progressを保持する。各trialは固有の明示的`content_identity`を持ち、active runは開始時のidentityを保存する。同じtrial自身のgameplay content identityだけが変わった場合、次回access時にそのrunをcurrent identity / battle 1へ無penaltyでresetする。application/runtime versionや別trialのidentity変更ではresetせず、XP、欠片、trial unlock、first clear、`unlocked_area_layers`を保持する。trialのfirst clearだけが`unlocked_area_layers`を1増やし、capacityは1 layer = 4 slotsから派生し、次のtrialをsequentialにunlockする。同じtrialの再clearでlayerを重複取得しない。battle詳細action logは終了から1時間保持し、履歴一覧は最新20件のcompact summaryだけを取得する。期限後も`underground_battles`のcompact summaryとidempotency/audit identityは保持し、個別詳細は安全な期限切れ案内へ劣化する。player-facing playtest logはsettlement時の自己完結projectionを保存し、current catalogへ再依存しない。
-- Remaining boundary: STP/Skill Tree reset、SP refund、Trial 1/2の実SP grant、growth path変更、Trial content/balance、random drop、affix、unique、enhancement、enchant、manual combat、party、market、facility、surface benefit、production deployは、このrelease-stabilization PRでは実装・実行しない。
+- Remaining boundary: STP/Skill Tree reset、SP refund、growth path変更、Trial 2以降、custom AI、unique、enhancement、enchant、manual combat、party、market、production deployは、application `3.2.0`では実装・実行しない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ### UG-04 Nation-owned facility・surface bridge
