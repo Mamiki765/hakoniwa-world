@@ -13,6 +13,7 @@ use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
+use App\Domain\Underground\Combat\UndergroundRandom;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
@@ -224,11 +225,11 @@ final class UndergroundCombatBuildTest extends TestCase
         $rules = new AlphaV1CombatRules;
         $expected = [
             100 => [0, 0, 0, 0, 10_000, 10_000],
-            120 => [72, 63, 0, 0, 10_063, 9_928],
-            150 => [160, 128, 12, 0, 10_152, 9_840],
-            200 => [266, 188, 45, 0, 10_278, 9_734],
-            250 => [342, 230, 54, 15, 10_383, 9_658],
-            300 => [400, 263, 57, 30, 10_467, 9_600],
+            120 => [181, 54, 0, 0, 10_054, 9_819],
+            150 => [400, 108, 12, 0, 10_132, 9_600],
+            200 => [666, 154, 45, 0, 10_244, 9_334],
+            250 => [857, 188, 54, 15, 10_341, 9_143],
+            300 => [1_000, 213, 57, 30, 10_417, 9_000],
         ];
         foreach ($expected as $selfAgility => $values) {
             $profile = $rules->agilityProfile($selfAgility, 100);
@@ -242,9 +243,22 @@ final class UndergroundCombatBuildTest extends TestCase
             ]);
         }
 
-        $this->assertSame($rules->agilityProfile(1_000_000, 1), $rules->agilityProfile(4, 1));
+        $extremeProfile = $rules->agilityProfile(1_000_000, 1);
+        $this->assertSame([9_999, 1_999, 387, 83, 129, 10_940, 8_001], [
+            $extremeProfile['relative_advantage_bps'],
+            $extremeProfile['evasion_bonus_bps'],
+            $extremeProfile['two_hit_rate_bps'],
+            $extremeProfile['three_hit_rate_bps'],
+            $extremeProfile['four_hit_rate_bps'],
+            $extremeProfile['expected_damage_multiplier_bps'],
+            $extremeProfile['expected_incoming_damage_multiplier_bps'],
+        ]);
+        $this->assertGreaterThan(
+            $rules->agilityProfile(4, 1)['expected_damage_multiplier_bps'],
+            $extremeProfile['expected_damage_multiplier_bps'],
+        );
         $this->assertSame(500, $rules->evasionChanceBps(50, 100, 500));
-        $this->assertSame(700, $rules->evasionChanceBps(300, 100, 300));
+        $this->assertSame(1_300, $rules->evasionChanceBps(300, 100, 300));
         $this->assertSame(0, $rules->evasionChanceBps(300, 100, -1_000));
         $this->assertSame(AlphaV1CombatRules::EVASION_CAP_BPS, $rules->evasionChanceBps(1_000_000, 1, 3_100));
     }
@@ -342,6 +356,49 @@ final class UndergroundCombatBuildTest extends TestCase
             ->filter(static fn (array $action): bool => is_int($action['agility_combo_hits'] ?? null));
         $this->assertCount(1, $projectedComboNotices);
         $this->assertSame($comboHits, $projectedComboNotices->first()['agility_combo_hits']);
+
+        $dodgeable = $manifest;
+        $dodgeable['normal_attack']['dodgeable'] = true;
+        $dodgeable['normal_attack']['hits'] = 1;
+        $dodgeable['enemies']['agility_target']['modifiers']['evasion_bps'] = 3_500;
+        $comboRateBps = array_sum(array_intersect_key(
+            (new AlphaV1CombatRules)->agilityProfile(300, 100),
+            array_flip(['two_hit_rate_bps', 'three_hit_rate_bps', 'four_hit_rate_bps']),
+        ));
+        $evadedComboSeed = null;
+        foreach (range(0, 5_000) as $seed) {
+            $random = new UndergroundRandom($seed);
+            $comboRoll = $random->integer(
+                'alpha-v1:agility-combo:agility_secretary:normal_attack:round:1',
+                1,
+                10_000,
+            );
+            $evasionRoll = $random->integer(
+                'alpha-v1:evasion:agility_target:normal_attack:1',
+                1,
+                10_000,
+            );
+            if ($comboRoll <= $comboRateBps && $evasionRoll <= 3_500) {
+                $evadedComboSeed = $seed;
+                break;
+            }
+        }
+        $this->assertIsInt($evadedComboSeed);
+        $evadedCombo = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($dodgeable),
+            $snapshot,
+            'agility_target',
+            $evadedComboSeed,
+            1,
+            0,
+        );
+        $evadedRow = collect($evadedCombo->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($evadedRow);
+        $this->assertTrue($evadedRow['evaded']);
+        $this->assertArrayNotHasKey('agility_combo_hits', $evadedRow);
     }
 
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void
@@ -1384,22 +1441,21 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(1254, $definition['combat_level_equivalent']);
         $this->assertSame(1_137_700, $storyScaleBps);
         $this->assertSame('enemy', $first->winner);
-        $this->assertSame(1, $first->rounds);
+        $this->assertSame(2, $first->rounds);
         $this->assertSame(0, $first->playerRemainingHp);
         $this->assertSame(568_850, $first->enemyRemainingHp);
-        $this->assertSame(4, $first->damageDealt);
+        $this->assertSame(0, $first->damageDealt);
         $this->assertSame(500, $first->damageReceived);
         $actions = array_column($first->actionLog, 'action');
         $this->assertContains('counter_stance', $actions);
-        $this->assertContains('counter', $actions);
+        $this->assertContains('bulwark_strike', $actions);
         $this->assertContains('round_end', $actions);
-        $counterRows = array_values(array_filter(
+        $evadedRows = array_values(array_filter(
             $first->actionLog,
-            static fn (array $row): bool => $row['action'] === 'counter',
+            static fn (array $row): bool => ($row['evaded'] ?? false) === true,
         ));
-        $counter = $counterRows[array_key_last($counterRows)];
-        $this->assertSame('counter', $counter['action']);
-        $this->assertGreaterThan(500, $counter['amount']);
+        $this->assertCount(1, $evadedRows);
+        $this->assertSame('precision_cut', $evadedRows[0]['action']);
         $this->assertSame([], $first->abnormalState);
     }
 

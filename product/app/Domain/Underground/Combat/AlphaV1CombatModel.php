@@ -884,6 +884,7 @@ final readonly class AlphaV1CombatModel
         bool $showAgilityCombo = true,
     ): void {
         $hits = max(1, (int) ($effect['hits'] ?? 1));
+        $agilityComboLogged = false;
         for ($hit = 1; $hit <= $hits && $actor->alive() && $target->alive(); $hit++) {
             $coefficients = is_array($effect['stat_coefficients'] ?? null) ? $effect['stat_coefficients'] : [];
             $effectivePower = $this->rules->weightedStats($this->currentStats($actor), $coefficients);
@@ -960,7 +961,6 @@ final readonly class AlphaV1CombatModel
             }
             $variance = $random->integer("alpha-v1:variance:{$actor->key}:{$actionKey}:{$hit}", 95, 105);
             $preMitigation = max(1, intdiv($rawDamage * $variance, 100));
-            $loggedAgilityComboHits = $showAgilityCombo && $hit === 1 ? $agilityComboHits : 1;
             $completeGuardChance = max(0, (int) ($target->modifiers['complete_guard_chance_bps'] ?? 0));
             if ($completeGuardChance > 0
                 && $random->integer("alpha-v1:complete-guard:{$target->key}:{$actionKey}:{$hit}", 1, 10_000)
@@ -975,7 +975,6 @@ final readonly class AlphaV1CombatModel
                     effectType: 'damage',
                     targetSide: $target->side,
                     completeGuarded: true,
-                    agilityComboHits: $loggedAgilityComboHits,
                 );
 
                 continue;
@@ -1002,7 +1001,6 @@ final readonly class AlphaV1CombatModel
                     true,
                     effectType: 'damage',
                     targetSide: $target->side,
-                    agilityComboHits: $loggedAgilityComboHits,
                 );
 
                 continue;
@@ -1049,6 +1047,8 @@ final readonly class AlphaV1CombatModel
                     ($preMitigation - $postMitigationBeforeCombo) * $agilityComboHits,
                 );
             }
+            $loggedAgilityComboHits = $showAgilityCombo && ! $agilityComboLogged ? $agilityComboHits : 1;
+            $agilityComboLogged = true;
             $actionLog[] = $this->logRow(
                 $round,
                 $actor,

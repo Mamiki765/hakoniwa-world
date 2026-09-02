@@ -273,9 +273,9 @@
         }
     },
     "tuning_parameters": {
-        "scope": "simulation_only_trial_01",
-        "primary_target": "Lv30 Rank3 four-build clear rates remain non-degenerate after the accepted agility value increase; the former 30-70 percent range is observation-only, not a gate",
-        "non_targets": ["player-facing release", "persistence", "Surface Ruleset", "production migration"],
-        "adjustable": ["enemy agility", "enemy max_hp", "enemy defenses", "enemy weapon_power", "enemy attack potency", "enemy regeneration", "boss damage reduction", "boss phase transition round", "boss phase damage bonus"]
+        "scope": "canonical_player_facing_trial_01",
+        "primary_target": "Preserve viable no-agility early specialization while agility contributes weaker offense, weaker defense, and initiative in the canonical Trial",
+        "non_targets": ["persistence", "Surface Ruleset", "production migration"],
+        "adjustable": ["enemy agility"]
     }
 }

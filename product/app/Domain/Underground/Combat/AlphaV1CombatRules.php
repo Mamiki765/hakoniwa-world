@@ -30,11 +30,11 @@ final class AlphaV1CombatRules
 
     public const EVASION_CAP_BPS = 3_500;
 
-    public const RELATIVE_AGILITY_ADVANTAGE_CAP_BPS = 6_000;
+    public const RELATIVE_AGILITY_ADVANTAGE_CAP_BPS = 10_000;
 
-    public const AGILITY_EVASION_SCALE_BPS = 800;
+    public const AGILITY_EVASION_SCALE_BPS = 2_000;
 
-    public const AGILITY_TWO_HIT_SCALE_BPS = 700;
+    public const AGILITY_TWO_HIT_SCALE_BPS = 600;
 
     public const AGILITY_THREE_HIT_THRESHOLD_BPS = 1_500;
 

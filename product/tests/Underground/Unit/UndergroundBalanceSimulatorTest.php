@@ -78,11 +78,11 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $report['agility_balance']['ratio_curve'],
             'ratio',
         ));
-        $this->assertSame([10_000, 10_063, 10_152, 10_278, 10_383, 10_467], array_column(
+        $this->assertSame([10_000, 10_054, 10_132, 10_244, 10_341, 10_417], array_column(
             $report['agility_balance']['ratio_curve'],
             'expected_damage_multiplier_bps',
         ));
-        $this->assertSame([10_000, 9_928, 9_840, 9_734, 9_658, 9_600], array_column(
+        $this->assertSame([10_000, 9_819, 9_600, 9_334, 9_143, 9_000], array_column(
             $report['agility_balance']['ratio_curve'],
             'expected_incoming_damage_multiplier_bps',
         ));
