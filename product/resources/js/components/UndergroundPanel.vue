@@ -661,7 +661,13 @@ async function mutate(
             emit('returnToSecretary');
             return true;
         }
-        if (state.value.stage === 'underground_open') await loadBattles();
+        if (state.value.stage === 'underground_open') {
+            try {
+                await loadBattles();
+            } catch (caught) {
+                error.value = caught instanceof Error ? caught.message : '戦闘履歴を更新できませんでした。';
+            }
+        }
         return true;
     } catch (caught) {
         if (caught instanceof ApiError && caught.status === 409) await refresh();

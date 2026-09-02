@@ -3614,6 +3614,7 @@ describe('Underground equipment navigation', () => {
             growthPath('free_black', '自由', 'black'),
         ];
         let respecProjection = { cost: 20, last_completed_at: null as string | null, next_available_at: null as string | null, growth_paths: paths };
+        let respecCommitted = false;
         let openState = {
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 2, combat_xp: 100,
             next_level_xp: 200, next_level_requirement: 100, xp_to_next_level: 100, shard_balance: 240,
@@ -3641,7 +3642,10 @@ describe('Underground equipment navigation', () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground') return response(openState);
-            if (path === '/api/v1/me/underground/battles') return response([]);
+            if (path === '/api/v1/me/underground/battles') {
+                if (respecCommitted) throw new TypeError('Battle history refresh failed');
+                return response([]);
+            }
             if (path === '/api/v1/me/underground/respec' && init?.method === 'POST') {
                 const payload = JSON.parse(String(init.body)) as { request_id: string; growth_path_key: string };
                 respecPayloads.push(payload);
@@ -3656,6 +3660,7 @@ describe('Underground equipment navigation', () => {
                     shard_balance: 220,
                     respec: respecProjection,
                 };
+                respecCommitted = true;
                 return response(openState);
             }
             return response(null, 404);
@@ -3693,6 +3698,7 @@ describe('Underground equipment navigation', () => {
         expect(respecPayloads[0]).toEqual({ request_id: expect.any(String), growth_path_key: 'free_black' });
         expect(respecPayloads[1]).toEqual(respecPayloads[0]);
         expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+        expect(wrapper.get('[role="alert"]').text()).toContain('Battle history refresh failed');
         expect(wrapper.get('.underground-respec-notice').text()).toContain('次の再振りまであと');
         expect(wrapper.get('.underground-respec-submit').attributes('disabled')).toBeDefined();
         await wrapper.findAll('.underground-main-navigation button')[0]!.trigger('click');
