@@ -31,7 +31,28 @@ try {
     file_put_contents($databasePath, (string) $backend->pid, LOCK_EX);
 
     $user = User::query()->findOrFail((int) $payload['user_id']);
-    if (($payload['force_drop'] ?? false) === true) {
+    if (($payload['force_victory_drop'] ?? false) === true) {
+        $encounter = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.subterranean_rat');
+        if (! is_array($encounter) || ! is_array($encounter['enemy'] ?? null)) {
+            throw new RuntimeException('The deterministic Underground concurrency encounter is unavailable.');
+        }
+        $encounter['weight'] = 10_000;
+        $encounter['enemy']['base_stats'] = [
+            'vitality' => 96,
+            'might' => 1,
+            'finesse' => 1,
+            'spirit' => 1,
+            'agility' => 1,
+        ];
+        $encounter['enemy']['max_hp'] = 1;
+        $encounter['enemy']['physical_defense'] = 0;
+        $encounter['enemy']['magical_defense'] = 0;
+        $encounter['enemy']['weapon_power'] = 1;
+        config([
+            'underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => [
+                'subterranean_rat' => $encounter,
+            ],
+        ]);
         foreach (['standard', 'elite', 'rare'] as $profileKey) {
             config([
                 "underground-alpha-v1.exploration.drop.profiles.{$profileKey}.presence_bps" => 10_000,

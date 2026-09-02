@@ -434,9 +434,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-status-table { width: 100%; min-width: 46rem; border-collapse: collapse; text-align: center; }
 .underground-status-table th, .underground-status-table td { padding: .55rem .65rem; border: 1px solid var(--line); }
 .underground-status-table thead th, .underground-status-table tbody th { background: var(--paper-deep); font-weight: 800; }
-.underground-stp-control { display: grid; grid-template-columns: 2.3rem minmax(2rem, 1fr) 2.3rem; align-items: center; gap: .3rem; }
-.underground-stp-control button { min-height: 2.3rem; padding: .2rem; }
-.underground-stp-control output { font-variant-numeric: tabular-nums; font-weight: 800; }
+.underground-stp-control input { width: 6rem; min-height: 2.3rem; margin-inline: auto; text-align: right; font-variant-numeric: tabular-nums; font-weight: 800; }
 .underground-tree-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: .8rem; }
 .underground-tree-tabs { display: none; }
 .underground-skill-tree { display: grid; gap: .7rem; min-width: 0; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-deep); }

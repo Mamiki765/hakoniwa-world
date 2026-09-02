@@ -464,7 +464,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $payload = [
             'operation' => 'explore',
             'hunting_ground_key' => 'shallow_caves',
-            'force_drop' => true,
+            'force_victory_drop' => true,
             'request_id' => $requestId,
         ];
 

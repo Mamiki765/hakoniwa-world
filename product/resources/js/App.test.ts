@@ -2001,6 +2001,7 @@ describe('application lobby and island entry', () => {
         const explorationResults = new Map<string, typeof explorationBattle>();
         const innResults = new Map<string, typeof openState>();
         const bankTransferResults = new Map<string, typeof openState>();
+        const stpPayloads: Array<{ request_id: string; allocations: Record<string, number> }> = [];
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             const lobby = publicResponse(path);
@@ -2115,13 +2116,26 @@ describe('application lobby and island entry', () => {
                 return response(openState);
             }
             if (path === '/api/v1/me/underground/status/stp' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as {
+                    request_id: string;
+                    allocations: Record<string, number>;
+                };
+                stpPayloads.push(payload);
+                const vitality = payload.allocations.vitality ?? 0;
+                const allocatedVitality = openState.allocated_stp.vitality + vitality;
                 openState = {
                     ...openState,
-                    unspent_stp: 2,
-                    allocated_stp: { ...openState.allocated_stp, vitality: 1 },
+                    unspent_stp: openState.unspent_stp - vitality,
+                    allocated_stp: { ...openState.allocated_stp, vitality: allocatedVitality },
                     status_breakdown: {
                         ...openState.status_breakdown,
-                        vitality: { baseline: 40, natural_growth: 0, allocated_stp: 1, equipment: 1, final: 42 },
+                        vitality: {
+                            baseline: 40,
+                            natural_growth: 0,
+                            allocated_stp: allocatedVitality,
+                            equipment: 1,
+                            final: 41 + allocatedVitality,
+                        },
                     },
                 };
                 return response(openState);
@@ -2274,10 +2288,16 @@ describe('application lobby and island entry', () => {
         await wrapper.get('.underground-battle-back').trigger('click');
         await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
         expect(wrapper.get('.underground-status-table').text()).toContain('初期値');
-        await wrapper.findAll('.underground-stp-control button')[1]!.trigger('click');
+        const vitalityStp = wrapper.get<HTMLInputElement>('.underground-stp-control input');
+        expect(vitalityStp.attributes('max')).toBe('3');
+        await vitalityStp.setValue('4');
+        expect(vitalityStp.element.value).toBe('3');
+        expect(wrapper.get('.underground-progression-panel .button.primary').text()).toBe('3 STPを一括確定');
         await wrapper.get('.underground-progression-panel .button.primary').trigger('click');
         await flushPromises();
-        expect(wrapper.get('.underground-summary').text()).toContain('未使用STP2');
+        expect(stpPayloads).toHaveLength(1);
+        expect(stpPayloads[0]!.allocations).toEqual({ vitality: 3 });
+        expect(wrapper.get('.underground-summary').text()).toContain('未使用STP0');
         await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
         expect(wrapper.findAll('.underground-progression-note').map((note) => note.text()).join(' '))
             .toContain('SPを消費することでスキルを習得できます');
