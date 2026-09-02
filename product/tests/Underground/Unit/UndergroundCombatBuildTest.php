@@ -225,11 +225,11 @@ final class UndergroundCombatBuildTest extends TestCase
         $rules = new AlphaV1CombatRules;
         $expected = [
             100 => [0, 0, 0, 0, 10_000, 10_000],
-            120 => [181, 49, 0, 0, 10_049, 9_819],
-            150 => [400, 98, 12, 0, 10_122, 9_600],
-            200 => [666, 138, 45, 0, 10_228, 9_334],
-            250 => [857, 166, 54, 15, 10_319, 9_143],
-            300 => [1_000, 188, 57, 30, 10_392, 9_000],
+            120 => [181, 45, 0, 0, 10_045, 9_819],
+            150 => [400, 88, 12, 0, 10_112, 9_600],
+            200 => [666, 121, 45, 0, 10_211, 9_334],
+            250 => [857, 145, 54, 15, 10_298, 9_143],
+            300 => [1_000, 163, 57, 30, 10_367, 9_000],
         ];
         foreach ($expected as $selfAgility => $values) {
             $profile = $rules->agilityProfile($selfAgility, 100);
@@ -244,7 +244,7 @@ final class UndergroundCombatBuildTest extends TestCase
         }
 
         $extremeProfile = $rules->agilityProfile(1_000_000, 1);
-        $this->assertSame([9_999, 1_999, 337, 83, 129, 10_890, 8_001], [
+        $this->assertSame([9_999, 1_999, 287, 83, 129, 10_840, 8_001], [
             $extremeProfile['relative_advantage_bps'],
             $extremeProfile['evasion_bonus_bps'],
             $extremeProfile['two_hit_rate_bps'],
