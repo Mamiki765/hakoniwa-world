@@ -940,13 +940,13 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.battle.player_display_name', 'Special secretary')
             ->assertJsonPath('data.battle.encounter_name', 'リカ')
             ->assertJsonPath('data.battle.result', 'defeat')
-            ->assertJsonPath('data.battle.rounds', 2)
+            ->assertJsonPath('data.battle.rounds', 1)
             ->assertJsonPath('data.battle.xp_awarded', 0)
             ->assertJsonPath('data.battle.shard_delta', 0)
             ->assertJsonPath('data.battle.summary.result', 'defeat')
             ->assertJsonPath('data.battle.summary.player_remaining_hp', 0)
             ->assertJsonPath('data.battle.summary.enemy_remaining_hp', 568_850)
-            ->assertJsonPath('data.battle.summary.damage_dealt', 0)
+            ->assertJsonPath('data.battle.summary.damage_dealt', 4)
             ->assertJsonPath('data.battle.summary.damage_received', 500)
             ->assertJsonPath('data.battle.actions.0.end_state.player.max_hp', 500)
             ->assertJsonPath('data.battle.actions.0.end_state.enemy.max_hp', 568_850)
@@ -954,21 +954,21 @@ final class UndergroundPlayerAccessTest extends TestCase
                 '*' => ['round', 'actions', 'end_state'],
             ]]]]);
         $firstRoundActions = $first->json('data.battle.actions.0.actions');
-        $secondRoundActions = $first->json('data.battle.actions.1.actions');
         $this->assertIsArray($firstRoundActions);
-        $this->assertIsArray($secondRoundActions);
-        $evadedDamage = collect($firstRoundActions)->first(
+        $barrierDamage = collect($firstRoundActions)->first(
             static fn (array $action): bool => $action['type'] === 'damage',
         );
-        $fatalDamage = collect($secondRoundActions)->first(
-            static fn (array $action): bool => $action['type'] === 'damage',
+        $fatalDamage = collect($firstRoundActions)->first(
+            static fn (array $action): bool => $action['type'] === 'counter',
         );
-        $this->assertIsArray($evadedDamage);
-        $this->assertSame('精密斬り', $evadedDamage['label']);
-        $this->assertTrue($evadedDamage['evaded']);
-        $this->assertSame(0, $evadedDamage['amount']);
+        $this->assertIsArray($barrierDamage);
+        $this->assertSame('精密斬り', $barrierDamage['label']);
+        $this->assertFalse($barrierDamage['evaded']);
+        $this->assertSame(0, $barrierDamage['amount']);
+        $this->assertSame(4, $barrierDamage['barrier_absorbed']);
+        $this->assertNull($barrierDamage['agility_combo_hits']);
         $this->assertIsArray($fatalDamage);
-        $this->assertSame('闘志破砕', $fatalDamage['label']);
+        $this->assertSame('反撃', $fatalDamage['label']);
         $this->assertFalse($fatalDamage['evaded']);
         $this->assertGreaterThan(500, $fatalDamage['amount']);
         $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
@@ -990,7 +990,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertNull($profile->current_hp);
         $storyBattle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->sole();
-        $this->assertSame('secretary-underground-alpha-v1', $storyBattle->runtime_identity);
+        $this->assertSame('secretary-underground-alpha-v2', $storyBattle->runtime_identity);
         $this->assertSame(1254, $storyBattle->snapshot['enemy_combat_level_equivalent']);
         $this->assertSame(1_137_700, $storyBattle->snapshot['enemy_scale_bps']);
         $storyDefinition = app(UndergroundAlphaV1PlayerCatalog::class)->trueNameStoryBattle();
@@ -1203,6 +1203,8 @@ final class UndergroundPlayerAccessTest extends TestCase
         $playtestBattle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_PLAYTEST)
             ->sole();
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->runtime_identity);
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->snapshot['combat_rules_identity']);
         $this->assertTrue($playtestBattle->log?->expires_at->equalTo($playtestBattle->finished_at->addHour()) ?? false);
         config([
             'underground-alpha-v1.playtest.builds' => [],

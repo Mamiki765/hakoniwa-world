@@ -399,6 +399,26 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertIsArray($evadedRow);
         $this->assertTrue($evadedRow['evaded']);
         $this->assertArrayNotHasKey('agility_combo_hits', $evadedRow);
+
+        $completeGuard = $dodgeable;
+        $completeGuard['enemies']['agility_target']['modifiers'] = [
+            'complete_guard_chance_bps' => 10_000,
+        ];
+        $completeGuardedCombo = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($completeGuard),
+            $snapshot,
+            'agility_target',
+            $evadedComboSeed,
+            1,
+            0,
+        );
+        $completeGuardedRow = collect($completeGuardedCombo->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($completeGuardedRow);
+        $this->assertTrue($completeGuardedRow['complete_guarded']);
+        $this->assertArrayNotHasKey('agility_combo_hits', $completeGuardedRow);
     }
 
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void
@@ -1441,21 +1461,27 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(1254, $definition['combat_level_equivalent']);
         $this->assertSame(1_137_700, $storyScaleBps);
         $this->assertSame('enemy', $first->winner);
-        $this->assertSame(2, $first->rounds);
+        $this->assertSame(1, $first->rounds);
         $this->assertSame(0, $first->playerRemainingHp);
         $this->assertSame(568_850, $first->enemyRemainingHp);
-        $this->assertSame(0, $first->damageDealt);
+        $this->assertSame(4, $first->damageDealt);
         $this->assertSame(500, $first->damageReceived);
         $actions = array_column($first->actionLog, 'action');
         $this->assertContains('counter_stance', $actions);
-        $this->assertContains('bulwark_strike', $actions);
+        $this->assertContains('counter', $actions);
         $this->assertContains('round_end', $actions);
         $evadedRows = array_values(array_filter(
             $first->actionLog,
             static fn (array $row): bool => ($row['evaded'] ?? false) === true,
         ));
-        $this->assertCount(1, $evadedRows);
-        $this->assertSame('precision_cut', $evadedRows[0]['action']);
+        $this->assertSame([], $evadedRows);
+        $barrierDamage = collect($first->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'precision_cut'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($barrierDamage);
+        $this->assertSame(4, $barrierDamage['barrier_absorbed']);
+        $this->assertArrayNotHasKey('agility_combo_hits', $barrierDamage);
         $this->assertSame([], $first->abnormalState);
     }
 

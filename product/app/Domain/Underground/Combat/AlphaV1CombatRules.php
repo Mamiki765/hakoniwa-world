@@ -6,7 +6,7 @@ use InvalidArgumentException;
 
 final class AlphaV1CombatRules
 {
-    public const IDENTITY = 'secretary-underground-alpha-v1';
+    public const IDENTITY = 'secretary-underground-alpha-v2';
 
     public const SIMULATOR_VERSION = 'underground-build-balance-alpha-v2';
 
