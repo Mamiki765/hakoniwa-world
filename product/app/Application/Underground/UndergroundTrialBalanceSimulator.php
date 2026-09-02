@@ -26,6 +26,7 @@ final readonly class UndergroundTrialBalanceSimulator
         'matched_spirit_attack',
         'matched_spirit_vitality',
         'matched_spirit_agility',
+        'owner_blessing_hp1000_zero_agility',
     ];
 
     /** @var list<string> */
@@ -34,6 +35,7 @@ final readonly class UndergroundTrialBalanceSimulator
         'matched_might_vitality',
         'matched_spirit_attack',
         'matched_spirit_vitality',
+        'owner_blessing_hp1000_zero_agility',
     ];
 
     public function __construct(
@@ -681,7 +683,7 @@ final readonly class UndergroundTrialBalanceSimulator
         }
         $expectedBuilds = [...self::PRIMARY_BUILD_KEYS, ...self::STP_COMPARISON_BUILD_KEYS];
         if (array_keys($builds) !== $expectedBuilds) {
-            throw new InvalidArgumentException('Trial simulation must define the four representative and six matched-STP builds in stable order.');
+            throw new InvalidArgumentException('Trial simulation must define the four representative, six matched-STP, and owner baseline builds in stable order.');
         }
         foreach ($builds as $key => &$build) {
             $growthPath = $build['growth_path'] ?? null;

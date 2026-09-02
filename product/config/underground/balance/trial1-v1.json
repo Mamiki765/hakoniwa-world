@@ -124,6 +124,17 @@
                 "miracle_healing_study": {"rank": 4, "active_slot": null}
             },
             "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
+        },
+        "owner_blessing_hp1000_zero_agility": {
+            "label": "祝福実績・生命精神特化（敏捷STP 0・Lv20 HP約1000）",
+            "growth_path": "blessing_green",
+            "stp_weights_bps": {"vitality": 2500, "might": 0, "finesse": 0, "spirit": 7500, "agility": 0},
+            "skill_allocations": {
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
+                "miracle_healing_study": {"rank": 4, "active_slot": null}
+            },
+            "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
         }
     },
     "battle_sequence": [
