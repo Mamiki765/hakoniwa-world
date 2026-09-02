@@ -933,38 +933,44 @@ final class UndergroundPlayerAccessTest extends TestCase
         $requestId = (string) Str::uuid();
         $first = $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
             'request_id' => $requestId,
-        ])->assertOk()
+        ]);
+        $first->assertOk()
             ->assertJsonPath('data.stage', 'special_loss_complete')
             ->assertJsonPath('data.battle.context', 'scripted_loss')
             ->assertJsonPath('data.battle.player_display_name', 'Special secretary')
             ->assertJsonPath('data.battle.encounter_name', 'リカ')
             ->assertJsonPath('data.battle.result', 'defeat')
-            ->assertJsonPath('data.battle.rounds', 1)
+            ->assertJsonPath('data.battle.rounds', 2)
             ->assertJsonPath('data.battle.xp_awarded', 0)
             ->assertJsonPath('data.battle.shard_delta', 0)
             ->assertJsonPath('data.battle.summary.result', 'defeat')
             ->assertJsonPath('data.battle.summary.player_remaining_hp', 0)
             ->assertJsonPath('data.battle.summary.enemy_remaining_hp', 568_850)
-            ->assertJsonPath('data.battle.summary.damage_dealt', 4)
+            ->assertJsonPath('data.battle.summary.damage_dealt', 0)
             ->assertJsonPath('data.battle.summary.damage_received', 500)
             ->assertJsonPath('data.battle.actions.0.end_state.player.max_hp', 500)
             ->assertJsonPath('data.battle.actions.0.end_state.enemy.max_hp', 568_850)
             ->assertJsonStructure(['data' => ['battle' => ['actions' => [
                 '*' => ['round', 'actions', 'end_state'],
             ]]]]);
-        $storyActions = $first->json('data.battle.actions.0.actions');
-        $this->assertIsArray($storyActions);
-        $damageIndex = array_search('damage', array_column($storyActions, 'type'), true);
-        $stackIndex = array_search('role_stack_gain', array_column($storyActions, 'type'), true);
-        $counterIndex = array_search('counter', array_column($storyActions, 'type'), true);
-        $this->assertIsInt($damageIndex);
-        $this->assertIsInt($stackIndex);
-        $this->assertIsInt($counterIndex);
-        $this->assertLessThan($stackIndex, $damageIndex);
-        $this->assertLessThan($counterIndex, $stackIndex);
-        $this->assertSame('counter', $storyActions[$counterIndex]['type']);
-        $this->assertSame('反撃', $storyActions[$counterIndex]['label']);
-        $this->assertGreaterThan(500, $storyActions[$counterIndex]['amount']);
+        $firstRoundActions = $first->json('data.battle.actions.0.actions');
+        $secondRoundActions = $first->json('data.battle.actions.1.actions');
+        $this->assertIsArray($firstRoundActions);
+        $this->assertIsArray($secondRoundActions);
+        $evadedDamage = collect($firstRoundActions)->first(
+            static fn (array $action): bool => $action['type'] === 'damage',
+        );
+        $fatalDamage = collect($secondRoundActions)->first(
+            static fn (array $action): bool => $action['type'] === 'damage',
+        );
+        $this->assertIsArray($evadedDamage);
+        $this->assertSame('精密斬り', $evadedDamage['label']);
+        $this->assertTrue($evadedDamage['evaded']);
+        $this->assertSame(0, $evadedDamage['amount']);
+        $this->assertIsArray($fatalDamage);
+        $this->assertSame('闘志破砕', $fatalDamage['label']);
+        $this->assertFalse($fatalDamage['evaded']);
+        $this->assertGreaterThan(500, $fatalDamage['amount']);
         $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
             'request_id' => $requestId,
         ])->assertOk()->assertExactJson($first->json());

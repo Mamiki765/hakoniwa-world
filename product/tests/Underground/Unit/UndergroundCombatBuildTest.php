@@ -220,7 +220,7 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertCount(1, $enemyHits);
     }
 
-    public function test_relative_agility_curve_saturates_combo_and_evasion_without_replacing_modifier_cap(): void
+    public function test_relative_agility_curve_naturally_approaches_combo_and_evasion_limits_without_replacing_modifier_cap(): void
     {
         $rules = new AlphaV1CombatRules;
         $expected = [
