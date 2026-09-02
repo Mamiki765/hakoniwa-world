@@ -85,6 +85,45 @@ final class UndergroundEquipmentCatalog
             : throw new RuntimeException('Underground vault page size is invalid.');
     }
 
+    /** @return list<array{key: string, label: string}> */
+    public function weaponStyleOptions(): array
+    {
+        $styles = [];
+        foreach ($this->definitions() as $definition) {
+            if ($definition['category'] === 'weapon') {
+                $styles[$definition['weapon_style']] = true;
+            }
+        }
+        $labels = $this->data()['weapon_style_labels'] ?? null;
+        if (! is_array($labels)) {
+            throw new RuntimeException('Underground equipment weapon style labels are invalid.');
+        }
+        $styleKeys = array_keys($styles);
+        $labelKeys = array_keys($labels);
+        sort($styleKeys);
+        sort($labelKeys);
+        if ($labelKeys !== $styleKeys) {
+            throw new RuntimeException('Underground equipment weapon style labels are invalid.');
+        }
+        foreach ($labels as $key => $label) {
+            if (! is_string($key) || $key === '' || ! is_string($label) || $label === '') {
+                throw new RuntimeException('Underground equipment weapon style label is invalid.');
+            }
+        }
+
+        return array_map(
+            static fn (string $key, string $label): array => ['key' => $key, 'label' => $label],
+            array_keys($labels),
+            array_values($labels),
+        );
+    }
+
+    /** @return list<string> */
+    public function weaponStyleKeys(): array
+    {
+        return array_column($this->weaponStyleOptions(), 'key');
+    }
+
     /** @return array<string, array<string, mixed>> */
     public function definitions(?string $catalogIdentity = null): array
     {

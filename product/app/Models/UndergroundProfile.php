@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $growth_path_key
  * @property string|null $growth_path_identity
  * @property Carbon|null $growth_path_selected_at
+ * @property Carbon|null $last_respec_at
  * @property int $unspent_stp
  * @property int $allocated_vitality_stp
  * @property int $allocated_might_stp
@@ -52,6 +53,7 @@ final class UndergroundProfile extends Model
         'secretary_id', 'unlocked_area_layers', 'combat_level', 'combat_xp', 'shard_balance', 'next_battle_at',
         'banked_shard_balance', 'current_hp',
         'underground_contract_completed_at', 'growth_path_key', 'growth_path_identity', 'growth_path_selected_at',
+        'last_respec_at',
         'unspent_stp', 'allocated_vitality_stp', 'allocated_might_stp', 'allocated_finesse_stp',
         'allocated_spirit_stp', 'allocated_agility_stp',
         'skill_points_total', 'skill_points_unspent', 'skill_tree_identity',
@@ -70,6 +72,7 @@ final class UndergroundProfile extends Model
             'next_battle_at' => 'immutable_datetime',
             'underground_contract_completed_at' => 'immutable_datetime',
             'growth_path_selected_at' => 'immutable_datetime',
+            'last_respec_at' => 'immutable_datetime',
             'unspent_stp' => 'integer',
             'allocated_vitality_stp' => 'integer',
             'allocated_might_stp' => 'integer',

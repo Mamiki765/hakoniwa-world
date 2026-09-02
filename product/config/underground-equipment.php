@@ -126,6 +126,12 @@ foreach (AlphaV1CombatRules::STATS as $stat) {
 return [
     'schema_version' => 2,
     'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+    'weapon_style_labels' => [
+        'dagger' => '短剣',
+        'rapier' => '細身剣',
+        'longsword' => '長剣',
+        'crystal_staff' => '輝石杖',
+    ],
     'legacy_catalogs' => [
         'secretary-underground-shop-equipment-alpha-v1' => $legacyDefinitions,
     ],

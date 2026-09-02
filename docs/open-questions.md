@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| Underground 3.0.0 / post-release | UG-04/UG-05 | E-01/UG-01〜03によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Treeまで実装済み。Nation-owned facility・surface bridgeはUG-04で決定済み。party・marketはUG-05で停止する。 |
+| Underground 3.0.0 / post-release | UG-04/UG-05 | E-01/UG-01〜03によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振りまで実装済み。Nation-owned facility・surface bridgeはUG-04で決定済み。party・marketはUG-05で停止する。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
@@ -259,7 +259,7 @@
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; application `3.2.0`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層と黒晶洞、Item Lv・rarity・affix・generated dropを実装済み。再振り、custom AI、party、marketは未実装。
+- Implemented: Partially; application `3.3.0`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層と黒晶洞、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売りを実装済み。custom AI、party、marketは未実装。
 - Decision: 地下roadmapを`release/3.0.0-alpha`として開始し、Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。後続releaseもSecretary-owned progression、canonical combat、versioned content identity、request idempotencyを再利用し、Surface RulesetやWorld Turnへ地下戦闘runtimeを混在させない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
@@ -283,9 +283,11 @@
 ### UG-03 first player-accessible alpha
 
 - Status: Decided
-- Implemented: Yes; application `3.2.0`。current authenticated User自身のSecretary画面からだけ入れるserver-authoritative finite-state intro、通常探索、growth settlement、status/STP、有限SP、戦技・護身・祝福Skill Tree、Trial 1・覚醒、正式equipment、装備Shop、アクセサリー3枠、500枠宝物庫、浅層と黒晶洞のgenerated dropを実装する。Tutorial rewardはXP +5 / 欠片0で一度だけ、scripted lossはprogression/economyへ影響しない。開発環境の「力試し（α）」も報酬なしとし、productionではmain payloadとplaytest APIの双方を閉じる。通常探索、Trial、取得済みactive/passive、実際の装備instanceはcanonical pure core/modelとPR103 battle historyを再利用する。
+- Implemented: Yes; application `3.3.0`。current authenticated User自身のSecretary画面からだけ入れるserver-authoritative finite-state intro、通常探索、growth settlement、status/STP、有限SP、戦技・護身・祝福Skill Tree、Trial 1・覚醒、正式equipment、装備Shop、アクセサリー3枠、500枠宝物庫、浅層と黒晶洞のgenerated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売りを実装する。Tutorial rewardはXP +5 / 欠片0で一度だけ、scripted lossはprogression/economyへ影響しない。開発環境の「力試し（α）」も報酬なしとし、productionではmain payloadとplaytest APIの双方を閉じる。通常探索、Trial、取得済みactive/passive、実際の装備instanceはcanonical pure core/modelとPR103 battle historyを再利用する。
 - Decided backend portion: defeatは輝石の欠片を`floor(balance / 2)`まで減らしてrunを終了する。trialのdefeatまたはbattle後の明示的な帰還は次回battle 1へresetするが、既に解禁したtrialは失わない。browser close/logoutはtrialの戦闘間progressを保持する。各trialは固有の明示的`content_identity`を持ち、active runは開始時のidentityを保存する。同じtrial自身のgameplay content identityだけが変わった場合、次回access時にそのrunをcurrent identity / battle 1へ無penaltyでresetする。application/runtime versionや別trialのidentity変更ではresetせず、XP、欠片、trial unlock、first clear、`unlocked_area_layers`を保持する。trialのfirst clearだけが`unlocked_area_layers`を1増やし、capacityは1 layer = 4 slotsから派生し、次のtrialをsequentialにunlockする。同じtrialの再clearでlayerを重複取得しない。battle詳細action logは終了から1時間保持し、履歴一覧は最新20件のcompact summaryだけを取得する。期限後も`underground_battles`のcompact summaryとidempotency/audit identityは保持し、個別詳細は安全な期限切れ案内へ劣化する。player-facing playtest logはsettlement時の自己完結projectionを保存し、current catalogへ再依存しない。
-- Remaining boundary: STP/Skill Tree reset、SP refund、growth path変更、Trial 2以降、custom AI、unique、enhancement、enchant、manual combat、party、market、production deployは、application `3.2.0`では実装・実行しない。
+- Application `3.3.0` respec contract: 案内人の部屋から、SP全返却・active slot解除・STP全返却・成長方針再選択を一つのtransactionで行う。費用は現在Combat Lv × 10 Gを手持ち欠片だけから支払い、24時間に1回とする。Lv/XP、装備、Trial clear、覚醒、解禁、intro履歴は維持し、current HPは新max HPを超える場合だけ下方clampする。active Trial中は拒否し、UUID idempotencyとprofile lockで二重決済を防ぐ。
+- Application `3.3.0` bulk sale contract: 宝物庫のItem Lv・rarity・category・canonical weapon style条件をserver側で解決し、装備中itemと通常売却不可itemを除外した具体的item集合とcanonical価格をpreviewする。confirmはpreviewしたIDと価格だけを再検証し、追加取得itemを含めず、全件validation後の同一transactionでdeleteと手持ち欠片creditを行う。UUID idempotencyとprofile lockでretry・concurrent requestの二重creditを防ぐ。
+- Remaining boundary: Trial 2以降、custom AI、unique、enhancement、enchant、manual combat、party、market、production deployは、application `3.3.0`では実装・実行しない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ### UG-04 Nation-owned facility・surface bridge

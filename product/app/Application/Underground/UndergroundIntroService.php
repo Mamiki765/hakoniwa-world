@@ -28,6 +28,10 @@ use RuntimeException;
 
 final readonly class UndergroundIntroService
 {
+    private const RESPEC_COST_PER_LEVEL = 10;
+
+    private const RESPEC_COOLDOWN_HOURS = 24;
+
     public function __construct(
         private UndergroundIntroCatalog $catalog,
         private UndergroundRuntimeCatalog $runtimeCatalog,
@@ -314,6 +318,82 @@ final readonly class UndergroundIntroService
             $this->starterEquipment->reconcile($profile);
             $intro->stage = UndergroundIntroStage::GROWTH_PATH_SELECTED;
             $intro->save();
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function respec(User $user, string $requestId, string $growthPathKey): array
+    {
+        $path = $this->alphaV1Catalog->growthPath($growthPathKey);
+
+        return $this->mutate($user, $requestId, 'respec', ['growth_path_key' => $growthPathKey], function (
+            Secretary $_secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($growthPathKey, $path): void {
+            $this->assertSkillTreeUnlocked($profile, $intro);
+            $activeTrial = UndergroundTrialRun::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
+                ->lockForUpdate()
+                ->first();
+            if ($activeTrial instanceof UndergroundTrialRun) {
+                throw new UndergroundRuntimeException(
+                    'underground_trial_active',
+                    '封印の地から帰還してから再振りしてください。',
+                );
+            }
+
+            $now = Carbon::now();
+            $nextAvailableAt = $profile->last_respec_at?->addHours(self::RESPEC_COOLDOWN_HOURS);
+            if ($nextAvailableAt !== null && $now->isBefore($nextAvailableAt)) {
+                throw new UndergroundRuntimeException(
+                    'underground_respec_cooldown',
+                    '再振りは24時間に1回だけ行えます。',
+                );
+            }
+
+            $cost = $this->respecCost($profile);
+            if ($profile->shard_balance < $cost) {
+                throw new UndergroundRuntimeException(
+                    'underground_respec_insufficient_carried_shards',
+                    '手持ちの輝石のかけらが不足しています。',
+                );
+            }
+
+            $equipment = $this->equipmentLoadout->combatLoadout($profile);
+            $currentHp = $profile->current_hp ?? $this->alphaV1Catalog->currentMaxHp(
+                (string) $profile->growth_path_key,
+                $profile->combat_level,
+                $profile->allocatedStp(),
+                $equipment,
+            );
+
+            $profile->shard_balance -= $cost;
+            $profile->growth_path_key = $growthPathKey;
+            $profile->growth_path_identity = $path['identity'];
+            $profile->growth_path_selected_at = $now;
+            $profile->unspent_stp = $this->alphaV1Catalog->stpEntitlement(
+                $growthPathKey,
+                $profile->combat_level,
+            );
+            foreach (AlphaV1CombatRules::STATS as $stat) {
+                $profile->{'allocated_'.$stat.'_stp'} = 0;
+            }
+            $profile->skill_points_unspent = $profile->skill_points_total;
+            $profile->last_respec_at = $now;
+            $newMaxHp = $this->alphaV1Catalog->currentMaxHp(
+                $growthPathKey,
+                $profile->combat_level,
+                $profile->allocatedStp(),
+                $equipment,
+            );
+            $profile->current_hp = min($currentHp, $newMaxHp);
+            $profile->save();
+
+            UndergroundSkillAllocation::query()
+                ->where('underground_profile_id', $profile->id)
+                ->delete();
         });
     }
 
@@ -1221,6 +1301,18 @@ final readonly class UndergroundIntroService
             && $profile->growth_path_key !== null
                 ? $this->runtime->projectHuntingGroundState($profile)
                 : null;
+        $respecState = $stage === UndergroundIntroStage::UNDERGROUND_OPEN
+            && $profile instanceof UndergroundProfile
+            && $profile->growth_path_key !== null
+                ? [
+                    'cost' => $this->respecCost($profile),
+                    'last_completed_at' => $profile->last_respec_at?->toAtomString(),
+                    'next_available_at' => $profile->last_respec_at
+                        ?->addHours(self::RESPEC_COOLDOWN_HOURS)
+                        ->toAtomString(),
+                    'growth_paths' => $this->alphaV1Catalog->growthPaths(),
+                ]
+                : null;
 
         return [
             'stage' => $stage,
@@ -1276,6 +1368,7 @@ final readonly class UndergroundIntroService
                     : null,
             'default_hunting_ground_key' => $huntingGroundState['default_key'] ?? null,
             'hunting_grounds' => $huntingGroundState['grounds'] ?? null,
+            'respec' => $respecState,
             'trial' => $trialState,
             'awakening' => $awakeningState,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
@@ -1291,6 +1384,11 @@ final readonly class UndergroundIntroService
             $curve['first_level_cost'],
             $curve['cost_increment_per_level'],
         );
+    }
+
+    private function respecCost(UndergroundProfile $profile): int
+    {
+        return $profile->combat_level * self::RESPEC_COST_PER_LEVEL;
     }
 
     private function nextLevelRequirement(UndergroundProfile $profile): int

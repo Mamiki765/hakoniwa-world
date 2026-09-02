@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ConfirmUndergroundBulkSellRequest;
 use App\Http\Requests\EquipUndergroundEquipmentRequest;
+use App\Http\Requests\PreviewUndergroundBulkSellRequest;
 use App\Http\Requests\PurchaseUndergroundEquipmentRequest;
 use App\Http\Requests\SellUndergroundEquipmentRequest;
 use App\Http\Requests\UnequipUndergroundEquipmentRequest;
@@ -47,6 +49,31 @@ final class UndergroundEquipmentController extends Controller
             $request->user(),
             $request->string('request_id')->value(),
             $itemId,
+        ));
+    }
+
+    public function previewBulkSell(
+        PreviewUndergroundBulkSellRequest $request,
+        UndergroundEquipmentService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->bulkSellPreview(
+            $request->user(),
+            $request->filled('item_level_max') ? $request->integer('item_level_max') : null,
+            $request->array('rarities'),
+            $request->array('categories'),
+            $request->array('weapon_styles'),
+        ));
+    }
+
+    public function bulkSell(
+        ConfirmUndergroundBulkSellRequest $request,
+        UndergroundEquipmentService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->bulkSell(
+            $request->user(),
+            $request->string('request_id')->value(),
+            $request->string('catalog_identity')->value(),
+            $request->array('items'),
         ));
     }
 

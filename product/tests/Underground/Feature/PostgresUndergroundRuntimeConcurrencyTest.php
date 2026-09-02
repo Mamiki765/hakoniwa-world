@@ -191,6 +191,36 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             ->where('underground_profile_id', $profile->id)
             ->where('operation', 'equipment_sell')->count());
 
+        $bulkDagger = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'iron_dagger',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'equipped_slot' => null,
+            'grant_key' => null,
+            'instance_kind' => 'fixed',
+            'acquired_at' => now(),
+        ]);
+        $bulkSale = [
+            'operation' => 'equipment_bulk_sell',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'items' => [['id' => $bulkDagger->id, 'sell_price' => 60]],
+        ];
+        $bulkResults = $this->runConcurrentOperations($user, $secretary, [
+            ['request_id' => (string) Str::uuid()] + $bulkSale,
+            ['request_id' => (string) Str::uuid()] + $bulkSale,
+        ]);
+        $bulkStatuses = array_column($bulkResults, 'status');
+        sort($bulkStatuses);
+        $this->assertSame(['conflict', 'ok'], $bulkStatuses);
+        $bulkConflict = collect($bulkResults)->firstWhere('status', 'conflict');
+        $this->assertIsArray($bulkConflict);
+        $this->assertSame('underground_bulk_sell_preview_changed', $bulkConflict['error_code']);
+        $this->assertSame(10_000, $profile->fresh()->shard_balance);
+        $this->assertDatabaseMissing('underground_owned_equipment', ['id' => $bulkDagger->id]);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'equipment_bulk_sell')->count());
+
         $profile->refresh()->update(['shard_balance' => 10_000]);
         $rows = [];
         foreach (range(1, 498) as $offset) {
@@ -390,6 +420,55 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             ->where('operation', 'growth_path')->count());
     }
 
+    public function test_concurrent_respec_requests_allow_only_one_charge_and_reset(): void
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $this->openExploration($user, $secretary);
+        $profile->refresh();
+        $profile->update([
+            'combat_level' => 2,
+            'combat_xp' => 100,
+            'shard_balance' => 100,
+            'unspent_stp' => 1,
+            'allocated_vitality_stp' => 4,
+        ]);
+
+        $results = $this->runConcurrentOperations($user, $secretary, [[
+            'operation' => 'respec',
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ], [
+            'operation' => 'respec',
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ]]);
+
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        $this->assertSame(['conflict', 'ok'], $statuses);
+        $conflict = collect($results)->firstWhere('status', 'conflict');
+        $success = collect($results)->firstWhere('status', 'ok');
+        $this->assertIsArray($conflict);
+        $this->assertIsArray($success);
+        $this->assertSame('underground_respec_cooldown', $conflict['error_code']);
+        $this->assertSame('free_black', $success['growth_path_key']);
+        $this->assertSame(80, $success['shard_balance']);
+        $this->assertNotNull($success['last_completed_at']);
+
+        $profile->refresh();
+        $this->assertSame([80, 'free_black', 6, 0], [
+            $profile->shard_balance,
+            $profile->growth_path_key,
+            $profile->unspent_stp,
+            array_sum($profile->allocatedStp()),
+        ]);
+        $this->assertNotNull($profile->last_respec_at);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'respec')
+            ->count());
+    }
+
     public function test_concurrent_stp_and_sp_mutations_serialize_without_duplicate_resources(): void
     {
         [$user, $secretary, $profile] = $this->undergroundFixture();
@@ -464,7 +543,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $payload = [
             'operation' => 'explore',
             'hunting_ground_key' => 'shallow_caves',
-            'force_drop' => true,
+            'force_victory_drop' => true,
             'request_id' => $requestId,
         ];
 

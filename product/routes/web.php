@@ -95,6 +95,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/scripted-loss', [UndergroundIntroController::class, 'scriptedLoss']);
         Route::post('/contract', [UndergroundIntroController::class, 'contract']);
         Route::post('/growth-path', [UndergroundIntroController::class, 'growthPath']);
+        Route::post('/respec', [UndergroundIntroController::class, 'respec']);
         Route::get('/main', [UndergroundIntroController::class, 'main']);
         Route::post('/explore', [UndergroundIntroController::class, 'explore']);
         Route::post('/trial/start', [UndergroundIntroController::class, 'startTrial']);
@@ -107,6 +108,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/equipment/items/{itemId}/sell', [UndergroundEquipmentController::class, 'sell'])
             ->whereNumber('itemId');
         Route::get('/equipment/vault', [UndergroundEquipmentController::class, 'vault']);
+        Route::post('/equipment/vault/bulk-sell/preview', [UndergroundEquipmentController::class, 'previewBulkSell']);
+        Route::post('/equipment/vault/bulk-sell', [UndergroundEquipmentController::class, 'bulkSell']);
         Route::put('/equipment/equipped', [UndergroundEquipmentController::class, 'equip']);
         Route::delete('/equipment/equipped/{slot}', [UndergroundEquipmentController::class, 'unequip']);
         Route::post('/status/stp', [UndergroundIntroController::class, 'allocateStp']);

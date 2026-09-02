@@ -31,7 +31,28 @@ try {
     file_put_contents($databasePath, (string) $backend->pid, LOCK_EX);
 
     $user = User::query()->findOrFail((int) $payload['user_id']);
-    if (($payload['force_drop'] ?? false) === true) {
+    if (($payload['force_victory_drop'] ?? false) === true) {
+        $encounter = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.subterranean_rat');
+        if (! is_array($encounter) || ! is_array($encounter['enemy'] ?? null)) {
+            throw new RuntimeException('The deterministic Underground concurrency encounter is unavailable.');
+        }
+        $encounter['weight'] = 10_000;
+        $encounter['enemy']['base_stats'] = [
+            'vitality' => 96,
+            'might' => 1,
+            'finesse' => 1,
+            'spirit' => 1,
+            'agility' => 1,
+        ];
+        $encounter['enemy']['max_hp'] = 1;
+        $encounter['enemy']['physical_defense'] = 0;
+        $encounter['enemy']['magical_defense'] = 0;
+        $encounter['enemy']['weapon_power'] = 1;
+        config([
+            'underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => [
+                'subterranean_rat' => $encounter,
+            ],
+        ]);
         foreach (['standard', 'elite', 'rare'] as $profileKey) {
             config([
                 "underground-alpha-v1.exploration.drop.profiles.{$profileKey}.presence_bps" => 10_000,
@@ -132,6 +153,19 @@ try {
             'shard_balance' => $result['shard_balance'],
             'vault_used' => $result['vault']['used'],
         ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'equipment_bulk_sell') {
+        $result = app(UndergroundEquipmentService::class)->bulkSell(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['catalog_identity'],
+            $payload['items'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'request_id' => $payload['request_id'],
+            'shard_balance' => $result['shard_balance'],
+            'vault_used' => $result['vault']['used'],
+        ], JSON_THROW_ON_ERROR));
     } elseif (($payload['operation'] ?? 'explore') === 'equipment_equip') {
         $result = app(UndergroundEquipmentService::class)->equip(
             $user,
@@ -155,6 +189,20 @@ try {
             'request_id' => $payload['request_id'],
             'unspent_stp' => $result['unspent_stp'],
             'allocated_stp' => $result['allocated_stp'],
+        ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'respec') {
+        $result = app(UndergroundIntroService::class)->respec(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['growth_path_key'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'growth_path_key' => $result['growth_path']['key'],
+            'shard_balance' => $result['shard_balance'],
+            'last_completed_at' => $result['respec']['last_completed_at'],
         ], JSON_THROW_ON_ERROR));
     } elseif (($payload['operation'] ?? 'explore') === 'skill_acquire') {
         $result = app(UndergroundIntroService::class)->acquireSkillNode(
