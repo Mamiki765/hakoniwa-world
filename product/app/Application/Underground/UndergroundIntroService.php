@@ -1216,6 +1216,11 @@ final readonly class UndergroundIntroService
                     ($trialState['first_cleared'] ?? false) === true,
                 )
                 : null;
+        $huntingGroundState = $stage === UndergroundIntroStage::UNDERGROUND_OPEN
+            && $profile instanceof UndergroundProfile
+            && $profile->growth_path_key !== null
+                ? $this->runtime->projectHuntingGroundState($profile)
+                : null;
 
         return [
             'stage' => $stage,
@@ -1269,6 +1274,8 @@ final readonly class UndergroundIntroService
                 && config('app.env') !== 'production'
                     ? $this->alphaV1Catalog->playtestOptions($profile->growth_path_key)
                     : null,
+            'default_hunting_ground_key' => $huntingGroundState['default_key'] ?? null,
+            'hunting_grounds' => $huntingGroundState['grounds'] ?? null,
             'trial' => $trialState,
             'awakening' => $awakeningState,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,

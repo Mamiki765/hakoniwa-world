@@ -10,6 +10,7 @@ use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
+use App\Application\Underground\UndergroundStarterEquipmentService;
 use App\Domain\Underground\Area\UndergroundAreaCapacity;
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
@@ -22,6 +23,7 @@ use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
+use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
 use App\Models\UndergroundTrialProgress;
@@ -29,6 +31,7 @@ use App\Models\UndergroundTrialRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -148,6 +151,26 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(0, UndergroundTrialProgress::query()->count());
     }
 
+    public function test_legacy_shallow_exploration_replays_after_selector_identity_upgrade(): void
+    {
+        Carbon::setTestNow('2026-08-29 10:10:00+09:00');
+        config(['underground-alpha-v1.exploration.identity' => 'secretary-underground-exploration-alpha-v1']);
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player']);
+        $requestId = (string) Str::uuid();
+
+        $first = $runtime->explore($user, $requestId);
+        $storedFingerprint = $first['battle']->request_fingerprint;
+        config(['underground-alpha-v1.exploration.identity' => 'secretary-underground-exploration-alpha-v2']);
+        $duplicate = $runtime->explore($user, $requestId);
+
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($first['battle']->id, $duplicate['battle']->id);
+        $this->assertSame($storedFingerprint, $duplicate['battle']->request_fingerprint);
+        $this->assertSame(1, count($combat->calls));
+    }
+
     public function test_trial_duplicate_request_survives_global_runtime_identity_change(): void
     {
         Carbon::setTestNow('2026-08-29 10:15:00+09:00');
@@ -174,12 +197,12 @@ final class UndergroundRuntimeTest extends TestCase
     public function test_awakening_gauge_unlock_caps_consumes_and_replays_in_one_authoritative_settlement(): void
     {
         Carbon::setTestNow('2026-08-29 10:20:00+09:00');
-        $encounter = config('underground-alpha-v1.exploration.encounters.lost_shadow');
+        $encounter = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.lost_shadow');
         $this->assertIsArray($encounter);
         $encounter['weight'] = 10_000;
         $encounter['xp'] = 0;
         $encounter['shards'] = 0;
-        config(['underground-alpha-v1.exploration.encounters' => ['lost_shadow' => $encounter]]);
+        config(['underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => ['lost_shadow' => $encounter]]);
         [$user, $secretary] = $this->secretaryUser();
         $profile = $this->unlockExploration($secretary);
         $progress = UndergroundTrialProgress::query()->create([
@@ -252,10 +275,10 @@ final class UndergroundRuntimeTest extends TestCase
     public function test_exploration_bonus_rewards_settle_multi_level_growth_stp_withdrawal_and_defeat_atomically(): void
     {
         Carbon::setTestNow('2026-08-29 10:30:00+09:00');
-        $crystalBug = config('underground-alpha-v1.exploration.encounters.crystal_bug');
+        $crystalBug = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.crystal_bug');
         $this->assertIsArray($crystalBug);
         $crystalBug['weight'] = 10_000;
-        config(['underground-alpha-v1.exploration.encounters' => ['crystal_bug' => $crystalBug]]);
+        config(['underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => ['crystal_bug' => $crystalBug]]);
         [$user, $secretary] = $this->secretaryUser();
         $profile = $this->unlockExploration($secretary);
         $profile->update([
@@ -805,6 +828,140 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $battle->snapshot['combat_rules_identity']);
     }
 
+    public function test_exploration_drop_grant_is_atomic_replay_safe_and_victory_only(): void
+    {
+        Carbon::setTestNow('2026-09-02 20:00:00+09:00');
+        $this->forceShallowStandardDrop();
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        app(UndergroundStarterEquipmentService::class)->reconcile($profile);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player', 'stalemate', 'enemy']);
+
+        $requestId = (string) Str::uuid();
+        $first = $runtime->explore($user, $requestId);
+        $duplicate = $runtime->explore($user, $requestId);
+        $battle = $first['battle'];
+        $item = UndergroundOwnedEquipment::query()
+            ->where('source_battle_id', $battle->id)
+            ->sole();
+
+        $this->assertFalse($first['duplicate']);
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($battle->id, $duplicate['battle']->id);
+        $this->assertSame('granted', $battle->snapshot['drop']['status']);
+        $this->assertSame($item->instance_identity, $battle->snapshot['drop']['item']['instance_identity']);
+        $this->assertSame('generated', $item->instance_kind);
+        $this->assertSame('exploration-drop:'.$requestId, $item->grant_key);
+        $this->assertSame($battle->id, $item->source_battle_id);
+        $this->assertEquals($item->generated_payload, $item->fresh()->generated_payload);
+        $this->assertSame(1, count($combat->calls));
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $withdrawal = $runtime->explore($user, (string) Str::uuid())['battle'];
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $defeat = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $this->assertSame('ineligible', $withdrawal->snapshot['drop']['status']);
+        $this->assertSame('ineligible', $defeat->snapshot['drop']['status']);
+        $this->assertSame(1, UndergroundOwnedEquipment::query()
+            ->where('instance_kind', 'generated')
+            ->count());
+    }
+
+    public function test_black_crystal_cave_requires_trial_one_clear_and_fingerprints_the_ground(): void
+    {
+        Carbon::setTestNow('2026-09-02 20:10:00+09:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player']);
+
+        $before = collect($runtime->projectHuntingGroundState($profile)['grounds'])->keyBy('key');
+        $this->assertFalse($before['shallow_caves']['locked']);
+        $this->assertTrue($before['black_crystal_cave']['locked']);
+        $this->assertRuntimeError(
+            'underground_hunting_ground_locked',
+            fn () => $runtime->explore($user, (string) Str::uuid(), 'black_crystal_cave'),
+        );
+        $this->assertSame(0, count($combat->calls));
+
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $after = collect($runtime->projectHuntingGroundState($profile)['grounds'])->keyBy('key');
+        $this->assertFalse($after['black_crystal_cave']['locked']);
+
+        $requestId = (string) Str::uuid();
+        $result = $runtime->explore($user, $requestId, 'black_crystal_cave');
+        $battle = $result['battle'];
+        $this->assertSame('black_crystal_cave', $battle->activity_key);
+        $this->assertSame('secretary-underground-exploration-alpha-v2', $battle->runtime_identity);
+        $this->assertSame(
+            'secretary-underground-black-crystal-cave-alpha-v1',
+            $battle->snapshot['hunting_ground']['content_identity'],
+        );
+        $this->assertContains(
+            $battle->encounter_key,
+            array_column(app(UndergroundAlphaV1PlayerCatalog::class)
+                ->explorationEncounters('black_crystal_cave'), 'key'),
+        );
+        $projected = $runtime->projectExplorationBattle($battle);
+        $this->assertSame('黒晶洞', $projected['hunting_ground']['name']);
+        $this->assertSame($battle->id, $runtime->explore(
+            $user,
+            $requestId,
+            'black_crystal_cave',
+        )['battle']->id);
+        $this->assertRuntimeError(
+            'underground_request_conflict',
+            fn () => $runtime->explore($user, $requestId, 'shallow_caves'),
+        );
+        $this->assertSame(1, count($combat->calls));
+    }
+
+    public function test_vault_full_records_lost_drop_without_rolling_back_exploration_rewards(): void
+    {
+        Carbon::setTestNow('2026-09-02 20:20:00+09:00');
+        $this->forceShallowStandardDrop();
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        app(UndergroundStarterEquipmentService::class)->reconcile($profile);
+        $used = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->count();
+        $now = Carbon::now();
+        $rows = [];
+        for ($index = $used; $index < 500; $index++) {
+            $rows[] = [
+                'underground_profile_id' => $profile->id,
+                'definition_key' => 'bronze_rapier',
+                'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+                'equipped_slot' => null,
+                'grant_key' => null,
+                'instance_kind' => 'fixed',
+                'acquired_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        DB::table('underground_owned_equipment')->insert($rows);
+        [$runtime] = $this->runtimeWithOutcomes(['player']);
+
+        $battle = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $profile = $profile->refresh();
+        $this->assertSame([36, 10], [$battle->xp_awarded, $battle->shard_delta]);
+        $this->assertSame([36, 10], [$profile->combat_xp, $profile->shard_balance]);
+        $this->assertSame('vault_full', $battle->snapshot['drop']['status']);
+        $this->assertNotEmpty($battle->snapshot['drop']['item']['instance_identity']);
+        $this->assertSame(500, UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->count());
+        $this->assertFalse(UndergroundOwnedEquipment::query()
+            ->where('source_battle_id', $battle->id)
+            ->exists());
+    }
+
     /** @return array{User, Secretary} */
     private function secretaryUser(): array
     {
@@ -833,6 +990,27 @@ final class UndergroundRuntimeTest extends TestCase
         $this->app->instance(AtomicUndergroundExplorationCombat::class, $explorationCombat);
 
         return [app(UndergroundRuntimeService::class), $combat, $explorationCombat];
+    }
+
+    private function forceShallowStandardDrop(): void
+    {
+        $encounter = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.subterranean_rat');
+        if (! is_array($encounter)) {
+            throw new RuntimeException('Shallow drop test encounter is missing.');
+        }
+        $encounter['weight'] = 10_000;
+        config([
+            'underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => [
+                'subterranean_rat' => $encounter,
+            ],
+            'underground-alpha-v1.exploration.drop.profiles.standard.presence_bps' => 10_000,
+            'underground-alpha-v1.exploration.drop.profiles.standard.rarity_weights' => [
+                'common' => 10_000,
+                'uncommon' => 0,
+                'rare' => 0,
+                'epic' => 0,
+            ],
+        ]);
     }
 
     private function unlockExploration(
