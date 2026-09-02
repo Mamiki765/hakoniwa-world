@@ -4,7 +4,7 @@
 > 対象リポジトリ: `Mamiki765/hakoniwa-world`  
 > 配置先: `product/docs/handoffs/development-history-and-current-handoff.md`  
 > 用途: 現在有効なrelease boundary、Owner決定、production境界、次の作業開始点の引継ぎ  
-> 状態: PR #126 `Release 3.2.0` に含めるOwner承認済みhandoff refresh。PR merge前後の境界を併記する
+> 状態: PR #126でapplication 3.2.0をmainへ昇格済み。PR #127でOwner承認済みhandoff refreshをmainへ追従する
 >
 > この文書はOwnerとWeb版ChatGPTが管理する。Codex / implementation agentはread-onlyで利用し、Ownerがhandoff更新そのものを明示的に依頼した場合だけ編集してよい。
 
@@ -25,13 +25,12 @@
 
 ## 1.1 GitHub / release状態
 
-PR #126が、完成した`release/3.2.0`を`main`へ昇格するrelease PRである。PRのopen / merged状態はremoteで確認する。
+PR #126で、完成した`release/3.2.0`は`main`へ昇格済み。merge後にOwnerがhandoff更新を明示承認したため、PR #127がこの文書だけをmainへ追従するdocs-only PRである。PR #127のopen / merged状態とexact HEADはremoteで確認する。
 
 ```text
-main（PR #126 merge前）:
-  HEAD: 78d475043d5a9fa9ade18b4e716bcfe1fd390e44
-  player-facing patch: 3.1.1相当（PR #120を包含）
-  application metadata: 3.1.0
+main（PR #126 merge後）:
+  HEAD: fa37e61020a4a5ac3cc6971fa718655879bcca78
+  application: 3.2.0
   Surface Ruleset: hakoniwa-2s-plus-v19 / version 19
 
 release/3.2.0 feature/finalization anchor:
@@ -41,28 +40,29 @@ release/3.2.0 feature/finalization anchor:
 
 main promotion:
   PR #126 Release 3.2.0
+  merge commit: fa37e61020a4a5ac3cc6971fa718655879bcca78
+
+handoff follow-up:
+  PR #127 Refresh the current development handoff for 3.2.0
   base: main
   head: release/3.2.0
-
-PR #126 merge後のexpected GitHub main:
-  application: 3.2.0
-  Surface Ruleset: hakoniwa-2s-plus-v19 / version 19
 ```
 
-このhandoff refreshは、feature/finalization anchorの後へOwner管理文書だけを追加する。したがって、PR #126のcurrent exact HEADはremoteから再取得すること。
+このhandoff refreshは、PR #126のmerge直後にOwner管理文書だけを追加したもの。PR #127のcurrent exact HEADはremoteから再取得すること。
 
 3.2.0の構成PR:
 
-| PR | 内容 | release merge commit |
+| PR | 内容 | merge / anchor commit |
 |---|---|---|
 | #121 | 地底マップと覚醒ゲージのUI整理 | `48b64ece3e9363f45a171a31f77d6846cbdadbc2` |
 | #122 | 敏捷の相対combo・回避、combat identity v2、Trial 1再調整 | `2cd9c88de37c13ce1b3109264524447936741f51` |
 | #123 | ハクスラ装備基盤、アクセサリー3枠、generated equipment | `f83159657e94fc34301b5abf7f23b0fb9cdb986b` |
 | #124 | 浅層drop、第二狩場「黒晶洞」、狩場選択・再探索 | `fe1a9b6f28e2328c3a12011b142363afff038b4e` |
 | #125 | application 3.2.0 finalization、supported upgrade確認 | `95b6c08f29554f38e6331ba5cf3c0f283a365d61` |
-| #126 | release/3.2.0 → main昇格 | status / merge commitはremote確認 |
+| #126 | release/3.2.0 → main昇格 | `fa37e61020a4a5ac3cc6971fa718655879bcca78` |
+| #127 | Owner承認済みcurrent handoff refresh | status / merge commitはremote確認 |
 
-PR #121〜#125は各exact headのQualityとreviewを通過済み。PR #126がまだopenなら、このhandoff commit後の新しいexact HEADでQualityとCodex reviewを再確認してからOwnerがmerge判断する。既にmergedなら、mainのexact HEADとproduction適用状態を別々に確認する。
+PR #121〜#126はmerge済み。PR #127がまだopenなら、そのexact HEADでQualityとCodex reviewを確認してからOwnerがmerge判断する。PR #127がmergedでも、production適用状態は別に確認する。
 
 ## 1.2 Version / Ruleset / identity
 
@@ -101,7 +101,7 @@ generated equipment:
 
 ## 1.3 Supported upgrade / migration
 
-PR #126 merge前のmainから3.2.0へ進む際に新たに適用されるmigrationは1本だけ。
+3.1.0 / 3.1.1相当のmainから3.2.0へ進む際に新たに適用されるmigrationは1本だけ。
 
 ```text
 product/database/migrations/2026_09_02_000000_expand_underground_hackslash_equipment.php
@@ -642,17 +642,17 @@ forward-only jumpで、Trial 1の1〜9戦では覚醒を温存し、10戦目で�
 
 # 6. 次の自然な開始点
 
-## 6.1 PR #126がopenの場合
+## 6.1 PR #127がopenの場合
 
-このhandoff refresh後に行う。
+PR #126はmainへmerge済み。このhandoff follow-upについて次を行う。
 
-1. PR #126 current exact HEADを確認
+1. PR #127 current exact HEADを確認
 2. Qualityを新HEADで完走
-3. Codex reviewを新HEADへ再依頼
+3. Codex reviewを新HEADへ依頼
 4. unresolved finding 0を確認
-5. Ownerが`release/3.2.0 -> main`をmerge
+5. Ownerがdocs-only PR #127をmainへmerge
 
-PR #126が既にmergedならこの節を飛ばし、mainのexact HEADを確認して6.2へ進む。handoffを更新またはmergeしただけで、production deploy済みとは扱わない。
+PR #127が既にmergedならこの節を飛ばし、mainのexact HEADとproduction状態を確認する。handoffをmergeしただけでproduction deploy済みとは扱わない。
 
 ## 6.2 Production deploy
 
