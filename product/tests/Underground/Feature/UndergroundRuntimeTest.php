@@ -400,7 +400,7 @@ final class UndergroundRuntimeTest extends TestCase
         $resumed = app(UndergroundRuntimeService::class)->activeTrial($user);
 
         $this->assertSame($run->run_key, $resumed?->run_key);
-        $this->assertSame('secretary-underground-trial-01-v1', $resumed?->trial_content_identity);
+        $this->assertSame('secretary-underground-trial-01-v2', $resumed?->trial_content_identity);
         $this->assertSame(2, $resumed?->next_battle_index);
         $withdrawn = $runtime->withdrawTrial($user, $run->run_key);
         $this->assertSame(UndergroundTrialRun::STATUS_WITHDRAWN, $withdrawn->status);
@@ -439,7 +439,7 @@ final class UndergroundRuntimeTest extends TestCase
         $run->update(['next_battle_index' => 6]);
 
         $sameContent = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v1', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v2', 6], [
             $sameContent?->run_key,
             $sameContent?->trial_content_identity,
             $sameContent?->next_battle_index,
@@ -447,7 +447,7 @@ final class UndergroundRuntimeTest extends TestCase
 
         config(['hakoniwa.application_version' => '3.0.0-alpha.2']);
         $applicationOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v1', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v2', 6], [
             $applicationOnly?->run_key,
             $applicationOnly?->trial_content_identity,
             $applicationOnly?->next_battle_index,
@@ -455,7 +455,7 @@ final class UndergroundRuntimeTest extends TestCase
 
         config(['underground-runtime.runtime_identity' => 'secretary-underground-runtime-alpha-v1']);
         $runtimeOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v1', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v2', 6], [
             $runtimeOnly?->run_key,
             $runtimeOnly?->trial_content_identity,
             $runtimeOnly?->next_battle_index,

@@ -74,7 +74,9 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 標準Lv1の各能力20・装備補正0では最大HPをexactly 500とする。最大HPは同倍率で伸びる500の基準、基準生命との差分、装備HPから導出する。最大MPは常に10,000であり、combat level、基礎能力、アイテムLvでは増えない。通常攻撃と防御はMP 0、戦闘開始時は10,000、自然回復はalpha-v1 balance dataの300 MP / roundである。150 / 200 / 250 / 300 / 400を100-round持久fixtureで比較し、20-round帯のrotationを維持しながら長期戦では通常攻撃へfallbackし、400のほぼ無制限rotationを避ける値として300を選んだ。skill recovery、overflow、MP不足action、最初の枯渇roundは別metricとして集計する。
 
-敏捷はinitiative、evasion、interrupt/action-delay resistanceへ使うが、追加行動を作らない。critical/evasionのstat contributionは進行倍率のreferenceで正規化し、level上昇だけで確率capへ近づかない。
+敏捷はinitiative、evasion、interrupt/action-delay resistanceへ使い、damage actionにはaction単位の敏捷comboを追加する。initiativeは実効敏捷が高い側を先とし、同値時だけ既存tie-breakを使う。evasionと敏捷comboは絶対値ではなく`max(0, (self - opponent) / (self + opponent))`相当の相対差を使い、内部capへ飽和させる。相手以下なら敏捷由来evasionとcomboは0である。既存`evasion_bps`は相対敏捷bonusへ加算してから既存total capを適用する。action impairment resistanceは従来どおり進行倍率のreferenceで正規化する。
+
+敏捷comboはactionごとに1回だけ2・3・4連続ヒットを抽選し、通常のcritical・variance・防御・guard等を解決したpost-mitigation damageへ最終倍率を掛ける。action、damage event、critical、status、覚醒ゲージ、native multi-hit数は追加せず、native multi-hitにも同じaction単位のcombo結果を使う。logはnative damage行を増やさず、最初のdamage行に補助表示用hit数を1回だけ持つ。
 
 ### Alpha-v1 damage and recovery order
 
@@ -84,10 +86,11 @@ alpha-v1は`attack - defense`を使わず、次の順序を固定する。
 2. weapon coefficient、fixed componentを加え、skill potencyを掛けて整数切捨てする。
 3. target max-HP componentがあればsource stat由来capを先に適用する。
 4. category/all/status modifierと消費stack bonusを適用する。
-5. critical判定と倍率、95〜105% variance、evasion判定の順に専用label RNGを消費する。
+5. action単位の敏捷combo、critical判定と倍率、95〜105% variance、evasion判定の順に専用label RNGを消費する。
 6. `defense reference / (defense reference + effective defense)`でphysical/magical mitigationを算出する。referenceはlevel/item-level benchmarkと同じcurveで伸びる。
 7. damage-taken modifier、guard、parryを適用し、合成後の軽減は75% capを越えない。
-8. barrierを先に消費し、残りをHPへ適用する。HPを越えるdamageはclampし、合法なhitは最低1 damageとする。
+8. 敏捷comboが成立した場合はpost-mitigation damageへ2・3・4倍の最終倍率を一度適用する。
+9. barrierを先に消費し、残りをHPへ適用する。HPを越えるdamageはclampし、合法なhitは最低1 damageとする。
 
 damage prevention metricはHP clamp前のpost-mitigation damageを基準にし、defense / guard / evasion / barrierが実際に防いだ量だけを数える。残HPを越えたoverkillは防御量へ含めない。
 

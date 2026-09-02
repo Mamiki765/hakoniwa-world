@@ -120,7 +120,7 @@
         },
         "trial_cave_hunter": {
             "label": "洞窟狩人", "boss": false,
-            "base_stats": {"vitality": 24, "might": 28, "finesse": 18, "spirit": 14, "agility": 16},
+            "base_stats": {"vitality": 24, "might": 28, "finesse": 18, "spirit": 14, "agility": 22},
             "max_hp": 850, "physical_defense": 80, "magical_defense": 75, "weapon_power": 92,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7000, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
@@ -141,28 +141,28 @@
         },
         "trial_crystal_adept": {
             "label": "晶術士", "boss": false,
-            "base_stats": {"vitality": 18, "might": 12, "finesse": 20, "spirit": 38, "agility": 12},
+            "base_stats": {"vitality": 18, "might": 12, "finesse": 20, "spirit": 38, "agility": 18},
             "max_hp": 1000, "physical_defense": 75, "magical_defense": 120, "weapon_power": 95,
             "normal_attack": {"type": "damage", "category": "miracle", "potency_bps": 6800, "stat_coefficients": {"spirit": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial_arcane_burst"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial_arcane_burst"}], "action": "skill:trial_arcane_burst"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial_fanatic_captain": {
             "label": "狂信隊長", "boss": false,
-            "base_stats": {"vitality": 24, "might": 38, "finesse": 16, "spirit": 10, "agility": 12},
+            "base_stats": {"vitality": 24, "might": 38, "finesse": 16, "spirit": 10, "agility": 20},
             "max_hp": 1200, "physical_defense": 100, "magical_defense": 85, "weapon_power": 95,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7000, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": ["enemy_telegraph", "pressure_heavy"], "ai_rules": [{"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:pressure_heavy"}, {"conditions": [{"type": "round_modulo", "modulo": 4, "equals": 3}], "action": "skill:enemy_telegraph"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial_razor_bat": {
             "label": "刃翼蝙蝠", "boss": false,
-            "base_stats": {"vitality": 18, "might": 28, "finesse": 24, "spirit": 10, "agility": 20},
+            "base_stats": {"vitality": 18, "might": 28, "finesse": 24, "spirit": 10, "agility": 30},
             "max_hp": 1050, "physical_defense": 80, "magical_defense": 75, "weapon_power": 100,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6200, "stat_coefficients": {"might": 6000, "finesse": 4000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": ["trial_razor_flurry"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial_razor_flurry"}], "action": "skill:trial_razor_flurry"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial_ash_knight": {
             "label": "灰晶騎士", "boss": false,
-            "base_stats": {"vitality": 30, "might": 28, "finesse": 12, "spirit": 20, "agility": 10},
+            "base_stats": {"vitality": 30, "might": 28, "finesse": 12, "spirit": 20, "agility": 16},
             "max_hp": 1400, "physical_defense": 120, "magical_defense": 110, "weapon_power": 100,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7200, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial_arcane_burst"], "ai_rules": [{"conditions": [{"type": "round_modulo", "modulo": 3, "equals": 0}, {"type": "skill_ready", "skill": "trial_arcane_burst"}], "action": "skill:trial_arcane_burst"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
@@ -176,7 +176,7 @@
         },
         "trial_wyvern": {
             "label": "ワイバーン", "boss": true,
-            "base_stats": {"vitality": 30, "might": 34, "finesse": 16, "spirit": 12, "agility": 8},
+            "base_stats": {"vitality": 30, "might": 34, "finesse": 16, "spirit": 12, "agility": 15},
             "max_hp": 1600, "physical_defense": 60, "magical_defense": 229, "weapon_power": 180,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7600, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
             "skills": ["enemy_telegraph", "trial_wyvern_breath", "trial_wyvern_tail", "trial_razor_flurry"],
@@ -197,7 +197,7 @@
     },
     "tuning_parameters": {
         "scope": "simulation_only_trial_01",
-        "primary_target": "Lv30 Rank3 four-build clear rate observation near 30-70 percent",
+        "primary_target": "Lv30 Rank3 four-build clear rates remain non-degenerate after the accepted agility value increase; the former 30-70 percent range is observation-only, not a gate",
         "non_targets": ["player-facing release", "persistence", "Surface Ruleset", "production migration"],
         "adjustable": ["enemy max_hp", "enemy defenses", "enemy weapon_power", "enemy attack potency", "enemy regeneration", "boss damage reduction", "boss phase transition round", "boss phase damage bonus"]
     }

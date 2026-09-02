@@ -219,6 +219,131 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertCount(1, $enemyHits);
     }
 
+    public function test_relative_agility_curve_saturates_combo_and_evasion_without_replacing_modifier_cap(): void
+    {
+        $rules = new AlphaV1CombatRules;
+        $expected = [
+            100 => [0, 0, 0, 0, 10_000, 10_000],
+            120 => [72, 63, 0, 0, 10_063, 9_928],
+            150 => [160, 128, 12, 0, 10_152, 9_840],
+            200 => [266, 188, 45, 0, 10_278, 9_734],
+            250 => [342, 230, 54, 15, 10_383, 9_658],
+            300 => [400, 263, 57, 30, 10_467, 9_600],
+        ];
+        foreach ($expected as $selfAgility => $values) {
+            $profile = $rules->agilityProfile($selfAgility, 100);
+            $this->assertSame($values, [
+                $profile['evasion_bonus_bps'],
+                $profile['two_hit_rate_bps'],
+                $profile['three_hit_rate_bps'],
+                $profile['four_hit_rate_bps'],
+                $profile['expected_damage_multiplier_bps'],
+                $profile['expected_incoming_damage_multiplier_bps'],
+            ]);
+        }
+
+        $this->assertSame($rules->agilityProfile(1_000_000, 1), $rules->agilityProfile(4, 1));
+        $this->assertSame(500, $rules->evasionChanceBps(50, 100, 500));
+        $this->assertSame(700, $rules->evasionChanceBps(300, 100, 300));
+        $this->assertSame(0, $rules->evasionChanceBps(300, 100, -1_000));
+        $this->assertSame(AlphaV1CombatRules::EVASION_CAP_BPS, $rules->evasionChanceBps(1_000_000, 1, 3_100));
+    }
+
+    public function test_agility_combo_multiplies_one_native_multi_hit_action_without_extra_events(): void
+    {
+        [$manifest] = $this->catalog();
+        $manifest['normal_attack'] = [
+            'type' => 'damage',
+            'category' => 'physical',
+            'potency_bps' => 10_000,
+            'stat_coefficients' => ['might' => 10_000],
+            'weapon_coefficient_bps' => 0,
+            'fixed' => 0,
+            'target_max_hp_bps' => 0,
+            'can_crit' => false,
+            'dodgeable' => false,
+            'hits' => 3,
+        ];
+        $manifest['enemies']['agility_target'] = [
+            'label' => '敏捷試験体',
+            'boss' => false,
+            'base_stats' => ['vitality' => 1, 'might' => 1, 'finesse' => 1, 'spirit' => 1, 'agility' => 100],
+            'max_hp' => 1_000_000,
+            'physical_defense' => 137,
+            'magical_defense' => 0,
+            'weapon_power' => 1,
+            'normal_attack' => $manifest['normal_attack'],
+            'skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'defend']],
+            'modifiers' => [],
+        ];
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $snapshot = [
+            'key' => 'agility_secretary',
+            'label' => '敏捷秘書',
+            'stats' => ['vitality' => 20, 'might' => 40, 'finesse' => 20, 'spirit' => 20, 'agility' => 300],
+            'active_skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'modifiers' => [],
+            'equipment' => $configuration['exploration']['starter_weapon'],
+        ];
+        $baselineSnapshot = $snapshot;
+        $baselineSnapshot['stats']['agility'] = 101;
+        $combo = null;
+        $baseline = null;
+        foreach (range(0, 500) as $seed) {
+            $candidate = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'agility_target', $seed, 1, 0);
+            $candidateBaseline = $this->model()->fightPlayerSnapshot(
+                $catalog,
+                $baselineSnapshot,
+                'agility_target',
+                $seed,
+                1,
+                0,
+            );
+            if (collect($candidate->actionLog)->contains(fn (array $row): bool => isset($row['agility_combo_hits']))
+                && ! collect($candidateBaseline->actionLog)->contains(fn (array $row): bool => isset($row['agility_combo_hits']))) {
+                $combo = $candidate;
+                $baseline = $candidateBaseline;
+                break;
+            }
+        }
+        $this->assertInstanceOf(BuildCombatResult::class, $combo);
+        $this->assertInstanceOf(BuildCombatResult::class, $baseline);
+
+        $comboRows = array_values(array_filter(
+            $combo->actionLog,
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage',
+        ));
+        $baselineRows = array_values(array_filter(
+            $baseline->actionLog,
+            static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage',
+        ));
+        $comboNotices = array_values(array_filter(
+            $comboRows,
+            static fn (array $row): bool => isset($row['agility_combo_hits']),
+        ));
+        $comboHits = $comboNotices[0]['agility_combo_hits'];
+        $this->assertContains($comboHits, [2, 3, 4]);
+        $this->assertCount(3, $comboRows);
+        $this->assertCount(3, $baselineRows);
+        $this->assertCount(1, $comboNotices);
+        $this->assertSame(1, $combo->actionUsage['normal_attack']);
+        $this->assertSame(0, $combo->awakening['gauge_gained']);
+        foreach ($comboRows as $index => $row) {
+            $this->assertSame($baselineRows[$index]['amount'] * $comboHits, $row['amount']);
+        }
+        $projected = (new UndergroundAlphaV1BattleProjector)->project($combo, $catalog);
+        $projectedComboNotices = collect($projected['rounds'])
+            ->flatMap(static fn (array $round): array => $round['actions'])
+            ->filter(static fn (array $action): bool => is_int($action['agility_combo_hits'] ?? null));
+        $this->assertCount(1, $projectedComboNotices);
+        $this->assertSame($comboHits, $projectedComboNotices->first()['agility_combo_hits']);
+    }
+
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void
     {
         [$manifest, $catalog] = $this->catalog();

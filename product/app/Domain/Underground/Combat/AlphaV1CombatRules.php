@@ -8,7 +8,7 @@ final class AlphaV1CombatRules
 {
     public const IDENTITY = 'secretary-underground-alpha-v1';
 
-    public const SIMULATOR_VERSION = 'underground-build-balance-alpha-v1';
+    public const SIMULATOR_VERSION = 'underground-build-balance-alpha-v2';
 
     public const GENERATOR_IDENTITY = 'secretary-underground-equipment-alpha-v1';
 
@@ -29,6 +29,20 @@ final class AlphaV1CombatRules
     public const DAMAGE_REDUCTION_CAP_BPS = 7_500;
 
     public const EVASION_CAP_BPS = 3_500;
+
+    public const RELATIVE_AGILITY_ADVANTAGE_CAP_BPS = 6_000;
+
+    public const AGILITY_EVASION_SCALE_BPS = 800;
+
+    public const AGILITY_TWO_HIT_SCALE_BPS = 700;
+
+    public const AGILITY_THREE_HIT_THRESHOLD_BPS = 1_500;
+
+    public const AGILITY_THREE_HIT_SCALE_BPS = 250;
+
+    public const AGILITY_FOUR_HIT_THRESHOLD_BPS = 3_500;
+
+    public const AGILITY_FOUR_HIT_SCALE_BPS = 200;
 
     public const ACTION_IMPAIRMENT_RESISTANCE_CAP_BPS = 5_000;
 
@@ -85,9 +99,13 @@ final class AlphaV1CombatRules
      * @param  array<string, int>  $equipmentStats
      * @return array<string, int>
      */
-    public function scaledStats(array $baseStats, array $equipmentStats, int $scaleBps): array
-    {
-        $this->assertFiveStats($baseStats);
+    public function scaledStats(
+        array $baseStats,
+        array $equipmentStats,
+        int $scaleBps,
+        bool $requireBaseBudget = true,
+    ): array {
+        $this->assertFiveStats($baseStats, $requireBaseBudget);
         $stats = [];
         foreach (self::STATS as $key) {
             $stats[$key] = max(1, intdiv($baseStats[$key] * $scaleBps, 10_000)
@@ -127,6 +145,69 @@ final class AlphaV1CombatRules
         }
 
         return max(0, intdiv($scaledTotal, 10_000));
+    }
+
+    /**
+     * @return array{
+     *     relative_advantage_bps: int,
+     *     evasion_bonus_bps: int,
+     *     two_hit_rate_bps: int,
+     *     three_hit_rate_bps: int,
+     *     four_hit_rate_bps: int,
+     *     expected_damage_multiplier_bps: int,
+     *     expected_incoming_damage_multiplier_bps: int
+     * }
+     */
+    public function agilityProfile(int $selfAgility, int $opponentAgility): array
+    {
+        if ($selfAgility < 1 || $opponentAgility < 1) {
+            throw new InvalidArgumentException('Underground alpha-v1 agility comparison requires positive values.');
+        }
+
+        $advantageBps = $selfAgility <= $opponentAgility
+            ? 0
+            : min(
+                self::RELATIVE_AGILITY_ADVANTAGE_CAP_BPS,
+                intdiv(($selfAgility - $opponentAgility) * 10_000, $selfAgility + $opponentAgility),
+            );
+        // Author cumulative 2+/3+/4 rates, then expose mutually exclusive outcomes for one action roll.
+        $twoOrMoreRateBps = intdiv($advantageBps * self::AGILITY_TWO_HIT_SCALE_BPS, 10_000);
+        $threeOrMoreRateBps = intdiv(
+            max(0, $advantageBps - self::AGILITY_THREE_HIT_THRESHOLD_BPS)
+                * self::AGILITY_THREE_HIT_SCALE_BPS,
+            10_000,
+        );
+        $fourHitRateBps = intdiv(
+            max(0, $advantageBps - self::AGILITY_FOUR_HIT_THRESHOLD_BPS)
+                * self::AGILITY_FOUR_HIT_SCALE_BPS,
+            10_000,
+        );
+        $threeHitRateBps = $threeOrMoreRateBps - $fourHitRateBps;
+        $twoHitRateBps = $twoOrMoreRateBps - $threeOrMoreRateBps;
+        $evasionBonusBps = intdiv($advantageBps * self::AGILITY_EVASION_SCALE_BPS, 10_000);
+
+        return [
+            'relative_advantage_bps' => $advantageBps,
+            'evasion_bonus_bps' => $evasionBonusBps,
+            'two_hit_rate_bps' => $twoHitRateBps,
+            'three_hit_rate_bps' => $threeHitRateBps,
+            'four_hit_rate_bps' => $fourHitRateBps,
+            'expected_damage_multiplier_bps' => 10_000
+                + $twoHitRateBps
+                + (2 * $threeHitRateBps)
+                + (3 * $fourHitRateBps),
+            'expected_incoming_damage_multiplier_bps' => 10_000 - $evasionBonusBps,
+        ];
+    }
+
+    public function evasionChanceBps(int $selfAgility, int $opponentAgility, int $modifierBps = 0): int
+    {
+        $profile = $this->agilityProfile($selfAgility, $opponentAgility);
+
+        return min(
+            self::EVASION_CAP_BPS,
+            max(0, $profile['evasion_bonus_bps'] + $modifierBps),
+        );
     }
 
     /** @param array<string, mixed> $stats */

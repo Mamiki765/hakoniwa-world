@@ -32,6 +32,7 @@ interface RoundAction {
     parried?: boolean;
     barrier_absorbed?: number;
     complete_guarded?: boolean;
+    agility_combo_hits?: number | null;
     lines?: string[];
 }
 
@@ -967,6 +968,7 @@ onUnmounted(() => {
                                     'underground-awakening-event': action.type === 'awakening' || action.type === 'awakening_technique',
                                 }"
                             >
+                                <small v-if="action.agility_combo_hits" class="underground-agility-combo">{{ action.agility_combo_hits }}連続ヒット！</small>
                                 {{ actionNarrative(action, currentBattle) }}
                             </li>
                         </ol>

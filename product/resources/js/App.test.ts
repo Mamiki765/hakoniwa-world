@@ -1917,7 +1917,10 @@ describe('application lobby and island entry', () => {
                 },
                 {
                     round: 40,
-                    actions: [{ type: 'phase_transition', side: '対戦相手', actor_name: 'ワイバーン', label: '天井が崩落し、ワイバーンは宙に舞い上がる……！', amount: 0 }],
+                    actions: [
+                        { type: 'damage', side: '秘書', actor_name: 'ペリドット', target_name: 'ワイバーン', label: '通常攻撃', amount: 420, agility_combo_hits: 2 },
+                        { type: 'phase_transition', side: '対戦相手', actor_name: 'ワイバーン', label: '天井が崩落し、ワイバーンは宙に舞い上がる……！', amount: 0 },
+                    ],
                     end_state: null,
                 },
             ],
@@ -2152,6 +2155,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-boss-warning')).toHaveLength(2);
         expect(wrapper.findAll('.underground-boss-warning')[0]!.text()).toBe('洞窟が崩れそうだ……');
         expect(wrapper.findAll('.underground-boss-warning')[1]!.text()).toBe('天井が崩落し、ワイバーンは宙に舞い上がる……！');
+        expect(wrapper.findAll('.underground-agility-combo')).toHaveLength(1);
+        expect(wrapper.get('.underground-agility-combo').text()).toBe('2連続ヒット！');
+        expect(wrapper.get('.underground-agility-combo').element.parentElement?.textContent).toContain('ワイバーンに420ダメージ。');
         expect(wrapper.get('.underground-battle-log').text().indexOf('崩れかけた石壁の向こう'))
             .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('遭遇'));
         expect(wrapper.get('.underground-battle-log').text().indexOf('戦闘終了'))

@@ -73,6 +73,31 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertFalse($report['mp_contract']['persists_between_battles']);
         $this->assertSame([], $report['abnormal_seeds']);
         $this->assertSame(10, $report['scenarios'][0]['max_battles_observed']);
+        $this->assertSame([1.0, 1.2, 1.5, 2.0, 2.5, 3.0], array_column(
+            $report['agility_balance']['ratio_curve'],
+            'ratio',
+        ));
+        $this->assertSame([10_000, 10_063, 10_152, 10_278, 10_383, 10_467], array_column(
+            $report['agility_balance']['ratio_curve'],
+            'expected_damage_multiplier_bps',
+        ));
+        $this->assertSame([10_000, 9_928, 9_840, 9_734, 9_658, 9_600], array_column(
+            $report['agility_balance']['ratio_curve'],
+            'expected_incoming_damage_multiplier_bps',
+        ));
+        $this->assertCount(120, $report['agility_balance']['trial_one_ratios']);
+        $this->assertSame([
+            'trial_rat_vanguard' => 30,
+            'trial_cave_hunter' => 22,
+            'trial_corrosive_guard' => 10,
+            'trial_regenerating_hulk' => 10,
+            'trial_crystal_adept' => 18,
+            'trial_fanatic_captain' => 20,
+            'trial_razor_bat' => 30,
+            'trial_ash_knight' => 16,
+            'trial_gate_golem' => 10,
+            'trial_wyvern' => 15,
+        ], array_column($report['battle_sequence'], 'agility', 'key'));
         foreach ($report['builds'] as $levels) {
             foreach ($levels as $build) {
                 $this->assertLessThanOrEqual(20, $build['skill_points_spent']);
@@ -86,6 +111,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
     {
         [, $manifest] = $this->trialManifest();
         $this->assertSame(229, $manifest['enemies']['trial_wyvern']['magical_defense']);
+        $this->assertSame(15, $manifest['enemies']['trial_wyvern']['base_stats']['agility']);
         $this->assertSame(10_000, $manifest['statuses']['wyvern_airborne']['effects'][0]['value_bps']);
         foreach ($manifest['enemies'] as &$enemy) {
             $enemy['max_hp'] = 1;
@@ -535,6 +561,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             new CanonicalUndergroundExplorationCombat($model),
             new UndergroundAlphaV1PlayerCatalog($rules, $validator),
             new UndergroundEquipmentCatalog,
+            $rules,
         );
     }
 }

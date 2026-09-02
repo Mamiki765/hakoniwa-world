@@ -164,6 +164,9 @@ final class UndergroundAlphaV1BattleProjector
             'parried' => (bool) ($row['parried'] ?? false),
             'barrier_absorbed' => (int) ($row['barrier_absorbed'] ?? 0),
             'complete_guarded' => (bool) ($row['complete_guarded'] ?? false),
+            'agility_combo_hits' => is_int($row['agility_combo_hits'] ?? null)
+                ? $row['agility_combo_hits']
+                : null,
         ];
     }
 

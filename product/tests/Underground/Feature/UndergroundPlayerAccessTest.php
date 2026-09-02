@@ -792,7 +792,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'underground_profile_id' => $profile->id,
             'run_key' => (string) Str::uuid(),
             'trial_key' => 'trial_01',
-            'trial_content_identity' => 'secretary-underground-trial-01-v1',
+            'trial_content_identity' => 'secretary-underground-trial-01-v2',
             'next_battle_index' => 2,
             'status' => UndergroundTrialRun::STATUS_ACTIVE,
             'started_at' => Carbon::now(),
