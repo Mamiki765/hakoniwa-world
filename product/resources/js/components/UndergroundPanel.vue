@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
-import type { EquipmentItem } from './EquipmentItemCard.vue';
+import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
 
 type Stage = 'not_started' | 'initial_descent' | 'tutorial_ready' | 'escape_pending'
     | 'returned_after_tutorial' | 'shopkeeper_encounter' | 'shopkeeper_naming'
@@ -248,11 +248,7 @@ interface UndergroundState {
 interface EquipmentSummary {
     used: number;
     capacity: number;
-    equipped: {
-        weapon: EquipmentItem | null;
-        armor: EquipmentItem | null;
-        accessory: EquipmentItem | null;
-    };
+    equipped: Record<EquipmentSlot, EquipmentItem | null>;
 }
 
 interface EquipmentMutationState {
@@ -361,6 +357,15 @@ const commonEnding = [
 ];
 
 const statLabels = { vitality: '生命', might: '武力', finesse: '技巧', spirit: '精神', agility: '敏捷' } as const;
+const equipmentSlots: EquipmentSlot[] = ['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3'];
+const equipmentSlotLabels: Record<EquipmentSlot, string> = {
+    weapon: '武器',
+    armor: '防具',
+    accessory_1: 'アクセサリー1',
+    accessory_2: 'アクセサリー2',
+    accessory_3: 'アクセサリー3',
+};
+function equipmentSlotLabel(slot: EquipmentSlot): string { return equipmentSlotLabels[slot]; }
 const props = defineProps<{ secretaryImageUrl?: string | null }>();
 const emit = defineEmits<{ returnToSecretary: [] }>();
 const state = ref<UndergroundState | null>(null);
@@ -1159,9 +1164,7 @@ onUnmounted(() => {
                     <section class="underground-equipment" aria-labelledby="underground-equipment-title">
                         <h2 id="underground-equipment-title">装備</h2>
                         <dl>
-                            <div><dt>武器</dt><dd>{{ state.equipment_summary?.equipped.weapon?.name ?? '未設定' }}</dd></div>
-                            <div><dt>防具</dt><dd>{{ state.equipment_summary?.equipped.armor?.name ?? '未設定' }}</dd></div>
-                            <div><dt>アクセサリー</dt><dd>{{ state.equipment_summary?.equipped.accessory?.name ?? '未設定' }}</dd></div>
+                            <div v-for="slot in equipmentSlots" :key="slot"><dt>{{ equipmentSlotLabel(slot) }}</dt><dd>{{ state.equipment_summary?.equipped[slot]?.name ?? '未設定' }}</dd></div>
                         </dl>
                         <p v-if="state.equipment_summary">宝物庫 {{ state.equipment_summary.used }} / {{ state.equipment_summary.capacity }}</p>
                     </section>

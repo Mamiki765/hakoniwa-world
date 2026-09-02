@@ -454,7 +454,17 @@ final readonly class UndergroundTrialBalanceSimulator
                 throw new InvalidArgumentException("Trial build [{$buildKey}] must use Rank 3 equipment.");
             }
         }
-        $loadout = $this->equipment->combatLoadout($equipmentDefinitions);
+        $loadout = $this->equipment->combatLoadout(array_map(
+            fn (array $definition): array => [
+                'slot' => $definition['category'] === 'accessory'
+                    ? 'accessory_1'
+                    : $definition['category'],
+                'definition' => $definition,
+                'catalog_identity' => $this->equipment->identity(),
+                'instance_identity' => null,
+            ],
+            $equipmentDefinitions,
+        ));
         $skillPoints = $this->assertInitialSkillAllocation($configured['skill_allocations']);
         $definition = $this->players->explorationCombatDefinition(
             $growthPath,

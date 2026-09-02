@@ -17,6 +17,7 @@ final class EquipUndergroundEquipmentRequest extends FormRequest
         return [
             'request_id' => ['required', 'uuid'],
             'item_id' => ['required', 'integer', 'min:1'],
+            'target_slot' => ['nullable', 'string', 'in:weapon,armor,accessory_1,accessory_2,accessory_3'],
         ];
     }
 }

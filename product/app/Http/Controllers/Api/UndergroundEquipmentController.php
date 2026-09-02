@@ -58,6 +58,9 @@ final class UndergroundEquipmentController extends Controller
             $request->user(),
             $request->string('request_id')->value(),
             $request->integer('item_id'),
+            $request->filled('target_slot')
+                ? $request->string('target_slot')->value()
+                : null,
         ));
     }
 

@@ -25,8 +25,11 @@ final readonly class UndergroundEquipmentLoadoutResolver
             ->whereNotNull('equipped_slot')
             ->orderBy('id')
             ->get();
-        $equipped = ['weapon' => null, 'armor' => null, 'accessory' => null];
+        $equipped = array_fill_keys(UndergroundEquipmentCatalog::EQUIPPED_SLOTS, null);
         foreach ($rows as $row) {
+            if (! array_key_exists($row->equipped_slot, $equipped)) {
+                throw new RuntimeException('Underground equipped slot is unsupported.');
+            }
             $equipped[$row->equipped_slot] = $this->projectOwned($row);
         }
 
@@ -40,23 +43,65 @@ final readonly class UndergroundEquipmentLoadoutResolver
     }
 
     /** @return array<string, mixed> */
-    public function projectOwned(UndergroundOwnedEquipment $row): array
+    public function definitionForRow(UndergroundOwnedEquipment $row): array
     {
-        if ($row->catalog_identity !== $this->catalog->identity()) {
+        if (! $this->catalog->supportsIdentity($row->catalog_identity)) {
             throw new RuntimeException('Underground owned equipment catalog identity is unsupported.');
         }
-        $definition = $this->catalog->definition($row->definition_key);
+        if ($row->instance_kind === 'fixed') {
+            return $this->catalog->definition($row->definition_key, $row->catalog_identity);
+        }
+        if ($row->instance_kind !== 'generated'
+            || $row->generator_identity !== $this->catalog->generatorIdentity()
+            || ! is_string($row->instance_identity) || strlen($row->instance_identity) !== 64
+            || ! is_array($row->generated_payload)) {
+            throw new RuntimeException('Underground generated equipment persistence is invalid.');
+        }
+        $definition = $row->generated_payload;
+        if (($definition['instance_identity'] ?? null) !== $row->instance_identity
+            || ($definition['generator_identity'] ?? null) !== $row->generator_identity
+            || ($definition['key'] ?? null) !== $row->definition_key) {
+            throw new RuntimeException('Underground generated equipment identity is inconsistent.');
+        }
+        $this->catalog->assertDefinition($definition, true);
+
+        return $definition;
+    }
+
+    /** @return array<string, mixed> */
+    public function projectOwned(UndergroundOwnedEquipment $row): array
+    {
+        $definition = $this->definitionForRow($row);
+        $projection = $definition;
+        unset($projection['base'], $projection['source']);
+        $projection['affixes'] = array_map(
+            static fn (array $affix): array => [
+                'key' => $affix['key'],
+                'label' => $affix['label'],
+                'kind' => $affix['kind'],
+                'target' => $affix['target'],
+                'value' => $affix['value'],
+                'quality_bps' => $affix['quality_bps'],
+            ],
+            $definition['affixes'],
+        );
 
         return [
             'id' => $row->id,
-            ...$definition,
+            ...$projection,
+            'instance_kind' => $row->instance_kind,
+            'instance_identity' => $row->instance_identity,
+            'generator_identity' => $row->generator_identity,
+            'catalog_identity' => $row->catalog_identity,
             'sell_price' => $this->catalog->sellPrice($definition),
             'equipped_slot' => $row->equipped_slot,
             'acquired_at' => $row->acquired_at->toIso8601String(),
         ];
     }
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * @return list<array{slot: string, definition: array<string, mixed>, catalog_identity: string, instance_identity: string|null}>
+     */
     private function equippedDefinitions(UndergroundProfile $profile): array
     {
         /** @var Collection<int, UndergroundOwnedEquipment> $rows */
@@ -67,14 +112,21 @@ final readonly class UndergroundEquipmentLoadoutResolver
             ->get();
         $definitions = [];
         foreach ($rows as $row) {
-            if ($row->catalog_identity !== $this->catalog->identity()) {
-                throw new RuntimeException('Underground equipped catalog identity is unsupported.');
+            $definition = $this->definitionForRow($row);
+            $slot = $row->equipped_slot;
+            if (! is_string($slot) || ! in_array($slot, UndergroundEquipmentCatalog::EQUIPPED_SLOTS, true)) {
+                throw new RuntimeException('Underground equipped slot is unsupported.');
             }
-            $definition = $this->catalog->definition($row->definition_key);
-            if ($definition['category'] !== $row->equipped_slot) {
+            $expectedCategory = str_starts_with($slot, 'accessory_') ? 'accessory' : $slot;
+            if ($definition['category'] !== $expectedCategory) {
                 throw new RuntimeException('Underground equipped slot is incompatible.');
             }
-            $definitions[] = $definition;
+            $definitions[] = [
+                'slot' => $slot,
+                'definition' => $definition,
+                'catalog_identity' => $row->catalog_identity,
+                'instance_identity' => $row->instance_identity,
+            ];
         }
 
         return $definitions;
