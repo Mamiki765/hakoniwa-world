@@ -710,6 +710,8 @@ async function confirmRespec(): Promise<void> {
     pendingRespecMutation.value = pending;
     if (await mutate('/api/v1/me/underground/respec', { growth_path_key: path.key }, pending.requestId)) {
         pendingRespecMutation.value = null;
+        stpDraft.value = { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 };
+        pendingStpMutation.value = null;
         selectedRespecPathKey.value = null;
         respecConfirmOpen.value = false;
     }

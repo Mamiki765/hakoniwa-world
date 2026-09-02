@@ -3619,7 +3619,14 @@ describe('Underground equipment navigation', () => {
             next_level_xp: 200, next_level_requirement: 100, xp_to_next_level: 100, shard_balance: 240,
             banked_shard_balance: 1000, current_hp: 400, unspent_stp: 5,
             allocated_stp: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 }, current_stats: paths[0]!.stats,
-            combat_stats: paths[0]!.stats, status_breakdown: null,
+            combat_stats: paths[0]!.stats,
+            status_breakdown: {
+                vitality: { baseline: 26, natural_growth: 1, allocated_stp: 0, equipment: 0, final: 27 },
+                might: { baseline: 22, natural_growth: 1, allocated_stp: 0, equipment: 0, final: 23 },
+                finesse: { baseline: 20, natural_growth: 1, allocated_stp: 0, equipment: 0, final: 21 },
+                spirit: { baseline: 20, natural_growth: 1, allocated_stp: 0, equipment: 0, final: 21 },
+                agility: { baseline: 12, natural_growth: 0, allocated_stp: 0, equipment: 0, final: 12 },
+            },
             equipment_summary: { used: 1, capacity: 500, equipped: { weapon: null, armor: null, accessory: null } },
             skill_points_total: 20, skill_points_unspent: 5, skill_points_spent: 15, skill_tree_identity: 'tree-v1',
             skill_trees: null, active_slots: [null, null, null, null, null], passive_modifiers: {}, shopkeeper_name: '案内人',
@@ -3657,6 +3664,9 @@ describe('Underground equipment navigation', () => {
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
+        await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
+        await wrapper.get('input[aria-label="生命の今回の配分"]').setValue(2);
+        expect(wrapper.get('.underground-progression-panel .button.primary').text()).toBe('2 STPを一括確定');
         expect(wrapper.findAll('.underground-main-navigation button').map((button) => button.text()))
             .toEqual(['地下メイン', '装備ショップ', '案内人の部屋', '宝物庫']);
         await wrapper.findAll('.underground-main-navigation button')[2]!.trigger('click');
@@ -3685,6 +3695,9 @@ describe('Underground equipment navigation', () => {
         expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
         expect(wrapper.get('.underground-respec-notice').text()).toContain('次の再振りまであと');
         expect(wrapper.get('.underground-respec-submit').attributes('disabled')).toBeDefined();
+        await wrapper.findAll('.underground-main-navigation button')[0]!.trigger('click');
+        expect((wrapper.get('input[aria-label="生命の今回の配分"]').element as HTMLInputElement).value).toBe('0');
+        expect(wrapper.get('.underground-progression-panel .button.primary').attributes('disabled')).toBeDefined();
         wrapper.unmount();
     });
 });
