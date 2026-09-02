@@ -4,17 +4,22 @@
 
 このreportは、相対敏捷combo・相対回避とTrial 1のenemy敏捷rebaselineをcanonical Underground combat pathで確認したmanual simulation evidenceである。旧Trialのclear率は比較観測であり、新しい敏捷仕様を旧値へ弱めるacceptance gateにはしない。
 
-- Final sanity source commit: `0ea2994d6ec464c97fb7d51ae4e4055ea29ea02a`
+- Final sanity source commit: `7fd9869e1cf253af9e849a0a8e8bbbcc47d51d49`
 - Rebaseline 1000-seed source commit: `eeedc919c6ee582942382a88e10a1cdca3d3c764`
+- Historical checked-in 1000-seed source commit: `5ac91899f19655685b64107f4a62deb11358c9c2`
 - Simulator: `underground-trial-balance-v2`
 - Manifest: `config/underground/balance/trial1-v1.json`
-- Manifest SHA-256: `46b945795f905f862514ce8939f04932b46a48ee7367706d4b494e3420b624ab`
+- Final manifest SHA-256: `0c102d7a1bd67d4afb3bfc8a3306b824c72d944587f8d5530d8d7912b8d703dc`
+- Rebaseline manifest SHA-256: `46b945795f905f862514ce8939f04932b46a48ee7367706d4b494e3420b624ab`
+- Historical checked-in manifest SHA-256: `6c65f49c9eb8008c1b2ce9fc36ba5ed9501a4b3c423679ba643209c025d598ff`
 - Final sanity seeds: 52 scenariosそれぞれ`0..99`
 - Rebaseline seeds: 52 scenariosそれぞれ`0..999`
 - Builds: primary 4、同量STP比較6、Owner実績祝福1
-- Final machine-readable report: [underground-trial1-v1-final-100-seeds.json](underground-trial1-v1-final-100-seeds.json)
-- Rebaseline machine-readable report: [underground-trial1-v1-1000-seeds.json](underground-trial1-v1-1000-seeds.json)
+- Final working tree: `working_tree_dirty=false`
+- Final compact summary: 本文のcurve・build/level aggregate・Trial各戦aggregate・比較値。最終100-seed完全JSONはrepositoryへ保存しない
+- Historical machine-readable report（変更なし）: [underground-trial1-v1-1000-seeds.json](underground-trial1-v1-1000-seeds.json)
 - Final result: `trial_contract_passed=true`、`laboratory_contract_passed=true`、abnormal seed / stalemate / failure後継続はいずれも0
+- Final combat identity: `secretary-underground-alpha-v2`
 
 MPは各戦闘10,000で開始し、roundごとに300回復する。MPは戦闘間で持ち越さず、HPだけを持ち越して指定率の回復を行う。主比較は現行contractの20%回復である。
 
@@ -204,13 +209,16 @@ Lv25は旧35.6%に対し最終sanity 27.0%、Lv30は実質同等、Lv20は旧新
 - 小さい赤字の`N連続ヒット！`は、回避または完全防御ではない最初のdamage行へ1回だけ表示する。damage log自体は増やさない。
 - initiativeは実効敏捷が高い側を先とし、同値時だけ既存tie-breakを使う。
 - `evasion_bps` stacking、complete guard、action impairment、canonical transaction/RNG pathを維持する。
+- evasion・damage・RNG semanticsの変更を旧snapshotと区別するため、combat identityを`secretary-underground-alpha-v2`へversionした。通常探索・Trial・story・playtestの新規battle snapshot/reportはv2を保存し、既存v1 snapshotは履歴として書き換えないためmigrationは不要である。
 - Trial content identityは同じrelease draftの`secretary-underground-trial-01-v2`へ更新し、追加世代を作らない。
 - migration、Surface Ruleset変更、parallel combat engineはない。
 
 ## 10. Reproduction
 
 ```powershell
-php artisan underground:balance --manifest=config/underground/balance/trial1-v1.json --seed-start=0 --count=100 --commit-sha=0ea2994d6ec464c97fb7d51ae4e4055ea29ea02a --output=docs/underground-trial1-v1-final-100-seeds.json
+php artisan underground:balance --manifest=config/underground/balance/trial1-v1.json --seed-start=0 --count=100 --commit-sha=7fd9869e1cf253af9e849a0a8e8bbbcc47d51d49 --output=$env:TEMP/underground-trial1-v1-final-100-seeds.json
 ```
 
-基礎combatの10,000-seed reportは係数2000候補のsource `eeedc919c6ee582942382a88e10a1cdca3d3c764`で完了済みである。最終の回避係数だけを2000から1600へ補正したため、Owner判断により基礎10,000 seedは再実行せず、curveのfocused regressionとTrial各条件100 seedでsanityを確認した。heavy simulationはmanual evidenceに限定し、CIではdeterministic focused smoke、curve、combo semantics、matched STP contractを検証する。
+完全JSONはaggregate抽出時だけ一時生成し、repositoryへcommitしない。保存対象は上記provenanceと本文のcompact summaryのみとする。
+
+基礎combatの10,000-seed確認は係数2000候補のsource `eeedc919c6ee582942382a88e10a1cdca3d3c764`で完了済みだが、その巨大な完全reportは保存しない。既存のhistorical 10,000-seed report（source `763e8b4582d972506a5361872d02659dab95923e`）は変更していない。最終の回避係数だけを2000から1600へ補正したため、Owner判断により基礎10,000 seedは再実行せず、curveのfocused regressionとTrial各条件100 seedでsanityを確認した。heavy simulationはmanual evidenceに限定し、CIではdeterministic focused smoke、curve、combo semantics、matched STP contractを検証する。

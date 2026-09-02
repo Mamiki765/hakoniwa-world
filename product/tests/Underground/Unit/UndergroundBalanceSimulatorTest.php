@@ -43,12 +43,14 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $second = $simulator->replay($manifest, 'free_black:lv30:heal3000', 41);
 
         $this->assertSame($first, $second);
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $first['combat_identity']);
         $this->assertTrue($first['result']['cleared']);
         $this->assertCount(10, $first['result']['battles']);
         $this->assertSame($first['result']['battles'][9]['remaining_hp'], $first['result']['final_hp']);
         $maxHp = $first['result']['build']['max_hp'];
         $nominalHeal = intdiv($maxHp * 3000, 10_000);
         foreach ($first['result']['battles'] as $index => $battle) {
+            $this->assertSame(AlphaV1CombatRules::IDENTITY, $battle['combat_identity']);
             $expectedPostHeal = $index < 9
                 ? min($maxHp, $battle['remaining_hp'] + $nominalHeal)
                 : $battle['remaining_hp'];
@@ -320,6 +322,10 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         );
 
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $report['combat_identity']);
+        $this->assertSame(
+            AlphaV1CombatRules::IDENTITY,
+            $simulator->replay($manifest, 'pressure:pure_attacker:early', 41)['combat_identity'],
+        );
         $this->assertSame(AlphaV1CombatRules::GENERATOR_IDENTITY, $report['generator_identity']);
         $this->assertSame(300, $report['selected_mp_natural_recovery']);
         $this->assertTrue($report['laboratory_contract_passed']);

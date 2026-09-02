@@ -152,6 +152,7 @@ final readonly class UndergroundTrialBalanceSimulator
         return [
             'simulation_type' => self::SIMULATION_TYPE,
             'simulator_version' => self::SIMULATOR_VERSION,
+            'combat_identity' => AlphaV1CombatRules::IDENTITY,
             'trial_identity' => $normalized['trial_identity'],
             'scenario' => $scenario,
             'seed' => $seed,
@@ -376,6 +377,7 @@ final readonly class UndergroundTrialBalanceSimulator
                 'key' => $enemyKey,
                 'label' => $normalized['enemies'][$enemyKey]['label'],
                 'seed' => $result->seed,
+                'combat_identity' => $result->rulesIdentity,
                 'winner' => $result->winner,
                 'rounds' => $result->rounds,
                 'remaining_hp' => $remainingHp,

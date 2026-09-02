@@ -78,6 +78,8 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 敏捷comboはactionごとに1回だけ2・3・4連続ヒットを抽選し、通常のcritical・variance・防御・guard等を解決したpost-mitigation damageへ最終倍率を掛ける。action、damage event、critical、status、覚醒ゲージ、native multi-hit数は追加せず、native multi-hitにも同じaction単位のcombo結果を使う。logはnative damage行を増やさず、回避または完全防御ではない最初のdamage行に補助表示用hit数を1回だけ持つ。
 
+このevasion・damage・RNG semantics変更後のactive combat identityは`secretary-underground-alpha-v2`とする。`AlphaV1*`のclass名と`foundation-v1.json`等のfile名は既存canonical implementation lineageであり、persisted identityのauthorityには使わない。通常探索・Trial・story・playtest・manual simulatorの新規結果はv2をsnapshot/reportへ保存する。既存v1 battle snapshotはhistorical recordとしてそのまま投影できるためmigrationは行わず、parallel combat engineも追加しない。
+
 ### Alpha-v1 damage and recovery order
 
 alpha-v1は`attack - defense`を使わず、次の順序を固定する。
