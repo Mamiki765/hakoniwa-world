@@ -231,6 +231,7 @@ interface PendingMutation {
 interface PendingExplorationRequest {
     requestId: string;
     huntingGroundKey: string;
+    intentKey: string;
 }
 
 interface UndergroundState {
@@ -401,6 +402,7 @@ const equipmentSlotLabels: Record<EquipmentSlot, string> = {
     accessory_2: 'アクセサリー2',
     accessory_3: 'アクセサリー3',
 };
+const huntingGroundPreferenceKey = 'hakoniwa.underground.selected-hunting-ground';
 function equipmentSlotLabel(slot: EquipmentSlot): string { return equipmentSlotLabels[slot]; }
 const props = defineProps<{ secretaryImageUrl?: string | null }>();
 const emit = defineEmits<{ returnToSecretary: [] }>();
@@ -415,6 +417,7 @@ const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
+const selectedHuntingGroundKey = ref('shallow_caves');
 const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
 const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
 const pendingInnRequestId = ref<string | null>(null);
@@ -434,7 +437,19 @@ const awakeningMessageDraft = ref('');
 const equipmentView = ref<'main' | 'shop' | 'vault'>('main');
 const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
+let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const unlockedHuntingGrounds = computed(() => (state.value?.hunting_grounds ?? [])
+    .filter((ground) => !ground.locked));
+const selectedHuntingGround = computed(() => unlockedHuntingGrounds.value
+    .find((ground) => ground.key === selectedHuntingGroundKey.value) ?? null);
+const repeatableExplorationGroundKey = computed(() => {
+    const battle = currentBattle.value;
+    if (battle?.context !== 'exploration' || !battle.hunting_ground) return null;
+    return unlockedHuntingGrounds.value.some((ground) => ground.key === battle.hunting_ground?.key)
+        ? battle.hunting_ground.key
+        : null;
+});
 const canAdvanceTrial = computed(() => {
     const battle = currentBattle.value;
     const activeRun = state.value?.trial?.active_run;
@@ -530,8 +545,49 @@ watch(() => state.value?.awakening, (awakening) => {
     awakeningMessageDraft.value = awakening.custom_message ?? awakening.default_message;
 }, { deep: true, immediate: true });
 
+watch(() => state.value?.hunting_grounds, (grounds) => {
+    if (!grounds) return;
+    const unlocked = grounds.filter((ground) => !ground.locked);
+    let preferredKey = selectedHuntingGroundKey.value;
+    if (!huntingGroundPreferenceHydrated) {
+        try {
+            preferredKey = window.localStorage.getItem(huntingGroundPreferenceKey) ?? 'shallow_caves';
+        } catch {
+            preferredKey = 'shallow_caves';
+        }
+        huntingGroundPreferenceHydrated = true;
+    }
+    const nextKey = unlocked.some((ground) => ground.key === preferredKey)
+        ? preferredKey
+        : unlocked.find((ground) => ground.key === 'shallow_caves')?.key ?? unlocked[0]?.key ?? 'shallow_caves';
+    if (pendingExplorationRequest.value?.huntingGroundKey !== nextKey) {
+        pendingExplorationRequest.value = null;
+    }
+    selectedHuntingGroundKey.value = nextKey;
+    try {
+        window.localStorage.setItem(huntingGroundPreferenceKey, nextKey);
+    } catch {
+        // Browser storage may be unavailable; the in-memory safe fallback remains valid.
+    }
+}, { deep: true, immediate: true });
+
 function requestId(): string {
     return crypto.randomUUID();
+}
+
+function selectHuntingGround(key: string): void {
+    if (!unlockedHuntingGrounds.value.some((ground) => ground.key === key)) return;
+    if (selectedHuntingGroundKey.value !== key) pendingExplorationRequest.value = null;
+    selectedHuntingGroundKey.value = key;
+    try {
+        window.localStorage.setItem(huntingGroundPreferenceKey, key);
+    } catch {
+        // Browser storage is optional for this UI-only preference.
+    }
+}
+
+function changeHuntingGround(event: Event): void {
+    if (event.target instanceof HTMLSelectElement) selectHuntingGround(event.target.value);
 }
 
 async function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
@@ -624,12 +680,17 @@ async function runPlaytest(): Promise<void> {
     }
 }
 
-async function runExplore(huntingGroundKey: string): Promise<void> {
+async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground'): Promise<void> {
     if (busy.value) return;
     innRested.value = false;
-    const pending = pendingExplorationRequest.value ?? {
+    const currentPending = pendingExplorationRequest.value;
+    const pending = currentPending?.huntingGroundKey === huntingGroundKey
+        && currentPending.intentKey === intentKey
+        ? currentPending
+        : {
         requestId: requestId(),
         huntingGroundKey,
+        intentKey,
     };
     pendingExplorationRequest.value = pending;
     busy.value = true;
@@ -651,6 +712,20 @@ async function runExplore(huntingGroundKey: string): Promise<void> {
     } finally {
         busy.value = false;
     }
+}
+
+async function runSelectedExploration(): Promise<void> {
+    const groundKey = selectedHuntingGround.value?.key;
+    if (!groundKey) return;
+    await runExplore(groundKey);
+}
+
+async function repeatCurrentExploration(): Promise<void> {
+    const battle = currentBattle.value;
+    const groundKey = repeatableExplorationGroundKey.value;
+    if (!battle || !groundKey) return;
+    selectHuntingGround(groundKey);
+    await runExplore(groundKey, `repeat-battle:${battle.id}`);
 }
 
 async function runTrial(): Promise<void> {
@@ -1105,6 +1180,15 @@ onUnmounted(() => {
                 >
                     次の階層へ<small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
                 </button>
+                <button
+                    v-if="repeatableExplorationGroundKey"
+                    class="button primary underground-exploration-repeat"
+                    type="button"
+                    :disabled="busy || exploreCooldownSeconds > 0"
+                    @click="repeatCurrentExploration"
+                >
+                    もう一度ここを探索する<small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
+                </button>
                 <button class="button secondary underground-battle-back" type="button" @click="closeBattle">地下メインへ戻る</button>
             </div>
         </template>
@@ -1254,19 +1338,31 @@ onUnmounted(() => {
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <h2 id="underground-adventure-title">冒険</h2>
                         <div class="underground-entries">
-                            <button
-                                v-for="ground in state.hunting_grounds ?? []"
-                                :key="ground.key"
-                                type="button"
-                                :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || ground.locked"
-                                @click="runExplore(ground.key)"
-                            >
-                                {{ ground.name }}を探索
-                                <small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
-                                <small v-else-if="ground.locked">{{ ground.unlock_condition }}</small>
-                                <small v-else>Item Lv {{ ground.item_level_min }}〜{{ ground.item_level_max }}</small>
-                            </button>
-                            <button type="button" :disabled="busy || exploreCooldownSeconds > 0 || !state.trial" @click="runTrial">封印の地<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : state.trial?.active_run ? `${state.trial.active_run.next_battle_index}/${state.trial.active_run.total_battles}戦目` : state.trial?.label }}</small></button>
+                            <div class="underground-explore-picker">
+                                <button
+                                    class="underground-explore-button"
+                                    type="button"
+                                    :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !selectedHuntingGround"
+                                    @click="runSelectedExploration"
+                                >
+                                    周囲を探索
+                                    <small>{{ selectedHuntingGround?.name ?? '浅い洞窟' }}</small>
+                                    <small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
+                                </button>
+                                <template v-if="unlockedHuntingGrounds.length > 1">
+                                    <select
+                                        class="underground-ground-selector"
+                                        aria-label="狩場を選択"
+                                        :value="selectedHuntingGroundKey"
+                                        :disabled="busy || Boolean(state.trial?.active_run)"
+                                        @change="changeHuntingGround"
+                                    >
+                                        <option v-for="ground in unlockedHuntingGrounds" :key="ground.key" :value="ground.key">{{ ground.name }}</option>
+                                    </select>
+                                    <span class="underground-ground-chevron" aria-hidden="true">▼</span>
+                                </template>
+                            </div>
+                            <button class="underground-trial-entry" type="button" :disabled="busy || exploreCooldownSeconds > 0 || !state.trial" @click="runTrial">封印の地<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : state.trial?.active_run ? `${state.trial.active_run.next_battle_index}/${state.trial.active_run.total_battles}戦目` : state.trial?.label }}</small></button>
                         </div>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
                     </section>
