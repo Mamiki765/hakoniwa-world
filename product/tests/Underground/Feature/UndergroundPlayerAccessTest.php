@@ -69,6 +69,10 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => (string) Str::uuid(),
             'allocations' => ['vitality' => 1],
         ])->assertUnauthorized();
+        $this->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ])->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/skills/acquire', [
             'request_id' => (string) Str::uuid(),
             'node_key' => 'miracle_holy_bolt',
@@ -902,6 +906,206 @@ final class UndergroundPlayerAccessTest extends TestCase
             $otherProfile->banked_shard_balance,
         ]);
         $this->assertSame($other->id, $otherSecretary->user_id);
+    }
+
+    public function test_respec_combines_growth_stp_and_skill_reset_without_healing_or_rewinding_progress(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Respec secretary');
+        $profile = $this->openEquipmentProfile($secretary, 1_000, 9_000);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
+        $profile->update([
+            'unlocked_area_layers' => 2,
+            'combat_level' => 4,
+            'combat_xp' => 345,
+            'current_hp' => 123,
+            'growth_path_key' => 'guardianship_blue',
+            'unspent_stp' => 5,
+            'allocated_vitality_stp' => 10,
+            'skill_points_total' => 60,
+            'skill_points_unspent' => 55,
+            'awakening_gauge' => 750,
+            'awakening_message' => '私がついています！',
+        ]);
+        UndergroundSkillAllocation::query()->create([
+            'underground_profile_id' => $profile->id,
+            'node_key' => 'miracle_holy_bolt',
+            'rank' => 1,
+            'active_slot' => 1,
+        ]);
+        $clearedAt = Carbon::now()->subHour();
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'unlocked_at' => $clearedAt->copy()->subHour(),
+            'first_cleared_at' => $clearedAt,
+        ]);
+        $intro = UndergroundIntroProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->sole();
+        $equipmentIds = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+        $this->assertNotEmpty($equipmentIds);
+
+        $requestId = (string) Str::uuid();
+        $payload = [
+            'request_id' => $requestId,
+            'growth_path_key' => 'free_black',
+        ];
+        $result = $this->actingAs($user)->postJson('/api/v1/me/underground/respec', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.stage', 'underground_open')
+            ->assertJsonPath('data.growth_path.key', 'free_black')
+            ->assertJsonPath('data.shard_balance', 960)
+            ->assertJsonPath('data.banked_shard_balance', 9_000)
+            ->assertJsonPath('data.combat_level', 4)
+            ->assertJsonPath('data.combat_xp', 345)
+            ->assertJsonPath('data.current_hp', 123)
+            ->assertJsonPath('data.unspent_stp', 18)
+            ->assertJsonPath('data.allocated_stp', [
+                'vitality' => 0,
+                'might' => 0,
+                'finesse' => 0,
+                'spirit' => 0,
+                'agility' => 0,
+            ])
+            ->assertJsonPath('data.skill_points_total', 60)
+            ->assertJsonPath('data.skill_points_unspent', 60)
+            ->assertJsonPath('data.active_slots', [null, null, null, null, null])
+            ->assertJsonPath('data.respec.cost', 40)
+            ->assertJsonPath('data.awakening.current', 750)
+            ->assertJsonPath('data.awakening.custom_message', '私がついています！');
+        $this->assertNotNull($result->json('data.respec.last_completed_at'));
+        $this->assertNotNull($result->json('data.respec.next_available_at'));
+        $this->assertSame(
+            24 * 60 * 60,
+            Carbon::parse((string) $result->json('data.respec.next_available_at'))->getTimestamp()
+                - Carbon::parse((string) $result->json('data.respec.last_completed_at'))->getTimestamp(),
+        );
+
+        $profile->refresh();
+        $this->assertSame([
+            2, 4, 345, 960, 9_000, 123, 'free_black', 18, 60, 60, 750, '私がついています！',
+        ], [
+            $profile->unlocked_area_layers,
+            $profile->combat_level,
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->banked_shard_balance,
+            $profile->current_hp,
+            $profile->growth_path_key,
+            $profile->unspent_stp,
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+            $profile->awakening_gauge,
+            $profile->awakening_message,
+        ]);
+        $this->assertSame(0, array_sum($profile->allocatedStp()));
+        $this->assertNotNull($profile->underground_contract_completed_at);
+        $this->assertNotNull($profile->last_respec_at);
+        $this->assertSame(0, UndergroundSkillAllocation::query()
+            ->where('underground_profile_id', $profile->id)->count());
+        $this->assertSame($equipmentIds, UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->orderBy('id')
+            ->pluck('id')
+            ->all());
+        $this->assertDatabaseHas('underground_trial_progress', [
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_01',
+            'first_cleared_at' => $clearedAt,
+        ]);
+        $this->assertDatabaseHas('underground_intro_progress', [
+            'id' => $intro->id,
+            'underground_profile_id' => $profile->id,
+            'stage' => 'underground_open',
+            'tutorial_battle_id' => $intro->tutorial_battle_id,
+        ]);
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', $payload)
+            ->assertOk()->assertExactJson($result->json());
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            ...$payload,
+            'growth_path_key' => 'martial_red',
+        ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'martial_red',
+        ])->assertConflict()->assertJsonPath('code', 'underground_respec_cooldown');
+        $this->assertSame(960, $profile->fresh()->shard_balance);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'respec')
+            ->count());
+    }
+
+    public function test_respec_rejects_invalid_insufficient_and_active_trial_requests_atomically(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Respec failure secretary');
+        $profile = $this->openEquipmentProfile($secretary, 39, 9_000);
+        $profile->update([
+            'combat_level' => 4,
+            'combat_xp' => 345,
+            'current_hp' => 123,
+            'unspent_stp' => 5,
+            'allocated_vitality_stp' => 10,
+            'skill_points_total' => 60,
+            'skill_points_unspent' => 55,
+        ]);
+        $allocation = UndergroundSkillAllocation::query()->create([
+            'underground_profile_id' => $profile->id,
+            'node_key' => 'miracle_holy_bolt',
+            'rank' => 1,
+            'active_slot' => 1,
+        ]);
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'unknown_path',
+        ])->assertUnprocessable();
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ])->assertConflict()->assertJsonPath('code', 'underground_respec_insufficient_carried_shards');
+
+        $profile->update(['shard_balance' => 1_000]);
+        UndergroundTrialRun::query()->create([
+            'underground_profile_id' => $profile->id,
+            'run_key' => (string) Str::uuid(),
+            'trial_key' => 'trial_01',
+            'trial_content_identity' => 'secretary-underground-trial-01-v2',
+            'next_battle_index' => 2,
+            'status' => UndergroundTrialRun::STATUS_ACTIVE,
+            'started_at' => Carbon::now(),
+        ]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ])->assertConflict()->assertJsonPath('code', 'underground_trial_active');
+
+        $profile->refresh();
+        $this->assertSame([
+            4, 345, 1_000, 9_000, 123, 'martial_red', 5, 10, 60, 55, null,
+        ], [
+            $profile->combat_level,
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->banked_shard_balance,
+            $profile->current_hp,
+            $profile->growth_path_key,
+            $profile->unspent_stp,
+            $profile->allocated_vitality_stp,
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+            $profile->last_respec_at,
+        ]);
+        $this->assertSame(1, UndergroundSkillAllocation::query()->whereKey($allocation->id)->count());
+        $this->assertSame(0, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'respec')
+            ->count());
     }
 
     public function test_true_name_branch_runs_one_logged_alpha_v1_scripted_loss_without_normal_penalties(): void

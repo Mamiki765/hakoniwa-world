@@ -177,6 +177,20 @@ try {
             'unspent_stp' => $result['unspent_stp'],
             'allocated_stp' => $result['allocated_stp'],
         ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'respec') {
+        $result = app(UndergroundIntroService::class)->respec(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['growth_path_key'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'request_id' => $payload['request_id'],
+            'growth_path_key' => $result['growth_path']['key'],
+            'shard_balance' => $result['shard_balance'],
+            'last_completed_at' => $result['respec']['last_completed_at'],
+        ], JSON_THROW_ON_ERROR));
     } elseif (($payload['operation'] ?? 'explore') === 'skill_acquire') {
         $result = app(UndergroundIntroService::class)->acquireSkillNode(
             $user,

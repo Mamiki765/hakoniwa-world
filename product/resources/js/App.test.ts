@@ -3600,4 +3600,178 @@ describe('Underground equipment navigation', () => {
         expect(wrapper.get('.underground-equipment-screen').text()).toContain('所有済み');
         wrapper.unmount();
     });
+
+    it('opens the Guide room, selects a respec path, and retries confirmation with the same UUID', async () => {
+        const growthPath = (key: string, label: string, color: string) => ({
+            key, label, color, description: [`${label}の成長方針`], default_build_key: 'balanced',
+            stats: { vitality: 26, might: 22, finesse: 20, spirit: 20, agility: 12 },
+            max_hp: 548, max_mp: 10000, natural_recovery: 300,
+            natural_growth: { vitality: 1, might: 1, finesse: 1, spirit: 1, agility: 0 },
+            unspent_stp_per_level: key === 'free_black' ? 6 : 5, points_per_level: 10,
+        });
+        const paths = [
+            growthPath('martial_red', '戦技', 'red'),
+            growthPath('free_black', '自由', 'black'),
+        ];
+        const skillTrees = [{
+            key: 'martial', label: '戦技', invested_points: 5, full_points: 10, nodes: [{
+                key: 'quick_cut_node', label: '早業', summary: '素早く斬る。', type: 'active' as const,
+                rank: 1, max_rank: 1, point_cost: 5, invested_points_required: 0, prerequisite: null,
+                can_acquire: false, unavailable_reason: null, skill_key: 'quick_cut', mp_cost: 100,
+                cooldown: 0, required_weapon_styles: [], recommended_stats: ['finesse'], active_slot: null,
+            }, {
+                key: 'guard_training', label: '防御の心得', summary: '守りを固める。', type: 'passive' as const,
+                rank: 0, max_rank: 1, point_cost: 5, invested_points_required: 0, prerequisite: null,
+                can_acquire: true, unavailable_reason: null, skill_key: null, mp_cost: null,
+                cooldown: null, required_weapon_styles: [], recommended_stats: null, active_slot: null,
+            }],
+        }];
+        let respecProjection = { cost: 20, last_completed_at: null as string | null, next_available_at: null as string | null, growth_paths: paths };
+        let respecCommitted = false;
+        let openState = {
+            stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 2, combat_xp: 100,
+            next_level_xp: 200, next_level_requirement: 100, xp_to_next_level: 100, shard_balance: 240,
+            banked_shard_balance: 1000, current_hp: 400, unspent_stp: 5,
+            allocated_stp: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 }, current_stats: paths[0]!.stats,
+            combat_stats: paths[0]!.stats,
+            status_breakdown: {
+                vitality: { baseline: 26, natural_growth: 1, allocated_stp: 0, equipment: 0, final: 27 },
+                might: { baseline: 22, natural_growth: 1, allocated_stp: 0, equipment: 0, final: 23 },
+                finesse: { baseline: 20, natural_growth: 1, allocated_stp: 0, equipment: 0, final: 21 },
+                spirit: { baseline: 20, natural_growth: 1, allocated_stp: 0, equipment: 0, final: 21 },
+                agility: { baseline: 12, natural_growth: 0, allocated_stp: 0, equipment: 0, final: 12 },
+            },
+            equipment_summary: { used: 1, capacity: 500, equipped: { weapon: null, armor: null, accessory: null } },
+            skill_points_total: 20, skill_points_unspent: 5, skill_points_spent: 15, skill_tree_identity: 'tree-v1',
+            skill_trees: skillTrees, active_slots: [null, null, null, null, null], passive_modifiers: {}, shopkeeper_name: '案内人',
+            true_name_branch: false, tutorial_projection: { stats: paths[0]!.stats, weapon: 'starter knife' },
+            contract_completed: true, growth_paths: null, growth_path: paths[0]!, playtest: null,
+            default_hunting_ground_key: null, hunting_grounds: [],
+            respec: respecProjection,
+            trial: { key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10, first_cleared: false, active_run: null },
+            awakening: null, battle: null, next_battle_at: null,
+        };
+        const respecPayloads: Array<{ request_id: string; growth_path_key: string }> = [];
+        const skillPayloads: Array<{ request_id: string; node_key: string }> = [];
+        const loadoutPayloads: Array<{ request_id: string; slots: Array<string | null> }> = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') return response(openState);
+            if (path === '/api/v1/me/underground/battles') {
+                if (respecCommitted) throw new TypeError('Battle history refresh failed');
+                return response([]);
+            }
+            if (path === '/api/v1/me/underground/respec' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as { request_id: string; growth_path_key: string };
+                respecPayloads.push(payload);
+                if (respecPayloads.length === 1) throw new TypeError('Respec response lost');
+                respecProjection = {
+                    ...respecProjection,
+                    last_completed_at: '2099-08-20T00:00:00+09:00',
+                    next_available_at: '2099-08-21T00:00:00+09:00',
+                };
+                openState = {
+                    ...openState,
+                    shard_balance: 220,
+                    skill_points_unspent: 20,
+                    skill_points_spent: 0,
+                    skill_trees: openState.skill_trees.map((tree) => ({
+                        ...tree,
+                        invested_points: 0,
+                        nodes: tree.nodes.map((node) => ({ ...node, rank: 0, can_acquire: true, active_slot: null })),
+                    })),
+                    active_slots: [null, null, null, null, null],
+                    respec: respecProjection,
+                };
+                respecCommitted = true;
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/skills/acquire' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as { request_id: string; node_key: string };
+                skillPayloads.push(payload);
+                if (!respecCommitted) throw new TypeError('Skill response lost');
+                openState = {
+                    ...openState,
+                    skill_trees: openState.skill_trees.map((tree) => ({
+                        ...tree,
+                        nodes: tree.nodes.map((node) => node.key === payload.node_key
+                            ? { ...node, rank: 1, can_acquire: false }
+                            : node),
+                    })),
+                };
+                return response(openState);
+            }
+            if (path === '/api/v1/me/underground/skills/loadout' && init?.method === 'PUT') {
+                const payload = JSON.parse(String(init.body)) as { request_id: string; slots: Array<string | null> };
+                loadoutPayloads.push(payload);
+                if (!respecCommitted) throw new TypeError('Loadout response lost');
+                return response(openState);
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+
+        await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
+        await wrapper.get('#underground-active-loadout select').setValue('quick_cut');
+        await wrapper.get('#underground-active-loadout .button.primary').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Loadout response lost');
+        await wrapper.get('.underground-skill-node button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Skill response lost');
+        await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
+        await wrapper.get('input[aria-label="生命の今回の配分"]').setValue(2);
+        expect(wrapper.get('.underground-progression-panel .button.primary').text()).toBe('2 STPを一括確定');
+        expect(wrapper.findAll('.underground-main-navigation button').map((button) => button.text()))
+            .toEqual(['地下メイン', '装備ショップ', '案内人の部屋', '宝物庫']);
+        await wrapper.findAll('.underground-main-navigation button')[2]!.trigger('click');
+        expect(wrapper.get('.underground-guide-room-greeting').text()).toBe('案内人「あら、どうしたんですか？」');
+        await wrapper.get('.underground-guide-actions button').trigger('click');
+        expect(wrapper.get('.underground-guide-conversation').text())
+            .toBe('「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」');
+        await wrapper.findAll('.underground-guide-actions button')[1]!.trigger('click');
+        expect(wrapper.get('.underground-respec-explanations').text()).toContain('SP・STP・成長方針を再設定します。');
+        expect(wrapper.get('.underground-respec-explanations').text()).toContain('輝石のかけらが Lv × 10 G 必要です。');
+        expect(wrapper.get('.underground-respec-explanations').text()).toContain('一度行うと24時間は再び行うことができません。');
+        await wrapper.findAll('.underground-respec-growth-card [role="radio"]')[1]!.trigger('click');
+        expect(wrapper.get('.underground-respec-selection').text()).toBe('選択中: 自由');
+        await wrapper.get('.underground-respec-submit').trigger('click');
+        expect(wrapper.get('[role="dialog"]').text()).toContain('再振りを実行しますか？');
+        expect(wrapper.get('[role="dialog"]').text()).toContain('この操作は取り消せません。');
+        await wrapper.get('[role="dialog"] .button.primary').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Respec response lost');
+        expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
+        await wrapper.get('[role="dialog"] .button.primary').trigger('click');
+        await flushPromises();
+        expect(respecPayloads).toHaveLength(2);
+        expect(respecPayloads[0]).toEqual({ request_id: expect.any(String), growth_path_key: 'free_black' });
+        expect(respecPayloads[1]).toEqual(respecPayloads[0]);
+        expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+        expect(wrapper.get('[role="alert"]').text()).toContain('Battle history refresh failed');
+        expect(wrapper.get('.underground-respec-notice').text()).toContain('次の再振りまであと');
+        expect(wrapper.get('.underground-respec-submit').attributes('disabled')).toBeDefined();
+        await wrapper.findAll('.underground-main-navigation button')[0]!.trigger('click');
+        expect((wrapper.get('input[aria-label="生命の今回の配分"]').element as HTMLInputElement).value).toBe('0');
+        expect(wrapper.get('.underground-progression-panel .button.primary').attributes('disabled')).toBeDefined();
+        expect((wrapper.get('#underground-active-loadout select').element as HTMLSelectElement).value).not.toBe('quick_cut');
+        const passiveNode = wrapper.findAll('.underground-skill-node')
+            .find((node) => node.text().includes('防御の心得'))!;
+        await passiveNode.get('button').trigger('click');
+        await flushPromises();
+        expect(skillPayloads).toHaveLength(2);
+        expect(skillPayloads[1]!.request_id).not.toBe(skillPayloads[0]!.request_id);
+        const activeNode = wrapper.findAll('.underground-skill-node')
+            .find((node) => node.text().includes('早業'))!;
+        await activeNode.get('button').trigger('click');
+        await flushPromises();
+        await wrapper.get('#underground-active-loadout select').setValue('quick_cut');
+        await wrapper.get('#underground-active-loadout .button.primary').trigger('click');
+        await flushPromises();
+        expect(loadoutPayloads).toHaveLength(2);
+        expect(loadoutPayloads[1]!.request_id).not.toBe(loadoutPayloads[0]!.request_id);
+        wrapper.unmount();
+    });
 });
