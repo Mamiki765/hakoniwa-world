@@ -390,6 +390,55 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             ->where('operation', 'growth_path')->count());
     }
 
+    public function test_concurrent_respec_requests_allow_only_one_charge_and_reset(): void
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $this->openExploration($user, $secretary);
+        $profile->refresh();
+        $profile->update([
+            'combat_level' => 2,
+            'combat_xp' => 100,
+            'shard_balance' => 100,
+            'unspent_stp' => 1,
+            'allocated_vitality_stp' => 4,
+        ]);
+
+        $results = $this->runConcurrentOperations($user, $secretary, [[
+            'operation' => 'respec',
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ], [
+            'operation' => 'respec',
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ]]);
+
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        $this->assertSame(['conflict', 'ok'], $statuses);
+        $conflict = collect($results)->firstWhere('status', 'conflict');
+        $success = collect($results)->firstWhere('status', 'ok');
+        $this->assertIsArray($conflict);
+        $this->assertIsArray($success);
+        $this->assertSame('underground_respec_cooldown', $conflict['error_code']);
+        $this->assertSame('free_black', $success['growth_path_key']);
+        $this->assertSame(80, $success['shard_balance']);
+        $this->assertNotNull($success['last_completed_at']);
+
+        $profile->refresh();
+        $this->assertSame([80, 'free_black', 6, 0], [
+            $profile->shard_balance,
+            $profile->growth_path_key,
+            $profile->unspent_stp,
+            array_sum($profile->allocatedStp()),
+        ]);
+        $this->assertNotNull($profile->last_respec_at);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'respec')
+            ->count());
+    }
+
     public function test_concurrent_stp_and_sp_mutations_serialize_without_duplicate_resources(): void
     {
         [$user, $secretary, $profile] = $this->undergroundFixture();

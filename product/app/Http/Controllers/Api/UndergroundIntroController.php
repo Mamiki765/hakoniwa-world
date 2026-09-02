@@ -12,6 +12,7 @@ use App\Http\Requests\AcquireUndergroundSkillRequest;
 use App\Http\Requests\AdvanceUndergroundIntroRequest;
 use App\Http\Requests\AllocateUndergroundStpRequest;
 use App\Http\Requests\NameUndergroundShopkeeperRequest;
+use App\Http\Requests\RespecUndergroundProfileRequest;
 use App\Http\Requests\SelectUndergroundGrowthPathRequest;
 use App\Http\Requests\UndergroundBankTransferRequest;
 use App\Http\Requests\UndergroundExploreRequest;
@@ -109,6 +110,17 @@ final class UndergroundIntroController extends Controller
         UndergroundIntroService $service,
     ): JsonResponse {
         return $this->respond(fn (): array => $service->selectGrowthPath(
+            $request->user(),
+            $request->string('request_id')->value(),
+            $request->string('growth_path_key')->value(),
+        ));
+    }
+
+    public function respec(
+        RespecUndergroundProfileRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->respec(
             $request->user(),
             $request->string('request_id')->value(),
             $request->string('growth_path_key')->value(),

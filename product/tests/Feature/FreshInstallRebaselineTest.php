@@ -27,8 +27,10 @@ use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 use App\Models\SecretarySkill;
 use App\Models\TurnRun;
+use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
+use App\Models\UndergroundSkillAllocation;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
@@ -74,7 +76,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(27, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(57, DB::table('migrations')->count());
+        $this->assertSame(58, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -107,6 +109,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_02_000000_expand_underground_hackslash_equipment',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_03_000000_add_underground_respec',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -165,6 +170,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_key'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_identity'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_selected_at'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'last_respec_at'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'unspent_stp'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_vitality_stp'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_might_stp'));
@@ -308,6 +314,80 @@ SQL);
         $this->assertSame(0, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
             ->whereNull('experience_per_damage')->count());
         app(CurrentCatalogInstaller::class)->assertInstalled(config('hakoniwa.ruleset'));
+    }
+
+    public function test_exact_320_to_330_schema_upgrade_preserves_underground_progression(): void
+    {
+        $user = User::factory()->create();
+        $secretary = Secretary::query()->create(['user_id' => $user->id]);
+        $contractedAt = now()->subDays(3);
+        $profile = UndergroundProfile::query()->create([
+            'secretary_id' => $secretary->id,
+            'unlocked_area_layers' => 2,
+            'combat_level' => 4,
+            'combat_xp' => 345,
+            'shard_balance' => 1_234,
+            'banked_shard_balance' => 5_678,
+            'current_hp' => 321,
+            'underground_contract_completed_at' => $contractedAt,
+            'growth_path_key' => 'martial_red',
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'growth_path_selected_at' => $contractedAt->copy()->addHour(),
+            'unspent_stp' => 5,
+            'allocated_vitality_stp' => 10,
+            'skill_points_total' => 60,
+            'skill_points_unspent' => 55,
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'awakening_gauge' => 750,
+            'awakening_message' => 'この履歴は維持する',
+        ]);
+        UndergroundSkillAllocation::query()->create([
+            'underground_profile_id' => $profile->id,
+            'node_key' => 'miracle_holy_bolt',
+            'rank' => 1,
+            'active_slot' => 1,
+        ]);
+
+        $this->returnDatabaseToExact320Source();
+        $this->assertFalse(Schema::hasColumn('underground_profiles', 'last_respec_at'));
+        $this->artisan('migrate', ['--force' => true])->assertSuccessful();
+
+        $profile->refresh();
+        $this->assertSame([
+            2, 4, 345, 1_234, 5_678, 321, 'martial_red', 5, 10, 60, 55, 750, 'この履歴は維持する',
+        ], [
+            $profile->unlocked_area_layers,
+            $profile->combat_level,
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->banked_shard_balance,
+            $profile->current_hp,
+            $profile->growth_path_key,
+            $profile->unspent_stp,
+            $profile->allocated_vitality_stp,
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+            $profile->awakening_gauge,
+            $profile->awakening_message,
+        ]);
+        $this->assertNull($profile->last_respec_at);
+        $this->assertDatabaseHas('underground_skill_allocations', [
+            'underground_profile_id' => $profile->id,
+            'node_key' => 'miracle_holy_bolt',
+            'rank' => 1,
+            'active_slot' => 1,
+        ]);
+        UndergroundIntroRequest::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('a', 64),
+            'operation' => 'respec',
+            'resulting_stage' => 'underground_open',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_03_000000_add_underground_respec',
+        ]);
+        $this->assertSame([], $this->pendingMigrations());
     }
 
     public function test_direct_baseline_supports_world_nation_command_turn_and_secretary_item_initialization(): void
@@ -457,6 +537,7 @@ SQL);
             [
                 '2026_09_01_000000_rebaseline_3_1_0_release',
                 '2026_09_02_000000_expand_underground_hackslash_equipment',
+                '2026_09_03_000000_add_underground_respec',
             ],
             $this->pendingMigrations(),
         );
@@ -469,8 +550,9 @@ SQL);
         $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_gauge'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_message'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'last_respec_at'));
         $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'ruleset_version_id'));
-        $this->assertSame(57, DB::table('migrations')->count());
+        $this->assertSame(58, DB::table('migrations')->count());
         $upgradedAccessory = UndergroundOwnedEquipment::query()->findOrFail($legacyAccessoryId);
         $this->assertSame([
             'vitality_accessory_rank_1',
@@ -573,7 +655,10 @@ SQL);
         $this->returnDatabaseToExact310Source();
 
         $this->assertSame(
-            ['2026_09_02_000000_expand_underground_hackslash_equipment'],
+            [
+                '2026_09_02_000000_expand_underground_hackslash_equipment',
+                '2026_09_03_000000_add_underground_respec',
+            ],
             $this->pendingMigrations(),
         );
         $this->assertSame(56, DB::table('migrations')->count());
@@ -586,9 +671,10 @@ SQL);
         $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
 
         $this->assertSame([], $this->pendingMigrations());
-        $this->assertSame(57, DB::table('migrations')->count());
+        $this->assertSame(58, DB::table('migrations')->count());
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'generated_payload'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'last_respec_at'));
         $upgraded = UndergroundOwnedEquipment::query()->findOrFail($accessoryId);
         $this->assertSame([
             'vitality_accessory_rank_1',
@@ -991,6 +1077,7 @@ SQL);
             '2026_08_30_050000_rebaseline_3_0_0_underground_release',
             '2026_09_01_000000_rebaseline_3_1_0_release',
             '2026_09_02_000000_expand_underground_hackslash_equipment',
+            '2026_09_03_000000_add_underground_respec',
         ])->delete();
     }
 
@@ -1027,6 +1114,7 @@ SQL);
 
     private function returnDatabaseToExact310Source(): void
     {
+        $this->returnDatabaseToExact320Source();
         DB::statement(<<<'SQL'
 ALTER TABLE underground_owned_equipment
   DROP CONSTRAINT underground_owned_equipment_instance_check,
@@ -1055,6 +1143,28 @@ SQL);
         DB::table('migrations')->where(
             'migration',
             '2026_09_02_000000_expand_underground_hackslash_equipment',
+        )->delete();
+    }
+
+    private function returnDatabaseToExact320Source(): void
+    {
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_intro_requests
+  DROP CONSTRAINT underground_intro_requests_operation_check,
+  ADD CONSTRAINT underground_intro_requests_operation_check
+  CHECK (operation IN (
+    'entry', 'advance', 'tutorial', 'shopkeeper_name', 'scripted_loss',
+    'contract', 'growth_path', 'inn_rest', 'bank_transfer', 'playtest',
+    'stp_allocate', 'skill_acquire', 'active_loadout', 'awakening_message',
+    'equipment_purchase', 'equipment_sell', 'equipment_equip', 'equipment_unequip'
+  ))
+SQL);
+        Schema::table('underground_profiles', function (Blueprint $table): void {
+            $table->dropColumn('last_respec_at');
+        });
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_03_000000_add_underground_respec',
         )->delete();
     }
 

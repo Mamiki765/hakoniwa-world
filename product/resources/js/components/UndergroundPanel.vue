@@ -161,6 +161,13 @@ interface GrowthPath {
     points_per_level: number;
 }
 
+interface RespecState {
+    cost: number;
+    last_completed_at: string | null;
+    next_available_at: string | null;
+    growth_paths: GrowthPath[];
+}
+
 interface PlaytestOption {
     key: string;
     label: string;
@@ -274,6 +281,7 @@ interface UndergroundState {
     contract_completed: boolean;
     growth_paths: GrowthPath[] | null;
     growth_path: GrowthPath | null;
+    respec: RespecState | null;
     playtest: PlaytestOptions | null;
     default_hunting_ground_key?: string | null;
     hunting_grounds?: HuntingGround[] | null;
@@ -434,7 +442,11 @@ const pendingSkillAcquire = ref<PendingMutation | null>(null);
 const pendingLoadoutMutation = ref<PendingMutation | null>(null);
 const pendingAwakeningMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
-const equipmentView = ref<'main' | 'shop' | 'vault'>('main');
+const equipmentView = ref<'main' | 'shop' | 'guide' | 'vault'>('main');
+const guideMode = ref<'basic' | 'conversation' | 'respec'>('basic');
+const selectedRespecPathKey = ref<string | null>(null);
+const respecConfirmOpen = ref(false);
+const pendingRespecMutation = ref<PendingMutation | null>(null);
 const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 let huntingGroundPreferenceHydrated = false;
@@ -484,6 +496,33 @@ const shopGreeting = computed(() => innRested.value
     : state.value?.true_name_branch
         ? '「いらっしゃいませ！　『雨宿り』箱庭ダンジョン支店です！」'
         : '「いらっしゃいませ！　あなたのコンビニ、箱庭ダンジョン店です！」');
+const respecCooldownSeconds = computed(() => {
+    const nextAvailableAt = state.value?.respec?.next_available_at;
+    if (!nextAvailableAt) return 0;
+    const timestamp = Date.parse(nextAvailableAt);
+    if (!Number.isFinite(timestamp)) return 0;
+    return Math.max(0, Math.ceil((timestamp - cooldownNowMs.value) / 1_000));
+});
+const respecActiveTrial = computed(() => Boolean(state.value?.trial?.active_run));
+const respecInsufficientShards = computed(() => {
+    const respec = state.value?.respec;
+    return respec !== null && respec !== undefined && state.value !== null
+        && state.value.shard_balance < respec.cost;
+});
+const respecUnavailable = computed(() => state.value?.respec === null
+    || state.value?.respec === undefined
+    || respecActiveTrial.value
+    || respecCooldownSeconds.value > 0
+    || respecInsufficientShards.value);
+const respecUnavailableReason = computed(() => {
+    if (state.value?.respec === null || state.value?.respec === undefined) return '再振りを利用できません。';
+    if (respecActiveTrial.value) return 'active Trial中は再振りできません。封印の地から帰還してください。';
+    if (respecCooldownSeconds.value > 0) return `次の再振りまであと${respecCooldownSeconds.value}秒です。`;
+    if (respecInsufficientShards.value) return '手持ちの輝石のかけらが不足しています。';
+    return '';
+});
+const respecPaths = computed(() => state.value?.respec?.growth_paths ?? []);
+const selectedRespecPath = computed(() => respecPaths.value.find((path) => path.key === selectedRespecPathKey.value) ?? null);
 const stpDraftTotal = computed(() => Object.values(stpDraft.value).reduce((sum, value) => sum + value, 0));
 const stpDraftRemaining = computed(() => Math.max(0, (state.value?.unspent_stp ?? 0) - stpDraftTotal.value));
 const acquiredActiveSkills = computed<ActiveSkill[]>(() => (state.value?.skill_trees ?? [])
@@ -639,6 +678,41 @@ async function submitName(): Promise<void> {
 
 async function chooseGrowthPath(key: string): Promise<void> {
     await mutate('/api/v1/me/underground/growth-path', { growth_path_key: key });
+}
+
+function openGuide(mode: 'basic' | 'conversation' | 'respec' = 'basic'): void {
+    equipmentView.value = 'guide';
+    guideMode.value = mode;
+    if (mode !== 'respec') {
+        selectedRespecPathKey.value = null;
+        respecConfirmOpen.value = false;
+    }
+}
+
+function selectRespecPath(key: string): void {
+    if (respecUnavailable.value || busy.value || !respecPaths.value.some((path) => path.key === key)) return;
+    selectedRespecPathKey.value = key;
+}
+
+function openRespecConfirmation(): void {
+    if (respecUnavailable.value || busy.value || selectedRespecPath.value === null) return;
+    respecConfirmOpen.value = true;
+    error.value = '';
+}
+
+async function confirmRespec(): Promise<void> {
+    const path = selectedRespecPath.value;
+    if (path === null || respecUnavailable.value || busy.value) return;
+    const fingerprint = JSON.stringify({ growth_path_key: path.key });
+    const pending = pendingRespecMutation.value?.fingerprint === fingerprint
+        ? pendingRespecMutation.value
+        : { fingerprint, requestId: requestId() };
+    pendingRespecMutation.value = pending;
+    if (await mutate('/api/v1/me/underground/respec', { growth_path_key: path.key }, pending.requestId)) {
+        pendingRespecMutation.value = null;
+        selectedRespecPathKey.value = null;
+        respecConfirmOpen.value = false;
+    }
 }
 
 async function loadBattles(): Promise<void> {
@@ -1270,10 +1344,95 @@ onUnmounted(() => {
             <nav class="underground-main-navigation" aria-label="地下メニュー">
                 <button type="button" :aria-current="equipmentView === 'main' ? 'page' : undefined" @click="equipmentView = 'main'">地下メイン</button>
                 <button type="button" :aria-current="equipmentView === 'shop' ? 'page' : undefined" @click="equipmentView = 'shop'">装備ショップ</button>
+                <button type="button" :aria-current="equipmentView === 'guide' ? 'page' : undefined" @click="openGuide()">案内人の部屋</button>
                 <button type="button" :aria-current="equipmentView === 'vault' ? 'page' : undefined" @click="equipmentView = 'vault'">宝物庫</button>
             </nav>
 
             <UndergroundEquipmentShop v-if="equipmentView === 'shop'" @updated="applyEquipmentMutation" />
+            <section v-else-if="equipmentView === 'guide'" class="underground-guide-room" aria-labelledby="underground-guide-room-title">
+                <header class="underground-guide-room-heading">
+                    <div>
+                        <p class="eyebrow">Underground Guide Room</p>
+                        <h1 id="underground-guide-room-title">案内人の部屋</h1>
+                    </div>
+                    <p class="underground-guide-room-greeting">{{ state.shopkeeper_name ?? '案内人' }}「あら、どうしたんですか？」</p>
+                </header>
+                <div class="underground-guide-actions">
+                    <button
+                        type="button"
+                        :aria-pressed="guideMode === 'conversation'"
+                        @click="guideMode = 'conversation'"
+                    >
+                        少しお話がしたい
+                    </button>
+                    <button
+                        type="button"
+                        :aria-pressed="guideMode === 'respec'"
+                        :disabled="state.respec === null || state.respec === undefined"
+                        @click="guideMode = 'respec'"
+                    >
+                        再振りをしたい
+                    </button>
+                </div>
+                <p v-if="guideMode === 'conversation'" class="underground-guide-conversation">「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」</p>
+                <section v-else-if="guideMode === 'respec'" class="underground-respec-panel" aria-labelledby="underground-respec-title">
+                    <header>
+                        <div>
+                            <p class="eyebrow">Growth Reconfiguration</p>
+                            <h2 id="underground-respec-title">再振り</h2>
+                        </div>
+                        <p v-if="state.respec">手持ち {{ state.shard_balance }} G</p>
+                    </header>
+                    <div v-if="state.respec" class="underground-respec-explanations">
+                        <p>SP・STP・成長方針を再設定します。</p>
+                        <p>輝石のかけらが Lv × 10 G 必要です。</p>
+                        <p>一度行うと24時間は再び行うことができません。</p>
+                    </div>
+                    <template v-if="state.respec">
+                        <dl class="underground-respec-summary">
+                            <div><dt>今回の費用</dt><dd>{{ state.respec.cost }} G</dd></div>
+                            <div><dt>次回利用</dt><dd>{{ respecCooldownSeconds > 0 ? `あと${respecCooldownSeconds}秒` : '現在利用可能' }}</dd></div>
+                        </dl>
+                        <p v-if="respecUnavailable" class="underground-respec-notice" role="status">{{ respecUnavailableReason }}</p>
+                        <div class="underground-respec-growth-grid" role="radiogroup" aria-label="再振り後の成長方針">
+                            <article
+                                v-for="path in respecPaths"
+                                :key="path.key"
+                                class="underground-growth-card underground-respec-growth-card"
+                                :data-color="path.color"
+                                :data-selected="selectedRespecPathKey === path.key"
+                            >
+                                <h3>{{ path.label }}</h3>
+                                <p v-for="line in path.description" :key="line">{{ line }}</p>
+                                <dl>
+                                    <div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ path.stats[key] }}</dd></div>
+                                    <div><dt>HP</dt><dd>{{ path.max_hp }}</dd></div>
+                                    <div><dt>MP</dt><dd>{{ path.max_mp }}</dd></div>
+                                </dl>
+                                <p>Lv2以降: 自然成長 {{ Object.values(path.natural_growth).reduce((sum, value) => sum + value, 0) }} / 未使用STP +{{ path.unspent_stp_per_level }}</p>
+                                <button
+                                    type="button"
+                                    role="radio"
+                                    :aria-checked="selectedRespecPathKey === path.key"
+                                    :disabled="respecUnavailable || busy"
+                                    @click="selectRespecPath(path.key)"
+                                >
+                                    {{ selectedRespecPathKey === path.key ? '選択中' : `${path.label}を選ぶ` }}
+                                </button>
+                            </article>
+                        </div>
+                        <p v-if="selectedRespecPath" class="underground-respec-selection" role="status">選択中: {{ selectedRespecPath.label }}</p>
+                        <button
+                            class="button primary underground-respec-submit"
+                            type="button"
+                            :disabled="respecUnavailable || busy || selectedRespecPath === null"
+                            @click="openRespecConfirmation"
+                        >
+                            再振り内容を確認する
+                        </button>
+                    </template>
+                </section>
+            </section>
             <UndergroundEquipmentVault v-else-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
 
             <div v-else class="underground-main-layout">
@@ -1506,6 +1665,25 @@ onUnmounted(() => {
                     <button class="button primary" type="button" :disabled="busy" @click="saveAwakeningMessage">覚醒演出文を保存</button>
                 </section>
             </section>
+
+            <div v-if="respecConfirmOpen && selectedRespecPath && state.respec" class="modal-backdrop underground-confirm-backdrop" @click.self="!busy && (respecConfirmOpen = false)">
+                <section class="underground-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="underground-respec-confirm-title">
+                    <header>
+                        <div>
+                            <p class="eyebrow">確認</p>
+                            <h2 id="underground-respec-confirm-title">再振りを実行しますか？</h2>
+                        </div>
+                        <button type="button" aria-label="確認を閉じる" :disabled="busy" @click="respecConfirmOpen = false">×</button>
+                    </header>
+                    <p>SP・STP・成長方針を再設定します。</p>
+                    <p class="underground-confirm-item"><strong>{{ selectedRespecPath.label }}</strong><span>{{ state.respec.cost }} G</span></p>
+                    <p class="underground-respec-destructive">この操作は取り消せません。実行後は24時間、再び再振りできません。</p>
+                    <footer>
+                        <button class="button secondary" type="button" :disabled="busy" @click="respecConfirmOpen = false">キャンセル</button>
+                        <button class="button primary" type="button" :disabled="busy || respecUnavailable" @click="confirmRespec">再振りを実行する</button>
+                    </footer>
+                </section>
+            </div>
         </template>
     </section>
 </template>
