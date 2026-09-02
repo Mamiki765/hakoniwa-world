@@ -1,10 +1,10 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
-> 更新日: 2026-09-02 JST  
+> 更新日: 2026-09-03 JST
 > 対象リポジトリ: `Mamiki765/hakoniwa-world`  
 > 配置先: `product/docs/handoffs/development-history-and-current-handoff.md`  
 > 用途: 現在有効なrelease boundary、Owner決定、production境界、次の作業開始点の引継ぎ  
-> 状態: PR #126でapplication 3.2.0をmainへ昇格済み。PR #127でOwner承認済みhandoff refreshをmainへ追従する
+> 状態: application 3.3.0は機能freeze済み。PR #128〜#130とTest運用整理を含み、finalizationとmain昇格だけを行う
 >
 > この文書はOwnerとWeb版ChatGPTが管理する。Codex / implementation agentはread-onlyで利用し、Ownerがhandoff更新そのものを明示的に依頼した場合だけ編集してよい。
 
@@ -25,52 +25,44 @@
 
 ## 1.1 GitHub / release状態
 
-PR #126で、完成した`release/3.2.0`は`main`へ昇格済み。merge後にOwnerがhandoff更新を明示承認したため、PR #127がこの文書だけをmainへ追従するdocs-only PRである。PR #127のopen / merged状態とexact HEADはremoteで確認する。
+`main`の3.2.0を起点に`release/3.3.0`を作成し、PR #128〜#130を順にmergeした。3.3.0のgameplay scopeはここでfreezeし、以後このreleaseへ加えるのはapplication version、current handoff、必要最小限のversion testだけである。exact HEADとPR状態はremoteで確認する。
 
 ```text
-main（PR #126 merge後）:
-  HEAD: fa37e61020a4a5ac3cc6971fa718655879bcca78
+main / 3.3.0開始base:
+  HEAD: 347679a78c0694756c88d1cf7ad187d5db11b787
   application: 3.2.0
   Surface Ruleset: hakoniwa-2s-plus-v19 / version 19
 
-release/3.2.0 feature/finalization anchor:
-  95b6c08f29554f38e6331ba5cf3c0f283a365d61
-  application: 3.2.0
+release/3.3.0 feature-freeze anchor（PR #130 merge後、finalization前）:
+  0d9a24e502ede4cec81219217c5027f1fe49b03c
+  application at anchor: 3.2.0
+  application after finalization: 3.3.0
   Surface Ruleset: hakoniwa-2s-plus-v19 / version 19
 
-main promotion:
-  PR #126 Release 3.2.0
-  merge commit: fa37e61020a4a5ac3cc6971fa718655879bcca78
-
-handoff follow-up:
-  PR #127 Refresh the current development handoff for 3.2.0
-  base: main
-  head: release/3.2.0
+remaining release operations:
+  1. finalization PR -> release/3.3.0
+  2. Release 3.3.0 PR -> main
+  3. production deploy / migrationは別Owner gate
 ```
 
-このhandoff refreshは、PR #126のmerge直後にOwner管理文書だけを追加したもの。PR #127のcurrent exact HEADはremoteから再取得すること。
+3.3.0の確定構成:
 
-3.2.0の構成PR:
-
-| PR | 内容 | merge / anchor commit |
+| PR / commit | 内容 | merge / anchor commit |
 |---|---|---|
-| #121 | 地底マップと覚醒ゲージのUI整理 | `48b64ece3e9363f45a171a31f77d6846cbdadbc2` |
-| #122 | 敏捷の相対combo・回避、combat identity v2、Trial 1再調整 | `2cd9c88de37c13ce1b3109264524447936741f51` |
-| #123 | ハクスラ装備基盤、アクセサリー3枠、generated equipment | `f83159657e94fc34301b5abf7f23b0fb9cdb986b` |
-| #124 | 浅層drop、第二狩場「黒晶洞」、狩場選択・再探索 | `fe1a9b6f28e2328c3a12011b142363afff038b4e` |
-| #125 | application 3.2.0 finalization、supported upgrade確認 | `95b6c08f29554f38e6331ba5cf3c0f283a365d61` |
-| #126 | release/3.2.0 → main昇格 | `fa37e61020a4a5ac3cc6971fa718655879bcca78` |
-| #127 | Owner承認済みcurrent handoff refresh | status / merge commitはremote確認 |
+| `fe5cd48` | `AGENTS.md`の恒久Test運用整理 | `fe5cd487f1430bd88d806a7652395e0b41547202` |
+| #128 | STP直接入力 | `18007f5db696eb3bc9a596e74520c4931b23e7f3` |
+| #129 | 案内人の部屋、SP/STP振り直し、成長方針切替 | `5312d1eb859ee9f64679819dfea73cfd47a2983c` |
+| #130 | 条件指定preview付き宝物庫一括売却 | `0d9a24e502ede4cec81219217c5027f1fe49b03c` |
 
-PR #121〜#126はmerge済み。PR #127がまだopenなら、そのexact HEADでQualityとCodex reviewを確認してからOwnerがmerge判断する。PR #127がmergedでも、production適用状態は別に確認する。
+custom AI / gambit、Trial 2、追加狩場、Unique、enhancement、enchant、manual combat、party、marketは3.3.0に含めない。
 
 ## 1.2 Version / Ruleset / identity
 
-3.2.0で確定したidentity:
+3.3.0で維持するidentity:
 
 ```text
 application:
-  3.2.0
+  3.3.0
 
 Surface Ruleset:
   hakoniwa-2s-plus-v19
@@ -97,36 +89,33 @@ generated equipment:
   secretary-underground-drop-equipment-alpha-v1
 ```
 
-3.2.0はSurface Ruleset payloadを変更していない。v19を維持し、v20は作らない。Undergroundのcombat / exploration / equipment identityはSurface Rulesetとは別authorityである。
+3.3.0はSurface Ruleset payloadを変更せずv19を維持する。3.2.0で確定したUnderground combat / exploration / equipment identityも変更しない。これらはSurface Rulesetとは別authorityである。
 
 ## 1.3 Supported upgrade / migration
 
-3.1.0 / 3.1.1相当のmainから3.2.0へ進む際に新たに適用されるmigrationは1本だけ。
+Owner確認済みproduction sourceはapplication 3.2.0。3.2.0から3.3.0へ進む際に新たに適用されるmigrationは次の2本だけ。
 
 ```text
-product/database/migrations/2026_09_02_000000_expand_underground_hackslash_equipment.php
+product/database/migrations/2026_09_03_000000_add_underground_respec.php
+product/database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php
 ```
 
-このmigrationはforward-onlyで、主に次を行う。
+どちらもforward-onlyで、順に次を行う。
 
-- 既存`equipped_slot = accessory`を`accessory_1`へ変換
-- 装備slot constraintを`weapon / armor / accessory_1 / accessory_2 / accessory_3`へ更新
-- generated equipmentのimmutable payload、instance identity、generator identity、source battleを保存する列とconstraintを追加
+- `underground_profiles.last_respec_at`を追加し、intro request operationへ`respec`を追加
+- intro request operationへ`equipment_bulk_sell`を追加
 
-既存の3.0.0 → 3.1.0 canonical migrationは引き続き履歴として存在する。3.2.0のために既存migrationをrebaseline、削除、書換えしない。
+既存migrationは履歴として維持し、3.3.0 finalizationでrebaseline、削除、書換えしない。`FreshInstallRebaselineTest`のexact 3.2.0 → 3.3.0 regressionをsupported upgradeの正本とする。
 
 ## 1.4 Production状態
 
-2026-09-02のこの更新時点では、3.2.0はproductionへ未適用。
+2026-09-03のOwner確認ではproduction sourceはapplication 3.2.0。3.3.0のmain mergeはproduction deploy / migrationの許可を意味しない。3.3.0を適用する作業は別Owner gateであり、作業前に実環境で必ず次を再確認する。
 
-Ownerが一度production hostで`main`をpull / build / migrateしたが、その時点のmainは`78d4750`のままで、migration結果は`Nothing to migrate`だった。これは3.2.0 migrationがまだmainに存在しなかったためであり、3.2.0 schema変更はproductionへ入っていない。
-
-PR #126 merge後にdeployする場合も、作業前に必ず次を実環境で再確認する。
-
-- checkoutがremote最新`main`である
-- `config('hakoniwa.application_version')`が3.2.0相当である
-- `2026_09_02_000000_expand_underground_hackslash_equipment.php`が存在する
-- backup / preflight / migrate手順はcurrent operations文書に従う
+- production checkoutとremote最新`main`のexact SHA
+- application 3.2.0とmigration ledgerの一致
+- backup / preflight / migrate手順
+- 上記2本だけが3.2.0 → 3.3.0の新規migrationであること
+- migrate後のapplication 3.3.0、`last_respec_at`、request operation constraint
 
 ---
 
@@ -423,16 +412,13 @@ Trial 1一周800 EXP / 205Gの約3倍を、黒晶洞10戦の期待値目標と�
 
 ---
 
-# 4. 3.2.0のnon-goals / 将来候補
+# 4. 3.2.0から3.3.0への境界
 
-3.2.0へは含めない。
+3.2.0時点でnon-goalだった案内人の部屋、SP / STP再振り、成長方針の再選択、STP直接入力、宝物庫のまとめ売りは、3.3.0で実装済みである。current contractは第5章を正本とする。
 
-- 案内人の部屋
-- SP / STP再振り
-- 成長方針の再選択
-- STP直接入力
-- 宝物庫のまとめ売り
-- custom AI / gambit
+次は3.3.0にも含めない。
+
+- custom AI / gambit。3.4.0へDeferredし、開始時確認事項は第6章に記録する
 - 案内人名変更後の新しい「リカ」再戦
 - Unique装備
 - 装備強化 / enchant追加system
@@ -447,235 +433,79 @@ Trial 1一周800 EXP / 205Gの約3倍を、黒晶洞10戦の期待値目標と�
 
 ---
 
-# 5. release/3.3.0のOwner方向性
+# 5. application 3.3.0の確定contract
 
-## 5.1 Theme
+## 5.1 Feature-freeze scope
 
-3.3.0は、3.2.0で追加したハクスラを遊びやすくする**育成・管理・戦術設定release**を候補とする。
+3.3.0に含める変更は次だけである。
 
-優先候補:
+1. PR #128: STP直接入力
+2. PR #129: 案内人の部屋、SP / STP一括振り直し、成長方針切替
+3. PR #130: 条件指定preview付き宝物庫一括売却
+4. release開始時の`AGENTS.md` Test運用整理
 
-1. 案内人の部屋
-2. SP / STP再振り
-3. STP直接入力
-4. 宝物庫まとめ売り
-5. custom AI / gambit
+custom AI / gambitは3.4.0へDeferredした。3.3.0ではAIのschema、API、player設定、battle snapshot、runtime actionを追加しない。
 
-新狩場、Trial 2、Unique装備を3.3.0へ自動的に含めない。
+## 5.2 STP直接入力
 
-## 5.2 案内人の部屋
+- 5能力の今回配分値を非負整数で直接入力できる
+- 合計は現在の未使用STPを超えないようUIとserverの双方で制限する
+- 確定時は既存のserver-side validation、UUID idempotency、profile lockを維持する
+- 確定済みSTPと装備補正は別に計算し、配分確定は従来どおり取り消せない
 
-上位tab順:
+## 5.3 案内人の部屋と再振り
 
-```text
-地下メイン / 装備ショップ / 案内人の部屋 / 宝物庫
-```
+上位tabは`地下メイン / 装備ショップ / 案内人の部屋 / 宝物庫`。案内人の部屋では会話placeholderと再振りを表示する。
 
-入口表示:
+再振りは1回のtransactionで次を行う。
 
-```text
-（案内人名）「あら、どうしたんですか？」
-```
+- SPを全返却し、active skill slotを全解除
+- 手動配分STPを全返却
+- 選択した成長方針へ切り替え、現在Combat Lvまでの自然成長とSTP entitlementを再計算
+- 費用`Combat Lv x 10G`を手持ちの輝石のかけらだけから支払う
+- 成功後24時間は再実行不可。active Trial中、費用不足、cooldown中、validation failureでは状態を変えない
+- Combat Lv / XP、装備、inventory、Trial progress、覚醒、解禁、intro履歴は維持する
+- max HP低下時だけcurrent HPを下方clampし、回復はしない
+- 同一UUID / 同一payloadは元の成功結果を返し、別payload conflictと同時実行を安全に拒否する
 
-初期menu案:
+## 5.4 条件指定型の宝物庫まとめ売り
 
-```text
-【少しお話がしたい】
-「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」
+- filterはItem Lv上限、rarity、category、canonical weapon style。選択肢とlabelはserver catalogから投影する
+- previewは装備中itemと通常売却不可itemを除外し、具体的なitem ID、canonical売却価格、合計を返す
+- confirmはpreviewで示したIDと価格だけを再検証し、preview後に取得したitemを追加しない
+- 所有、存在、装備状態、売却可否、価格を全件再検証してから、同一transactionでdeleteと手持ちG creditを行う
+- UUID idempotency、profile lock、request ledgerによりretryや同時requestの二重creditを防ぐ
+- filter表示設定はclient preferenceであり、通常dropをauto-sellしない
 
-【SPをリセットしたい】
+## 5.5 3.3.0のnon-goals
 
-【STP・成長方針（クラス）をリセットしたい】
-
-【あなたの呼び方を変えたい】
-```
-
-`少しお話がしたい`は、3.3.0時点では未実装placeholderでよい。
-
-## 5.3 Respec共通contract
-
-- 費用は`Combat Lv x 10G`
-- Gはgoldではなく、輝石の欠片の重量単位gram
-- 手持ちGからのみ支払い、銀行からauto-withdrawしない
-- 1回成功すると24時間再実行不可
-- active Trial中は拒否し、run途中だけbuildが変わる状態を作らない
-- UUID request idempotency必須
-- duplicate requestはcooldown / balance再評価より先に元の成功結果を返す
-- 異なるUUIDの同時実行はprofile lockで直列化し、最初の1件だけ成功
-- 費用不足、cooldown、active Trial、validation failureでは状態を変えない
-- Combat Lv、EXP、装備、inventory、Trial progress、覚醒状態は維持
-- max HP低下時はcurrent HPをclampするだけで、回復させない
-
-SP reset:
-
-- skill allocationを全返却
-- `skill_points_unspent = skill_points_total`
-- active skill slotを全解除
-- STPとgrowth pathは維持
-
-STP reset:
-
-- manual allocated STPを0へ戻す
-- current growth pathとCombat Lvから正規entitlementを再計算し、未使用STPへ返す
-- SP allocationは維持
-
-### 実装前にOwner決定が必要な点
-
-画面上のactionを、次のどちらにするか未確定。
-
-A. `SP reset`と`STP reset`を別actionにし、24時間cooldownを共有する  
-B. `SP + STPをまとめてreset`する1 actionにする
-
-Ownerの元の希望はSPとSTP / 成長方針を別項目として見せること。ただし成長方針変更まで含めてheavyになる場合、**SP / STP一括resetだけを先に仮実装する縮退案を許容**している。
-
-この選択をAgentが独断で確定しない。
-
-## 5.4 成長方針の再選択
-
-候補contract:
-
-- intro FSMを巻き戻さず、現在の4 growth path選択UIを再利用
-- DB上で一度NULLへ戻さず、1 transactionで旧pathから新pathへ切替
-- 新pathをLv1から現在Lvまで選択していたものとして自然成長とSTP entitlementを全再計算
-- 旧path由来のallocated / unspent STPをそのまま持ち越さない
-
-理由:
-
-```text
-戦技 / 護身 / 祝福: 1 levelあたり未使用STP +5
-自由: 1 levelあたり未使用STP +6
-```
-
-異なるentitlementをそのまま持ち越すと、path変更で不正な増減または説明不能なpointが残る。
-
-この再計算contractはOwner承認後に実装する。heavyなら、3.3.0第一段階はgrowth path維持のresetだけで止めてよい。
-
-## 5.5 案内人の呼び名変更 / リカ
-
-通常rename案:
-
-```text
-【あなたの呼び方を変えたい】
-「はい♪　全然かまいませんよ？」
-[ 案内人の名前 ] [送信]
-```
-
-- 初回namingに使った`shopkeeper_name`、既存true-name branch、過去story / battle snapshotを上書きしない
-- 必要なら別のdisplay name fieldを持ち、現在表示だけを変える
-
-Owner構想では、特定NG wordとして`リカ`を入力した場合に特殊戦闘へ分岐する。
-
-初回構想:
-
-```text
-「……随分と物を知ったガキですね」
-「捨てた名を知っているものには、太い太い釘を刺してもらわねばなりませんね？」
-```
-
-既に一度踏んだ後の構想:
-
-```text
-「……実に愚かね」
-「もしかして今なら勝てるとでも思ったのかしら？」
-```
-
-この再戦は専用content identity、勝敗後処理、履歴契約を要する可能性がある。再振りPRへ無理に混ぜず、heavyならrenameだけまたはfuture hookまでで止める。
-
-## 5.6 STP直接入力
-
-現在の`+1 / -1`連打を減らすUI改善。
-
-- current backendが能力別deltaを受けられるならfrontend中心の小PRにする
-- server-side validation、合計未使用STP上限、request idempotencyは維持
-- 再振りcoreへ不要に混ぜない
-
-## 5.7 宝物庫まとめ売り
-
-3.2.0でgenerated itemが増えるため3.3.0候補。
-
-必須境界:
-
-- equipped itemを売却対象にしない
-- 選択itemをserver側でauthoritativeに再検証
-- creditとdeleteをatomicに行う
-- duplicate / concurrent requestで二重creditしない
-- auto-sellを通常dropの既定挙動にしない
-
-rarity以下、Item Lv以下、お気に入り保護等のfilter UIは未決定。Owner確認なしに複雑な条件DSLを先行実装しない。
-
-## 5.8 Custom AI / gambit
-
-3.2.0から3.3.0へ延期した独立機能。別combat engineを作らず、current canonical combat / Priority AIへ局所統合する。
-
-rule案:
-
-- 最大16行
-- 1行1〜2条件
-- 条件なしは`always`
-- action: normal attack、defend、skill、awakening、forward jump
-- jumpは後方行へのみ。逆流、自分自身、範囲外をrejectし、loop不能にする
-- 条件不成立、MP不足、cooldown、weapon不一致、未習得 / 未装備skill、awakening unavailableは次行へ進む
-- 全ruleが成立しなければ、使用可能な既習得attack skillを優先し、それもなければnormal attack
-- 棒立ち、random fallbackは作らない
-
-Awakening rule:
-
-- hard requirementは`unlocked / gauge full / battle内未使用`
-- HP 20%以下をawakening action自体のhard requirementにしない
-- current default挙動はpresetの`HP 20%以下 -> Awakening`で再現
-- customではboss時や無条件等、HPに依存しないactivationを許可
-- techniqueのaction消費contractは既存どおり
-
-例:
-
-```text
-1. Trial battle 9以下なら 3へ進む
-2. 覚醒
-3. 通常rule...
-```
-
-forward-only jumpで、Trial 1の1〜9戦では覚醒を温存し、10戦目で試行できる。
-
-保存、snapshot、replay、effective rules hash、concurrencyが大きくなる場合は独立PRにする。主要QoLを不安定化させるなら3.3.0後半または次releaseへ延期する。
+custom AI / gambit、Trial 2以降、追加狩場、Unique、enhancement、enchant、manual combat、party、marketは実装しない。Surface Ruleset v19と3.2.0のcombat / exploration / equipment identityを維持する。
 
 ---
 
 # 6. 次の自然な開始点
 
-## 6.1 PR #127がopenの場合
+## 6.1 3.3.0 release close-out
 
-PR #126はmainへmerge済み。このhandoff follow-upについて次を行う。
-
-1. PR #127 current exact HEADを確認
-2. Qualityを新HEADで完走
-3. Codex reviewを新HEADへ依頼
-4. unresolved finding 0を確認
-5. Ownerがdocs-only PR #127をmainへmerge
-
-PR #127が既にmergedならこの節を飛ばし、mainのexact HEADとproduction状態を確認する。handoffをmergeしただけでproduction deploy済みとは扱わない。
+1. finalization専用PRでapplication version、version期待値、current handoffだけを更新する
+2. exact 3.2.0 → 3.3.0 upgrade、fresh install、docs validation、static checkをfocusedで確認する
+3. finalization PRのexact-head Quality、Codex review finding 0、unresolved thread 0を確認して`release/3.3.0`へmergeする
+4. `Release 3.3.0` PRを`main`向けに作成し、同じgateとscope auditを満たした場合だけmergeする
+5. main merge後は3.4.0実装へ進まず、release証跡を報告して停止する
 
 ## 6.2 Production deploy
 
-PR #126 merge後、Ownerの明示指示で別作業として行う。
+production sourceはOwner確認済みapplication 3.2.0。3.3.0のdeploy、production migration、OCI操作はrelease close-outに含まれず、別Owner gateで行う。
 
-- backup / preflight
-- remote main exact SHA確認
-- build
-- migration `2026_09_02_000000_expand_underground_hackslash_equipment.php`
-- service recreate / cache clear
-- application version、accessory 3 slots、generated equipment schemaのpost-deploy確認
+## 6.3 次release 3.4.0 / custom AI開始時確認
 
-実際に適用した後は、このhandoffのproduction状態を更新する。
+次のapplication releaseは3.4.0。custom AI / gambitは3.4.0へDeferredする。以下は今回の調査から得た**推奨案 / 開始時確認事項**であり、3.4.0のOwner-approved実装仕様ではない。branch、schema、API、UI、runtime実装を始める前にOwnerが再確認する。
 
-## 6.3 release/3.3.0開始gate
-
-- 3.2.0がmainへmerge済みであること
-- production baselineをOwnerが再確認すること
-- latest mainから`release/3.3.0`を作ること
-- Plan modeでcurrent profile / skill / equipment / intro / Trial / mutation ledgerを再読すること
-- Respecの`別action共有cooldown`か`SP/STP一括reset`かをOwnerが決めること
-- growth path再選択を第一段階へ含めるかOwnerが決めること
-- Plan承認前にmigration、branch実装、commitを開始しないこと
+1. Secretaryごとに有効なAI設定は1つとし、初期presetを複製または初期化して編集する
+2. 正規化済みAI rule全文とSHA-256をbattle snapshotへ保存し、導入時はcombat identity更新を検討する
+3. Trial中も戦闘間のAI変更を許可し、次の戦闘から適用する
+4. Awakening ruleは時間を消費せず、HP 20%条件はdefault presetへ移す
+5. empty conditionは`always`、jumpはforward-only、使用不能時は習得済みattackからnormal attackへdeterministic fallbackする
 
 ---
 
@@ -694,7 +524,7 @@ Quality CIはPHPUnit全集合を16 shardへ分割して全件実行する。loca
 - repository-wide回帰の最終authorityはexact-head CI
 - source / test設定 / dependencyが変わっていなければ同じ全suiteを理由なく繰り返さない
 
-AGENTS.mdへ恒久反映する場合は3.2.0 gameplay/promotionと分けたdocs-only作業にする。
+このTest運用原則は3.3.0開始時の独立commitで`AGENTS.md`へ恒久反映済み。
 
 ## 7.2 Container / worktree
 
@@ -738,7 +568,7 @@ main agentが保持するもの:
 
 # 8. 最初に読むcurrent file
 
-3.2.0 / 3.3.0 Underground作業では、必要範囲で次を読む。
+3.3.0 close-out / 3.4.0 Underground作業では、必要範囲で次を読む。
 
 ```text
 AGENTS.md
@@ -753,6 +583,8 @@ product/config/hakoniwa.php
 product/config/underground-alpha-v1.php
 product/config/underground-equipment.php
 product/database/migrations/2026_09_02_000000_expand_underground_hackslash_equipment.php
+product/database/migrations/2026_09_03_000000_add_underground_respec.php
+product/database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php
 product/app/Application/Underground/
 product/app/Domain/Underground/Combat/
 product/resources/js/components/UndergroundPanel.vue
