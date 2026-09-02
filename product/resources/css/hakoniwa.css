@@ -550,6 +550,30 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-vault-toolbar .button { min-height: 2.35rem; padding: .3rem .65rem; }
 .underground-accessory-target { display: grid; gap: .2rem; min-width: min(100%, 10rem); color: var(--muted); font-size: .75rem; font-weight: 800; }
 .underground-accessory-target select { min-height: 2.35rem; padding: .25rem .4rem; border: 1px solid var(--input-border); background: var(--input-surface); color: var(--ink); font: inherit; }
+.underground-bulk-sale-panel, .underground-bulk-sale-preview { display: grid; gap: .8rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.underground-bulk-sale-panel > header { display: grid; gap: .35rem; }
+.underground-bulk-sale-panel > header p { color: var(--muted); font-size: .82rem; }
+.underground-bulk-sale-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.underground-bulk-sale-options > label, .underground-bulk-sale-options fieldset { display: grid; align-content: start; gap: .4rem; min-width: 0; }
+.underground-bulk-sale-options > label > span, .underground-bulk-sale-options legend { color: var(--muted); font-size: .8rem; font-weight: 800; }
+.underground-bulk-sale-options input[type="number"] { width: 100%; min-height: 2.35rem; padding: .25rem .45rem; border: 1px solid var(--input-border); background: var(--input-surface); color: var(--ink); font: inherit; }
+.underground-bulk-sale-options fieldset { margin: 0; padding: .55rem .65rem; border: 1px solid var(--line); background: var(--paper); }
+.underground-bulk-sale-options fieldset label { display: flex; align-items: center; gap: .4rem; min-width: 0; font-size: .82rem; }
+.underground-bulk-sale-options fieldset input { flex: 0 0 auto; }
+.underground-bulk-preview-button, .underground-bulk-confirm-trigger { justify-self: start; }
+.underground-bulk-sale-preview > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.underground-bulk-sale-preview dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; margin: 0; }
+.underground-bulk-sale-preview dl div { padding: .6rem .7rem; border: 1px solid var(--line); background: var(--paper); }
+.underground-bulk-sale-preview dt { color: var(--muted); font-size: .8rem; font-weight: 700; }
+.underground-bulk-sale-preview dd { margin: .25rem 0 0; font-weight: 900; font-variant-numeric: tabular-nums; }
+.underground-bulk-preview-list, .underground-bulk-confirm-list { display: grid; gap: .45rem; max-height: 24rem; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.underground-bulk-preview-list li, .underground-bulk-confirm-list li { display: flex; align-items: start; justify-content: space-between; gap: .8rem; padding: .65rem .7rem; border: 1px solid var(--line); background: var(--paper-deep); }
+.underground-bulk-preview-list li > span { display: grid; gap: .2rem; min-width: 0; }
+.underground-bulk-preview-list small { color: var(--muted); }
+.underground-bulk-preview-list strong, .underground-bulk-confirm-list li > span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+    .underground-bulk-sale-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .secretary-panel .secretary-page-title { margin: 0 0 14px; font-family: inherit; font-size: 1.5rem; line-height: 1.25; }
 .secretary-name { margin: 0 0 24px; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 1; }
 .secretary-section-title { margin: 0; font-size: 1rem; }

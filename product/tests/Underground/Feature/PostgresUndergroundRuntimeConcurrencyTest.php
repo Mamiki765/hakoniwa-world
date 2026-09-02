@@ -191,6 +191,36 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             ->where('underground_profile_id', $profile->id)
             ->where('operation', 'equipment_sell')->count());
 
+        $bulkDagger = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'iron_dagger',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'equipped_slot' => null,
+            'grant_key' => null,
+            'instance_kind' => 'fixed',
+            'acquired_at' => now(),
+        ]);
+        $bulkSale = [
+            'operation' => 'equipment_bulk_sell',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'items' => [['id' => $bulkDagger->id, 'sell_price' => 60]],
+        ];
+        $bulkResults = $this->runConcurrentOperations($user, $secretary, [
+            ['request_id' => (string) Str::uuid()] + $bulkSale,
+            ['request_id' => (string) Str::uuid()] + $bulkSale,
+        ]);
+        $bulkStatuses = array_column($bulkResults, 'status');
+        sort($bulkStatuses);
+        $this->assertSame(['conflict', 'ok'], $bulkStatuses);
+        $bulkConflict = collect($bulkResults)->firstWhere('status', 'conflict');
+        $this->assertIsArray($bulkConflict);
+        $this->assertSame('underground_bulk_sell_preview_changed', $bulkConflict['error_code']);
+        $this->assertSame(10_000, $profile->fresh()->shard_balance);
+        $this->assertDatabaseMissing('underground_owned_equipment', ['id' => $bulkDagger->id]);
+        $this->assertSame(1, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'equipment_bulk_sell')->count());
+
         $profile->refresh()->update(['shard_balance' => 10_000]);
         $rows = [];
         foreach (range(1, 498) as $offset) {

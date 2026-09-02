@@ -153,6 +153,19 @@ try {
             'shard_balance' => $result['shard_balance'],
             'vault_used' => $result['vault']['used'],
         ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'equipment_bulk_sell') {
+        $result = app(UndergroundEquipmentService::class)->bulkSell(
+            $user,
+            (string) $payload['request_id'],
+            (string) $payload['catalog_identity'],
+            $payload['items'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'request_id' => $payload['request_id'],
+            'shard_balance' => $result['shard_balance'],
+            'vault_used' => $result['vault']['used'],
+        ], JSON_THROW_ON_ERROR));
     } elseif (($payload['operation'] ?? 'explore') === 'equipment_equip') {
         $result = app(UndergroundEquipmentService::class)->equip(
             $user,

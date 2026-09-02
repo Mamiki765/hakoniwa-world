@@ -108,6 +108,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/equipment/items/{itemId}/sell', [UndergroundEquipmentController::class, 'sell'])
             ->whereNumber('itemId');
         Route::get('/equipment/vault', [UndergroundEquipmentController::class, 'vault']);
+        Route::post('/equipment/vault/bulk-sell/preview', [UndergroundEquipmentController::class, 'previewBulkSell']);
+        Route::post('/equipment/vault/bulk-sell', [UndergroundEquipmentController::class, 'bulkSell']);
         Route::put('/equipment/equipped', [UndergroundEquipmentController::class, 'equip']);
         Route::delete('/equipment/equipped/{slot}', [UndergroundEquipmentController::class, 'unequip']);
         Route::post('/status/stp', [UndergroundIntroController::class, 'allocateStp']);
