@@ -34,10 +34,12 @@ final readonly class UndergroundStarterEquipmentService
                 'catalog_identity' => $this->catalog->identity(),
                 'equipped_slot' => null,
                 'grant_key' => self::GRANT_KEY,
+                'instance_kind' => 'fixed',
                 'acquired_at' => Carbon::now(),
             ]);
         }
-        if ($starter->catalog_identity !== $this->catalog->identity()
+        if (! $this->catalog->supportsIdentity($starter->catalog_identity)
+            || $starter->instance_kind !== 'fixed'
             || $starter->grant_key !== self::GRANT_KEY) {
             throw new RuntimeException('Underground starter equipment identity is invalid.');
         }

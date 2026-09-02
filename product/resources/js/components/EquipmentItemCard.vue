@@ -1,4 +1,15 @@
 <script setup lang="ts">
+export type EquipmentSlot = 'weapon' | 'armor' | 'accessory_1' | 'accessory_2' | 'accessory_3';
+export type AccessorySlot = 'accessory_1' | 'accessory_2' | 'accessory_3';
+
+export interface EquipmentAffix {
+    label: string;
+    value: number;
+    key?: string;
+    kind?: string;
+    target?: string;
+}
+
 export interface EquipmentItem {
     id?: number;
     key: string;
@@ -8,15 +19,24 @@ export interface EquipmentItem {
     rank: number;
     item_level: number;
     rarity: string;
+    rarity_label?: string;
     buy_price?: number | null;
     sell_price: number;
     owned?: boolean;
-    equipped_slot?: 'weapon' | 'armor' | 'accessory' | null;
+    equipped_slot?: EquipmentSlot | null;
     weapon_power: number;
     physical_defense: number;
     magical_defense: number;
     max_hp: number;
     stats: Record<string, number>;
+    affixes?: EquipmentAffix[];
+    instance_kind?: 'fixed' | 'generated' | string;
+    instance_identity?: string | null;
+    identity?: string | null;
+    generator_identity?: string | null;
+    catalog_identity?: string;
+    locked?: boolean;
+    unlock_requirement?: string | null;
     effect_text?: string | null;
     acquired_at?: string;
 }
@@ -67,18 +87,34 @@ function statLabel(key: string): string {
 }
 
 function rankLabel(): string {
+    if (props.item.instance_kind === 'generated') return 'ドロップ装備';
     return props.item.rank > 0 ? `Rank ${props.item.rank}` : '初期装備';
+}
+
+function affixValue(affix: EquipmentAffix): string {
+    if (affix.kind === 'modifier') {
+        return `+${(affix.value / 100).toLocaleString('ja-JP', { maximumFractionDigits: 2 })}%`;
+    }
+    return `+${affix.value.toLocaleString('ja-JP')}`;
 }
 </script>
 
 <template>
-    <article class="underground-equipment-card" :data-category="item.category" :data-owned="item.owned === true">
+    <article
+        class="underground-equipment-card"
+        :data-category="item.category"
+        :data-owned="item.owned === true"
+        :data-instance-kind="item.instance_kind ?? 'fixed'"
+        :data-locked="item.locked === true"
+    >
         <header class="underground-equipment-card-heading">
             <div>
-                <p class="underground-equipment-card-kicker">{{ categoryLabel() }}<span v-if="styleLabel()">・{{ styleLabel() }}</span></p>
+                <p class="underground-equipment-card-kicker">
+                    {{ categoryLabel() }}<span v-if="styleLabel()">・{{ styleLabel() }}</span><span v-if="item.instance_kind === 'generated'">・生成装備</span>
+                </p>
                 <h3>{{ item.name }}</h3>
             </div>
-            <span class="underground-equipment-rarity">{{ item.rarity }} / {{ rankLabel() }}</span>
+            <span class="underground-equipment-rarity">{{ item.rarity_label ?? item.rarity }} / {{ rankLabel() }}</span>
         </header>
         <dl class="underground-equipment-card-stats">
             <div><dt>Item Lv</dt><dd>{{ item.item_level }}</dd></div>
@@ -88,6 +124,11 @@ function rankLabel(): string {
             <div v-if="item.max_hp > 0"><dt>最大HP</dt><dd>+{{ item.max_hp }}</dd></div>
             <div v-for="([key, value]) in nonZeroStats()" :key="key"><dt>{{ statLabel(key) }}</dt><dd>+{{ value }}</dd></div>
         </dl>
+        <ul v-if="item.affixes && item.affixes.length > 0" class="underground-equipment-card-affixes" aria-label="追加効果">
+            <li v-for="(affix, index) in item.affixes" :key="affix.key ?? `${affix.label}-${affix.value}-${index}`">
+                {{ affix.label }} {{ affixValue(affix) }}
+            </li>
+        </ul>
         <p v-if="item.effect_text" class="underground-equipment-card-effect">{{ item.effect_text }}</p>
         <footer class="underground-equipment-card-footer">
             <slot name="status"></slot>

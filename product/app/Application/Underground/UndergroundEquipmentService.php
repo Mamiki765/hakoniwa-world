@@ -9,6 +9,7 @@ use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
+use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -44,11 +45,23 @@ final readonly class UndergroundEquipmentService
                 ->orderBy('id')
                 ->get();
             $ownedKeys = $owned->pluck('definition_key')->all();
-            $items = array_map(function (array $definition) use ($ownedKeys): array {
+            $clearedTrials = UndergroundTrialProgress::query()
+                ->where('underground_profile_id', $profile->id)
+                ->whereNotNull('first_cleared_at')
+                ->pluck('trial_key')
+                ->all();
+            $items = array_map(function (array $definition) use ($ownedKeys, $clearedTrials): array {
+                $requiredTrial = $definition['required_trial_key'];
+
                 return [
                     ...$definition,
                     'sell_price' => $this->catalog->sellPrice($definition),
                     'owned' => in_array($definition['key'], $ownedKeys, true),
+                    'locked' => is_string($requiredTrial)
+                        && ! in_array($requiredTrial, $clearedTrials, true),
+                    'unlock_requirement' => $requiredTrial === 'trial_01'
+                        ? '試練1を初回clear'
+                        : null,
                 ];
             }, $this->catalog->shopDefinitions());
 
@@ -125,6 +138,7 @@ final readonly class UndergroundEquipmentService
             'equipment_purchase',
             ['definition_key' => $definitionKey],
             function (UndergroundProfile $profile) use ($definition): void {
+                $this->assertDefinitionUnlocked($profile, $definition);
                 $alreadyOwned = UndergroundOwnedEquipment::query()
                     ->where('underground_profile_id', $profile->id)
                     ->where('definition_key', $definition['key'])
@@ -156,6 +170,7 @@ final readonly class UndergroundEquipmentService
                     'catalog_identity' => $this->catalog->identity(),
                     'equipped_slot' => null,
                     'grant_key' => null,
+                    'instance_kind' => 'fixed',
                     'acquired_at' => Carbon::now(),
                 ]);
             },
@@ -183,10 +198,11 @@ final readonly class UndergroundEquipmentService
                 if (! $item instanceof UndergroundOwnedEquipment) {
                     throw new UndergroundRuntimeException('underground_equipment_not_owned', '売却する装備を確認してください。');
                 }
-                if ($item->catalog_identity !== $this->catalog->identity()) {
-                    throw new UndergroundRuntimeException('underground_equipment_identity_invalid', '装備のcatalog identityを確認できません。');
+                try {
+                    $definition = $this->loadout->definitionForRow($item);
+                } catch (RuntimeException) {
+                    throw new UndergroundRuntimeException('underground_equipment_identity_invalid', '装備のidentityを確認できません。');
                 }
-                $definition = $this->catalog->definition($item->definition_key);
                 if ($definition['sellable'] !== true) {
                     throw new UndergroundRuntimeException('underground_equipment_not_sellable', 'この装備は通常売却できません。');
                 }
@@ -206,18 +222,23 @@ final readonly class UndergroundEquipmentService
     }
 
     /** @return array<string, mixed> */
-    public function equip(User $user, string $requestId, int $itemId): array
+    public function equip(User $user, string $requestId, int $itemId, ?string $targetSlot = null): array
     {
         if ($itemId < 1) {
             throw new UndergroundRuntimeException('underground_equipment_not_owned', '装備するitemを確認してください。');
+        }
+
+        $payload = ['item_id' => $itemId];
+        if ($targetSlot !== null) {
+            $payload['target_slot'] = $targetSlot;
         }
 
         return $this->mutate(
             $user,
             $requestId,
             'equipment_equip',
-            ['item_id' => $itemId],
-            function (UndergroundProfile $profile) use ($itemId): void {
+            $payload,
+            function (UndergroundProfile $profile) use ($itemId, $targetSlot): void {
                 $item = UndergroundOwnedEquipment::query()
                     ->whereKey($itemId)
                     ->where('underground_profile_id', $profile->id)
@@ -226,11 +247,19 @@ final readonly class UndergroundEquipmentService
                 if (! $item instanceof UndergroundOwnedEquipment) {
                     throw new UndergroundRuntimeException('underground_equipment_not_owned', '装備するitemを確認してください。');
                 }
-                if ($item->catalog_identity !== $this->catalog->identity()) {
-                    throw new UndergroundRuntimeException('underground_equipment_identity_invalid', '装備のcatalog identityを確認できません。');
+                try {
+                    $definition = $this->loadout->definitionForRow($item);
+                } catch (RuntimeException) {
+                    throw new UndergroundRuntimeException('underground_equipment_identity_invalid', '装備のidentityを確認できません。');
                 }
-                $definition = $this->catalog->definition($item->definition_key);
-                $slot = $definition['category'];
+                $slot = $definition['category'] === 'accessory'
+                    ? ($targetSlot ?? 'accessory_1')
+                    : $definition['category'];
+                if (! in_array($slot, UndergroundEquipmentCatalog::EQUIPPED_SLOTS, true)
+                    || ($definition['category'] === 'accessory' && ! in_array($slot, UndergroundEquipmentCatalog::ACCESSORY_SLOTS, true))
+                    || ($definition['category'] !== 'accessory' && $targetSlot !== null && $targetSlot !== $slot)) {
+                    throw new UndergroundRuntimeException('underground_equipment_slot_invalid', '装備先slotを確認してください。');
+                }
                 $this->swapSlot($profile, $item, $slot);
             },
         );
@@ -239,7 +268,11 @@ final readonly class UndergroundEquipmentService
     /** @return array<string, mixed> */
     public function unequip(User $user, string $requestId, string $slot): array
     {
-        if (! in_array($slot, ['armor', 'accessory'], true)) {
+        $requestedSlot = $slot;
+        if ($slot === 'accessory') {
+            $slot = 'accessory_1';
+        }
+        if (! in_array($slot, ['armor', ...UndergroundEquipmentCatalog::ACCESSORY_SLOTS], true)) {
             throw new UndergroundRuntimeException('underground_equipment_slot_invalid', '武器は外せません。防具またはアクセサリーを指定してください。');
         }
 
@@ -247,7 +280,7 @@ final readonly class UndergroundEquipmentService
             $user,
             $requestId,
             'equipment_unequip',
-            ['slot' => $slot],
+            ['slot' => $requestedSlot],
             function (UndergroundProfile $profile) use ($slot): void {
                 $oldMaxHp = $this->currentMaxHp($profile);
                 $currentHp = min($profile->current_hp ?? $oldMaxHp, $oldMaxHp);
@@ -318,12 +351,13 @@ final readonly class UndergroundEquipmentService
         if (! Str::isUuid($requestId)) {
             throw new UndergroundRuntimeException('underground_request_id_invalid', 'request IDを確認してください。');
         }
-        $fingerprint = $this->fingerprint($operationName, $payload);
+        $fingerprint = $this->fingerprint($operationName, $payload, $this->catalog->identity());
 
         return DB::transaction(function () use (
             $user,
             $requestId,
             $operationName,
+            $payload,
             $fingerprint,
             $operation,
         ): array {
@@ -334,7 +368,11 @@ final readonly class UndergroundEquipmentService
                 ->lockForUpdate()
                 ->first();
             if ($previous instanceof UndergroundIntroRequest) {
-                if (! hash_equals($previous->request_fingerprint, $fingerprint)) {
+                $acceptedFingerprints = array_map(
+                    fn (string $identity): string => $this->fingerprint($operationName, $payload, $identity),
+                    $this->catalog->supportedIdentities(),
+                );
+                if (! in_array($previous->request_fingerprint, $acceptedFingerprints, true)) {
                     throw new UndergroundRuntimeException(
                         'underground_request_conflict',
                         '同じrequest IDが別の操作またはitemに使用されています。',
@@ -424,12 +462,12 @@ final readonly class UndergroundEquipmentService
     }
 
     /** @param array<string, scalar|null> $payload */
-    private function fingerprint(string $operation, array $payload): string
+    private function fingerprint(string $operation, array $payload, string $catalogIdentity): string
     {
         ksort($payload);
         try {
             $encoded = json_encode([
-                'catalog_identity' => $this->catalog->identity(),
+                'catalog_identity' => $catalogIdentity,
                 'operation' => $operation,
                 'payload' => $payload,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -438,5 +476,25 @@ final readonly class UndergroundEquipmentService
         }
 
         return hash('sha256', $encoded);
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function assertDefinitionUnlocked(UndergroundProfile $profile, array $definition): void
+    {
+        $requiredTrial = $definition['required_trial_key'] ?? null;
+        if ($requiredTrial === null) {
+            return;
+        }
+        $cleared = UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('trial_key', $requiredTrial)
+            ->whereNotNull('first_cleared_at')
+            ->exists();
+        if (! $cleared) {
+            throw new UndergroundRuntimeException(
+                'underground_equipment_locked',
+                'この装備は試練1の初回clear後に購入できます。',
+            );
+        }
     }
 }

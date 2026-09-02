@@ -27,6 +27,7 @@ use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 use App\Models\SecretarySkill;
 use App\Models\TurnRun;
+use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
@@ -73,7 +74,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(27, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(56, DB::table('migrations')->count());
+        $this->assertSame(57, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -103,6 +104,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_01_000000_rebaseline_3_1_0_release',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_02_000000_expand_underground_hackslash_equipment',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -180,6 +184,11 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'definition_key'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'catalog_identity'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'equipped_slot'));
+        $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
+        $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_identity'));
+        $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'generator_identity'));
+        $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'generated_payload'));
+        $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'source_battle_id'));
         $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
         $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'facility_key'));
         $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'ruleset_version_id'));
@@ -213,6 +222,8 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'underground_skill_profile_slot_unique')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_owned_equipment_slot_check')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_owned_equipment_instance_check')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_equipment_profile_grant_unique')->count());
         $this->assertSame(1, DB::table('pg_constraint')
@@ -252,6 +263,8 @@ SQL);
         $undergroundIndexes = [
             'underground_battle_logs_expires_at_index',
             'underground_battles_profile_finished_at_index',
+            'underground_equipment_instance_identity_unique',
+            'underground_equipment_source_battle_unique',
             'underground_equipment_vault_page_index',
         ];
         $this->assertSame($undergroundIndexes, DB::table('pg_indexes')
@@ -372,7 +385,7 @@ SQL);
         $this->assertSame(1, $starter->equipped_slot);
     }
 
-    public function test_exact_3_0_0_v18_upgrade_runs_one_release_migration_and_preserves_business_data(): void
+    public function test_exact_3_0_0_v18_upgrade_runs_forward_release_migrations_and_preserves_business_data(): void
     {
         $targetSettings = config('hakoniwa.ruleset');
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
@@ -410,6 +423,17 @@ SQL);
             'current_hp' => 789,
             'unlocked_area_layers' => 0,
         ]);
+        $legacyAccessory = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'vitality_accessory_rank_1',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v1',
+            'equipped_slot' => 'accessory_1',
+            'grant_key' => 'supported-upgrade-accessory',
+            'instance_kind' => 'fixed',
+            'acquired_at' => now()->subHour(),
+        ]);
+        $legacyAccessoryId = $legacyAccessory->id;
+        $legacyAcquiredAt = $legacyAccessory->acquired_at;
         UndergroundTrialProgress::query()->create([
             'underground_profile_id' => $profile->id,
             'trial_key' => 'trial_01',
@@ -430,7 +454,10 @@ SQL);
             'hakoniwa.published_rulesets' => [$targetSettings['key'] => $targetSettings],
         ]);
         $this->assertSame(
-            ['2026_09_01_000000_rebaseline_3_1_0_release'],
+            [
+                '2026_09_01_000000_rebaseline_3_1_0_release',
+                '2026_09_02_000000_expand_underground_hackslash_equipment',
+            ],
             $this->pendingMigrations(),
         );
         $this->assertSame(55, DB::table('migrations')->count());
@@ -443,7 +470,31 @@ SQL);
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_gauge'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_message'));
         $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'ruleset_version_id'));
-        $this->assertSame(56, DB::table('migrations')->count());
+        $this->assertSame(57, DB::table('migrations')->count());
+        $upgradedAccessory = UndergroundOwnedEquipment::query()->findOrFail($legacyAccessoryId);
+        $this->assertSame([
+            'vitality_accessory_rank_1',
+            'secretary-underground-shop-equipment-alpha-v1',
+            'accessory_1',
+            'supported-upgrade-accessory',
+            'fixed',
+            null,
+            null,
+            null,
+            null,
+            $legacyAcquiredAt->toIso8601String(),
+        ], [
+            $upgradedAccessory->definition_key,
+            $upgradedAccessory->catalog_identity,
+            $upgradedAccessory->equipped_slot,
+            $upgradedAccessory->grant_key,
+            $upgradedAccessory->instance_kind,
+            $upgradedAccessory->instance_identity,
+            $upgradedAccessory->generator_identity,
+            $upgradedAccessory->generated_payload,
+            $upgradedAccessory->source_battle_id,
+            $upgradedAccessory->acquired_at->toIso8601String(),
+        ]);
         $after = $this->businessSnapshot();
         foreach ($before as $table => $digest) {
             if (! in_array($table, [
@@ -852,11 +903,13 @@ SQL);
         DB::table('migrations')->whereIn('migration', [
             '2026_08_30_050000_rebaseline_3_0_0_underground_release',
             '2026_09_01_000000_rebaseline_3_1_0_release',
+            '2026_09_02_000000_expand_underground_hackslash_equipment',
         ])->delete();
     }
 
     private function returnDatabaseToExact300Source(): void
     {
+        $this->returnDatabaseToExact310Source();
         Schema::drop('nation_underground_facilities');
         $this->returnQueueToSurfaceOnlySchema();
         DB::statement(<<<'SQL'
@@ -882,6 +935,39 @@ SQL);
         DB::table('migrations')->where(
             'migration',
             '2026_09_01_000000_rebaseline_3_1_0_release',
+        )->delete();
+    }
+
+    private function returnDatabaseToExact310Source(): void
+    {
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_owned_equipment
+  DROP CONSTRAINT underground_owned_equipment_instance_check,
+  DROP CONSTRAINT underground_owned_equipment_slot_check
+SQL);
+        Schema::table('underground_owned_equipment', function (Blueprint $table): void {
+            $table->dropUnique('underground_equipment_instance_identity_unique');
+            $table->dropUnique('underground_equipment_source_battle_unique');
+            $table->dropForeign(['source_battle_id']);
+            $table->dropColumn([
+                'instance_kind',
+                'instance_identity',
+                'generator_identity',
+                'generated_payload',
+                'source_battle_id',
+            ]);
+        });
+        DB::table('underground_owned_equipment')
+            ->where('equipped_slot', 'accessory_1')
+            ->update(['equipped_slot' => 'accessory']);
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_owned_equipment
+  ADD CONSTRAINT underground_owned_equipment_slot_check
+  CHECK (equipped_slot IS NULL OR equipped_slot IN ('weapon', 'armor', 'accessory'))
+SQL);
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_02_000000_expand_underground_hackslash_equipment',
         )->delete();
     }
 

@@ -345,7 +345,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-awakening-gauge[data-full="true"] { border-color: #8b783d; background: #fff7c7; }
 .underground-awakening-gauge[data-full="true"] progress::-webkit-progress-value { background: #c9a227; }
 .underground-awakening-gauge[data-full="true"] progress::-moz-progress-bar { background: #c9a227; }
-.underground-equipment dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; margin: 0; }
+.underground-equipment dl { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .4rem; margin: 0; }
 .underground-equipment dl div { padding: .55rem; border: 1px solid var(--line); }
 .underground-equipment dd { margin: .2rem 0 0; color: var(--muted); }
 .underground-character-actions, .underground-entries, .underground-shop-entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
@@ -474,6 +474,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-equipment-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: .75rem; }
 .underground-equipment-card { display: grid; align-content: start; gap: .65rem; min-width: 0; padding: .85rem; border: 1px solid var(--line); background: var(--paper); box-shadow: 3px 3px 0 rgba(18, 63, 73, .06); }
 .underground-equipment-card[data-owned="true"] { border-color: var(--coral); }
+.underground-equipment-card[data-locked="true"] { border-color: var(--line); background: var(--paper-deep); }
 .underground-equipment-card-heading { display: flex; align-items: start; justify-content: space-between; gap: .6rem; }
 .underground-equipment-card-heading h3 { overflow-wrap: anywhere; }
 .underground-equipment-card-kicker { color: var(--muted); font-size: .72rem; font-weight: 800; }
@@ -482,11 +483,14 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-equipment-card-stats div { display: flex; justify-content: space-between; gap: .5rem; }
 .underground-equipment-card-stats dt { color: var(--muted); }
 .underground-equipment-card-stats dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.underground-equipment-card-affixes { display: grid; gap: .25rem; margin: 0; padding: .5rem .6rem .5rem 1.8rem; border-left: 3px solid var(--coral); background: var(--paper-deep); color: var(--muted); font-size: .78rem; }
+.underground-equipment-card-affixes li { overflow-wrap: anywhere; }
 .underground-equipment-card-effect { padding: .5rem; border-left: 3px solid var(--coral); background: var(--paper-deep); color: var(--muted); font-size: .78rem; }
 .underground-equipment-card-footer { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem .65rem; margin-top: auto; color: var(--muted); font-size: .78rem; }
 .underground-equipment-card-footer > span { overflow-wrap: anywhere; }
 .underground-equipment-card-footer .button { min-height: 2.65rem; margin-left: auto; padding: .4rem .7rem; }
 .underground-equipment-owned, .underground-equipment-equipped { color: var(--coral-dark); font-weight: 900; }
+.underground-equipment-locked { color: var(--coral-dark); font-weight: 850; }
 .underground-equipment-unaffordable { color: var(--muted); font-weight: 800; }
 .underground-equipment-owned-list, .underground-equipped-slots { display: grid; gap: .75rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .underground-equipment-owned-list > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
@@ -501,7 +505,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-vault-capacity { display: grid; justify-items: end; gap: .15rem; min-width: 7rem; }
 .underground-vault-capacity strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
 .underground-vault-capacity span, .underground-vault-toolbar { color: var(--muted); font-size: .8rem; }
-.underground-equipped-slot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; }
+.underground-equipped-slot-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .6rem; }
 .underground-equipped-slot { display: grid; align-content: start; gap: .35rem; min-width: 0; padding: .7rem; border: 1px solid var(--line); background: var(--paper); }
 .underground-equipped-slot h3 { font-size: .85rem; }
 .underground-equipped-slot p { overflow-wrap: anywhere; }
@@ -511,6 +515,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-vault-toolbar p { margin: 0; }
 .underground-vault-toolbar > div { display: flex; align-items: center; gap: .35rem; }
 .underground-vault-toolbar .button { min-height: 2.35rem; padding: .3rem .65rem; }
+.underground-accessory-target { display: grid; gap: .2rem; min-width: min(100%, 10rem); color: var(--muted); font-size: .75rem; font-weight: 800; }
+.underground-accessory-target select { min-height: 2.35rem; padding: .25rem .4rem; border: 1px solid var(--input-border); background: var(--input-surface); color: var(--ink); font: inherit; }
 .secretary-panel .secretary-page-title { margin: 0 0 14px; font-family: inherit; font-size: 1.5rem; line-height: 1.25; }
 .secretary-name { margin: 0 0 24px; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 1; }
 .secretary-section-title { margin: 0; font-size: 1rem; }
@@ -1131,6 +1137,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     .underground-equipment-screen-heading, .underground-equipment-owned-list > header { flex-direction: column; }
     .underground-equipment-balances { width: 100%; min-width: 0; }
     .underground-equipment-tabs button, .underground-equipment-style-tabs button { flex: 1 1 auto; }
+    .underground-equipment dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .underground-equipped-slot-grid { grid-template-columns: 1fr; }
     .underground-vault-toolbar { align-items: stretch; flex-direction: column; }
     .underground-vault-toolbar > div { justify-content: space-between; }

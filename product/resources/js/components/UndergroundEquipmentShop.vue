@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import EquipmentConfirmDialog from './EquipmentConfirmDialog.vue';
-import EquipmentItemCard, { type EquipmentItem } from './EquipmentItemCard.vue';
+import EquipmentItemCard, { type EquipmentItem, type EquipmentSlot } from './EquipmentItemCard.vue';
 
 interface ShopResponse {
     catalog_identity: string;
@@ -16,7 +16,7 @@ interface ShopResponse {
 interface MutationResponse {
     shard_balance: number;
     banked_shard_balance: number;
-    vault: { used: number; capacity: number; equipped: Record<'weapon' | 'armor' | 'accessory', EquipmentItem | null> };
+    vault: { used: number; capacity: number; equipped: Record<EquipmentSlot, EquipmentItem | null> };
 }
 
 const emit = defineEmits<{ updated: [value: MutationResponse] }>();
@@ -31,12 +31,23 @@ const pending = ref<{ fingerprint: string; requestId: string } | null>(null);
 
 const categoryLabels: Record<EquipmentItem['category'], string> = { weapon: '武器', armor: '防具', accessory: 'アクセサリー' };
 const styleLabels: Record<string, string> = { dagger: '短剣', rapier: '細身剣', longsword: '長剣', crystal_staff: '輝石杖' };
+const slotLabels: Record<EquipmentSlot, string> = {
+    weapon: '武器',
+    armor: '防具',
+    accessory_1: 'アクセサリー1',
+    accessory_2: 'アクセサリー2',
+    accessory_3: 'アクセサリー3',
+};
+function slotLabel(slot: EquipmentSlot | null | undefined): string {
+    return slot ? slotLabels[slot] : 'アクセサリー';
+}
 const visibleItems = computed(() => (shop.value?.items ?? []).filter((item) => {
     if (item.category !== category.value) return false;
     return category.value !== 'weapon' || weaponStyle.value === 'all' || item.weapon_style === weaponStyle.value;
 }));
 const weaponStyles = computed(() => [...new Set((shop.value?.items ?? []).filter((item) => item.category === 'weapon').map((item) => item.weapon_style).filter((style): style is string => Boolean(style)))]);
-const affordable = (item: EquipmentItem): boolean => (shop.value?.shard_balance ?? 0) >= (item.buy_price ?? Number.MAX_SAFE_INTEGER);
+const affordable = (item: EquipmentItem): boolean => !item.locked
+    && (shop.value?.shard_balance ?? 0) >= (item.buy_price ?? Number.MAX_SAFE_INTEGER);
 
 function requestId(): string { return crypto.randomUUID(); }
 
@@ -60,7 +71,7 @@ function mutationError(caught: unknown): string {
 }
 
 async function purchase(item: EquipmentItem): Promise<void> {
-    if (busy.value || item.owned || !affordable(item) || item.buy_price === null || item.buy_price === undefined) return;
+    if (busy.value || item.owned || item.locked || !affordable(item) || item.buy_price === null || item.buy_price === undefined) return;
     const fingerprint = `purchase:${item.key}`;
     const action = pending.value?.fingerprint === fingerprint ? pending.value : { fingerprint, requestId: requestId() };
     pending.value = action;
@@ -79,7 +90,7 @@ async function purchase(item: EquipmentItem): Promise<void> {
 }
 
 function askSell(item: EquipmentItem): void {
-    if (busy.value || item.equipped_slot !== null || item.sell_price <= 0) return;
+    if (busy.value || item.id === undefined || item.equipped_slot !== null || item.sell_price <= 0) return;
     confirmItem.value = item;
 }
 
@@ -125,17 +136,22 @@ onMounted(() => { void loadShop(); });
             </div>
             <p v-if="visibleItems.length === 0" class="status">このカテゴリの商品はありません。</p>
             <div class="underground-equipment-card-grid">
-                <EquipmentItemCard v-for="item in visibleItems" :key="item.key" :item="item" :disabled="busy || item.owned || !affordable(item)" @action="purchase(item)">
-                    <template #price><span>{{ item.buy_price?.toLocaleString('ja-JP') }}G</span><span v-if="item.owned" class="underground-equipment-owned">所有済み</span><span v-else-if="!affordable(item)" class="underground-equipment-unaffordable">手持ち不足</span></template>
-                    <template #action>{{ item.owned ? '購入済み' : '購入する' }}</template>
+                <EquipmentItemCard v-for="item in visibleItems" :key="item.key" :item="item" :disabled="busy || item.owned || item.locked || !affordable(item)" @action="purchase(item)">
+                    <template #price>
+                        <span v-if="item.buy_price !== null && item.buy_price !== undefined">{{ item.buy_price.toLocaleString('ja-JP') }}G</span>
+                        <span v-if="item.locked" class="underground-equipment-locked">🔒 {{ item.unlock_requirement ?? '解禁条件あり' }}</span>
+                        <span v-else-if="item.owned" class="underground-equipment-owned">所有済み</span>
+                        <span v-else-if="!affordable(item)" class="underground-equipment-unaffordable">手持ち不足</span>
+                    </template>
+                    <template #action>{{ item.locked ? 'ロック中' : item.owned ? '購入済み' : '購入する' }}</template>
                 </EquipmentItemCard>
             </div>
             <section class="underground-equipment-owned-list" aria-labelledby="underground-equipment-owned-title">
                 <header><div><p class="eyebrow">Owned Items</p><h2 id="underground-equipment-owned-title">売却リスト</h2></div><p>装備中のアイテムは外してから売却できます。</p></header>
                 <p v-if="shop.owned_items.length === 0" class="status">所有アイテムはありません。</p>
                 <div class="underground-equipment-card-grid">
-                    <EquipmentItemCard v-for="item in shop.owned_items" :key="item.id" :item="item" mode="owned" :disabled="busy || item.equipped_slot !== null || item.sell_price <= 0" @action="askSell(item)">
-                        <template #status><span v-if="item.equipped_slot" class="underground-equipment-equipped">{{ item.equipped_slot === 'accessory' ? 'アクセサリー' : item.equipped_slot === 'armor' ? '防具' : '武器' }}として装備中</span><span v-else>未装備</span></template>
+                    <EquipmentItemCard v-for="item in shop.owned_items" :key="item.id" :item="item" mode="owned" :disabled="busy || item.id === undefined || item.equipped_slot !== null || item.sell_price <= 0" @action="askSell(item)">
+                        <template #status><span v-if="item.equipped_slot" class="underground-equipment-equipped">{{ slotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span></template>
                         <template #price><span>購入価格 {{ item.buy_price === null || item.buy_price === undefined ? '非売品' : `${item.buy_price.toLocaleString('ja-JP')}G` }}</span><span>売却価格 {{ item.sell_price.toLocaleString('ja-JP') }}G</span></template>
                         <template #action>{{ item.equipped_slot ? '装備中' : item.sell_price <= 0 ? '売却不可' : '売却する' }}</template>
                     </EquipmentItemCard>

@@ -320,6 +320,8 @@ final readonly class AlphaV1CombatModel
         $this->validator->assertAiRules($catalog, $skills, $aiRules, $key);
 
         $equipmentStats = $equipment['stats'] ?? null;
+        $equipmentModifiers = $equipment['modifiers'] ?? null;
+        $equipmentAffixes = $equipment['affixes'] ?? null;
         if (! is_string($equipment['key'] ?? null) || $equipment['key'] === ''
             || ! is_int($equipment['item_level'] ?? null) || $equipment['item_level'] < 1
             || ! is_string($equipment['rarity'] ?? null) || $equipment['rarity'] === ''
@@ -330,7 +332,8 @@ final readonly class AlphaV1CombatModel
             || ! is_int($equipment['physical_defense'] ?? null) || $equipment['physical_defense'] < 0
             || ! is_int($equipment['magical_defense'] ?? null) || $equipment['magical_defense'] < 0
             || ! is_int($equipment['max_hp'] ?? null) || $equipment['max_hp'] < 0
-            || ($equipment['affixes'] ?? null) !== []
+            || ! is_array($equipmentModifiers)
+            || ! is_array($equipmentAffixes) || ! array_is_list($equipmentAffixes)
             || ! array_key_exists('unique_effect', $equipment)
             || $equipment['unique_effect'] !== null) {
             throw new InvalidArgumentException('Underground alpha-v1 runtime equipment snapshot is invalid.');
@@ -338,6 +341,32 @@ final readonly class AlphaV1CombatModel
         foreach ($equipmentStats as $value) {
             if (! is_int($value) || $value < 0) {
                 throw new InvalidArgumentException('Underground alpha-v1 runtime equipment stats are invalid.');
+            }
+        }
+        $allowedEquipmentModifiers = [
+            'physical_damage_bps',
+            'miracle_damage_bps',
+            'healing_bps',
+            'barrier_bps',
+            'critical_chance_bps',
+            'critical_damage_bps',
+            'mp_cost_reduction_bps',
+        ];
+        foreach ($equipmentModifiers as $modifierKey => $value) {
+            if (! in_array($modifierKey, $allowedEquipmentModifiers, true)
+                || ! is_int($value) || $value < 0) {
+                throw new InvalidArgumentException('Underground alpha-v1 runtime equipment modifiers are invalid.');
+            }
+            $modifiers[$modifierKey] = (int) ($modifiers[$modifierKey] ?? 0) + $value;
+        }
+        foreach ($equipmentAffixes as $affix) {
+            if (! is_array($affix)
+                || ! is_string($affix['key'] ?? null) || $affix['key'] === ''
+                || ! is_string($affix['label'] ?? null) || $affix['label'] === ''
+                || ! in_array($affix['kind'] ?? null, ['stat', 'modifier', 'base'], true)
+                || ! is_string($affix['target'] ?? null) || $affix['target'] === ''
+                || ! is_int($affix['value'] ?? null) || $affix['value'] < 1) {
+                throw new InvalidArgumentException('Underground alpha-v1 runtime equipment affixes are invalid.');
             }
         }
         foreach (AlphaV1CombatRules::STATS as $stat) {

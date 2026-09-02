@@ -959,8 +959,9 @@ final class UndergroundCombatBuildTest extends TestCase
             static fn (array $definition): bool => $definition['shop_sold'],
         );
 
-        $this->assertSame('secretary-underground-shop-equipment-alpha-v1', $catalog['catalog_identity']);
-        $this->assertSame([500, 50, 31, 30], [
+        $this->assertSame('secretary-underground-shop-equipment-alpha-v2', $catalog['catalog_identity']);
+        $this->assertCount(31, $catalog['legacy_catalogs']['secretary-underground-shop-equipment-alpha-v1']);
+        $this->assertSame([500, 50, 41, 40], [
             $catalog['vault_capacity'],
             $catalog['page_size'],
             count($definitions),
@@ -978,6 +979,11 @@ final class UndergroundCombatBuildTest extends TestCase
             'finesse_accessory_rank_1', 'finesse_accessory_rank_2', 'finesse_accessory_rank_3',
             'spirit_accessory_rank_1', 'spirit_accessory_rank_2', 'spirit_accessory_rank_3',
             'agility_accessory_rank_1', 'agility_accessory_rank_2', 'agility_accessory_rank_3',
+            'black_crystal_dagger', 'black_crystal_rapier', 'black_crystal_longsword',
+            'black_crystal_staff', 'black_crystal_breastplate',
+            'black_crystal_vitality_accessory', 'black_crystal_might_accessory',
+            'black_crystal_finesse_accessory', 'black_crystal_spirit_accessory',
+            'black_crystal_agility_accessory',
         ], array_keys($definitions));
         $starter = $definitions['starter_knife'];
         $this->assertSame([
@@ -996,7 +1002,7 @@ final class UndergroundCombatBuildTest extends TestCase
         $weapons = array_filter($shop, static fn (array $item): bool => $item['category'] === 'weapon');
         $armors = array_values(array_filter($shop, static fn (array $item): bool => $item['category'] === 'armor'));
         $accessories = array_filter($shop, static fn (array $item): bool => $item['category'] === 'accessory');
-        $this->assertSame([12, 3, 15], [count($weapons), count($armors), count($accessories)]);
+        $this->assertSame([16, 4, 20], [count($weapons), count($armors), count($accessories)]);
         $this->assertSame(
             ['dagger', 'rapier', 'longsword', 'crystal_staff'],
             array_values(array_unique(array_column($weapons, 'weapon_style'))),
@@ -1006,7 +1012,8 @@ final class UndergroundCombatBuildTest extends TestCase
         foreach (['dagger', 'rapier', 'longsword', 'crystal_staff'] as $style) {
             $series = array_values(array_filter(
                 $weapons,
-                static fn (array $item): bool => $item['weapon_style'] === $style,
+                static fn (array $item): bool => $item['weapon_style'] === $style
+                    && $item['rank'] <= 3,
             ));
             $this->assertSame([1, 2, 3], array_column($series, 'rank'));
             $this->assertSame([1, 10, 20], array_column($series, 'item_level'));
@@ -1014,11 +1021,15 @@ final class UndergroundCombatBuildTest extends TestCase
             $this->assertLessThan($series[1]['weapon_power'], $series[0]['weapon_power']);
             $this->assertLessThan($series[2]['weapon_power'], $series[1]['weapon_power']);
         }
-        $this->assertSame([1, 2, 3], array_column($armors, 'rank'));
-        $this->assertSame([100, 300, 900], array_column($armors, 'buy_price'));
+        $legacyArmors = array_values(array_filter(
+            $armors,
+            static fn (array $item): bool => $item['rank'] <= 3,
+        ));
+        $this->assertSame([1, 2, 3], array_column($legacyArmors, 'rank'));
+        $this->assertSame([100, 300, 900], array_column($legacyArmors, 'buy_price'));
         foreach (['physical_defense', 'magical_defense', 'max_hp'] as $field) {
-            $this->assertLessThan($armors[1][$field], $armors[0][$field]);
-            $this->assertLessThan($armors[2][$field], $armors[1][$field]);
+            $this->assertLessThan($legacyArmors[1][$field], $legacyArmors[0][$field]);
+            $this->assertLessThan($legacyArmors[2][$field], $legacyArmors[1][$field]);
         }
 
         foreach (AlphaV1CombatRules::STATS as $stat) {
@@ -1044,6 +1055,19 @@ final class UndergroundCombatBuildTest extends TestCase
             $definitions['polished_steel_dagger']['rank'],
             $definitions['polished_steel_dagger']['item_level'],
             $definitions['polished_steel_dagger']['rarity'],
+        ]);
+        $this->assertSame([4, 40, 3_000, 'trial_01', 'ノービス'], [
+            $definitions['black_crystal_dagger']['rank'],
+            $definitions['black_crystal_dagger']['item_level'],
+            $definitions['black_crystal_dagger']['buy_price'],
+            $definitions['black_crystal_dagger']['required_trial_key'],
+            $definitions['black_crystal_dagger']['rarity_label'],
+        ]);
+        $this->assertSame([120, 100, 300, 2_700], [
+            $definitions['black_crystal_breastplate']['physical_defense'],
+            $definitions['black_crystal_breastplate']['magical_defense'],
+            $definitions['black_crystal_breastplate']['max_hp'],
+            $definitions['black_crystal_breastplate']['buy_price'],
         ]);
     }
 
