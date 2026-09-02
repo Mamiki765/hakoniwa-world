@@ -192,7 +192,8 @@ final class UndergroundCombatBuildTest extends TestCase
         );
         $this->assertSame(0, $overkill->playerRemainingHp);
         $this->assertGreaterThan(0, $nonlethal->playerRemainingHp);
-        $this->assertSame($nonlethal->damagePrevented, $overkill->damagePrevented);
+        $this->assertSame(0, $overkill->damagePrevented);
+        $this->assertGreaterThan($overkill->damagePrevented, $nonlethal->damagePrevented);
 
         $retaliation = $manifest;
         $retaliation['builds']['pure_tank']['ai_rules'] = [[
@@ -419,6 +420,112 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertIsArray($completeGuardedRow);
         $this->assertTrue($completeGuardedRow['complete_guarded']);
         $this->assertArrayNotHasKey('agility_combo_hits', $completeGuardedRow);
+    }
+
+    public function test_terminal_agility_combo_caps_mitigation_and_evasion_prevention_at_absorbable_damage(): void
+    {
+        [$manifest] = $this->catalog();
+        $terminalAttack = [
+            'type' => 'damage',
+            'category' => 'physical',
+            'potency_bps' => 10_000,
+            'stat_coefficients' => [],
+            'weapon_coefficient_bps' => 0,
+            'fixed' => 500,
+            'target_max_hp_bps' => 0,
+            'can_crit' => false,
+            'dodgeable' => false,
+            'hits' => 1,
+        ];
+        $manifest['enemies']['terminal_combo_enemy'] = [
+            'label' => '終端combo試験体',
+            'boss' => false,
+            'base_stats' => ['vitality' => 1, 'might' => 1, 'finesse' => 1, 'spirit' => 1, 'agility' => 300],
+            'max_hp' => 1_000_000,
+            'physical_defense' => 0,
+            'magical_defense' => 0,
+            'weapon_power' => 1,
+            'normal_attack' => $terminalAttack,
+            'skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'modifiers' => [],
+        ];
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $snapshot = [
+            'key' => 'terminal_combo_player',
+            'label' => '低HP秘書',
+            'stats' => ['vitality' => 20, 'might' => 20, 'finesse' => 20, 'spirit' => 20, 'agility' => 1],
+            'current_hp' => 5,
+            'active_skills' => [],
+            'ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'modifiers' => ['evasion_bps' => AlphaV1CombatRules::EVASION_CAP_BPS],
+            'equipment' => $configuration['exploration']['starter_weapon'],
+        ];
+        $rules = new AlphaV1CombatRules;
+        $profile = $rules->agilityProfile(300, 2);
+        $comboRateBps = $profile['two_hit_rate_bps']
+            + $profile['three_hit_rate_bps']
+            + $profile['four_hit_rate_bps'];
+        $comboEvasionSeed = null;
+        foreach (range(0, 5_000) as $seed) {
+            $random = new UndergroundRandom($seed);
+            $comboRoll = $random->integer(
+                'alpha-v1:agility-combo:terminal_combo_enemy:normal_attack:round:1',
+                1,
+                10_000,
+            );
+            $evasionRoll = $random->integer(
+                'alpha-v1:evasion:terminal_combo_player:normal_attack:1',
+                1,
+                10_000,
+            );
+            if ($comboRoll <= $comboRateBps && $evasionRoll <= AlphaV1CombatRules::EVASION_CAP_BPS) {
+                $comboEvasionSeed = $seed;
+
+                break;
+            }
+        }
+        $this->assertIsInt($comboEvasionSeed);
+
+        $terminal = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($manifest),
+            $snapshot,
+            'terminal_combo_enemy',
+            $comboEvasionSeed,
+            1,
+            0,
+        );
+        $terminalRow = collect($terminal->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($terminalRow);
+        $this->assertGreaterThan(1, $terminalRow['agility_combo_hits']);
+        $this->assertSame('enemy', $terminal->winner);
+        $this->assertSame(0, $terminal->playerRemainingHp);
+        $this->assertSame(5, $terminal->damageReceived);
+        $this->assertSame(0, $terminal->damagePrevented);
+
+        $evasive = $manifest;
+        $evasive['enemies']['terminal_combo_enemy']['normal_attack']['dodgeable'] = true;
+        $evaded = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($evasive),
+            $snapshot,
+            'terminal_combo_enemy',
+            $comboEvasionSeed,
+            1,
+            0,
+        );
+        $evadedRow = collect($evaded->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($evadedRow);
+        $this->assertTrue($evadedRow['evaded']);
+        $this->assertArrayNotHasKey('agility_combo_hits', $evadedRow);
+        $this->assertSame(5, $evaded->playerRemainingHp);
+        $this->assertSame(0, $evaded->damageReceived);
+        $this->assertSame(5, $evaded->damagePrevented);
     }
 
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void

@@ -990,7 +990,10 @@ final readonly class AlphaV1CombatModel
             if (($effect['dodgeable'] ?? true) === true
                 && $random->integer("alpha-v1:evasion:{$target->key}:{$actionKey}:{$hit}", 1, 10_000) <= $evasion) {
                 if ($target->side === 'player') {
-                    $metrics['damage_prevented'] += $preMitigation * $agilityComboHits;
+                    $metrics['damage_prevented'] += min(
+                        $target->hp + $target->barrier,
+                        $preMitigation * $agilityComboHits,
+                    );
                 }
                 $actionLog[] = $this->logRow(
                     $round,
@@ -1032,6 +1035,12 @@ final readonly class AlphaV1CombatModel
             }
             $postMitigationBeforeCombo = max(1, intdiv($preMitigation * $combinedBps, 10_000));
             $postMitigation = $postMitigationBeforeCombo * $agilityComboHits;
+            $absorbableDamage = $target->hp + $target->barrier;
+            $preventedByMitigation = max(
+                0,
+                min($absorbableDamage, $preMitigation * $agilityComboHits)
+                    - min($absorbableDamage, $postMitigation),
+            );
             $settled = $this->settlePostMitigationDamage(
                 $target,
                 $postMitigation,
@@ -1042,10 +1051,7 @@ final readonly class AlphaV1CombatModel
             $reportedDamage = $settled['reported_damage'];
             $barrierAbsorbed = $settled['barrier_absorbed'];
             if ($target->side === 'player') {
-                $metrics['damage_prevented'] += max(
-                    0,
-                    ($preMitigation - $postMitigationBeforeCombo) * $agilityComboHits,
-                );
+                $metrics['damage_prevented'] += $preventedByMitigation;
             }
             $loggedAgilityComboHits = $showAgilityCombo && ! $agilityComboLogged ? $agilityComboHits : 1;
             $agilityComboLogged = true;
