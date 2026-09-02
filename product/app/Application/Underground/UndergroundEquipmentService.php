@@ -20,6 +20,14 @@ use RuntimeException;
 
 final readonly class UndergroundEquipmentService
 {
+    /** @var list<string> */
+    public const BULK_SELL_RARITY_KEYS = [
+        'novice', 'regular', 'high_quality', 'artifact', 'relic', 'unique',
+    ];
+
+    /** @var list<string> */
+    public const BULK_SELL_CATEGORY_KEYS = ['weapon', 'armor', 'accessory'];
+
     public function __construct(
         private UndergroundEquipmentCatalog $catalog,
         private UndergroundEquipmentLoadoutResolver $loadout,
@@ -111,11 +119,63 @@ final readonly class UndergroundEquipmentService
             return [
                 ...$this->loadout->summary($profile),
                 'catalog_identity' => $this->catalog->identity(),
+                'bulk_sell_options' => $this->bulkSellOptions(),
                 'items' => $items,
                 'page' => $page,
                 'per_page' => $perPage,
                 'last_page' => $lastPage,
                 'total' => $total,
+            ];
+        });
+    }
+
+    /**
+     * @param  array<mixed>  $rarities
+     * @param  array<mixed>  $categories
+     * @param  array<mixed>  $weaponStyles
+     * @return array<string, mixed>
+     */
+    public function bulkSellPreview(
+        User $user,
+        ?int $itemLevelMax,
+        array $rarities,
+        array $categories,
+        array $weaponStyles,
+    ): array {
+        [$rarities, $categories, $weaponStyles] = $this->normalizeBulkSellFilters(
+            $rarities,
+            $categories,
+            $weaponStyles,
+        );
+
+        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use (
+            $itemLevelMax,
+            $rarities,
+            $categories,
+            $weaponStyles,
+        ): array {
+            $items = UndergroundOwnedEquipment::query()
+                ->where('underground_profile_id', $profile->id)
+                ->orderByDesc('acquired_at')
+                ->orderByDesc('id')
+                ->get()
+                ->map(fn (UndergroundOwnedEquipment $row): array => $this->loadout->projectOwned($row))
+                ->filter(fn (array $item): bool => $this->matchesBulkSellFilters(
+                    $item,
+                    $itemLevelMax,
+                    $rarities,
+                    $categories,
+                    $weaponStyles,
+                ))
+                ->values()
+                ->all();
+            $totalSellPrice = $this->sumSellPrices($items);
+
+            return [
+                'catalog_identity' => $this->catalog->identity(),
+                'items' => $items,
+                'count' => count($items),
+                'total_sell_price' => $totalSellPrice,
             ];
         });
     }
@@ -215,6 +275,105 @@ final readonly class UndergroundEquipmentService
                 }
 
                 $item->delete();
+                $profile->shard_balance += $sellPrice;
+                $profile->save();
+            },
+        );
+    }
+
+    /**
+     * @param  array<mixed>  $quotedItems
+     * @return array<string, mixed>
+     */
+    public function bulkSell(
+        User $user,
+        string $requestId,
+        string $catalogIdentity,
+        array $quotedItems,
+    ): array {
+        $quotedItems = $this->normalizeBulkSellQuotes($quotedItems);
+
+        return $this->mutate(
+            $user,
+            $requestId,
+            'equipment_bulk_sell',
+            ['catalog_identity' => $catalogIdentity, 'items' => $quotedItems],
+            function (UndergroundProfile $profile) use ($catalogIdentity, $quotedItems): void {
+                if ($catalogIdentity !== $this->catalog->identity()) {
+                    throw new UndergroundRuntimeException(
+                        'underground_bulk_sell_preview_changed',
+                        '装備catalogが更新されています。売却候補をpreviewし直してください。',
+                    );
+                }
+                $quotedById = [];
+                foreach ($quotedItems as $quote) {
+                    $quotedById[$quote['id']] = $quote['sell_price'];
+                }
+                $itemIds = array_keys($quotedById);
+                $items = UndergroundOwnedEquipment::query()
+                    ->where('underground_profile_id', $profile->id)
+                    ->whereIn('id', $itemIds)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+                if ($items->count() !== count($itemIds)) {
+                    throw new UndergroundRuntimeException(
+                        'underground_bulk_sell_preview_changed',
+                        '売却候補の所有状態が変わりました。previewし直してください。',
+                    );
+                }
+
+                $sellPrice = 0;
+                foreach ($items as $item) {
+                    if ($item->equipped_slot !== null) {
+                        throw new UndergroundRuntimeException(
+                            'underground_bulk_sell_preview_changed',
+                            '売却候補に装備中のitemがあります。previewし直してください。',
+                        );
+                    }
+                    try {
+                        $definition = $this->loadout->definitionForRow($item);
+                    } catch (RuntimeException) {
+                        throw new UndergroundRuntimeException(
+                            'underground_equipment_identity_invalid',
+                            '装備のidentityを確認できません。',
+                        );
+                    }
+                    if ($definition['sellable'] !== true) {
+                        throw new UndergroundRuntimeException(
+                            'underground_bulk_sell_preview_changed',
+                            '通常売却できない装備が含まれています。previewし直してください。',
+                        );
+                    }
+                    $canonicalPrice = $this->catalog->sellPrice($definition);
+                    if ($canonicalPrice !== $quotedById[$item->id]) {
+                        throw new UndergroundRuntimeException(
+                            'underground_bulk_sell_preview_changed',
+                            '売却価格が変わりました。previewし直してください。',
+                        );
+                    }
+                    if ($sellPrice > PHP_INT_MAX - $canonicalPrice) {
+                        throw new UndergroundRuntimeException(
+                            'underground_equipment_balance_overflow',
+                            '売却額の上限を超えます。',
+                        );
+                    }
+                    $sellPrice += $canonicalPrice;
+                }
+                if ($profile->shard_balance > PHP_INT_MAX - $sellPrice) {
+                    throw new UndergroundRuntimeException(
+                        'underground_equipment_balance_overflow',
+                        '手持ち残高の上限を超えます。',
+                    );
+                }
+
+                $deleted = UndergroundOwnedEquipment::query()
+                    ->where('underground_profile_id', $profile->id)
+                    ->whereIn('id', $itemIds)
+                    ->delete();
+                if ($deleted !== count($itemIds)) {
+                    throw new RuntimeException('Underground bulk equipment sale lost a locked item.');
+                }
                 $profile->shard_balance += $sellPrice;
                 $profile->save();
             },
@@ -337,7 +496,7 @@ final readonly class UndergroundEquipmentService
     }
 
     /**
-     * @param  array<string, scalar|null>  $payload
+     * @param  array<string, mixed>  $payload
      * @param  callable(UndergroundProfile):void  $operation
      * @return array<string, mixed>
      */
@@ -461,7 +620,7 @@ final readonly class UndergroundEquipmentService
         }, 3);
     }
 
-    /** @param array<string, scalar|null> $payload */
+    /** @param array<string, mixed> $payload */
     private function fingerprint(string $operation, array $payload, string $catalogIdentity): string
     {
         ksort($payload);
@@ -476,6 +635,188 @@ final readonly class UndergroundEquipmentService
         }
 
         return hash('sha256', $encoded);
+    }
+
+    /**
+     * @return array{
+     *   rarities: list<array{key: string, label: string}>,
+     *   categories: list<array{key: string, label: string}>,
+     *   weapon_styles: list<array{key: string, label: string}>
+     * }
+     */
+    private function bulkSellOptions(): array
+    {
+        return [
+            'rarities' => [
+                ['key' => 'novice', 'label' => 'ノービス'],
+                ['key' => 'regular', 'label' => 'レギュラー'],
+                ['key' => 'high_quality', 'label' => 'ハイクオリティ'],
+                ['key' => 'artifact', 'label' => 'アーティファクト'],
+                ['key' => 'relic', 'label' => 'レリック'],
+                ['key' => 'unique', 'label' => 'ユニーク'],
+            ],
+            'categories' => [
+                ['key' => 'weapon', 'label' => '武器'],
+                ['key' => 'armor', 'label' => '防具'],
+                ['key' => 'accessory', 'label' => 'アクセサリー'],
+            ],
+            'weapon_styles' => $this->catalog->weaponStyleOptions(),
+        ];
+    }
+
+    /**
+     * @param  array<mixed>  $rarities
+     * @param  array<mixed>  $categories
+     * @param  array<mixed>  $weaponStyles
+     * @return array{list<string>, list<string>, list<string>}
+     */
+    private function normalizeBulkSellFilters(
+        array $rarities,
+        array $categories,
+        array $weaponStyles,
+    ): array {
+        return [
+            $this->normalizeBulkSellFilterGroup($rarities, self::BULK_SELL_RARITY_KEYS, 'rarity'),
+            $this->normalizeBulkSellFilterGroup($categories, self::BULK_SELL_CATEGORY_KEYS, 'category'),
+            $this->normalizeBulkSellFilterGroup($weaponStyles, $this->catalog->weaponStyleKeys(), 'weapon style'),
+        ];
+    }
+
+    /**
+     * @param  array<mixed>  $selected
+     * @param  list<string>  $allowed
+     * @return list<string>
+     */
+    private function normalizeBulkSellFilterGroup(array $selected, array $allowed, string $label): array
+    {
+        if (! array_is_list($selected)) {
+            throw new UndergroundRuntimeException(
+                'underground_bulk_sell_filter_invalid',
+                "まとめ売りの{$label}条件を確認してください。",
+            );
+        }
+        $normalized = [];
+        $seen = [];
+        foreach ($selected as $value) {
+            if (! is_string($value) || ! in_array($value, $allowed, true) || isset($seen[$value])) {
+                throw new UndergroundRuntimeException(
+                    'underground_bulk_sell_filter_invalid',
+                    "まとめ売りの{$label}条件を確認してください。",
+                );
+            }
+            $seen[$value] = true;
+            $normalized[] = $value;
+        }
+        sort($normalized);
+
+        return $normalized;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @param  list<string>  $rarities
+     * @param  list<string>  $categories
+     * @param  list<string>  $weaponStyles
+     */
+    private function matchesBulkSellFilters(
+        array $item,
+        ?int $itemLevelMax,
+        array $rarities,
+        array $categories,
+        array $weaponStyles,
+    ): bool {
+        if (($item['sellable'] ?? null) !== true || ($item['equipped_slot'] ?? null) !== null) {
+            return false;
+        }
+        if ($itemLevelMax !== null && $item['item_level'] > $itemLevelMax) {
+            return false;
+        }
+        if (! in_array($this->bulkSellRarityKey($item), $rarities, true)
+            || ! in_array($item['category'], $categories, true)) {
+            return false;
+        }
+
+        return $item['category'] !== 'weapon'
+            || in_array($item['weapon_style'], $weaponStyles, true);
+    }
+
+    /** @param array<string, mixed> $item */
+    private function bulkSellRarityKey(array $item): string
+    {
+        if (($item['instance_kind'] ?? null) === 'fixed') {
+            return 'novice';
+        }
+
+        return match ($item['rarity'] ?? null) {
+            'common' => 'regular',
+            'uncommon' => 'high_quality',
+            'rare' => 'artifact',
+            'epic' => 'relic',
+            default => throw new RuntimeException('Underground equipment rarity cannot be filtered.'),
+        };
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function sumSellPrices(array $items): int
+    {
+        $total = 0;
+        foreach ($items as $item) {
+            $price = $item['sell_price'] ?? null;
+            if (! is_int($price) || $price < 1 || $total > PHP_INT_MAX - $price) {
+                throw new UndergroundRuntimeException(
+                    'underground_equipment_balance_overflow',
+                    '売却額の上限を超えます。',
+                );
+            }
+            $total += $price;
+        }
+
+        return $total;
+    }
+
+    /**
+     * @param  array<mixed>  $quotedItems
+     * @return list<array{id: int, sell_price: int}>
+     */
+    private function normalizeBulkSellQuotes(array $quotedItems): array
+    {
+        if ($quotedItems === [] || ! array_is_list($quotedItems)
+            || count($quotedItems) > $this->catalog->vaultCapacity()) {
+            throw new UndergroundRuntimeException(
+                'underground_bulk_sell_quote_invalid',
+                'まとめ売りする装備を確認してください。',
+            );
+        }
+        $normalized = [];
+        $seen = [];
+        foreach ($quotedItems as $quote) {
+            if (! is_array($quote)) {
+                throw new UndergroundRuntimeException(
+                    'underground_bulk_sell_quote_invalid',
+                    'まとめ売りする装備を確認してください。',
+                );
+            }
+            $keys = array_keys($quote);
+            sort($keys);
+            $itemId = $quote['id'] ?? null;
+            $sellPrice = $quote['sell_price'] ?? null;
+            if ($keys !== ['id', 'sell_price']
+                || ! is_int($itemId) || $itemId < 1
+                || ! is_int($sellPrice) || $sellPrice < 1
+                || isset($seen[$itemId])) {
+                throw new UndergroundRuntimeException(
+                    'underground_bulk_sell_quote_invalid',
+                    'まとめ売りする装備を確認してください。',
+                );
+            }
+            $seen[$itemId] = true;
+            $normalized[] = ['id' => $itemId, 'sell_price' => $sellPrice];
+        }
+        usort($normalized, static fn (array $left, array $right): int => $left['id'] <=> $right['id']);
+
+        return $normalized;
     }
 
     /** @param array<string, mixed> $definition */

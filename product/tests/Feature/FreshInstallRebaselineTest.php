@@ -76,7 +76,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(27, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(58, DB::table('migrations')->count());
+        $this->assertSame(59, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -112,6 +112,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_03_000000_add_underground_respec',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_03_010000_add_underground_bulk_sale_operation',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -350,6 +353,10 @@ SQL);
 
         $this->returnDatabaseToExact320Source();
         $this->assertFalse(Schema::hasColumn('underground_profiles', 'last_respec_at'));
+        $this->assertSame([
+            '2026_09_03_000000_add_underground_respec',
+            '2026_09_03_010000_add_underground_bulk_sale_operation',
+        ], $this->pendingMigrations());
         $this->artisan('migrate', ['--force' => true])->assertSuccessful();
 
         $profile->refresh();
@@ -384,8 +391,18 @@ SQL);
             'operation' => 'respec',
             'resulting_stage' => 'underground_open',
         ]);
+        UndergroundIntroRequest::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('b', 64),
+            'operation' => 'equipment_bulk_sell',
+            'resulting_stage' => 'underground_open',
+        ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_03_000000_add_underground_respec',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_03_010000_add_underground_bulk_sale_operation',
         ]);
         $this->assertSame([], $this->pendingMigrations());
     }
@@ -538,6 +555,7 @@ SQL);
                 '2026_09_01_000000_rebaseline_3_1_0_release',
                 '2026_09_02_000000_expand_underground_hackslash_equipment',
                 '2026_09_03_000000_add_underground_respec',
+                '2026_09_03_010000_add_underground_bulk_sale_operation',
             ],
             $this->pendingMigrations(),
         );
@@ -552,7 +570,7 @@ SQL);
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_message'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'last_respec_at'));
         $this->assertTrue(Schema::hasColumn('nation_underground_facilities', 'ruleset_version_id'));
-        $this->assertSame(58, DB::table('migrations')->count());
+        $this->assertSame(59, DB::table('migrations')->count());
         $upgradedAccessory = UndergroundOwnedEquipment::query()->findOrFail($legacyAccessoryId);
         $this->assertSame([
             'vitality_accessory_rank_1',
@@ -658,6 +676,7 @@ SQL);
             [
                 '2026_09_02_000000_expand_underground_hackslash_equipment',
                 '2026_09_03_000000_add_underground_respec',
+                '2026_09_03_010000_add_underground_bulk_sale_operation',
             ],
             $this->pendingMigrations(),
         );
@@ -671,7 +690,7 @@ SQL);
         $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
 
         $this->assertSame([], $this->pendingMigrations());
-        $this->assertSame(58, DB::table('migrations')->count());
+        $this->assertSame(59, DB::table('migrations')->count());
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'generated_payload'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'last_respec_at'));
@@ -1078,6 +1097,7 @@ SQL);
             '2026_09_01_000000_rebaseline_3_1_0_release',
             '2026_09_02_000000_expand_underground_hackslash_equipment',
             '2026_09_03_000000_add_underground_respec',
+            '2026_09_03_010000_add_underground_bulk_sale_operation',
         ])->delete();
     }
 
@@ -1162,10 +1182,10 @@ SQL);
         Schema::table('underground_profiles', function (Blueprint $table): void {
             $table->dropColumn('last_respec_at');
         });
-        DB::table('migrations')->where(
-            'migration',
+        DB::table('migrations')->whereIn('migration', [
             '2026_09_03_000000_add_underground_respec',
-        )->delete();
+            '2026_09_03_010000_add_underground_bulk_sale_operation',
+        ])->delete();
     }
 
     private function returnQueueToSurfaceOnlySchema(): void

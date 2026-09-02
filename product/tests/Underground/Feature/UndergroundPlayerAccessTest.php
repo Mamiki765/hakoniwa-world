@@ -1773,6 +1773,190 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertConflict()->assertJsonPath('code', 'underground_vault_page_invalid');
     }
 
+    public function test_bulk_sale_previews_canonical_filters_and_atomically_sells_only_the_quoted_items(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Bulk sale secretary');
+        [$otherUser, $otherSecretary] = $this->secretaryUser('Other bulk sale secretary');
+        $profile = $this->openEquipmentProfile($secretary, 100, 0);
+        $otherProfile = $this->openEquipmentProfile($otherSecretary, 0, 0);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
+        $this->actingAs($otherUser)->getJson('/api/v1/me/underground/main')->assertOk();
+
+        $fixed = [];
+        foreach (['iron_dagger', 'bronze_rapier'] as $definitionKey) {
+            $fixed[$definitionKey] = UndergroundOwnedEquipment::query()->create([
+                'underground_profile_id' => $profile->id,
+                'definition_key' => $definitionKey,
+                'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+                'equipped_slot' => null,
+                'grant_key' => null,
+                'instance_kind' => 'fixed',
+                'acquired_at' => Carbon::now(),
+            ]);
+        }
+        $generated = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
+            30,
+            'shallow_caves',
+            'epic',
+            'armor',
+            null,
+            null,
+            31,
+            'bulk-sale-generated-equipment',
+        );
+        $generatedItem = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => $generated['key'],
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'equipped_slot' => null,
+            'grant_key' => 'drop:bulk-sale-generated-equipment',
+            'instance_kind' => 'generated',
+            'instance_identity' => $generated['instance_identity'],
+            'generator_identity' => $generated['generator_identity'],
+            'generated_payload' => $generated,
+            'source_battle_id' => UndergroundBattle::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('activity_type', UndergroundBattle::ACTIVITY_TUTORIAL)
+                ->sole()->id,
+            'acquired_at' => Carbon::now()->addSecond(),
+        ]);
+        $equippedArmor = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'leather_armor',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'equipped_slot' => 'armor',
+            'grant_key' => null,
+            'instance_kind' => 'fixed',
+            'acquired_at' => Carbon::now(),
+        ]);
+        $otherItem = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $otherProfile->id,
+            'definition_key' => 'iron_dagger',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'equipped_slot' => null,
+            'grant_key' => null,
+            'instance_kind' => 'fixed',
+            'acquired_at' => Carbon::now(),
+        ]);
+
+        $vault = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault')
+            ->assertOk()
+            ->assertJsonPath('data.bulk_sell_options.rarities.0', ['key' => 'novice', 'label' => 'ノービス'])
+            ->assertJsonPath('data.bulk_sell_options.rarities.5', ['key' => 'unique', 'label' => 'ユニーク'])
+            ->assertJsonPath('data.bulk_sell_options.categories.0', ['key' => 'weapon', 'label' => '武器'])
+            ->assertJsonPath('data.bulk_sell_options.weapon_styles.0', ['key' => 'dagger', 'label' => '短剣'])
+            ->assertJsonPath('data.bulk_sell_options.weapon_styles.3', ['key' => 'crystal_staff', 'label' => '輝石杖']);
+        $this->assertCount(6, $vault->json('data.bulk_sell_options.rarities'));
+        $this->assertCount(4, $vault->json('data.bulk_sell_options.weapon_styles'));
+
+        $filters = [
+            'item_level_max' => 30,
+            'rarities' => ['novice', 'relic'],
+            'categories' => ['weapon', 'armor'],
+            'weapon_styles' => ['dagger'],
+        ];
+        $preview = $this->actingAs($user)
+            ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', $filters)
+            ->assertOk()
+            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v2')
+            ->assertJsonPath('data.count', 2);
+        $previewItems = collect($preview->json('data.items'));
+        $this->assertEqualsCanonicalizing(
+            [$fixed['iron_dagger']->id, $generatedItem->id],
+            $previewItems->pluck('id')->all(),
+        );
+        $this->assertNotContains($fixed['bronze_rapier']->id, $previewItems->pluck('id')->all());
+        $this->assertNotContains($equippedArmor->id, $previewItems->pluck('id')->all());
+        $this->assertSame(60, $previewItems->firstWhere('id', $fixed['iron_dagger']->id)['sell_price']);
+        $this->assertSame($generated['sell_price'], $previewItems->firstWhere('id', $generatedItem->id)['sell_price']);
+        $this->assertSame(60 + $generated['sell_price'], $preview->json('data.total_sell_price'));
+        $quotes = $previewItems->map(static fn (array $item): array => [
+            'id' => $item['id'],
+            'sell_price' => $item['sell_price'],
+        ])->values()->all();
+
+        $duplicate = [$quotes[0], $quotes[0]];
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', [
+            'request_id' => (string) Str::uuid(),
+            'catalog_identity' => $preview->json('data.catalog_identity'),
+            'items' => $duplicate,
+        ])->assertUnprocessable()->assertJsonValidationErrors('items.1.id');
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', [
+            'request_id' => (string) Str::uuid(),
+            'catalog_identity' => $preview->json('data.catalog_identity'),
+            'items' => [['id' => $otherItem->id, 'sell_price' => 60]],
+        ])->assertConflict()->assertJsonPath('code', 'underground_bulk_sell_preview_changed');
+        $starter = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('definition_key', 'starter_knife')->sole();
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', [
+            'request_id' => (string) Str::uuid(),
+            'catalog_identity' => $preview->json('data.catalog_identity'),
+            'items' => [['id' => $starter->id, 'sell_price' => 1]],
+        ])->assertConflict()->assertJsonPath('code', 'underground_bulk_sell_preview_changed');
+
+        $saleRequest = (string) Str::uuid();
+        $wrongQuote = $quotes;
+        $wrongQuote[0]['sell_price']++;
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', [
+            'request_id' => $saleRequest,
+            'catalog_identity' => $preview->json('data.catalog_identity'),
+            'items' => $wrongQuote,
+        ])->assertConflict()->assertJsonPath('code', 'underground_bulk_sell_preview_changed');
+        $this->assertSame(100, $profile->fresh()->shard_balance);
+        foreach ($quotes as $quote) {
+            $this->assertDatabaseHas('underground_owned_equipment', ['id' => $quote['id']]);
+        }
+
+        $equippedArmor->update(['equipped_slot' => null]);
+        $generatedItem->update(['equipped_slot' => 'armor']);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', [
+            'request_id' => $saleRequest,
+            'catalog_identity' => $preview->json('data.catalog_identity'),
+            'items' => $quotes,
+        ])->assertConflict()->assertJsonPath('code', 'underground_bulk_sell_preview_changed');
+        foreach ($quotes as $quote) {
+            $this->assertDatabaseHas('underground_owned_equipment', ['id' => $quote['id']]);
+        }
+        $generatedItem->update(['equipped_slot' => null]);
+
+        $pickedUpAfterPreview = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'steel_dagger',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'equipped_slot' => null,
+            'grant_key' => null,
+            'instance_kind' => 'fixed',
+            'acquired_at' => Carbon::now()->addSeconds(2),
+        ]);
+        $salePayload = [
+            'request_id' => $saleRequest,
+            'catalog_identity' => $preview->json('data.catalog_identity'),
+            'items' => $quotes,
+        ];
+        $sale = $this->actingAs($user)
+            ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', $salePayload)
+            ->assertOk()
+            ->assertJsonPath('data.operation', 'equipment_bulk_sell')
+            ->assertJsonPath('data.shard_balance', 160 + $generated['sell_price']);
+        $this->actingAs($user)
+            ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', $salePayload)
+            ->assertOk()->assertExactJson($sale->json());
+        foreach ($quotes as $quote) {
+            $this->assertDatabaseMissing('underground_owned_equipment', ['id' => $quote['id']]);
+        }
+        $this->assertDatabaseHas('underground_owned_equipment', ['id' => $fixed['bronze_rapier']->id]);
+        $this->assertDatabaseHas('underground_owned_equipment', ['id' => $pickedUpAfterPreview->id]);
+        $this->assertDatabaseHas('underground_owned_equipment', ['id' => $otherItem->id]);
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', [
+            ...$salePayload,
+            'request_id' => (string) Str::uuid(),
+        ])->assertConflict()->assertJsonPath('code', 'underground_bulk_sell_preview_changed');
+        $this->assertSame(160 + $generated['sell_price'], $profile->fresh()->shard_balance);
+    }
+
     public function test_three_accessory_slots_and_trial_one_shop_unlock_keep_fixed_catalog_compatibility(): void
     {
         [$user, $secretary] = $this->secretaryUser('Three slot equipment secretary');
