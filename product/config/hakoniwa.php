@@ -3,7 +3,7 @@
 $currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v19.php';
 
 return [
-    'application_version' => '3.3.0',
+    'application_version' => '3.4.0',
     'ruleset' => $currentRuleset,
     'published_rulesets' => [$currentRuleset['key'] => $currentRuleset],
     'current_catalogs' => [

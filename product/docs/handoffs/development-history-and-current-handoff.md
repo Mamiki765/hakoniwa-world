@@ -4,7 +4,7 @@
 > 対象リポジトリ: `Mamiki765/hakoniwa-world`  
 > 配置先: `product/docs/handoffs/development-history-and-current-handoff.md`  
 > 用途: 現在有効なrelease boundary、Owner決定、production境界、次の作業開始点の引継ぎ  
-> 状態: application 3.3.0はmainへmerge済み・production適用済み。次の候補releaseは3.4.0 custom AI / gambit
+> 状態: application 3.4.0のrepository release boundaryは確定。productionはapplication 3.3.0。次の候補releaseは3.5.0船システム
 >
 > この文書はOwnerとWeb版ChatGPTが管理する。Codex / implementation agentはread-onlyで利用し、Ownerがhandoff更新そのものを明示的に依頼した場合だけ編集してよい。
 
@@ -25,57 +25,44 @@
 
 ## 1.1 GitHub / application / production
 
-application 3.3.0はrelease close-outまで完了し、PR #132で`main`へmerge済み。
+application 3.4.0はPR #134〜#136でcustom AIを実装し、release close-outの対象になった。
+main昇格の完了状態とexact SHAは毎回remoteで再確認し、この文書の記載だけでcheckout先を決めない。
 
 ```text
-main:
-  HEAD: fd39c2a19f7f7f6168eb6cb4812e1a77d52481c7
-  application: 3.3.0
-  Surface Ruleset: hakoniwa-2s-plus-v19 / version 19
-
-release/3.3.0 final head:
-  6d1c58a4b07a500229ba4869cc4ace70b68537da
-
-finalization:
-  PR #131 Finalize the 3.3.0 application version
-  merge commit: 6d1c58a4b07a500229ba4869cc4ace70b68537da
-
-main promotion:
-  PR #132 Release 3.3.0
-  merge commit: fd39c2a19f7f7f6168eb6cb4812e1a77d52481c7
+application: 3.4.0
+3.4.0 feature-freeze anchor: 0c14ceb5aca270c474a03a085cc80004ec8f0b46
+Surface Ruleset: hakoniwa-2s-plus-v19 / version 19
+Underground combat: secretary-underground-alpha-v3
 ```
 
-2026-09-03、Ownerはapplication 3.3.0をproductionへ適用済みと報告した。3.2.0から3.3.0への2本のforward migrationもproduction適用対象である。
+2026-09-03、Ownerはapplication 3.3.0をproductionへ適用済みと報告した。application 3.4.0のrepository releaseとproduction deploy / migrationは別のOwner gateであり、このhandoff更新時点でproductionは3.3.0のままである。
 
-このhandoff更新ではOCIへ独立照会していないため、次回production操作前には、実環境のcheckout SHA、application version、migration ledgerを再確認すること。現在のproduction sourceを3.2.0とみなしてはいけない。
+このhandoff更新ではOCIへ独立照会していない。次回production操作前には、実環境のcheckout SHA、application version、migration ledgerを再確認すること。
 
-## 1.2 3.3.0の構成
+## 1.2 3.4.0の構成
 
 | PR / commit | 内容 | merge / anchor commit |
 |---|---|---|
-| `fe5cd48` | `AGENTS.md`の恒久Test運用整理 | `fe5cd487f1430bd88d806a7652395e0b41547202` |
-| #128 | STP直接入力 | `18007f5db696eb3bc9a596e74520c4931b23e7f3` |
-| #129 | 案内人の部屋、SP/STP振り直し、成長方針切替 | `5312d1eb859ee9f64679819dfea73cfd47a2983c` |
-| #130 | 条件指定preview付き宝物庫一括売却 | `0d9a24e502ede4cec81219217c5027f1fe49b03c` |
-| #131 | application 3.3.0 finalization / handoff更新 | `6d1c58a4b07a500229ba4869cc4ace70b68537da` |
-| #132 | `release/3.3.0`から`main`への昇格 | `fd39c2a19f7f7f6168eb6cb4812e1a77d52481c7` |
+| #134 | custom AI保存・検証・API | `7e016b27ebefc036626bcc3ceec409f33a71d91` |
+| #135 | custom AI戦闘適用、snapshot / hash、combat identity v3 | `e29df7e78897ee346626bcc3ceec409f33a71d91` |
+| #136 | AI編集画面、player manual、default preset簡潔化 | `0c14ceb5aca270c474a03a085cc80004ec8f0b46` |
 
-PR #128〜#132はmerge済み。3.3.0の機能実装・finalization・main昇格・production適用は完了している。
+PR #134〜#136は`release/3.4.0`へmerge済み。3.4.0の新機能はcustom AIだけであり、Surface gameplay、Ruleset payload、production環境は変更していない。
 
-custom AI / gambit、Trial 2、追加狩場、Unique、enhancement、enchant、manual combat、party、marketは3.3.0に含めない。
+船システム、Trial 2、追加狩場、Unique、enhancement、enchant、manual combat、party、marketは3.4.0に含めない。
 
 ## 1.3 Version / Ruleset / identity
 
 ```text
 application:
-  3.3.0
+  3.4.0
 
 Surface Ruleset:
   hakoniwa-2s-plus-v19
   checksum: b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9
 
 Underground combat:
-  secretary-underground-alpha-v2
+  secretary-underground-alpha-v3
 
 exploration selector/runtime:
   secretary-underground-exploration-alpha-v2
@@ -95,25 +82,21 @@ generated equipment:
   secretary-underground-drop-equipment-alpha-v1
 ```
 
-3.3.0はSurface Ruleset payloadを変更せずv19を維持した。3.2.0で確定したUnderground combat / exploration / equipment identityも変更していない。これらはSurface Rulesetとは別authorityである。
+3.4.0はSurface Ruleset payloadを変更せずv19を維持した。custom AIのbattle snapshot契約に伴いcurrent Underground combat identityだけをv3へ更新した。historical combat v2 snapshotは再解釈しない。exploration / equipment identityは変更していない。これらはSurface Rulesetとは別authorityである。
 
 ## 1.4 Supported migration / production ledger
 
-3.2.0から3.3.0へ進む際に新たに適用されるmigrationは次の2本だけ。
+production sourceの3.3.0から3.4.0へ進む際に新たに適用されるmigrationは次の1本だけ。
 
 ```text
-product/database/migrations/2026_09_03_000000_add_underground_respec.php
-product/database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php
+product/database/migrations/2026_09_03_020000_add_underground_custom_ai.php
 ```
 
-順に次を行う。
+このmigrationは`underground_profiles.custom_ai_rules`をnullable JSONBとして追加し、intro request operationへ`ai_configuration`を追加する。既存profileは`null`、すなわちdefault presetのまま維持する。
 
-- `underground_profiles.last_respec_at`を追加し、intro request operationへ`respec`を追加
-- intro request operationへ`equipment_bulk_sell`を追加
+既存migrationは履歴として維持し、rebaseline、削除、書換えを行っていない。`FreshInstallRebaselineTest`のexact 3.3.0 → 3.4.0 regressionをsupported upgradeの正本とする。
 
-既存migrationは履歴として維持し、rebaseline、削除、書換えを行っていない。`FreshInstallRebaselineTest`のexact 3.2.0 → 3.3.0 regressionをsupported upgradeの正本とする。
-
-Owner報告ではproductionへ3.3.0を適用済み。次回のdeploy / migration前には、上記2本がmigration ledgerへ反映済みであることを実環境で確認する。
+production deploy / migrationは別のOwner gateである。次回のdeploy前にはproductionが3.3.0であることと、上記migrationが未適用であることを実環境で再確認する。
 
 ---
 
@@ -148,7 +131,8 @@ player-facing名称:
 - player-facing UIでは`0 / 1000`等の数値を出さずprogress barのみ
 - 満タン時も外枠、card背景、layoutは通常状態のまま。変えるのはゲージfill色だけ
 - 一戦につき最大1回
-- current default AIはgauge fullかつHP 20%以下で発動
+- default presetはgauge fullかつHP 20%以下で覚醒を試みる。custom設定では明示的な覚醒ruleが必要
+- 覚醒activation自体は通常actionの時間を消費せず、同じturnの残りrule評価と既存の覚醒戦技orderingへ進む
 - 発動時HP / MP全回復
 - 戦闘終了まで5主能力値+30%
 - growth pathごとの固定Awakening techniqueあり
@@ -305,13 +289,13 @@ Trial 1一周800 EXP / 205Gの約3倍を、黒晶洞10戦の期待値目標と�
 - 戦闘結果に`もう一度ここを探索する`を表示
 - repeatは表示中battle snapshotのhunting-ground keyを使い、新UUIDを発行
 - 通信失敗retryでは同じhunting ground + 同じintentの場合だけpending UUIDを再利用
-- combat identity v1の既存snapshotはhistorical recordとして残しmigrationしない
+- combat identity v1 / v2の既存snapshotはhistorical recordとして残しmigrationしない
 - shallow caves content identity v1と旧request replay互換を維持
 - persisted generated payloadをcurrent configで再解釈しない
 
 ---
 
-# 4. application 3.3.0の確定contract
+# 4. application 3.3.0から継承する確定contract
 
 ## 4.1 STP直接入力
 
@@ -371,40 +355,40 @@ contract:
 
 ---
 
-# 5. 次release 3.4.0 / custom AI
+# 5. application 3.4.0 custom AIの確定contract
 
-custom AI / gambitは3.3.0からDeferredされ、実装には未着手。次のapplication候補は3.4.0。
+custom AIはSecretaryごとに有効な設定を1つだけ持つ。保存値`null`はdefault preset、空のcustom rule list `[]`はruleなしの有効なcustom設定であり、同じ意味に畳み込まない。
 
-以下は調査から得た**推奨案 / 開始時確認事項**であり、まだOwner-approved仕様ではない。branch、migration、schema、API、UI、combat runtimeを変更する前にOwnerが再確認する。
+- 最大16 rules、1 rule最大2 conditions
+- 同じrule内のconditionsはAND、empty conditionは`always`
+- OR / NOT / nested logic / generic DSLは導入しない
+- skill actionは「条件成立後に使用を試み、現在使用不能ならfallbackせず次ruleへ進む」
+- default presetでは同じskillを指す`skill_ready`条件を付けない。`skill_ready`自体は、skill Aの可否からjumpまたは別actionを選ぶruleに利用できる
+- jumpはforward-onlyとし、loopを構造的に作れない
+- 全rulesを評価してもactionを実行できなかった場合だけ、現在使用可能な習得済みattackをcanonicalな決定順で選び、それもなければnormal attackへdeterministic fallbackする
+- idle turnは作らない
+- Awakening activationはaction時間を消費しない。HP 20%以下はhard availabilityではなくdefault preset上のconditionとする
+- Awakening hard availabilityはunlock済み、gauge full、battle内未使用の3条件とする
+- 各battle snapshotへ、そのbattleで実際に使用したnormalized AI rules全文とSHA-256 hashを固定する
+- Trial中のAI変更はbattle間だけ許可し、次battleから適用する。生成済みbattleへは影響させない
+- historical combat v2は再解釈せず、current combat identityは`secretary-underground-alpha-v3`とする
+- custom AI未設定playerはdefault presetを使用し、3.3.0までのdefault AIの意図した挙動を可能な限りbehavior-equivalentに維持する
 
-1. Secretaryごとに有効なAI設定は1つ。初期presetを複製または初期化して編集する
-2. 正規化済みAI rule全文とSHA-256をbattle snapshotへ保存し、導入時はcombat identity更新を検討する
-3. Trial中も戦闘間のAI変更を許可し、次の戦闘から適用する。各battle snapshotで履歴を固定する
-4. Awakening ruleは時間を消費せず、HP 20%条件はdefault presetへ移す
-5. empty conditionは`always`、jumpはforward-only、使用不能時は習得済みattackからnormal attackへdeterministic fallbackする
+APIは既存のowner-only Underground boundary、profile row lock、UUID idempotency、request fingerprint、単一transactionを再利用する。canonicalだが未習得のskillもruleとして保存でき、実戦では使用不能として次ruleへ進む。
 
-想定分割:
+実装分割:
 
 ```text
-PR3-A: AI設定の保存・検証・API
-PR3-B: 戦闘適用・AI snapshot/hash・覚醒順序
-PR3-C: AI編集画面・説明文書
+PR #134: AI設定の保存・検証・API
+PR #135: 戦闘適用・AI snapshot/hash・combat identity v3・覚醒順序
+PR #136: AI編集画面・説明文書・default preset簡潔化
 ```
-
-特にOwner確認が必要な境界:
-
-- AI設定を1つだけ持つか、複数の名前付きsetを持つか
-- combat identityをv3へ更新する範囲
-- Trial中の変更適用時点
-- snapshotへ保存するcanonical rule representation
-- rule条件/action/jumpの最小player-facing grammar
-
-Owner承認前にこれらをagent判断で確定しない。
 
 ---
 
-# 6. 3.4.0にも自動で含めない将来候補
+# 6. 次release候補と将来候補
 
+- application 3.5.0船システム
 - 案内人名変更後の新しい「リカ」再戦
 - Unique装備
 - 装備強化 / enchant追加system
@@ -414,7 +398,7 @@ Owner承認前にこれらをagent判断で確定しない。
 - 第三狩場以降
 - manual combat
 - party / market
-- Surface Ruleset v20
+- Surface Ruleset v20。3.5.0船システムがSurface semanticを変更する場合の候補であり、PlanとOwner判断より先にpublishしない
 
 新しいreleaseへ入れる場合は、Ownerがscope、identity、migration、balance影響を明示する。
 
@@ -480,11 +464,11 @@ subagent成果はmain agentが確認してから採用する。
 
 # 8. 次に作業するagentが最初に行うこと
 
-1. remote `main`が`fd39c2a19f7f7f6168eb6cb4812e1a77d52481c7`以降で、application 3.3.0を含むことを確認する
-2. production操作を伴う場合、実環境のcheckout SHA、application version、migration ledgerを再確認する
-3. 3.4.0 custom AIへ進む場合、第5章の未承認境界をOwnerへ提示し、承認後に最新mainからrelease branchを作る
-4. custom AI以外の機能を3.4.0へ勝手に混ぜない
-5. implementation前にcurrent code / schema / testsを再読し、handoffの推奨案を実装済みcontractと誤認しない
+1. remote `main`と対象release branchをfetchし、application 3.4.0のmain昇格状態とexact SHAを確認する
+2. production操作を伴う場合、実環境がapplication 3.3.0であること、checkout SHA、migration ledgerを再確認し、別Owner gateを得る
+3. 次候補の3.5.0船システムは、Owner-approved Planより先にbranch、migration、code、Rulesetを作らない
+4. ShipとMonsterを別domainとして扱い、座標・候補cell・occupancy確認等の小さいprimitiveを超える万能Actor frameworkを先行実装しない
+5. 3.5.0でSurface Ruleset v20が必要なら、production baseline v19からの1世代だけを全gameplay sliceで共有し、v21を作らない
 
 最初に読むcurrent file:
 
@@ -503,6 +487,7 @@ product/config/underground-equipment.php
 product/database/migrations/2026_09_02_000000_expand_underground_hackslash_equipment.php
 product/database/migrations/2026_09_03_000000_add_underground_respec.php
 product/database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php
+product/database/migrations/2026_09_03_020000_add_underground_custom_ai.php
 product/app/Application/Underground/
 product/app/Domain/Underground/Combat/
 product/resources/js/components/UndergroundPanel.vue
