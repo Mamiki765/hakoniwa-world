@@ -1614,18 +1614,30 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => (string) Str::uuid(),
             'item_id' => $ironLongsword->id,
         ])->assertOk()->assertJsonPath('data.vault.equipped.weapon.key', 'iron_longsword');
-        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+        $longswordMain = $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
             ->assertJsonPath('data.equipment_summary.equipped.weapon.key', 'iron_longsword')
             ->assertJsonPath('data.active_slots.0.key', 'dagger_flurry');
+        $this->assertNotContains(
+            'skill:dagger_flurry',
+            array_column($longswordMain->json('data.ai.default_rules'), 'action'),
+        );
+        $this->assertSame(
+            $longswordMain->json('data.ai.default_rules'),
+            $longswordMain->json('data.ai.rules'),
+        );
         $this->actingAs($user)->putJson('/api/v1/me/underground/equipment/equipped', [
             'request_id' => (string) Str::uuid(),
             'item_id' => $ironDagger->id,
         ])->assertOk()->assertJsonPath('data.vault.equipped.weapon.key', 'iron_dagger');
-        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+        $daggerMain = $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
             ->assertJsonPath('data.equipment_summary.equipped.weapon.key', 'iron_dagger')
             ->assertJsonPath('data.active_slots.0.key', 'dagger_flurry');
+        $this->assertContains(
+            'skill:dagger_flurry',
+            array_column($daggerMain->json('data.ai.default_rules'), 'action'),
+        );
         $this->actingAs($user)->deleteJson('/api/v1/me/underground/equipment/equipped/weapon', [
             'request_id' => (string) Str::uuid(),
         ])->assertConflict()->assertJsonPath('code', 'underground_equipment_slot_invalid');

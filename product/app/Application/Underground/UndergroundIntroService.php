@@ -1293,12 +1293,17 @@ final readonly class UndergroundIntroService
             $skillAllocations = $profile->skillAllocationMap();
             if ($profile->skill_tree_identity === $this->alphaV1Catalog->skillTreeIdentity()) {
                 $skillBuild = $this->alphaV1Catalog->playerSkillBuild($skillAllocations);
+                $weaponStyle = $equipment['weapon_style'] ?? null;
+                if (! is_string($weaponStyle) || $weaponStyle === '') {
+                    throw new RuntimeException('Underground player weapon style is invalid.');
+                }
+                $aiSkillBuild = $this->alphaV1Catalog->playerSkillBuild($skillAllocations, $weaponStyle);
                 $skillTrees = $this->alphaV1Catalog->skillTrees(
                     $skillAllocations,
                     $profile->skill_points_unspent,
                 );
                 $catalog = $this->alphaV1Catalog->laboratoryCatalog();
-                $defaultAiRules = $this->aiConfiguration->defaultRules($skillBuild['ai_rules'], $catalog);
+                $defaultAiRules = $this->aiConfiguration->defaultRules($aiSkillBuild['ai_rules'], $catalog);
                 try {
                     $effectiveAiRules = $profile->custom_ai_rules === null
                         ? $defaultAiRules
