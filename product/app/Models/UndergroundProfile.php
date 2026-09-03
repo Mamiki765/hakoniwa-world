@@ -36,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $skill_tree_identity
  * @property int $awakening_gauge
  * @property string|null $awakening_message
+ * @property list<array<string, mixed>>|null $custom_ai_rules
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Secretary $secretary
@@ -57,7 +58,7 @@ final class UndergroundProfile extends Model
         'unspent_stp', 'allocated_vitality_stp', 'allocated_might_stp', 'allocated_finesse_stp',
         'allocated_spirit_stp', 'allocated_agility_stp',
         'skill_points_total', 'skill_points_unspent', 'skill_tree_identity',
-        'awakening_gauge', 'awakening_message',
+        'awakening_gauge', 'awakening_message', 'custom_ai_rules',
     ];
 
     protected function casts(): array
@@ -82,6 +83,7 @@ final class UndergroundProfile extends Model
             'skill_points_total' => 'integer',
             'skill_points_unspent' => 'integer',
             'awakening_gauge' => 'integer',
+            'custom_ai_rules' => 'array',
         ];
     }
 

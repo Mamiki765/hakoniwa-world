@@ -21,6 +21,7 @@ use App\Http\Requests\UndergroundPlaytestRequest;
 use App\Http\Requests\UndergroundTrialFightRequest;
 use App\Http\Requests\UndergroundTrialRunRequest;
 use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
+use App\Http\Requests\UpdateUndergroundAiConfigurationRequest;
 use App\Http\Requests\UpdateUndergroundAwakeningMessageRequest;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -255,6 +256,19 @@ final class UndergroundIntroController extends Controller
             $request->user(),
             $request->string('request_id')->value(),
             $slots,
+        ));
+    }
+
+    public function updateAiConfiguration(
+        UpdateUndergroundAiConfigurationRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        $rules = $request->input('rules');
+
+        return $this->respond(fn (): array => $service->updateAiConfiguration(
+            $request->user(),
+            $request->string('request_id')->value(),
+            is_array($rules) ? $rules : null,
         ));
     }
 
