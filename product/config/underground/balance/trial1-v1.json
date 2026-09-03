@@ -2,7 +2,7 @@
     "schema_version": 1,
     "simulation_type": "trial_sequence",
     "trial_identity": "underground-trial-01-simulation-v1",
-    "combat_identity": "secretary-underground-alpha-v2",
+    "combat_identity": "secretary-underground-alpha-v3",
     "seed_strategy_identity": "trial-sequence-common-random-v1",
     "seed_range": {"start": 0, "count": 1000},
     "max_rounds": 100,

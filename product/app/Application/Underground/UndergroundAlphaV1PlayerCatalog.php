@@ -4,6 +4,7 @@ namespace App\Application\Underground;
 
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
 use JsonException;
 use RuntimeException;
@@ -13,6 +14,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     public function __construct(
         private AlphaV1CombatRules $rules,
         private UndergroundBuildValidator $buildValidator,
+        private PriorityCombatAiConfiguration $aiConfiguration = new PriorityCombatAiConfiguration,
     ) {}
 
     public function growthIdentity(): string
@@ -662,7 +664,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
      * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
      * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
      * @param  array<string, mixed>  $equipment
-     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>}
+     * @param  list<array<string, mixed>>|null  $customAiRules
+     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>, ai: array{schema_version: int, rules: list<array<string, mixed>>, hash: string}}
      */
     public function explorationCombatDefinition(
         string $growthPathKey,
@@ -672,6 +675,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         string $playerDisplayName,
         ?int $currentHp = null,
         array $skillAllocations = [],
+        ?array $customAiRules = null,
     ): array {
         return $this->playerCombatDefinition(
             $this->explorationCatalog(),
@@ -682,6 +686,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             $playerDisplayName,
             $currentHp,
             $skillAllocations,
+            $customAiRules,
         );
     }
 
@@ -689,7 +694,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
      * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
      * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
      * @param  array<string, mixed>  $equipment
-     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>}
+     * @param  list<array<string, mixed>>|null  $customAiRules
+     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>, ai: array{schema_version: int, rules: list<array<string, mixed>>, hash: string}}
      */
     public function trialOneCombatDefinition(
         string $growthPathKey,
@@ -699,6 +705,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         string $playerDisplayName,
         ?int $currentHp = null,
         array $skillAllocations = [],
+        ?array $customAiRules = null,
     ): array {
         return $this->playerCombatDefinition(
             $this->trialOneCatalog(),
@@ -709,6 +716,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             $playerDisplayName,
             $currentHp,
             $skillAllocations,
+            $customAiRules,
         );
     }
 
@@ -716,7 +724,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
      * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
      * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
      * @param  array<string, mixed>  $equipment
-     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>}
+     * @param  list<array<string, mixed>>|null  $customAiRules
+     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>, ai: array{schema_version: int, rules: list<array<string, mixed>>, hash: string}}
      */
     private function playerCombatDefinition(
         AlphaV1BuildCatalog $catalog,
@@ -727,6 +736,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         string $playerDisplayName,
         ?int $currentHp,
         array $skillAllocations,
+        ?array $customAiRules,
     ): array {
         $progressionStats = $this->currentStats($growthPathKey, $combatLevel, $allocatedStp);
         $combatStats = $this->combatStats($progressionStats, $equipment);
@@ -741,6 +751,10 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             throw new RuntimeException('Underground player weapon style is invalid.');
         }
         $skillBuild = $this->playerSkillBuild($skillAllocations, $weaponStyle);
+        $aiRules = $customAiRules === null
+            ? $this->aiConfiguration->defaultRules($skillBuild['ai_rules'], $catalog)
+            : $this->aiConfiguration->normalizeRules($customAiRules, $catalog);
+        $ai = $this->aiConfiguration->snapshot($aiRules, $catalog);
 
         return [
             'catalog' => $catalog,
@@ -749,7 +763,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 'label' => $playerDisplayName,
                 'stats' => $progressionStats,
                 'active_skills' => $skillBuild['active_skills'],
-                'ai_rules' => $skillBuild['ai_rules'],
+                'ai_rules' => $ai['rules'],
                 'modifiers' => $skillBuild['passive_modifiers'],
                 'equipment' => $equipment,
                 'current_hp' => $currentHp,
@@ -762,6 +776,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'acquired_nodes' => $skillBuild['acquired_nodes'],
             'active_skills' => $skillBuild['active_skills'],
             'passive_modifiers' => $skillBuild['passive_modifiers'],
+            'ai' => $ai,
         ];
     }
 
@@ -802,7 +817,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         ];
     }
 
-    /** @return array{catalog: AlphaV1BuildCatalog, identity: string, tier_key: string, max_rounds: int, build_label: string, enemy_label: string} */
+    /** @return array{catalog: AlphaV1BuildCatalog, identity: string, tier_key: string, max_rounds: int, build_label: string, enemy_label: string, ai: array{schema_version: int, rules: list<array<string, mixed>>, hash: string}} */
     public function playtestDefinition(string $buildKey, string $enemyKey): array
     {
         $playtest = $this->playtestConfig();
@@ -829,10 +844,11 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'max_rounds' => $maxRounds,
             'build_label' => $this->string($buildDefinition, 'label'),
             'enemy_label' => $this->string($enemy, 'label'),
+            'ai' => $this->aiSnapshotForBuild($buildDefinition, $catalog),
         ];
     }
 
-    /** @return array{catalog: AlphaV1BuildCatalog, build_key: string, enemy_key: string, tier_key: string, combat_level_equivalent: int, enemy_scale_bps: int, seed: int, max_rounds: int, expected_winner: string} */
+    /** @return array{catalog: AlphaV1BuildCatalog, build_key: string, enemy_key: string, tier_key: string, combat_level_equivalent: int, enemy_scale_bps: int, seed: int, max_rounds: int, expected_winner: string, ai: array{schema_version: int, rules: list<array<string, mixed>>, hash: string}} */
     public function trueNameStoryBattle(): array
     {
         $definition = $this->data()['true_name_story_battle'];
@@ -848,6 +864,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         if (! is_int($seed) || ! is_int($maxRounds) || ! is_int($equivalentCombatLevel)) {
             throw new RuntimeException('Underground true-name story battle contract is invalid.');
         }
+        $build = $catalog->build($buildKey);
 
         return [
             'catalog' => $catalog,
@@ -859,7 +876,22 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'seed' => $seed,
             'max_rounds' => $maxRounds,
             'expected_winner' => $this->string($definition, 'expected_winner'),
+            'ai' => $this->aiSnapshotForBuild($build, $catalog),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $build
+     * @return array{schema_version: int, rules: list<array<string, mixed>>, hash: string}
+     */
+    private function aiSnapshotForBuild(array $build, AlphaV1BuildCatalog $catalog): array
+    {
+        $rules = $build['ai_rules'] ?? null;
+        if (! is_array($rules) || ! array_is_list($rules)) {
+            throw new RuntimeException('Underground build AI rules are invalid.');
+        }
+
+        return $this->aiConfiguration->snapshot($rules, $catalog);
     }
 
     public function laboratoryCatalog(): AlphaV1BuildCatalog

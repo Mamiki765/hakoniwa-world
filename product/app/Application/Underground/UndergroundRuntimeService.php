@@ -600,6 +600,7 @@ STORY;
             $secretary->name,
             $currentHpBefore,
             $profile->skillAllocationMap(),
+            $profile->custom_ai_rules,
         );
         $awakeningUnlocked = $this->awakeningUnlocked($profile);
         $definition['player_snapshot']['awakening'] = $this->awakeningSnapshot(
@@ -710,6 +711,7 @@ STORY;
                     'item_level_max' => $huntingGround['item_level_max'],
                 ],
                 'combat_rules_identity' => $result->rulesIdentity,
+                'ai' => $definition['ai'],
                 'player_display_name' => $secretary->name,
                 'encounter_display_name' => $encounter['label'],
                 'presentation_log_version' => 1,
@@ -832,6 +834,7 @@ STORY;
             $secretary->name,
             $currentHpBefore,
             $profile->skillAllocationMap(),
+            $profile->custom_ai_rules,
         );
         $awakeningUnlocked = $this->awakeningUnlocked($profile);
         $definition['player_snapshot']['awakening'] = $this->awakeningSnapshot(
@@ -978,6 +981,7 @@ STORY;
             'snapshot' => [
                 'trial_content_identity' => $trial['content_identity'],
                 'combat_rules_identity' => $result->rulesIdentity,
+                'ai' => $definition['ai'],
                 'player_display_name' => $secretary->name,
                 'encounter_display_name' => $encounterLabel,
                 'presentation_log_version' => 1,

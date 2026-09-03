@@ -4,17 +4,27 @@ namespace App\Domain\Underground\Combat;
 
 final class PriorityCombatAi
 {
+    public function __construct(
+        private readonly PriorityCombatAiConfiguration $configuration = new PriorityCombatAiConfiguration,
+    ) {}
+
     /**
-     * @return array{type: 'normal_attack'|'defend'|'skill', key: string|null, reason: string, fallback: bool, mp_blocked: bool}
+     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
      */
     public function select(
         BuildCombatState $actor,
         BuildCombatState $enemy,
         AlphaV1BuildCatalog $catalog,
         int $round,
+        int $startRuleIndex = 0,
     ): array {
+        if ($startRuleIndex < 0 || $startRuleIndex > count($actor->aiRules)) {
+            throw new \InvalidArgumentException('Underground AI rule cursor is invalid.');
+        }
         $mpBlocked = false;
-        foreach ($actor->aiRules as $index => $rule) {
+        $index = $startRuleIndex;
+        while ($index < count($actor->aiRules)) {
+            $rule = $actor->aiRules[$index];
             $conditions = $rule['conditions'] ?? [];
             if (is_array($conditions) && $this->otherwiseMatchingRuleIsBlockedByMp(
                 $conditions,
@@ -26,11 +36,22 @@ final class PriorityCombatAi
                 $mpBlocked = true;
             }
             if (! is_array($conditions) || ! $this->conditionsPass($conditions, $actor, $enemy, $catalog, $round)) {
+                $index++;
+
                 continue;
             }
             $action = $rule['action'] ?? null;
             if (! is_string($action)) {
-                return $this->fallback('invalid_action', $mpBlocked);
+                return $this->fallback($actor, $catalog, 'invalid_action', $mpBlocked);
+            }
+            if ($action === 'jump') {
+                $jumpTo = $rule['jump_to'] ?? null;
+                if (! is_int($jumpTo) || $jumpTo <= $index + 1 || $jumpTo > count($actor->aiRules)) {
+                    return $this->fallback($actor, $catalog, 'invalid_jump', $mpBlocked);
+                }
+                $index = $jumpTo - 1;
+
+                continue;
             }
             if ($action === 'normal_attack' || $action === 'defend') {
                 return [
@@ -39,7 +60,26 @@ final class PriorityCombatAi
                     'reason' => 'priority_rule_'.$index,
                     'fallback' => false,
                     'mp_blocked' => $mpBlocked,
+                    'next_rule_index' => $index + 1,
                 ];
+            }
+            if ($action === 'awakening') {
+                if ($actor->side === 'player'
+                    && $actor->awakeningUnlocked
+                    && ! $actor->awakened
+                    && $actor->awakeningGauge >= UndergroundAwakening::GAUGE_MAX) {
+                    return [
+                        'type' => 'awakening',
+                        'key' => null,
+                        'reason' => 'priority_rule_'.$index,
+                        'fallback' => false,
+                        'mp_blocked' => $mpBlocked,
+                        'next_rule_index' => $index + 1,
+                    ];
+                }
+                $index++;
+
+                continue;
             }
             if (str_starts_with($action, 'skill:')) {
                 $skillKey = substr($action, 6);
@@ -50,6 +90,7 @@ final class PriorityCombatAi
                         'reason' => 'priority_rule_'.$index,
                         'fallback' => false,
                         'mp_blocked' => $mpBlocked,
+                        'next_rule_index' => $index + 1,
                     ];
                 }
 
@@ -58,13 +99,15 @@ final class PriorityCombatAi
                     && $actor->mp < $this->effectiveCost($actor, (int) ($skill['mp_cost'] ?? 0));
                 $mpBlocked = $mpBlocked || $blockedByMp;
 
+                $index++;
+
                 continue;
             }
 
-            return $this->fallback('invalid_action', $mpBlocked);
+            return $this->fallback($actor, $catalog, 'invalid_action', $mpBlocked);
         }
 
-        return $this->fallback('no_rule_matched', $mpBlocked);
+        return $this->fallback($actor, $catalog, 'no_rule_matched', $mpBlocked);
     }
 
     public function skillAvailable(BuildCombatState $actor, AlphaV1BuildCatalog $catalog, string $skillKey): bool
@@ -181,15 +224,47 @@ final class PriorityCombatAi
         };
     }
 
-    /** @return array{type: 'normal_attack', key: null, reason: string, fallback: true, mp_blocked: bool} */
-    private function fallback(string $reason, bool $mpBlocked = false): array
-    {
+    /**
+     * @return array{type: 'normal_attack'|'skill', key: string|null, reason: string, fallback: true, mp_blocked: bool, next_rule_index: int}
+     */
+    private function fallback(
+        BuildCombatState $actor,
+        AlphaV1BuildCatalog $catalog,
+        string $reason,
+        bool $mpBlocked = false,
+    ): array {
+        if ($actor->side === 'player') {
+            foreach ($this->configuration->playerSkills($catalog) as $skillEntry) {
+                $skillKey = $skillEntry['key'];
+                $skill = $catalog->skill($skillKey);
+                if (! in_array('damage', array_column($skill['effects'], 'type'), true)
+                    || ! in_array($skillKey, $actor->skills, true)) {
+                    continue;
+                }
+                if ($this->skillAvailable($actor, $catalog, $skillKey)) {
+                    return [
+                        'type' => 'skill',
+                        'key' => $skillKey,
+                        'reason' => $reason,
+                        'fallback' => true,
+                        'mp_blocked' => $mpBlocked,
+                        'next_rule_index' => count($actor->aiRules),
+                    ];
+                }
+                if ($actor->skillReady($skillKey)
+                    && $actor->mp < $this->effectiveCost($actor, (int) ($skill['mp_cost'] ?? 0))) {
+                    $mpBlocked = true;
+                }
+            }
+        }
+
         return [
             'type' => 'normal_attack',
             'key' => null,
             'reason' => $reason,
             'fallback' => true,
             'mp_blocked' => $mpBlocked,
+            'next_rule_index' => count($actor->aiRules),
         ];
     }
 }
