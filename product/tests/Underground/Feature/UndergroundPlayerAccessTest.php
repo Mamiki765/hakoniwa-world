@@ -2470,6 +2470,13 @@ final class UndergroundPlayerAccessTest extends TestCase
                     'jump_to' => 3,
                 ],
                 ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+                [
+                    'conditions' => [
+                        ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
+                        ['type' => 'own_hp_lte', 'percent' => 55],
+                    ],
+                    'action' => 'skill:mending_prayer',
+                ],
             ],
         ];
         $saved = $this->actingAs($user)->putJson('/api/v1/me/underground/ai', $payload)
@@ -2478,7 +2485,11 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.ai.rules.0.conditions.0.type', 'always')
             ->assertJsonPath('data.ai.rules.0.action', 'skill:executioner_cut')
             ->assertJsonPath('data.ai.rules.1.jump_to', 3);
-        $this->actingAs($user)->putJson('/api/v1/me/underground/ai', $payload)
+        $equivalentPayload = $payload;
+        $equivalentPayload['rules'][3]['conditions'] = array_reverse(
+            $equivalentPayload['rules'][3]['conditions'],
+        );
+        $this->actingAs($user)->putJson('/api/v1/me/underground/ai', $equivalentPayload)
             ->assertOk()->assertExactJson($saved->json());
         $this->assertEquals($saved->json('data.ai.rules'), $profile->refresh()->custom_ai_rules);
         $this->assertDatabaseHas('underground_intro_requests', [
