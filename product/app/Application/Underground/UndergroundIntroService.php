@@ -1217,6 +1217,7 @@ final readonly class UndergroundIntroService
             'snapshot' => [
                 'story_identity' => $this->catalog->identity(),
                 'combat_rules_identity' => $result->rulesIdentity,
+                'ai' => $definition['ai'],
                 'encounter_display_name' => 'リカ',
                 'player_display_name' => $playerDisplayName,
                 'presentation_log_version' => 1,

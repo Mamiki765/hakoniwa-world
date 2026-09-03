@@ -1199,10 +1199,11 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertNull($profile->current_hp);
         $storyBattle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->sole();
-        $this->assertSame('secretary-underground-alpha-v2', $storyBattle->runtime_identity);
+        $this->assertSame(AlphaV1CombatRules::IDENTITY, $storyBattle->runtime_identity);
         $this->assertSame(1254, $storyBattle->snapshot['enemy_combat_level_equivalent']);
         $this->assertSame(1_137_700, $storyBattle->snapshot['enemy_scale_bps']);
         $storyDefinition = app(UndergroundAlphaV1PlayerCatalog::class)->trueNameStoryBattle();
+        $this->assertEquals($storyDefinition['ai'], $storyBattle->snapshot['ai']);
         $this->assertSame([
             'unbroken_retort',
             'renewing_guard',
@@ -1414,6 +1415,11 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->sole();
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->runtime_identity);
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->snapshot['combat_rules_identity']);
+        $this->assertEquals(
+            app(UndergroundAlphaV1PlayerCatalog::class)
+                ->playtestDefinition($payload['build_key'], $payload['enemy_key'])['ai'],
+            $playtestBattle->snapshot['ai'],
+        );
         $this->assertTrue($playtestBattle->log?->expires_at->equalTo($playtestBattle->finished_at->addHour()) ?? false);
         config([
             'underground-alpha-v1.playtest.builds' => [],

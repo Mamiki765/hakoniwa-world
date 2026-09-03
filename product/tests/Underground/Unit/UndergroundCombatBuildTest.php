@@ -11,6 +11,7 @@ use App\Domain\Underground\Combat\BuildCombatState;
 use App\Domain\Underground\Combat\CanonicalCombatOrchestrator;
 use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
+use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
 use App\Domain\Underground\Combat\UndergroundRandom;
@@ -881,6 +882,8 @@ final class UndergroundCombatBuildTest extends TestCase
         $overheal = $manifest;
         $overheal['builds']['pure_healer']['ai_rules'] = [[
             'conditions' => [['type' => 'always']], 'action' => 'skill:mending_prayer',
+        ], [
+            'conditions' => [['type' => 'always']], 'action' => 'normal_attack',
         ]];
         $overheal['enemies']['pressure_construct']['ai_rules'] = [[
             'conditions' => [['type' => 'always']], 'action' => 'defend',
@@ -915,9 +918,19 @@ final class UndergroundCombatBuildTest extends TestCase
         $fallback = $this->model()->fight(
             new AlphaV1BuildCatalog($manifest), 'pure_attacker', 'pressure_construct', 'early', 2, 1,
         );
-        $this->assertSame(1, $fallback->actionUsage['normal_attack']);
+        $this->assertSame(1, $fallback->actionUsage['precision_cut']);
+        $this->assertSame(0, $fallback->actionUsage['normal_attack']);
         $this->assertSame(1, $fallback->actionUsage['ai_fallback']);
         $this->assertSame(1, $fallback->skillUnavailableDueToMp);
+
+        foreach ($manifest['builds']['pure_attacker']['active_skills'] as $skillKey) {
+            $manifest['skills'][$skillKey]['mp_cost'] = 20_000;
+        }
+        $normalFallback = $this->model()->fight(
+            new AlphaV1BuildCatalog($manifest), 'pure_attacker', 'pressure_construct', 'early', 2, 1,
+        );
+        $this->assertSame(1, $normalFallback->actionUsage['normal_attack']);
+        $this->assertSame(1, $normalFallback->actionUsage['ai_fallback']);
 
         $manifest['builds']['pure_attacker']['ai_rules'] = array_fill(0, 17, [
             'conditions' => [['type' => 'always']], 'action' => 'normal_attack',
@@ -928,6 +941,89 @@ final class UndergroundCombatBuildTest extends TestCase
             new AlphaV1BuildCatalog($manifest),
             'pure_attacker',
         );
+    }
+
+    public function test_custom_ai_skips_unavailable_actions_follows_forward_jump_and_uses_deterministic_fallback(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyDefends: true);
+        $configuration = new PriorityCombatAiConfiguration;
+        $snapshot = $this->awakeningPlayerSnapshot(
+            'free_black',
+            gauge: 0,
+            currentHp: null,
+            unlocked: false,
+            skills: ['dagger_flurry', 'precision_cut'],
+        );
+        $snapshot['ai_rules'] = $configuration->normalizeRules([
+            ['conditions' => [], 'action' => 'skill:executioner_cut'],
+            ['conditions' => [], 'action' => 'jump', 'jump_to' => 4],
+            ['conditions' => [], 'action' => 'defend'],
+            ['conditions' => [], 'action' => 'normal_attack'],
+        ], $catalog);
+
+        $jumped = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 113, 1, 0);
+        $this->assertSame(1, $jumped->actionUsage['normal_attack']);
+        $this->assertSame(0, $jumped->actionUsage['defend']);
+        $this->assertSame(0, $jumped->actionUsage['ai_fallback']);
+
+        $snapshot['ai_rules'] = [];
+        $canonicalFallback = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $snapshot,
+            'awakening_target',
+            113,
+            1,
+            0,
+        );
+        $this->assertSame(1, $canonicalFallback->actionUsage['precision_cut']);
+        $this->assertSame(0, $canonicalFallback->actionUsage['dagger_flurry']);
+        $this->assertSame(0, $canonicalFallback->actionUsage['normal_attack']);
+        $this->assertSame(1, $canonicalFallback->actionUsage['ai_fallback']);
+
+        $snapshot['active_skills'] = [];
+        $normalFallback = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $snapshot,
+            'awakening_target',
+            113,
+            1,
+            0,
+        );
+        $this->assertSame(1, $normalFallback->actionUsage['normal_attack']);
+        $this->assertSame(1, $normalFallback->actionUsage['ai_fallback']);
+        $this->assertSame(0, $normalFallback->actionUsage['action_skipped']);
+    }
+
+    public function test_awakening_rule_can_activate_above_default_threshold_without_consuming_the_turn(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyDefends: true);
+        $configuration = new PriorityCombatAiConfiguration;
+        $custom = $this->awakeningPlayerSnapshot('free_black', currentHp: 300);
+        $custom['ai_rules'] = $configuration->normalizeRules([
+            ['conditions' => [], 'action' => 'awakening'],
+            ['conditions' => [], 'action' => 'normal_attack'],
+        ], $catalog);
+
+        $customResult = $this->model()->fightPlayerSnapshot($catalog, $custom, 'awakening_target', 127, 1, 0);
+        $this->assertGreaterThan(
+            intdiv($customResult->awakening['normal_max_hp'] * UndergroundAwakening::ACTIVATION_HP_BPS, 10_000),
+            300,
+        );
+        $this->assertTrue($customResult->awakening['triggered']);
+        $this->assertSame(1, $customResult->actionUsage['normal_attack']);
+        $this->assertFalse($customResult->awakening['technique']['used']);
+        $playerDecisions = array_values(array_filter(
+            $customResult->actionLog,
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
+                && ($row['side'] ?? null) === 'player',
+        ));
+        $this->assertSame(['awakening', 'normal_attack'], array_column($playerDecisions, 'action_key'));
+        $this->assertSame([1, 1], array_column($playerDecisions, 'round'));
+
+        $default = $this->awakeningPlayerSnapshot('free_black', currentHp: 300);
+        $defaultResult = $this->model()->fightPlayerSnapshot($catalog, $default, 'awakening_target', 127, 1, 0);
+        $this->assertFalse($defaultResult->awakening['triggered']);
+        $this->assertSame(1, $defaultResult->actionUsage['normal_attack']);
     }
 
     public function test_equipment_generation_is_deterministic_and_separates_item_level_rarity_and_caps(): void
@@ -1691,7 +1787,13 @@ final class UndergroundCombatBuildTest extends TestCase
             'label' => '覚醒秘書',
             'stats' => ['vitality' => 100, 'might' => 40, 'finesse' => 30, 'spirit' => 40, 'agility' => 200],
             'active_skills' => $skills,
-            'ai_rules' => $aiRules ?? [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']],
+            'ai_rules' => [
+                [
+                    'conditions' => [['type' => 'own_hp_lte', 'percent' => 20]],
+                    'action' => 'awakening',
+                ],
+                ...($aiRules ?? [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']]),
+            ],
             'modifiers' => [],
             'equipment' => $configuration['exploration']['starter_weapon'],
             'awakening' => [

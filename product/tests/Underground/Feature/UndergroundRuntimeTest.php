@@ -16,6 +16,7 @@ use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuildCombatResult;
 use App\Domain\Underground\Combat\CombatResult;
+use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use App\Models\Secretary;
@@ -122,6 +123,61 @@ final class UndergroundRuntimeTest extends TestCase
             $this->assertArrayNotHasKey('current_mp', $call['player_snapshot']);
         }
         $this->assertSame($profile->refresh()->current_hp, $boss->snapshot['current_hp_after']);
+    }
+
+    public function test_trial_pins_normalized_ai_per_battle_and_applies_changes_only_to_the_next_battle(): void
+    {
+        Carbon::setTestNow('2026-09-03 09:00:00+09:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player', 'player', 'player']);
+        $configuration = app(PriorityCombatAiConfiguration::class);
+        $run = $runtime->startTrial($user, 'trial_01');
+
+        $defaultRequestId = (string) Str::uuid();
+        $defaultBattle = $runtime->fightTrial($user, $run->run_key, $defaultRequestId)['battle'];
+        $defaultAi = $defaultBattle->snapshot['ai'];
+        $this->assertSame(1, $defaultAi['schema_version']);
+        $this->assertSame('awakening', $defaultAi['rules'][0]['action']);
+        $this->assertSame($configuration->hash($defaultAi['rules']), $defaultAi['hash']);
+        $this->assertSame($defaultAi['rules'], $combat->calls[0]['player_snapshot']['ai_rules']);
+
+        $unlearnedSkillRules = $configuration->normalizeRules([
+            ['conditions' => [], 'action' => 'skill:executioner_cut'],
+        ], app(UndergroundAlphaV1PlayerCatalog::class)->trialOneCatalog());
+        $profile->refresh()->update([
+            'custom_ai_rules' => $unlearnedSkillRules,
+            'next_battle_at' => Carbon::now()->subSecond(),
+        ]);
+        $customBattle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
+        $this->assertSame($unlearnedSkillRules, $customBattle->snapshot['ai']['rules']);
+        $this->assertSame(
+            $configuration->hash($unlearnedSkillRules),
+            $customBattle->snapshot['ai']['hash'],
+        );
+        $this->assertSame($unlearnedSkillRules, $combat->calls[1]['player_snapshot']['ai_rules']);
+
+        $profile->refresh()->update([
+            'custom_ai_rules' => [],
+            'next_battle_at' => Carbon::now()->subSecond(),
+        ]);
+        $emptyBattle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
+        $this->assertSame([], $emptyBattle->snapshot['ai']['rules']);
+        $this->assertSame($configuration->hash([]), $emptyBattle->snapshot['ai']['hash']);
+        $this->assertSame([], $combat->calls[2]['player_snapshot']['ai_rules']);
+
+        $this->assertEquals($defaultAi, $defaultBattle->refresh()->snapshot['ai']);
+        $this->assertEquals($unlearnedSkillRules, $customBattle->refresh()->snapshot['ai']['rules']);
+
+        $legacySnapshot = $defaultBattle->snapshot;
+        $legacySnapshot['combat_rules_identity'] = 'secretary-underground-alpha-v2';
+        unset($legacySnapshot['ai']);
+        $defaultBattle->update(['snapshot' => $legacySnapshot]);
+        $legacyReplay = $runtime->fightTrial($user, $run->run_key, $defaultRequestId);
+        $this->assertTrue($legacyReplay['duplicate']);
+        $this->assertSame($defaultBattle->id, $legacyReplay['battle']->id);
+        $this->assertSame($defaultRequestId, $runtime->projectTrialBattle($defaultBattle->refresh())['id']);
+        $this->assertCount(3, $combat->calls);
     }
 
     public function test_exploration_duplicate_request_replays_once_before_cooldown_without_trial_contamination(): void

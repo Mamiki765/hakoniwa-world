@@ -87,11 +87,29 @@ final readonly class PriorityCombatAiConfiguration
     {
         return $this->normalizeRules([
             [
-                'conditions' => [['type' => 'own_hp_lte', 'percent' => 20]],
+                'conditions' => [[
+                    'type' => 'own_hp_lte',
+                    'percent' => intdiv(UndergroundAwakening::ACTIVATION_HP_BPS, 100),
+                ]],
                 'action' => 'awakening',
             ],
             ...$currentDefaultRules,
         ], $catalog);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rules
+     * @return array{schema_version: int, rules: list<array<string, mixed>>, hash: string}
+     */
+    public function snapshot(array $rules, AlphaV1BuildCatalog $catalog): array
+    {
+        $normalized = $this->normalizeRules($rules, $catalog);
+
+        return [
+            'schema_version' => self::SCHEMA_VERSION,
+            'rules' => $normalized,
+            'hash' => $this->hash($normalized),
+        ];
     }
 
     /** @param list<array<string, mixed>> $rules */
