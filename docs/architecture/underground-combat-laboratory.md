@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryからapplication `3.3.0`の正式runtime、Trial 1・覚醒、装備Shop・宝物庫、アクセサリー3枠、浅層・黒晶洞とgenerated equipment drop、再振り・宝物庫一括売却、および`release/3.4.0`のcustom AIまでを扱うcurrent task-specific architecture authorityである。manual combat、Trial 2以降、unique、enhancement、enchant、party、marketは定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryからapplication `3.3.0`の正式runtime、Trial 1・覚醒、装備Shop・宝物庫、アクセサリー3枠、浅層・黒晶洞とgenerated equipment drop、再振り・宝物庫一括売却、およびapplication `3.4.0`のcustom AIまでを扱うcurrent task-specific architecture authorityである。manual combat、Trial 2以降、unique、enhancement、enchant、party、marketは定義しない。
 
-current mainのapplication versionは`3.3.0`であり、`release/3.4.0`はfinalization前である。surface Ruleset `hakoniwa-2s-plus-v19`とUnderground laboratory/runtime identityは別物であり、custom AIのためにSurface Rulesetを更新しない。profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
+current repository releaseのapplication versionは`3.4.0`である。surface Ruleset `hakoniwa-2s-plus-v19`とUnderground laboratory/runtime identityは別物であり、custom AIのためにSurface Rulesetを更新しない。profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 
@@ -308,7 +308,7 @@ release/3.2.0はPR109のowned instanceと宝物庫をforward migrationし、装�
 
 宝物庫が500枠の場合もbattle、XP、Gはrollbackしない。生成結果は付与せず、battle snapshotへ`drop.status=vault_full`と失われたitemの名称、Item Lv、rarity、affix概要を保存する。付与成功時も同じ自己完結summaryを保存し、history表示でcurrent generator/catalogを再実行しない。浅層と黒晶洞は同じruntime generator、owned equipment、combat projectionを再利用し、drop専用combat engine、proc、status、追加action、別RNG semanticsを導入しない。
 
-## release/3.4.0 custom AI
+## application 3.4.0 custom AI
 
 custom AIはSecretaryごとに有効な設定を1つだけ持ち、`underground_profiles.custom_ai_rules`へnormalized rule listを保存する。`null`はcurrent default presetを使用する状態、`[]`はcustom ruleを持たず最終fallbackだけを使用する状態であり、両者を同一視しない。default presetを複製して編集できるが、複数の名前付きset、OR/NOTを含む汎用論理式DSL、manual combatは導入しない。
 
