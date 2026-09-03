@@ -43,7 +43,10 @@ const configuration = (overrides: Partial<UndergroundAiConfiguration> = {}): Und
             { key: 'learned_cut', label: '習得済みの斬撃', summary: 'test' },
             { key: 'future_blast', label: '未習得の砲撃', summary: 'test' },
         ],
-        statuses: [{ key: 'bleed', label: '出血', max_stacks: 3 }],
+        statuses: [
+            { key: 'bleed', label: '出血', max_stacks: 3 },
+            { key: 'fragile', label: '脆弱', max_stacks: 1 },
+        ],
         role_stacks: [{ key: 'grace', label: '恩寵', max_stacks: 5 }],
     },
     ...overrides,
@@ -75,6 +78,58 @@ describe('Underground AI editor', () => {
         const jump = firstRule.get('select[aria-label="Rule 1の移動先"]');
         expect(jump.findAll('option').map((option) => option.text())).toEqual(['Rule 2']);
         expect(wrapper.findAll('.underground-ai-rule')[1]!.find('option[value="jump"]').attributes('disabled')).toBeDefined();
+        wrapper.unmount();
+    });
+
+    it('clamps status stacks when changing to a status with a lower maximum', async () => {
+        const payloads: Array<{ rules: unknown }> = [];
+        vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+            payloads.push(JSON.parse(String(init?.body)) as { rules: unknown });
+            return response({ stage: 'underground_open' });
+        }));
+        const wrapper = mount(UndergroundAiEditor, {
+            props: {
+                configuration: configuration({
+                    is_custom: true,
+                    rules: [{ conditions: [{ type: 'status_stacks_gte', status: 'bleed', stacks: 3 }], action: 'normal_attack' }],
+                }),
+            },
+        });
+
+        await wrapper.get('select[aria-label="Rule 1 条件1の状態"]').setValue('fragile');
+        expect((wrapper.get('input[aria-label="Rule 1 条件1のstack数"]').element as HTMLInputElement).value).toBe('1');
+
+        await wrapper.get('.underground-ai-save-actions .button.primary').trigger('click');
+        await flushPromises();
+        expect(payloads[0]!.rules).toEqual([
+            { conditions: [{ type: 'status_stacks_gte', status: 'fragile', stacks: 1 }], action: 'normal_attack' },
+        ]);
+        wrapper.unmount();
+    });
+
+    it('clamps the modulo remainder when lowering the modulo', async () => {
+        const payloads: Array<{ rules: unknown }> = [];
+        vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+            payloads.push(JSON.parse(String(init?.body)) as { rules: unknown });
+            return response({ stage: 'underground_open' });
+        }));
+        const wrapper = mount(UndergroundAiEditor, {
+            props: {
+                configuration: configuration({
+                    is_custom: true,
+                    rules: [{ conditions: [{ type: 'round_modulo', modulo: 5, equals: 4 }], action: 'normal_attack' }],
+                }),
+            },
+        });
+
+        await wrapper.get('input[aria-label="Rule 1 条件1の周期"]').setValue('3');
+        expect((wrapper.get('input[aria-label="Rule 1 条件1の余り"]').element as HTMLInputElement).value).toBe('2');
+
+        await wrapper.get('.underground-ai-save-actions .button.primary').trigger('click');
+        await flushPromises();
+        expect(payloads[0]!.rules).toEqual([
+            { conditions: [{ type: 'round_modulo', modulo: 3, equals: 2 }], action: 'normal_attack' },
+        ]);
         wrapper.unmount();
     });
 

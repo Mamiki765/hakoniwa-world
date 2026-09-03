@@ -217,6 +217,26 @@ function statusMaximum(key: string | undefined): number {
     return props.configuration.catalog.statuses.find((status) => status.key === key)?.max_stacks ?? 1;
 }
 
+function changeStatusStackStatus(condition: UndergroundAiCondition, event: Event): void {
+    if (!(event.target instanceof HTMLSelectElement)) return;
+    condition.status = event.target.value;
+    const maximum = statusMaximum(condition.status);
+    condition.stacks = Math.min(Math.max(condition.stacks ?? 1, 1), maximum);
+    edited();
+}
+
+function changeRoundModulo(condition: UndergroundAiCondition, event: Event): void {
+    if (!(event.target instanceof HTMLInputElement)) return;
+    const modulo = Number(event.target.value);
+    if (!Number.isInteger(modulo) || modulo < 1) {
+        edited();
+        return;
+    }
+    condition.modulo = modulo;
+    condition.equals = Math.min(Math.max(condition.equals ?? 0, 0), modulo - 1);
+    edited();
+}
+
 function roleStackMaximum(key: string | undefined): number {
     return props.configuration.catalog.role_stacks.find((status) => status.key === key)?.max_stacks ?? 1;
 }
@@ -320,7 +340,7 @@ async function save(): Promise<void> {
                             <option v-for="status in configuration.catalog.statuses" :key="status.key" :value="status.key">{{ status.label }}</option>
                         </select>
                         <template v-else-if="conditionDefinition(condition.type)?.value_kind === 'status_stacks'">
-                            <select v-model="condition.status" :aria-label="`Rule ${ruleIndex + 1} 条件${conditionIndex + 1}の状態`" @change="edited">
+                            <select v-model="condition.status" :aria-label="`Rule ${ruleIndex + 1} 条件${conditionIndex + 1}の状態`" @change="changeStatusStackStatus(condition, $event)">
                                 <option v-for="status in configuration.catalog.statuses" :key="status.key" :value="status.key">{{ status.label }}</option>
                             </select>
                             <input v-model.number="condition.stacks" type="number" min="1" :max="statusMaximum(condition.status)" :aria-label="`Rule ${ruleIndex + 1} 条件${conditionIndex + 1}のstack数`" @input="edited">
@@ -337,7 +357,7 @@ async function save(): Promise<void> {
                         <input v-else-if="conditionDefinition(condition.type)?.value_kind === 'round'" v-model.number="condition.round" type="number" min="1" :aria-label="`Rule ${ruleIndex + 1} 条件${conditionIndex + 1}のround`" @input="edited">
                         <template v-else-if="conditionDefinition(condition.type)?.value_kind === 'round_modulo'">
                             <span>周期</span>
-                            <input v-model.number="condition.modulo" type="number" min="1" :aria-label="`Rule ${ruleIndex + 1} 条件${conditionIndex + 1}の周期`" @input="edited">
+                            <input v-model.number="condition.modulo" type="number" min="1" :aria-label="`Rule ${ruleIndex + 1} 条件${conditionIndex + 1}の周期`" @input="changeRoundModulo(condition, $event)">
                             <span>余り</span>
                             <input v-model.number="condition.equals" type="number" min="0" :max="Math.max(0, (condition.modulo ?? 1) - 1)" :aria-label="`Rule ${ruleIndex + 1} 条件${conditionIndex + 1}の余り`" @input="edited">
                         </template>
