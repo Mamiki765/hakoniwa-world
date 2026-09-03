@@ -42,6 +42,13 @@ final readonly class PriorityCombatAiConfiguration
                 && count(array_filter($conditions, static fn (array $condition): bool => $condition['type'] === 'always')) > 0) {
                 throw new InvalidArgumentException("AI rule [{$index}] cannot combine always with another condition.");
             }
+            usort(
+                $conditions,
+                static fn (array $left, array $right): int => strcmp(
+                    (string) json_encode($left, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    (string) json_encode($right, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                ),
+            );
 
             $action = $rule['action'];
             $allowedRuleKeys = ['conditions', 'action'];

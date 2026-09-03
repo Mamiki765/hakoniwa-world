@@ -57,6 +57,29 @@ final class PriorityCombatAiConfigurationTest extends TestCase
         $this->assertSame('normal_attack', $rules[3]['action']);
     }
 
+    public function test_normalization_canonicalizes_commutative_and_condition_order(): void
+    {
+        $configuration = new PriorityCombatAiConfiguration;
+        $catalog = $this->catalog();
+        $first = $configuration->normalizeRules([[
+            'conditions' => [
+                ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
+                ['type' => 'own_hp_lte', 'percent' => 55],
+            ],
+            'action' => 'skill:mending_prayer',
+        ]], $catalog);
+        $second = $configuration->normalizeRules([[
+            'conditions' => [
+                ['percent' => 55, 'type' => 'own_hp_lte'],
+                ['skill' => 'mending_prayer', 'type' => 'skill_ready'],
+            ],
+            'action' => 'skill:mending_prayer',
+        ]], $catalog);
+
+        $this->assertSame($first, $second);
+        $this->assertSame($configuration->hash($first), $configuration->hash($second));
+    }
+
     /** @param list<mixed> $rules */
     #[DataProvider('invalidRules')]
     public function test_rejects_noncanonical_or_unsafe_rules(array $rules): void
