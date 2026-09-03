@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
+import UndergroundAiEditor from './UndergroundAiEditor.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
+import type { UndergroundAiConfiguration } from './undergroundAi';
 
 type Stage = 'not_started' | 'initial_descent' | 'tutorial_ready' | 'escape_pending'
     | 'returned_after_tutorial' | 'shopkeeper_encounter' | 'shopkeeper_naming'
@@ -287,6 +289,7 @@ interface UndergroundState {
     hunting_grounds?: HuntingGround[] | null;
     trial: TrialState | null;
     awakening: AwakeningState | null;
+    ai?: UndergroundAiConfiguration | null;
     battle: Battle | null;
 }
 
@@ -442,7 +445,7 @@ const pendingSkillAcquire = ref<PendingMutation | null>(null);
 const pendingLoadoutMutation = ref<PendingMutation | null>(null);
 const pendingAwakeningMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
-const equipmentView = ref<'main' | 'shop' | 'guide' | 'vault'>('main');
+const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault'>('main');
 const guideMode = ref<'basic' | 'conversation' | 'respec'>('basic');
 const selectedRespecPathKey = ref<string | null>(null);
 const respecConfirmOpen = ref(false);
@@ -1150,6 +1153,11 @@ async function applyEquipmentMutation(result: EquipmentMutationState): Promise<v
     }
 }
 
+function applyAiMutation(result: unknown): void {
+    state.value = result as UndergroundState;
+    cooldownNowMs.value = Date.now();
+}
+
 onMounted(() => {
     cooldownTimer = window.setInterval(() => { cooldownNowMs.value = Date.now(); }, 1_000);
     void enter();
@@ -1357,6 +1365,7 @@ onUnmounted(() => {
                 <button type="button" :aria-current="equipmentView === 'main' ? 'page' : undefined" @click="equipmentView = 'main'">地下メイン</button>
                 <button type="button" :aria-current="equipmentView === 'shop' ? 'page' : undefined" @click="equipmentView = 'shop'">装備ショップ</button>
                 <button type="button" :aria-current="equipmentView === 'guide' ? 'page' : undefined" @click="openGuide()">案内人の部屋</button>
+                <button type="button" :aria-current="equipmentView === 'ai' ? 'page' : undefined" :disabled="!state.ai" @click="equipmentView = 'ai'">作戦設定</button>
                 <button type="button" :aria-current="equipmentView === 'vault' ? 'page' : undefined" @click="equipmentView = 'vault'">宝物庫</button>
             </nav>
 
@@ -1445,6 +1454,11 @@ onUnmounted(() => {
                     </template>
                 </section>
             </section>
+            <UndergroundAiEditor
+                v-else-if="equipmentView === 'ai' && state.ai"
+                :configuration="state.ai"
+                @updated="applyAiMutation"
+            />
             <UndergroundEquipmentVault v-else-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
 
             <div v-else class="underground-main-layout">

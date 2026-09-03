@@ -259,7 +259,7 @@
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; application `3.3.0`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層と黒晶洞、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売りを実装済み。custom AI、party、marketは未実装。
+- Implemented: Partially; application `3.3.0`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層と黒晶洞、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売りを実装済み。`release/3.4.0`でSecretaryごとのcustom AI、battle単位のnormalized rule/hash snapshot、作戦編集画面を追加する。party、marketは未実装。
 - Decision: 地下roadmapを`release/3.0.0-alpha`として開始し、Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。後続releaseもSecretary-owned progression、canonical combat、versioned content identity、request idempotencyを再利用し、Surface RulesetやWorld Turnへ地下戦闘runtimeを混在させない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
@@ -287,7 +287,8 @@
 - Decided backend portion: defeatは輝石の欠片を`floor(balance / 2)`まで減らしてrunを終了する。trialのdefeatまたはbattle後の明示的な帰還は次回battle 1へresetするが、既に解禁したtrialは失わない。browser close/logoutはtrialの戦闘間progressを保持する。各trialは固有の明示的`content_identity`を持ち、active runは開始時のidentityを保存する。同じtrial自身のgameplay content identityだけが変わった場合、次回access時にそのrunをcurrent identity / battle 1へ無penaltyでresetする。application/runtime versionや別trialのidentity変更ではresetせず、XP、欠片、trial unlock、first clear、`unlocked_area_layers`を保持する。trialのfirst clearだけが`unlocked_area_layers`を1増やし、capacityは1 layer = 4 slotsから派生し、次のtrialをsequentialにunlockする。同じtrialの再clearでlayerを重複取得しない。battle詳細action logは終了から1時間保持し、履歴一覧は最新20件のcompact summaryだけを取得する。期限後も`underground_battles`のcompact summaryとidempotency/audit identityは保持し、個別詳細は安全な期限切れ案内へ劣化する。player-facing playtest logはsettlement時の自己完結projectionを保存し、current catalogへ再依存しない。
 - Application `3.3.0` respec contract: 案内人の部屋から、SP全返却・active slot解除・STP全返却・成長方針再選択を一つのtransactionで行う。費用は現在Combat Lv × 10 Gを手持ち欠片だけから支払い、24時間に1回とする。Lv/XP、装備、Trial clear、覚醒、解禁、intro履歴は維持し、current HPは新max HPを超える場合だけ下方clampする。active Trial中は拒否し、UUID idempotencyとprofile lockで二重決済を防ぐ。
 - Application `3.3.0` bulk sale contract: 宝物庫のItem Lv・rarity・category・canonical weapon style条件をserver側で解決し、装備中itemと通常売却不可itemを除外した具体的item集合とcanonical価格をpreviewする。confirmはpreviewしたIDと価格だけを再検証し、追加取得itemを含めず、全件validation後の同一transactionでdeleteと手持ち欠片creditを行う。UUID idempotencyとprofile lockでretry・concurrent requestの二重creditを防ぐ。
-- Remaining boundary: Trial 2以降、custom AI、unique、enhancement、enchant、manual combat、party、market、production deployは、application `3.3.0`では実装・実行しない。
+- `release/3.4.0` custom AI contract: Secretaryごとに有効設定は1つ、`null`はdefault preset、`[]`はcustom empty、最大16 rules・各rule最大2 AND条件、empty conditionはalways、jumpはforward-onlyとする。成立actionが現在使用不能なら次ruleへ進み、全rule後だけcanonicalな習得済みattackから通常攻撃へdeterministic fallbackする。覚醒は通常actionを消費せずdefault presetのHP 20%条件から起動する。Trial中の変更はbattle間だけ許可し、battle snapshotへ実使用normalized rules全文とSHA-256を固定する。Underground combat identityは`secretary-underground-alpha-v3`、Surface Rulesetは`hakoniwa-2s-plus-v19`を維持する。
+- Remaining boundary: Trial 2以降、unique、enhancement、enchant、manual combat、party、marketはcustom AI scopeへ含めない。`release/3.4.0`からmainへの昇格、application `3.4.0` finalization、production deployはそれぞれ別Owner gateとする。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ### UG-04 Nation-owned facility・surface bridge

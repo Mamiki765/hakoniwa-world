@@ -3649,7 +3649,19 @@ describe('Underground equipment navigation', () => {
             default_hunting_ground_key: null, hunting_grounds: [],
             respec: respecProjection,
             trial: { key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10, first_cleared: false, active_run: null },
-            awakening: null, battle: null, next_battle_at: null,
+            awakening: null,
+            ai: {
+                schema_version: 1, max_rules: 16, max_conditions_per_rule: 2, is_custom: false,
+                rules: [{ conditions: [{ type: 'always' }], action: 'normal_attack' }],
+                default_rules: [{ conditions: [{ type: 'always' }], action: 'normal_attack' }],
+                hash: 'a'.repeat(64),
+                catalog: {
+                    condition_types: [{ key: 'always', label: '常に', value_kind: 'none' }],
+                    actions: [{ key: 'normal_attack', label: '通常攻撃' }, { key: 'jump', label: '後ろのruleへ移動' }],
+                    skills: [], statuses: [], role_stacks: [],
+                },
+            },
+            battle: null, next_battle_at: null,
         };
         const respecPayloads: Array<{ request_id: string; growth_path_key: string }> = [];
         const skillPayloads: Array<{ request_id: string; node_key: string }> = [];
@@ -3725,7 +3737,9 @@ describe('Underground equipment navigation', () => {
         await wrapper.get('input[aria-label="生命の今回の配分"]').setValue(2);
         expect(wrapper.get('.underground-progression-panel .button.primary').text()).toBe('2 STPを一括確定');
         expect(wrapper.findAll('.underground-main-navigation button').map((button) => button.text()))
-            .toEqual(['地下メイン', '装備ショップ', '案内人の部屋', '宝物庫']);
+            .toEqual(['地下メイン', '装備ショップ', '案内人の部屋', '作戦設定', '宝物庫']);
+        await wrapper.findAll('.underground-main-navigation button')[3]!.trigger('click');
+        expect(wrapper.get('.underground-ai-editor').text()).toContain('初期設定を表示しています');
         await wrapper.findAll('.underground-main-navigation button')[2]!.trigger('click');
         expect(wrapper.get('.underground-guide-room-greeting').text()).toBe('案内人「あら、どうしたんですか？」');
         await wrapper.get('.underground-guide-actions button').trigger('click');
