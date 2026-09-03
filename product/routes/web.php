@@ -115,6 +115,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/status/stp', [UndergroundIntroController::class, 'allocateStp']);
         Route::post('/skills/acquire', [UndergroundIntroController::class, 'acquireSkill']);
         Route::put('/skills/loadout', [UndergroundIntroController::class, 'updateActiveLoadout']);
+        Route::put('/ai', [UndergroundIntroController::class, 'updateAiConfiguration']);
         Route::put('/awakening/message', [UndergroundIntroController::class, 'updateAwakeningMessage']);
         Route::get('/playtest', [UndergroundIntroController::class, 'playtestOptions']);
         Route::post('/playtest', [UndergroundIntroController::class, 'playtest']);

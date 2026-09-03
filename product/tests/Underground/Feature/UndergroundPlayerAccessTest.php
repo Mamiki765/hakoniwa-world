@@ -81,6 +81,10 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => (string) Str::uuid(),
             'slots' => ['holy_bolt', null, null, null, null],
         ])->assertUnauthorized();
+        $this->putJson('/api/v1/me/underground/ai', [
+            'request_id' => (string) Str::uuid(),
+            'rules' => [],
+        ])->assertUnauthorized();
         $this->putJson('/api/v1/me/underground/awakening/message', [
             'request_id' => (string) Str::uuid(),
             'message' => '覚醒',
@@ -2433,6 +2437,117 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => (string) Str::uuid(),
             'message' => str_repeat('界', 101),
         ])->assertUnprocessable()->assertJsonValidationErrors('message');
+    }
+
+    public function test_ai_configuration_uses_default_preset_and_saves_normalized_rules_idempotently(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('AI設定秘書');
+        $profile = $this->openEquipmentProfile($secretary);
+
+        $default = $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+            ->assertOk()
+            ->assertJsonPath('data.ai.schema_version', 1)
+            ->assertJsonPath('data.ai.max_rules', 16)
+            ->assertJsonPath('data.ai.max_conditions_per_rule', 2)
+            ->assertJsonPath('data.ai.is_custom', false)
+            ->assertJsonPath('data.ai.rules.0.conditions.0.type', 'own_hp_lte')
+            ->assertJsonPath('data.ai.rules.0.conditions.0.percent', 20)
+            ->assertJsonPath('data.ai.rules.0.action', 'awakening')
+            ->assertJsonPath('data.ai.rules.2.action', 'defend')
+            ->assertJsonPath('data.ai.rules.3.action', 'normal_attack')
+            ->assertJsonCount(16, 'data.ai.catalog.skills');
+        $this->assertMatchesRegularExpression('/\A[a-f0-9]{64}\z/', $default->json('data.ai.hash'));
+        $this->assertSame($default->json('data.ai.default_rules'), $default->json('data.ai.rules'));
+
+        $requestId = (string) Str::uuid();
+        $payload = [
+            'request_id' => $requestId,
+            'rules' => [
+                ['conditions' => [], 'action' => 'skill:executioner_cut'],
+                [
+                    'conditions' => [['percent' => 50, 'type' => 'own_hp_lte']],
+                    'action' => 'jump',
+                    'jump_to' => 3,
+                ],
+                ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+                [
+                    'conditions' => [
+                        ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
+                        ['type' => 'own_hp_lte', 'percent' => 55],
+                    ],
+                    'action' => 'skill:mending_prayer',
+                ],
+            ],
+        ];
+        $saved = $this->actingAs($user)->putJson('/api/v1/me/underground/ai', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.ai.is_custom', true)
+            ->assertJsonPath('data.ai.rules.0.conditions.0.type', 'always')
+            ->assertJsonPath('data.ai.rules.0.action', 'skill:executioner_cut')
+            ->assertJsonPath('data.ai.rules.1.jump_to', 3);
+        $equivalentPayload = $payload;
+        $equivalentPayload['rules'][3]['conditions'] = array_reverse(
+            $equivalentPayload['rules'][3]['conditions'],
+        );
+        $this->actingAs($user)->putJson('/api/v1/me/underground/ai', $equivalentPayload)
+            ->assertOk()->assertExactJson($saved->json());
+        $this->assertEquals($saved->json('data.ai.rules'), $profile->refresh()->custom_ai_rules);
+        $this->assertDatabaseHas('underground_intro_requests', [
+            'underground_profile_id' => $profile->id,
+            'request_id' => $requestId,
+            'operation' => 'ai_configuration',
+        ]);
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'guardianship_blue',
+        ])->assertOk()
+            ->assertJsonPath('data.ai.rules.0.action', 'skill:executioner_cut');
+        $this->assertEquals($saved->json('data.ai.rules'), $profile->refresh()->custom_ai_rules);
+
+        $this->actingAs($user)->putJson('/api/v1/me/underground/ai', [
+            ...$payload,
+            'rules' => [],
+        ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/ai', [
+            'request_id' => (string) Str::uuid(),
+            'rules' => null,
+        ])->assertOk()
+            ->assertJsonPath('data.ai.is_custom', false)
+            ->assertJsonPath('data.ai.rules.0.action', 'awakening');
+        $this->assertNull($profile->refresh()->custom_ai_rules);
+    }
+
+    public function test_ai_configuration_rejects_invalid_rules_without_mutation(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('AI検証秘書');
+        $profile = $this->openEquipmentProfile($secretary);
+
+        foreach ([
+            [[
+                'conditions' => [],
+                'action' => 'jump',
+                'jump_to' => 1,
+            ]],
+            [[
+                'conditions' => [['type' => 'skill_ready', 'skill' => 'enemy_telegraph']],
+                'action' => 'defend',
+            ]],
+        ] as $rules) {
+            $this->actingAs($user)->putJson('/api/v1/me/underground/ai', [
+                'request_id' => (string) Str::uuid(),
+                'rules' => $rules,
+            ])->assertConflict()->assertJsonPath('code', 'underground_ai_rules_invalid');
+        }
+        $this->actingAs($user)->putJson('/api/v1/me/underground/ai', [
+            'request_id' => (string) Str::uuid(),
+        ])->assertUnprocessable()->assertJsonValidationErrors('rules');
+
+        $this->assertNull($profile->refresh()->custom_ai_rules);
+        $this->assertSame(0, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'ai_configuration')
+            ->count());
     }
 
     public function test_refresh_resumes_meaningful_stage_and_intro_history_is_private_and_owner_scoped(): void

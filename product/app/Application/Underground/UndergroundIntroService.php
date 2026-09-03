@@ -5,6 +5,7 @@ namespace App\Application\Underground;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\CombatResult;
+use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
@@ -46,6 +47,7 @@ final readonly class UndergroundIntroService
         private UndergroundStarterEquipmentService $starterEquipment,
         private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
         private UndergroundAwakening $awakening,
+        private PriorityCombatAiConfiguration $aiConfiguration,
     ) {}
 
     /** @return array<string, mixed> */
@@ -683,6 +685,41 @@ final readonly class UndergroundIntroService
         });
     }
 
+    /**
+     * @param  array<mixed>|null  $rules
+     * @return array<string, mixed>
+     */
+    public function updateAiConfiguration(User $user, string $requestId, ?array $rules): array
+    {
+        $catalog = $this->alphaV1Catalog->laboratoryCatalog();
+        try {
+            $normalized = $rules === null
+                ? null
+                : $this->aiConfiguration->normalizeRules($rules, $catalog);
+        } catch (InvalidArgumentException) {
+            throw new UndergroundRuntimeException(
+                'underground_ai_rules_invalid',
+                'AI ruleの条件、action、または移動先を確認してください。',
+            );
+        }
+
+        return $this->mutate(
+            $user,
+            $requestId,
+            'ai_configuration',
+            ['rules' => $normalized],
+            function (
+                Secretary $secretary,
+                UndergroundProfile $profile,
+                UndergroundIntroProgress $intro,
+            ) use ($normalized): void {
+                $this->assertSkillTreeUnlocked($profile, $intro);
+                $profile->custom_ai_rules = $normalized;
+                $profile->save();
+            },
+        );
+    }
+
     /** @return array<string, mixed> */
     public function updateAwakeningMessage(User $user, string $requestId, ?string $message): array
     {
@@ -1225,6 +1262,7 @@ final readonly class UndergroundIntroService
         $skillAllocations = [];
         $skillBuild = null;
         $skillTrees = null;
+        $aiState = null;
         $activeSlots = array_fill(0, AlphaV1CombatRules::ACTIVE_SKILL_LIMIT, null);
         if ($profile instanceof UndergroundProfile && $profile->growth_path_key !== null) {
             $growthPath = $this->alphaV1Catalog->growthPath($profile->growth_path_key);
@@ -1259,6 +1297,24 @@ final readonly class UndergroundIntroService
                     $profile->skill_points_unspent,
                 );
                 $catalog = $this->alphaV1Catalog->laboratoryCatalog();
+                $defaultAiRules = $this->aiConfiguration->defaultRules($skillBuild['ai_rules'], $catalog);
+                try {
+                    $effectiveAiRules = $profile->custom_ai_rules === null
+                        ? $defaultAiRules
+                        : $this->aiConfiguration->normalizeRules($profile->custom_ai_rules, $catalog);
+                } catch (InvalidArgumentException $exception) {
+                    throw new RuntimeException('Persisted Underground AI rules are invalid.', previous: $exception);
+                }
+                $aiState = [
+                    'schema_version' => PriorityCombatAiConfiguration::SCHEMA_VERSION,
+                    'max_rules' => AlphaV1CombatRules::AI_RULE_LIMIT,
+                    'max_conditions_per_rule' => PriorityCombatAiConfiguration::MAX_CONDITIONS_PER_RULE,
+                    'is_custom' => $profile->custom_ai_rules !== null,
+                    'rules' => $effectiveAiRules,
+                    'default_rules' => $defaultAiRules,
+                    'hash' => $this->aiConfiguration->hash($effectiveAiRules),
+                    'catalog' => $this->aiConfiguration->editorCatalog($catalog),
+                ];
                 foreach ($skillAllocations as $nodeKey => $allocation) {
                     if ($allocation['active_slot'] === null) {
                         continue;
@@ -1350,6 +1406,7 @@ final readonly class UndergroundIntroService
             'skill_trees' => $skillTrees,
             'active_slots' => $activeSlots,
             'passive_modifiers' => $skillBuild['passive_modifiers'] ?? [],
+            'ai' => $aiState,
             'shopkeeper_name' => $intro?->shopkeeper_name,
             'true_name_branch' => $intro?->branch_identity === 'true_name',
             'tutorial_projection' => [
