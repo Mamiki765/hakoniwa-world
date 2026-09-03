@@ -73,6 +73,7 @@ final class UndergroundPersistenceTest extends TestCase
             'combat_xp',
             'created_at',
             'current_hp',
+            'custom_ai_rules',
             'growth_path_identity',
             'growth_path_key',
             'growth_path_selected_at',
