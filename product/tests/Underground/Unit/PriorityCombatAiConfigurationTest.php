@@ -57,6 +57,38 @@ final class PriorityCombatAiConfigurationTest extends TestCase
         $this->assertSame('normal_attack', $rules[3]['action']);
     }
 
+    public function test_default_player_skill_rules_do_not_repeat_their_action_availability_as_a_condition(): void
+    {
+        $config = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $rules = $config['exploration']['player_skill_ai_rules'];
+
+        $this->assertIsArray($rules);
+        foreach ($rules as $rule) {
+            $this->assertIsArray($rule);
+            $action = $rule['action'] ?? null;
+            $conditions = $rule['conditions'] ?? null;
+            $this->assertIsString($action);
+            $this->assertStringStartsWith('skill:', $action);
+            $this->assertIsArray($conditions);
+
+            $actionSkill = substr($action, 6);
+            $this->assertNotContains(
+                ['type' => 'skill_ready', 'skill' => $actionSkill],
+                $conditions,
+                "Default rule for {$actionSkill} must let the action attempt decide availability.",
+            );
+        }
+
+        $this->assertSame(
+            [['type' => 'own_hp_lte', 'percent' => 55]],
+            $rules[0]['conditions'],
+        );
+        $this->assertSame(
+            [['type' => 'always']],
+            $rules[8]['conditions'],
+        );
+    }
+
     public function test_normalization_canonicalizes_commutative_and_condition_order(): void
     {
         $configuration = new PriorityCombatAiConfiguration;

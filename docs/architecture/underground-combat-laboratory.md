@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryからapplication `3.2.0`の正式runtime、Trial 1・覚醒、装備Shop・宝物庫、アクセサリー3枠、浅層・黒晶洞とgenerated equipment dropまでを扱うcurrent task-specific architecture authorityである。manual combat、custom AI、再振り、Trial 2以降、unique、enhancement、enchant、party、marketは定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryからapplication `3.3.0`の正式runtime、Trial 1・覚醒、装備Shop・宝物庫、アクセサリー3枠、浅層・黒晶洞とgenerated equipment drop、再振り・宝物庫一括売却、および`release/3.4.0`のcustom AIまでを扱うcurrent task-specific architecture authorityである。manual combat、Trial 2以降、unique、enhancement、enchant、party、marketは定義しない。
 
-application versionは`3.2.0`である。surface Ruleset `hakoniwa-2s-plus-v19`とUnderground laboratory/runtime identityは別物であり、3.2.0はSurface Ruleset payloadを変更しない。profile、run、history、intro/growth/skill/equipment stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。3.2.0のcombat、exploration、equipment identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
+current mainのapplication versionは`3.3.0`であり、`release/3.4.0`はfinalization前である。surface Ruleset `hakoniwa-2s-plus-v19`とUnderground laboratory/runtime identityは別物であり、custom AIのためにSurface Rulesetを更新しない。profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 
@@ -78,7 +78,7 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 敏捷comboはactionごとに1回だけ2・3・4連続ヒットを抽選し、通常のcritical・variance・防御・guard等を解決したpost-mitigation damageへ最終倍率を掛ける。action、damage event、critical、status、覚醒ゲージ、native multi-hit数は追加せず、native multi-hitにも同じaction単位のcombo結果を使う。logはnative damage行を増やさず、回避または完全防御ではない最初のdamage行に補助表示用hit数を1回だけ持つ。
 
-このevasion・damage・RNG semantics変更後のactive combat identityは`secretary-underground-alpha-v2`とする。`AlphaV1*`のclass名と`foundation-v1.json`等のfile名は既存canonical implementation lineageであり、persisted identityのauthorityには使わない。通常探索・Trial・story・playtest・manual simulatorの新規結果はv2をsnapshot/reportへ保存する。既存v1 battle snapshotはhistorical recordとしてそのまま投影できるためmigrationは行わず、parallel combat engineも追加しない。
+custom AIを戦闘入力とbattle snapshotへ含めた後のactive combat identityは`secretary-underground-alpha-v3`とする。`AlphaV1*`のclass名と`foundation-v1.json`等のfile名は既存canonical implementation lineageであり、persisted identityのauthorityには使わない。通常探索・Trial・story・playtest・manual simulatorの新規結果はv3をsnapshot/reportへ保存する。既存v1/v2 battle snapshotはhistorical recordとしてそのまま投影・replayできるためmigrationは行わず、parallel combat engineも追加しない。
 
 ### Alpha-v1 damage and recovery order
 
@@ -112,7 +112,7 @@ normal targetのaction impairmentをbossへそのまま適用しない。boss pr
 
 ### Priority AI and deterministic equipment
 
-priority AIは上から最初に成立したruleを使い、最大16 rules・各rule最大2 conditionsである。vocabularyは`always`、own HP/MP threshold、enemy HP threshold、self/enemy status present/absent、role stack threshold、enemy telegraph、skill ready、round threshold/moduloである。cooldownまたはMP不足のskillを実行せず、合法な下位ruleまたは通常攻撃へfallbackする。MP不足で上位skillを選べなかったturnはreportへ別集計する。
+priority AIは上からruleを評価し、最大16 rules・各rule最大2個のAND conditionsを持つ。empty conditionは`always`へ正規化する。vocabularyは`always`、own HP/MP threshold、enemy HP threshold、self/enemy status present/absent、role stack threshold、enemy telegraph、skill ready、round threshold/moduloである。条件成立後もactionが習得状態、装備、MP、cooldown、覚醒状態等により現在使用不能ならそのruleからfallbackせず次のruleへ進む。`jump`は後ろのruleだけを指し、loopを構造的に作れない。全ruleを評価しても実行できない場合だけ、現在使用可能な習得済みattack skillをcanonicalな決定順で選び、それもなければ通常攻撃を使う。AI設定によって何もせずturnを終える状態は作らない。MP不足で上位skillを選べなかったturnはreportへ別集計する。
 
 equipment generationはgenerator identity、アイテムLv、slot / weapon style、rarity、seedが同じなら同じidentity・base・affix・unique effect・display projectionを返す。アイテムLvはbase budget、affix tier、roll rangeを、rarityはaffix数、roll quality、unique eligibilityを決める。common / uncommon / rare / epic / uniqueを区別し、能力、damage/healing/status、critical、MP cost、guard/barrier、periodic effectの少数affixだけを持つ。evasion、軽減、MP cost reduction等に明示capを置き、`max_mp` affixは作らない。
 
@@ -307,3 +307,15 @@ release/3.2.0はPR109のowned instanceと宝物庫をforward migrationし、装�
 通常探索の勝利は`secretary-underground-exploration-drop-alpha-v1`のdrop contractを使い、1 battleにつき最大1個のgenerated装備を抽選する。presence、rarity、Item Lv、category、weapon style/accessory main stat、affixはbattle seedから独立したdomainで導出し、combat RNGへ影響させない。Trial、敗北、撤退では装備dropを行わない。generated payloadはbattle settlementと同じprofile lock・database transaction内でowned instanceへ保存し、`source_battle_id`とgrant keyのunique contractによりretry・並行requestでも二重付与しない。
 
 宝物庫が500枠の場合もbattle、XP、Gはrollbackしない。生成結果は付与せず、battle snapshotへ`drop.status=vault_full`と失われたitemの名称、Item Lv、rarity、affix概要を保存する。付与成功時も同じ自己完結summaryを保存し、history表示でcurrent generator/catalogを再実行しない。浅層と黒晶洞は同じruntime generator、owned equipment、combat projectionを再利用し、drop専用combat engine、proc、status、追加action、別RNG semanticsを導入しない。
+
+## release/3.4.0 custom AI
+
+custom AIはSecretaryごとに有効な設定を1つだけ持ち、`underground_profiles.custom_ai_rules`へnormalized rule listを保存する。`null`はcurrent default presetを使用する状態、`[]`はcustom ruleを持たず最終fallbackだけを使用する状態であり、両者を同一視しない。default presetを複製して編集できるが、複数の名前付きset、OR/NOTを含む汎用論理式DSL、manual combatは導入しない。
+
+更新APIはcurrent User自身のSecretary/profileだけを対象にし、既存のprofile lock、database transaction、UUID request ledgerを再利用する。同じrequest IDと同じnormalized intentは保存済みprojectionを返し、異なるintentでの再利用はconflictとする。actionまたは`skill_ready`条件にはcanonical catalogに存在する未習得skillも保存できる。戦闘時にそのskillが未習得、現在の武器で使用不能、MP不足、cooldown中等なら次のruleへ進む。
+
+default presetは従来のbuilt-in AIの意図した挙動を最大16 rules・各rule最大2 conditionsの範囲で再現し、HP 20%以下の覚醒条件もpreset内の明示ruleとして持つ。覚醒actionは通常actionの時間を消費せず、成立後は同じturnの残りrule評価と既存の覚醒戦技orderingへ進む。custom rulesが覚醒ruleを持たなければ自動覚醒しない。
+
+各battleは開始時に実際に使用するnormalized AI rules全文と、そのcanonical JSONに対するSHA-256 hashをsnapshotへ固定する。Trial進行中もbattle間の設定変更を許可し、次に生成するbattleだけが新設定を使用する。既に生成・保存されたbattle snapshot、projection、replayは後日のprofile設定へ再依存しない。このsnapshot/input semantics変更のためUnderground combat identityを`secretary-underground-alpha-v3`へ更新するが、Surface Rulesetは`hakoniwa-2s-plus-v19`を維持する。
+
+`2026_09_03_020000_add_underground_custom_ai.php`はapplication 3.3.0から3.4.0へのappend-only forward migrationである。既存profileは`null`から開始してdefault presetを使用し、過去battle rowのbackfillやv1/v2 snapshotの書き換えは行わない。player UIはserver-provided catalogだけを選択肢として表示し、defaultへの復帰、defaultの複製、custom empty、rule追加・削除・並べ替え、最大2条件、forward-only jumpを区別して保存する。
