@@ -43,7 +43,7 @@ Underground combat: secretary-underground-alpha-v3
 
 | PR / commit | 内容 | merge / anchor commit |
 |---|---|---|
-| #134 | custom AI保存・検証・API | `7e016b27ebefc036626bcc3ceec409f33a71d91` |
+| #134 | custom AI保存・検証・API | `7e016b27ebefc036ec70d7731aca61c7c2e45c8b` |
 | #135 | custom AI戦闘適用、snapshot / hash、combat identity v3 | `e29df7e78897ee346626bcc3ceec409f33a71d91` |
 | #136 | AI編集画面、player manual、default preset簡潔化 | `0c14ceb5aca270c474a03a085cc80004ec8f0b46` |
 
