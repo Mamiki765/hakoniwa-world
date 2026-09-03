@@ -69,14 +69,14 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v19')->sole();
 
-        $this->assertSame('3.3.0', config('hakoniwa.application_version'));
+        $this->assertSame('3.4.0', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v19'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v19', $ruleset->key);
         $this->assertSame(19, $ruleset->version);
         $this->assertSame(27, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(59, DB::table('migrations')->count());
+        $this->assertSame(60, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -115,6 +115,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_03_010000_add_underground_bulk_sale_operation',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_03_020000_add_underground_custom_ai',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -174,6 +177,18 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_identity'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'growth_path_selected_at'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'last_respec_at'));
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'custom_ai_rules'));
+        $customAiColumn = DB::selectOne(<<<'SQL'
+SELECT is_nullable, column_default, udt_name
+  FROM information_schema.columns
+ WHERE table_schema = current_schema()
+   AND table_name = 'underground_profiles'
+   AND column_name = 'custom_ai_rules'
+SQL);
+        $this->assertNotNull($customAiColumn);
+        $this->assertSame('YES', $customAiColumn->is_nullable);
+        $this->assertNull($customAiColumn->column_default);
+        $this->assertSame('jsonb', $customAiColumn->udt_name);
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'unspent_stp'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_vitality_stp'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'allocated_might_stp'));
@@ -245,6 +260,22 @@ final class FreshInstallRebaselineTest extends TestCase
             ->where('conname', 'underground_profiles_banked_shard_balance_non_negative')->count());
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_profiles_current_hp_positive')->count());
+        $this->assertSame(1, DB::table('pg_constraint')
+            ->where('conname', 'underground_profiles_custom_ai_rules_check')->count());
+        $customAiConstraint = DB::selectOne(<<<'SQL'
+SELECT pg_get_constraintdef(oid) AS definition
+  FROM pg_constraint
+ WHERE conname = 'underground_profiles_custom_ai_rules_check'
+SQL);
+        $this->assertNotNull($customAiConstraint);
+        $this->assertStringContainsString('jsonb_array_length(custom_ai_rules) <= 16', (string) $customAiConstraint->definition);
+        $operationConstraint = DB::selectOne(<<<'SQL'
+SELECT pg_get_constraintdef(oid) AS definition
+  FROM pg_constraint
+ WHERE conname = 'underground_intro_requests_operation_check'
+SQL);
+        $this->assertNotNull($operationConstraint);
+        $this->assertStringContainsString('ai_configuration', (string) $operationConstraint->definition);
         $this->assertSame(1, DB::table('pg_constraint')
             ->where('conname', 'underground_intro_progress_branch_identity_check')->count());
         $this->assertSame(1, DB::table('pg_constraint')
@@ -353,11 +384,22 @@ SQL);
 
         $this->returnDatabaseToExact320Source();
         $this->assertFalse(Schema::hasColumn('underground_profiles', 'last_respec_at'));
+        $this->assertFalse(Schema::hasColumn('underground_profiles', 'custom_ai_rules'));
         $this->assertSame([
             '2026_09_03_000000_add_underground_respec',
             '2026_09_03_010000_add_underground_bulk_sale_operation',
+            '2026_09_03_020000_add_underground_custom_ai',
         ], $this->pendingMigrations());
-        $this->artisan('migrate', ['--force' => true])->assertSuccessful();
+        foreach ([
+            'database/migrations/2026_09_03_000000_add_underground_respec.php',
+            'database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php',
+        ] as $migrationPath) {
+            $this->artisan('migrate', [
+                '--path' => $migrationPath,
+                '--force' => true,
+                '--no-interaction' => true,
+            ])->assertSuccessful();
+        }
 
         $profile->refresh();
         $this->assertSame([
@@ -404,7 +446,95 @@ SQL);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_03_010000_add_underground_bulk_sale_operation',
         ]);
+        $this->assertSame(['2026_09_03_020000_add_underground_custom_ai'], $this->pendingMigrations());
+        $this->assertSame(59, DB::table('migrations')->count());
+    }
+
+    public function test_exact_330_to_340_schema_upgrade_adds_nullable_custom_ai_without_changing_underground_progression(): void
+    {
+        $user = User::factory()->create();
+        $secretary = Secretary::query()->create(['user_id' => $user->id]);
+        $profile = UndergroundProfile::query()->create([
+            'secretary_id' => $secretary->id,
+            'unlocked_area_layers' => 2,
+            'combat_level' => 4,
+            'combat_xp' => 345,
+            'shard_balance' => 1_234,
+            'banked_shard_balance' => 5_678,
+            'current_hp' => 321,
+            'underground_contract_completed_at' => now()->subDays(3),
+            'growth_path_key' => 'martial_red',
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'growth_path_selected_at' => now()->subDays(2),
+            'unspent_stp' => 5,
+            'allocated_vitality_stp' => 10,
+            'skill_points_total' => 60,
+            'skill_points_unspent' => 55,
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'awakening_gauge' => 750,
+            'awakening_message' => 'この履歴は維持する',
+        ]);
+        $profileBefore = [
+            $profile->unlocked_area_layers,
+            $profile->combat_level,
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->banked_shard_balance,
+            $profile->current_hp,
+            $profile->growth_path_key,
+            $profile->unspent_stp,
+            $profile->allocated_vitality_stp,
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+            $profile->awakening_gauge,
+            $profile->awakening_message,
+        ];
+
+        $this->returnDatabaseToExact330Source();
+        $this->assertFalse(Schema::hasColumn('underground_profiles', 'custom_ai_rules'));
+        $this->assertSame(['2026_09_03_020000_add_underground_custom_ai'], $this->pendingMigrations());
+        $this->assertSame(59, DB::table('migrations')->count());
+
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_09_03_020000_add_underground_custom_ai.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'custom_ai_rules'));
+        $profile->refresh();
+        $this->assertSame($profileBefore, [
+            $profile->unlocked_area_layers,
+            $profile->combat_level,
+            $profile->combat_xp,
+            $profile->shard_balance,
+            $profile->banked_shard_balance,
+            $profile->current_hp,
+            $profile->growth_path_key,
+            $profile->unspent_stp,
+            $profile->allocated_vitality_stp,
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+            $profile->awakening_gauge,
+            $profile->awakening_message,
+        ]);
+        $this->assertNull(DB::table('underground_profiles')->where('id', $profile->id)->value('custom_ai_rules'));
+        UndergroundIntroRequest::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('c', 64),
+            'operation' => 'ai_configuration',
+            'resulting_stage' => 'underground_open',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_03_020000_add_underground_custom_ai',
+        ]);
+        $this->assertDatabaseHas('underground_intro_requests', [
+            'underground_profile_id' => $profile->id,
+            'operation' => 'ai_configuration',
+        ]);
         $this->assertSame([], $this->pendingMigrations());
+        $this->assertSame(60, DB::table('migrations')->count());
     }
 
     public function test_direct_baseline_supports_world_nation_command_turn_and_secretary_item_initialization(): void
@@ -556,13 +686,19 @@ SQL);
                 '2026_09_02_000000_expand_underground_hackslash_equipment',
                 '2026_09_03_000000_add_underground_respec',
                 '2026_09_03_010000_add_underground_bulk_sale_operation',
+                '2026_09_03_020000_add_underground_custom_ai',
             ],
             $this->pendingMigrations(),
         );
         $this->assertSame(55, DB::table('migrations')->count());
-        $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
+        $this->migratePaths([
+            'database/migrations/2026_09_01_000000_rebaseline_3_1_0_release.php',
+            'database/migrations/2026_09_02_000000_expand_underground_hackslash_equipment.php',
+            'database/migrations/2026_09_03_000000_add_underground_respec.php',
+            'database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php',
+        ]);
 
-        $this->assertSame([], $this->pendingMigrations());
+        $this->assertSame(['2026_09_03_020000_add_underground_custom_ai'], $this->pendingMigrations());
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
         $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
@@ -677,6 +813,7 @@ SQL);
                 '2026_09_02_000000_expand_underground_hackslash_equipment',
                 '2026_09_03_000000_add_underground_respec',
                 '2026_09_03_010000_add_underground_bulk_sale_operation',
+                '2026_09_03_020000_add_underground_custom_ai',
             ],
             $this->pendingMigrations(),
         );
@@ -687,9 +824,13 @@ SQL);
             DB::table('underground_owned_equipment')->where('id', $accessoryId)->value('equipped_slot'),
         );
 
-        $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
+        $this->migratePaths([
+            'database/migrations/2026_09_02_000000_expand_underground_hackslash_equipment.php',
+            'database/migrations/2026_09_03_000000_add_underground_respec.php',
+            'database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php',
+        ]);
 
-        $this->assertSame([], $this->pendingMigrations());
+        $this->assertSame(['2026_09_03_020000_add_underground_custom_ai'], $this->pendingMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'generated_payload'));
@@ -1098,6 +1239,7 @@ SQL);
             '2026_09_02_000000_expand_underground_hackslash_equipment',
             '2026_09_03_000000_add_underground_respec',
             '2026_09_03_010000_add_underground_bulk_sale_operation',
+            '2026_09_03_020000_add_underground_custom_ai',
         ])->delete();
     }
 
@@ -1166,8 +1308,36 @@ SQL);
         )->delete();
     }
 
+    private function returnDatabaseToExact330Source(): void
+    {
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_intro_requests
+  DROP CONSTRAINT underground_intro_requests_operation_check,
+  ADD CONSTRAINT underground_intro_requests_operation_check
+  CHECK (operation IN (
+    'entry', 'advance', 'tutorial', 'shopkeeper_name', 'scripted_loss',
+    'contract', 'growth_path', 'inn_rest', 'bank_transfer', 'playtest',
+    'stp_allocate', 'skill_acquire', 'active_loadout', 'awakening_message',
+    'equipment_purchase', 'equipment_sell', 'equipment_equip', 'equipment_unequip',
+    'respec', 'equipment_bulk_sell'
+  ))
+SQL);
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_profiles
+  DROP CONSTRAINT underground_profiles_custom_ai_rules_check
+SQL);
+        Schema::table('underground_profiles', function (Blueprint $table): void {
+            $table->dropColumn('custom_ai_rules');
+        });
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_03_020000_add_underground_custom_ai',
+        )->delete();
+    }
+
     private function returnDatabaseToExact320Source(): void
     {
+        $this->returnDatabaseToExact330Source();
         DB::statement(<<<'SQL'
 ALTER TABLE underground_intro_requests
   DROP CONSTRAINT underground_intro_requests_operation_check,
@@ -1271,6 +1441,18 @@ SQL);
                 'The 3.0.0 migration requires the exact 2.8.0 migration ledger.',
                 $exception->getMessage(),
             );
+        }
+    }
+
+    /** @param list<string> $paths */
+    private function migratePaths(array $paths): void
+    {
+        foreach ($paths as $path) {
+            $this->artisan('migrate', [
+                '--path' => $path,
+                '--force' => true,
+                '--no-interaction' => true,
+            ])->assertSuccessful();
         }
     }
 

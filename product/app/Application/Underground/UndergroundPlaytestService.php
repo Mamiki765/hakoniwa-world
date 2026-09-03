@@ -166,6 +166,7 @@ final readonly class UndergroundPlaytestService
                 'snapshot' => [
                     'playtest_identity' => $definition['identity'],
                     'combat_rules_identity' => $result->rulesIdentity,
+                    'ai' => $definition['ai'],
                     'build_key' => $buildKey,
                     'enemy_key' => $enemyKey,
                     'player_display_name' => $secretary->name,

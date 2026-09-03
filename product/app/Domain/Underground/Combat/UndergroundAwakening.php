@@ -88,8 +88,7 @@ final class UndergroundAwakening
     {
         if (! $player->awakeningUnlocked
             || $player->awakened
-            || $player->awakeningGauge < self::GAUGE_MAX
-            || ($player->hp * 10_000) > ($player->maxHp * self::ACTIVATION_HP_BPS)) {
+            || $player->awakeningGauge < self::GAUGE_MAX) {
             return false;
         }
 

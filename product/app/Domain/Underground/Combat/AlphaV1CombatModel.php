@@ -16,6 +16,7 @@ final readonly class AlphaV1CombatModel
         private PriorityCombatAi $ai,
         private CanonicalCombatOrchestrator $orchestrator,
         private UndergroundAwakening $awakening,
+        private PriorityCombatAiConfiguration $aiConfiguration = new PriorityCombatAiConfiguration,
     ) {}
 
     /**
@@ -317,7 +318,17 @@ final readonly class AlphaV1CombatModel
             }
             $catalog->skill($skillKey);
         }
-        $this->validator->assertAiRules($catalog, $skills, $aiRules, $key);
+        try {
+            $normalizedAiRules = $this->aiConfiguration->normalizeRules($aiRules, $catalog);
+        } catch (InvalidArgumentException $exception) {
+            throw new InvalidArgumentException(
+                'Underground alpha-v1 player runtime AI rules are invalid.',
+                previous: $exception,
+            );
+        }
+        if ($normalizedAiRules !== $aiRules) {
+            throw new InvalidArgumentException('Underground alpha-v1 player runtime AI rules are not normalized.');
+        }
 
         $equipmentStats = $equipment['stats'] ?? null;
         $equipmentModifiers = $equipment['modifiers'] ?? null;
@@ -647,8 +658,16 @@ final readonly class AlphaV1CombatModel
         array &$mpHistory,
         array &$actionLog,
     ): void {
-        if ($actor->side === 'player') {
-            $this->awakenAtPlayerActionStart($actor, $round, $actionLog);
+        $nextRuleIndex = 0;
+        if ($actor->side === 'player' && ! $actor->awakened) {
+            $candidate = $this->ai->select($actor, $target, $catalog, $round);
+            if ($candidate['type'] === 'awakening') {
+                $this->recordAiDecision($actor, $candidate, $round, $metrics, $actionUsage, $actionLog);
+                if (! $this->activateAwakening($actor, $round, $actionLog)) {
+                    throw new InvalidArgumentException('Underground alpha-v1 AI selected unavailable awakening.');
+                }
+                $nextRuleIndex = $candidate['next_rule_index'];
+            }
         }
         if ($this->actionImpaired($actor, $random, $round)) {
             if ($actor->side === 'player') {
@@ -686,22 +705,28 @@ final readonly class AlphaV1CombatModel
             }
         }
 
-        $action = $this->ai->select($actor, $target, $catalog, $round);
-        $actionLog[] = [
-            'kind' => 'decision',
-            'round' => $round,
-            'side' => $actor->side,
-            'action' => 'decision',
-            'action_key' => $action['type'] === 'skill' ? $action['key'] : $action['type'],
-            'reason' => $action['reason'],
-            'fallback' => $action['fallback'],
-            'mp_blocked' => $action['mp_blocked'],
-        ];
-        if ($actor->side === 'player' && $action['mp_blocked']) {
-            $metrics['skill_unavailable_due_to_mp']++;
-        }
-        if ($action['fallback'] && $actor->side === 'player') {
-            $actionUsage['ai_fallback']++;
+        while (true) {
+            $action = $this->ai->select($actor, $target, $catalog, $round, $nextRuleIndex);
+            $this->recordAiDecision($actor, $action, $round, $metrics, $actionUsage, $actionLog);
+            if ($action['type'] !== 'awakening') {
+                break;
+            }
+            if ($actor->side !== 'player' || ! $this->activateAwakening($actor, $round, $actionLog)) {
+                throw new InvalidArgumentException('Underground alpha-v1 AI selected unavailable awakening.');
+            }
+            $nextRuleIndex = $action['next_rule_index'];
+            if ($this->useAwakeningTechnique(
+                $actor,
+                $target,
+                $random,
+                $round,
+                $metrics,
+                $actionUsage,
+                $mpHistory,
+                $actionLog,
+            )) {
+                return;
+            }
         }
         if ($action['type'] === 'defend') {
             $actor->guarding = true;
@@ -778,6 +803,38 @@ final readonly class AlphaV1CombatModel
         }
         if (($skill['grace_on_use'] ?? false) === true && ($actor->modifiers['grace_enabled'] ?? false) === true) {
             $this->grantRoleStack($actor, 'grace', $catalog->balanceInt('role_stack_cap'), $round, $actionLog);
+        }
+    }
+
+    /**
+     * @param  array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}  $action
+     * @param  array<string, int|null>  $metrics
+     * @param  array<string, int>  $actionUsage
+     * @param  list<array<string, mixed>>  $actionLog
+     */
+    private function recordAiDecision(
+        BuildCombatState $actor,
+        array $action,
+        int $round,
+        array &$metrics,
+        array &$actionUsage,
+        array &$actionLog,
+    ): void {
+        $actionLog[] = [
+            'kind' => 'decision',
+            'round' => $round,
+            'side' => $actor->side,
+            'action' => 'decision',
+            'action_key' => $action['type'] === 'skill' ? $action['key'] : $action['type'],
+            'reason' => $action['reason'],
+            'fallback' => $action['fallback'],
+            'mp_blocked' => $action['mp_blocked'],
+        ];
+        if ($actor->side === 'player' && $action['mp_blocked']) {
+            $metrics['skill_unavailable_due_to_mp']++;
+        }
+        if ($action['fallback'] && $actor->side === 'player') {
+            $actionUsage['ai_fallback']++;
         }
     }
 
@@ -1691,10 +1748,10 @@ final readonly class AlphaV1CombatModel
     }
 
     /** @param list<array<string, mixed>> $actionLog */
-    private function awakenAtPlayerActionStart(BuildCombatState $player, int $round, array &$actionLog): void
+    private function activateAwakening(BuildCombatState $player, int $round, array &$actionLog): bool
     {
         if (! $this->awakening->tryActivate($player, $this->rules)) {
-            return;
+            return false;
         }
         $actionLog[] = [
             'kind' => 'awakening',
@@ -1710,6 +1767,8 @@ final readonly class AlphaV1CombatModel
             'normal_max_hp' => $player->normalMaxHp,
             'awakened_max_hp' => $player->maxHp,
         ];
+
+        return true;
     }
 
     private function gainAwakeningGauge(BuildCombatState $player, int $gain): void
