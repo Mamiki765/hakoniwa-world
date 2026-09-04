@@ -159,6 +159,62 @@ EXECUTE FUNCTION validate_surface_ship_identity();
 SQL);
 
         DB::unprepared(<<<'SQL'
+CREATE OR REPLACE FUNCTION validate_surface_ship_cell_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  ship_world_id bigint;
+  cell_world_id bigint;
+  cell_map_space_key varchar;
+  cell_terrain_key varchar;
+  cell_facility_id bigint;
+  facility_visibility_policy varchar;
+  facility_disguise_terrain_key varchar;
+BEGIN
+  IF to_regclass('public.ships') IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT world_id INTO ship_world_id
+    FROM ships
+   WHERE map_cell_id = OLD.id
+     AND state = 'active'
+   FOR UPDATE;
+  IF ship_world_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT space.world_id, space.key, terrain.key, NEW.facility_definition_id,
+         facility.visibility_policy, facility.disguise_terrain_key
+    INTO cell_world_id, cell_map_space_key, cell_terrain_key, cell_facility_id,
+         facility_visibility_policy, facility_disguise_terrain_key
+    FROM map_spaces space
+    JOIN terrain_definitions terrain ON terrain.id = NEW.terrain_definition_id
+    LEFT JOIN facility_definitions facility ON facility.id = NEW.facility_definition_id
+   WHERE space.id = NEW.map_space_id;
+
+  IF cell_world_id IS NULL OR cell_world_id <> ship_world_id OR cell_map_space_key <> 'surface'
+     OR cell_terrain_key <> 'sea'
+     OR (cell_facility_id IS NOT NULL
+       AND (facility_visibility_policy IS DISTINCT FROM 'disguised'
+         OR facility_disguise_terrain_key IS DISTINCT FROM 'sea')) THEN
+    RAISE EXCEPTION 'An occupied Ship cell must retain its Surface deep-sea coexistence contract.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS surface_ship_cell_mutation_guard ON map_cells;
+CREATE TRIGGER surface_ship_cell_mutation_guard
+BEFORE UPDATE OF map_space_id, terrain_definition_id, facility_definition_id
+ON map_cells
+FOR EACH ROW
+EXECUTE FUNCTION validate_surface_ship_cell_mutation();
+SQL);
+
+        DB::unprepared(<<<'SQL'
 CREATE OR REPLACE FUNCTION validate_monster_occupancy()
 RETURNS trigger
 LANGUAGE plpgsql

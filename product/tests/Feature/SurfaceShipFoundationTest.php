@@ -11,6 +11,7 @@ use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\Ship;
+use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Database\QueryException;
@@ -87,6 +88,18 @@ final class SurfaceShipFoundationTest extends TestCase
         $seabedBaseCell = $this->withFacility($cells[4], 'seabed_base', $nation);
         $coexisting = $this->createShip($world, $nation, $seabedBaseCell, 'exploration', 2);
         $this->assertSame('seabed_base', $coexisting->cell()->firstOrFail()->facility()->value('key'));
+        $this->assertConstraintRejects(
+            fn () => $coexisting->cell()->firstOrFail()->update([
+                'terrain_definition_id' => TerrainDefinition::query()->where('key', 'shallow')->value('id'),
+            ]),
+            'occupied Ship cell changing away from deep sea',
+        );
+        $this->assertConstraintRejects(
+            fn () => $coexisting->cell()->firstOrFail()->update([
+                'facility_definition_id' => FacilityDefinition::query()->where('key', 'seabed_oil_field')->value('id'),
+            ]),
+            'occupied Ship cell receiving a public sea facility',
+        );
 
         $oilFieldCell = $this->withFacility($cells[5], 'seabed_oil_field', $nation);
         $this->assertConstraintRejects(
