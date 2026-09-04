@@ -11,6 +11,7 @@ enum CommandFailureReason: string
     case InvalidTerrain = 'invalid_terrain';
     case MissingAdjacentTerritory = 'missing_adjacent_territory';
     case NoAdjacentOwnedLand = 'no_adjacent_owned_land';
+    case NoAdjacentDeepSea = 'no_adjacent_deep_sea';
     case ForeignAdjacentWater = 'foreign_adjacent_water';
     case ForeignOwned = 'foreign_owned';
     case NotOwned = 'not_owned';

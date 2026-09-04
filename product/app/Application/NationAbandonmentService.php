@@ -29,7 +29,7 @@ final class NationAbandonmentService
     ) {}
 
     /**
-     * @return array{nation_id: int, state: string, owned_cell_count: int, neutral_cleanup_cell_count: int, monster_removed_count: int, changed_chunk_count: int}
+     * @return array{nation_id: int, state: string, owned_cell_count: int, neutral_cleanup_cell_count: int, monster_removed_count: int, ship_removed_count: int, changed_chunk_count: int}
      */
     public function abandon(User $user, Nation $nation, string $confirmationName): array
     {
@@ -119,7 +119,7 @@ final class NationAbandonmentService
     /**
      * Called only from the locked official Turn transaction.
      *
-     * @return array{nation_id: int, state: string, owned_cell_count: int, neutral_cleanup_cell_count: int, monster_removed_count: int, changed_chunk_count: int}
+     * @return array{nation_id: int, state: string, owned_cell_count: int, neutral_cleanup_cell_count: int, monster_removed_count: int, ship_removed_count: int, changed_chunk_count: int}
      */
     public function abandonAutomatically(TurnContext $context, Nation $nation): array
     {

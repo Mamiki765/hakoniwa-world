@@ -2114,6 +2114,84 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('errors.command.0', '首都を通常建設commandで上書きすることはできません。');
     }
 
+    public function test_port_preview_requires_both_coastal_neighbors_and_queue_retry_is_idempotent(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('港湾予約国');
+        $target = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->whereBetween('x', [$mapSpace->min_x + 2, $mapSpace->max_x - 2])
+            ->whereBetween('y', [$mapSpace->min_y + 2, $mapSpace->max_y - 2])
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->orderBy('id')->firstOrFail();
+        $coordinates = (new GridCoordinate($target->x, $target->y))->neighborsWithin(
+            $mapSpace->min_x,
+            $mapSpace->max_x,
+            $mapSpace->min_y,
+            $mapSpace->max_y,
+        );
+        $neighbors = collect($coordinates)->map(fn (GridCoordinate $coordinate): MapCell => MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where('x', $coordinate->x)->where('y', $coordinate->y)
+            ->firstOrFail());
+        $this->assertCount(6, $neighbors);
+        $state = app(MapCellStateService::class);
+        $shallow = TerrainDefinition::query()->where('key', 'shallow')->firstOrFail();
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $sea = TerrainDefinition::query()->where('key', 'sea')->firstOrFail();
+        foreach (collect([$target])->concat($neighbors) as $cell) {
+            $state->setFacility($cell, null);
+            $state->transitionTerrain($cell, $shallow);
+            $cell->owner_nation_id = null;
+            $cell->save();
+        }
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+
+        $invalid = collect($this->actingAs($owner)->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_port');
+        $this->assertSame('currently_unavailable', $invalid['execution_preview_status']);
+        $this->assertContains('港の隣に自国陸地が必要です。', $invalid['execution_warnings']);
+
+        $ownedLand = $neighbors->shift();
+        $deepSea = $neighbors->shift();
+        $state->transitionTerrain($ownedLand, $plain);
+        $ownedLand->owner_nation_id = $nation->id;
+        $ownedLand->save();
+
+        $missingSea = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_port');
+        $this->assertSame('currently_unavailable', $missingSea['execution_preview_status']);
+        $this->assertContains('港の隣に深海が必要です。', $missingSea['execution_warnings']);
+
+        $state->transitionTerrain($deepSea, $sea);
+        $deepSea->owner_nation_id = null;
+        $deepSea->save();
+        $nation->update(['money' => 1_500]);
+
+        $valid = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_port');
+        $this->assertSame('currently_executable', $valid['execution_preview_status']);
+        $requestKey = (string) Str::uuid();
+        $created = $this->postJson("{$base}/command-queue", [
+            'command_key' => 'build_port',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+        ])->assertCreated()->json('data');
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'build_port',
+            'target_x' => $target->x,
+            'target_y' => $target->y,
+            'request_key' => $requestKey,
+            'expected_version' => 999,
+        ])->assertOk()
+            ->assertJsonPath('data.duplicate', true)
+            ->assertJsonPath('data.item_id', $created['item_id'])
+            ->assertJsonCount(1, 'data.queue.items');
+    }
+
     public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('Nation対象国');

@@ -1032,7 +1032,7 @@ final class CommandQueueService
                     $nation,
                     $mapSpace,
                 )
-                : $this->projectedTargetMatches($definition, $state, $nation);
+                : $this->projectedTargetMatches($definition, $state, $nation, $mapSpace, $cell);
             if (! $matches) {
                 continue;
             }
@@ -1045,8 +1045,13 @@ final class CommandQueueService
     /**
      * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
      */
-    public function projectedTargetMatches(CommandDefinition $definition, array $state, Nation $nation): bool
-    {
+    public function projectedTargetMatches(
+        CommandDefinition $definition,
+        array $state,
+        Nation $nation,
+        MapSpace $mapSpace,
+        MapCell $cell,
+    ): bool {
         if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
             return false;
         }
@@ -1069,6 +1074,11 @@ final class CommandQueueService
             && in_array($state['terrain_key'], ['sea', 'shallow'], true)
             && $state['facility_key'] !== null) {
             return false;
+        }
+        if ($definition->key === 'build_port') {
+            $adjacent = $this->portAdjacentFacts($nation, $mapSpace, $cell);
+
+            return $state['owner_nation_id'] === null && $adjacent['owned_land'] && $adjacent['sea'];
         }
         if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'build_undersea_city', 'excavate'], true)) {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
@@ -1194,6 +1204,8 @@ final class CommandQueueService
             $state['facility_key'] = null;
         }
         if ($definition->key === 'territory_expand') {
+            $state['owner_nation_id'] = $nation->id;
+        } elseif ($definition->key === 'build_port') {
             $state['owner_nation_id'] = $nation->id;
         } elseif ($definition->key === 'territory_abandon') {
             $state['owner_nation_id'] = null;
@@ -1390,6 +1402,20 @@ final class CommandQueueService
             }
             if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false)) {
                 throw new PlayerFacingCommandException('埋め立て対象の隣に自国領がありません。');
+            }
+
+            return;
+        }
+        if ($definition->key === 'build_port') {
+            if ($ownerNationId !== null) {
+                throw new PlayerFacingCommandException('港は中立の浅瀬だけに建設できます。');
+            }
+            $adjacent = $this->portAdjacentFacts($nation, $mapSpace, $cell);
+            if (! $adjacent['owned_land']) {
+                throw new PlayerFacingCommandException('港の隣に自国陸地が必要です。');
+            }
+            if (! $adjacent['sea']) {
+                throw new PlayerFacingCommandException('港の隣に深海が必要です。');
             }
 
             return;
@@ -1645,6 +1671,36 @@ final class CommandQueueService
                 }
             })
             ->exists();
+    }
+
+    /** @return array{owned_land: bool, sea: bool} */
+    private function portAdjacentFacts(Nation $nation, MapSpace $mapSpace, MapCell $cell): array
+    {
+        $coordinates = (new GridCoordinate($cell->x, $cell->y))->neighborsWithin(
+            $mapSpace->min_x,
+            $mapSpace->max_x,
+            $mapSpace->min_y,
+            $mapSpace->max_y,
+        );
+        $neighbors = MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where(function ($query) use ($coordinates): void {
+                foreach ($coordinates as $coordinate) {
+                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
+                }
+            })
+            ->with('terrain')
+            ->get();
+
+        return [
+            'owned_land' => $neighbors->contains(
+                static fn (MapCell $neighbor): bool => $neighbor->owner_nation_id === $nation->id
+                    && ! $neighbor->terrain->is_water,
+            ),
+            'sea' => $neighbors->contains(
+                static fn (MapCell $neighbor): bool => $neighbor->terrain->key === 'sea',
+            ),
+        ];
     }
 
     private function assertVersion(NationCommandQueue $queue, int $expectedVersion): void

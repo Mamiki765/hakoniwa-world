@@ -55,6 +55,8 @@ final class CurrentRulesetAuthoringInspector
     private const V20_DOMAIN_OVERRIDES = [
         ...self::V19_DOMAIN_OVERRIDES,
         'world-and-map.php' => 'v20/world-and-map.php',
+        'facilities.php' => 'v20/facilities.php',
+        'commands-and-production.php' => 'v20/commands-and-production.php',
     ];
 
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];

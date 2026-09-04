@@ -1657,6 +1657,24 @@ final class RulesetAuthoringValidator
                 }
             }
         }
+        if (($settings['version'] ?? null) >= 20) {
+            $port = $settings['facility_definitions']['port'] ?? null;
+            if ($port !== [
+                'name' => '港',
+                'asset_key' => 'tile.port',
+                'visibility_policy' => 'public',
+                'build_command_key' => 'build_port',
+                'scale_unit_people' => null,
+                'initial_scale' => null,
+                'scale_increment' => null,
+                'maximum_scale' => null,
+                'workforce_per_scale_people' => null,
+                'production_definition_key' => null,
+                'buildable_terrain_keys' => ['plain'],
+            ]) {
+                throw new DomainException('The v20 Ruleset requires the exact Surface port facility contract.');
+            }
+        }
     }
 
     private function maximumCapitalDistance(
@@ -1701,6 +1719,7 @@ final class RulesetAuthoringValidator
     ): void {
         $underseaCityDefinitions = 0;
         $territoryAbandonDefinitions = 0;
+        $portDefinitions = 0;
         foreach ($this->list($settings['command_definitions'], 'ruleset.command_definitions') as $index => $definition) {
             $path = "ruleset.command_definitions.{$index}";
             $definition = $this->map($definition, $path);
@@ -1785,6 +1804,23 @@ final class RulesetAuthoringValidator
                     throw new DomainException("{$path} differs from the v19 territory-abandonment contract.");
                 }
             }
+            if ($commandKey === 'build_port') {
+                $portDefinitions++;
+                if ($authoredRulesetVersion < 20
+                    || $definition['target_type'] !== 'cell'
+                    || $definition['target_terrain_keys'] !== ['shallow']
+                    || $definition['target_facility_keys'] !== []
+                    || $definition['requires_empty_facility'] !== true
+                    || $definition['cost_money'] !== 1000
+                    || $definition['required_resources'] !== []
+                    || $definition['execution_phase'] !== 'facility'
+                    || $definition['result_terrain_key'] !== 'plain'
+                    || $definition['result_facility_key'] !== 'port'
+                    || $definition['sort_order'] !== 135
+                    || $metadata !== ['consumes_turn' => true, 'parameters' => []]) {
+                    throw new DomainException("{$path} differs from the v20 Surface port construction contract.");
+                }
+            }
             if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)
                 && in_array($commandKey, ['build_defense_facility', 'build_monument'], true)) {
                 $expectedEffect = $commandKey === 'build_defense_facility'
@@ -1800,6 +1836,9 @@ final class RulesetAuthoringValidator
         }
         if ($authoredRulesetVersion >= 19 && $territoryAbandonDefinitions !== 1) {
             throw new DomainException('The v19+ Ruleset requires exactly one territory_abandon command.');
+        }
+        if ($authoredRulesetVersion >= 20 && $portDefinitions !== 1) {
+            throw new DomainException('The v20+ Ruleset requires exactly one build_port command.');
         }
     }
 

@@ -180,7 +180,13 @@ final class CommandQueueController extends Controller
                                     $nation,
                                     $mapSpace,
                                 )
-                                : $service->projectedTargetMatches($definition, $projected, $nation);
+                                : $service->projectedTargetMatches(
+                                    $definition,
+                                    $projected,
+                                    $nation,
+                                    $mapSpace,
+                                    $cell,
+                                );
                         }
                     }
 
