@@ -35,6 +35,7 @@ final class NationLifecycleService
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly NationLifecyclePrepareStateResolver $prepareState,
         private readonly NationQueuedMeaningfulActivityQuery $meaningfulActivity,
+        private readonly NationRecoveryExitService $recoveryExit,
     ) {}
 
     /** @return array{participants: int, active: int, dormant: int, recovery: int, resumed: int, recovery_resumed: int} */
@@ -60,7 +61,7 @@ final class NationLifecycleService
                     $hasMeaningfulQueue,
                     (int) $settings['dormant_idle_threshold'],
                 );
-                $this->exitRecovery($context, $nation, $nextState, [
+                $this->recoveryExit->exit($context, $nation, $nextState, [
                     'meaningful_non_finance_queue' => $hasMeaningfulQueue,
                     'idle_counter' => (int) $nation->idle_counter,
                 ]);
@@ -149,14 +150,7 @@ final class NationLifecycleService
         int $crimePoints,
         int $queueItemId,
     ): void {
-        if ($nation->state !== 'recovery' || $crimePoints < 1) {
-            throw new DomainException('Only a recovery Nation with canonical crime may exit recovery immediately.');
-        }
-        $this->exitRecovery($context, $nation, 'active', [
-            'exit_trigger' => 'karma_crime',
-            'crime_points' => $crimePoints,
-            'queue_item_id' => $queueItemId,
-        ]);
+        $this->recoveryExit->exitForCrime($context, $nation, $crimePoints, $queueItemId);
     }
 
     /** @return array{dormant_heartbeats: int, money_applied: int, idle_counter_increments: int, emergency_farms: int} */
@@ -295,35 +289,6 @@ final class NationLifecycleService
                     ->orWhere('highest_bidder_nation_id', $nation->id);
             })
             ->exists();
-    }
-
-    /** @param array<string, mixed> $metadata */
-    private function exitRecovery(
-        TurnContext $context,
-        Nation $nation,
-        string $nextState,
-        array $metadata,
-    ): void {
-        if ($nation->state !== 'recovery' || ! in_array($nextState, ['active', 'dormant'], true)) {
-            throw new DomainException('Nation cannot exit recovery without a supported lifecycle transition.');
-        }
-        $beforeStartedTurn = $nation->state_started_turn;
-        $beforeResumeTurn = $nation->resume_at_turn;
-        $nation->state = $nextState;
-        $nation->state_reason = $nextState === 'dormant' ? 'idle' : null;
-        $nation->state_started_turn = $nextState === 'dormant' ? $context->targetTurn : null;
-        $nation->resume_at_turn = null;
-        $nation->save();
-        $context->state->markRecoveryExited($nation->id);
-        $this->events->record($context, 'nation.recovery_ended', $nation, [
-            'nation_id' => $nation->id,
-            'nation_name' => $nation->name,
-            'before_state' => 'recovery',
-            'after_state' => $nextState,
-            'state_started_turn' => $beforeStartedTurn,
-            'resume_at_turn' => $beforeResumeTurn,
-            ...$metadata,
-        ], 'public', message: "{$nation->name}の休戦期間が終了しました。");
     }
 
     /** @param array<string, mixed> $settings */
@@ -509,7 +474,7 @@ final class NationLifecycleService
             ->where(function ($query) use ($nation): void {
                 $query->whereNull('owner_nation_id')->orWhere('owner_nation_id', $nation->id);
             })
-            ->whereNull('facility_definition_id')->whereDoesntHave('monsterOccupancy')
+            ->whereNull('facility_definition_id')->whereDoesntHave('monsterOccupancy')->whereDoesntHave('ship')
             ->whereHas('terrain', fn ($query) => $query->whereIn('key', $farm['candidate_terrain_keys']))
             ->with(['terrain', 'facility'])->orderBy('id')->lockForUpdate()->get()
             ->filter(fn (MapCell $cell): bool => $origin->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= $radius)

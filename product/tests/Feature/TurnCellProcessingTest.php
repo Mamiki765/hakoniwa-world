@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
+use App\Application\MonsterTurnService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\SecretaryTurnService;
+use App\Application\SurfaceShipTurnService;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -23,8 +25,11 @@ use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
+use App\Models\NationResource;
 use App\Models\NationUndergroundFacility;
+use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -39,6 +44,164 @@ class TurnCellProcessingTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_surface_ship_cell_event_moves_once_settles_rewards_and_applies_fuel_and_lifecycle_rules(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '航行試験国', '航行島主');
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$origin, $destination, $later] = $this->eastwardSeaLine($space);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => GridCoordinate::EAST,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        $fish = ResourceDefinition::query()->where('key', 'fish')->firstOrFail();
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
+            ['amount' => 5],
+        );
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $fish->id],
+            ['amount' => 0],
+        );
+
+        [$context] = $this->context(
+            $world,
+            $nation,
+            [$origin->id, $destination->id, $later->id],
+            hash('sha256', 'surface ship one move'),
+        );
+        $metrics = app(CompleteTurnEngine::class)->execute('process_cells', $context)->metrics;
+        app(SecretaryTurnService::class)->flushExperience($context);
+
+        $this->assertSame([1, 1, 1, 4, 7_000], [
+            $metrics['ship_events'], $metrics['ship_moves'], $metrics['ship_secretary_experience'],
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $oil->id)->value('amount'),
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $fish->id)->value('amount'),
+        ]);
+        $this->assertSame($destination->id, $ship->fresh()->map_cell_id);
+        $this->assertSame(1, $user->secretary()->firstOrFail()->skills()
+            ->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->value('experience'));
+
+        [$fuelOrigin, $fuelDestination, $fuelLater] = $this->eastwardSeaLine(
+            $space,
+            [$origin->id, $destination->id, $later->id],
+        );
+        $fuelShip = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $fuelOrigin->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => GridCoordinate::EAST,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oil->id)->update(['amount' => 0]);
+        $fuelLabel = TurnRandomStreamFactory::shipMovement($fuelShip->id, 'fuel_shortage_damage', 1);
+        [$fuelContext] = $this->context(
+            $world,
+            $nation,
+            [$fuelOrigin->id, $fuelDestination->id],
+            $this->seedForFirstDraw($fuelLabel, 1, 100, 1),
+        );
+        $fuelMetrics = app(CompleteTurnEngine::class)->execute('process_cells', $fuelContext)->metrics;
+        $this->assertSame([1, 1, 1, $fuelOrigin->id], [
+            $fuelMetrics['ship_fuel_shortages'], $fuelMetrics['ship_fuel_damage'],
+            $fuelShip->fresh()->current_hp, $fuelShip->fresh()->map_cell_id,
+        ]);
+        $this->assertContains((int) $fuelOrigin->map_chunk_id, $fuelContext->state->changedMapChunkIds());
+
+        $nation->update([
+            'state' => 'recovery',
+            'state_started_turn' => 1,
+            'resume_at_turn' => 86,
+        ]);
+        NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oil->id)->update(['amount' => 5]);
+        [$pausedContext] = $this->context(
+            $world,
+            $nation->fresh(),
+            [$fuelOrigin->id, $fuelDestination->id],
+            hash('sha256', 'recovery ship pause'),
+        );
+        $paused = app(CompleteTurnEngine::class)->execute('process_cells', $pausedContext)->metrics;
+        $this->assertSame([1, 0, 5, $fuelOrigin->id], [
+            $paused['ship_events'], $paused['ship_moves'],
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $oil->id)->value('amount'),
+            $fuelShip->fresh()->map_cell_id,
+        ]);
+
+        $nation->update(['state' => 'active', 'state_started_turn' => null, 'resume_at_turn' => null]);
+        [$snapshotContext] = $this->context(
+            $world,
+            $nation->fresh(),
+            [$fuelOrigin->id, $fuelDestination->id],
+            hash('sha256', 'port availability phase snapshot'),
+        );
+        $shipService = app(SurfaceShipTurnService::class);
+        $shipBatch = $shipService->load($snapshotContext, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($snapshotContext);
+        $port = $port->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->setFacility($port, null);
+        $port->version++;
+        $port->save();
+        $cells = MapCell::query()->whereIn('id', [$fuelOrigin->id, $fuelDestination->id])
+            ->with(['terrain', 'facility'])->get();
+        $cellsByCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
+            $cell->x.':'.$cell->y => $cell,
+        ])->all();
+        $shipService->processCell(
+            $snapshotContext,
+            $space,
+            $cells->firstWhere('id', $fuelOrigin->id),
+            $cellsByCoordinate,
+            $monsterBatch,
+            $shipBatch,
+        );
+        $this->assertSame([1, 0, $fuelDestination->id, 4], [
+            $shipBatch->metrics()['ship_moves'],
+            $shipBatch->metrics()['ship_no_port'],
+            $fuelShip->fresh()->map_cell_id,
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $oil->id)->value('amount'),
+        ]);
+
+        [$nextTurnContext] = $this->context(
+            $world,
+            $nation->fresh(),
+            [$fuelDestination->id, $fuelLater->id],
+            hash('sha256', 'port loss applies next turn'),
+        );
+        $afterPortLoss = app(CompleteTurnEngine::class)->execute('process_cells', $nextTurnContext)->metrics;
+        $this->assertSame([1, 0, 1, $fuelDestination->id, 4], [
+            $afterPortLoss['ship_events'],
+            $afterPortLoss['ship_moves'],
+            $afterPortLoss['ship_no_port'],
+            $fuelShip->fresh()->map_cell_id,
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $oil->id)->value('amount'),
+        ]);
+    }
 
     public function test_sequential_settlement_growth_famine_riot_and_forest_processing(): void
     {
@@ -767,6 +930,41 @@ class TurnCellProcessingTest extends TestCase
     private function facility(MapCell $cell, string $facilityKey, string $terrainKey): void
     {
         $this->mutateCell($cell, $terrainKey, $facilityKey, 0);
+    }
+
+    /**
+     * @param  list<int>  $excludedIds
+     * @return array{MapCell, MapCell, MapCell}
+     */
+    private function eastwardSeaLine(MapSpace $space, array $excludedIds = []): array
+    {
+        $origins = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNotIn('id', $excludedIds)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->get();
+        foreach ($origins as $origin) {
+            $first = (new GridCoordinate($origin->x, $origin->y))->neighbor(GridCoordinate::EAST);
+            $second = $first->neighbor(GridCoordinate::EAST);
+            $line = MapCell::query()->where('map_space_id', $space->id)
+                ->whereNotIn('id', $excludedIds)
+                ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+                ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+                ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+                ->where(function ($query) use ($first, $second): void {
+                    $query->where(fn ($cell) => $cell->where('x', $first->x)->where('y', $first->y))
+                        ->orWhere(fn ($cell) => $cell->where('x', $second->x)->where('y', $second->y));
+                })
+                ->orderBy('x')->get()->keyBy(fn (MapCell $cell): string => $cell->x.':'.$cell->y);
+            $destination = $line->get($first->x.':'.$first->y);
+            $later = $line->get($second->x.':'.$second->y);
+            if ($destination instanceof MapCell && $later instanceof MapCell) {
+                return [$origin, $destination, $later];
+            }
+        }
+
+        $this->fail('Surface test map did not provide an empty eastward deep-sea line.');
     }
 
     private function mutateCell(MapCell $cell, string $terrainKey, ?string $facilityKey, int $population): void

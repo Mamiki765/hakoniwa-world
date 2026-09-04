@@ -11,6 +11,7 @@ use App\Application\TurnRunner;
 use App\Application\Ver270SecretaryItemRulesetUpgrade;
 use App\Application\Ver280UnderseaCityRulesetUpgrade;
 use App\Application\Ver310RulesetUpgrade;
+use App\Application\Ver350RulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
 use App\Domain\World\WorldGenerationProfile;
@@ -26,6 +27,7 @@ use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 use App\Models\SecretarySkill;
+use App\Models\Ship;
 use App\Models\TurnRun;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundOwnedEquipment;
@@ -61,22 +63,26 @@ final class FreshInstallRebaselineTest extends TestCase
         'nation_underground_facilities',
     ];
 
-    public function test_empty_postgresql_uses_direct_current_schema_and_v19_catalog_baseline(): void
+    public function test_empty_postgresql_uses_direct_current_schema_and_v20_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $current = config('hakoniwa.ruleset');
         app(CurrentCatalogInstaller::class)->install($current);
         app(RulesetPublisher::class)->publish($current);
-        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v19')->sole();
+        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v20')->sole();
 
-        $this->assertSame('3.4.0', config('hakoniwa.application_version'));
-        $this->assertSame(['hakoniwa-2s-plus-v19'], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame('hakoniwa-2s-plus-v19', $ruleset->key);
-        $this->assertSame(19, $ruleset->version);
-        $this->assertSame(27, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
+        $this->assertSame('3.5.0', config('hakoniwa.application_version'));
+        $this->assertSame(['hakoniwa-2s-plus-v20'], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame('hakoniwa-2s-plus-v20', $ruleset->key);
+        $this->assertSame(20, $ruleset->version);
+        $this->assertDatabaseHas('ruleset_versions', [
+            'key' => Ver350RulesetUpgrade::SOURCE_KEY,
+            'version' => Ver350RulesetUpgrade::SOURCE_VERSION,
+        ]);
+        $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(60, DB::table('migrations')->count());
+        $this->assertSame(64, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -119,6 +125,18 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_03_020000_add_underground_custom_ai',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_04_010000_add_surface_ship_foundation',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_04_020000_add_surface_ship_movement',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_04_030000_add_surface_ship_missile_and_visibility',
+        ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
             '2026_08_29_010000_add_underground_runtime_foundation',
@@ -136,6 +154,17 @@ final class FreshInstallRebaselineTest extends TestCase
             'asset_key' => 'tile.undersea_city',
             'visibility_policy' => 'disguised',
         ]);
+        $this->assertDatabaseHas('facility_definitions', [
+            'key' => 'port',
+            'asset_key' => 'tile.port',
+            'visibility_policy' => 'public',
+        ]);
+        $this->assertTrue(Schema::hasTable('ships'));
+        $this->assertTrue(Schema::hasColumn('ships', 'ruleset_version_id'));
+        $this->assertSame(3, $ruleset->settings['surface_ships']['capacity_per_type']);
+        $this->assertSame(['fishing', 'tourist', 'exploration'], array_keys(
+            $ruleset->settings['surface_ships']['definitions'],
+        ));
         $oil = ResourceDefinition::query()->where('key', 'oil')->sole();
         $this->assertSame(['石油', 'energy', 'ten_thousand_barrels', '万バレル', true, true, 'sale.oil', 60], [
             $oil->name, $oil->category, $oil->unit, $oil->unit_label,
@@ -389,6 +418,10 @@ SQL);
             '2026_09_03_000000_add_underground_respec',
             '2026_09_03_010000_add_underground_bulk_sale_operation',
             '2026_09_03_020000_add_underground_custom_ai',
+            '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+            '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
+            '2026_09_04_030000_add_surface_ship_missile_and_visibility',
         ], $this->pendingMigrations());
         foreach ([
             'database/migrations/2026_09_03_000000_add_underground_respec.php',
@@ -446,7 +479,13 @@ SQL);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_03_010000_add_underground_bulk_sale_operation',
         ]);
-        $this->assertSame(['2026_09_03_020000_add_underground_custom_ai'], $this->pendingMigrations());
+        $this->assertSame([
+            '2026_09_03_020000_add_underground_custom_ai',
+            '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+            '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
+            '2026_09_04_030000_add_surface_ship_missile_and_visibility',
+        ], $this->pendingMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
     }
 
@@ -492,7 +531,13 @@ SQL);
 
         $this->returnDatabaseToExact330Source();
         $this->assertFalse(Schema::hasColumn('underground_profiles', 'custom_ai_rules'));
-        $this->assertSame(['2026_09_03_020000_add_underground_custom_ai'], $this->pendingMigrations());
+        $this->assertSame([
+            '2026_09_03_020000_add_underground_custom_ai',
+            '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+            '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
+            '2026_09_04_030000_add_surface_ship_missile_and_visibility',
+        ], $this->pendingMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
 
         $this->artisan('migrate', [
@@ -533,7 +578,15 @@ SQL);
             'underground_profile_id' => $profile->id,
             'operation' => 'ai_configuration',
         ]);
-        $this->assertSame([], $this->pendingMigrations());
+        $this->assertSame(
+            [
+                '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+                '2026_09_04_010000_add_surface_ship_foundation',
+                '2026_09_04_020000_add_surface_ship_movement',
+                '2026_09_04_030000_add_surface_ship_missile_and_visibility',
+            ],
+            $this->pendingMigrations(),
+        );
         $this->assertSame(60, DB::table('migrations')->count());
     }
 
@@ -583,7 +636,7 @@ SQL);
         $this->assertSame($run->id, $terrainChangeMetadata['turn_run_id']);
         $this->assertSame('forest', $terrainChangeMetadata['from_terrain_key']);
         $this->assertSame('plain', $terrainChangeMetadata['to_terrain_key']);
-        $this->assertSame(7, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(8, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
         $this->assertDatabaseHas('secretary_skills', [
             'secretary_id' => $secretary->id,
             'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
@@ -614,7 +667,8 @@ SQL);
 
     public function test_exact_3_0_0_v18_upgrade_runs_forward_release_migrations_and_preserves_business_data(): void
     {
-        $targetSettings = config('hakoniwa.ruleset');
+        $this->returnPortCatalogToPre350Source();
+        $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v19.php');
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
         config([
             'hakoniwa.ruleset' => $sourceSettings,
@@ -687,6 +741,10 @@ SQL);
                 '2026_09_03_000000_add_underground_respec',
                 '2026_09_03_010000_add_underground_bulk_sale_operation',
                 '2026_09_03_020000_add_underground_custom_ai',
+                '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+                '2026_09_04_010000_add_surface_ship_foundation',
+                '2026_09_04_020000_add_surface_ship_movement',
+                '2026_09_04_030000_add_surface_ship_missile_and_visibility',
             ],
             $this->pendingMigrations(),
         );
@@ -698,7 +756,13 @@ SQL);
             'database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php',
         ]);
 
-        $this->assertSame(['2026_09_03_020000_add_underground_custom_ai'], $this->pendingMigrations());
+        $this->assertSame([
+            '2026_09_03_020000_add_underground_custom_ai',
+            '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+            '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
+            '2026_09_04_030000_add_surface_ship_missile_and_visibility',
+        ], $this->pendingMigrations());
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
         $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
@@ -744,7 +808,7 @@ SQL);
         $this->assertSame($targetRuleset->id, $world->fresh()->ruleset_version_id);
         $this->assertSame($rulesetId, $ruleset->fresh()->id);
         $this->assertSame(Ver280UnderseaCityRulesetUpgrade::TARGET_CHECKSUM, $sourceChecksum);
-        $this->assertSame(Ver310RulesetUpgrade::TARGET_CHECKSUM, $this->rulesetChecksum(config('hakoniwa.ruleset')));
+        $this->assertSame(Ver310RulesetUpgrade::TARGET_CHECKSUM, $this->rulesetChecksum($targetSettings));
         $this->assertEquals(config('hakoniwa.ruleset'), $targetRuleset->settings);
         app(RulesetPublisher::class)->assertPublished(config('hakoniwa.ruleset'));
         $this->assertSame(
@@ -814,6 +878,10 @@ SQL);
                 '2026_09_03_000000_add_underground_respec',
                 '2026_09_03_010000_add_underground_bulk_sale_operation',
                 '2026_09_03_020000_add_underground_custom_ai',
+                '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+                '2026_09_04_010000_add_surface_ship_foundation',
+                '2026_09_04_020000_add_surface_ship_movement',
+                '2026_09_04_030000_add_surface_ship_missile_and_visibility',
             ],
             $this->pendingMigrations(),
         );
@@ -830,7 +898,13 @@ SQL);
             'database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php',
         ]);
 
-        $this->assertSame(['2026_09_03_020000_add_underground_custom_ai'], $this->pendingMigrations());
+        $this->assertSame([
+            '2026_09_03_020000_add_underground_custom_ai',
+            '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+            '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
+            '2026_09_04_030000_add_surface_ship_missile_and_visibility',
+        ], $this->pendingMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'generated_payload'));
@@ -923,6 +997,7 @@ SQL);
 
     public function test_exact_v16_to_v17_upgrade_rolls_back_rebinds_by_stable_key_backfills_authoritative_history_and_is_idempotent(): void
     {
+        $this->returnPortCatalogToPre350Source();
         $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v17.php');
         app(RulesetPublisher::class)->publish($targetSettings);
         RulesetVersion::query()->where('key', Ver280UnderseaCityRulesetUpgrade::TARGET_KEY)->delete();
@@ -1046,6 +1121,7 @@ SQL);
 
     public function test_exact_v17_to_v18_upgrade_rebinds_queued_definitions_and_preserves_request_provenance(): void
     {
+        $this->returnPortCatalogToPre350Source();
         $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
         RulesetVersion::query()->where('key', Ver280UnderseaCityRulesetUpgrade::TARGET_KEY)->delete();
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v17.php');
@@ -1103,7 +1179,8 @@ SQL);
 
     public function test_exact_v18_to_v19_upgrade_rebinds_commands_and_reconciles_trial_one_layers_without_decrement(): void
     {
-        $targetSettings = config('hakoniwa.ruleset');
+        $this->returnPortCatalogToPre350Source();
+        $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v19.php');
         RulesetVersion::query()->where('key', Ver310RulesetUpgrade::TARGET_KEY)->delete();
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
         config([
@@ -1195,6 +1272,223 @@ SQL);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v19_activated')->count());
     }
 
+    public function test_exact_v19_to_v20_upgrade_is_atomic_idempotent_and_repairs_only_facilityless_owned_water(): void
+    {
+        $this->returnSurfaceShipFoundationToPre350Source();
+        $targetSettings = config('hakoniwa.ruleset');
+        RulesetVersion::query()->where('key', Ver350RulesetUpgrade::TARGET_KEY)->delete();
+        $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v19.php');
+        config([
+            'hakoniwa.ruleset' => $sourceSettings,
+            'hakoniwa.published_rulesets' => [$sourceSettings['key'] => $sourceSettings],
+        ]);
+        $source = app(RulesetPublisher::class)->publish($sourceSettings);
+        $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Debug32x32);
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '水域所有修復国', '修復島主');
+        $space = $this->surfaceMapSpace($world);
+        $queueTarget = MapCell::query()->where('map_space_id', $space->id)
+            ->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->firstOrFail();
+        $queued = app(CommandQueueService::class)->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $space,
+            commandKey: 'land_clear',
+            targetX: $queueTarget->x,
+            targetY: $queueTarget->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        )['item'];
+        $sourceDefinitionId = (int) $queued->command_definition_id;
+        $requestRulesetId = (int) $queued->request_ruleset_version_id;
+        $requestFingerprint = $queued->request_fingerprint;
+
+        $cells = MapCell::query()->where('map_space_id', $space->id)
+            ->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
+            ->whereKeyNot($queueTarget->id)->orderBy('id')->limit(4)->get();
+        $this->assertCount(4, $cells);
+        [$shallow, $sea, $facilitySea, $land] = $cells->all();
+        $shallow->update([
+            'terrain_definition_id' => DB::table('terrain_definitions')->where('key', 'shallow')->value('id'),
+            'facility_definition_id' => null,
+            'owner_nation_id' => $nation->id,
+            'population' => 0,
+        ]);
+        $sea->update([
+            'terrain_definition_id' => DB::table('terrain_definitions')->where('key', 'sea')->value('id'),
+            'facility_definition_id' => null,
+            'owner_nation_id' => $nation->id,
+            'population' => 0,
+        ]);
+        $facilitySea->update([
+            'terrain_definition_id' => DB::table('terrain_definitions')->where('key', 'sea')->value('id'),
+            'facility_definition_id' => DB::table('facility_definitions')->where('key', 'seabed_base')->value('id'),
+            'owner_nation_id' => $nation->id,
+            'facility_scale' => 1,
+            'population' => 0,
+        ]);
+        $land->update([
+            'terrain_definition_id' => DB::table('terrain_definitions')->where('key', 'plain')->value('id'),
+            'facility_definition_id' => null,
+            'owner_nation_id' => $nation->id,
+            'population' => 0,
+        ]);
+        $cellVersions = collect([$shallow, $sea, $facilitySea, $land])->mapWithKeys(
+            static fn (MapCell $cell): array => [$cell->id => $cell->fresh()->version],
+        );
+        $chunkIds = collect([$shallow, $sea])->pluck('map_chunk_id')->unique()->values();
+        $chunkVersions = DB::table('map_chunks')->whereIn('id', $chunkIds)->pluck('version', 'id');
+
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+        )->delete();
+        config([
+            'hakoniwa.ruleset' => $targetSettings,
+            'hakoniwa.published_rulesets' => [$targetSettings['key'] => $targetSettings],
+        ]);
+
+        $pendingRun = TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $world->current_turn + 1,
+            'ruleset_version_id' => $source->id,
+            'random_seed' => str_repeat('9', 64),
+            'source' => 'cron',
+            'is_dry_run' => false,
+            'status' => TurnRun::STATUS_PENDING,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => [],
+        ]);
+        try {
+            app(Ver350RulesetUpgrade::class)->run();
+            $this->fail('Expected the unresolved next TurnRun to block v20 activation.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('The next production TurnRun is unresolved.', $exception->getMessage());
+        }
+        $this->assertDatabaseMissing('ruleset_versions', ['key' => Ver350RulesetUpgrade::TARGET_KEY]);
+        $this->assertSame($nation->id, $shallow->fresh()->owner_nation_id);
+        $pendingRun->delete();
+
+        try {
+            DB::transaction(function (): void {
+                app(Ver350RulesetUpgrade::class)->run();
+                throw new RuntimeException('force v20 migration rollback');
+            });
+            $this->fail('Expected the injected v20 migration rollback.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('force v20 migration rollback', $exception->getMessage());
+        }
+        $this->assertSame($source->id, $world->fresh()->ruleset_version_id);
+        $this->assertDatabaseMissing('ruleset_versions', ['key' => Ver350RulesetUpgrade::TARGET_KEY]);
+        $this->assertSame($nation->id, $shallow->fresh()->owner_nation_id);
+        $this->assertSame($nation->id, $sea->fresh()->owner_nation_id);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'ruleset.v20_activated')->count());
+
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_09_04_000000_publish_v20_and_repair_water_ownership.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_09_04_010000_add_surface_ship_foundation.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_09_04_020000_add_surface_ship_movement.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+        $precedingShipSettings = $targetSettings;
+        unset($precedingShipSettings['surface_ships']['missile_impact']);
+        DB::table('ruleset_versions')->where('key', Ver350RulesetUpgrade::TARGET_KEY)->update([
+            'settings' => json_encode($precedingShipSettings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION),
+        ]);
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_09_04_030000_add_surface_ship_missile_and_visibility.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_04_030000_add_surface_ship_missile_and_visibility',
+        )->delete();
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_09_04_030000_add_surface_ship_missile_and_visibility.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $target = RulesetVersion::query()->where('key', Ver350RulesetUpgrade::TARGET_KEY)->sole();
+        $this->assertEquals($targetSettings, $target->settings);
+        $queued->refresh();
+        $this->assertSame($target->id, $world->fresh()->ruleset_version_id);
+        $this->assertDatabaseHas('ruleset_versions', [
+            'key' => Ver350RulesetUpgrade::SOURCE_KEY,
+            'version' => Ver350RulesetUpgrade::SOURCE_VERSION,
+        ]);
+        $this->assertTrue(Schema::hasTable('ships'));
+        $this->assertDatabaseHas('secretary_skills', [
+            'secretary_id' => $user->secretary()->value('id'),
+            'skill_key' => SecretarySkillCatalog::SHIP_OPERATIONS,
+            'level' => 0,
+            'experience' => 0,
+        ]);
+        $shipCell = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('facility_definition_id')->whereNull('owner_nation_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->firstOrFail();
+        Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $target->id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $shipCell->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $this->assertDatabaseHas('ships', [
+            'ruleset_version_id' => $target->id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $shipCell->id,
+            'ship_type_key' => 'fishing',
+            'state' => Ship::STATE_ACTIVE,
+        ]);
+        $this->assertNotSame($sourceDefinitionId, (int) $queued->command_definition_id);
+        $this->assertSame($target->id, $queued->definition()->value('ruleset_version_id'));
+        $this->assertSame($requestRulesetId, (int) $queued->request_ruleset_version_id);
+        $this->assertSame($requestFingerprint, $queued->request_fingerprint);
+        $this->assertNull($shallow->fresh()->owner_nation_id);
+        $this->assertNull($sea->fresh()->owner_nation_id);
+        $this->assertSame($nation->id, $facilitySea->fresh()->owner_nation_id);
+        $this->assertSame('seabed_base', $facilitySea->fresh()->facility()->value('key'));
+        $this->assertSame($nation->id, $land->fresh()->owner_nation_id);
+        $this->assertSame($cellVersions[$shallow->id] + 1, $shallow->fresh()->version);
+        $this->assertSame($cellVersions[$sea->id] + 1, $sea->fresh()->version);
+        $this->assertSame($cellVersions[$facilitySea->id], $facilitySea->fresh()->version);
+        $this->assertSame($cellVersions[$land->id], $land->fresh()->version);
+        foreach ($chunkVersions as $chunkId => $version) {
+            $this->assertSame(
+                (int) $version + 1,
+                (int) DB::table('map_chunks')->where('id', $chunkId)->value('version'),
+            );
+        }
+        $event = DB::table('audit_events')->where('event_type', 'ruleset.v20_activated')->sole();
+        $metadata = json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(2, $metadata['facilityless_owned_water_neutralized']['cells']);
+        $this->assertSame(1, $metadata['facilityless_owned_water_neutralized']['shallow']);
+        $this->assertSame(1, $metadata['facilityless_owned_water_neutralized']['sea']);
+        $this->assertSame($chunkIds->count(), $metadata['facilityless_owned_water_neutralized']['chunks']);
+        $this->assertSame('already_current_v20', app(Ver350RulesetUpgrade::class)->run());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v20_activated')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'map.water_ownership_repaired')->count());
+    }
+
     /** @return array<string, string> */
     private function businessSnapshot(): array
     {
@@ -1229,6 +1523,7 @@ SQL);
 
     private function returnDatabaseToExact280Source(): void
     {
+        $this->returnSurfaceShipFoundationToPre350Source();
         foreach (array_reverse(self::UNDERGROUND_RELEASE_TABLES) as $table) {
             Schema::drop($table);
         }
@@ -1240,6 +1535,7 @@ SQL);
             '2026_09_03_000000_add_underground_respec',
             '2026_09_03_010000_add_underground_bulk_sale_operation',
             '2026_09_03_020000_add_underground_custom_ai',
+            '2026_09_04_000000_publish_v20_and_repair_water_ownership',
         ])->delete();
     }
 
@@ -1310,6 +1606,11 @@ SQL);
 
     private function returnDatabaseToExact330Source(): void
     {
+        $this->returnSurfaceShipFoundationToPre350Source();
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_04_000000_publish_v20_and_repair_water_ownership',
+        )->delete();
         DB::statement(<<<'SQL'
 ALTER TABLE underground_intro_requests
   DROP CONSTRAINT underground_intro_requests_operation_check,
@@ -1333,6 +1634,82 @@ SQL);
             'migration',
             '2026_09_03_020000_add_underground_custom_ai',
         )->delete();
+    }
+
+    private function returnSurfaceShipFoundationToPre350Source(): void
+    {
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_04_030000_add_surface_ship_missile_and_visibility',
+        )->delete();
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->delete();
+        DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT IF EXISTS secretary_skills_key_check');
+        DB::statement(<<<'SQL'
+ALTER TABLE secretary_skills
+  ADD CONSTRAINT secretary_skills_key_check
+  CHECK (skill_key IN (
+    'agricultural_policy',
+    'specialty_development',
+    'gold_vein_survey',
+    'forest_management',
+    'final_defense_line',
+    'declining_birthrate_policy',
+    'indomitable'
+  ))
+SQL);
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_04_020000_add_surface_ship_movement',
+        )->delete();
+        if (Schema::hasTable('ships')) {
+            Schema::drop('ships');
+        }
+        DB::statement('DROP FUNCTION IF EXISTS validate_surface_ship_identity()');
+        DB::unprepared(<<<'SQL'
+CREATE OR REPLACE FUNCTION validate_monster_occupancy()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    monster_world bigint;
+    monster_state text;
+    cell_world bigint;
+    cell_facility text;
+    cell_space text;
+BEGIN
+    SELECT world_id, state INTO monster_world, monster_state
+      FROM monster_instances WHERE id = NEW.monster_instance_id;
+    SELECT ms.world_id, fd.key, ms.key INTO cell_world, cell_facility, cell_space
+      FROM map_cells mc
+      JOIN map_spaces ms ON ms.id = mc.map_space_id
+      LEFT JOIN facility_definitions fd ON fd.id = mc.facility_definition_id
+      WHERE mc.id = NEW.map_cell_id;
+    IF monster_state IS DISTINCT FROM 'alive' THEN
+        RAISE EXCEPTION 'only an alive monster may occupy a cell';
+    END IF;
+    IF monster_world IS NULL OR cell_world IS NULL OR monster_world <> cell_world THEN
+        RAISE EXCEPTION 'monster occupancy cannot cross World boundaries';
+    END IF;
+    IF cell_space IS DISTINCT FROM 'surface' THEN
+        RAISE EXCEPTION 'monster occupancy is limited to the surface map';
+    END IF;
+    IF cell_facility = 'capital' THEN
+        RAISE EXCEPTION 'Capital cells cannot contain monster occupancy';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+SQL);
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_04_010000_add_surface_ship_foundation',
+        )->delete();
+        $this->returnPortCatalogToPre350Source();
+    }
+
+    private function returnPortCatalogToPre350Source(): void
+    {
+        DB::table('facility_definitions')->where('key', 'port')->delete();
     }
 
     private function returnDatabaseToExact320Source(): void

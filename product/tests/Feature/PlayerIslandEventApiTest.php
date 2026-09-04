@@ -336,6 +336,21 @@ class PlayerIslandEventApiTest extends TestCase
         $world->update(['current_turn' => 25]);
         DB::table('audit_events')->delete();
 
+        $this->audit('ship.forced_displaced', $nation, $nation, 'nation', 25, [
+            'from_x' => 10, 'from_y' => 11, 'x' => 11, 'y' => 11,
+        ]);
+        $this->audit('ship.fuel_shortage_damaged', $nation, $nation, 'nation', 25, [
+            'ship_name' => '探索船', 'x' => 12, 'y' => 13, 'current_hp' => 1,
+        ]);
+        $this->audit('ship.sunk', $nation, $nation, 'nation', 25, [
+            'ship_name' => '漁船', 'removal_reason' => 'fuel_exhaustion', 'x' => 14, 'y' => 15,
+        ]);
+        $this->audit('ship.sunk', $nation, $nation, 'nation', 25, [
+            'ship_name' => '観光船', 'removal_reason' => 'forced_displacement_failed', 'x' => 16, 'y' => 17,
+        ]);
+        $this->audit('ship.sunk', $nation, $nation, 'nation', 25, [
+            'ship_name' => '探索船', 'removal_reason' => 'defense_self_destruct', 'x' => 18, 'y' => 19,
+        ]);
         $finance = $this->audit('command.finance', $nation, $nation, 'nation', 25, ['applied' => 50]);
         $ownPublic = $this->publicFacility($nation, 25, 6, 7, 'farm');
         $olderOwnPublic = $this->publicFacility($nation, 13, 4, 5, 'mine');
@@ -361,6 +376,26 @@ class PlayerIslandEventApiTest extends TestCase
 
         $body = (string) $response->getContent();
         $this->assertContains('所有島(6,7)で農場整備が行われました。', $this->messages($response->json('data.groups')));
+        $this->assertContains(
+            '船が地形変更を避けて(10,11)から(11,11)へ退避しました。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '探索船が石油不足により(12,13)で損傷しました（HP 1）。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '漁船が石油不足事故により(14,15)で沈没しました。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '観光船が退避不能により(16,17)で沈没しました。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '探索船が防衛施設の自爆により(18,19)で沈没しました。',
+            $this->messages($response->json('data.groups')),
+        );
         $this->assertTrue(collect($response->json('data.groups.0.events'))->contains(
             static fn (array $event): bool => $event['id'] === $finance,
         ));
@@ -652,6 +687,14 @@ class PlayerIslandEventApiTest extends TestCase
             'from_terrain_key' => 'wasteland', 'to_terrain_key' => 'scorched',
             'terrain_only' => true, 'terrain_scorched' => true,
         ]);
+        $this->audit('missile.impact', $target, $target, 'public', 2, [
+            'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
+            'missile_key' => 'pp_missile', 'effect' => 'ship_damaged', 'x' => 18, 'y' => 14,
+        ]);
+        $this->audit('missile.impact', $target, $target, 'public', 2, [
+            'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
+            'missile_key' => 'pp_missile', 'effect' => 'ship_sunk', 'x' => 19, 'y' => 15,
+        ]);
         $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 2, [
             'nation_name' => $firing->name, 'command_key' => 'pp_missile',
             'queue_item_id' => 88, 'ineffective_impacts' => 8,
@@ -679,6 +722,8 @@ class PlayerIslandEventApiTest extends TestCase
                 ['x' => 15, 'y' => 11, 'effect' => 'killed', 'meaningful' => true, 'terrain_scorched' => false],
                 ['x' => 16, 'y' => 12, 'effect' => 'defense_intercepted', 'meaningful' => false],
                 ['x' => 17, 'y' => 13, 'effect' => 'secretary_intercepted', 'meaningful' => false],
+                ['x' => 18, 'y' => 14, 'effect' => 'ship_damaged', 'meaningful' => true],
+                ['x' => 19, 'y' => 15, 'effect' => 'ship_sunk', 'meaningful' => true],
             ],
         ]);
 
@@ -688,6 +733,8 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertContains('発射島がPPミサイルを3発発射しました。', $publicMessages);
         $this->assertContains('被弾島(12,8)に発射島のPPミサイルが着弾し、首都人口へ被害を与えました。', $publicMessages);
         $this->assertContains('被弾島(13,9)に発射島のPPミサイルが着弾し、土地を焼け跡にしました。', $publicMessages);
+        $this->assertContains('被弾島(18,14)に発射島のPPミサイルが着弾し、船に損傷を与えました。', $publicMessages);
+        $this->assertContains('被弾島(19,15)に発射島のPPミサイルが着弾し、船を撃沈しました。', $publicMessages);
         $this->assertTrue(collect($publicMessages)->contains(
             static fn (string $message): bool => str_contains($message, 'PPミサイルのうち8発は効果がありませんでした。'),
         ));
@@ -719,6 +766,8 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertStringContainsString('(15,11): 怪獣を撃破しました', $ownerMessages);
         $this->assertStringContainsString('(16,12): 防衛施設に迎撃されました', $ownerMessages);
         $this->assertStringContainsString('(17,13): 最終防衛ラインに迎撃されました', $ownerMessages);
+        $this->assertStringContainsString('(18,14): 船に損傷を与えました', $ownerMessages);
+        $this->assertStringContainsString('(19,15): 船を撃沈しました', $ownerMessages);
         $this->assertSame(1, substr_count($ownerMessages, '怪獣がいた荒地は焦土化しました'));
         $ownerTypes = collect($ownerResponse->json('data.groups.0.events'))->pluck('type');
         $this->assertFalse($ownerTypes->contains('missile.launched'));

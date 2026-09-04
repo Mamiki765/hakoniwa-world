@@ -45,6 +45,8 @@ final class RulesetAuthoringValidator
 
     private const FORMAL_V19_KEY = 'hakoniwa-2s-plus-v19';
 
+    private const FORMAL_V20_KEY = 'hakoniwa-2s-plus-v20';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -357,6 +359,7 @@ final class RulesetAuthoringValidator
             $commandKeys,
         );
         $this->validateKarma($settings, $authoredKey, $version);
+        $this->validateSurfaceShips($settings, $authoredKey, $version, $resourceKeys);
         $monsterCount = $this->validateMonsterSystem(
             $settings,
             $resourceKeys,
@@ -379,6 +382,113 @@ final class RulesetAuthoringValidator
             'production' => count($productionKeys),
             'monsters' => $monsterCount,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<string>  $resourceKeys
+     */
+    private function validateSurfaceShips(
+        array $settings,
+        string $authoredKey,
+        int $version,
+        array $resourceKeys,
+    ): void {
+        if ($version < 20) {
+            if (array_key_exists('surface_ships', $settings)) {
+                throw new DomainException('ruleset.surface_ships requires Surface Ruleset v20.');
+            }
+
+            return;
+        }
+        if ($authoredKey !== self::FORMAL_V20_KEY) {
+            return;
+        }
+
+        $section = $this->map($settings['surface_ships'] ?? null, 'ruleset.surface_ships');
+        $this->requireKeys($section, [
+            'capacity_per_type', 'movement', 'forced_displacement', 'missile_impact', 'definitions',
+        ], 'ruleset.surface_ships');
+        if ($this->integer($section['capacity_per_type'], 'ruleset.surface_ships.capacity_per_type', 1) !== 3) {
+            throw new DomainException('ruleset.surface_ships.capacity_per_type must be exactly 3 for v20.');
+        }
+        $movement = $this->map($section['movement'], 'ruleset.surface_ships.movement');
+        $this->requireKeys($movement, [
+            'terrain_key', 'required_port_facility_key', 'fuel_resource_key', 'normal_event_limit_per_turn',
+            'fuel_shortage_damage_chance_percent', 'fuel_shortage_damage', 'random_stream_version',
+            'secretary_skill_key', 'secretary_experience_per_successful_move',
+        ], 'ruleset.surface_ships.movement');
+        if ($movement !== [
+            'terrain_key' => 'sea',
+            'required_port_facility_key' => 'port',
+            'fuel_resource_key' => 'oil',
+            'normal_event_limit_per_turn' => 1,
+            'fuel_shortage_damage_chance_percent' => 1,
+            'fuel_shortage_damage' => 1,
+            'random_stream_version' => 1,
+            'secretary_skill_key' => SecretarySkillCatalog::SHIP_OPERATIONS,
+            'secretary_experience_per_successful_move' => 1,
+        ] || ! in_array($movement['fuel_resource_key'], $resourceKeys, true)) {
+            throw new DomainException('ruleset.surface_ships.movement differs from the Owner-approved v20 contract.');
+        }
+        $displacement = $this->map($section['forced_displacement'], 'ruleset.surface_ships.forced_displacement');
+        $this->requireKeys($displacement, ['port_search_distances', 'foreign_destroy_karma'], 'ruleset.surface_ships.forced_displacement');
+        if ($displacement !== ['port_search_distances' => [1, 2], 'foreign_destroy_karma' => 1]) {
+            throw new DomainException('ruleset.surface_ships.forced_displacement differs from the Owner-approved v20 contract.');
+        }
+        $missileImpact = $this->map($section['missile_impact'], 'ruleset.surface_ships.missile_impact');
+        $this->requireKeys($missileImpact, [
+            'damage_by_missile_key', 'instant_sink_missile_keys', 'foreign_sink_karma',
+        ], 'ruleset.surface_ships.missile_impact');
+        if ($missileImpact !== [
+            'damage_by_missile_key' => ['missile' => 1, 'pp_missile' => 1, 'spp_missile' => 1],
+            'instant_sink_missile_keys' => ['land_destruction_missile'],
+            'foreign_sink_karma' => 1,
+        ]) {
+            throw new DomainException('ruleset.surface_ships.missile_impact differs from the Owner-approved v20 contract.');
+        }
+        $definitions = $this->map($section['definitions'], 'ruleset.surface_ships.definitions');
+        if (array_keys($definitions) !== ['fishing', 'tourist', 'exploration']) {
+            throw new DomainException('ruleset.surface_ships.definitions must contain the exact v20 Ship keys in canonical order.');
+        }
+
+        $expected = [
+            'fishing' => ['漁船', 'ship.fishing', 1, 10, 500, 1, 1, 'fish', 7000, 0, 1],
+            'tourist' => ['観光船', 'ship.tourist', 2, 20, 1500, 2, 2, null, 0, 20, 1],
+            'exploration' => ['探索船', 'ship.exploration', 3, 30, 1000, 2, 1, null, 0, 0, 3],
+        ];
+        foreach ($definitions as $key => $value) {
+            $path = "ruleset.surface_ships.definitions.{$key}";
+            $definition = $this->map($value, $path);
+            $this->requireKeys($definition, [
+                'name', 'asset_key', 'build_selector', 'sort_order', 'build_cost_money', 'maximum_hp',
+                'movement_oil_units', 'movement_reward_resource_key',
+                'movement_reward_resource_units', 'movement_reward_money', 'visibility_radius',
+            ], $path);
+            $actual = [
+                $this->persistedString($definition['name'], "{$path}.name"),
+                $this->persistedString($definition['asset_key'], "{$path}.asset_key"),
+                $this->integer($definition['build_selector'], "{$path}.build_selector", 1),
+                $this->integer($definition['sort_order'], "{$path}.sort_order", 1),
+                $this->integer($definition['build_cost_money'], "{$path}.build_cost_money", 1),
+                $this->integer($definition['maximum_hp'], "{$path}.maximum_hp", 1),
+                $this->integer($definition['movement_oil_units'], "{$path}.movement_oil_units", 1),
+                $definition['movement_reward_resource_key'],
+                $this->integer($definition['movement_reward_resource_units'], "{$path}.movement_reward_resource_units", 0),
+                $this->integer($definition['movement_reward_money'], "{$path}.movement_reward_money", 0),
+                $this->integer($definition['visibility_radius'], "{$path}.visibility_radius", 1),
+            ];
+            if ($definition['movement_reward_resource_key'] !== null) {
+                $actual[7] = $this->reference(
+                    $definition['movement_reward_resource_key'],
+                    $resourceKeys,
+                    "{$path}.movement_reward_resource_key",
+                );
+            }
+            if ($actual !== $expected[$key]) {
+                throw new DomainException("{$path} differs from the Owner-approved v20 Ship contract.");
+            }
+        }
     }
 
     /**
@@ -513,6 +623,26 @@ final class RulesetAuthoringValidator
                 continue;
             }
 
+            if ($key === SecretarySkillCatalog::SHIP_OPERATIONS) {
+                if ($authoredKey !== self::FORMAL_V20_KEY
+                    || $initialLevel !== 0
+                    || $basis !== 'next_level_squared'
+                    || $multiplier !== 65_535
+                    || $effect !== [
+                        'type' => 'placeholder',
+                        'display' => '準備中',
+                    ]
+                    || $source !== [
+                        'type' => 'successful_ship_movement',
+                        'points_per_execution' => 1,
+                        'quantity_multiplier' => false,
+                    ]) {
+                    throw new DomainException("{$path} does not match the v20 Ship operations placeholder contract.");
+                }
+
+                continue;
+            }
+
             if ($key !== SecretarySkillCatalog::FINAL_DEFENSE_LINE
                 || $initialLevel !== 1
                 || $basis !== 'current_level_squared'
@@ -539,7 +669,7 @@ final class RulesetAuthoringValidator
         $itemSettings = $settings;
         $itemSettings['key'] = $authoredKey;
         (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($itemSettings);
-        if (in_array($authoredKey, [self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY], true)) {
+        if (in_array($authoredKey, [self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY], true)) {
             TradingPostRules::fromSettings($settings);
         }
 
@@ -593,10 +723,11 @@ final class RulesetAuthoringValidator
             17 => self::FORMAL_V17_KEY,
             18 => self::FORMAL_V18_KEY,
             19 => self::FORMAL_V19_KEY,
+            20 => self::FORMAL_V20_KEY,
             default => null,
         };
         if ($expectedKey === null || $authoredKey !== $expectedKey || ! $hasLifecycle) {
-            throw new DomainException('The v12-v19 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+            throw new DomainException('The v12-v20 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
         }
 
         $path = 'ruleset.nation_lifecycle';
@@ -684,10 +815,10 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($version, [13, 14, 15, 16, 17, 18, 19], true)
-            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY], true)
+        if (! in_array($version, [13, 14, 15, 16, 17, 18, 19, 20], true)
+            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY], true)
             || ! is_array($authored)) {
-            throw new DomainException('The v13-v19 Ruleset identity requires the KARMA contract.');
+            throw new DomainException('The v13-v20 Ruleset identity requires the KARMA contract.');
         }
         $expected = [
             'minimum' => -10,
@@ -1368,11 +1499,12 @@ final class RulesetAuthoringValidator
             17 => self::FORMAL_V17_KEY,
             18 => self::FORMAL_V18_KEY,
             19 => self::FORMAL_V19_KEY,
+            20 => self::FORMAL_V20_KEY,
             default => null,
         };
         if (($expectedKey !== null && $key !== $expectedKey)
-            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY], true))) {
-            throw new DomainException('The v11-v19 ruleset identity and version must be authored together.');
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY], true))) {
+            throw new DomainException('The v11-v20 ruleset identity and version must be authored together.');
         }
 
         return $version >= 11;
@@ -1389,8 +1521,8 @@ final class RulesetAuthoringValidator
         ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
-        if (in_array($version, [12, 13, 14, 15, 16, 17, 18, 19], true)
-            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY], true)) {
+        if (in_array($version, [12, 13, 14, 15, 16, 17, 18, 19, 20], true)
+            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 
@@ -1653,6 +1785,24 @@ final class RulesetAuthoringValidator
                 }
             }
         }
+        if (($settings['version'] ?? null) >= 20) {
+            $port = $settings['facility_definitions']['port'] ?? null;
+            if ($port !== [
+                'name' => '港',
+                'asset_key' => 'tile.port',
+                'visibility_policy' => 'public',
+                'build_command_key' => 'build_port',
+                'scale_unit_people' => null,
+                'initial_scale' => null,
+                'scale_increment' => null,
+                'maximum_scale' => null,
+                'workforce_per_scale_people' => null,
+                'production_definition_key' => null,
+                'buildable_terrain_keys' => ['plain'],
+            ]) {
+                throw new DomainException('The v20 Ruleset requires the exact Surface port facility contract.');
+            }
+        }
     }
 
     private function maximumCapitalDistance(
@@ -1697,6 +1847,9 @@ final class RulesetAuthoringValidator
     ): void {
         $underseaCityDefinitions = 0;
         $territoryAbandonDefinitions = 0;
+        $portDefinitions = 0;
+        $shipBuildDefinitions = 0;
+        $shipScuttleDefinitions = 0;
         foreach ($this->list($settings['command_definitions'], 'ruleset.command_definitions') as $index => $definition) {
             $path = "ruleset.command_definitions.{$index}";
             $definition = $this->map($definition, $path);
@@ -1781,6 +1934,64 @@ final class RulesetAuthoringValidator
                     throw new DomainException("{$path} differs from the v19 territory-abandonment contract.");
                 }
             }
+            if ($commandKey === 'build_port') {
+                $portDefinitions++;
+                if ($authoredRulesetVersion < 20
+                    || $definition['target_type'] !== 'cell'
+                    || $definition['target_terrain_keys'] !== ['shallow']
+                    || $definition['target_facility_keys'] !== []
+                    || $definition['requires_empty_facility'] !== true
+                    || $definition['cost_money'] !== 1000
+                    || $definition['required_resources'] !== []
+                    || $definition['execution_phase'] !== 'facility'
+                    || $definition['result_terrain_key'] !== 'plain'
+                    || $definition['result_facility_key'] !== 'port'
+                    || $definition['sort_order'] !== 135
+                    || $metadata !== ['consumes_turn' => true, 'parameters' => []]) {
+                    throw new DomainException("{$path} differs from the v20 Surface port construction contract.");
+                }
+            }
+            if ($commandKey === 'build_ship') {
+                $shipBuildDefinitions++;
+                if ($authoredRulesetVersion < 20
+                    || $definition['name'] !== '船建造'
+                    || $definition['target_type'] !== 'nation'
+                    || $definition['target_terrain_keys'] !== ['sea', 'shallow', 'wasteland', 'scorched', 'plain', 'forest', 'mountain']
+                    || $definition['target_facility_keys'] !== []
+                    || $definition['requires_empty_facility'] !== false
+                    || $definition['cost_money'] !== 500
+                    || $definition['required_resources'] !== []
+                    || $definition['execution_phase'] !== 'facility'
+                    || $definition['result_terrain_key'] !== null
+                    || $definition['result_facility_key'] !== null
+                    || $definition['sort_order'] !== 137
+                    || $metadata !== [
+                        'consumes_turn' => true,
+                        'parameters' => [],
+                        'quantity_selects_catalog' => 'surface_ship_definitions',
+                        'default_selector_value' => 1,
+                    ]) {
+                    throw new DomainException("{$path} differs from the v20 Surface Ship construction contract.");
+                }
+            }
+            if ($commandKey === 'scuttle_ship') {
+                $shipScuttleDefinitions++;
+                if ($authoredRulesetVersion < 20
+                    || $definition['name'] !== '廃船'
+                    || $definition['target_type'] !== 'cell'
+                    || $definition['target_terrain_keys'] !== ['sea']
+                    || $definition['target_facility_keys'] !== []
+                    || $definition['requires_empty_facility'] !== false
+                    || $definition['cost_money'] !== 0
+                    || $definition['required_resources'] !== []
+                    || $definition['execution_phase'] !== 'operations'
+                    || $definition['result_terrain_key'] !== null
+                    || $definition['result_facility_key'] !== null
+                    || $definition['sort_order'] !== 138
+                    || $metadata !== ['consumes_turn' => true, 'parameters' => []]) {
+                    throw new DomainException("{$path} differs from the v20 Surface Ship scuttle contract.");
+                }
+            }
             if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)
                 && in_array($commandKey, ['build_defense_facility', 'build_monument'], true)) {
                 $expectedEffect = $commandKey === 'build_defense_facility'
@@ -1796,6 +2007,15 @@ final class RulesetAuthoringValidator
         }
         if ($authoredRulesetVersion >= 19 && $territoryAbandonDefinitions !== 1) {
             throw new DomainException('The v19+ Ruleset requires exactly one territory_abandon command.');
+        }
+        if ($authoredRulesetVersion >= 20 && $portDefinitions !== 1) {
+            throw new DomainException('The v20+ Ruleset requires exactly one build_port command.');
+        }
+        if ($authoredRulesetVersion >= 20 && $shipBuildDefinitions !== 1) {
+            throw new DomainException('The v20+ Ruleset requires exactly one build_ship command.');
+        }
+        if ($authoredRulesetVersion >= 20 && $shipScuttleDefinitions !== 1) {
+            throw new DomainException('The v20+ Ruleset requires exactly one scuttle_ship command.');
         }
     }
 
@@ -1813,7 +2033,7 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if ($authoredRulesetKey !== self::FORMAL_V19_KEY) {
+        if (! in_array($authoredRulesetKey, [self::FORMAL_V19_KEY, self::FORMAL_V20_KEY], true)) {
             return;
         }
 

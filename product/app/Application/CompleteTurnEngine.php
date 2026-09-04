@@ -66,6 +66,7 @@ final class CompleteTurnEngine
         private readonly TurnEventRecorder $events,
         private readonly DisasterTurnService $disasters,
         private readonly MonsterTurnService $monsters,
+        private readonly SurfaceShipTurnService $ships,
         private readonly MissileImpactResolver $missiles,
         private readonly AwardTurnFinalizer $awards,
         private readonly TerritoryInfluenceService $territoryInfluence,
@@ -516,8 +517,9 @@ final class CompleteTurnEngine
             ],
         );
         $monsterBatch = $this->monsters->load($context);
+        $shipBatch = $this->ships->load($context, $space);
         $metrics['missile_boundary_monsters'] = $this->karma->snapshotMissileBoundary($context);
-        $this->missiles->begin($cellsByCoordinate);
+        $this->missiles->begin($cellsByCoordinate, $shipBatch);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
         $capitalNationIdsByCellId = NationCapital::query()
             ->whereIn('nation_id', $activeNations->keys()->all())
@@ -532,6 +534,14 @@ final class CompleteTurnEngine
                 throw new DomainException("Surface cell order references missing cell {$cellId}.");
             }
             $metrics['processed']++;
+            $this->ships->processCell(
+                $context,
+                $space,
+                $cell,
+                $cellsByCoordinate,
+                $monsterBatch,
+                $shipBatch,
+            );
             if (! $separateNormalMonsterPass
                 && $this->monsters->processCell(
                     $context,
@@ -540,6 +550,7 @@ final class CompleteTurnEngine
                     $cellsByCoordinate,
                     $monsterBatch,
                     $disasterCells,
+                    $shipBatch,
                 )) {
                 continue;
             }
@@ -677,11 +688,12 @@ final class CompleteTurnEngine
                     $cellsByCoordinate,
                     $monsterBatch,
                     $disasterCells,
+                    $shipBatch,
                 );
             }
         }
 
-        return [...$metrics, ...$monsterBatch->metrics()];
+        return [...$metrics, ...$monsterBatch->metrics(), ...$shipBatch->metrics()];
     }
 
     /** @return array<string, int> */

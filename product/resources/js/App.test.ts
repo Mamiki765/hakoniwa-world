@@ -74,7 +74,8 @@ const undergroundAsset = (key: string, fallbackLabel: string): AssetDescriptor =
 });
 const surfaceCellFixture: MapCell = {
     x: 12, y: 8, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
-    display_name: '平地', owner_nation_id: 3, owner_nation_number: 1, owner_name: '自島', details: [], monster: null,
+    display_name: '平地', owner_nation_id: 3, owner_nation_number: 1, owner_name: '自島',
+    within_viewer_visibility: false, details: [], monster: null,
     asset: undergroundAsset('tile.plain', '平'), overlays: [], aria_label: '平地 (12, 8)', version: 1, updated_at: null,
 };
 const undergroundOffsets: UndergroundSurfaceMapSlot['offset_x'][] = [-2, -1, 1, 2];
@@ -1144,6 +1145,7 @@ describe('application lobby and island entry', () => {
                 { key: 'oil', name: '石油', category: 'energy', unit: 'ten_thousand_barrels', unit_label: '万バレル', nutrition_per_unit: null, storable: true, tradable: true, amount: 123, capacity: 5000, remaining_capacity: 4877, is_at_capacity: false },
             ],
         };
+        let previewDetailCalls = 0;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path.endsWith('/rankings')) return response([
@@ -1210,7 +1212,17 @@ describe('application lobby and island entry', () => {
                     minimum_increment_money: 1, money_unit_label: '億円', npc_seller_name: '箱庭連合',
                 },
             });
-            if (path === '/api/v1/public/nations/7') return response(publicDetail);
+            if (path === '/api/v1/public/nations/7') {
+                previewDetailCalls++;
+                return response(previewDetailCalls === 1 ? publicDetail : {
+                    ...publicDetail,
+                    map_space: {
+                        ...publicDetail.map_space,
+                        bounds_revision: 'bounds-0-63',
+                        bounds: { min_x: 0, max_x: 63, min_y: 0, max_y: 63 },
+                    },
+                });
+            }
             if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path === '/api/v1/nations/3/profile' && init?.method === 'PATCH') return response({
                 ...nation, owner_name: '更新島主', comment: '<b>更新コメント</b>',
@@ -1424,10 +1436,28 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/public/nations/3')).toBe(false);
 
         await lobbyButton.trigger('click');
+        const publicPreviewChunkCallsBefore = fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/')).length;
+        const privateChunkCallsBefore = fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/map-spaces/2/chunks/')).length;
         const publicRankingButton = wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('公開島'))!;
         await publicRankingButton.trigger('click');
         await flushPromises();
         expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
+        expect(fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toHaveLength(publicPreviewChunkCallsBefore);
+        expect(fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/map-spaces/2/chunks/')).length).toBeGreaterThan(privateChunkCallsBefore);
+
+        const privatePreviewRefreshCalls = fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/map-spaces/2/chunks/')).length;
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flushPromises();
+        expect(previewDetailCalls).toBe(2);
+        expect(fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toHaveLength(publicPreviewChunkCallsBefore);
+        expect(fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/map-spaces/2/chunks/')).length).toBeGreaterThan(privatePreviewRefreshCalls);
 
         const profileButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
@@ -1444,14 +1474,14 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.slice(patchIndex + 1).some(([path]) => String(path).includes('/api/v1/map-spaces/2/chunks/'))).toBe(true);
 
         const summaryCallCount = () => fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/summary')).length;
-        expect(summaryCallCount()).toBe(2);
+        expect(summaryCallCount()).toBe(3);
         await vi.advanceTimersByTimeAsync(60_000);
         await flushPromises();
-        expect(summaryCallCount()).toBe(3);
+        expect(summaryCallCount()).toBe(4);
         wrapper.unmount();
         await vi.advanceTimersByTimeAsync(60_000);
         await flushPromises();
-        expect(summaryCallCount()).toBe(3);
+        expect(summaryCallCount()).toBe(4);
     });
 
     it('shows the unnamed Secretary story with the default name and switches permanently to the skill view after naming', async () => {

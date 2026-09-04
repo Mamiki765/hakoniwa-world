@@ -9,6 +9,7 @@ use App\Application\MonsterSpawnService;
 use App\Application\MonsterTurnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
+use App\Application\SurfaceShipTurnService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
@@ -30,6 +31,7 @@ use App\Models\NationMonsterKillStat;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -256,10 +258,22 @@ class MonsterSystemTest extends TestCase
         $fallbackCoordinate = $originCoordinate->neighbor(1);
         $protected = $this->cellAt($space, $protectedCoordinate->x, $protectedCoordinate->y);
         $fallback = $this->cellAt($space, $fallbackCoordinate->x, $fallbackCoordinate->y);
-        $this->setCell($origin, 'wasteland', null, null, 0);
-        $this->setCell($protected, 'plain', null, $nation->id, 4_321);
+        $this->setCell($origin, 'sea', null, null, 0);
+        $this->setCell($protected, 'sea', 'seabed_base', $nation->id, 0);
         $this->setCell($fallback, 'plain', null, null, 1_234);
-        $monster = $this->createMonster($world, $ruleset, $origin, 'inora', 1);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'aoi_inora', 2);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $ruleset->id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $protected->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
         $seedLabel = $this->movementSeedForDirections($monster, [0, 1]);
         [$movementContext] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
         $capital = $nation->capital()->firstOrFail();
@@ -278,6 +292,7 @@ class MonsterSystemTest extends TestCase
         );
         $turn = app(MonsterTurnService::class);
         $batch = $turn->load($movementContext);
+        $shipBatch = app(SurfaceShipTurnService::class)->load($movementContext, $space);
         $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
         $index = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
 
@@ -287,14 +302,19 @@ class MonsterSystemTest extends TestCase
             $origin->fresh(['terrain', 'facility']),
             $index,
             $batch,
+            ships: $shipBatch,
         ));
 
         $this->assertSame($fallback->id, (int) MonsterOccupancy::query()
             ->where('monster_instance_id', $monster->id)->value('map_cell_id'));
         $this->assertSame(1, $batch->metrics()['monster_moves']);
-        $this->assertSame(4_321, $protected->fresh()->population);
+        $this->assertSame(Ship::STATE_REMOVED, $ship->fresh()->state);
+        $this->assertSame('monster_collision', $ship->fresh()->removal_reason);
+        $this->assertNull($shipBatch->shipAt((int) $protected->id));
+        $this->assertSame('seabed_base', $protected->fresh()->facility()->value('key'));
+        $this->assertSame($nation->id, $protected->fresh()->owner_nation_id);
         $this->assertSame(0, $fallback->fresh()->population);
-        $this->assertSame('wasteland', $fallback->fresh()->terrain()->value('key'));
+        $this->assertSame('sea', $fallback->fresh()->terrain()->value('key'));
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'monster.trampled',
             'x' => $fallback->x,

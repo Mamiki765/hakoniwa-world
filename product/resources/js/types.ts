@@ -13,7 +13,7 @@ export interface CurrentUser {
 }
 
 export interface SecretarySkill {
-    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable';
+    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable' | 'ship_operations';
     name: string;
     level: number;
     experience: number;
@@ -603,6 +603,20 @@ export interface MonsterOverlay {
     host_label: string;
 }
 
+export interface ShipOverlay {
+    id: number;
+    key: 'fishing' | 'tourist' | 'exploration';
+    name: string;
+    asset_key: string;
+    current_hp: number;
+    max_hp: number;
+    public_state: 'active';
+    owner_nation: { nation_number: number; name: string };
+    is_owner: boolean;
+    heading: number | null;
+    version: number | null;
+}
+
 export interface MapCell {
     x: number;
     y: number;
@@ -614,7 +628,9 @@ export interface MapCell {
     owner_nation_id: number | null;
     owner_nation_number: number | null;
     owner_name: string | null;
+    within_viewer_visibility: boolean;
     details: MapCellDetail[];
+    ship?: ShipOverlay | null;
     monster: MonsterOverlay | null;
     asset: AssetDescriptor;
     overlays: AssetDescriptor[];

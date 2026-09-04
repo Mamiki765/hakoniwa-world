@@ -26,6 +26,7 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\RulesetVersion;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -191,7 +192,7 @@ class DisasterAndOilTurnTest extends TestCase
             'earthquake' => ['plain', 'city', 10_000, 'wasteland', $nation->id],
             'tsunami' => ['plain', 'factory', 0, 'wasteland', $nation->id],
             'typhoon' => ['plain', 'farm', 0, 'plain', $nation->id],
-            'meteor_shower' => ['shallow', null, 0, 'sea', $nation->id],
+            'meteor_shower' => ['shallow', null, 0, 'sea', null],
             'huge_meteor' => ['plain', null, 0, 'sea', null],
             'eruption' => ['plain', null, 0, 'mountain', $nation->id],
         ];
@@ -218,6 +219,64 @@ class DisasterAndOilTurnTest extends TestCase
         }
     }
 
+    public function test_eruption_sinks_a_dormant_nation_ship_before_mutating_its_cell(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('休眠船舶災害国');
+        $capital = new GridCoordinate(
+            (int) $nation->capital()->valueOrFail('x'),
+            (int) $nation->capital()->valueOrFail('y'),
+        );
+        $targetCoordinate = $capital->ring(2)[0];
+        $target = $this->cellAt($space, $targetCoordinate->x, $targetCoordinate->y);
+        $this->setCell($target, 'sea', null, null, 0);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $ruleset->id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $target->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+        ]);
+        $ruleset = $this->forceGlobal($ruleset, 'eruption');
+        $seed = $this->seedForCenter(
+            TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER,
+            $target->x,
+            $target->y,
+            $space,
+        );
+        [$context, $run] = $this->context($world, $ruleset, $seed, [$nation->id]);
+        $context->state->setNationLifecycleSnapshot($nation->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
+
+        app(DisasterTurnService::class)->executeGlobal($context);
+
+        $ship = $ship->fresh();
+        $this->assertSame(Ship::STATE_REMOVED, $ship->state);
+        $this->assertSame('eruption', $ship->removal_reason);
+        $this->assertSame(0, $ship->current_hp);
+        $this->assertNull($ship->map_cell_id);
+        $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
+        $event = $this->event($run, 'ship.sunk');
+        $this->assertSame('探索船', $event['ship_name']);
+        $this->assertSame('eruption', $event['removal_reason']);
+    }
+
     public function test_eruption_uses_adr_directions_and_never_creates_world_outside_cells(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('端災害国');
@@ -225,6 +284,7 @@ class DisasterAndOilTurnTest extends TestCase
         foreach ([[0, 0], [1, 0], [0, 1], [1, 1]] as [$x, $y]) {
             $this->setCell($this->cellAt($space, $x, $y), 'sea', null, null, 0);
         }
+        $this->setCell($this->cellAt($space, 1, 0), 'sea', null, $nation->id, 0);
         [$context] = $this->context(
             $world,
             $ruleset,
@@ -236,7 +296,9 @@ class DisasterAndOilTurnTest extends TestCase
 
         $this->assertSame('mountain', $this->cellAt($space, 0, 0)->terrain()->value('key'));
         foreach ([[1, 0], [0, 1], [1, 1]] as [$x, $y]) {
-            $this->assertSame('shallow', $this->cellAt($space, $x, $y)->terrain()->value('key'));
+            $changed = $this->cellAt($space, $x, $y);
+            $this->assertSame('shallow', $changed->terrain()->value('key'));
+            $this->assertNull($changed->owner_nation_id);
         }
         $bounds = $this->boundsFor($world);
         $this->assertSame($bounds->cellCount(), MapCell::query()->where('map_space_id', $space->id)->count());

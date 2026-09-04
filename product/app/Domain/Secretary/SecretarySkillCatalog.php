@@ -20,6 +20,8 @@ final class SecretarySkillCatalog
 
     public const INDOMITABLE = 'indomitable';
 
+    public const SHIP_OPERATIONS = 'ship_operations';
+
     /** @var list<string> */
     public const V14_KEYS = [
         self::AGRICULTURAL_POLICY,
@@ -42,6 +44,12 @@ final class SecretarySkillCatalog
         ...self::KEYS,
         self::DECLINING_BIRTHRATE_POLICY,
         self::INDOMITABLE,
+    ];
+
+    /** @var list<string> */
+    public const V20_KEYS = [
+        ...self::V17_KEYS,
+        self::SHIP_OPERATIONS,
     ];
 
     /**
@@ -115,6 +123,7 @@ final class SecretarySkillCatalog
         }
 
         return match (true) {
+            $version >= 20 => self::V20_KEYS,
             $version >= 17 => self::V17_KEYS,
             $version >= 15 => self::KEYS,
             default => self::V14_KEYS,

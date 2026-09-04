@@ -6,7 +6,12 @@ use DomainException;
 
 final class SecretaryMonsterDropContract
 {
-    public const RULESET_KEYS = ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19'];
+    public const RULESET_KEYS = [
+        'hakoniwa-2s-plus-v17',
+        'hakoniwa-2s-plus-v18',
+        'hakoniwa-2s-plus-v19',
+        'hakoniwa-2s-plus-v20',
+    ];
 
     /** @var list<string> */
     public const ELIGIBLE_MONSTERS = [

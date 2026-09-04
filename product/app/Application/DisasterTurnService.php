@@ -7,6 +7,7 @@ use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -28,6 +29,7 @@ final class DisasterTurnService
         private readonly MonsterSpawnService $monsterSpawn,
         private readonly MonsterWorldSpawnService $monsterWorldSpawn,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly SurfaceShipRemovalService $shipRemoval,
     ) {}
 
     /** @return array<string, int> */
@@ -669,42 +671,55 @@ final class DisasterTurnService
         DisasterMutableCellIndex $cellIndex,
     ): int {
         $damaged = 0;
+        $ships = $this->shipRemoval->lockActiveWorldIndex($context);
         $coordinates = $center->radius($settings['radius']);
         $stream = $context->random->stream(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_EFFECT);
         do {
             $coordinate = $coordinates[$stream->integer(0, count($coordinates) - 1)];
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
             if ($cell !== null && $this->isMutable($cell, $cellIndex)) {
+                $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                    $context,
+                    $cell,
+                    $ships->get($cell->id),
+                    'meteor_shower',
+                    ['disaster_key' => 'meteor_shower'],
+                ) !== null;
                 if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                     // Keep the selected impact and continuation RNG opportunity, but apply no effect.
+                    $damaged += $shipRemoved ? 1 : 0;
                 } elseif ($this->isCapital($cell)) {
                     $this->damageCapital($context, $cell, 'meteor_shower', 'deep_sea', [
                         'center_x' => $center->x, 'center_y' => $center->y,
                     ]);
                     $damaged++;
-                } elseif ($cell->terrain->key === 'shallow') {
-                    if ($this->changeCell(
-                        $context,
-                        $cell,
-                        'meteor_shower',
-                        'sea',
-                        false,
-                        'disaster.cell_damaged',
-                        cellIndex: $cellIndex,
-                    )) {
-                        $damaged++;
-                    }
-                } elseif ($cell->terrain->key !== 'sea'
-                    || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true)) {
-                    if ($this->changeCell(
-                        $context,
-                        $cell,
-                        'meteor_shower',
-                        'sea',
-                        true,
-                        'disaster.cell_damaged',
-                        cellIndex: $cellIndex,
-                    )) {
+                } else {
+                    if ($cell->terrain->key === 'shallow') {
+                        if ($this->changeCell(
+                            $context,
+                            $cell,
+                            'meteor_shower',
+                            'sea',
+                            true,
+                            'disaster.cell_damaged',
+                            cellIndex: $cellIndex,
+                        )) {
+                            $damaged++;
+                        }
+                    } elseif ($cell->terrain->key !== 'sea'
+                        || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true)) {
+                        if ($this->changeCell(
+                            $context,
+                            $cell,
+                            'meteor_shower',
+                            'sea',
+                            true,
+                            'disaster.cell_damaged',
+                            cellIndex: $cellIndex,
+                        )) {
+                            $damaged++;
+                        }
+                    } elseif ($shipRemoved) {
                         $damaged++;
                     }
                 }
@@ -728,8 +743,12 @@ final class DisasterTurnService
         string $disasterKey = 'huge_meteor',
         array $eventMetadata = [],
         ?DisasterMutableCellIndex $cellIndex = null,
+        ?SurfaceShipTurnBatch $shipBatch = null,
     ): int {
         $damaged = 0;
+        $ships = $shipBatch === null
+            ? $this->shipRemoval->lockActiveWorldIndex($context)
+            : null;
         $coordinates = [...$center->ring(0), ...$center->ring(1), ...$center->ring(2)];
         foreach ($coordinates as $coordinate) {
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
@@ -737,7 +756,20 @@ final class DisasterTurnService
                 continue;
             }
             $distance = $center->distanceTo($coordinate);
+            $ship = $shipBatch?->shipAt((int) $cell->id) ?? $ships?->get($cell->id);
+            $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                $context,
+                $cell,
+                $ship,
+                $disasterKey,
+                ['disaster_key' => $disasterKey, ...$eventMetadata],
+            ) !== null;
+            if ($shipRemoved && $shipBatch !== null && $ship !== null) {
+                $shipBatch->forget($ship, (int) $cell->id);
+            }
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
+                $damaged += $shipRemoved ? 1 : 0;
+
                 continue;
             }
             $monsterRemoved = false;
@@ -758,7 +790,7 @@ final class DisasterTurnService
             if ($distance === 2) {
                 $monsterRemoved = $this->removeMonsterForTerrainEvent($context, $cell, $disasterKey);
                 if (! $this->hugeMeteorRingTwoTarget($cell, $settings)) {
-                    $damaged += $monsterRemoved ? 1 : 0;
+                    $damaged += ($monsterRemoved || $shipRemoved) ? 1 : 0;
 
                     continue;
                 }
@@ -796,7 +828,7 @@ final class DisasterTurnService
                     $cellIndex,
                 );
             }
-            $damaged += ($changed || $monsterRemoved) ? 1 : 0;
+            $damaged += ($changed || $monsterRemoved || $shipRemoved) ? 1 : 0;
         }
 
         return $damaged;
@@ -811,10 +843,19 @@ final class DisasterTurnService
         DisasterMutableCellIndex $cellIndex,
     ): int {
         $damaged = 0;
+        $ships = $this->shipRemoval->lockActiveWorldIndex($context);
         $centerCell = $this->cellAt($space, $center, $cellIndex);
-        if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)
-            && ! $this->nationProtection->protectsFromDisaster($context, $centerCell->x, $centerCell->y)) {
-            if ($this->isCapital($centerCell)) {
+        if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)) {
+            $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                $context,
+                $centerCell,
+                $ships->get($centerCell->id),
+                'eruption',
+                ['disaster_key' => 'eruption'],
+            ) !== null;
+            if ($this->nationProtection->protectsFromDisaster($context, $centerCell->x, $centerCell->y)) {
+                $damaged += $shipRemoved ? 1 : 0;
+            } elseif ($this->isCapital($centerCell)) {
                 $this->damageCapital($context, $centerCell, 'eruption', 'eruption_center');
                 $damaged++;
             } elseif ($this->changeCell(
@@ -825,7 +866,7 @@ final class DisasterTurnService
                 false,
                 'disaster.cell_damaged',
                 cellIndex: $cellIndex,
-            )) {
+            ) || $shipRemoved) {
                 $damaged++;
             }
         }
@@ -835,7 +876,16 @@ final class DisasterTurnService
             if ($cell === null || ! $this->isMutable($cell, $cellIndex) || $cell->terrain->key === 'mountain') {
                 continue;
             }
+            $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                $context,
+                $cell,
+                $ships->get($cell->id),
+                'eruption',
+                ['disaster_key' => 'eruption', 'direction' => $direction],
+            ) !== null;
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
+                $damaged += $shipRemoved ? 1 : 0;
+
                 continue;
             }
             if ($this->isCapital($cell)) {
@@ -848,9 +898,9 @@ final class DisasterTurnService
                 continue;
             }
             $target = $cell->terrain->key === 'sea' ? 'shallow' : 'wasteland';
-            if ($this->changeCell($context, $cell, 'eruption', $target, false, 'disaster.cell_damaged', [
+            if ($this->changeCell($context, $cell, 'eruption', $target, $target === 'shallow', 'disaster.cell_damaged', [
                 'direction' => $direction,
-            ], $cellIndex)) {
+            ], $cellIndex) || $shipRemoved) {
                 $damaged++;
             }
         }

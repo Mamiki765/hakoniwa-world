@@ -12,6 +12,9 @@ use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryItemProbability;
 use App\Domain\Secretary\SecretarySkillCatalog;
+use App\Domain\Ship\SurfaceShipCatalog;
+use App\Domain\Ship\SurfaceShipDefinition;
+use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\LaunchIntent;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -22,6 +25,7 @@ use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationUndergroundFacility;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Support\Collection;
@@ -63,6 +67,8 @@ final class MissileImpactResolver
     /** @var array<string, MapCell>|null */
     private ?array $surfaceCellsByCoordinate = null;
 
+    private ?SurfaceShipTurnBatch $surfaceShipBatch = null;
+
     public function __construct(
         private readonly MissileBaseRules $baseRules,
         private readonly LaunchBaseExperienceService $baseExperience,
@@ -79,15 +85,20 @@ final class MissileImpactResolver
         private readonly SecretaryItemProbability $itemProbability,
         private readonly SecretaryDemographicPolicy $demographics,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
+        private readonly SurfaceShipCatalog $surfaceShips,
+        private readonly SurfaceShipRemovalService $shipRemoval,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
-    public function begin(?array $surfaceCellsByCoordinate = null): void
-    {
+    public function begin(
+        ?array $surfaceCellsByCoordinate = null,
+        ?SurfaceShipTurnBatch $surfaceShipBatch = null,
+    ): void {
         $this->launches = [];
         $this->changedCellIds = [];
         $this->processedUndergroundBaseIds = [];
         $this->surfaceCellsByCoordinate = $surfaceCellsByCoordinate;
+        $this->surfaceShipBatch = $surfaceShipBatch;
     }
 
     /**
@@ -561,6 +572,11 @@ final class MissileImpactResolver
         if (($impact['meaningful'] ?? false) !== true) {
             return;
         }
+        if (in_array($impact['effect'] ?? null, ['ship_damaged', 'ship_sunk'], true)) {
+            $this->recordShipKarmaForImpact($context, $firingNation, $intent, $launch, $impact);
+
+            return;
+        }
         $monsterId = $impact['monster_instance_id'] ?? null;
         if ($intent->definitionKey === 'spp_missile' && is_int($monsterId)
             && isset($launch['spp_candidates'][$monsterId])
@@ -655,6 +671,73 @@ final class MissileImpactResolver
                 $context,
                 $firingNation,
                 $crimePoints,
+                (int) $intent->queueItemId,
+            );
+        }
+    }
+
+    /** @param array<string, mixed> $launch
+     * @param  array<string, mixed>  $impact
+     */
+    private function recordShipKarmaForImpact(
+        TurnContext $context,
+        Nation $firingNation,
+        LaunchIntent $intent,
+        array $launch,
+        array $impact,
+    ): void {
+        $targetNationId = $impact['target_nation_id'] ?? null;
+        if (! is_int($targetNationId)
+            || $targetNationId === $intent->nationId
+            || ! array_key_exists($targetNationId, $context->state->karmaStartSnapshots())) {
+            return;
+        }
+        $context->state->recordHostileImpactReceived($targetNationId);
+        if (! array_key_exists($intent->nationId, $context->state->karmaStartSnapshots())) {
+            return;
+        }
+        $targetStartKarma = $context->state->karmaStartSnapshot($targetNationId);
+        $attackerStartKarma = $context->state->karmaStartSnapshot($intent->nationId);
+        $allianceMoney = 0;
+        if ($attackerStartKarma <= 0 && $targetStartKarma > 0) {
+            $perKarma = $context->ruleset->settings['karma']['alliance_reward_money_per_karma_per_impact'] ?? null;
+            if ($perKarma !== 1) {
+                throw new DomainException('The active ruleset has an invalid KARMA alliance reward contract.');
+            }
+            $allianceMoney = $targetStartKarma * $perKarma;
+            $context->state->addAllianceMoney($intent->nationId, $allianceMoney);
+        }
+        $points = ($impact['effect'] ?? null) === 'ship_sunk'
+            ? $this->shipMissileImpactSettings($context)['foreign_sink_karma']
+            : 0;
+        if ($points > 0) {
+            $context->state->addKarmaCrime($intent->nationId, $points);
+        }
+        $this->events->record($context, 'karma.missile_impact', null, [
+            'nation_id' => $intent->nationId,
+            'target_nation_id' => $targetNationId,
+            'queue_item_id' => $intent->queueItemId,
+            'missile_key' => $intent->definitionKey,
+            'effect' => $impact['effect'],
+            'ship_id' => $impact['ship_id'] ?? null,
+            'impact_category_points' => $points,
+            'crime_points' => $points,
+            'base_crime_points' => $points,
+            'collar_triggered' => false,
+            'final_crime_points' => $points,
+            'attacker_start_karma' => $attackerStartKarma,
+            'target_start_karma' => $targetStartKarma,
+            'turn_start_monster' => $launch['turn_start_monster'],
+            'missile_boundary_monster' => $launch['missile_boundary_monster'],
+            'anti_monster_context' => $intent->antiMonsterContext(),
+            'anti_monster_exempt' => false,
+            'alliance_money' => $allianceMoney,
+        ], 'admin');
+        if ($points > 0 && $firingNation->state === 'recovery') {
+            $this->nationLifecycle->exitRecoveryForCrime(
+                $context,
+                $firingNation,
+                $points,
                 (int) $intent->queueItemId,
             );
         }
@@ -777,12 +860,14 @@ final class MissileImpactResolver
         }
         $cell = $this->surfaceCellAt($space, $coordinate);
         $base['terrain_key'] = $cell->terrain->key;
-        $protectedNationId = $this->nationProtection->protectedNationId(
-            $context,
-            $coordinate->x,
-            $coordinate->y,
-            $firingNation->id,
-        );
+        $protectedNationId = $this->surfaceShipAt($cell) instanceof Ship
+            ? null
+            : $this->nationProtection->protectedNationId(
+                $context,
+                $coordinate->x,
+                $coordinate->y,
+                $firingNation->id,
+            );
         if ($protectedNationId !== null) {
             $protectedNation = Nation::query()->findOrFail($protectedNationId);
             $recoveryProtection = $context->state->recoveryTerritoryNationId(
@@ -928,6 +1013,125 @@ final class MissileImpactResolver
             ->with(['terrain', 'facility', 'ownerNation'])->lockForUpdate()->firstOrFail();
     }
 
+    private function surfaceShipAt(MapCell $cell): ?Ship
+    {
+        return $this->surfaceShipBatch?->shipAt((int) $cell->id);
+    }
+
+    /** @param array<string, mixed> $base
+     * @return array<string, mixed>
+     */
+    private function shipImpact(
+        TurnContext $context,
+        ?Nation $firingNation,
+        MapCell $cell,
+        array $base,
+        string $missileKey,
+        Ship $ship,
+    ): array {
+        $settings = $this->shipMissileImpactSettings($context);
+        $instantSink = in_array($missileKey, $settings['instant_sink_missile_keys'], true);
+        $damage = $instantSink
+            ? (int) $ship->current_hp
+            : ($settings['damage_by_missile_key'][$missileKey] ?? null);
+        if (! is_int($damage) || $damage < 1) {
+            throw new DomainException('The active Ruleset has no supported Ship impact for this missile.');
+        }
+        $definition = collect($this->surfaceShips->definitions($context->ruleset->settings))
+            ->first(static fn (SurfaceShipDefinition $candidate): bool => $candidate->key === $ship->ship_type_key);
+        $owner = $ship->relationLoaded('nation') ? $ship->nation : null;
+        if (! $definition instanceof SurfaceShipDefinition || ! $owner instanceof Nation) {
+            throw new DomainException('The turn-local Ship impact index is missing canonical Ship data.');
+        }
+        $beforeHp = (int) $ship->current_hp;
+        $sunk = $instantSink || $beforeHp <= $damage;
+        if ($sunk) {
+            $removed = $this->shipRemoval->sinkLockedAtCell($context, $cell, $ship, 'missile', [
+                'missile_key' => $missileKey,
+                'firing_nation_id' => $firingNation?->id,
+                'firing_nation_name' => $firingNation === null ? '箱庭連合' : $firingNation->name,
+                'damage' => $damage,
+                'before_hp' => $beforeHp,
+            ]);
+            if (! $removed instanceof Ship) {
+                throw new DomainException('The turn-local Ship disappeared during missile impact resolution.');
+            }
+            $this->surfaceShipBatch?->forget($ship, (int) $cell->id);
+        } else {
+            $ship->current_hp = $beforeHp - $damage;
+            $ship->version++;
+            $ship->save();
+            $this->events->record($context, 'ship.missile_damaged', $ship, [
+                'nation_id' => (int) $ship->nation_id,
+                'ship_id' => (int) $ship->id,
+                'ship_type_key' => $ship->ship_type_key,
+                'ship_name' => $definition->name,
+                'missile_key' => $missileKey,
+                'firing_nation_id' => $firingNation?->id,
+                'firing_nation_name' => $firingNation === null ? '箱庭連合' : $firingNation->name,
+                'x' => (int) $cell->x,
+                'y' => (int) $cell->y,
+                'damage' => $damage,
+                'current_hp' => (int) $ship->current_hp,
+            ], 'nation', 'warning');
+        }
+        $this->markCellChanged($context, $cell);
+        $effect = $sunk ? 'ship_sunk' : 'ship_damaged';
+        $afterHp = $sunk ? 0 : (int) $ship->current_hp;
+        $this->recordMeaningfulImpact(
+            $context,
+            $firingNation,
+            $cell,
+            $missileKey,
+            $effect,
+            [
+                'ship_id' => (int) $ship->id,
+                'ship_type_key' => $ship->ship_type_key,
+                'ship_name' => $definition->name,
+                'before_hp' => $beforeHp,
+                'after_hp' => $afterHp,
+                'damage' => $damage,
+                'underlying_preserved' => true,
+            ],
+            (int) $owner->id,
+            $owner->name,
+        );
+
+        return [
+            ...$base,
+            'meaningful' => true,
+            'effect' => $effect,
+            'target_nation_id' => (int) $owner->id,
+            'target_nation_name' => $owner->name,
+            'ship_id' => (int) $ship->id,
+            'ship_type_key' => $ship->ship_type_key,
+            'before_hp' => $beforeHp,
+            'after_hp' => $afterHp,
+            'damage' => $damage,
+            'underlying_preserved' => true,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function shipMissileImpactSettings(TurnContext $context): array
+    {
+        $settings = $context->ruleset->settings['surface_ships']['missile_impact'] ?? null;
+        $damage = is_array($settings) ? ($settings['damage_by_missile_key'] ?? null) : null;
+        if (! is_array($settings)
+            || count($settings) !== 3
+            || ! is_array($damage)
+            || count($damage) !== 3
+            || ($damage['missile'] ?? null) !== 1
+            || ($damage['pp_missile'] ?? null) !== 1
+            || ($damage['spp_missile'] ?? null) !== 1
+            || ($settings['instant_sink_missile_keys'] ?? null) !== ['land_destruction_missile']
+            || ($settings['foreign_sink_karma'] ?? null) !== 1) {
+            throw new DomainException('The active Ruleset has no supported Surface Ship missile contract.');
+        }
+
+        return $settings;
+    }
+
     /** @return Collection<int, MapCell> */
     private function coveringDefenses(MapSpace $space, GridCoordinate $center): Collection
     {
@@ -973,6 +1177,15 @@ final class MissileImpactResolver
         string $missileKey,
         ?int $queueItemId,
     ): array {
+        $ship = $this->surfaceShipAt($cell);
+        if ($ship instanceof Ship) {
+            $interception = $this->secretaryInterception($context, $cell, $base, $missileKey);
+            if ($interception !== null) {
+                return $interception;
+            }
+
+            return $this->shipImpact($context, $firingNation, $cell, $base, $missileKey, $ship);
+        }
         $resistance = $context->ruleset->settings['military']['seabed_base_resistance'] ?? null;
         $resistantFacilityKeys = is_array($resistance)
             ? ($resistance['facility_keys'] ?? [$resistance['facility_key'] ?? null])
@@ -1189,6 +1402,27 @@ final class MissileImpactResolver
         MapCell $cell,
         array $base,
     ): array {
+        $ship = $this->surfaceShipAt($cell);
+        if ($ship instanceof Ship) {
+            $interception = $this->secretaryInterception(
+                $context,
+                $cell,
+                $base,
+                'land_destruction_missile',
+            );
+            if ($interception !== null) {
+                return $interception;
+            }
+
+            return $this->shipImpact(
+                $context,
+                $firingNation,
+                $cell,
+                $base,
+                'land_destruction_missile',
+                $ship,
+            );
+        }
         $occupancy = MonsterOccupancy::query()->where('map_cell_id', $cell->id)
             ->lockForUpdate()->first();
         if ($occupancy === null) {
@@ -1237,7 +1471,8 @@ final class MissileImpactResolver
         if ($targetTerrain !== null) {
             $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', $targetTerrain)->firstOrFail());
         }
-        if (in_array($beforeTerrain, ['sea', 'shallow'], true) && $beforeFacility !== null) {
+        if ($cell->facility_definition_id === null
+            && in_array($cell->terrain->key, ['sea', 'shallow'], true)) {
             $cell->owner_nation_id = null;
             $cell->setRelation('ownerNation', null);
         }

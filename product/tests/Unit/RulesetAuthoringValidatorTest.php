@@ -15,8 +15,8 @@ class RulesetAuthoringValidatorTest extends TestCase
         $settings = config('hakoniwa.ruleset');
 
         $summary = $validator->validate($settings);
-        $this->assertSame('hakoniwa-2s-plus-v19', $summary['key']);
-        $this->assertSame(19, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v20', $summary['key']);
+        $this->assertSame(20, $summary['version']);
         $this->assertSame(count($settings['command_definitions']), $summary['commands']);
     }
 
@@ -82,6 +82,22 @@ class RulesetAuthoringValidatorTest extends TestCase
                     return $settings;
                 },
                 'display_order duplicates another effective monster order',
+            ],
+            'changed Surface Ship capacity' => [
+                static function (array $settings): array {
+                    $settings['surface_ships']['capacity_per_type'] = 4;
+
+                    return $settings;
+                },
+                'ruleset.surface_ships.capacity_per_type must be exactly 3 for v20',
+            ],
+            'changed Surface Ship gameplay value' => [
+                static function (array $settings): array {
+                    $settings['surface_ships']['definitions']['fishing']['maximum_hp'] = 2;
+
+                    return $settings;
+                },
+                'ruleset.surface_ships.definitions.fishing differs from the Owner-approved v20 Ship contract',
             ],
         ];
     }

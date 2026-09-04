@@ -4,7 +4,7 @@
 
 この文書は`secretary-underground-alpha-v0` combat laboratoryからapplication `3.3.0`の正式runtime、Trial 1・覚醒、装備Shop・宝物庫、アクセサリー3枠、浅層・黒晶洞とgenerated equipment drop、再振り・宝物庫一括売却、およびapplication `3.4.0`のcustom AIまでを扱うcurrent task-specific architecture authorityである。manual combat、Trial 2以降、unique、enhancement、enchant、party、marketは定義しない。
 
-current repository releaseのapplication versionは`3.4.0`である。surface Ruleset `hakoniwa-2s-plus-v19`とUnderground laboratory/runtime identityは別物であり、custom AIのためにSurface Rulesetを更新しない。profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
+current repository releaseのapplication versionは`3.5.0`である。surface Ruleset `hakoniwa-2s-plus-v20`とUnderground laboratory/runtime identityは別物であり、custom AIのためにSurface Rulesetを更新していない。profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 

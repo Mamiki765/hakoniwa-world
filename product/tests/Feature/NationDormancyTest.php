@@ -7,12 +7,16 @@ use App\Application\NationCreationService;
 use App\Application\NationQueuedMeaningfulActivityQuery;
 use App\Application\TurnRunner;
 use App\Application\Underground\UndergroundProfileService;
+use App\Domain\Map\GridCoordinate;
+use App\Domain\Map\MapCellStateService;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\NationMembership;
 use App\Models\NationResource;
 use App\Models\NationUndergroundFacility;
 use App\Models\Secretary;
+use App\Models\Ship;
+use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
@@ -49,6 +53,42 @@ final class NationDormancyTest extends TestCase
         MapCell::query()->where('owner_nation_id', $nation->id)
             ->where('facility_definition_id', $farmId)
             ->update(['facility_definition_id' => null, 'facility_scale' => null]);
+        $capital = $nation->capital()->firstOrFail();
+        $origin = new GridCoordinate((int) $capital->x, (int) $capital->y);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $radius = (int) $ruleset->settings['nation_lifecycle']['dormant_protection_radius'];
+        $candidateTerrainKeys = $ruleset->settings['nation_lifecycle']['emergency_farm']['candidate_terrain_keys'];
+        $occupiedCandidate = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)
+            ->where(function ($query) use ($nation): void {
+                $query->whereNull('owner_nation_id')->orWhere('owner_nation_id', $nation->id);
+            })
+            ->whereNull('facility_definition_id')->whereDoesntHave('monsterOccupancy')
+            ->whereHas('terrain', fn ($query) => $query->whereIn('key', $candidateTerrainKeys))
+            ->with('terrain')->get()
+            ->filter(fn (MapCell $cell): bool => $origin->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= $radius)
+            ->sort(fn (MapCell $left, MapCell $right): int => [
+                $origin->distanceTo(new GridCoordinate($left->x, $left->y)), $left->y, $left->x,
+            ] <=> [
+                $origin->distanceTo(new GridCoordinate($right->x, $right->y)), $right->y, $right->x,
+            ])->first();
+        $this->assertInstanceOf(MapCell::class, $occupiedCandidate);
+        app(MapCellStateService::class)->transitionTerrain(
+            $occupiedCandidate,
+            TerrainDefinition::query()->where('key', 'sea')->firstOrFail(),
+        );
+        $occupiedCandidate->version++;
+        $occupiedCandidate->save();
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $occupiedCandidate->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
 
         $response = $this->actingAs($owner)->postJson($endpoint, ['days' => 1])
             ->assertOk()
@@ -65,6 +105,9 @@ final class NationDormancyTest extends TestCase
         $this->assertSame(10_000, (int) $response->json('data.food_total_tons'));
         $this->assertSame(1, MapCell::query()->where('owner_nation_id', $nation->id)
             ->where('facility_definition_id', $farmId)->count());
+        $this->assertSame($occupiedCandidate->id, $ship->fresh()->map_cell_id);
+        $this->assertSame('sea', $occupiedCandidate->fresh()->terrain()->value('key'));
+        $this->assertNull($occupiedCandidate->fresh()->facility_definition_id);
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'nation.dormant',
             'actor_user_id' => $owner->id,

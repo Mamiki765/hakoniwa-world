@@ -7,9 +7,11 @@ use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\SeaAreaNameResolver;
 use App\Domain\Monster\MonsterHardening;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\Nation;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 
 final class MapCellPresenter
@@ -26,14 +28,20 @@ final class MapCellPresenter
         private readonly MissileBaseRules $missiles,
         private readonly MonsterHardening $hardening,
         private readonly SeaAreaNameResolver $seaAreas,
+        private readonly SurfaceShipCatalog $ships,
     ) {}
 
     /** @return array<string, mixed> */
-    public function present(MapCell $cell, ?int $viewerNationId, int $currentTurn, ?string $theme = null): array
-    {
+    public function present(
+        MapCell $cell,
+        ?int $viewerNationId,
+        int $currentTurn,
+        ?string $theme = null,
+        bool $withinViewerVisibility = false,
+    ): array {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
-        $isDisguised = self::isDisguised($cell, $viewerNationId);
-        $visibleState = self::visibleState($cell, $viewerNationId);
+        $isDisguised = self::isDisguised($cell, $viewerNationId, $withinViewerVisibility);
+        $visibleState = self::visibleState($cell, $viewerNationId, $withinViewerVisibility);
         $terrain = $visibleState['terrain_key'] === $cell->terrain->key
             ? $cell->terrain
             : $this->terrain($visibleState['terrain_key']);
@@ -45,13 +53,14 @@ final class MapCellPresenter
             : ($visibleState['facility_key'] === $cell->facility?->key
                 ? $cell->facility
                 : $this->facility($visibleState['facility_key']));
+        $ship = $this->ship($cell, $viewerNationId);
         $displayDefinition = $facility ?? $terrain;
-        $displayAssetKey = $facility?->key === 'monument' && $cell->monumentDefinition !== null
+        $displayAssetKey = $ship['asset_key'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->asset_key
-            : $displayDefinition->asset_key;
-        $displayName = $facility?->key === 'monument' && $cell->monumentDefinition !== null
+            : $displayDefinition->asset_key);
+        $displayName = $ship['name'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->name
-            : $displayDefinition->name;
+            : $displayDefinition->name);
         $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, theme: $theme);
         $seaAreaName = $this->seaAreas->forCoordinate($cell->x, $cell->y);
         $details = $this->details($cell, $isOwner, $isDisguised, $seaAreaName);
@@ -69,11 +78,13 @@ final class MapCellPresenter
             'owner_nation_id' => $visibleState['owner_nation_id'],
             'owner_nation_number' => $ownerNation?->nation_number,
             'owner_name' => $ownerNation?->name,
+            'within_viewer_visibility' => $withinViewerVisibility,
             'details' => $details,
+            'ship' => $ship,
             'monster' => $monster,
             'asset' => $layers['completed'],
             'overlays' => $layers['overlays'],
-            'aria_label' => $this->ariaLabel($cell, $displayName, $ownerNation, $details, $monster),
+            'aria_label' => $this->ariaLabel($cell, $displayName, $ownerNation, $details, $ship, $monster),
             // Secret-only state changes must not alter a non-owner representation version.
             'version' => $isOwner ? $cell->version : 1,
             'updated_at' => $isOwner ? $cell->updated_at?->toIso8601String() : null,
@@ -81,11 +92,16 @@ final class MapCellPresenter
     }
 
     /** @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null} */
-    public static function visibleState(MapCell $cell, ?int $viewerNationId): array
-    {
+    public static function visibleState(
+        MapCell $cell,
+        ?int $viewerNationId,
+        bool $withinViewerVisibility = false,
+    ): array {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
-        $isDisguised = self::isDisguised($cell, $viewerNationId);
-        $impersonatedFacilityKey = ! $isOwner && is_string($cell->facility?->metadata['display_as_facility_key'] ?? null)
+        $isDisguised = self::isDisguised($cell, $viewerNationId, $withinViewerVisibility);
+        $impersonatedFacilityKey = ! $isOwner
+            && ! $withinViewerVisibility
+            && is_string($cell->facility?->metadata['display_as_facility_key'] ?? null)
             ? $cell->facility->metadata['display_as_facility_key']
             : null;
 
@@ -143,6 +159,40 @@ final class MapCellPresenter
         ];
     }
 
+    /** @return array<string, mixed>|null */
+    private function ship(MapCell $cell, ?int $viewerNationId): ?array
+    {
+        $ship = $cell->ship;
+        if (! $ship instanceof Ship) {
+            return null;
+        }
+        $ruleset = $ship->rulesetVersion;
+        $definition = collect($this->ships->definitions($ruleset->settings))
+            ->first(static fn ($candidate): bool => $candidate->key === $ship->ship_type_key);
+        if ($definition === null) {
+            return null;
+        }
+        $owner = $ship->nation;
+        $isOwner = $viewerNationId !== null && $viewerNationId === $ship->nation_id;
+
+        return [
+            'id' => $ship->id,
+            'key' => $definition->key,
+            'name' => $definition->name,
+            'asset_key' => $definition->assetKey,
+            'current_hp' => $ship->current_hp,
+            'max_hp' => $ship->max_hp,
+            'public_state' => Ship::STATE_ACTIVE,
+            'owner_nation' => [
+                'nation_number' => $owner->nation_number,
+                'name' => $owner->name,
+            ],
+            'is_owner' => $isOwner,
+            'heading' => $isOwner ? $ship->heading : null,
+            'version' => $isOwner ? $ship->version : null,
+        ];
+    }
+
     /** @return array<int, array{key: string, label: string, value: int|string, unit: string|null, formatted: string, visibility: string}> */
     private function details(MapCell $cell, bool $isOwner, bool $isDisguised, string $seaAreaName): array
     {
@@ -192,6 +242,7 @@ final class MapCellPresenter
 
     /**
      * @param  array<int, array{label: string, formatted: string}>  $details
+     * @param  array<string, mixed>|null  $ship
      * @param  array<string, mixed>|null  $monster
      */
     private function ariaLabel(
@@ -199,9 +250,20 @@ final class MapCellPresenter
         string $displayName,
         ?Nation $ownerNation,
         array $details,
+        ?array $ship,
         ?array $monster,
     ): string {
         $suffix = array_map(static fn (array $detail): string => $detail['label'].' '.$detail['formatted'], $details);
+        if ($ship !== null) {
+            $suffix[] = sprintf(
+                '船 %s HP %d/%d 所有 %s N%d',
+                $ship['name'],
+                $ship['current_hp'],
+                $ship['max_hp'],
+                $ship['owner_nation']['name'],
+                $ship['owner_nation']['nation_number'],
+            );
+        }
         if ($monster !== null) {
             $suffix[] = sprintf(
                 '怪獣 %s HP %d %s%s',
@@ -232,9 +294,13 @@ final class MapCellPresenter
         return $this->facilities[$key] ??= FacilityDefinition::query()->where('key', $key)->firstOrFail();
     }
 
-    private static function isDisguised(MapCell $cell, ?int $viewerNationId): bool
-    {
+    private static function isDisguised(
+        MapCell $cell,
+        ?int $viewerNationId,
+        bool $withinViewerVisibility,
+    ): bool {
         return $cell->facility?->visibility_policy === FacilityVisibilityPolicy::Disguised->value
+            && ! $withinViewerVisibility
             && ($viewerNationId === null || $viewerNationId !== $cell->owner_nation_id);
     }
 }

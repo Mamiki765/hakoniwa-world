@@ -83,7 +83,7 @@ final class MonsterWorldSpawnService
         }
 
         $surfaceCells = MapCell::query()->where('map_space_id', $space->id)
-            ->with(['terrain', 'facility'])->orderBy('id')->lockForUpdate()->get();
+            ->with(['terrain', 'facility', 'ship'])->orderBy('id')->lockForUpdate()->get();
         $blockedByLand = [];
         $minimumDistance = (int) $settings['minimum_land_distance'];
         foreach ($surfaceCells as $cell) {
@@ -103,6 +103,7 @@ final class MonsterWorldSpawnService
                 || $cell->owner_nation_id !== null
                 || $cell->population !== 0
                 || $cell->facility_definition_id !== null
+                || $cell->ship !== null
                 || isset($occupiedCellIds[$cell->id])) {
                 return false;
             }

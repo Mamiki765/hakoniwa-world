@@ -10,7 +10,8 @@ const detail = (key: string, label: string, value: number | string, formatted: s
 function cell(overrides: Partial<MapCell> = {}): MapCell {
     return {
         x: 3, y: -2, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
-        display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '試験国', details: [],
+        display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '試験国',
+        within_viewer_visibility: false, details: [],
         monster: null,
         asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平地', fallback_style: 'tile-plain' },
         overlays: [], aria_label: 'x 3 y -2 平地 所有 試験国', version: 1, updated_at: null,
@@ -20,10 +21,20 @@ function cell(overrides: Partial<MapCell> = {}): MapCell {
 
 describe('viewer-safe cell details', () => {
     it('shows the per-World nation number instead of the internal database id', () => {
-        const wrapper = mount(CellDetails, { props: { cell: cell() } });
+        const wrapper = mount(CellDetails, { props: { cell: cell({
+            display_name: '観光船',
+            ship: {
+                id: 7, key: 'tourist', name: '観光船', asset_key: 'ship.tourist',
+                current_hp: 2, max_hp: 2, public_state: 'active',
+                owner_nation: { nation_number: 1, name: '試験国' },
+                is_owner: true, heading: null, version: 1,
+            },
+        }) } });
 
         expect(wrapper.text()).toContain('N1');
         expect(wrapper.text()).not.toContain('N18');
+        expect(wrapper.text()).toContain('船HP2/2');
+        expect(wrapper.text()).toContain('船舶所有試験国（N1）');
     });
 
     it.each([

@@ -11,11 +11,13 @@ enum CommandFailureReason: string
     case InvalidTerrain = 'invalid_terrain';
     case MissingAdjacentTerritory = 'missing_adjacent_territory';
     case NoAdjacentOwnedLand = 'no_adjacent_owned_land';
+    case NoAdjacentDeepSea = 'no_adjacent_deep_sea';
     case ForeignAdjacentWater = 'foreign_adjacent_water';
     case ForeignOwned = 'foreign_owned';
     case NotOwned = 'not_owned';
     case AlreadyOwned = 'already_owned';
     case OccupiedByMonster = 'occupied_by_monster';
+    case OccupiedByShip = 'occupied_by_ship';
     case FacilityExists = 'facility_exists';
     case InvalidFacility = 'invalid_facility';
     case InvalidFacilityScale = 'invalid_facility_scale';
@@ -25,6 +27,9 @@ enum CommandFailureReason: string
     case SameNationTarget = 'same_nation_target';
     case InvalidParameter = 'invalid_parameter';
     case NoLaunchBase = 'no_launch_base';
+    case NoPort = 'no_port';
+    case ShipCapacityReached = 'ship_capacity_reached';
+    case NoShipSpawnCell = 'no_ship_spawn_cell';
     case RulesetMismatch = 'ruleset_mismatch';
     case CeasefireProhibited = 'ceasefire_prohibited';
 }

@@ -15,6 +15,7 @@ use App\Models\NationMembership;
 use App\Models\NationResource;
 use App\Models\NationResourceSalePolicy;
 use App\Models\RulesetVersion;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\World;
 use DomainException;
@@ -31,7 +32,7 @@ final class NationAbandonmentOperation
     /**
      * The caller owns the World/Nation transaction and authorization boundary.
      *
-     * @return array{nation_id: int, state: string, owned_cell_count: int, neutral_cleanup_cell_count: int, monster_removed_count: int, changed_chunk_count: int}
+     * @return array{nation_id: int, state: string, owned_cell_count: int, neutral_cleanup_cell_count: int, monster_removed_count: int, ship_removed_count: int, changed_chunk_count: int}
      */
     public function execute(
         World $world,
@@ -91,7 +92,11 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
 
         $ownedCellCount = $cells->where('owner_nation_id', $nation->id)->count();
         $neutralCleanupCellCount = $cells->whereNull('owner_nation_id')->count();
-        $chunkIds = $cells->pluck('map_chunk_id')->unique()->sort()->values()->all();
+        $ships = Ship::query()->where('nation_id', $nation->id)->where('state', Ship::STATE_ACTIVE)
+            ->orderBy('id')->lockForUpdate()->get();
+        $shipChunkIds = MapCell::query()->whereIn('id', $ships->pluck('map_cell_id')->filter())
+            ->pluck('map_chunk_id');
+        $chunkIds = $cells->pluck('map_chunk_id')->merge($shipChunkIds)->unique()->sort()->values()->all();
         $chunks = $chunkIds === []
             ? collect()
             : MapChunk::query()->whereIn('id', $chunkIds)->orderBy('id')->lockForUpdate()->get();
@@ -105,6 +110,16 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
                 $monsterRemovedCount++;
             }
         }
+        $removedAt = now();
+        foreach ($ships as $ship) {
+            $ship->map_cell_id = null;
+            $ship->state = Ship::STATE_REMOVED;
+            $ship->removal_reason = 'nation_abandoned';
+            $ship->removed_at = $removedAt;
+            $ship->version++;
+            $ship->save();
+        }
+        $shipRemovedCount = $ships->count();
 
         foreach ($cells as $cell) {
             $this->cellStates->setFacility($cell, null);
@@ -178,6 +193,7 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
                 'affected_owned_cell_count' => $ownedCellCount,
                 'affected_neutral_cleanup_cell_count' => $neutralCleanupCellCount,
                 'removed_monster_count' => $monsterRemovedCount,
+                'removed_ship_count' => $shipRemovedCount,
                 'changed_chunk_count' => count($chunkIds),
             ], JSON_THROW_ON_ERROR),
             'occurred_at' => $occurredAt,
@@ -191,6 +207,7 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
             'owned_cell_count' => $ownedCellCount,
             'neutral_cleanup_cell_count' => $neutralCleanupCellCount,
             'monster_removed_count' => $monsterRemovedCount,
+            'ship_removed_count' => $shipRemovedCount,
             'changed_chunk_count' => count($chunkIds),
         ];
     }

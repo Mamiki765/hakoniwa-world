@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Application\CapitalPlacementService;
 use App\Application\InitialIslandGenerator;
 use App\Application\InitialIslandPlan;
 use App\Application\NationCreationService;
@@ -13,6 +14,7 @@ use App\Models\Nation;
 use App\Models\NationCapital;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
+use App\Models\Ship;
 use App\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -91,6 +93,25 @@ class NationCreationTest extends TestCase
         $world = $this->lightweightWorld();
         $service = app(NationCreationService::class);
         $first = $service->create(User::factory()->create(), $world, '第一国', '試験島主');
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $blockedCenter = app(CapitalPlacementService::class)->candidates($space, 1)[0];
+        $blockedCell = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->where('x', $blockedCenter->x)
+            ->where('y', $blockedCenter->y)
+            ->firstOrFail();
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $first->id,
+            'map_cell_id' => $blockedCell->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
         $second = $service->create(User::factory()->create(), $world, '第二国', '試験島主');
         $a = new GridCoordinate($first->capital->x, $first->capital->y);
         $b = new GridCoordinate($second->capital->x, $second->capital->y);
@@ -99,6 +120,8 @@ class NationCreationTest extends TestCase
         $this->assertSame(2, $second->nation_number);
         $this->assertGreaterThanOrEqual(12, $a->distanceTo($b));
         $this->assertNotSame($first->capital->map_cell_id, $second->capital->map_cell_id);
+        $this->assertNotSame($blockedCell->id, $second->capital->map_cell_id);
+        $this->assertSame($blockedCell->id, $ship->fresh()->map_cell_id);
         $this->assertSame(38, MapCell::query()->whereNotNull('owner_nation_id')->count());
     }
 

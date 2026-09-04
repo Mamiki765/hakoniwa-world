@@ -11,7 +11,10 @@ use DomainException;
 
 final class MapChunkService
 {
-    public function __construct(private readonly MapCellPresenter $presenter) {}
+    public function __construct(
+        private readonly MapCellPresenter $presenter,
+        private readonly SurfaceVisibilityService $visibility,
+    ) {}
 
     /** @return array<string, mixed> */
     public function present(MapSpace $mapSpace, int $chunkX, int $chunkY, ?int $viewerNationId): array
@@ -26,6 +29,8 @@ final class MapChunkService
                 'facility',
                 'monumentDefinition',
                 'ownerNation:id,nation_number,name',
+                'ship.nation:id,nation_number,name',
+                'ship.rulesetVersion:id,settings',
                 'monsterOccupancy.monster.definition',
             ])
             ->orderBy('y')
@@ -51,6 +56,7 @@ final class MapChunkService
             ? $lifecycle['dormant_protection_radius'] : 0;
         $theme = is_string($lifecycle['dormant_visual_theme'] ?? null)
             ? $lifecycle['dormant_visual_theme'] : null;
+        $visibleCoordinates = $this->visibility->visibleCoordinates($mapSpace, $cells, $viewerNationId);
         $dormantCapitals = NationCapital::query()
             ->join('nations', 'nations.id', '=', 'nation_capitals.nation_id')
             ->where('nations.world_id', $mapSpace->world_id)->where('nations.state', 'dormant')
@@ -62,6 +68,7 @@ final class MapChunkService
             $dormantCapitals->contains(fn (NationCapital $capital): bool => (new GridCoordinate($capital->x, $capital->y))
                 ->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= $radius)
                 ? $theme : null,
+            isset($visibleCoordinates[$cell->x.':'.$cell->y]),
         ))->values();
         $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
 

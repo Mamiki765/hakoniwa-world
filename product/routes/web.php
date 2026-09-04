@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
+use App\Http\Controllers\Api\SurfaceShipController;
 use App\Http\Controllers\Api\TradingPostController;
 use App\Http\Controllers\Api\UndergroundEquipmentController;
 use App\Http\Controllers\Api\UndergroundIntroController;
@@ -140,6 +141,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/nations/{nation}/message-board', [MessageBoardController::class, 'storePublic']);
     Route::post('/nations/{nation}/message-board/secret', [MessageBoardController::class, 'storeSecret']);
     Route::patch('/nations/{nation}/profile', [NationProfileController::class, 'update']);
+    Route::patch('/nations/{nation}/ships/{ship}/heading', [SurfaceShipController::class, 'updateHeading']);
     Route::post('/nations/{nation}/abandon', [NationAbandonmentController::class, 'store']);
     Route::post('/nations/{nation}/dormancy', [NationDormancyController::class, 'store']);
     Route::get('/me/nation', [ApiController::class, 'myNation']);

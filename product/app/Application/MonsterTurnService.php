@@ -8,6 +8,7 @@ use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Monster\MonsterHardening;
 use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -30,6 +31,7 @@ final class MonsterTurnService
         private readonly DisasterTurnService $disasters,
         private readonly MonsterBehaviorResolver $behaviors,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly SurfaceShipRemovalService $shipRemoval,
     ) {}
 
     public function load(TurnContext $context): MonsterTurnBatch
@@ -66,6 +68,7 @@ final class MonsterTurnService
         array $cellsByCoordinate,
         MonsterTurnBatch $batch,
         ?DisasterMutableCellIndex $disasterCells = null,
+        ?SurfaceShipTurnBatch $ships = null,
     ): bool {
         $occupancy = $batch->occupancyAt($cell->id);
         if ($occupancy === null) {
@@ -88,7 +91,7 @@ final class MonsterTurnService
         $behavior = $batch->behaviorForDefinition((int) $definition->id);
         if ($behavior->specialAction === MonsterBehaviorResolver::NUCLEAR_AT_HP_ONE
             && $monster->current_hp === 1) {
-            $this->nuclearSelfDestruct($context, $space, $cell, $batch, $disasterCells);
+            $this->nuclearSelfDestruct($context, $space, $cell, $batch, $disasterCells, $ships);
 
             return true;
         }
@@ -126,11 +129,31 @@ final class MonsterTurnService
             if ($destination === null || $batch->occupancyAt($destination->id) !== null) {
                 continue;
             }
+            $facilityKey = $destination->facility?->key;
+            $isDefense = $facilityKey === ($movement['defense_facility_key'] ?? null);
+            if (! $isDefense && (in_array($destination->terrain->key, $movement['blocked_terrain_keys'] ?? [], true)
+                || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true))) {
+                continue;
+            }
+            $ship = $ships?->shipAt((int) $destination->id);
+            if ($ships === null) {
+                $this->shipRemoval->sinkAtCell($context, $destination, 'monster_collision', [
+                    'monster_instance_id' => (int) $monster->id,
+                    'monster_key' => $definition->key,
+                ]);
+            } elseif ($ship !== null) {
+                $removed = $this->shipRemoval->sinkLockedAtCell($context, $destination, $ship, 'monster_collision', [
+                    'monster_instance_id' => (int) $monster->id,
+                    'monster_key' => $definition->key,
+                ]);
+                if ($removed !== null) {
+                    $ships->forget($ship, (int) $destination->id);
+                }
+            }
             if ($this->nationProtection->protects($context, $destination->x, $destination->y)) {
                 continue;
             }
-            $facilityKey = $destination->facility?->key;
-            if ($facilityKey === ($movement['defense_facility_key'] ?? null)) {
+            if ($isDefense) {
                 $this->defenseSelfDestruct(
                     $context,
                     $space,
@@ -138,13 +161,10 @@ final class MonsterTurnService
                     $destination,
                     $batch,
                     $cellsByCoordinate,
+                    $ships,
                 );
 
                 return true;
-            }
-            if (in_array($destination->terrain->key, $movement['blocked_terrain_keys'] ?? [], true)
-                || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true)) {
-                continue;
             }
             if ($behavior->movement === MonsterBehaviorResolver::WATER_NEUTRALIZING) {
                 $this->moveAndNeutralizeToSea($context, $cell, $destination, $occupancy, $batch);
@@ -224,6 +244,7 @@ final class MonsterTurnService
         MapCell $origin,
         MonsterTurnBatch $batch,
         ?DisasterMutableCellIndex $disasterCells,
+        ?SurfaceShipTurnBatch $ships,
     ): void {
         $occupancy = $batch->occupancyAt($origin->id)
             ?? throw new DomainException('Nuclear self-destruct lost the monster occupancy.');
@@ -266,6 +287,7 @@ final class MonsterTurnService
             'nuclear_self_destruct_blast',
             $metadata,
             $disasterCells,
+            $ships,
         );
     }
 
@@ -323,6 +345,7 @@ final class MonsterTurnService
         MapCell $defense,
         MonsterTurnBatch $batch,
         array $cellsByCoordinate,
+        ?SurfaceShipTurnBatch $ships,
     ): void {
         $occupancy = $batch->occupancyAt($origin->id);
         if ($occupancy === null) {
@@ -353,6 +376,7 @@ final class MonsterTurnService
             new GridCoordinate($defense->x, $defense->y),
             $settings,
             'defense_self_destruct',
+            shipBatch: $ships,
         );
         $this->events->record($context, 'disaster.triggered', $context->world, [
             'disaster_key' => 'defense_self_destruct',

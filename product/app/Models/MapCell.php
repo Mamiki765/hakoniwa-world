@@ -34,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property-read MonumentDefinition|null $monumentDefinition
  * @property-read Nation|null $ownerNation
  * @property-read MonsterOccupancy|null $monsterOccupancy
+ * @property-read Ship|null $ship
  */
 class MapCell extends Model
 {
@@ -80,5 +81,11 @@ class MapCell extends Model
     public function monsterOccupancy(): HasOne
     {
         return $this->hasOne(MonsterOccupancy::class, 'map_cell_id');
+    }
+
+    /** @return HasOne<Ship, $this> */
+    public function ship(): HasOne
+    {
+        return $this->hasOne(Ship::class, 'map_cell_id')->where('state', Ship::STATE_ACTIVE);
     }
 }
