@@ -76,6 +76,8 @@ final class SurfaceShipTurnService
             }
         }
 
+        // Port availability is fixed when randomized Surface cell processing starts.
+        // A port lost later in this phase stops its Nation's Ships from the next turn.
         $portNationIds = MapCell::query()
             ->where('map_space_id', $space->id)
             ->whereIn('owner_nation_id', $ships->pluck('nation_id')->unique()->values()->all())

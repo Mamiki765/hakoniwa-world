@@ -8,6 +8,7 @@ use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Monster\MonsterHardening;
 use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -67,6 +68,7 @@ final class MonsterTurnService
         array $cellsByCoordinate,
         MonsterTurnBatch $batch,
         ?DisasterMutableCellIndex $disasterCells = null,
+        ?SurfaceShipTurnBatch $ships = null,
     ): bool {
         $occupancy = $batch->occupancyAt($cell->id);
         if ($occupancy === null) {
@@ -147,10 +149,21 @@ final class MonsterTurnService
                 || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true)) {
                 continue;
             }
-            $this->shipRemoval->sinkAtCell($context, $destination, 'monster_collision', [
-                'monster_instance_id' => (int) $monster->id,
-                'monster_key' => $definition->key,
-            ]);
+            $ship = $ships?->shipAt((int) $destination->id);
+            if ($ships === null) {
+                $this->shipRemoval->sinkAtCell($context, $destination, 'monster_collision', [
+                    'monster_instance_id' => (int) $monster->id,
+                    'monster_key' => $definition->key,
+                ]);
+            } elseif ($ship !== null) {
+                $removed = $this->shipRemoval->sinkLockedAtCell($context, $destination, $ship, 'monster_collision', [
+                    'monster_instance_id' => (int) $monster->id,
+                    'monster_key' => $definition->key,
+                ]);
+                if ($removed !== null) {
+                    $ships->forget($ship, (int) $destination->id);
+                }
+            }
             if ($behavior->movement === MonsterBehaviorResolver::WATER_NEUTRALIZING) {
                 $this->moveAndNeutralizeToSea($context, $cell, $destination, $occupancy, $batch);
 

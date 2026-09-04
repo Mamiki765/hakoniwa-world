@@ -550,6 +550,7 @@ final class CompleteTurnEngine
                     $cellsByCoordinate,
                     $monsterBatch,
                     $disasterCells,
+                    $shipBatch,
                 )) {
                 continue;
             }
@@ -687,6 +688,7 @@ final class CompleteTurnEngine
                     $cellsByCoordinate,
                     $monsterBatch,
                     $disasterCells,
+                    $shipBatch,
                 );
             }
         }

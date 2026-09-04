@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
+use App\Application\MonsterTurnService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\SecretaryTurnService;
+use App\Application\SurfaceShipTurnService;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -96,7 +98,7 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(1, $user->secretary()->firstOrFail()->skills()
             ->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->value('experience'));
 
-        [$fuelOrigin, $fuelDestination] = $this->eastwardSeaLine(
+        [$fuelOrigin, $fuelDestination, $fuelLater] = $this->eastwardSeaLine(
             $space,
             [$origin->id, $destination->id, $later->id],
         );
@@ -146,6 +148,57 @@ class TurnCellProcessingTest extends TestCase
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
             $fuelShip->fresh()->map_cell_id,
+        ]);
+
+        $nation->update(['state' => 'active', 'state_started_turn' => null, 'resume_at_turn' => null]);
+        [$snapshotContext] = $this->context(
+            $world,
+            $nation->fresh(),
+            [$fuelOrigin->id, $fuelDestination->id],
+            hash('sha256', 'port availability phase snapshot'),
+        );
+        $shipService = app(SurfaceShipTurnService::class);
+        $shipBatch = $shipService->load($snapshotContext, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($snapshotContext);
+        $port = $port->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->setFacility($port, null);
+        $port->version++;
+        $port->save();
+        $cells = MapCell::query()->whereIn('id', [$fuelOrigin->id, $fuelDestination->id])
+            ->with(['terrain', 'facility'])->get();
+        $cellsByCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
+            $cell->x.':'.$cell->y => $cell,
+        ])->all();
+        $shipService->processCell(
+            $snapshotContext,
+            $space,
+            $cells->firstWhere('id', $fuelOrigin->id),
+            $cellsByCoordinate,
+            $monsterBatch,
+            $shipBatch,
+        );
+        $this->assertSame([1, 0, $fuelDestination->id, 4], [
+            $shipBatch->metrics()['ship_moves'],
+            $shipBatch->metrics()['ship_no_port'],
+            $fuelShip->fresh()->map_cell_id,
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $oil->id)->value('amount'),
+        ]);
+
+        [$nextTurnContext] = $this->context(
+            $world,
+            $nation->fresh(),
+            [$fuelDestination->id, $fuelLater->id],
+            hash('sha256', 'port loss applies next turn'),
+        );
+        $afterPortLoss = app(CompleteTurnEngine::class)->execute('process_cells', $nextTurnContext)->metrics;
+        $this->assertSame([1, 0, 1, $fuelDestination->id, 4], [
+            $afterPortLoss['ship_events'],
+            $afterPortLoss['ship_moves'],
+            $afterPortLoss['ship_no_port'],
+            $fuelShip->fresh()->map_cell_id,
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $oil->id)->value('amount'),
         ]);
     }
 
