@@ -17,6 +17,8 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V19_CHECKSUM = 'b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9';
 
+    private const V20_CHECKSUM = '3eb7838a68a4d2735871221d36c1de11cc20dcb341c1001b7f79380d20c6b942';
+
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
     private const V16_COVERAGE = [
         'domains' => 10,
@@ -26,35 +28,39 @@ final class CurrentRulesetContractTest extends TestCase
         'flavor' => 176,
     ];
 
-    public function test_normal_config_loads_v19_while_preserving_the_explicit_v16_v17_and_v18_contracts(): void
+    public function test_normal_config_loads_v20_while_preserving_the_explicit_v16_through_v19_contracts(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
         $v16 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
         $v17 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v17.php');
         $v18 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
+        $v19 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v19.php');
         $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php'));
 
         $this->assertIsString($source);
         $this->assertSame(10, substr_count($source, "require __DIR__.'/current/"));
         $this->assertLessThan(100, substr_count($source, "\n"));
-        $this->assertSame(['hakoniwa-2s-plus-v19'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v19']);
+        $this->assertSame(['hakoniwa-2s-plus-v20'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v20']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v19', $current['key']);
-        $this->assertSame(19, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v20', $current['key']);
+        $this->assertSame(20, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
         $this->assertSame(self::V16_CHECKSUM, $this->checksum($v16));
         $this->assertSame(self::V17_CHECKSUM, $this->checksum($v17));
         $this->assertSame(self::V18_CHECKSUM, $this->checksum($v18));
-        $this->assertSame(self::V19_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V19_CHECKSUM, $this->checksum($v19));
+        $this->assertSame(self::V20_CHECKSUM, $this->checksum($current));
         $v18UnderseaCity = collect($v18['command_definitions'])->firstWhere('key', 'build_undersea_city');
-        $v19UnderseaCity = collect($current['command_definitions'])->firstWhere('key', 'build_undersea_city');
+        $v19UnderseaCity = collect($v19['command_definitions'])->firstWhere('key', 'build_undersea_city');
+        $v20UnderseaCity = collect($current['command_definitions'])->firstWhere('key', 'build_undersea_city');
         $territoryAbandon = collect($current['command_definitions'])->firstWhere('key', 'territory_abandon');
         $this->assertSame(260, $v18UnderseaCity['sort_order']);
         $this->assertSame(125, $v19UnderseaCity['sort_order']);
+        $this->assertSame(125, $v20UnderseaCity['sort_order']);
         $this->assertSame(
             ['build_defense_facility', 'build_undersea_city', 'build_seabed_base', 'build_monument'],
             collect($current['command_definitions'])
@@ -91,8 +97,8 @@ final class CurrentRulesetContractTest extends TestCase
         );
 
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v19', $summary['key']);
-        $this->assertSame(19, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v20', $summary['key']);
+        $this->assertSame(20, $summary['version']);
         $this->assertSame(count($current['command_definitions']), $summary['commands']);
         $this->assertSame(count($current['production_definitions']), $summary['production']);
     }

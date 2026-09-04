@@ -1237,7 +1237,8 @@ final class MissileImpactResolver
         if ($targetTerrain !== null) {
             $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', $targetTerrain)->firstOrFail());
         }
-        if (in_array($beforeTerrain, ['sea', 'shallow'], true) && $beforeFacility !== null) {
+        if ($cell->facility_definition_id === null
+            && in_array($cell->terrain->key, ['sea', 'shallow'], true)) {
             $cell->owner_nation_id = null;
             $cell->setRelation('ownerNation', null);
         }

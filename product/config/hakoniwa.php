@@ -1,6 +1,6 @@
 <?php
 
-$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v19.php';
+$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v20.php';
 
 return [
     'application_version' => '3.4.0',

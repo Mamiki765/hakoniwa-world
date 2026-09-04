@@ -1155,6 +1155,7 @@ final class CommandQueueService
         if ($ownerOverbuildEffect === 'defense_self_destruct') {
             $state['terrain_key'] = 'sea';
             $state['facility_key'] = null;
+            $state['owner_nation_id'] = null;
 
             return $state;
         }
@@ -1166,8 +1167,9 @@ final class CommandQueueService
         }
 
         if ($definition->key === 'reclaim') {
-            $state['terrain_key'] = $state['terrain_key'] === 'sea' ? 'shallow' : 'wasteland';
-            $state['owner_nation_id'] = $nation->id;
+            $wasSea = $state['terrain_key'] === 'sea';
+            $state['terrain_key'] = $wasSea ? 'shallow' : 'wasteland';
+            $state['owner_nation_id'] = $wasSea ? null : $nation->id;
         } elseif ($definition->key === 'excavate') {
             $state['terrain_key'] = match ($state['terrain_key']) {
                 'sea' => 'sea',
@@ -1176,6 +1178,9 @@ final class CommandQueueService
                 default => 'shallow',
             };
             $state['facility_key'] = null;
+            if (in_array($state['terrain_key'], ['sea', 'shallow'], true)) {
+                $state['owner_nation_id'] = null;
+            }
         } else {
             if ($definition->result_terrain_key !== null) {
                 $state['terrain_key'] = $definition->result_terrain_key;

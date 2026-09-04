@@ -534,6 +534,66 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.queue.items.3.command_suffix_tone', 'danger');
     }
 
+    public function test_projected_water_transitions_do_not_retain_nation_ownership(): void
+    {
+        [, $nation, $mapSpace] = $this->nation('水域予約中立化国');
+        $worldRulesetId = $nation->world()->valueOrFail('ruleset_version_id');
+        $membershipId = NationMembership::query()->where('nation_id', $nation->id)->valueOrFail('id');
+        $definitions = CommandDefinition::query()
+            ->where('ruleset_version_id', $worldRulesetId)
+            ->whereIn('key', ['reclaim', 'build_defense_facility'])
+            ->get()->keyBy('key');
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $cells);
+        [$reclaimCell, $defenseCell] = $cells->all();
+        $mapState = app(MapCellStateService::class);
+        $mapState->transitionTerrain($reclaimCell, TerrainDefinition::query()->where('key', 'sea')->firstOrFail());
+        $reclaimCell->owner_nation_id = null;
+        $reclaimCell->save();
+        $mapState->transitionTerrain($defenseCell, TerrainDefinition::query()->where('key', 'plain')->firstOrFail());
+        $defenseCell->save();
+
+        $queue = NationCommandQueue::query()->create([
+            'nation_id' => $nation->id,
+            'map_space_id' => $mapSpace->id,
+            'version' => 1,
+        ]);
+        foreach ([
+            [1, 'reclaim', $reclaimCell],
+            [2, 'build_defense_facility', $defenseCell],
+            [3, 'build_defense_facility', $defenseCell],
+        ] as [$position, $commandKey, $cell]) {
+            NationCommandQueueItem::query()->create([
+                'nation_command_queue_id' => $queue->id,
+                'command_definition_id' => $definitions->get($commandKey)->id,
+                'queue_position' => $position,
+                'target_x' => $cell->x,
+                'target_y' => $cell->y,
+                'quantity' => 1,
+                'parameters' => (object) [],
+                'status' => 'queued',
+                'queued_by_membership_id' => $membershipId,
+                'request_key' => (string) Str::uuid(),
+                'queued_at' => now(),
+                'failure_metadata' => [],
+            ]);
+        }
+        $queue->load(['items' => fn ($query) => $query->with('definition')->orderBy('queue_position')]);
+        $service = app(CommandQueueService::class);
+
+        $this->assertSame([
+            'terrain_key' => 'shallow',
+            'facility_key' => null,
+            'owner_nation_id' => null,
+        ], $service->projectCellStateBeforePosition($reclaimCell->fresh(['terrain', 'facility']), $queue, 4, $nation, $mapSpace));
+        $this->assertSame([
+            'terrain_key' => 'sea',
+            'facility_key' => null,
+            'owner_nation_id' => null,
+        ], $service->projectCellStateBeforePosition($defenseCell->fresh(['terrain', 'facility']), $queue, 4, $nation, $mapSpace));
+    }
+
     public function test_monument_registration_semantics_follow_projected_state_at_insertion_position(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('記念碑予約判定国');

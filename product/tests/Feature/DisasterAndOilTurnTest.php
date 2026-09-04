@@ -191,7 +191,7 @@ class DisasterAndOilTurnTest extends TestCase
             'earthquake' => ['plain', 'city', 10_000, 'wasteland', $nation->id],
             'tsunami' => ['plain', 'factory', 0, 'wasteland', $nation->id],
             'typhoon' => ['plain', 'farm', 0, 'plain', $nation->id],
-            'meteor_shower' => ['shallow', null, 0, 'sea', $nation->id],
+            'meteor_shower' => ['shallow', null, 0, 'sea', null],
             'huge_meteor' => ['plain', null, 0, 'sea', null],
             'eruption' => ['plain', null, 0, 'mountain', $nation->id],
         ];
@@ -225,6 +225,7 @@ class DisasterAndOilTurnTest extends TestCase
         foreach ([[0, 0], [1, 0], [0, 1], [1, 1]] as [$x, $y]) {
             $this->setCell($this->cellAt($space, $x, $y), 'sea', null, null, 0);
         }
+        $this->setCell($this->cellAt($space, 1, 0), 'sea', null, $nation->id, 0);
         [$context] = $this->context(
             $world,
             $ruleset,
@@ -236,7 +237,9 @@ class DisasterAndOilTurnTest extends TestCase
 
         $this->assertSame('mountain', $this->cellAt($space, 0, 0)->terrain()->value('key'));
         foreach ([[1, 0], [0, 1], [1, 1]] as [$x, $y]) {
-            $this->assertSame('shallow', $this->cellAt($space, $x, $y)->terrain()->value('key'));
+            $changed = $this->cellAt($space, $x, $y);
+            $this->assertSame('shallow', $changed->terrain()->value('key'));
+            $this->assertNull($changed->owner_nation_id);
         }
         $bounds = $this->boundsFor($world);
         $this->assertSame($bounds->cellCount(), MapCell::query()->where('map_space_id', $space->id)->count());

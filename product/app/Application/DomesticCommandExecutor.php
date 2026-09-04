@@ -859,6 +859,10 @@ final class DomesticCommandExecutor
             $this->cells->setFacility($cell, null);
             $terrain = TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail();
             $this->cells->transitionTerrain($cell, $terrain);
+            if ($definition->key === 'excavate' && in_array($terrainKey, ['sea', 'shallow'], true)) {
+                $cell->owner_nation_id = null;
+                $cell->setRelation('ownerNation', null);
+            }
             $cell->population = 0;
             $cell->version++;
             $cell->save();

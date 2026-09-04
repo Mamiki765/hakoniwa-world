@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\ModerationRecordService;
 use App\Application\NationCreationService;
+use App\Application\Ver350RulesetUpgrade;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -18,7 +19,7 @@ final class FirstProductionReleaseTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_current_schema_and_v19_are_the_fresh_install_baseline(): void
+    public function test_current_schema_and_v20_are_the_fresh_install_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
 
@@ -28,14 +29,15 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertFalse(Schema::hasColumn('users', 'moderation_suspended_at'));
         $this->assertFalse(Schema::hasColumn('nations', 'moderation_suspended_at'));
 
-        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v19')->firstOrFail();
-        $this->assertSame('hakoniwa-2s-plus-v19', config('hakoniwa.ruleset.key'));
-        $this->assertSame(['hakoniwa-2s-plus-v19'], array_keys(config('hakoniwa.published_rulesets')));
+        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v20')->firstOrFail();
+        $this->assertSame('hakoniwa-2s-plus-v20', config('hakoniwa.ruleset.key'));
+        $this->assertSame(['hakoniwa-2s-plus-v20'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame(
-            ['hakoniwa-2s-plus-v19'],
+            ['hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20'],
             RulesetVersion::query()->orderBy('version')->pluck('key')->all(),
         );
         $this->assertSame($published->id, $this->lightweightWorld()->ruleset_version_id);
+        $this->assertSame('already_current_v20', app(Ver350RulesetUpgrade::class)->run());
     }
 
     public function test_moderation_record_is_admin_only_and_changes_no_gameplay_state(): void
