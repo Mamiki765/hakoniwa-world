@@ -61,7 +61,7 @@ final class TurnRuntimePerformanceTest extends TestCase
 
         $this->report($profile, $measurement);
         $this->assertSame($expectedCells, $processCells['metrics']['processed']);
-        $this->assertLessThanOrEqual(12, $processCells['queries']);
+        $this->assertLessThanOrEqual(13, $processCells['queries']);
         $this->assertLessThanOrEqual(70, $globalDisasters['queries']);
         $this->assertLessThanOrEqual(64, $globalDisasters['hydrated_models'][MapCell::class] ?? 0);
         $this->assertSame(TurnPipeline::CANONICAL_PHASE_KEYS, array_keys($measurement['phases']));

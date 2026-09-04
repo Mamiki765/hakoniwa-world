@@ -50,6 +50,16 @@ final class SurfaceShipTurnService
             return new SurfaceShipTurnBatch([], []);
         }
         $this->movement = $this->movementSettings($context);
+        $ships = Ship::query()->where('world_id', $context->world->id)
+            ->where('state', Ship::STATE_ACTIVE)
+            ->with('nation:id,name,state')
+            ->orderBy('id')->lockForUpdate()->get();
+        if ($ships->isEmpty()) {
+            $this->definitions = [];
+            $this->resources = [];
+
+            return new SurfaceShipTurnBatch([], []);
+        }
         $this->definitions = [];
         $resourceKeys = [$this->movement['fuel_resource_key']];
         foreach ($this->catalog->definitions($context->ruleset->settings) as $definition) {
@@ -66,11 +76,7 @@ final class SurfaceShipTurnService
             }
         }
 
-        $ships = Ship::query()->where('world_id', $context->world->id)
-            ->where('state', Ship::STATE_ACTIVE)
-            ->with('nation:id,name,state')
-            ->orderBy('id')->lockForUpdate()->get();
-        $portNationIds = $ships->isEmpty() ? [] : MapCell::query()
+        $portNationIds = MapCell::query()
             ->where('map_space_id', $space->id)
             ->whereIn('owner_nation_id', $ships->pluck('nation_id')->unique()->values()->all())
             ->whereHas('facility', fn ($query) => $query->where('key', $this->movement['required_port_facility_key']))
