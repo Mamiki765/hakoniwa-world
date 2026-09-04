@@ -1,10 +1,10 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
-> 更新日: 2026-09-04 JST
+> 更新日: 2026-09-05 JST
 > 対象リポジトリ: `Mamiki765/hakoniwa-world`  
 > 配置先: `product/docs/handoffs/development-history-and-current-handoff.md`  
 > 用途: 現在有効なrelease boundary、Owner決定、production境界、次の作業開始点の引継ぎ  
-> 状態: application 3.5.0のrepository release boundaryは確定。productionはapplication 3.3.0。production反映は別Owner gate
+> 状態: application 3.5.0はmainへmerge済み。productionはapplication 3.4.0 / Surface Ruleset v19で、3.5.0 migrationは未適用。production反映は別Owner gate
 >
 > この文書はOwnerとWeb版ChatGPTが管理する。Codex / implementation agentはread-onlyで利用し、Ownerがhandoff更新そのものを明示的に依頼した場合だけ編集してよい。
 
@@ -34,7 +34,7 @@ Surface Ruleset: hakoniwa-2s-plus-v20 / version 20
 Underground combat: secretary-underground-alpha-v3
 ```
 
-2026-09-03、Ownerはapplication 3.3.0をproductionへ適用済みと報告した。application 3.4.0 / 3.5.0のrepository releaseとproduction deploy / migrationは別のOwner gateであり、このhandoff更新時点でproductionは3.3.0のままである。
+2026-09-05、Ownerはproductionがapplication 3.4.0 / Surface Ruleset v19であり、3.5.0 migrationは1本も未適用と報告した。application 3.5.0のrepository releaseとproduction deploy / migrationは別のOwner gateである。
 
 このhandoff更新ではOCIへ独立照会していない。次回production操作前には、実環境のcheckout SHA、application version、migration ledgerを再確認すること。
 
@@ -48,7 +48,7 @@ Underground combat: secretary-underground-alpha-v3
 | #143 | randomized cell processing内の航行、燃料 / 報酬 / 秘書XP、lifecycle、forced displacement、Monster / 壊滅event連携 | `dd76f7fbe0eb0bbcb07420a20c4b62f379d8899f` |
 | #144 | Ship-first missile impact、visibility、探索船表示 | `22203ae9f7b06607bfa6a5a6821bb948e011f634` |
 
-PR #140〜#144は`release/3.5.0`へmerge済み。3.5.0のSurface gameplay sliceは船システムで閉じ、NPC海賊船、Ship修理、destination pathfinding、Ship Lv / XP、generic Actor / Spawn / Ship AI frameworkは含めない。
+PR #140〜#144は`release/3.5.0`へmerge済みで、PR #146によりmainへ昇格した。2026-09-05にremote main `c79a5dac056a20609137477e6ac0c112fab4990d`を確認した。3.5.0のSurface gameplay sliceは船システムで閉じ、NPC海賊船、Ship修理、destination pathfinding、Ship Lv / XP、generic Actor / Spawn / Ship AI frameworkは含めない。
 
 ## 1.3 Version / Ruleset / identity
 
@@ -85,21 +85,18 @@ generated equipment:
 
 ## 1.4 Supported migration / production ledger
 
-production sourceはapplication 3.3.0である。3.3.0から3.5.0へ進むsupported forward pathは、3.4.0の1本に続いて次の3.5.0 migration 4本を順番に適用する。
+production sourceはexact application 3.4.0 / Surface Ruleset v19である。3.4.0の次のmigrationは別releaseのため維持し、3.5.0へ進むsupported forward pathは次の1本だけである。
 
 ```text
 product/database/migrations/2026_09_03_020000_add_underground_custom_ai.php
-product/database/migrations/2026_09_04_000000_publish_v20_and_repair_water_ownership.php
-product/database/migrations/2026_09_04_010000_add_surface_ship_foundation.php
-product/database/migrations/2026_09_04_020000_add_surface_ship_movement.php
-product/database/migrations/2026_09_04_030000_add_surface_ship_missile_and_visibility.php
+product/database/migrations/2026_09_04_000000_rebaseline_3_5_0_release.php
 ```
 
-最初の3.5.0 migrationは、v20をappend-onlyでpublishし、facilityのないowned shallow / seaだけを安全にneutral化する。正当なfacility付きwater ownershipは維持する。後続3本はShip schema / port projection、movement / skill experience、missile / visibility契約を段階的に追加する。
+3.4.0 migrationはproduction ledgerに存在するsource boundaryであり、変更・統合しない。3.5.0の1本は、final v20のappend-only publish、current live referenceのstable-key rebind、facilityのないowned shallow / seaの限定修復、Ship schema / integrity guard、`ship_operations` constraint / backfillを1 transactionで適用する。movement、forced displacement、missile / visibilityを含むfinal v20 payloadを直接publishし、開発途中draft間のpayload照合は行わない。正当なfacility付きwater ownershipは維持する。
 
-既存migrationは履歴として維持し、rebaseline、削除、書換えを行っていない。`FreshInstallRebaselineTest`のfresh installとexact v19 → v20 / 3.4.0 → 3.5.0 regressionをsupported upgradeの正本とする。
+旧3.5.0 migration 4本はproduction未適用というOwner-confirmed baselineに基づき、このrelease整理で削除した。旧4本を適用済みのlocal / CI databaseはsupported upgrade sourceではなく、fresh/resetして新ledgerへ揃える。旧4本を適用済みのproduction互換経路は設けない。`FreshInstallRebaselineTest`のfresh installとexact application 3.4.0 / v19 → application 3.5.0 / v20 regressionをsupported upgradeの正本とする。
 
-production deploy / migrationは別のOwner gateである。次回のdeploy前にはproductionが3.3.0であることと、上記5本が未適用であることを実環境で再確認する。
+production deploy / migrationは別のOwner gateである。次回のdeploy前にはproductionがexact application 3.4.0 / v19であること、3.4.0 migrationが適用済みであること、新しい3.5.0 migrationが未適用であることを実環境で再確認する。
 
 ## 1.5 3.5.0 Shipのplayer-facing contract
 
@@ -484,7 +481,7 @@ subagent成果はmain agentが確認してから採用する。
 # 8. 次に作業するagentが最初に行うこと
 
 1. remote `main`と対象release branchをfetchし、application 3.5.0のmain昇格状態とexact SHAを確認する
-2. production操作を伴う場合、実環境がapplication 3.3.0であること、checkout SHA、migration ledgerを再確認し、別Owner gateを得る
+2. production操作を伴う場合、実環境がexact application 3.4.0 / v19であること、checkout SHA、新しい3.5.0 migrationの未適用ledgerを再確認し、別Owner gateを得る
 3. 次releaseはOwner-approved scopeより先にbranch、migration、code、Rulesetを作らない。NPC海賊船は3.6.0以降の別gateである
 4. ShipとMonsterを別domainとして扱うcurrent contractを維持し、pirateや将来機能のための万能Actor / Spawn / Ship AI frameworkを先行実装しない
 5. Surface Ruleset v20はpublished immutable snapshotとして扱い、将来のsemantic changeはOwner-approved release boundaryとRuleset version budgetを確認してから行う
@@ -500,10 +497,7 @@ product/docs/architecture/ruleset-authoring.md
 product/docs/architecture/current-ruleset-baseline.md
 product/config/hakoniwa.php
 product/database/migrations/2026_09_03_020000_add_underground_custom_ai.php
-product/database/migrations/2026_09_04_000000_publish_v20_and_repair_water_ownership.php
-product/database/migrations/2026_09_04_010000_add_surface_ship_foundation.php
-product/database/migrations/2026_09_04_020000_add_surface_ship_movement.php
-product/database/migrations/2026_09_04_030000_add_surface_ship_missile_and_visibility.php
+product/database/migrations/2026_09_04_000000_rebaseline_3_5_0_release.php
 product/app/Application/SurfaceShipBuildService.php
 product/app/Application/SurfaceShipTurnService.php
 product/app/Application/SurfaceShipForcedDisplacementService.php
