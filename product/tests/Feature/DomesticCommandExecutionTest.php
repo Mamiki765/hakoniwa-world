@@ -1086,7 +1086,7 @@ class DomesticCommandExecutionTest extends TestCase
             ->where('subject_id', $target->id)->count());
     }
 
-    public function test_excavated_owned_shallow_can_be_reclaimed_to_owned_wasteland_on_the_next_turn(): void
+    public function test_excavated_land_becomes_neutral_shallow_and_can_be_reclaimed_on_the_next_turn(): void
     {
         $world = $this->lightweightWorld();
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
@@ -1116,7 +1116,7 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('completed', $excavate->fresh()->status);
         $this->assertSame('queued', $reclaim->fresh()->status);
         $this->assertSame('shallow', $target->fresh()->terrain()->value('key'));
-        $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        $this->assertNull($target->fresh()->owner_nation_id);
         $this->assertSame(800, $nation->fresh()->money);
         $this->assertSame($initialCellVersion + 1, $target->fresh()->version);
         $this->assertSame(
@@ -1159,6 +1159,27 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertTrue($messages->contains(
             static fn (string $message): bool => str_contains($message, '埋め立て') && str_contains($message, '荒地'),
         ));
+    }
+
+    public function test_excavated_owned_shallow_becomes_neutral_sea(): void
+    {
+        $world = $this->lightweightWorld();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$user, $nation] = $this->createNation($world, '浅瀬掘削国');
+        $nation->update(['money' => 1_000]);
+        $target = $this->remoteWaterTarget($space);
+        $this->setCellState($target, 'shallow', $nation->id);
+        $item = $this->queue($user, $nation, $space, 'excavate', $target->fresh(['terrain', 'facility']));
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], str_repeat('3', 64)),
+        );
+
+        $this->assertSame(1, $result['successes']);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
+        $this->assertNull($target->fresh()->owner_nation_id);
+        $this->assertSame(800, $nation->fresh()->money);
     }
 
     public function test_shallow_reclaim_spreads_to_the_six_direction_water_neighbors_and_marks_their_chunks(): void

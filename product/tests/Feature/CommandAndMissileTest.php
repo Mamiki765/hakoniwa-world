@@ -2349,7 +2349,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v19', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v20', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -3453,6 +3453,36 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame($target->name, $impact['target_nation_name']);
     }
 
+    public function test_land_destruction_neutralizes_facilityless_owned_shallow_water(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants();
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = $this->ownedWaterFacility($target, 'seabed_base');
+        app(MapCellStateService::class)->setFacility($cell, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $cell,
+            TerrainDefinition::query()->where('key', 'shallow')->firstOrFail(),
+        );
+        $cell->save();
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'land_destruction_missile',
+            $cell,
+        );
+        $seed = $this->seedForImpactIndex($item, $cell, 2, $cell);
+
+        $this->resolveMissile($this->context($world, 2, $seed, [$firing->id, $target->id]), $base);
+
+        $cell = $cell->fresh(['terrain', 'facility']);
+        $this->assertSame('sea', $cell->terrain->key);
+        $this->assertNull($cell->facility_definition_id);
+        $this->assertNull($cell->owner_nation_id);
+    }
+
     public function test_seabed_base_levels_provide_one_two_and_three_launches(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
@@ -4019,6 +4049,7 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame('removed', $monster->fresh()->state);
         $this->assertFalse(MonsterOccupancy::query()->where('monster_instance_id', $monster->id)->exists());
         $this->assertSame('shallow', $cell->fresh()->terrain()->value('key'));
+        $this->assertNull($cell->fresh()->owner_nation_id);
         $this->assertSame(0, $cell->fresh()->population);
         $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', ['refugee_generated', 'refugee_received'])->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.reward_distributed')->count());

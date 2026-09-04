@@ -688,7 +688,7 @@ final class DisasterTurnService
                         $cell,
                         'meteor_shower',
                         'sea',
-                        false,
+                        true,
                         'disaster.cell_damaged',
                         cellIndex: $cellIndex,
                     )) {
@@ -848,7 +848,7 @@ final class DisasterTurnService
                 continue;
             }
             $target = $cell->terrain->key === 'sea' ? 'shallow' : 'wasteland';
-            if ($this->changeCell($context, $cell, 'eruption', $target, false, 'disaster.cell_damaged', [
+            if ($this->changeCell($context, $cell, 'eruption', $target, $target === 'shallow', 'disaster.cell_damaged', [
                 'direction' => $direction,
             ], $cellIndex)) {
                 $damaged++;
