@@ -2027,8 +2027,11 @@ class DomesticCommandExecutionTest extends TestCase
             "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
         )->assertOk()->json('data.commands'));
         $this->assertTrue($selectedCommands->firstWhere('key', 'scuttle_ship')['applicable']);
-        $this->assertNull(collect($this->getJson("{$base}/command-definitions")
-            ->assertOk()->json('data.commands'))->firstWhere('key', 'scuttle_ship'));
+        $unselectedResponse = $this->getJson("{$base}/command-definitions")->assertOk();
+        $unselectedCommands = $unselectedResponse->json('data.commands');
+        $this->assertIsArray(json_decode($unselectedResponse->getContent(), false, flags: JSON_THROW_ON_ERROR)->data->commands);
+        $this->assertTrue(array_is_list($unselectedCommands));
+        $this->assertNull(collect($unselectedCommands)->firstWhere('key', 'scuttle_ship'));
         $excavate = CommandDefinition::query()
             ->where('ruleset_version_id', $world->ruleset_version_id)
             ->where('key', 'excavate')

@@ -303,7 +303,8 @@ final class CommandQueueController extends Controller
                                 : ($warnings === [] ? 'currently_executable' : 'currently_unavailable')),
                         'execution_warnings' => $warnings,
                     ];
-                });
+                })
+                ->values();
 
             $rules = $world->rulesetVersion->settings;
             $quantityContract = $rules['development_plan_quantity'] ?? null;
