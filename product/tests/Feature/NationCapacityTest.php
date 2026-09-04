@@ -90,6 +90,7 @@ class NationCapacityTest extends TestCase
                 SecretarySkillCatalog::FOREST_MANAGEMENT,
                 SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
                 SecretarySkillCatalog::INDOMITABLE,
+                SecretarySkillCatalog::SHIP_OPERATIONS,
             ])->get();
         foreach ($historicalExcludedSkills as $skill) {
             $skill->delete();
