@@ -603,7 +603,7 @@ final class CommandQueueController extends Controller
     {
         return $queue->load([
             'items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'),
-            'items.definition',
+            'items.definition.rulesetVersion',
         ]);
     }
 

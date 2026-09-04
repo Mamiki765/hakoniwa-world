@@ -2276,6 +2276,12 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.queue.items.0.quantity_label', '探索船')
             ->assertJsonPath('data.queue.items.0.effective_cost_money', 1000)
             ->json('data');
+        $perItemRulesetSettingQueries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$perItemRulesetSettingQueries): void {
+            if (str_contains($query->sql, 'select "settings" from "ruleset_versions"')) {
+                $perItemRulesetSettingQueries[] = $query->sql;
+            }
+        });
         $this->postJson($path, [
             'command_key' => 'build_ship',
             'quantity' => 3,
@@ -2285,6 +2291,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.duplicate', true)
             ->assertJsonPath('data.item_id', $created['item_id'])
             ->assertJsonCount(1, 'data.queue.items');
+        $this->assertSame([], $perItemRulesetSettingQueries);
     }
 
     public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void

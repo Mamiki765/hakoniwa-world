@@ -3,6 +3,7 @@
 namespace App\Domain\Ship;
 
 use App\Models\CommandDefinition;
+use App\Models\RulesetVersion;
 use DomainException;
 
 final class SurfaceShipCatalog
@@ -104,7 +105,10 @@ final class SurfaceShipCatalog
     /** @return array<string, mixed> */
     private function settings(CommandDefinition $command): array
     {
-        $settings = $command->rulesetVersion()->value('settings');
+        $ruleset = $command->relationLoaded('rulesetVersion')
+            ? $command->rulesetVersion
+            : $command->rulesetVersion()->first();
+        $settings = $ruleset instanceof RulesetVersion ? $ruleset->settings : null;
         if (! is_array($settings)) {
             throw new DomainException('Surface Ship command Ruleset settings are unavailable.');
         }
