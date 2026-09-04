@@ -394,6 +394,12 @@ async function refreshFallbackSummary(): Promise<void> {
     }
 }
 
+function previewMapRequestSource(previewNationId: number) {
+    return nation.value === null
+        ? { kind: 'public' as const, nationId: previewNationId }
+        : { kind: 'private' as const };
+}
+
 async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): Promise<boolean> {
     if (turnViewCurrentTurn === summary.current_turn) {
         const currentPreview = page.value === 'preview' ? previewNation.value : null;
@@ -409,10 +415,12 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
                 mapSpace.value = nextMapSpace;
                 if (! mapNeedsReload || refreshedPreview.capital === null) return true;
 
-                await map.loadAround(nextMapSpace, refreshedPreview.capital.x, refreshedPreview.capital.y, {
-                    kind: 'public',
-                    nationId: refreshedPreview.id,
-                });
+                await map.loadAround(
+                    nextMapSpace,
+                    refreshedPreview.capital.x,
+                    refreshedPreview.capital.y,
+                    previewMapRequestSource(refreshedPreview.id),
+                );
 
                 return map.error.value === null;
             } catch {
@@ -549,10 +557,12 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         await map.loadAround(refreshedMapSpace, refreshedNation.capital.x, refreshedNation.capital.y, { kind: 'private' });
         if (map.error.value !== null) refreshed = false;
     } else if (page.value === 'preview' && refreshedPreview !== null && refreshedPreview.capital !== null) {
-        await map.loadAround(refreshedPreview.map_space, refreshedPreview.capital.x, refreshedPreview.capital.y, {
-            kind: 'public',
-            nationId: refreshedPreview.id,
-        });
+        await map.loadAround(
+            refreshedPreview.map_space,
+            refreshedPreview.capital.x,
+            refreshedPreview.capital.y,
+            previewMapRequestSource(refreshedPreview.id),
+        );
         if (map.error.value !== null) refreshed = false;
     }
 
@@ -835,7 +845,7 @@ async function openPreview(nationId: number): Promise<void> {
             detail.map_space,
             detail.capital.x,
             detail.capital.y,
-            nation.value === null ? { kind: 'public', nationId: detail.id } : { kind: 'private' },
+            previewMapRequestSource(detail.id),
         );
         page.value = 'preview';
     } catch (error) {
