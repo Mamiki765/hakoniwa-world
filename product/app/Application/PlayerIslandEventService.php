@@ -65,6 +65,7 @@ final class PlayerIslandEventService
         'command.food_aid_transferred',
         'command.food_aid_received',
         'command.monster_dispatched',
+        'ship.built',
         'missile.launch_failed',
         'missile.launch_detail',
         'missile.defense_intercepted',
@@ -1461,6 +1462,12 @@ final class PlayerIslandEventService
             'command.monster_dispatched' => sprintf(
                 '%sを対象Nationへ派遣しました。',
                 $this->monsterLabel($metadata['monster_key'] ?? null),
+            ),
+            'ship.built' => sprintf(
+                '%sを建造し、(%s,%s)へ進水しました。',
+                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
             ),
             'missile.launch_failed' => sprintf(
                 '%sは発射基地の状態または資金不足のため1発も発射できませんでした。',

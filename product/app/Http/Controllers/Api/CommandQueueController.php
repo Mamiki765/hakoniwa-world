@@ -16,6 +16,7 @@ use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Ruleset\ResetRequiredException;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Http\Controllers\Controller;
@@ -38,6 +39,7 @@ final class CommandQueueController extends Controller
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
+        private readonly SurfaceShipCatalog $surfaceShips,
     ) {}
 
     public function definitions(
@@ -541,11 +543,7 @@ final class CommandQueueController extends Controller
                     'quantity_label' => $definition instanceof UndergroundCommandDefinition
                         ? null
                         : $this->quantitySemantics->label($definition, $item->quantity),
-                    'effective_cost_money' => $definition instanceof CommandDefinition
-                        && $definition->key === 'monster_dispatch'
-                        && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG
-                            ? $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney
-                            : $definition->cost_money,
+                    'effective_cost_money' => $this->effectiveCostMoney($definition, $item),
                     'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                     'status' => $item->status,
                     'queued_at' => $item->queued_at?->toIso8601String(),
@@ -580,6 +578,25 @@ final class CommandQueueController extends Controller
             'items' => $items,
             'plan' => $plan,
         ];
+    }
+
+    private function effectiveCostMoney(
+        CommandDefinition|UndergroundCommandDefinition $definition,
+        NationCommandQueueItem $item,
+    ): int {
+        if (! $definition instanceof CommandDefinition) {
+            return $definition->cost_money;
+        }
+        if ($definition->key === 'monster_dispatch'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            return $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
+        }
+        if ($definition->key === 'build_ship'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
+            return $this->surfaceShips->resolve($definition, $item->quantity)->buildCostMoney;
+        }
+
+        return $definition->cost_money;
     }
 
     private function loadQueue(NationCommandQueue $queue): NationCommandQueue

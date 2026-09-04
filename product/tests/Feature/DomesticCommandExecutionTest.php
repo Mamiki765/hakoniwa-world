@@ -1902,6 +1902,14 @@ class DomesticCommandExecutionTest extends TestCase
             $event['ship_type_key'], $event['ship_name'], $event['build_selector'],
             $event['cost_money'], $event['spawn_distance'],
         ]);
+        $ownerPage = app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), anchorTurn: 2);
+        $ownerMessages = collect($ownerPage['groups'])->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->pluck('message')->all();
+        $this->assertContains(
+            "観光船を建造し、({$disguisedCandidate->x},{$disguisedCandidate->y})へ進水しました。",
+            $ownerMessages,
+        );
     }
 
     public function test_failed_ship_build_costs_no_money_or_turn_and_the_next_command_executes(): void

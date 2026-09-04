@@ -2274,6 +2274,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.queue.items.0.quantity_semantics', 'selector')
             ->assertJsonPath('data.queue.items.0.quantity_label', '探索船')
+            ->assertJsonPath('data.queue.items.0.effective_cost_money', 1000)
             ->json('data');
         $this->postJson($path, [
             'command_key' => 'build_ship',

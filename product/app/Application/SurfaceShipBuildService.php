@@ -16,6 +16,7 @@ use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
 use App\Models\Ship;
 use DomainException;
+use Illuminate\Database\Eloquent\Builder;
 
 final class SurfaceShipBuildService
 {
@@ -139,8 +140,6 @@ final class SurfaceShipBuildService
     {
         /** @var array<string, int> $distanceByCoordinate */
         $distanceByCoordinate = [];
-        $candidateXs = [];
-        $candidateYs = [];
         foreach ($ports as $port) {
             $origin = new GridCoordinate($port->x, $port->y);
             foreach ([1, 2] as $distance) {
@@ -151,8 +150,6 @@ final class SurfaceShipBuildService
                     }
                     $key = $coordinate->x.':'.$coordinate->y;
                     $distanceByCoordinate[$key] = min($distance, $distanceByCoordinate[$key] ?? $distance);
-                    $candidateXs[] = $coordinate->x;
-                    $candidateYs[] = $coordinate->y;
                 }
             }
         }
@@ -160,10 +157,27 @@ final class SurfaceShipBuildService
             return [];
         }
 
+        /** @var array<int, array<int, true>> $candidateYsByX */
+        $candidateYsByX = [];
+        foreach (array_keys($distanceByCoordinate) as $coordinateKey) {
+            [$x, $y] = array_map('intval', explode(':', $coordinateKey, 2));
+            $candidateYsByX[$x][$y] = true;
+        }
+        ksort($candidateYsByX, SORT_NUMERIC);
+        foreach ($candidateYsByX as &$ys) {
+            ksort($ys, SORT_NUMERIC);
+        }
+        unset($ys);
+
         $cells = MapCell::query()
             ->where('map_space_id', $mapSpace->id)
-            ->whereBetween('x', [min($candidateXs), max($candidateXs)])
-            ->whereBetween('y', [min($candidateYs), max($candidateYs)])
+            ->where(function (Builder $coordinates) use ($candidateYsByX): void {
+                foreach ($candidateYsByX as $x => $ys) {
+                    $coordinates->orWhere(function (Builder $sameX) use ($x, $ys): void {
+                        $sameX->where('x', $x)->whereIn('y', array_keys($ys));
+                    });
+                }
+            })
             ->whereHas('terrain', static fn ($query) => $query->where('key', 'sea'))
             ->whereDoesntHave('ship')
             ->whereDoesntHave('monsterOccupancy')
