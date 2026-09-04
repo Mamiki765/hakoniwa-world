@@ -83,6 +83,22 @@ class RulesetAuthoringValidatorTest extends TestCase
                 },
                 'display_order duplicates another effective monster order',
             ],
+            'changed Surface Ship capacity' => [
+                static function (array $settings): array {
+                    $settings['surface_ships']['capacity_per_type'] = 4;
+
+                    return $settings;
+                },
+                'ruleset.surface_ships.capacity_per_type must be exactly 3 for v20',
+            ],
+            'changed Surface Ship gameplay value' => [
+                static function (array $settings): array {
+                    $settings['surface_ships']['definitions']['fishing']['maximum_hp'] = 2;
+
+                    return $settings;
+                },
+                'ruleset.surface_ships.definitions.fishing differs from the Owner-approved v20 Ship contract',
+            ],
         ];
     }
 }

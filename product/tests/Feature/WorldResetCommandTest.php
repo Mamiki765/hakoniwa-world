@@ -311,6 +311,7 @@ class WorldResetCommandTest extends TestCase
             ->orderBy('id')->firstOrFail();
         $ship = Ship::query()->create([
             'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'nation_id' => $nation->id,
             'map_cell_id' => $shipCell->id,
             'ship_type_key' => 'fishing',

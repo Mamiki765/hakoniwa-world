@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('ships', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('world_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('ruleset_version_id')->constrained('ruleset_versions')->restrictOnDelete();
             $table->foreignId('nation_id')->constrained()->cascadeOnDelete();
             $table->foreignId('map_cell_id')->nullable()->constrained()->cascadeOnDelete();
             $table->string('ship_type_key', 32);
@@ -32,8 +33,6 @@ return new class extends Migration
 
         DB::statement(<<<'SQL'
 ALTER TABLE ships
-  ADD CONSTRAINT ships_type_check
-    CHECK (ship_type_key IN ('fishing', 'tourist', 'exploration')),
   ADD CONSTRAINT ships_heading_check
     CHECK (heading IS NULL OR heading BETWEEN 0 AND 5),
   ADD CONSTRAINT ships_hp_check
@@ -60,6 +59,10 @@ AS $$
 DECLARE
   nation_world_id bigint;
   nation_state varchar;
+  world_ruleset_id bigint;
+  ship_rules jsonb;
+  ship_definition jsonb;
+  type_capacity integer;
   cell_world_id bigint;
   cell_map_space_key varchar;
   cell_terrain_key varchar;
@@ -67,6 +70,33 @@ DECLARE
   facility_visibility_policy varchar;
   facility_disguise_terrain_key varchar;
 BEGIN
+  SELECT ruleset_version_id INTO world_ruleset_id
+    FROM worlds
+   WHERE id = NEW.world_id;
+  SELECT settings -> 'surface_ships' INTO ship_rules
+    FROM ruleset_versions
+   WHERE id = NEW.ruleset_version_id;
+  IF world_ruleset_id IS NULL OR ship_rules IS NULL THEN
+    RAISE EXCEPTION 'Ship ruleset provenance must reference a World and authored Surface Ship contract.';
+  END IF;
+  IF TG_OP = 'INSERT' AND NEW.ruleset_version_id <> world_ruleset_id THEN
+    RAISE EXCEPTION 'A new Ship must bind the current World Ruleset snapshot.';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.ruleset_version_id <> OLD.ruleset_version_id THEN
+    RAISE EXCEPTION 'Ship Ruleset provenance is immutable.';
+  END IF;
+  ship_definition := ship_rules -> 'definitions' -> NEW.ship_type_key;
+  IF ship_definition IS NULL OR jsonb_typeof(ship_definition) <> 'object' THEN
+    RAISE EXCEPTION 'Ship type must be authored by its Ruleset snapshot.';
+  END IF;
+  IF NEW.max_hp <> (ship_definition ->> 'maximum_hp')::integer THEN
+    RAISE EXCEPTION 'Ship maximum HP must match its Ruleset snapshot.';
+  END IF;
+  type_capacity := (ship_rules ->> 'capacity_per_type')::integer;
+  IF type_capacity IS NULL OR type_capacity < 1 THEN
+    RAISE EXCEPTION 'Ship type capacity must be authored by its Ruleset snapshot.';
+  END IF;
+
   SELECT world_id, state INTO nation_world_id, nation_state
     FROM nations
    WHERE id = NEW.nation_id
@@ -112,8 +142,8 @@ BEGIN
          AND ship.ship_type_key = NEW.ship_type_key
          AND ship.state = 'active'
          AND ship.id IS DISTINCT FROM NEW.id
-    ) >= 3 THEN
-      RAISE EXCEPTION 'A Nation may own at most three active Ships of each type.';
+    ) >= type_capacity THEN
+      RAISE EXCEPTION 'A Nation exceeded the active Ship capacity authored by its Ruleset snapshot.';
     END IF;
   END IF;
 
@@ -122,7 +152,7 @@ END;
 $$;
 
 CREATE TRIGGER surface_ship_identity_guard
-BEFORE INSERT OR UPDATE OF world_id, nation_id, map_cell_id, ship_type_key, state
+BEFORE INSERT OR UPDATE OF world_id, ruleset_version_id, nation_id, map_cell_id, ship_type_key, max_hp, state
 ON ships
 FOR EACH ROW
 EXECUTE FUNCTION validate_surface_ship_identity();

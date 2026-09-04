@@ -53,6 +53,32 @@ final class SurfaceShipFoundationTest extends TestCase
 
         $tourist = $this->createShip($world, $nation, $cells[3], 'tourist', 2);
         $this->assertSame($cells[3]->id, $tourist->cell()->value('id'));
+        $this->assertSame($world->ruleset_version_id, $tourist->rulesetVersion()->value('id'));
+        $this->assertConstraintRejects(
+            fn () => $this->createShip($world, $nation, $cells[4], 'tourist', 1),
+            'Ship maximum HP outside its Ruleset snapshot',
+        );
+        $this->assertConstraintRejects(
+            fn () => $this->createShip($world, $nation, $cells[4], 'unknown', 1),
+            'Ship type outside its Ruleset snapshot',
+        );
+        $historicalRulesetId = (int) DB::table('ruleset_versions')
+            ->where('key', 'hakoniwa-2s-plus-v19')->value('id');
+        $this->assertConstraintRejects(
+            fn () => Ship::query()->create([
+                'world_id' => $world->id,
+                'ruleset_version_id' => $historicalRulesetId,
+                'nation_id' => $nation->id,
+                'map_cell_id' => $cells[4]->id,
+                'ship_type_key' => 'fishing',
+                'current_hp' => 1,
+                'max_hp' => 1,
+                'heading' => null,
+                'state' => Ship::STATE_ACTIVE,
+                'version' => 1,
+            ]),
+            'new Ship bound to a historical Ruleset snapshot',
+        );
         $this->assertConstraintRejects(
             fn () => $this->createShip($world, $nation, $cells[3], 'exploration', 2),
             'second active Ship on one cell',
@@ -108,6 +134,7 @@ final class SurfaceShipFoundationTest extends TestCase
     ): Ship {
         return Ship::query()->create([
             'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
             'nation_id' => $nation->id,
             'map_cell_id' => $cell->id,
             'ship_type_key' => $type,

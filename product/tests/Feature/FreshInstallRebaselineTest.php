@@ -154,6 +154,11 @@ final class FreshInstallRebaselineTest extends TestCase
             'visibility_policy' => 'public',
         ]);
         $this->assertTrue(Schema::hasTable('ships'));
+        $this->assertTrue(Schema::hasColumn('ships', 'ruleset_version_id'));
+        $this->assertSame(3, $ruleset->settings['surface_ships']['capacity_per_type']);
+        $this->assertSame(['fishing', 'tourist', 'exploration'], array_keys(
+            $ruleset->settings['surface_ships']['definitions'],
+        ));
         $oil = ResourceDefinition::query()->where('key', 'oil')->sole();
         $this->assertSame(['石油', 'energy', 'ten_thousand_barrels', '万バレル', true, true, 'sale.oil', 60], [
             $oil->name, $oil->category, $oil->unit, $oil->unit_label,
@@ -1385,6 +1390,7 @@ SQL);
             ->orderBy('id')->firstOrFail();
         Ship::query()->create([
             'world_id' => $world->id,
+            'ruleset_version_id' => $target->id,
             'nation_id' => $nation->id,
             'map_cell_id' => $shipCell->id,
             'ship_type_key' => 'fishing',
@@ -1394,6 +1400,7 @@ SQL);
             'version' => 1,
         ]);
         $this->assertDatabaseHas('ships', [
+            'ruleset_version_id' => $target->id,
             'nation_id' => $nation->id,
             'map_cell_id' => $shipCell->id,
             'ship_type_key' => 'fishing',

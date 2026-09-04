@@ -17,7 +17,7 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V19_CHECKSUM = 'b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9';
 
-    private const V20_CHECKSUM = 'b8b192444a3e60cc0eb459d814d030ffef71679f2ada9f4e82cc2d438c3b2c17';
+    private const V20_CHECKSUM = '6ffc4156dda071274c3da4353e6299142e151b44afd773de54c60a3cdcf40b2b';
 
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
     private const V16_COVERAGE = [
@@ -69,6 +69,18 @@ final class CurrentRulesetContractTest extends TestCase
         );
         $this->assertSame(['sea', 'shallow', 'wasteland', 'plain'], $territoryAbandon['target_terrain_keys']);
         $this->assertFalse($territoryAbandon['metadata']['consumes_turn']);
+        $this->assertSame(3, $current['surface_ships']['capacity_per_type']);
+        $this->assertSame(['fishing', 'tourist', 'exploration'], array_keys(
+            $current['surface_ships']['definitions'],
+        ));
+        $this->assertSame([500, 1500, 1000], array_column(
+            $current['surface_ships']['definitions'],
+            'build_cost_money',
+        ));
+        $this->assertSame([1, 2, 2], array_column(
+            $current['surface_ships']['definitions'],
+            'maximum_hp',
+        ));
         $underground = $current['underground_facility_development'];
         $this->assertSame([
             'underground_city',
@@ -106,7 +118,7 @@ final class CurrentRulesetContractTest extends TestCase
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void
     {
         $this->assertSame(
-            11,
+            12,
             app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'))['domains'],
         );
         $coverage = app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'));

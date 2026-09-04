@@ -359,6 +359,7 @@ final class RulesetAuthoringValidator
             $commandKeys,
         );
         $this->validateKarma($settings, $authoredKey, $version);
+        $this->validateSurfaceShips($settings, $authoredKey, $version, $resourceKeys);
         $monsterCount = $this->validateMonsterSystem(
             $settings,
             $resourceKeys,
@@ -381,6 +382,75 @@ final class RulesetAuthoringValidator
             'production' => count($productionKeys),
             'monsters' => $monsterCount,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<string>  $resourceKeys
+     */
+    private function validateSurfaceShips(
+        array $settings,
+        string $authoredKey,
+        int $version,
+        array $resourceKeys,
+    ): void {
+        if ($version < 20) {
+            if (array_key_exists('surface_ships', $settings)) {
+                throw new DomainException('ruleset.surface_ships requires Surface Ruleset v20.');
+            }
+
+            return;
+        }
+        if ($authoredKey !== self::FORMAL_V20_KEY) {
+            return;
+        }
+
+        $section = $this->map($settings['surface_ships'] ?? null, 'ruleset.surface_ships');
+        $this->requireKeys($section, ['capacity_per_type', 'definitions'], 'ruleset.surface_ships');
+        if ($this->integer($section['capacity_per_type'], 'ruleset.surface_ships.capacity_per_type', 1) !== 3) {
+            throw new DomainException('ruleset.surface_ships.capacity_per_type must be exactly 3 for v20.');
+        }
+        $definitions = $this->map($section['definitions'], 'ruleset.surface_ships.definitions');
+        if (array_keys($definitions) !== ['fishing', 'tourist', 'exploration']) {
+            throw new DomainException('ruleset.surface_ships.definitions must contain the exact v20 Ship keys in canonical order.');
+        }
+
+        $expected = [
+            'fishing' => ['漁船', 'ship.fishing', 10, 500, 1, 1, 'fish', 7000, 0, 1],
+            'tourist' => ['観光船', 'ship.tourist', 20, 1500, 2, 2, null, 0, 20, 1],
+            'exploration' => ['探索船', 'ship.exploration', 30, 1000, 2, 1, null, 0, 0, 3],
+        ];
+        foreach ($definitions as $key => $value) {
+            $path = "ruleset.surface_ships.definitions.{$key}";
+            $definition = $this->map($value, $path);
+            $this->requireKeys($definition, [
+                'name', 'asset_key', 'sort_order', 'build_cost_money', 'maximum_hp',
+                'movement_oil_units', 'movement_reward_resource_key',
+                'movement_reward_resource_units', 'movement_reward_money', 'visibility_radius',
+            ], $path);
+            $actual = [
+                $this->persistedString($definition['name'], "{$path}.name"),
+                $this->persistedString($definition['asset_key'], "{$path}.asset_key"),
+                $this->integer($definition['sort_order'], "{$path}.sort_order", 1),
+                $this->integer($definition['build_cost_money'], "{$path}.build_cost_money", 1),
+                $this->integer($definition['maximum_hp'], "{$path}.maximum_hp", 1),
+                $this->integer($definition['movement_oil_units'], "{$path}.movement_oil_units", 1),
+                $definition['movement_reward_resource_key'],
+                $this->integer($definition['movement_reward_resource_units'], "{$path}.movement_reward_resource_units", 0),
+                $this->integer($definition['movement_reward_money'], "{$path}.movement_reward_money", 0),
+                $this->integer($definition['visibility_radius'], "{$path}.visibility_radius", 1),
+            ];
+            if ($definition['movement_reward_resource_key'] !== null) {
+                $actual[6] = $this->reference(
+                    $definition['movement_reward_resource_key'],
+                    $resourceKeys,
+                    "{$path}.movement_reward_resource_key",
+                );
+            }
+            if ($actual !== $expected[$key]) {
+                throw new DomainException("{$path} differs from the Owner-approved v20 Ship contract.");
+            }
+        }
     }
 
     /**

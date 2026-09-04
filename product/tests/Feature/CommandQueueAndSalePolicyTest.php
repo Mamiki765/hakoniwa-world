@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\NationCreationService;
 use App\Domain\Command\CommandRequestConflictException;
+use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Models\CommandDefinition;
@@ -2207,6 +2208,36 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.duplicate', true)
             ->assertJsonPath('data.item_id', $created['item_id'])
             ->assertJsonCount(2, 'data.queue.items');
+
+        $queue = NationCommandQueue::query()->where('nation_id', $nation->id)->firstOrFail();
+        $queue->load(['items' => fn ($query) => $query->where('status', 'queued')
+            ->with('definition')->orderBy('queue_position')]);
+        $projectionCell = $target->fresh(['terrain', 'facility']);
+        $projectionMemo = new SurfaceCommandProjectionMemo;
+        $projectionQueries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$projectionQueries): void {
+            $projectionQueries[] = $query->sql;
+        });
+        $service = app(CommandQueueService::class);
+        $service->projectCellStateBeforePosition(
+            $projectionCell,
+            $queue,
+            3,
+            $nation,
+            $mapSpace,
+            projectionMemo: $projectionMemo,
+        );
+        $this->assertNotEmpty($projectionQueries);
+        $projectionQueries = [];
+        $service->projectCellStateBeforePosition(
+            $projectionCell,
+            $queue,
+            3,
+            $nation,
+            $mapSpace,
+            projectionMemo: $projectionMemo,
+        );
+        $this->assertSame([], $projectionQueries, 'Repeated port projection bypassed the request memo.');
     }
 
     public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void

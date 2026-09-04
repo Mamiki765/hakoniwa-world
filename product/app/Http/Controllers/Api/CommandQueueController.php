@@ -11,6 +11,7 @@ use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\PlayerFacingCommandException;
+use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
@@ -146,6 +147,7 @@ final class CommandQueueController extends Controller
                 ->orderBy('sort_order')
                 ->get();
             $visibleState = $cell === null ? null : MapCellPresenter::visibleState($cell, $nation->id);
+            $projectionMemo = new SurfaceCommandProjectionMemo;
             $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
                 $cell,
                 $queue,
@@ -153,13 +155,14 @@ final class CommandQueueController extends Controller
                 $nation,
                 $mapSpace,
                 $visibleState,
+                $projectionMemo,
             );
             $resultFacilities = FacilityDefinition::query()
                 ->whereIn('key', $definitions->pluck('result_facility_key')->filter()->unique()->values())
                 ->get()
                 ->keyBy('key');
             $definitions = $definitions
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo): array {
                     $ownerOverbuildEffect = $projected === null
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
@@ -181,6 +184,7 @@ final class CommandQueueController extends Controller
                                     $position,
                                     $nation,
                                     $mapSpace,
+                                    $projectionMemo,
                                 )
                                 : $service->projectedTargetMatches(
                                     $definition,
@@ -190,6 +194,7 @@ final class CommandQueueController extends Controller
                                     $cell,
                                     $queue,
                                     $position,
+                                    $projectionMemo,
                                 );
                         }
                         if ($definition->key === 'build_port') {
@@ -201,6 +206,7 @@ final class CommandQueueController extends Controller
                                 $cell,
                                 $queue,
                                 $position,
+                                $projectionMemo,
                             );
                             if ($currentlyExecutable && ! $portProjectedExecutable) {
                                 $unavailableReason = '予約済みcommand後は港の建設条件を満たしません。';
@@ -491,8 +497,9 @@ final class CommandQueueController extends Controller
     {
         $nation = $queue->nation()->firstOrFail();
         $mapSpace = MapSpace::query()->findOrFail($queue->map_space_id);
+        $projectionMemo = new SurfaceCommandProjectionMemo;
         $items = $this->legacyOrder->project($queue->items)
-            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace): array {
+            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo): array {
                 $definition = $service->definitionForItem($item);
                 $cell = $item->target_context === 'surface_cell'
                     ? MapCell::query()->where('map_space_id', $queue->map_space_id)
@@ -505,6 +512,7 @@ final class CommandQueueController extends Controller
                     (int) $item->queue_position,
                     $nation,
                     $mapSpace,
+                    projectionMemo: $projectionMemo,
                 );
                 $effect = $projected === null || ! $definition instanceof CommandDefinition
                     ? null
