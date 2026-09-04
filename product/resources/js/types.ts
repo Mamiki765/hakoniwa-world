@@ -13,7 +13,7 @@ export interface CurrentUser {
 }
 
 export interface SecretarySkill {
-    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable';
+    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable' | 'ship_operations';
     name: string;
     level: number;
     experience: number;

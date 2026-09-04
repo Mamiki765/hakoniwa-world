@@ -9,6 +9,8 @@ import type {
     CommandQueueItem,
     EffectivePlanSlot,
     MapCell,
+    Nation,
+    ShipOverlay,
     UndergroundFacilityTarget,
 } from '../types';
 import CellDetails from './CellDetails.vue';
@@ -30,9 +32,11 @@ const props = defineProps<{
     mapSpaceId: number;
     selected: MapCell | null;
     selectedUnderground?: UndergroundFacilityTarget | null;
+    nationState?: Nation['state'];
 }>();
 const emit = defineEmits<{
     queue: [queue: CommandQueue];
+    ship: [ship: ShipOverlay];
 }>();
 
 const definitions = ref<CommandDefinition[]>([]);
@@ -54,6 +58,8 @@ const refreshing = ref(false);
 const mutating = ref(false);
 const busy = computed(() => refreshing.value || mutating.value);
 const commandStatus = ref<CommandStatus>({ kind: 'idle', text: '未送信' });
+const shipStatus = ref<CommandStatus>({ kind: 'idle', text: '未変更' });
+const shipHeading = ref<number | null>(null);
 const selectedPosition = ref(1);
 const draggedItemId = ref<number | null>(null);
 const pendingDefinition = ref<CommandDefinition | null>(null);
@@ -78,6 +84,42 @@ const pendingCostMoney = computed(() => {
     return definition.quantity_options.find((option) => option.value === pendingQuantity.value)?.cost_money
         ?? definition.cost_money;
 });
+const ownShip = computed(() => props.selected?.ship?.is_owner === true ? props.selected.ship : null);
+
+watch(
+    () => [ownShip.value?.id, ownShip.value?.heading],
+    () => {
+        shipHeading.value = ownShip.value?.heading ?? null;
+        shipStatus.value = { kind: 'idle', text: '未変更' };
+    },
+    { immediate: true },
+);
+
+async function updateShipHeading(): Promise<void> {
+    const ship = ownShip.value;
+    if (busy.value || (props.nationState ?? 'active') !== 'active' || ship === null || ship.version === null) return;
+    beginMutation();
+    try {
+        const result = await api<{ id: number; heading: number | null; version: number }>(
+            `/api/v1/nations/${props.nationId}/ships/${ship.id}/heading`,
+            {
+                method: 'PATCH',
+                body: JSON.stringify({ heading: shipHeading.value, expected_version: ship.version }),
+            },
+        );
+        emit('ship', { ...ship, heading: result.heading, version: result.version });
+        shipStatus.value = { kind: 'success', text: '進路を変更しました' };
+    } catch (error) {
+        shipStatus.value = {
+            kind: 'error',
+            text: error instanceof ApiError && error.status === 409
+                ? 'Shipが更新されています。マップを再読込してください'
+                : playerFacingReason(error, '進路を変更できませんでした'),
+        };
+    } finally {
+        await finishMutation();
+    }
+}
 
 watch(
     () => [
@@ -552,6 +594,25 @@ onBeforeUnmount(() => {
                     <p>{{ selectedUnderground.facility_key === null ? '空き施設枠' : '建築済み施設枠' }}</p>
                 </section>
                 <CellDetails v-else :cell="selected" />
+                <section v-if="ownShip" class="available-commands" aria-label="選択中の自国Ship操作">
+                    <h3>Ship進路</h3>
+                    <p v-if="(nationState ?? 'active') !== 'active'">休止・復興中は進路を変更できません。</p>
+                    <form v-else class="parameter-popover" @submit.prevent="updateShipHeading">
+                        <label>進行方向
+                            <select v-model="shipHeading">
+                                <option :value="null">random</option>
+                                <option :value="0">東</option>
+                                <option :value="1">北東</option>
+                                <option :value="2">北西</option>
+                                <option :value="3">西</option>
+                                <option :value="4">南西</option>
+                                <option :value="5">南東</option>
+                            </select>
+                        </label>
+                        <button type="submit" :disabled="busy || shipHeading === ownShip.heading">進路を変更</button>
+                        <p class="command-status" :class="`command-status--${shipStatus.kind}`" aria-live="polite">{{ shipStatus.text }}</p>
+                    </form>
+                </section>
                 <section class="available-commands">
                     <h3>適用できるコマンド</h3>
                     <p

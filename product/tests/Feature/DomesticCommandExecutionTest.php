@@ -9,7 +9,6 @@ use App\Application\KarmaTurnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\Underground\UndergroundProfileService;
-use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -1989,7 +1988,7 @@ class DomesticCommandExecutionTest extends TestCase
         ));
     }
 
-    public function test_ship_occupied_water_command_is_unavailable_and_fails_without_aborting_the_turn(): void
+    public function test_ship_is_forced_to_adjacent_sea_before_oil_field_creation_and_can_then_be_scuttled_by_identity(): void
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->createNation($world, '船舶占有国');
@@ -1998,6 +1997,15 @@ class DomesticCommandExecutionTest extends TestCase
         $ownedLand = $this->ownedTerrain($nation, 'plain');
         $target = $this->neighborCells($ownedLand)[0];
         $this->setCellState($target, 'sea', null);
+        $escape = collect($this->neighborCells($target))
+            ->first(fn (MapCell $cell): bool => $cell->id !== $ownedLand->id);
+        $this->assertInstanceOf(MapCell::class, $escape);
+        foreach ($this->neighborCells($target) as $neighbor) {
+            if ($neighbor->id !== $escape->id && $neighbor->id !== $ownedLand->id) {
+                $this->setCellState($neighbor, 'shallow', null);
+            }
+        }
+        $this->setCellState($escape, 'sea', null);
         $target = $target->fresh(['terrain', 'facility', 'ship']);
         $ship = Ship::query()->create([
             'world_id' => $world->id,
@@ -2024,12 +2032,7 @@ class DomesticCommandExecutionTest extends TestCase
             ->where('ruleset_version_id', $world->ruleset_version_id)
             ->where('key', 'excavate')
             ->firstOrFail();
-        try {
-            $service->validateTarget($nation, $space, $excavate, $target);
-            $this->fail('Ship-occupied sea was presented as an executable excavation target.');
-        } catch (PlayerFacingCommandException $exception) {
-            $this->assertSame('船が存在するcellは現在このcommandの対象にできません。', $exception->getMessage());
-        }
+        $service->validateTarget($nation, $space, $excavate, $target);
 
         $failed = $service->add(
             user: $user,
@@ -2076,17 +2079,35 @@ class DomesticCommandExecutionTest extends TestCase
             expectedVersion: (int) $scuttle['queue']->version,
         );
 
-        $result = app(DomesticCommandExecutor::class)->execute(
-            $this->context($world, [$nation->id], hash('sha256', 'ship occupied excavation')),
+        $firstResult = app(DomesticCommandExecutor::class)->execute(
+            $this->context(
+                $world,
+                [$nation->id],
+                $this->seedWithFirstDraw(TurnRandomStreamFactory::SEABED_OIL_SEARCH, 100, 0),
+            ),
         );
-        $this->assertSame([1, 1], [$result['successes'], $result['failures']]);
-        $this->assertSame('occupied_by_ship', $failed['item']->fresh()->failure_code);
+        $this->assertSame([1, 0], [$firstResult['successes'], $firstResult['failures']]);
+        $this->assertSame('completed', $failed['item']->fresh()->status);
+        $this->assertSame($escape->id, $ship->fresh()->map_cell_id);
+        $this->assertSame('seabed_oil_field', $target->fresh()->facility()->value('key'));
+        $displaced = $this->eventMetadataForSubject('ship.forced_displaced', $ship->id);
+        $this->assertSame([
+            'adjacent', 0, 0, 0, false,
+        ], [
+            $displaced['source'], $displaced['oil_consumed'], $displaced['movement_reward'],
+            $displaced['secretary_experience'], $displaced['normal_event_consumed'],
+        ]);
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'ship scuttle after displacement'), null, 3),
+        );
+        $this->assertSame([1, 0], [$result['successes'], $result['failures']]);
         $this->assertSame('completed', $scuttle['item']->fresh()->status);
         $this->assertSame('queued', $next['item']->fresh()->status);
-        $this->assertSame(2_000, (int) $nation->fresh()->money);
+        $this->assertSame(1_800, (int) $nation->fresh()->money);
         $retired = $ship->fresh();
         $this->assertSame([
-            Ship::STATE_REMOVED, 'scuttled', null, 2, 2,
+            Ship::STATE_REMOVED, 'scuttled', null, 2, 3,
         ], [
             $retired->state, $retired->removal_reason, $retired->map_cell_id,
             $retired->current_hp, $retired->version,
@@ -2094,7 +2115,7 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
         $retiredEvent = $this->eventMetadataForSubject('ship.retired', $ship->id);
         $this->assertSame([
-            $nation->id, $ship->id, 'exploration', 'scuttled', $target->x, $target->y,
+            $nation->id, $ship->id, 'exploration', 'scuttled', $escape->x, $escape->y,
         ], [
             $retiredEvent['nation_id'], $retiredEvent['ship_id'], $retiredEvent['ship_type_key'],
             $retiredEvent['removal_reason'], $retiredEvent['x'], $retiredEvent['y'],

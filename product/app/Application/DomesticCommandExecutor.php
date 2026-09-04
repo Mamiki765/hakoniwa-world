@@ -78,6 +78,7 @@ final class DomesticCommandExecutor
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly SurfaceShipCatalog $surfaceShips,
         private readonly SurfaceShipBuildService $surfaceShipBuild,
+        private readonly SurfaceShipForcedDisplacementService $surfaceShipDisplacement,
     ) {}
 
     /**
@@ -389,11 +390,6 @@ final class DomesticCommandExecutor
             return $this->lockedScuttleShip($context, $nation, $item) instanceof Ship
                 ? null
                 : ['reason' => CommandFailureReason::NoTarget, 'observed' => $observed];
-        }
-        if (in_array($definition->key, ['reclaim', 'excavate'], true)
-            && Ship::query()->where('map_cell_id', $cell->id)->where('state', Ship::STATE_ACTIVE)
-                ->lockForUpdate()->first(['id']) !== null) {
-            return ['reason' => CommandFailureReason::OccupiedByShip, 'observed' => $observed];
         }
         $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell);
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
@@ -1768,6 +1764,7 @@ final class DomesticCommandExecutor
         ?int $ownerNationId,
         bool $adjacentEffect,
     ): void {
+        $this->surfaceShipDisplacement->displace($context, $cell, $nation, 'reclaim');
         $oldTerrain = $cell->terrain->key;
         $oldFacility = $cell->facility?->key;
         $oldOwner = $cell->owner_nation_id;
@@ -1877,6 +1874,7 @@ final class DomesticCommandExecutor
             if (! in_array('sea', $facility->buildable_terrain_keys, true)) {
                 throw new DomainException('Seabed oil field facility is not buildable on sea terrain.');
             }
+            $this->surfaceShipDisplacement->displace($context, $cell, $nation, 'seabed_oil_field_created');
             $this->cells->setFacility($cell, $facility);
             $this->assignNationOwnership($context, $nation, $cell);
             $cell->population = 0;

@@ -77,6 +77,53 @@ const errorResponse = (
 afterEach(() => vi.unstubAllGlobals());
 
 describe('command plan workspace', () => {
+    it('updates one selected owner Ship heading without spending a Nation turn and blocks recovery controls', async () => {
+        const shipSelected: MapCell = {
+            ...selected,
+            terrain: 'sea',
+            terrain_name: '海',
+            display_name: '漁船',
+            ship: {
+                id: 9,
+                key: 'fishing',
+                name: '漁船',
+                asset_key: 'ship.fishing',
+                current_hp: 1,
+                max_hp: 1,
+                public_state: 'active',
+                owner_nation: { nation_number: 1, name: '操作国' },
+                is_owner: true,
+                heading: null,
+                version: 1,
+            },
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'PATCH') return jsonResponse({ id: 9, heading: 0, version: 2 });
+
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([]) : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, {
+            props: { nationId: 1, mapSpaceId: 2, selected: shipSelected, nationState: 'active' },
+        });
+        await flushPromises();
+
+        const controls = wrapper.get('[aria-label="選択中の自国Ship操作"]');
+        await controls.get('select').setValue('0');
+        await controls.get('form').trigger('submit');
+        await flushPromises();
+
+        const patchRequest = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
+        expect(String(patchRequest?.[0])).toBe('/api/v1/nations/1/ships/9/heading');
+        expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ heading: 0, expected_version: 1 });
+        expect(wrapper.emitted('ship')?.[0]?.[0]).toMatchObject({ id: 9, heading: 0, version: 2 });
+        expect(controls.text()).toContain('進路を変更しました');
+
+        await wrapper.setProps({ nationState: 'recovery' });
+        expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('休止・復興中は進路を変更できません');
+        expect(wrapper.find('[aria-label="選択中の自国Ship操作"] form').exists()).toBe(false);
+    });
+
     it('shows twenty slots and inserts a command at the selected row', async () => {
         let serverQueue = commandQueue();
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

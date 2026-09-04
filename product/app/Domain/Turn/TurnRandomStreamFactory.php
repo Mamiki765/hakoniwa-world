@@ -82,6 +82,10 @@ final class TurnRandomStreamFactory
 
     private const SHIP_BUILD_PREFIX = 'development_commands:build_ship:item:';
 
+    private const SHIP_MOVEMENT_PREFIX = 'process_cells:ship:';
+
+    private const SHIP_DISPLACEMENT_PREFIX = 'development_commands:ship_displacement:';
+
     private const MONSTER_WORLD_SPAWN_PREFIX = 'global_disasters:aoi_inora:';
 
     private const MISSILE_IMPACT_PREFIX = 'development_commands:missile:item:';
@@ -195,6 +199,26 @@ final class TurnRandomStreamFactory
         }
 
         return self::SHIP_BUILD_PREFIX.$queueItemId.':candidate:v1';
+    }
+
+    public static function shipMovement(int $shipId, string $purpose, int $streamVersion): string
+    {
+        if ($shipId < 1 || $streamVersion < 1
+            || ! in_array($purpose, ['candidate', 'fuel_shortage_damage'], true)) {
+            throw new InvalidArgumentException('Ship-movement stream identity is invalid.');
+        }
+
+        return self::SHIP_MOVEMENT_PREFIX.$shipId.':'.$purpose.':v'.$streamVersion;
+    }
+
+    public static function shipDisplacement(int $shipId, string $purpose, int $streamVersion): string
+    {
+        if ($shipId < 1 || $streamVersion < 1
+            || ! in_array($purpose, ['adjacent', 'port'], true)) {
+            throw new InvalidArgumentException('Ship-displacement stream identity is invalid.');
+        }
+
+        return self::SHIP_DISPLACEMENT_PREFIX.$shipId.':'.$purpose.':v'.$streamVersion;
     }
 
     public static function monsterWorldSpawn(string $purpose, int $streamVersion): string

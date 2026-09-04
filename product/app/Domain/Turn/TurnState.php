@@ -26,6 +26,9 @@ final class TurnState
     private array $surfaceCellIds = [];
 
     /** @var array<int, true> */
+    private array $processedShipIds = [];
+
+    /** @var array<int, true> */
     private array $famineNationIds = [];
 
     /** @var array<int, true> */
@@ -374,6 +377,23 @@ final class TurnState
     public function surfaceCellIds(): array
     {
         return $this->surfaceCellIds;
+    }
+
+    public function markShipProcessed(mixed $shipId): void
+    {
+        if (! is_int($shipId) || $shipId < 1) {
+            throw new InvalidArgumentException('Processed Ship ID must be a positive integer.');
+        }
+        $this->processedShipIds[$shipId] = true;
+    }
+
+    public function shipProcessed(mixed $shipId): bool
+    {
+        if (! is_int($shipId) || $shipId < 1) {
+            throw new InvalidArgumentException('Processed Ship ID must be a positive integer.');
+        }
+
+        return isset($this->processedShipIds[$shipId]);
     }
 
     public function markFamine(int $nationId): void
@@ -837,7 +857,7 @@ final class TurnState
         if (! is_int($monsterExperience) || $monsterExperience < 0) {
             throw new InvalidArgumentException('Secretary monster experience snapshot must be a non-negative integer.');
         }
-        if (! in_array(array_keys($skills), [SecretarySkillCatalog::KEYS, SecretarySkillCatalog::V17_KEYS], true)) {
+        if (! in_array(array_keys($skills), [SecretarySkillCatalog::KEYS, SecretarySkillCatalog::V17_KEYS, SecretarySkillCatalog::V20_KEYS], true)) {
             throw new InvalidArgumentException('Secretary snapshot must contain the exact current skill catalog.');
         }
         $validatedSkills = [];
@@ -1028,7 +1048,7 @@ final class TurnState
 
     public function secretarySkillLevel(mixed $nationId, string $skillKey): int
     {
-        if (! in_array($skillKey, SecretarySkillCatalog::V17_KEYS, true)) {
+        if (! in_array($skillKey, SecretarySkillCatalog::V20_KEYS, true)) {
             throw new InvalidArgumentException("Unknown Secretary skill {$skillKey}.");
         }
 
@@ -1039,7 +1059,7 @@ final class TurnState
     {
         $nationId = $this->validatedNationId($nationId);
         $this->secretarySnapshot($nationId);
-        if (! in_array($skillKey, SecretarySkillCatalog::V17_KEYS, true) || $amount < 1) {
+        if (! in_array($skillKey, SecretarySkillCatalog::V20_KEYS, true) || $amount < 1) {
             throw new InvalidArgumentException('Secretary experience award must use a known skill and positive amount.');
         }
         if ($this->secretaryExperienceFlushed) {

@@ -138,6 +138,38 @@ final class SurfaceShipFoundationTest extends TestCase
         $this->assertSame(Ship::STATE_ACTIVE, $replacement->state);
     }
 
+    public function test_owner_can_change_active_ship_heading_with_optimistic_version_without_spending_a_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($owner, $world, '進路変更国', '進路島主');
+        $cell = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))->firstOrFail();
+        $ship = $this->createShip($world, $nation, $cell, 'fishing', 1);
+        $path = "/api/v1/nations/{$nation->id}/ships/{$ship->id}/heading";
+
+        $this->actingAs($owner)->patchJson($path, ['heading' => 0, 'expected_version' => 1])
+            ->assertOk()
+            ->assertJsonPath('data.heading', 0)
+            ->assertJsonPath('data.version', 2);
+        $this->assertSame(1, $world->fresh()->current_turn);
+        $this->actingAs($owner)->patchJson($path, ['heading' => 1, 'expected_version' => 1])
+            ->assertConflict();
+
+        $outsider = User::factory()->create();
+        $this->actingAs($outsider)->patchJson($path, ['heading' => null, 'expected_version' => 2])
+            ->assertForbidden();
+        $nation->update([
+            'state' => 'recovery',
+            'state_started_turn' => 1,
+            'resume_at_turn' => 86,
+        ]);
+        $this->actingAs($owner)->patchJson($path, ['heading' => null, 'expected_version' => 2])
+            ->assertUnprocessable();
+        $this->assertSame([0, 2], [$ship->fresh()->heading, $ship->fresh()->version]);
+    }
+
     private function createShip(
         World $world,
         Nation $nation,
