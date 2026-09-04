@@ -509,7 +509,7 @@ final class NationLifecycleService
             ->where(function ($query) use ($nation): void {
                 $query->whereNull('owner_nation_id')->orWhere('owner_nation_id', $nation->id);
             })
-            ->whereNull('facility_definition_id')->whereDoesntHave('monsterOccupancy')
+            ->whereNull('facility_definition_id')->whereDoesntHave('monsterOccupancy')->whereDoesntHave('ship')
             ->whereHas('terrain', fn ($query) => $query->whereIn('key', $farm['candidate_terrain_keys']))
             ->with(['terrain', 'facility'])->orderBy('id')->lockForUpdate()->get()
             ->filter(fn (MapCell $cell): bool => $origin->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= $radius)
