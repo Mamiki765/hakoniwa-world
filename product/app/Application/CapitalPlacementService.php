@@ -69,6 +69,12 @@ final class CapitalPlacementService
                   AND surrounding_terrain.key = 'sea'
                   AND surrounding.owner_nation_id IS NULL
                   AND surrounding.facility_definition_id IS NULL
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM ships surface_ship
+                    WHERE surface_ship.map_cell_id = surrounding.id
+                      AND surface_ship.state = 'active'
+                  )
               ) = ?
               AND NOT EXISTS (
                 SELECT 1

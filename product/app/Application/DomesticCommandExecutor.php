@@ -1752,7 +1752,8 @@ final class DomesticCommandExecutor
         $spreadCandidates = array_filter(
             $water,
             static fn (MapCell $neighbor): bool => $neighbor->owner_nation_id === null
-                && $neighbor->facility_definition_id === null,
+                && $neighbor->facility_definition_id === null
+                && $neighbor->ship === null,
         );
         foreach ($spreadCandidates as $neighbor) {
             $this->changeReclaimCell($context, $nation, $neighbor, 'shallow', null, true);
@@ -1816,7 +1817,7 @@ final class DomesticCommandExecutor
                 ->where('x', $coordinate->x)
                 ->where('y', $coordinate->y)
                 ->lockForUpdate()
-                ->with(['terrain', 'facility'])
+                ->with(['terrain', 'facility', 'ship'])
                 ->first();
             if ($neighbor !== null) {
                 $neighbors[] = $neighbor;

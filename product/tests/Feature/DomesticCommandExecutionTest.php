@@ -1196,6 +1196,18 @@ class DomesticCommandExecutionTest extends TestCase
         foreach (array_slice($neighbors, 0, 2) as $neighbor) {
             $this->setCellState($neighbor, 'sea', null);
         }
+        Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $neighbors[1]->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
         $this->setCellState($neighbors[2], 'shallow', null);
         $unchangedShallowVersion = $neighbors[2]->fresh()->version;
         foreach (array_slice($neighbors, 3) as $index => $neighbor) {
@@ -1209,15 +1221,17 @@ class DomesticCommandExecutionTest extends TestCase
 
         $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
         $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
-        foreach (array_slice($neighbors, 0, 3) as $neighbor) {
+        foreach ([$neighbors[0], $neighbors[2]] as $neighbor) {
             $this->assertSame('shallow', $neighbor->fresh()->terrain()->value('key'));
             $this->assertNull($neighbor->fresh()->owner_nation_id);
         }
+        $this->assertSame('sea', $neighbors[1]->fresh()->terrain()->value('key'));
+        $this->assertNotNull($neighbors[1]->fresh()->ship);
         $this->assertSame($unchangedShallowVersion, $neighbors[2]->fresh()->version);
         foreach (array_slice($neighbors, 3) as $neighbor) {
             $this->assertSame('wasteland', $neighbor->fresh()->terrain()->value('key'));
         }
-        $expectedChunks = collect([$target, ...array_slice($neighbors, 0, 2)])
+        $expectedChunks = collect([$target, $neighbors[0]])
             ->pluck('map_chunk_id')->unique()->sort()->values()->all();
         $this->assertSame($expectedChunks, $context->state->changedMapChunkIds());
         $events = DB::table('audit_events')->where('event_type', 'terrain.changed')
@@ -1227,9 +1241,9 @@ class DomesticCommandExecutionTest extends TestCase
                 512,
                 JSON_THROW_ON_ERROR,
             ))->all();
-        $this->assertCount(3, $events);
+        $this->assertCount(2, $events);
         $this->assertFalse($events[0]['adjacent_effect']);
-        $this->assertSame([true, true], array_column(array_slice($events, 1), 'adjacent_effect'));
+        $this->assertTrue($events[1]['adjacent_effect']);
     }
 
     public function test_reclaim_rejects_water_adjacent_to_foreign_territory_without_mutating_neighbors(): void
