@@ -129,25 +129,10 @@ final class MonsterTurnService
             if ($destination === null || $batch->occupancyAt($destination->id) !== null) {
                 continue;
             }
-            if ($this->nationProtection->protects($context, $destination->x, $destination->y)) {
-                continue;
-            }
             $facilityKey = $destination->facility?->key;
-            if ($facilityKey === ($movement['defense_facility_key'] ?? null)) {
-                $this->defenseSelfDestruct(
-                    $context,
-                    $space,
-                    $cell,
-                    $destination,
-                    $batch,
-                    $cellsByCoordinate,
-                    $ships,
-                );
-
-                return true;
-            }
-            if (in_array($destination->terrain->key, $movement['blocked_terrain_keys'] ?? [], true)
-                || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true)) {
+            $isDefense = $facilityKey === ($movement['defense_facility_key'] ?? null);
+            if (! $isDefense && (in_array($destination->terrain->key, $movement['blocked_terrain_keys'] ?? [], true)
+                || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true))) {
                 continue;
             }
             $ship = $ships?->shipAt((int) $destination->id);
@@ -164,6 +149,22 @@ final class MonsterTurnService
                 if ($removed !== null) {
                     $ships->forget($ship, (int) $destination->id);
                 }
+            }
+            if ($this->nationProtection->protects($context, $destination->x, $destination->y)) {
+                continue;
+            }
+            if ($isDefense) {
+                $this->defenseSelfDestruct(
+                    $context,
+                    $space,
+                    $cell,
+                    $destination,
+                    $batch,
+                    $cellsByCoordinate,
+                    $ships,
+                );
+
+                return true;
             }
             if ($behavior->movement === MonsterBehaviorResolver::WATER_NEUTRALIZING) {
                 $this->moveAndNeutralizeToSea($context, $cell, $destination, $occupancy, $batch);

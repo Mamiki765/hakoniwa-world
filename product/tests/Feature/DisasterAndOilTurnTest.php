@@ -226,12 +226,9 @@ class DisasterAndOilTurnTest extends TestCase
             (int) $nation->capital()->valueOrFail('x'),
             (int) $nation->capital()->valueOrFail('y'),
         );
-        $target = MapCell::query()->where('map_space_id', $space->id)
-            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
-            ->orderBy('id')->get()
-            ->first(fn (MapCell $cell): bool => (new GridCoordinate($cell->x, $cell->y))->distanceTo($capital) > 6)
-            ?? throw new RuntimeException('No remote sea cell was available for the Ship disaster test.');
+        $targetCoordinate = $capital->ring(2)[0];
+        $target = $this->cellAt($space, $targetCoordinate->x, $targetCoordinate->y);
+        $this->setCell($target, 'sea', null, null, 0);
         $ship = Ship::query()->create([
             'world_id' => $world->id,
             'ruleset_version_id' => $ruleset->id,
@@ -258,6 +255,14 @@ class DisasterAndOilTurnTest extends TestCase
             $space,
         );
         [$context, $run] = $this->context($world, $ruleset, $seed, [$nation->id]);
+        $context->state->setNationLifecycleSnapshot($nation->id, [
+            'state' => 'dormant',
+            'reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'capital_x' => $capital->x,
+            'capital_y' => $capital->y,
+        ]);
 
         app(DisasterTurnService::class)->executeGlobal($context);
 
@@ -266,7 +271,7 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame('eruption', $ship->removal_reason);
         $this->assertSame(0, $ship->current_hp);
         $this->assertNull($ship->map_cell_id);
-        $this->assertSame('mountain', $target->fresh()->terrain()->value('key'));
+        $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
         $event = $this->event($run, 'ship.sunk');
         $this->assertSame('探索船', $event['ship_name']);
         $this->assertSame('eruption', $event['removal_reason']);

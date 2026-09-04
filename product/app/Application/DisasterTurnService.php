@@ -678,21 +678,22 @@ final class DisasterTurnService
             $coordinate = $coordinates[$stream->integer(0, count($coordinates) - 1)];
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
             if ($cell !== null && $this->isMutable($cell, $cellIndex)) {
+                $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                    $context,
+                    $cell,
+                    $ships->get($cell->id),
+                    'meteor_shower',
+                    ['disaster_key' => 'meteor_shower'],
+                ) !== null;
                 if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                     // Keep the selected impact and continuation RNG opportunity, but apply no effect.
+                    $damaged += $shipRemoved ? 1 : 0;
                 } elseif ($this->isCapital($cell)) {
                     $this->damageCapital($context, $cell, 'meteor_shower', 'deep_sea', [
                         'center_x' => $center->x, 'center_y' => $center->y,
                     ]);
                     $damaged++;
                 } else {
-                    $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
-                        $context,
-                        $cell,
-                        $ships->get($cell->id),
-                        'meteor_shower',
-                        ['disaster_key' => 'meteor_shower'],
-                    ) !== null;
                     if ($cell->terrain->key === 'shallow') {
                         if ($this->changeCell(
                             $context,
@@ -755,9 +756,6 @@ final class DisasterTurnService
                 continue;
             }
             $distance = $center->distanceTo($coordinate);
-            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
-                continue;
-            }
             $ship = $shipBatch?->shipAt((int) $cell->id) ?? $ships?->get($cell->id);
             $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
                 $context,
@@ -768,6 +766,11 @@ final class DisasterTurnService
             ) !== null;
             if ($shipRemoved && $shipBatch !== null && $ship !== null) {
                 $shipBatch->forget($ship, (int) $cell->id);
+            }
+            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
+                $damaged += $shipRemoved ? 1 : 0;
+
+                continue;
             }
             $monsterRemoved = false;
             if ($this->isCapital($cell)) {
@@ -842,8 +845,7 @@ final class DisasterTurnService
         $damaged = 0;
         $ships = $this->shipRemoval->lockActiveWorldIndex($context);
         $centerCell = $this->cellAt($space, $center, $cellIndex);
-        if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)
-            && ! $this->nationProtection->protectsFromDisaster($context, $centerCell->x, $centerCell->y)) {
+        if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)) {
             $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
                 $context,
                 $centerCell,
@@ -851,7 +853,9 @@ final class DisasterTurnService
                 'eruption',
                 ['disaster_key' => 'eruption'],
             ) !== null;
-            if ($this->isCapital($centerCell)) {
+            if ($this->nationProtection->protectsFromDisaster($context, $centerCell->x, $centerCell->y)) {
+                $damaged += $shipRemoved ? 1 : 0;
+            } elseif ($this->isCapital($centerCell)) {
                 $this->damageCapital($context, $centerCell, 'eruption', 'eruption_center');
                 $damaged++;
             } elseif ($this->changeCell(
@@ -872,9 +876,6 @@ final class DisasterTurnService
             if ($cell === null || ! $this->isMutable($cell, $cellIndex) || $cell->terrain->key === 'mountain') {
                 continue;
             }
-            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
-                continue;
-            }
             $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
                 $context,
                 $cell,
@@ -882,6 +883,11 @@ final class DisasterTurnService
                 'eruption',
                 ['disaster_key' => 'eruption', 'direction' => $direction],
             ) !== null;
+            if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
+                $damaged += $shipRemoved ? 1 : 0;
+
+                continue;
+            }
             if ($this->isCapital($cell)) {
                 $severity = $cell->terrain->key === 'sea'
                     ? 'excavation_or_shallow'
