@@ -900,7 +900,7 @@ final class DomesticCommandExecutor
             return true;
         }
         if ($definition->key === 'reclaim') {
-            $this->applyReclaim($context, $nation, $definition, $cell);
+            $this->applyReclaim($context, $nation, $item, $definition, $cell);
             $this->recordPublicCommandCompanion($context, $nation, $definition, $cell);
 
             return true;
@@ -1717,6 +1717,7 @@ final class DomesticCommandExecutor
     private function applyReclaim(
         TurnContext $context,
         Nation $nation,
+        NationCommandQueueItem $item,
         CommandDefinition $definition,
         MapCell $cell,
     ): void {
@@ -1728,6 +1729,7 @@ final class DomesticCommandExecutor
             $wasShallow ? 'wasteland' : 'shallow',
             $wasShallow ? $nation->id : null,
             false,
+            (int) $item->id,
         );
         if (! $wasShallow) {
             return;
@@ -1752,7 +1754,15 @@ final class DomesticCommandExecutor
                 && $neighbor->ship === null,
         );
         foreach ($spreadCandidates as $neighbor) {
-            $this->changeReclaimCell($context, $nation, $neighbor, 'shallow', null, true);
+            $this->changeReclaimCell(
+                $context,
+                $nation,
+                $neighbor,
+                'shallow',
+                null,
+                true,
+                (int) $item->id,
+            );
         }
     }
 
@@ -1763,8 +1773,9 @@ final class DomesticCommandExecutor
         string $terrainKey,
         ?int $ownerNationId,
         bool $adjacentEffect,
+        int $queueItemId,
     ): void {
-        $this->surfaceShipDisplacement->displace($context, $cell, $nation, 'reclaim');
+        $this->surfaceShipDisplacement->displace($context, $cell, $nation, 'reclaim', $queueItemId);
         $oldTerrain = $cell->terrain->key;
         $oldFacility = $cell->facility?->key;
         $oldOwner = $cell->owner_nation_id;
@@ -1874,7 +1885,13 @@ final class DomesticCommandExecutor
             if (! in_array('sea', $facility->buildable_terrain_keys, true)) {
                 throw new DomainException('Seabed oil field facility is not buildable on sea terrain.');
             }
-            $this->surfaceShipDisplacement->displace($context, $cell, $nation, 'seabed_oil_field_created');
+            $this->surfaceShipDisplacement->displace(
+                $context,
+                $cell,
+                $nation,
+                'seabed_oil_field_created',
+                (int) $item->id,
+            );
             $this->cells->setFacility($cell, $facility);
             $this->assignNationOwnership($context, $nation, $cell);
             $cell->population = 0;

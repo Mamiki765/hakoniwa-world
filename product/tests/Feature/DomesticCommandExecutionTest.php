@@ -7,6 +7,7 @@ use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
 use App\Application\KarmaTurnService;
 use App\Application\NationCreationService;
+use App\Application\NationLifecycleService;
 use App\Application\PlayerIslandEventService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Domain\Map\GridCoordinate;
@@ -2119,6 +2120,76 @@ class DomesticCommandExecutionTest extends TestCase
         ], [
             $retiredEvent['nation_id'], $retiredEvent['ship_id'], $retiredEvent['ship_type_key'],
             $retiredEvent['removal_reason'], $retiredEvent['x'], $retiredEvent['y'],
+        ]);
+
+        [$recoveryUser, $recoveryNation] = $this->createNation($world, '休戦埋立国');
+        [, $foreignNation] = $this->createNation($world, '外国船保有国');
+        $recoveryNation->update([
+            'money' => 2_000,
+            'state' => 'recovery',
+            'state_started_turn' => 1,
+            'resume_at_turn' => 100,
+        ]);
+        $blockedTarget = $this->reclaimTarget($recoveryNation, $space);
+        $this->setCellState($blockedTarget, 'sea', null);
+        $ownedNeighbor = collect($this->neighborCells($blockedTarget))
+            ->first(fn (MapCell $cell): bool => $cell->owner_nation_id === $recoveryNation->id);
+        $this->assertInstanceOf(MapCell::class, $ownedNeighbor);
+        foreach ($this->neighborCells($blockedTarget) as $neighbor) {
+            if ($neighbor->id !== $ownedNeighbor->id) {
+                $this->setCellState($neighbor, 'shallow', null);
+            }
+        }
+        $foreignShip = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $foreignNation->id,
+            'map_cell_id' => $blockedTarget->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $reclaim = $this->queue($recoveryUser, $recoveryNation->fresh(), $space, 'reclaim', $blockedTarget);
+        $crimeContext = $this->context(
+            $world,
+            [$recoveryNation->id],
+            hash('sha256', 'recovery foreign ship forced destruction'),
+            targetTurn: 4,
+        );
+        $lifecycle = app(NationLifecycleService::class);
+        $lifecycle->prepare($crimeContext);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($crimeContext);
+
+        $crimeResult = app(DomesticCommandExecutor::class)->execute($crimeContext);
+        $lifecycle->finalize($crimeContext);
+        $karma->finalize($crimeContext);
+
+        $this->assertSame([1, 0], [$crimeResult['successes'], $crimeResult['failures']]);
+        $this->assertSame([
+            Ship::STATE_REMOVED, 'forced_displacement_failed', null,
+        ], [
+            $foreignShip->fresh()->state,
+            $foreignShip->fresh()->removal_reason,
+            $foreignShip->fresh()->map_cell_id,
+        ]);
+        $this->assertSame(['active', 1, true], [
+            $recoveryNation->fresh()->state,
+            (int) $recoveryNation->fresh()->karma,
+            $crimeContext->state->recoveryExitedThisTurn($recoveryNation->id),
+        ]);
+        $recoveryEnded = $this->eventMetadataForSubject(
+            'nation.recovery_ended',
+            $recoveryNation->id,
+            $reclaim->id,
+        );
+        $this->assertSame(['karma_crime', 1, $reclaim->id], [
+            $recoveryEnded['exit_trigger'],
+            $recoveryEnded['crime_points'],
+            $recoveryEnded['queue_item_id'],
         ]);
     }
 

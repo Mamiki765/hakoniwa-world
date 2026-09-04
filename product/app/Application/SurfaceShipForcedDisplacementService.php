@@ -18,6 +18,7 @@ final class SurfaceShipForcedDisplacementService
     public function __construct(
         private readonly SurfaceShipRemovalService $removal,
         private readonly TurnEventRecorder $events,
+        private readonly NationRecoveryExitService $recoveryExit,
     ) {}
 
     public function displace(
@@ -25,6 +26,7 @@ final class SurfaceShipForcedDisplacementService
         MapCell $origin,
         Nation $actingNation,
         string $reason,
+        int $queueItemId,
     ): void {
         $ship = Ship::query()
             ->where('world_id', $context->world->id)
@@ -56,10 +58,14 @@ final class SurfaceShipForcedDisplacementService
                 'acting_nation_id' => (int) $actingNation->id,
             ]);
             if ($foreign) {
+                $crimePoints = (int) $settings['foreign_destroy_karma'];
                 $context->state->addKarmaCrime(
                     (int) $actingNation->id,
-                    (int) $settings['foreign_destroy_karma'],
+                    $crimePoints,
                 );
+                if ($actingNation->state === 'recovery') {
+                    $this->recoveryExit->exitForCrime($context, $actingNation, $crimePoints, $queueItemId);
+                }
             }
 
             return;
