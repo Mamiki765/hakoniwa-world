@@ -133,11 +133,15 @@ final class NationAbandonmentTest extends TestCase
         $affectedNeutralMonster = $this->monsterAt($world->id, $world->ruleset_version_id, $neutralInside);
         $protectedOtherMonster = $this->monsterAt($world->id, $world->ruleset_version_id, $otherInside);
         $unaffectedMonster = $this->monsterAt($world->id, $world->ruleset_version_id, $neutralOutside);
+        $beforeCells = MapCell::query()->where('map_space_id', $surface->id)->orderBy('id')->get();
+        $expectedAffected = $beforeCells->filter(fn (MapCell $cell): bool => $cell->owner_nation_id === $nation->id
+            || ($cell->owner_nation_id === null && $center->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= 5));
+        $expectedOwnedCount = $expectedAffected->where('owner_nation_id', $nation->id)->count();
+        $expectedNeutralCount = $expectedAffected->whereNull('owner_nation_id')->count();
+        $cellVersions = $expectedAffected->pluck('version', 'id');
         $shipCell = MapCell::query()->where('map_space_id', $surface->id)
             ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
-            ->whereNotIn('id', [
-                $ownedInside->id, $ownedOutside->id, $neutralInside->id, $otherInside->id, $neutralOutside->id,
-            ])
+            ->whereNotIn('map_chunk_id', $expectedAffected->pluck('map_chunk_id')->unique())
             ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
             ->orderBy('id')->firstOrFail();
         $ship = Ship::query()->create([
@@ -195,13 +199,8 @@ final class NationAbandonmentTest extends TestCase
         app(MessageBoardService::class)->postPublic($owner, $nation, '破棄前の歴史メッセージ');
         $islandMessageId = IslandMessage::query()->where('target_nation_id', $nation->id)->valueOrFail('id');
 
-        $beforeCells = MapCell::query()->where('map_space_id', $surface->id)->orderBy('id')->get();
-        $expectedAffected = $beforeCells->filter(fn (MapCell $cell): bool => $cell->owner_nation_id === $nation->id
-            || ($cell->owner_nation_id === null && $center->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= 5));
-        $expectedOwnedCount = $expectedAffected->where('owner_nation_id', $nation->id)->count();
-        $expectedNeutralCount = $expectedAffected->whereNull('owner_nation_id')->count();
-        $cellVersions = $expectedAffected->pluck('version', 'id');
-        $affectedChunkIds = $expectedAffected->pluck('map_chunk_id')->unique()->sort()->values();
+        $affectedChunkIds = $expectedAffected->pluck('map_chunk_id')->push($shipCell->map_chunk_id)
+            ->unique()->sort()->values();
         $chunkVersions = DB::table('map_chunks')->pluck('version', 'id');
         $protectedOther = $otherInside->fresh()->only($this->cellStateFields());
         $protectedNeutral = $neutralOutside->fresh()->only($this->cellStateFields());

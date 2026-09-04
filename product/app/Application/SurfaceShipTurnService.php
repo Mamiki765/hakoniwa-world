@@ -269,6 +269,7 @@ final class SurfaceShipTurnService
         $ship->current_hp -= $damage;
         $ship->version++;
         $ship->save();
+        $context->state->markMapChunkChanged((int) $cell->map_chunk_id);
         $this->events->record($context, 'ship.fuel_shortage_damaged', $ship, [
             'nation_id' => (int) $ship->nation_id,
             'ship_id' => (int) $ship->id,

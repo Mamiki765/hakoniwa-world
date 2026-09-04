@@ -128,6 +128,7 @@ class TurnCellProcessingTest extends TestCase
             $fuelMetrics['ship_fuel_shortages'], $fuelMetrics['ship_fuel_damage'],
             $fuelShip->fresh()->current_hp, $fuelShip->fresh()->map_cell_id,
         ]);
+        $this->assertContains((int) $fuelOrigin->map_chunk_id, $fuelContext->state->changedMapChunkIds());
 
         $nation->update([
             'state' => 'recovery',

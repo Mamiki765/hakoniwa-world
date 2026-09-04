@@ -92,7 +92,11 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
 
         $ownedCellCount = $cells->where('owner_nation_id', $nation->id)->count();
         $neutralCleanupCellCount = $cells->whereNull('owner_nation_id')->count();
-        $chunkIds = $cells->pluck('map_chunk_id')->unique()->sort()->values()->all();
+        $ships = Ship::query()->where('nation_id', $nation->id)->where('state', Ship::STATE_ACTIVE)
+            ->orderBy('id')->lockForUpdate()->get();
+        $shipChunkIds = MapCell::query()->whereIn('id', $ships->pluck('map_cell_id')->filter())
+            ->pluck('map_chunk_id');
+        $chunkIds = $cells->pluck('map_chunk_id')->merge($shipChunkIds)->unique()->sort()->values()->all();
         $chunks = $chunkIds === []
             ? collect()
             : MapChunk::query()->whereIn('id', $chunkIds)->orderBy('id')->lockForUpdate()->get();
@@ -106,8 +110,6 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
                 $monsterRemovedCount++;
             }
         }
-        $ships = Ship::query()->where('nation_id', $nation->id)->where('state', Ship::STATE_ACTIVE)
-            ->orderBy('id')->lockForUpdate()->get();
         $removedAt = now();
         foreach ($ships as $ship) {
             $ship->map_cell_id = null;
