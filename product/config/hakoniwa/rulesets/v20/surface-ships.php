@@ -3,7 +3,12 @@
 $behavior = [
     'asset_key',
     'build_selector',
+    'fuel_resource_key',
     'movement_reward_resource_key',
+    'required_port_facility_key',
+    'secretary_skill_key',
+    'terrain_key',
+    '/surface_ships/forced_displacement/port_search_distances/*',
 ];
 
 $data = [
@@ -13,6 +18,12 @@ $data = [
     'movement_oil_units',
     'movement_reward_money',
     'movement_reward_resource_units',
+    'normal_event_limit_per_turn',
+    'fuel_shortage_damage',
+    'fuel_shortage_damage_chance_percent',
+    'foreign_destroy_karma',
+    'random_stream_version',
+    'secretary_experience_per_successful_move',
     'sort_order',
     'visibility_radius',
 ];
@@ -23,6 +34,21 @@ return [
     'payload' => [
         'surface_ships' => [
             'capacity_per_type' => 3,
+            'movement' => [
+                'terrain_key' => 'sea',
+                'required_port_facility_key' => 'port',
+                'fuel_resource_key' => 'oil',
+                'normal_event_limit_per_turn' => 1,
+                'fuel_shortage_damage_chance_percent' => 1,
+                'fuel_shortage_damage' => 1,
+                'random_stream_version' => 1,
+                'secretary_skill_key' => 'ship_operations',
+                'secretary_experience_per_successful_move' => 1,
+            ],
+            'forced_displacement' => [
+                'port_search_distances' => [1, 2],
+                'foreign_destroy_karma' => 1,
+            ],
             'definitions' => [
                 'fishing' => [
                     'name' => '漁船',

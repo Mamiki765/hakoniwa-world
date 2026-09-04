@@ -82,7 +82,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(62, DB::table('migrations')->count());
+        $this->assertSame(63, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -130,6 +130,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_04_010000_add_surface_ship_foundation',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_04_020000_add_surface_ship_movement',
         ]);
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_08_29_000000_create_underground_profiles',
@@ -414,6 +417,7 @@ SQL);
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_publish_v20_and_repair_water_ownership',
             '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
         ], $this->pendingMigrations());
         foreach ([
             'database/migrations/2026_09_03_000000_add_underground_respec.php',
@@ -475,6 +479,7 @@ SQL);
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_publish_v20_and_repair_water_ownership',
             '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
         ], $this->pendingMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
     }
@@ -525,6 +530,7 @@ SQL);
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_publish_v20_and_repair_water_ownership',
             '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
         ], $this->pendingMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
 
@@ -570,6 +576,7 @@ SQL);
             [
                 '2026_09_04_000000_publish_v20_and_repair_water_ownership',
                 '2026_09_04_010000_add_surface_ship_foundation',
+                '2026_09_04_020000_add_surface_ship_movement',
             ],
             $this->pendingMigrations(),
         );
@@ -622,7 +629,7 @@ SQL);
         $this->assertSame($run->id, $terrainChangeMetadata['turn_run_id']);
         $this->assertSame('forest', $terrainChangeMetadata['from_terrain_key']);
         $this->assertSame('plain', $terrainChangeMetadata['to_terrain_key']);
-        $this->assertSame(7, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(8, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
         $this->assertDatabaseHas('secretary_skills', [
             'secretary_id' => $secretary->id,
             'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,
@@ -729,6 +736,7 @@ SQL);
                 '2026_09_03_020000_add_underground_custom_ai',
                 '2026_09_04_000000_publish_v20_and_repair_water_ownership',
                 '2026_09_04_010000_add_surface_ship_foundation',
+                '2026_09_04_020000_add_surface_ship_movement',
             ],
             $this->pendingMigrations(),
         );
@@ -744,6 +752,7 @@ SQL);
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_publish_v20_and_repair_water_ownership',
             '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
         ], $this->pendingMigrations());
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
@@ -862,6 +871,7 @@ SQL);
                 '2026_09_03_020000_add_underground_custom_ai',
                 '2026_09_04_000000_publish_v20_and_repair_water_ownership',
                 '2026_09_04_010000_add_surface_ship_foundation',
+                '2026_09_04_020000_add_surface_ship_movement',
             ],
             $this->pendingMigrations(),
         );
@@ -882,6 +892,7 @@ SQL);
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_publish_v20_and_repair_water_ownership',
             '2026_09_04_010000_add_surface_ship_foundation',
+            '2026_09_04_020000_add_surface_ship_movement',
         ], $this->pendingMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
@@ -1375,6 +1386,11 @@ SQL);
             '--force' => true,
             '--no-interaction' => true,
         ])->assertSuccessful();
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_09_04_020000_add_surface_ship_movement.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
 
         $target = RulesetVersion::query()->where('key', Ver350RulesetUpgrade::TARGET_KEY)->sole();
         $queued->refresh();
@@ -1384,6 +1400,12 @@ SQL);
             'version' => Ver350RulesetUpgrade::SOURCE_VERSION,
         ]);
         $this->assertTrue(Schema::hasTable('ships'));
+        $this->assertDatabaseHas('secretary_skills', [
+            'secretary_id' => $user->secretary()->value('id'),
+            'skill_key' => SecretarySkillCatalog::SHIP_OPERATIONS,
+            'level' => 0,
+            'experience' => 0,
+        ]);
         $shipCell = MapCell::query()->where('map_space_id', $space->id)
             ->whereNull('facility_definition_id')->whereNull('owner_nation_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
@@ -1585,6 +1607,25 @@ SQL);
 
     private function returnSurfaceShipFoundationToPre350Source(): void
     {
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->delete();
+        DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT IF EXISTS secretary_skills_key_check');
+        DB::statement(<<<'SQL'
+ALTER TABLE secretary_skills
+  ADD CONSTRAINT secretary_skills_key_check
+  CHECK (skill_key IN (
+    'agricultural_policy',
+    'specialty_development',
+    'gold_vein_survey',
+    'forest_management',
+    'final_defense_line',
+    'declining_birthrate_policy',
+    'indomitable'
+  ))
+SQL);
+        DB::table('migrations')->where(
+            'migration',
+            '2026_09_04_020000_add_surface_ship_movement',
+        )->delete();
         if (Schema::hasTable('ships')) {
             Schema::drop('ships');
         }

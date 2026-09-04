@@ -1,7 +1,7 @@
 import { computed, reactive, ref } from 'vue';
 import { api } from '../api/client';
 import { floorDiv, neighbor } from '../map/projection';
-import type { MapCell, MapChunk, MapSpace } from '../types';
+import type { MapCell, MapChunk, MapSpace, ShipOverlay } from '../types';
 
 const CHUNK_SIZE = 16;
 
@@ -217,6 +217,14 @@ export function useMapState() {
         selected.value = cells.get(key(next.x, next.y)) ?? selected.value;
     }
 
+    function updateSelectedShip(ship: ShipOverlay): void {
+        const current = selected.value;
+        if (current === null || current.ship?.id !== ship.id) return;
+        const updated = { ...current, ship };
+        cells.set(key(current.x, current.y), updated);
+        selected.value = updated;
+    }
+
     return {
         visibleCells,
         selected,
@@ -231,5 +239,6 @@ export function useMapState() {
         select,
         clearSelection,
         moveSelection,
+        updateSelectedShip,
     };
 }

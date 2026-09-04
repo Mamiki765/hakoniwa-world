@@ -7,6 +7,7 @@ use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -741,9 +742,12 @@ final class DisasterTurnService
         string $disasterKey = 'huge_meteor',
         array $eventMetadata = [],
         ?DisasterMutableCellIndex $cellIndex = null,
+        ?SurfaceShipTurnBatch $shipBatch = null,
     ): int {
         $damaged = 0;
-        $ships = $this->shipRemoval->lockActiveWorldIndex($context);
+        $ships = $shipBatch === null
+            ? $this->shipRemoval->lockActiveWorldIndex($context)
+            : null;
         $coordinates = [...$center->ring(0), ...$center->ring(1), ...$center->ring(2)];
         foreach ($coordinates as $coordinate) {
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
@@ -754,13 +758,17 @@ final class DisasterTurnService
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
+            $ship = $shipBatch?->shipAt((int) $cell->id) ?? $ships?->get($cell->id);
             $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
                 $context,
                 $cell,
-                $ships->get($cell->id),
+                $ship,
                 $disasterKey,
                 ['disaster_key' => $disasterKey, ...$eventMetadata],
             ) !== null;
+            if ($shipRemoved && $shipBatch !== null && $ship !== null) {
+                $shipBatch->forget($ship, (int) $cell->id);
+            }
             $monsterRemoved = false;
             if ($this->isCapital($cell)) {
                 if ($distance === 0) {

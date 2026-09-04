@@ -336,6 +336,21 @@ class PlayerIslandEventApiTest extends TestCase
         $world->update(['current_turn' => 25]);
         DB::table('audit_events')->delete();
 
+        $this->audit('ship.forced_displaced', $nation, $nation, 'nation', 25, [
+            'from_x' => 10, 'from_y' => 11, 'x' => 11, 'y' => 11,
+        ]);
+        $this->audit('ship.fuel_shortage_damaged', $nation, $nation, 'nation', 25, [
+            'ship_name' => '探索船', 'x' => 12, 'y' => 13, 'current_hp' => 1,
+        ]);
+        $this->audit('ship.sunk', $nation, $nation, 'nation', 25, [
+            'ship_name' => '漁船', 'removal_reason' => 'fuel_exhaustion', 'x' => 14, 'y' => 15,
+        ]);
+        $this->audit('ship.sunk', $nation, $nation, 'nation', 25, [
+            'ship_name' => '観光船', 'removal_reason' => 'forced_displacement_failed', 'x' => 16, 'y' => 17,
+        ]);
+        $this->audit('ship.sunk', $nation, $nation, 'nation', 25, [
+            'ship_name' => '探索船', 'removal_reason' => 'defense_self_destruct', 'x' => 18, 'y' => 19,
+        ]);
         $finance = $this->audit('command.finance', $nation, $nation, 'nation', 25, ['applied' => 50]);
         $ownPublic = $this->publicFacility($nation, 25, 6, 7, 'farm');
         $olderOwnPublic = $this->publicFacility($nation, 13, 4, 5, 'mine');
@@ -361,6 +376,26 @@ class PlayerIslandEventApiTest extends TestCase
 
         $body = (string) $response->getContent();
         $this->assertContains('所有島(6,7)で農場整備が行われました。', $this->messages($response->json('data.groups')));
+        $this->assertContains(
+            '船が地形変更を避けて(10,11)から(11,11)へ退避しました。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '探索船が石油不足により(12,13)で損傷しました（HP 1）。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '漁船が石油不足事故により(14,15)で沈没しました。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '観光船が退避不能により(16,17)で沈没しました。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '探索船が防衛施設の自爆により(18,19)で沈没しました。',
+            $this->messages($response->json('data.groups')),
+        );
         $this->assertTrue(collect($response->json('data.groups.0.events'))->contains(
             static fn (array $event): bool => $event['id'] === $finance,
         ));

@@ -406,9 +406,33 @@ final class RulesetAuthoringValidator
         }
 
         $section = $this->map($settings['surface_ships'] ?? null, 'ruleset.surface_ships');
-        $this->requireKeys($section, ['capacity_per_type', 'definitions'], 'ruleset.surface_ships');
+        $this->requireKeys($section, ['capacity_per_type', 'movement', 'forced_displacement', 'definitions'], 'ruleset.surface_ships');
         if ($this->integer($section['capacity_per_type'], 'ruleset.surface_ships.capacity_per_type', 1) !== 3) {
             throw new DomainException('ruleset.surface_ships.capacity_per_type must be exactly 3 for v20.');
+        }
+        $movement = $this->map($section['movement'], 'ruleset.surface_ships.movement');
+        $this->requireKeys($movement, [
+            'terrain_key', 'required_port_facility_key', 'fuel_resource_key', 'normal_event_limit_per_turn',
+            'fuel_shortage_damage_chance_percent', 'fuel_shortage_damage', 'random_stream_version',
+            'secretary_skill_key', 'secretary_experience_per_successful_move',
+        ], 'ruleset.surface_ships.movement');
+        if ($movement !== [
+            'terrain_key' => 'sea',
+            'required_port_facility_key' => 'port',
+            'fuel_resource_key' => 'oil',
+            'normal_event_limit_per_turn' => 1,
+            'fuel_shortage_damage_chance_percent' => 1,
+            'fuel_shortage_damage' => 1,
+            'random_stream_version' => 1,
+            'secretary_skill_key' => SecretarySkillCatalog::SHIP_OPERATIONS,
+            'secretary_experience_per_successful_move' => 1,
+        ] || ! in_array($movement['fuel_resource_key'], $resourceKeys, true)) {
+            throw new DomainException('ruleset.surface_ships.movement differs from the Owner-approved v20 contract.');
+        }
+        $displacement = $this->map($section['forced_displacement'], 'ruleset.surface_ships.forced_displacement');
+        $this->requireKeys($displacement, ['port_search_distances', 'foreign_destroy_karma'], 'ruleset.surface_ships.forced_displacement');
+        if ($displacement !== ['port_search_distances' => [1, 2], 'foreign_destroy_karma' => 1]) {
+            throw new DomainException('ruleset.surface_ships.forced_displacement differs from the Owner-approved v20 contract.');
         }
         $definitions = $this->map($section['definitions'], 'ruleset.surface_ships.definitions');
         if (array_keys($definitions) !== ['fishing', 'tourist', 'exploration']) {
@@ -581,6 +605,26 @@ final class RulesetAuthoringValidator
                         'historical_backfill' => 'authoritative_turn_summary_only',
                     ]) {
                     throw new DomainException("{$path} does not match the Indomitable skill contract.");
+                }
+
+                continue;
+            }
+
+            if ($key === SecretarySkillCatalog::SHIP_OPERATIONS) {
+                if ($authoredKey !== self::FORMAL_V20_KEY
+                    || $initialLevel !== 0
+                    || $basis !== 'next_level_squared'
+                    || $multiplier !== 65_535
+                    || $effect !== [
+                        'type' => 'placeholder',
+                        'display' => '準備中',
+                    ]
+                    || $source !== [
+                        'type' => 'successful_ship_movement',
+                        'points_per_execution' => 1,
+                        'quantity_multiplier' => false,
+                    ]) {
+                    throw new DomainException("{$path} does not match the v20 Ship operations placeholder contract.");
                 }
 
                 continue;

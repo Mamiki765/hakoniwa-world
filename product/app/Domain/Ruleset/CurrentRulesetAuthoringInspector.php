@@ -60,6 +60,7 @@ final class CurrentRulesetAuthoringInspector
         'world-and-map.php' => 'v20/world-and-map.php',
         'facilities.php' => 'v20/facilities.php',
         'commands-and-production.php' => 'v20/commands-and-production.php',
+        'secretary.php' => 'v20/secretary.php',
         'surface-ships.php' => 'v20/surface-ships.php',
     ];
 

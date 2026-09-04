@@ -14,10 +14,12 @@ use App\Application\MonsterWorldSpawnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\RulesetPublisher;
+use App\Application\SurfaceShipTurnService;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterTurnBatch;
+use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -361,13 +363,14 @@ final class C4NewMonstersTest extends TestCase
             'version' => 1,
         ]);
 
-        $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
+        [, , $shipBatch] = $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
 
         $ship = $ship->fresh();
         $this->assertSame(Ship::STATE_REMOVED, $ship->state);
         $this->assertSame('monster_collision', $ship->removal_reason);
         $this->assertSame(0, $ship->current_hp);
         $this->assertNull($ship->map_cell_id);
+        $this->assertNull($shipBatch->shipAt((int) $destination->id));
         $this->assertSame($destination->id, $monster->fresh()->occupancy()->value('map_cell_id'));
         $event = $this->eventMetadata('ship.sunk');
         $this->assertSame($nation->id, $event['nation_id']);
@@ -481,7 +484,7 @@ final class C4NewMonstersTest extends TestCase
         [$world, $ruleset] = $this->v11World();
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '海獣防衛国', '海獣防衛主');
         $space = $this->surfaceMapSpace($world);
-        [$aoi, $origin, , $seed] = $this->directedAoiScenario(
+        [$aoi, $origin, $defense, $seed] = $this->directedAoiScenario(
             $world,
             $ruleset,
             $space,
@@ -492,12 +495,38 @@ final class C4NewMonstersTest extends TestCase
             $nation->id,
             0,
         );
+        $shipCell = collect((new GridCoordinate($defense->x, $defense->y))->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        ))->map(fn (GridCoordinate $coordinate): MapCell => $this->cellAt($space, $coordinate))
+            ->first(fn (MapCell $cell): bool => $cell->id !== $origin->id)
+            ?? throw new DomainException('No Ship cell was available in the defense blast radius.');
+        $this->setCell($shipCell, 'sea', null, null, 0);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $ruleset->id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $shipCell->id,
+            'ship_type_key' => 'tourist',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
 
-        [, $batch] = $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
+        [, $batch, $shipBatch] = $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
 
         $this->assertSame('removed', $aoi->fresh()->state);
         $this->assertSame('defense_self_destruct', $aoi->fresh()->removal_reason);
         $this->assertFalse($aoi->fresh()->occupancy()->exists());
+        $this->assertSame(Ship::STATE_REMOVED, $ship->fresh()->state);
+        $this->assertSame('defense_self_destruct', $ship->fresh()->removal_reason);
+        $this->assertNull($shipBatch->shipAt((int) $shipCell->id));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.sunk')
+            ->where('subject_id', $ship->id)->count());
         $this->assertSame(1, $batch->metrics()['defense_self_destructs']);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.defense_self_destructed')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'disaster.triggered')
@@ -837,7 +866,10 @@ final class C4NewMonstersTest extends TestCase
         return [$monster, $origin, $destination->fresh(['terrain', 'facility', 'ownerNation']), $seed];
     }
 
-    /** @return array{TurnContext, MonsterTurnBatch} */
+    /**
+     * @param  list<int>  $nationIds
+     * @return array{TurnContext, MonsterTurnBatch, SurfaceShipTurnBatch}
+     */
     private function processAoi(
         World $world,
         RulesetVersion $ruleset,
@@ -850,6 +882,7 @@ final class C4NewMonstersTest extends TestCase
         $context = $this->contextFromSeed($world, $ruleset, $turn, $seed, $nationIds);
         $service = app(MonsterTurnService::class);
         $batch = $service->load($context);
+        $shipBatch = app(SurfaceShipTurnService::class)->load($context, $space);
         $cells = MapCell::query()->where('map_space_id', $space->id)
             ->with(['terrain', 'facility', 'ownerNation'])->orderBy('id')->get();
         $byCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
@@ -862,9 +895,10 @@ final class C4NewMonstersTest extends TestCase
             $origin->fresh(['terrain', 'facility', 'ownerNation']),
             $byCoordinate,
             $batch,
+            ships: $shipBatch,
         ));
 
-        return [$context, $batch];
+        return [$context, $batch, $shipBatch];
     }
 
     private function assertAoiProtectedDestination(string $terrainKey, ?string $facilityKey): void

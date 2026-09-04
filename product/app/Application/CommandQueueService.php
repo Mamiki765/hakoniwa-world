@@ -1399,12 +1399,6 @@ final class CommandQueueService
 
             return;
         }
-        if (in_array($definition->key, ['reclaim', 'excavate'], true)
-            && (array_key_exists('ship_exists', $cell->getAttributes())
-                ? (bool) $cell->getAttribute('ship_exists')
-                : $cell->ship()->exists())) {
-            throw new PlayerFacingCommandException('船が存在するcellは現在このcommandの対象にできません。');
-        }
         if ($definition->key === 'territory_expand') {
             $this->validateTerritoryExpansionState(
                 $nation,

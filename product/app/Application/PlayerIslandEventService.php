@@ -67,6 +67,8 @@ final class PlayerIslandEventService
         'command.monster_dispatched',
         'ship.built',
         'ship.retired',
+        'ship.forced_displaced',
+        'ship.fuel_shortage_damaged',
         'ship.sunk',
         'missile.launch_failed',
         'missile.launch_detail',
@@ -1476,6 +1478,20 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
             ),
+            'ship.forced_displaced' => sprintf(
+                '船が地形変更を避けて(%s,%s)から(%s,%s)へ退避しました。',
+                number_format($this->integer($metadata, 'from_x')),
+                number_format($this->integer($metadata, 'from_y')),
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+            ),
+            'ship.fuel_shortage_damaged' => sprintf(
+                '%sが石油不足により(%s,%s)で損傷しました（HP %s）。',
+                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+                number_format($this->integer($metadata, 'current_hp')),
+            ),
             'ship.sunk' => sprintf(
                 '%sが%sにより(%s,%s)で沈没しました。',
                 is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
@@ -2344,7 +2360,10 @@ final class PlayerIslandEventService
             'meteor_shower' => '隕石群',
             'huge_meteor' => '巨大隕石',
             'eruption' => '火山噴火',
+            'defense_self_destruct' => '防衛施設の自爆',
             'nuclear_self_destruct_blast' => '怪獣の核自爆',
+            'fuel_exhaustion' => '石油不足事故',
+            'forced_displacement_failed' => '退避不能',
             default => '外部作用',
         };
     }

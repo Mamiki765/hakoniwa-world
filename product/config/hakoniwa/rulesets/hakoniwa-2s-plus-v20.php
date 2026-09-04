@@ -5,6 +5,7 @@ $worldAndMap = (require __DIR__.'/v20/world-and-map.php')['payload'];
 $facilities = (require __DIR__.'/v20/facilities.php')['payload'];
 $commandsAndProduction = (require __DIR__.'/v20/commands-and-production.php')['payload'];
 $surfaceShips = (require __DIR__.'/v20/surface-ships.php')['payload'];
+$secretary = (require __DIR__.'/v20/secretary.php')['payload'];
 
 return [
     ...$v19,
@@ -13,4 +14,5 @@ return [
     ...$facilities,
     ...$commandsAndProduction,
     ...$surfaceShips,
+    ...$secretary,
 ];

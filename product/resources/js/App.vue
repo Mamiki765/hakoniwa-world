@@ -1871,7 +1871,9 @@ async function abandonNation(): Promise<void> {
                             :map-space-id="mapSpace.id"
                             :selected="map.selected.value"
                             :selected-underground="selectedUndergroundSlot"
+                            :nation-state="nation.state"
                             @queue="authoritativeCommandQueue = $event"
+                            @ship="map.updateSelectedShip"
                         />
                         <div class="map-column">
                             <HexMap

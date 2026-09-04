@@ -69,6 +69,7 @@ final class SecretaryPresenter
             SecretarySkillCatalog::FINAL_DEFENSE_LINE => "防衛されなかったミサイルを1ターンにつき{$level}発まで迎撃",
             SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => $this->birthratePolicyEffect($definition, $level),
             SecretarySkillCatalog::INDOMITABLE => $this->indomitableEffect($definition, $level),
+            SecretarySkillCatalog::SHIP_OPERATIONS => '準備中',
             default => throw new DomainException("Unknown Secretary skill {$skillKey}."),
         };
     }
