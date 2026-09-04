@@ -2292,6 +2292,12 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.item_id', $created['item_id'])
             ->assertJsonCount(1, 'data.queue.items');
         $this->assertSame([], $perItemRulesetSettingQueries);
+        $perItemRulesetSettingQueries = [];
+        $this->getJson($path)
+            ->assertOk()
+            ->assertJsonPath('data.items.0.quantity_label', '探索船')
+            ->assertJsonPath('data.items.0.effective_cost_money', 1000);
+        $this->assertSame([], $perItemRulesetSettingQueries);
     }
 
     public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void
