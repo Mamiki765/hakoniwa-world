@@ -134,7 +134,7 @@ final class CommandQueueController extends Controller
                     ->where('map_space_id', $mapSpace->id)
                     ->where('x', $request->integer('target_x'))
                     ->where('y', $request->integer('target_y'))
-                    ->with(['terrain', 'facility'])
+                    ->with(['terrain', 'facility', 'ship'])
                     ->withExists('ship')
                     ->first();
             }
@@ -145,6 +145,8 @@ final class CommandQueueController extends Controller
                 ->where('enabled', true)
                 ->orderBy('sort_order')
                 ->get()
+                ->filter(static fn (CommandDefinition $definition): bool => $definition->key !== 'scuttle_ship'
+                    || ($cell?->ship?->nation_id === $nation->id))
                 ->each(static fn (CommandDefinition $definition): CommandDefinition => $definition->setRelation(
                     'rulesetVersion',
                     $world->rulesetVersion,

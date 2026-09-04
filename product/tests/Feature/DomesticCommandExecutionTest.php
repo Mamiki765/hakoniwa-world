@@ -35,6 +35,7 @@ use App\Models\TurnRun;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use App\Models\World;
+use App\Services\MapCellPresenter;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -1896,6 +1897,18 @@ class DomesticCommandExecutionTest extends TestCase
         ]);
         $this->assertSame($disguisedCandidate->id, $ship->map_cell_id);
         $this->assertSame('seabed_base', $ship->cell()->firstOrFail()->facility()->value('key'));
+        $projectedCell = $ship->cell()->firstOrFail()->load([
+            'terrain', 'facility', 'monumentDefinition', 'ownerNation',
+            'ship.nation', 'ship.rulesetVersion', 'monsterOccupancy.monster.definition',
+        ]);
+        $projection = app(MapCellPresenter::class)->present($projectedCell, $nation->id, 2);
+        $this->assertSame([
+            '観光船', 'ship.tourist', 'tourist', '観光船', 2, 2, '海底基地',
+        ], [
+            $projection['display_name'], $projection['asset']['key'], $projection['ship']['key'],
+            $projection['ship']['name'], $projection['ship']['current_hp'], $projection['ship']['max_hp'],
+            $projection['facility_name'],
+        ]);
         $event = $this->eventMetadataForSubject('ship.built', $ship->id);
         $this->assertSame([
             'tourist', '観光船', 2, 1500, 1,
@@ -1986,6 +1999,13 @@ class DomesticCommandExecutionTest extends TestCase
         ]);
         $target->load('ship');
         $service = app(CommandQueueService::class);
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}";
+        $selectedCommands = collect($this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk()->json('data.commands'));
+        $this->assertTrue($selectedCommands->firstWhere('key', 'scuttle_ship')['applicable']);
+        $this->assertNull(collect($this->getJson("{$base}/command-definitions")
+            ->assertOk()->json('data.commands'))->firstWhere('key', 'scuttle_ship'));
         $excavate = CommandDefinition::query()
             ->where('ruleset_version_id', $world->ruleset_version_id)
             ->where('key', 'excavate')
@@ -2007,6 +2027,30 @@ class DomesticCommandExecutionTest extends TestCase
             requestKey: (string) Str::uuid(),
             expectedVersion: 1,
         );
+        $scuttleRequestKey = (string) Str::uuid();
+        $scuttle = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'scuttle_ship',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: $scuttleRequestKey,
+            expectedVersion: (int) $failed['queue']->version,
+        );
+        $this->assertSame(['ship_id' => $ship->id], $scuttle['item']->parameters);
+        $duplicate = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'scuttle_ship',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: $scuttleRequestKey,
+            expectedVersion: 999,
+        );
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($scuttle['item']->id, $duplicate['item']->id);
         $next = $service->add(
             user: $user,
             nation: $nation->fresh(),
@@ -2015,7 +2059,7 @@ class DomesticCommandExecutionTest extends TestCase
             targetX: null,
             targetY: null,
             requestKey: (string) Str::uuid(),
-            expectedVersion: (int) $failed['queue']->version,
+            expectedVersion: (int) $scuttle['queue']->version,
         );
 
         $result = app(DomesticCommandExecutor::class)->execute(
@@ -2023,10 +2067,24 @@ class DomesticCommandExecutionTest extends TestCase
         );
         $this->assertSame([1, 1], [$result['successes'], $result['failures']]);
         $this->assertSame('occupied_by_ship', $failed['item']->fresh()->failure_code);
-        $this->assertSame('completed', $next['item']->fresh()->status);
-        $this->assertSame(1_000, (int) $nation->fresh()->money);
-        $this->assertSame(Ship::STATE_ACTIVE, $ship->fresh()->state);
+        $this->assertSame('completed', $scuttle['item']->fresh()->status);
+        $this->assertSame('queued', $next['item']->fresh()->status);
+        $this->assertSame(2_000, (int) $nation->fresh()->money);
+        $retired = $ship->fresh();
+        $this->assertSame([
+            Ship::STATE_REMOVED, 'scuttled', null, 2, 2,
+        ], [
+            $retired->state, $retired->removal_reason, $retired->map_cell_id,
+            $retired->current_hp, $retired->version,
+        ]);
         $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
+        $retiredEvent = $this->eventMetadataForSubject('ship.retired', $ship->id);
+        $this->assertSame([
+            $nation->id, $ship->id, 'exploration', 'scuttled', $target->x, $target->y,
+        ], [
+            $retiredEvent['nation_id'], $retiredEvent['ship_id'], $retiredEvent['ship_type_key'],
+            $retiredEvent['removal_reason'], $retiredEvent['x'], $retiredEvent['y'],
+        ]);
     }
 
     public function test_ship_build_spawn_and_capacity_failures_are_removed_without_consuming_the_turn(): void

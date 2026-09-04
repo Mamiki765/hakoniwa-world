@@ -66,6 +66,7 @@ final class PlayerIslandEventService
         'command.food_aid_received',
         'command.monster_dispatched',
         'ship.built',
+        'ship.retired',
         'ship.sunk',
         'missile.launch_failed',
         'missile.launch_detail',
@@ -1470,6 +1471,11 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
             ),
+            'ship.retired' => sprintf(
+                '(%s,%s)の船を廃船にしました。',
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+            ),
             'ship.sunk' => sprintf(
                 '%sが%sにより(%s,%s)で沈没しました。',
                 is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
@@ -2314,6 +2320,7 @@ final class PlayerIslandEventService
             'build_seabed_base' => '海底基地建設',
             'build_undersea_city' => '海底都市建設',
             'build_ship' => '船建造',
+            'scuttle_ship' => '廃船',
             'build_monument' => '記念碑建設',
             'build_decoy' => 'ハリボテ建築',
             'missile' => 'ミサイル発射',

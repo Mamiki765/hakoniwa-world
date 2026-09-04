@@ -79,7 +79,7 @@ final class FreshInstallRebaselineTest extends TestCase
             'key' => Ver350RulesetUpgrade::SOURCE_KEY,
             'version' => Ver350RulesetUpgrade::SOURCE_VERSION,
         ]);
-        $this->assertSame(29, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
+        $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(62, DB::table('migrations')->count());

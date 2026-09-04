@@ -1792,6 +1792,7 @@ final class RulesetAuthoringValidator
         $territoryAbandonDefinitions = 0;
         $portDefinitions = 0;
         $shipBuildDefinitions = 0;
+        $shipScuttleDefinitions = 0;
         foreach ($this->list($settings['command_definitions'], 'ruleset.command_definitions') as $index => $definition) {
             $path = "ruleset.command_definitions.{$index}";
             $definition = $this->map($definition, $path);
@@ -1916,6 +1917,24 @@ final class RulesetAuthoringValidator
                     throw new DomainException("{$path} differs from the v20 Surface Ship construction contract.");
                 }
             }
+            if ($commandKey === 'scuttle_ship') {
+                $shipScuttleDefinitions++;
+                if ($authoredRulesetVersion < 20
+                    || $definition['name'] !== '廃船'
+                    || $definition['target_type'] !== 'cell'
+                    || $definition['target_terrain_keys'] !== ['sea']
+                    || $definition['target_facility_keys'] !== []
+                    || $definition['requires_empty_facility'] !== false
+                    || $definition['cost_money'] !== 0
+                    || $definition['required_resources'] !== []
+                    || $definition['execution_phase'] !== 'operations'
+                    || $definition['result_terrain_key'] !== null
+                    || $definition['result_facility_key'] !== null
+                    || $definition['sort_order'] !== 138
+                    || $metadata !== ['consumes_turn' => true, 'parameters' => []]) {
+                    throw new DomainException("{$path} differs from the v20 Surface Ship scuttle contract.");
+                }
+            }
             if (in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v6', 'hakoniwa-2s-plus-v7', 'hakoniwa-2s-plus-v8', 'hakoniwa-2s-plus-v9', 'hakoniwa-2s-plus-v10'], true)
                 && in_array($commandKey, ['build_defense_facility', 'build_monument'], true)) {
                 $expectedEffect = $commandKey === 'build_defense_facility'
@@ -1937,6 +1956,9 @@ final class RulesetAuthoringValidator
         }
         if ($authoredRulesetVersion >= 20 && $shipBuildDefinitions !== 1) {
             throw new DomainException('The v20+ Ruleset requires exactly one build_ship command.');
+        }
+        if ($authoredRulesetVersion >= 20 && $shipScuttleDefinitions !== 1) {
+            throw new DomainException('The v20+ Ruleset requires exactly one scuttle_ship command.');
         }
     }
 

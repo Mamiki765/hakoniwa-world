@@ -20,10 +20,20 @@ function cell(overrides: Partial<MapCell> = {}): MapCell {
 
 describe('viewer-safe cell details', () => {
     it('shows the per-World nation number instead of the internal database id', () => {
-        const wrapper = mount(CellDetails, { props: { cell: cell() } });
+        const wrapper = mount(CellDetails, { props: { cell: cell({
+            display_name: '観光船',
+            ship: {
+                id: 7, key: 'tourist', name: '観光船', asset_key: 'ship.tourist',
+                current_hp: 2, max_hp: 2, public_state: 'active',
+                owner_nation: { nation_number: 1, name: '試験国' },
+                is_owner: true, heading: null, version: 1,
+            },
+        }) } });
 
         expect(wrapper.text()).toContain('N1');
         expect(wrapper.text()).not.toContain('N18');
+        expect(wrapper.text()).toContain('船HP2/2');
+        expect(wrapper.text()).toContain('船舶所有試験国（N1）');
     });
 
     it.each([

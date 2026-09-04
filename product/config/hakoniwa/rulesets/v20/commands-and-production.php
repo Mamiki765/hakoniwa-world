@@ -45,4 +45,24 @@ $payload['command_definitions'][] = [
     ],
 ];
 
+$payload['command_definitions'][] = [
+    'key' => 'scuttle_ship',
+    'name' => '廃船',
+    'description' => '選択した自国の船を、返金なしで廃船にします。',
+    'target_type' => 'cell',
+    'target_terrain_keys' => ['sea'],
+    'target_facility_keys' => [],
+    'requires_empty_facility' => false,
+    'cost_money' => 0,
+    'required_resources' => [],
+    'execution_phase' => 'operations',
+    'result_terrain_key' => null,
+    'result_facility_key' => null,
+    'sort_order' => 138,
+    'metadata' => [
+        'consumes_turn' => true,
+        'parameters' => [],
+    ],
+];
+
 return ['payload' => $payload, 'classification' => $domain['classification']];

@@ -15,6 +15,12 @@ const usesWorkforce = computed(() => ['farm', 'factory', 'mine'].includes(props.
                 <dt>地形</dt><dd>{{ cell.terrain_name }}</dd>
                 <dt>施設</dt><dd>{{ cell.facility_name ?? 'なし' }}</dd>
                 <dt>所有</dt><dd>{{ cell.owner_name ?? '中立' }}<span v-if="cell.owner_nation_number !== null">（N{{ cell.owner_nation_number }}）</span></dd>
+                <template v-if="cell.ship">
+                    <dt>船</dt><dd>{{ cell.ship.name }}</dd>
+                    <dt>船HP</dt><dd>{{ cell.ship.current_hp }}/{{ cell.ship.max_hp }}</dd>
+                    <dt>船舶所有</dt>
+                    <dd>{{ cell.ship.owner_nation.name }}（N{{ cell.ship.owner_nation.nation_number }}）</dd>
+                </template>
                 <template v-for="detail in cell.details" :key="detail.key">
                     <dt>{{ detail.label }}</dt><dd>{{ detail.formatted }}</dd>
                 </template>

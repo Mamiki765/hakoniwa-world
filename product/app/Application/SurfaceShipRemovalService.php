@@ -8,6 +8,7 @@ use App\Domain\Turn\TurnContext;
 use App\Models\MapCell;
 use App\Models\Ship;
 use DomainException;
+use Illuminate\Database\Eloquent\Collection;
 
 final class SurfaceShipRemovalService
 {
@@ -27,14 +28,40 @@ final class SurfaceShipRemovalService
             ->where('world_id', $context->world->id)
             ->where('map_cell_id', $cell->id)
             ->where('state', Ship::STATE_ACTIVE)
-            ->with('rulesetVersion')
             ->lockForUpdate()
             ->first();
-        if (! $ship instanceof Ship) {
+
+        return $this->sinkLockedAtCell($context, $cell, $ship, $reason, $metadata);
+    }
+
+    /** @return Collection<int, Ship> */
+    public function lockActiveWorldIndex(TurnContext $context): Collection
+    {
+        return Ship::query()
+            ->where('world_id', $context->world->id)
+            ->where('state', Ship::STATE_ACTIVE)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('map_cell_id');
+    }
+
+    /** @param array<string, mixed> $metadata */
+    public function sinkLockedAtCell(
+        TurnContext $context,
+        MapCell $cell,
+        ?Ship $ship,
+        string $reason,
+        array $metadata = [],
+    ): ?Ship {
+        if (! $ship instanceof Ship
+            || $ship->world_id !== $context->world->id
+            || $ship->map_cell_id !== $cell->id
+            || $ship->state !== Ship::STATE_ACTIVE) {
             return null;
         }
 
-        $definition = collect($this->catalog->definitions($ship->rulesetVersion->settings))
+        $definition = collect($this->catalog->definitions($context->ruleset->settings))
             ->first(static fn (SurfaceShipDefinition $candidate): bool => $candidate->key === $ship->ship_type_key);
         if ($definition === null) {
             throw new DomainException('The active Ship type is unavailable from its Ruleset snapshot.');

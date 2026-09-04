@@ -670,6 +670,7 @@ final class DisasterTurnService
         DisasterMutableCellIndex $cellIndex,
     ): int {
         $damaged = 0;
+        $ships = $this->shipRemoval->lockActiveWorldIndex($context);
         $coordinates = $center->radius($settings['radius']);
         $stream = $context->random->stream(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_EFFECT);
         do {
@@ -684,9 +685,13 @@ final class DisasterTurnService
                     ]);
                     $damaged++;
                 } else {
-                    $shipRemoved = $this->shipRemoval->sinkAtCell($context, $cell, 'meteor_shower', [
-                        'disaster_key' => 'meteor_shower',
-                    ]) !== null;
+                    $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                        $context,
+                        $cell,
+                        $ships->get($cell->id),
+                        'meteor_shower',
+                        ['disaster_key' => 'meteor_shower'],
+                    ) !== null;
                     if ($cell->terrain->key === 'shallow') {
                         if ($this->changeCell(
                             $context,
@@ -738,6 +743,7 @@ final class DisasterTurnService
         ?DisasterMutableCellIndex $cellIndex = null,
     ): int {
         $damaged = 0;
+        $ships = $this->shipRemoval->lockActiveWorldIndex($context);
         $coordinates = [...$center->ring(0), ...$center->ring(1), ...$center->ring(2)];
         foreach ($coordinates as $coordinate) {
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
@@ -748,10 +754,13 @@ final class DisasterTurnService
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
-            $shipRemoved = $this->shipRemoval->sinkAtCell($context, $cell, $disasterKey, [
-                'disaster_key' => $disasterKey,
-                ...$eventMetadata,
-            ]) !== null;
+            $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                $context,
+                $cell,
+                $ships->get($cell->id),
+                $disasterKey,
+                ['disaster_key' => $disasterKey, ...$eventMetadata],
+            ) !== null;
             $monsterRemoved = false;
             if ($this->isCapital($cell)) {
                 if ($distance === 0) {
@@ -823,12 +832,17 @@ final class DisasterTurnService
         DisasterMutableCellIndex $cellIndex,
     ): int {
         $damaged = 0;
+        $ships = $this->shipRemoval->lockActiveWorldIndex($context);
         $centerCell = $this->cellAt($space, $center, $cellIndex);
         if ($centerCell !== null && $this->isMutable($centerCell, $cellIndex)
             && ! $this->nationProtection->protectsFromDisaster($context, $centerCell->x, $centerCell->y)) {
-            $shipRemoved = $this->shipRemoval->sinkAtCell($context, $centerCell, 'eruption', [
-                'disaster_key' => 'eruption',
-            ]) !== null;
+            $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                $context,
+                $centerCell,
+                $ships->get($centerCell->id),
+                'eruption',
+                ['disaster_key' => 'eruption'],
+            ) !== null;
             if ($this->isCapital($centerCell)) {
                 $this->damageCapital($context, $centerCell, 'eruption', 'eruption_center');
                 $damaged++;
@@ -853,10 +867,13 @@ final class DisasterTurnService
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
-            $shipRemoved = $this->shipRemoval->sinkAtCell($context, $cell, 'eruption', [
-                'disaster_key' => 'eruption',
-                'direction' => $direction,
-            ]) !== null;
+            $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                $context,
+                $cell,
+                $ships->get($cell->id),
+                'eruption',
+                ['disaster_key' => 'eruption', 'direction' => $direction],
+            ) !== null;
             if ($this->isCapital($cell)) {
                 $severity = $cell->terrain->key === 'sea'
                     ? 'excavation_or_shallow'

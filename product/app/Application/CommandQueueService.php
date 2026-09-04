@@ -31,6 +31,7 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\RulesetVersion;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
@@ -143,6 +144,14 @@ final class CommandQueueService
                 } catch (DomainException) {
                     throw new CommandRequestConflictException;
                 }
+                if ($requestDefinition instanceof CommandDefinition
+                    && $requestDefinition->key === 'scuttle_ship') {
+                    $shipId = $duplicate->parameters['ship_id'] ?? null;
+                    if (! is_int($shipId)) {
+                        throw new CommandRequestConflictException;
+                    }
+                    $parameters = ['ship_id' => $shipId];
+                }
                 if ($requestDefinition->target_type === 'underground_slot') {
                     if ($targetX !== null || $targetY !== null || ! is_int($targetLayer) || ! is_int($targetSlotIndex)
                         || $targetLayer !== $duplicate->target_layer || $targetSlotIndex !== $duplicate->target_slot_index) {
@@ -220,6 +229,14 @@ final class CommandQueueService
                     $targetX,
                     $targetY,
                 );
+                if ($definition instanceof CommandDefinition && $definition->key === 'scuttle_ship') {
+                    $parameters = $this->bindScuttleShipTarget(
+                        $lockedNation,
+                        $mapSpace,
+                        $targetX,
+                        $targetY,
+                    );
+                }
             }
             $requestFingerprint = $this->requestFingerprint(
                 $ruleset,
@@ -1084,6 +1101,9 @@ final class CommandQueueService
         ?SurfaceCommandProjectionMemo $projectionMemo = null,
     ): bool {
         $projectionMemo ??= new SurfaceCommandProjectionMemo;
+        if ($definition->key === 'scuttle_ship') {
+            return false;
+        }
         if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
             return false;
         }
@@ -1367,6 +1387,18 @@ final class CommandQueueService
         $ownerOverbuildEffect = $visibleState === null
             ? OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell)
             : OwnerFacilityOverbuildPolicy::effectForState($definition, $nation, $state);
+        if ($definition->key === 'scuttle_ship') {
+            $ship = $cell->relationLoaded('ship')
+                ? $cell->ship
+                : $cell->ship()->first();
+            if (! $ship instanceof Ship
+                || $ship->world_id !== $nation->world_id
+                || $ship->nation_id !== $nation->id) {
+                throw new PlayerFacingCommandException('自国の船を選択してください。');
+            }
+
+            return;
+        }
         if (in_array($definition->key, ['reclaim', 'excavate'], true)
             && (array_key_exists('ship_exists', $cell->getAttributes())
                 ? (bool) $cell->getAttribute('ship_exists')
@@ -1658,6 +1690,24 @@ final class CommandQueueService
         }
 
         return $cell;
+    }
+
+    /** @return array{ship_id: int} */
+    private function bindScuttleShipTarget(Nation $nation, MapSpace $mapSpace, int $x, int $y): array
+    {
+        $cell = $this->targetCell($mapSpace, $x, $y);
+        $ship = Ship::query()
+            ->where('world_id', $nation->world_id)
+            ->where('nation_id', $nation->id)
+            ->where('map_cell_id', $cell->id)
+            ->where('state', Ship::STATE_ACTIVE)
+            ->lockForUpdate()
+            ->first(['id']);
+        if (! $ship instanceof Ship) {
+            throw new PlayerFacingCommandException('自国の船を選択してください。');
+        }
+
+        return ['ship_id' => (int) $ship->id];
     }
 
     /** @return array{0: int, 1: int} */
