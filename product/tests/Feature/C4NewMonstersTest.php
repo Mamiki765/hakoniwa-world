@@ -160,6 +160,34 @@ final class C4NewMonstersTest extends TestCase
         $space = $this->surfaceMapSpace($world);
         $ownedLand = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereHas('terrain', fn ($query) => $query->whereNotIn('key', ['sea', 'shallow']))->count();
+        $landCoordinates = MapCell::query()->where('map_space_id', $space->id)
+            ->whereHas('terrain', fn ($query) => $query->whereNotIn('key', ['sea', 'shallow']))
+            ->orderBy('id')->get(['x', 'y'])->map(
+                static fn (MapCell $cell): GridCoordinate => new GridCoordinate($cell->x, $cell->y),
+            );
+        $shipCell = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')->where('population', 0)
+            ->whereDoesntHave('monsterOccupancy')->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->get()->first(function (MapCell $cell) use ($landCoordinates): bool {
+                $coordinate = new GridCoordinate($cell->x, $cell->y);
+
+                return $landCoordinates->every(
+                    static fn (GridCoordinate $land): bool => $coordinate->distanceTo($land) >= 4,
+                );
+            });
+        $this->assertInstanceOf(MapCell::class, $shipCell);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $shipCell->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
         $seed = $this->seedMatching(static function (string $seed) use ($ownedLand): bool {
             return (new TurnRandomStreamFactory($seed))->stream(
                 TurnRandomStreamFactory::monsterWorldSpawn('trigger', 1),
@@ -177,6 +205,8 @@ final class C4NewMonstersTest extends TestCase
         $this->assertContains($occupancy->monster->current_hp, [2, 3]);
         $this->assertSame('sea', $occupancy->cell->terrain->key);
         $this->assertNull($occupancy->cell->owner_nation_id);
+        $this->assertNotSame($shipCell->id, $occupancy->map_cell_id);
+        $this->assertSame([$shipCell->id, Ship::STATE_ACTIVE], [$ship->fresh()->map_cell_id, $ship->fresh()->state]);
         $this->assertContains($occupancy->monster->id, $context->state->monsterIdsDeferredFromSpawnTurnMovement());
         $this->assertSame('world_aoi_disaster', $this->eventMetadata('monster.spawned')['spawn_source']);
         $event = collect(app(PlayerIslandEventService::class)->publicWorldPage($world, 1, 2)['groups'])
