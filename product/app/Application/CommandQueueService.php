@@ -30,6 +30,7 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\RulesetVersion;
+use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
 use DomainException;
@@ -1032,7 +1033,15 @@ final class CommandQueueService
                     $nation,
                     $mapSpace,
                 )
-                : $this->projectedTargetMatches($definition, $state, $nation, $mapSpace, $cell);
+                : $this->projectedTargetMatches(
+                    $definition,
+                    $state,
+                    $nation,
+                    $mapSpace,
+                    $cell,
+                    $queue,
+                    (int) $item->queue_position,
+                );
             if (! $matches) {
                 continue;
             }
@@ -1051,6 +1060,8 @@ final class CommandQueueService
         Nation $nation,
         MapSpace $mapSpace,
         MapCell $cell,
+        NationCommandQueue $queue,
+        int $beforePosition,
     ): bool {
         if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
             return false;
@@ -1076,7 +1087,13 @@ final class CommandQueueService
             return false;
         }
         if ($definition->key === 'build_port') {
-            $adjacent = $this->portAdjacentFacts($nation, $mapSpace, $cell);
+            $adjacent = $this->projectedPortAdjacentFacts(
+                $nation,
+                $mapSpace,
+                $cell,
+                $queue,
+                $beforePosition,
+            );
 
             return $state['owner_nation_id'] === null && $adjacent['owned_land'] && $adjacent['sea'];
         }
@@ -1699,6 +1716,52 @@ final class CommandQueueService
             ),
             'sea' => $neighbors->contains(
                 static fn (MapCell $neighbor): bool => $neighbor->terrain->key === 'sea',
+            ),
+        ];
+    }
+
+    /** @return array{owned_land: bool, sea: bool} */
+    private function projectedPortAdjacentFacts(
+        Nation $nation,
+        MapSpace $mapSpace,
+        MapCell $cell,
+        NationCommandQueue $queue,
+        int $beforePosition,
+    ): array {
+        $coordinates = (new GridCoordinate($cell->x, $cell->y))->neighborsWithin(
+            $mapSpace->min_x,
+            $mapSpace->max_x,
+            $mapSpace->min_y,
+            $mapSpace->max_y,
+        );
+        $neighbors = MapCell::query()
+            ->where('map_space_id', $mapSpace->id)
+            ->where(function ($query) use ($coordinates): void {
+                foreach ($coordinates as $coordinate) {
+                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
+                }
+            })
+            ->with(['terrain', 'facility'])
+            ->get();
+        $projected = $neighbors->map(fn (MapCell $neighbor): array => $this->projectCellStateBeforePosition(
+            $neighbor,
+            $queue,
+            $beforePosition,
+            $nation,
+            $mapSpace,
+        ));
+        $terrainWater = TerrainDefinition::query()
+            ->whereIn('key', $projected->pluck('terrain_key')->unique()->values())
+            ->pluck('is_water', 'key');
+
+        return [
+            'owned_land' => $projected->contains(
+                static fn (array $state): bool => $state['owner_nation_id'] === $nation->id
+                    && $terrainWater->has($state['terrain_key'])
+                    && ! (bool) $terrainWater->get($state['terrain_key']),
+            ),
+            'sea' => $projected->contains(
+                static fn (array $state): bool => $state['terrain_key'] === 'sea',
             ),
         ];
     }

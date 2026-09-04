@@ -2172,13 +2172,29 @@ class CommandQueueAndSalePolicyTest extends TestCase
             "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
         )->assertOk()->json('data.commands'))->firstWhere('key', 'build_port');
         $this->assertSame('currently_executable', $valid['execution_preview_status']);
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'territory_abandon',
+            'target_x' => $ownedLand->x,
+            'target_y' => $ownedLand->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated();
+        $invalidAfterQueue = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}&position=2",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_port');
+        $this->assertSame('currently_unavailable', $invalidAfterQueue['execution_preview_status']);
+        $this->assertContains(
+            '予約済みcommand後は港の建設条件を満たしません。',
+            $invalidAfterQueue['execution_warnings'],
+        );
         $requestKey = (string) Str::uuid();
         $created = $this->postJson("{$base}/command-queue", [
             'command_key' => 'build_port',
             'target_x' => $target->x,
             'target_y' => $target->y,
             'request_key' => $requestKey,
-            'expected_version' => 1,
+            'expected_version' => 2,
+            'position' => 2,
         ])->assertCreated()->json('data');
         $this->postJson("{$base}/command-queue", [
             'command_key' => 'build_port',
@@ -2186,10 +2202,11 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'target_y' => $target->y,
             'request_key' => $requestKey,
             'expected_version' => 999,
+            'position' => 2,
         ])->assertOk()
             ->assertJsonPath('data.duplicate', true)
             ->assertJsonPath('data.item_id', $created['item_id'])
-            ->assertJsonCount(1, 'data.queue.items');
+            ->assertJsonCount(2, 'data.queue.items');
     }
 
     public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void

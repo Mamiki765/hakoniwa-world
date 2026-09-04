@@ -165,9 +165,11 @@ final class CommandQueueController extends Controller
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                     $unavailableReason = null;
                     $projectedExecutable = false;
+                    $currentlyExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
                         try {
                             $service->validateTarget($nation, $mapSpace, $definition, $cell, $visibleState);
+                            $currentlyExecutable = true;
                         } catch (PlayerFacingCommandException $exception) {
                             $unavailableReason = $exception->getMessage();
                             $projectedExecutable = $definition->key === 'territory_expand'
@@ -186,7 +188,25 @@ final class CommandQueueController extends Controller
                                     $nation,
                                     $mapSpace,
                                     $cell,
+                                    $queue,
+                                    $position,
                                 );
+                        }
+                        if ($definition->key === 'build_port') {
+                            $portProjectedExecutable = $service->projectedTargetMatches(
+                                $definition,
+                                $projected,
+                                $nation,
+                                $mapSpace,
+                                $cell,
+                                $queue,
+                                $position,
+                            );
+                            if ($currentlyExecutable && ! $portProjectedExecutable) {
+                                $unavailableReason = '予約済みcommand後は港の建設条件を満たしません。';
+                            } elseif (! $currentlyExecutable) {
+                                $projectedExecutable = $portProjectedExecutable;
+                            }
                         }
                     }
 
