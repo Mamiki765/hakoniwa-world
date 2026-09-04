@@ -14,6 +14,7 @@ use App\Application\NationLifecycleService;
 use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryNamingService;
 use App\Application\SecretaryTurnService;
+use App\Application\SurfaceShipTurnService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Economy\NationCapacityResolver;
@@ -36,6 +37,7 @@ use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationUndergroundFacility;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -3359,40 +3361,93 @@ class CommandAndMissileTest extends TestCase
     }
 
     #[DataProvider('ordinaryMissileKeys')]
-    public function test_ordinary_missiles_are_ineffective_against_seabed_base(string $missileKey): void
+    public function test_ordinary_missiles_hit_ship_before_seabed_base_and_follow_latest_layer(string $missileKey): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
+        $base->update(['facility_experience' => 200]);
+        $firing->update(['money' => 9_999]);
         $cell = $this->ownedWaterFacility($target, 'seabed_base');
         $cell->update(['facility_experience' => 123]);
+        MapCell::query()->where('map_space_id', $space->id)
+            ->whereHas('facility', fn ($query) => $query->where('key', 'defense'))
+            ->with('facility')->get()->each(function (MapCell $defense): void {
+                app(MapCellStateService::class)->setFacility($defense, null);
+                $defense->save();
+            });
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $target->id,
+            'map_cell_id' => $cell->id,
+            'ship_type_key' => 'tourist',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $settings = $ruleset->settings;
         $settings['military']['missiles'][$missileKey]['deviation_radius'] = 0;
         $ruleset->update(['settings' => $settings]);
-        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, $missileKey, $cell);
-
-        $metrics = $this->resolveMissile(
-            $this->context(
-                $world,
-                2,
-                hash('sha256', 'seabed resistance '.$missileKey),
-                [$firing->id, $target->id],
-            ),
-            $base,
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            $missileKey,
+            $cell,
+            3,
         );
+        $context = $this->context(
+            $world,
+            2,
+            hash('sha256', 'Ship before seabed resistance '.$missileKey),
+            [$firing->id, $target->id],
+        );
+        $context->state->setLifecycleNationIds([$firing->id, $target->id]);
+        $karma = app(KarmaTurnService::class);
+        $karma->prepare($context);
+        app(DomesticCommandExecutor::class)->execute($context);
+        $karma->snapshotMissileBoundary($context);
+
+        $metrics = $this->resolveMissile($context, $base);
 
         $cell = $cell->fresh(['terrain', 'facility']);
         $this->assertSame('sea', $cell->terrain->key);
         $this->assertSame('seabed_base', $cell->facility?->key);
         $this->assertSame($target->id, $cell->owner_nation_id);
         $this->assertSame(123, $cell->facility_experience);
-        $this->assertSame(0, $metrics['meaningful_impacts']);
+        $this->assertSame(2, $metrics['meaningful_impacts']);
         $this->assertSame(1, $metrics['ineffective_impacts']);
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        $this->assertSame([
+            'state' => Ship::STATE_REMOVED,
+            'current_hp' => 0,
+            'map_cell_id' => null,
+            'removal_reason' => 'missile',
+        ], $ship->fresh()->only(['state', 'current_hp', 'map_cell_id', 'removal_reason']));
+        $this->assertSame(1, $context->state->karmaLedgerForNation($firing->id)['crime_points']);
         $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame('seabed_base_resisted', $detail['impacts'][0]['effect']);
+        $this->assertSame(
+            ['ship_damaged', 'ship_sunk', 'seabed_base_resisted'],
+            array_column($detail['impacts'], 'effect'),
+        );
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.missile_damaged')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.sunk')->count());
+        $messages = collect(app(PlayerIslandEventService::class)->ownerPage($target->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
+        $this->assertTrue($messages->contains(
+            static fn (string $message): bool => str_contains($message, '観光船がミサイル攻撃により')
+                && str_contains($message, '損傷しました'),
+        ));
+        $this->assertTrue($messages->contains(
+            static fn (string $message): bool => str_contains($message, '観光船がミサイル攻撃により')
+                && str_contains($message, '沈没しました'),
+        ));
     }
 
     public static function ordinaryMissileKeys(): array
@@ -3430,7 +3485,25 @@ class CommandAndMissileTest extends TestCase
         [$world, $firingUser, $firing, $target] = $this->combatants();
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
+        $base->update(['facility_experience' => 50]);
+        $firing->update(['money' => 9_999]);
         $cell = $this->ownedWaterFacility($target, 'seabed_base');
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $target->id,
+            'map_cell_id' => $cell->id,
+            'ship_type_key' => 'tourist',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['military']['missiles']['land_destruction_missile']['deviation_radius'] = 0;
+        $ruleset->update(['settings' => $settings]);
         $item = $this->queue(
             app(CommandQueueService::class),
             $firingUser,
@@ -3438,19 +3511,30 @@ class CommandAndMissileTest extends TestCase
             $space,
             'land_destruction_missile',
             $cell,
+            2,
         );
-        $seed = $this->seedForImpactIndex($item, $cell, 2, $cell);
+        $seed = hash('sha256', 'Ship before land destruction '.$item->id);
 
         $this->resolveMissile($this->context($world, 2, $seed, [$firing->id, $target->id]), $base);
 
+        $this->assertSame([
+            'state' => Ship::STATE_REMOVED,
+            'current_hp' => 0,
+            'map_cell_id' => null,
+            'removal_reason' => 'missile',
+        ], $ship->fresh()->only(['state', 'current_hp', 'map_cell_id', 'removal_reason']));
         $cell = $cell->fresh(['terrain', 'facility']);
         $this->assertSame('sea', $cell->terrain->key);
         $this->assertNull($cell->facility_definition_id);
         $this->assertNull($cell->owner_nation_id);
         $impact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->whereRaw("metadata->>'effect' = ?", ['terrain_destroyed'])
             ->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($target->id, $impact['nation_id']);
         $this->assertSame($target->name, $impact['target_nation_name']);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(['ship_sunk', 'terrain_destroyed'], array_column($detail['impacts'], 'effect'));
     }
 
     public function test_land_destruction_neutralizes_facilityless_owned_shallow_water(): void
@@ -4130,6 +4214,58 @@ class CommandAndMissileTest extends TestCase
             "{$dormant->name}({$dormantCell->x},{$dormantCell->y})にミサイルが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました",
             DB::table('audit_events')->where('event_type', 'missile.dormancy_protected')->value('message'),
         );
+
+        MonsterOccupancy::query()->where('monster_instance_id', $monster->id)->delete();
+        app(MapCellStateService::class)->setFacility($dormantCell, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $dormantCell,
+            TerrainDefinition::query()->where('key', 'sea')->firstOrFail(),
+        );
+        $dormantCell->owner_nation_id = null;
+        $dormantCell->population = 0;
+        $dormantCell->version++;
+        $dormantCell->save();
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $dormant->id,
+            'map_cell_id' => $dormantCell->id,
+            'ship_type_key' => 'tourist',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['military']['missiles']['missile']['deviation_radius'] = 0;
+        $ruleset->update(['settings' => $settings]);
+        $firing->update([
+            'state' => 'active',
+            'state_reason' => null,
+            'state_started_turn' => null,
+            'resume_at_turn' => null,
+        ]);
+        $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing->fresh(),
+            $space,
+            'missile',
+            $dormantCell->fresh(['terrain', 'facility', 'ownerNation']),
+        );
+        $shipContext = $this->context($world, 3, hash('sha256', 'dormant Ship remains targetable'), [
+            $firing->id,
+            $dormant->id,
+        ]);
+        app(NationLifecycleService::class)->prepare($shipContext);
+
+        $this->resolveMissile($shipContext, $base);
+
+        $this->assertSame(Ship::STATE_ACTIVE, $ship->fresh()->state);
+        $this->assertSame(1, $ship->fresh()->current_hp);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.missile_damaged')->count());
     }
 
     public function test_pp_deviation_stays_within_one_hex_and_out_of_bounds_is_treated_as_sea(): void
@@ -4975,8 +5111,10 @@ class CommandAndMissileTest extends TestCase
     {
         app(DomesticCommandExecutor::class)->execute($context);
         $resolver = app(MissileImpactResolver::class);
-        $resolver->begin($this->missileCellIndex($context->world));
-        $metrics = $resolver->processBase($context, $this->surfaceMapSpace($context->world), $base);
+        $space = $this->surfaceMapSpace($context->world);
+        $ships = app(SurfaceShipTurnService::class)->load($context, $space);
+        $resolver->begin($this->missileCellIndex($context->world), $ships);
+        $metrics = $resolver->processBase($context, $space, $base);
         $resolver->finalize($context);
 
         return $metrics;
@@ -4992,10 +5130,12 @@ class CommandAndMissileTest extends TestCase
     private function processRegisteredMissiles(TurnContext $context, array $bases): array
     {
         $resolver = app(MissileImpactResolver::class);
-        $resolver->begin($this->missileCellIndex($context->world));
+        $space = $this->surfaceMapSpace($context->world);
+        $ships = app(SurfaceShipTurnService::class)->load($context, $space);
+        $resolver->begin($this->missileCellIndex($context->world), $ships);
         $shotsFired = 0;
         foreach ($bases as $base) {
-            $metrics = $resolver->processBase($context, $this->surfaceMapSpace($context->world), $base);
+            $metrics = $resolver->processBase($context, $space, $base);
             $shotsFired += $metrics['shots_fired'];
         }
 

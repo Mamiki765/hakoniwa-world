@@ -74,7 +74,8 @@ const undergroundAsset = (key: string, fallbackLabel: string): AssetDescriptor =
 });
 const surfaceCellFixture: MapCell = {
     x: 12, y: 8, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
-    display_name: '平地', owner_nation_id: 3, owner_nation_number: 1, owner_name: '自島', details: [], monster: null,
+    display_name: '平地', owner_nation_id: 3, owner_nation_number: 1, owner_name: '自島',
+    within_viewer_visibility: false, details: [], monster: null,
     asset: undergroundAsset('tile.plain', '平'), overlays: [], aria_label: '平地 (12, 8)', version: 1, updated_at: null,
 };
 const undergroundOffsets: UndergroundSurfaceMapSlot['offset_x'][] = [-2, -1, 1, 2];
@@ -1424,10 +1425,18 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/public/nations/3')).toBe(false);
 
         await lobbyButton.trigger('click');
+        const publicPreviewChunkCallsBefore = fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/')).length;
+        const privateChunkCallsBefore = fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/map-spaces/2/chunks/')).length;
         const publicRankingButton = wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('公開島'))!;
         await publicRankingButton.trigger('click');
         await flushPromises();
         expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
+        expect(fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toHaveLength(publicPreviewChunkCallsBefore);
+        expect(fetchMock.mock.calls.filter(([path]) =>
+            String(path).includes('/api/v1/map-spaces/2/chunks/')).length).toBeGreaterThan(privateChunkCallsBefore);
 
         const profileButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');

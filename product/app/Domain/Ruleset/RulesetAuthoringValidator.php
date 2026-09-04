@@ -406,7 +406,9 @@ final class RulesetAuthoringValidator
         }
 
         $section = $this->map($settings['surface_ships'] ?? null, 'ruleset.surface_ships');
-        $this->requireKeys($section, ['capacity_per_type', 'movement', 'forced_displacement', 'definitions'], 'ruleset.surface_ships');
+        $this->requireKeys($section, [
+            'capacity_per_type', 'movement', 'forced_displacement', 'missile_impact', 'definitions',
+        ], 'ruleset.surface_ships');
         if ($this->integer($section['capacity_per_type'], 'ruleset.surface_ships.capacity_per_type', 1) !== 3) {
             throw new DomainException('ruleset.surface_ships.capacity_per_type must be exactly 3 for v20.');
         }
@@ -433,6 +435,17 @@ final class RulesetAuthoringValidator
         $this->requireKeys($displacement, ['port_search_distances', 'foreign_destroy_karma'], 'ruleset.surface_ships.forced_displacement');
         if ($displacement !== ['port_search_distances' => [1, 2], 'foreign_destroy_karma' => 1]) {
             throw new DomainException('ruleset.surface_ships.forced_displacement differs from the Owner-approved v20 contract.');
+        }
+        $missileImpact = $this->map($section['missile_impact'], 'ruleset.surface_ships.missile_impact');
+        $this->requireKeys($missileImpact, [
+            'damage_by_missile_key', 'instant_sink_missile_keys', 'foreign_sink_karma',
+        ], 'ruleset.surface_ships.missile_impact');
+        if ($missileImpact !== [
+            'damage_by_missile_key' => ['missile' => 1, 'pp_missile' => 1, 'spp_missile' => 1],
+            'instant_sink_missile_keys' => ['land_destruction_missile'],
+            'foreign_sink_karma' => 1,
+        ]) {
+            throw new DomainException('ruleset.surface_ships.missile_impact differs from the Owner-approved v20 contract.');
         }
         $definitions = $this->map($section['definitions'], 'ruleset.surface_ships.definitions');
         if (array_keys($definitions) !== ['fishing', 'tourist', 'exploration']) {

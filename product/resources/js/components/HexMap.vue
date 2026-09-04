@@ -28,6 +28,7 @@ const viewport = ref<HTMLElement | null>(null);
 const viewportSize = ref({ width: 900, height: 600 });
 const tooltipCell = ref<MapCell | null>(null);
 const wholeWorldView = ref(false);
+const showVisibility = ref(false);
 const tooltipPosition = ref({ x: 0, y: 0, placement: 'right' as 'right' | 'left' | 'bottom' | 'top' });
 const failedAssets = ref<Set<string>>(new Set());
 let resizeObserver: ResizeObserver | null = null;
@@ -365,6 +366,15 @@ function markAssetFailed(cell: MapCell): void {
             <button type="button" aria-label="地図を拡大" @click="changeZoom(0.1)">＋</button>
             <button type="button" aria-label="地図を縮小" @click="changeZoom(-0.1)">−</button>
             <span>{{ Math.round(zoom * 100) }}%</span>
+            <button
+                v-if="ownNationId !== undefined"
+                type="button"
+                class="visibility-toggle"
+                :aria-pressed="showVisibility"
+                @click="showVisibility = !showVisibility"
+            >
+                視界表示
+            </button>
             <span class="map-cell-count">表示 {{ visiblePositioned.length }}/{{ cells.length }}セル</span>
             <span v-if="loading" role="status">読み込み中…</span>
             <span v-if="error" class="error" role="alert">{{ error }}</span>
@@ -393,6 +403,7 @@ function markAssetFailed(cell: MapCell): void {
                             selected: selected?.x === item.cell.x && selected?.y === item.cell.y,
                             owned: item.cell.owner_nation_id !== null,
                             'owned-by-me': ownNationId !== undefined && item.cell.owner_nation_id === ownNationId,
+                            'within-viewer-visibility': showVisibility && item.cell.within_viewer_visibility,
                             capital: item.cell.facility === 'capital',
                         },
                     ]"

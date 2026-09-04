@@ -519,7 +519,7 @@ final class CompleteTurnEngine
         $monsterBatch = $this->monsters->load($context);
         $shipBatch = $this->ships->load($context, $space);
         $metrics['missile_boundary_monsters'] = $this->karma->snapshotMissileBoundary($context);
-        $this->missiles->begin($cellsByCoordinate);
+        $this->missiles->begin($cellsByCoordinate, $shipBatch);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
         $capitalNationIdsByCellId = NationCapital::query()
             ->whereIn('nation_id', $activeNations->keys()->all())

@@ -17,7 +17,7 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V19_CHECKSUM = 'b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9';
 
-    private const V20_CHECKSUM = 'b89515f6cedf1c3a4b984f39ad96860019c50231c3ad6155e8433e7374d05a6b';
+    private const V20_CHECKSUM = 'fdc8ca06a567aaa5a17860ad26fcecca50c4aa5a25a7ad430f6017178d485b5e';
 
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
     private const V16_COVERAGE = [

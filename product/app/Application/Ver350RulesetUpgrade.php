@@ -22,7 +22,7 @@ final readonly class Ver350RulesetUpgrade
 
     public const TARGET_VERSION = 20;
 
-    public const TARGET_CHECKSUM = 'b89515f6cedf1c3a4b984f39ad96860019c50231c3ad6155e8433e7374d05a6b';
+    public const TARGET_CHECKSUM = 'fdc8ca06a567aaa5a17860ad26fcecca50c4aa5a25a7ad430f6017178d485b5e';
 
     private const WORLD_KEY = 'shared-world';
 

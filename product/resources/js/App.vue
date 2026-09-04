@@ -831,10 +831,12 @@ async function openPreview(nationId: number): Promise<void> {
         previewNation.value = detail;
         selectedUndergroundSlot.value = null;
         mapSpace.value = detail.map_space;
-        await map.loadAround(detail.map_space, detail.capital.x, detail.capital.y, {
-            kind: 'public',
-            nationId: detail.id,
-        });
+        await map.loadAround(
+            detail.map_space,
+            detail.capital.x,
+            detail.capital.y,
+            nation.value === null ? { kind: 'public', nationId: detail.id } : { kind: 'private' },
+        );
         page.value = 'preview';
     } catch (error) {
         message.value = error instanceof Error ? error.message : '島previewを読み込めませんでした。';
@@ -1956,6 +1958,7 @@ async function abandonNation(): Promise<void> {
                     :selected="map.selected.value"
                     :capital="previewNation.capital"
                     :bounds="mapSpace.bounds"
+                    :own-nation-id="nation?.id"
                     :loading="map.loading.value"
                     :error="map.error.value"
                     :empty-chunks="map.emptyChunks.value"

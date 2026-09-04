@@ -10,7 +10,8 @@ afterEach(() => vi.unstubAllGlobals());
 function mapCell(overrides: Partial<MapCell> = {}): MapCell {
     return {
         x: 0, y: 0, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
-        display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '地図国', details: [],
+        display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '地図国',
+        within_viewer_visibility: false, details: [],
         monster: null,
         asset: { key: 'tile.plain', url: '/tiles/plain.gif?v=1-1', available: true, fallback_label: '平地', fallback_style: 'tile-plain' },
         overlays: [{ key: 'overlay.selection', url: '/tiles/selection.png?v=1-1', available: true, fallback_label: '', fallback_style: 'overlay-selection' }],
@@ -104,6 +105,7 @@ describe('staggered square-image map', () => {
     it('renders completed and optional overlay images, fallback, selection and six-way keyboard input', async () => {
         const selected = mapCell({
             details: [{ key: 'population', label: '人口', value: 1000, unit: '人', formatted: '1,000人', visibility: 'public' }],
+            within_viewer_visibility: true,
             display_name: '漁船',
             ship: {
                 id: 4, key: 'fishing', name: '漁船', asset_key: 'ship.fishing',
@@ -127,6 +129,7 @@ describe('staggered square-image map', () => {
         const tiles = wrapper.findAll('.map-cell');
         expect(tiles).toHaveLength(2);
         expect(tiles[0]!.classes()).toContain('selected');
+        expect(tiles[0]!.classes()).not.toContain('within-viewer-visibility');
         expect(tiles[0]!.find('img:not(.tile-overlay)').attributes('src')).toContain('/tiles/fishing.gif');
         expect(tiles[0]!.find('.tile-overlay').attributes('src')).toContain('/tiles/selection.png');
         expect(tiles[1]!.find('img').exists()).toBe(false);
@@ -135,6 +138,15 @@ describe('staggered square-image map', () => {
         expect(wrapper.find('.cell-tooltip').text()).toContain('座標 x=0, y=0');
         expect(wrapper.find('.cell-tooltip').text()).toContain('人口');
         expect(wrapper.find('.cell-tooltip').text()).toContain('船HP: 1/1');
+
+        const visibility = wrapper.get('button.visibility-toggle');
+        expect(visibility.attributes('aria-pressed')).toBe('false');
+        await visibility.trigger('click');
+        expect(visibility.attributes('aria-pressed')).toBe('true');
+        expect(tiles[0]!.classes()).toContain('within-viewer-visibility');
+        expect(tiles[1]!.classes()).not.toContain('within-viewer-visibility');
+        await visibility.trigger('click');
+        expect(tiles[0]!.classes()).not.toContain('within-viewer-visibility');
 
         await wrapper.find('.map-viewport').trigger('keydown', { key: 'PageUp' });
         expect(wrapper.emitted('move')).toEqual([[1]]);

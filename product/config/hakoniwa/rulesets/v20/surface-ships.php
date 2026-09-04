@@ -9,6 +9,7 @@ $behavior = [
     'secretary_skill_key',
     'terrain_key',
     '/surface_ships/forced_displacement/port_search_distances/*',
+    '/surface_ships/missile_impact/instant_sink_missile_keys/*',
 ];
 
 $data = [
@@ -22,6 +23,10 @@ $data = [
     'fuel_shortage_damage',
     'fuel_shortage_damage_chance_percent',
     'foreign_destroy_karma',
+    '/surface_ships/missile_impact/damage_by_missile_key/missile',
+    '/surface_ships/missile_impact/damage_by_missile_key/pp_missile',
+    '/surface_ships/missile_impact/damage_by_missile_key/spp_missile',
+    '/surface_ships/missile_impact/foreign_sink_karma',
     'random_stream_version',
     'secretary_experience_per_successful_move',
     'sort_order',
@@ -48,6 +53,15 @@ return [
             'forced_displacement' => [
                 'port_search_distances' => [1, 2],
                 'foreign_destroy_karma' => 1,
+            ],
+            'missile_impact' => [
+                'damage_by_missile_key' => [
+                    'missile' => 1,
+                    'pp_missile' => 1,
+                    'spp_missile' => 1,
+                ],
+                'instant_sink_missile_keys' => ['land_destruction_missile'],
+                'foreign_sink_karma' => 1,
             ],
             'definitions' => [
                 'fishing' => [

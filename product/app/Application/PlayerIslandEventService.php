@@ -69,6 +69,7 @@ final class PlayerIslandEventService
         'ship.retired',
         'ship.forced_displaced',
         'ship.fuel_shortage_damaged',
+        'ship.missile_damaged',
         'ship.sunk',
         'missile.launch_failed',
         'missile.launch_detail',
@@ -1492,6 +1493,13 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'y')),
                 number_format($this->integer($metadata, 'current_hp')),
             ),
+            'ship.missile_damaged' => sprintf(
+                '%sがミサイル攻撃により(%s,%s)で損傷しました（HP %s）。',
+                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+                number_format($this->integer($metadata, 'current_hp')),
+            ),
             'ship.sunk' => sprintf(
                 '%sが%sにより(%s,%s)で沈没しました。',
                 is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
@@ -2363,6 +2371,7 @@ final class PlayerIslandEventService
             'defense_self_destruct' => '防衛施設の自爆',
             'nuclear_self_destruct_blast' => '怪獣の核自爆',
             'fuel_exhaustion' => '石油不足事故',
+            'missile' => 'ミサイル攻撃',
             'forced_displacement_failed' => '退避不能',
             default => '外部作用',
         };
