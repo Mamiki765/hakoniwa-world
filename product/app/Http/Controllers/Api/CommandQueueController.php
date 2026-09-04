@@ -14,9 +14,7 @@ use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
-use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Ruleset\ResetRequiredException;
-use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Http\Controllers\Controller;
@@ -38,8 +36,6 @@ final class CommandQueueController extends Controller
         private readonly LegacyCommandQueueOrder $legacyOrder,
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
-        private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
-        private readonly SurfaceShipCatalog $surfaceShips,
     ) {}
 
     public function definitions(
@@ -147,7 +143,11 @@ final class CommandQueueController extends Controller
                 ->where('ruleset_version_id', $world->ruleset_version_id)
                 ->where('enabled', true)
                 ->orderBy('sort_order')
-                ->get();
+                ->get()
+                ->each(static fn (CommandDefinition $definition): CommandDefinition => $definition->setRelation(
+                    'rulesetVersion',
+                    $world->rulesetVersion,
+                ));
             $visibleState = $cell === null ? null : MapCellPresenter::visibleState($cell, $nation->id);
             $projectionMemo = new SurfaceCommandProjectionMemo;
             $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
@@ -587,23 +587,15 @@ final class CommandQueueController extends Controller
         if (! $definition instanceof CommandDefinition) {
             return $definition->cost_money;
         }
-        if ($definition->key === 'monster_dispatch'
-            && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
-            return $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
-        }
-        if ($definition->key === 'build_ship'
-            && ($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
-            return $this->surfaceShips->resolve($definition, $item->quantity)->buildCostMoney;
-        }
 
-        return $definition->cost_money;
+        return $this->quantitySemantics->effectiveCostMoney($definition, $item->quantity);
     }
 
     private function loadQueue(NationCommandQueue $queue): NationCommandQueue
     {
         return $queue->load([
             'items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'),
-            'items.definition.rulesetVersion',
+            'items.definition',
         ]);
     }
 

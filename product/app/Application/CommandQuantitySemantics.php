@@ -151,4 +151,16 @@ final class CommandQuantitySemantics
 
         return '存在しない選択肢';
     }
+
+    public function effectiveCostMoney(CommandDefinition $definition, int $quantity): int
+    {
+        if (($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            return $this->monsterDispatchOptions->resolve($definition, $quantity)->costMoney;
+        }
+        if (($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
+            return $this->surfaceShips->resolve($definition, $quantity)->buildCostMoney;
+        }
+
+        return $definition->cost_money;
+    }
 }

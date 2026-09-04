@@ -991,7 +991,7 @@ final class CommandQueueService
 
         $queue->load([
             'items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'),
-            'items.definition.rulesetVersion',
+            'items.definition',
         ]);
         $queue->setRelation('items', $this->legacyOrder->project($queue->items));
 

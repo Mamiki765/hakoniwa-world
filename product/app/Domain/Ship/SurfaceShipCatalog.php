@@ -10,6 +10,9 @@ final class SurfaceShipCatalog
 {
     public const CATALOG = 'surface_ship_definitions';
 
+    /** @var array<int, list<SurfaceShipDefinition>> */
+    private array $optionsByRulesetId = [];
+
     /**
      * @param  array<string, mixed>  $settings
      * @return list<SurfaceShipDefinition>
@@ -62,7 +65,8 @@ final class SurfaceShipCatalog
             return [];
         }
 
-        return $this->definitions($this->settings($command));
+        return $this->optionsByRulesetId[$command->ruleset_version_id]
+            ??= $this->definitions($this->settings($command));
     }
 
     public function resolve(CommandDefinition $command, int $selector): SurfaceShipDefinition
