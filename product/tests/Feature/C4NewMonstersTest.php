@@ -32,6 +32,7 @@ use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMonsterKillStat;
 use App\Models\RulesetVersion;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -299,6 +300,49 @@ final class C4NewMonstersTest extends TestCase
             $expectedStream->integer(0, 5),
             $context->random->stream($movementLabel)->integer(0, 5),
         );
+    }
+
+    public function test_aoi_sinks_a_ship_before_atomically_entering_its_cell(): void
+    {
+        [$world, $ruleset] = $this->v11World();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '船舶侵入国', '船舶侵入主');
+        $space = $this->surfaceMapSpace($world);
+        [$monster, $origin, $destination, $seed] = $this->directedAoiScenario(
+            $world,
+            $ruleset,
+            $space,
+            $nation,
+            'aoi-ship-collision',
+            'sea',
+            null,
+            null,
+            0,
+        );
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $ruleset->id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $destination->id,
+            'ship_type_key' => 'tourist',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+
+        $this->processAoi($world, $ruleset, $space, $origin, $seed, [$nation->id]);
+
+        $ship = $ship->fresh();
+        $this->assertSame(Ship::STATE_REMOVED, $ship->state);
+        $this->assertSame('monster_collision', $ship->removal_reason);
+        $this->assertSame(0, $ship->current_hp);
+        $this->assertNull($ship->map_cell_id);
+        $this->assertSame($destination->id, $monster->fresh()->occupancy()->value('map_cell_id'));
+        $event = $this->eventMetadata('ship.sunk');
+        $this->assertSame($nation->id, $event['nation_id']);
+        $this->assertSame('観光船', $event['ship_name']);
+        $this->assertSame('aoi_inora', $event['monster_key']);
     }
 
     public function test_aoi_can_continue_inland_from_the_sea_cell_it_created(): void

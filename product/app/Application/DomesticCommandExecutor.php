@@ -40,6 +40,7 @@ use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
@@ -380,6 +381,11 @@ final class DomesticCommandExecutor
             ->lockForUpdate()
             ->first(['id', 'monster_instance_id']);
         $observed = $this->observedState($cell, $occupancy?->monster_instance_id);
+        if (in_array($definition->key, ['reclaim', 'excavate'], true)
+            && Ship::query()->where('map_cell_id', $cell->id)->where('state', Ship::STATE_ACTIVE)
+                ->lockForUpdate()->first(['id']) !== null) {
+            return ['reason' => CommandFailureReason::OccupiedByShip, 'observed' => $observed];
+        }
         $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell);
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             if ($this->ceasefireBlocksHostileTarget($nation, $cell->ownerNation)) {

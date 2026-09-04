@@ -30,6 +30,7 @@ final class MonsterTurnService
         private readonly DisasterTurnService $disasters,
         private readonly MonsterBehaviorResolver $behaviors,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly SurfaceShipRemovalService $shipRemoval,
     ) {}
 
     public function load(TurnContext $context): MonsterTurnBatch
@@ -146,6 +147,10 @@ final class MonsterTurnService
                 || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true)) {
                 continue;
             }
+            $this->shipRemoval->sinkAtCell($context, $destination, 'monster_collision', [
+                'monster_instance_id' => (int) $monster->id,
+                'monster_key' => $definition->key,
+            ]);
             if ($behavior->movement === MonsterBehaviorResolver::WATER_NEUTRALIZING) {
                 $this->moveAndNeutralizeToSea($context, $cell, $destination, $occupancy, $batch);
 

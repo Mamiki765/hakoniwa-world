@@ -9,6 +9,7 @@ use App\Application\KarmaTurnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -1952,6 +1953,80 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('completed', $next['item']->fresh()->status);
         $this->assertSame(3_000, (int) $nation->fresh()->money);
         $this->assertSame(0, Ship::query()->count());
+        $messages = collect(app(PlayerIslandEventService::class)->ownerPage(
+            $nation->fresh(),
+            anchorTurn: 2,
+        )['groups'])->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
+        $this->assertTrue(collect($messages)->contains(
+            static fn (string $message): bool => str_contains($message, '船建造は、自国の港がないため実行できませんでした。'),
+        ));
+    }
+
+    public function test_ship_occupied_water_command_is_unavailable_and_fails_without_aborting_the_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '船舶占有国');
+        $space = $this->surfaceMapSpace($world);
+        $nation->update(['money' => 2_000]);
+        $ownedLand = $this->ownedTerrain($nation, 'plain');
+        $target = $this->neighborCells($ownedLand)[0];
+        $this->setCellState($target, 'sea', null);
+        $target = $target->fresh(['terrain', 'facility', 'ship']);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $target->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $target->load('ship');
+        $service = app(CommandQueueService::class);
+        $excavate = CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'excavate')
+            ->firstOrFail();
+        try {
+            $service->validateTarget($nation, $space, $excavate, $target);
+            $this->fail('Ship-occupied sea was presented as an executable excavation target.');
+        } catch (PlayerFacingCommandException $exception) {
+            $this->assertSame('船が存在するcellは現在このcommandの対象にできません。', $exception->getMessage());
+        }
+
+        $failed = $service->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $space,
+            commandKey: 'excavate',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        );
+        $next = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'attraction',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $failed['queue']->version,
+        );
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'ship occupied excavation')),
+        );
+        $this->assertSame([1, 1], [$result['successes'], $result['failures']]);
+        $this->assertSame('occupied_by_ship', $failed['item']->fresh()->failure_code);
+        $this->assertSame('completed', $next['item']->fresh()->status);
+        $this->assertSame(1_000, (int) $nation->fresh()->money);
+        $this->assertSame(Ship::STATE_ACTIVE, $ship->fresh()->state);
+        $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
     }
 
     public function test_ship_build_spawn_and_capacity_failures_are_removed_without_consuming_the_turn(): void

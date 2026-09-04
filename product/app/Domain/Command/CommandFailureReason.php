@@ -17,6 +17,7 @@ enum CommandFailureReason: string
     case NotOwned = 'not_owned';
     case AlreadyOwned = 'already_owned';
     case OccupiedByMonster = 'occupied_by_monster';
+    case OccupiedByShip = 'occupied_by_ship';
     case FacilityExists = 'facility_exists';
     case InvalidFacility = 'invalid_facility';
     case InvalidFacilityScale = 'invalid_facility_scale';

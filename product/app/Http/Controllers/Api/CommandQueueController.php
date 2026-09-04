@@ -135,6 +135,7 @@ final class CommandQueueController extends Controller
                     ->where('x', $request->integer('target_x'))
                     ->where('y', $request->integer('target_y'))
                     ->with(['terrain', 'facility'])
+                    ->withExists('ship')
                     ->first();
             }
             $nationTargetOptions = $this->nationTargets->options($nation);
