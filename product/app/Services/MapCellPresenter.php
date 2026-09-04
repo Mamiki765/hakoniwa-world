@@ -32,11 +32,16 @@ final class MapCellPresenter
     ) {}
 
     /** @return array<string, mixed> */
-    public function present(MapCell $cell, ?int $viewerNationId, int $currentTurn, ?string $theme = null): array
-    {
+    public function present(
+        MapCell $cell,
+        ?int $viewerNationId,
+        int $currentTurn,
+        ?string $theme = null,
+        bool $withinViewerVisibility = false,
+    ): array {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
-        $isDisguised = self::isDisguised($cell, $viewerNationId);
-        $visibleState = self::visibleState($cell, $viewerNationId);
+        $isDisguised = self::isDisguised($cell, $viewerNationId, $withinViewerVisibility);
+        $visibleState = self::visibleState($cell, $viewerNationId, $withinViewerVisibility);
         $terrain = $visibleState['terrain_key'] === $cell->terrain->key
             ? $cell->terrain
             : $this->terrain($visibleState['terrain_key']);
@@ -73,6 +78,7 @@ final class MapCellPresenter
             'owner_nation_id' => $visibleState['owner_nation_id'],
             'owner_nation_number' => $ownerNation?->nation_number,
             'owner_name' => $ownerNation?->name,
+            'within_viewer_visibility' => $withinViewerVisibility,
             'details' => $details,
             'ship' => $ship,
             'monster' => $monster,
@@ -86,11 +92,16 @@ final class MapCellPresenter
     }
 
     /** @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null} */
-    public static function visibleState(MapCell $cell, ?int $viewerNationId): array
-    {
+    public static function visibleState(
+        MapCell $cell,
+        ?int $viewerNationId,
+        bool $withinViewerVisibility = false,
+    ): array {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
-        $isDisguised = self::isDisguised($cell, $viewerNationId);
-        $impersonatedFacilityKey = ! $isOwner && is_string($cell->facility?->metadata['display_as_facility_key'] ?? null)
+        $isDisguised = self::isDisguised($cell, $viewerNationId, $withinViewerVisibility);
+        $impersonatedFacilityKey = ! $isOwner
+            && ! $withinViewerVisibility
+            && is_string($cell->facility?->metadata['display_as_facility_key'] ?? null)
             ? $cell->facility->metadata['display_as_facility_key']
             : null;
 
@@ -283,9 +294,13 @@ final class MapCellPresenter
         return $this->facilities[$key] ??= FacilityDefinition::query()->where('key', $key)->firstOrFail();
     }
 
-    private static function isDisguised(MapCell $cell, ?int $viewerNationId): bool
-    {
+    private static function isDisguised(
+        MapCell $cell,
+        ?int $viewerNationId,
+        bool $withinViewerVisibility,
+    ): bool {
         return $cell->facility?->visibility_policy === FacilityVisibilityPolicy::Disguised->value
+            && ! $withinViewerVisibility
             && ($viewerNationId === null || $viewerNationId !== $cell->owner_nation_id);
     }
 }

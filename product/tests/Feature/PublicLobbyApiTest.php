@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\FacilityDefinition;
@@ -11,6 +12,7 @@ use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\NationAward;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -330,18 +332,51 @@ class PublicLobbyApiTest extends TestCase
         $this->assertFalse($response->headers->has('Vary'));
     }
 
-    public function test_seabed_base_is_indistinguishable_from_neutral_sea_to_public_viewers(): void
+    public function test_visibility_reveals_seabed_base_and_decoy_without_leaking_to_public_viewers(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
         $nation = app(NationCreationService::class)->create($owner, $world, '海底秘匿国', '海底島主');
         $outsider = User::factory()->create();
-        app(NationCreationService::class)->create($outsider, $world, '海底外部国', '海底外部島主');
+        $outsiderNation = app(NationCreationService::class)->create(
+            $outsider,
+            $world,
+            '海底外部国',
+            '海底外部島主',
+        );
         $mapSpace = MapSpace::query()->where('world_id', $world->id)->firstOrFail();
-        $seabedBase = MapCell::query()->where('map_space_id', $mapSpace->id)
+        $outsiderLand = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->where('owner_nation_id', $outsiderNation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('is_water', false))
+            ->get(['x', 'y'])
+            ->map(static fn (MapCell $cell): GridCoordinate => new GridCoordinate($cell->x, $cell->y));
+        $neutralSeas = MapCell::query()->where('map_space_id', $mapSpace->id)
             ->whereNull('owner_nation_id')
+            ->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
-            ->orderBy('id')->firstOrFail();
+            ->orderBy('id')->get();
+        $neutralSeaByCoordinate = $neutralSeas->keyBy(
+            static fn (MapCell $cell): string => $cell->x.':'.$cell->y,
+        );
+        $seabedBase = $neutralSeas->first(function (MapCell $candidate) use (
+            $outsiderLand,
+            $neutralSeaByCoordinate,
+        ): bool {
+            $coordinate = new GridCoordinate($candidate->x, $candidate->y);
+
+            return ! $outsiderLand->contains(
+                static fn (GridCoordinate $land): bool => $land->distanceTo($coordinate) <= 3,
+            ) && collect($coordinate->ring(3))->contains(
+                static fn (GridCoordinate $ring): bool => $neutralSeaByCoordinate->has($ring->x.':'.$ring->y),
+            );
+        });
+        $this->assertInstanceOf(MapCell::class, $seabedBase);
+        $explorationSource = collect((new GridCoordinate($seabedBase->x, $seabedBase->y))->ring(3))
+            ->map(static fn (GridCoordinate $coordinate): ?MapCell => $neutralSeaByCoordinate->get(
+                $coordinate->x.':'.$coordinate->y,
+            ))
+            ->first(static fn (?MapCell $cell): bool => $cell instanceof MapCell);
+        $this->assertInstanceOf(MapCell::class, $explorationSource);
         $neutralSea = MapCell::query()->where('map_space_id', $mapSpace->id)
             ->where('map_chunk_id', $seabedBase->map_chunk_id)
             ->whereKeyNot($seabedBase->id)
@@ -403,6 +438,7 @@ class PublicLobbyApiTest extends TestCase
             $this->assertStringContainsString('所有 中立', $disguisedBase['aria_label']);
             $this->assertStringNotContainsString($nation->name, $disguisedBase['aria_label']);
             $this->assertStringNotContainsString('N'.$nation->nation_number, $disguisedBase['aria_label']);
+            $this->assertFalse($disguisedBase['within_viewer_visibility']);
         }
 
         $this->assertSame($publicBase, $nonOwnerBase);
@@ -416,6 +452,74 @@ class PublicLobbyApiTest extends TestCase
             unset($publicBase[$key], $publicSea[$key]);
         }
         $this->assertSame($publicSea, $publicBase);
+
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $outsiderNation->id,
+            'map_cell_id' => $explorationSource->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $ordinaryShipResponse = $this->actingAs($outsider)->getJson(
+            "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}",
+        )->assertOk();
+        $ordinaryShipView = $this->cell($ordinaryShipResponse->json('data.cells'), $seabedBase);
+        $this->assertNull($ordinaryShipView['facility']);
+        $this->assertFalse($ordinaryShipView['within_viewer_visibility']);
+
+        $ship->update([
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'version' => 2,
+        ]);
+        $explorationResponse = $this->actingAs($outsider)->getJson(
+            "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}",
+        )->assertOk();
+        $revealedBase = $this->cell($explorationResponse->json('data.cells'), $seabedBase);
+        $this->assertSame('seabed_base', $revealedBase['facility']);
+        $this->assertSame($nation->id, $revealedBase['owner_nation_id']);
+        $this->assertSame($nation->name, $revealedBase['owner_name']);
+        $this->assertTrue($revealedBase['within_viewer_visibility']);
+        $this->assertSame([], collect($revealedBase['details'])->whereIn('key', [
+            'facility_experience',
+            'facility_level',
+            'launch_capacity',
+        ])->all());
+
+        $publicAfterReveal = $this->cell($this->getJson($publicUrl)->assertOk()->json('data.cells'), $seabedBase);
+        $this->assertNull($publicAfterReveal['facility']);
+        $this->assertFalse($publicAfterReveal['within_viewer_visibility']);
+
+        app(MapCellStateService::class)->setFacility($seabedBase, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $seabedBase,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $seabedBase,
+            FacilityDefinition::query()->where('key', 'decoy')->firstOrFail(),
+        );
+        $seabedBase->owner_nation_id = $nation->id;
+        $seabedBase->save();
+
+        $revealedDecoy = $this->cell($this->actingAs($outsider)->getJson(
+            "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}",
+        )->assertOk()->json('data.cells'), $seabedBase);
+        $this->assertSame('decoy', $revealedDecoy['facility']);
+        $this->assertSame('ハリボテ', $revealedDecoy['display_name']);
+        $this->assertSame($nation->id, $revealedDecoy['owner_nation_id']);
+        $this->assertTrue($revealedDecoy['within_viewer_visibility']);
+
+        $publicDecoy = $this->cell($this->getJson($publicUrl)->assertOk()->json('data.cells'), $seabedBase);
+        $this->assertSame('defense', $publicDecoy['facility']);
+        $this->assertSame('防衛施設', $publicDecoy['display_name']);
+        $this->assertFalse($publicDecoy['within_viewer_visibility']);
     }
 
     /** @param array<int, array<string, mixed>> $cells @return array<string, mixed> */

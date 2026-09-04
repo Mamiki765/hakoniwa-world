@@ -903,6 +903,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .map-stage { display: flex; flex-direction: column; height: 100%; min-height: 520px; background: #83bccc; }
 .map-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; padding: 8px 10px; color: #eaf3ef; background: var(--navy-solid); font-size: .74rem; }
 .map-toolbar button { min-width: 40px; min-height: 36px; border: 1px solid rgba(255,255,255,.35); background: transparent; color: white; padding: 5px 9px; cursor: pointer; }
+.map-toolbar .visibility-toggle[aria-pressed="true"] { border-color: #76e59b; color: #a8f5bf; }
 .map-toolbar .error { margin-left: auto; color: #ffd0c8; }
 .map-viewport {
     flex: 1;
@@ -923,6 +924,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .map-cell { position: absolute; width: 32px; height: 32px; padding: 0; border: 0; background: #bca883; color: #132827; cursor: pointer; overflow: hidden; image-rendering: pixelated; transition: filter .1s, box-shadow .1s; }
 .map-viewport.is-dragging .map-cell { cursor: grabbing; }
 .map-cell::after { content: ""; position: absolute; inset: 0; border: 1px solid rgba(10,40,44,.22); pointer-events: none; }
+.map-cell.within-viewer-visibility::after { border: 2px solid #42d878; z-index: 6; }
 .map-cell:hover, .map-cell:focus-visible { filter: brightness(1.12); z-index: 5; }
 .map-cell.selected { box-shadow: inset 0 0 0 3px #fff, 0 0 0 3px var(--coral); z-index: 8; }
 .map-cell.owned-by-me::before { content: ""; position: absolute; inset: 1px; border: 2px solid var(--gold); z-index: 3; pointer-events: none; }

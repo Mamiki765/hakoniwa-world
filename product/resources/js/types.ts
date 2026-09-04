@@ -628,6 +628,7 @@ export interface MapCell {
     owner_nation_id: number | null;
     owner_nation_number: number | null;
     owner_name: string | null;
+    within_viewer_visibility: boolean;
     details: MapCellDetail[];
     ship?: ShipOverlay | null;
     monster: MonsterOverlay | null;
