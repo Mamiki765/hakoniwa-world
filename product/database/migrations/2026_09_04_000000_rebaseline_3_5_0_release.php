@@ -1,5 +1,6 @@
 <?php
 
+use App\Application\Ver350RulesetUpgrade;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +12,8 @@ return new class extends Migration
 
     public function up(): void
     {
+        app(Ver350RulesetUpgrade::class)->run();
+
         Schema::create('ships', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('world_id')->constrained()->cascadeOnDelete();
@@ -255,12 +258,37 @@ BEGIN
 END;
 $$;
 SQL);
+
+        DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT IF EXISTS secretary_skills_key_check');
+        DB::statement(<<<'SQL'
+ALTER TABLE secretary_skills
+  ADD CONSTRAINT secretary_skills_key_check
+  CHECK (skill_key IN (
+    'agricultural_policy',
+    'specialty_development',
+    'gold_vein_survey',
+    'forest_management',
+    'final_defense_line',
+    'declining_birthrate_policy',
+    'indomitable',
+    'ship_operations'
+  ))
+SQL);
+        DB::statement(<<<'SQL'
+INSERT INTO secretary_skills (secretary_id, skill_key, level, experience, created_at, updated_at)
+SELECT secretary.id, 'ship_operations', 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+  FROM secretaries secretary
+ WHERE NOT EXISTS (
+   SELECT 1 FROM secretary_skills skill
+    WHERE skill.secretary_id = secretary.id AND skill.skill_key = 'ship_operations'
+ )
+SQL);
     }
 
     public function down(): void
     {
         throw new RuntimeException(
-            'The 3.5.0 Surface Ship foundation migration is forward-only; restore the verified pre-migration backup.',
+            'The consolidated 3.5.0 release migration is forward-only; restore the verified pre-migration backup.',
         );
     }
 };
