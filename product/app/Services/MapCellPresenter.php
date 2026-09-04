@@ -11,7 +11,6 @@ use App\Domain\Ship\SurfaceShipCatalog;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\Nation;
-use App\Models\RulesetVersion;
 use App\Models\Ship;
 use App\Models\TerrainDefinition;
 
@@ -157,9 +156,6 @@ final class MapCellPresenter
             return null;
         }
         $ruleset = $ship->rulesetVersion;
-        if (! $ruleset instanceof RulesetVersion) {
-            return null;
-        }
         $definition = collect($this->ships->definitions($ruleset->settings))
             ->first(static fn ($candidate): bool => $candidate->key === $ship->ship_type_key);
         if ($definition === null) {
