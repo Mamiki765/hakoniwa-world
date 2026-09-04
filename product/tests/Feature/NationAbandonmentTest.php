@@ -30,6 +30,7 @@ use App\Models\NationMembership;
 use App\Models\NationMonsterKillStat;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
@@ -132,6 +133,24 @@ final class NationAbandonmentTest extends TestCase
         $affectedNeutralMonster = $this->monsterAt($world->id, $world->ruleset_version_id, $neutralInside);
         $protectedOtherMonster = $this->monsterAt($world->id, $world->ruleset_version_id, $otherInside);
         $unaffectedMonster = $this->monsterAt($world->id, $world->ruleset_version_id, $neutralOutside);
+        $shipCell = MapCell::query()->where('map_space_id', $surface->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereNotIn('id', [
+                $ownedInside->id, $ownedOutside->id, $neutralInside->id, $otherInside->id, $neutralOutside->id,
+            ])
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->firstOrFail();
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $shipCell->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
 
         $membership = NationMembership::query()->where('nation_id', $nation->id)->firstOrFail();
         $queue = NationCommandQueue::query()->create([
@@ -195,6 +214,7 @@ final class NationAbandonmentTest extends TestCase
             ->assertJsonPath('data.owned_cell_count', $expectedOwnedCount)
             ->assertJsonPath('data.neutral_cleanup_cell_count', $expectedNeutralCount)
             ->assertJsonPath('data.monster_removed_count', 2)
+            ->assertJsonPath('data.ship_removed_count', 1)
             ->assertJsonPath('data.changed_chunk_count', $affectedChunkIds->count());
         $this->assertNotNull($response->json('data'));
 
@@ -227,6 +247,10 @@ final class NationAbandonmentTest extends TestCase
         $this->assertDatabaseHas('monster_occupancies', ['monster_instance_id' => $unaffectedMonster->id]);
         $this->assertSame('alive', $protectedOtherMonster->fresh()->state);
         $this->assertDatabaseHas('monster_occupancies', ['monster_instance_id' => $protectedOtherMonster->id]);
+        $this->assertSame(Ship::STATE_REMOVED, $ship->fresh()->state);
+        $this->assertNull($ship->fresh()->map_cell_id);
+        $this->assertSame('nation_abandoned', $ship->fresh()->removal_reason);
+        $this->assertNotNull($ship->fresh()->removed_at);
 
         $archived = Nation::query()->findOrFail($nation->id);
         $this->assertSame('abandoned', $archived->state);
@@ -299,6 +323,7 @@ final class NationAbandonmentTest extends TestCase
         $this->assertSame($capital->y, $metadata['old_capital_y']);
         $this->assertSame($expectedOwnedCount, $metadata['affected_owned_cell_count']);
         $this->assertSame($expectedNeutralCount, $metadata['affected_neutral_cleanup_cell_count']);
+        $this->assertSame(1, $metadata['removed_ship_count']);
 
         $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
             ->assertOk()->assertJsonPath('data.nation_count', 1);

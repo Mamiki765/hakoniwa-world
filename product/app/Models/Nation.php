@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int|null $resume_at_turn
  * @property-read NationCapital|null $capital
  * @property-read Collection<int, NationResource> $resourceBalances
+ * @property-read Collection<int, Ship> $ships
  */
 class Nation extends Model
 {
@@ -107,5 +108,11 @@ class Nation extends Model
     public function undergroundFacilities(): HasMany
     {
         return $this->hasMany(NationUndergroundFacility::class);
+    }
+
+    /** @return HasMany<Ship, $this> */
+    public function ships(): HasMany
+    {
+        return $this->hasMany(Ship::class);
     }
 }

@@ -170,6 +170,7 @@ final class ResetWorld extends Command
                 ->join('monster_instances', 'monster_instances.id', '=', 'monster_occupancies.monster_instance_id')
                 ->where('monster_instances.world_id', $world->id)
                 ->count(),
+            'ships' => DB::table('ships')->where('world_id', $world->id)->count(),
             'nation_memberships' => DB::table('nation_memberships')->where('world_id', $world->id)->count(),
             'nation_resources' => DB::table('nation_resources')->whereIn('nation_id', $nationIds)->count(),
             'nation_resource_sale_policies' => DB::table('nation_resource_sale_policies')->whereIn('nation_id', $nationIds)->count(),

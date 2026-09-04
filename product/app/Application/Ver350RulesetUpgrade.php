@@ -22,7 +22,7 @@ final readonly class Ver350RulesetUpgrade
 
     public const TARGET_VERSION = 20;
 
-    public const TARGET_CHECKSUM = '3eb7838a68a4d2735871221d36c1de11cc20dcb341c1001b7f79380d20c6b942';
+    public const TARGET_CHECKSUM = '6ffc4156dda071274c3da4353e6299142e151b44afd773de54c60a3cdcf40b2b';
 
     private const WORLD_KEY = 'shared-world';
 
@@ -301,7 +301,12 @@ SQL, [$targetId, $worldId, $sourceId]);
         foreach (['command_definitions', 'production_definitions', 'monster_definitions'] as $table) {
             $source = DB::table($table)->where('ruleset_version_id', $sourceId)->orderBy('key')->pluck('key')->all();
             $target = DB::table($table)->where('ruleset_version_id', $targetId)->orderBy('key')->pluck('key')->all();
-            if ($source === [] || $source !== $target) {
+            $expectedTarget = $source;
+            if ($table === 'command_definitions') {
+                $expectedTarget[] = 'build_port';
+                sort($expectedTarget, SORT_STRING);
+            }
+            if ($source === [] || $expectedTarget !== $target) {
                 throw new RuntimeException("{$table} stable keys differ across exact v19 to v20.");
             }
         }

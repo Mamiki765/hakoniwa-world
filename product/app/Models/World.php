@@ -55,4 +55,10 @@ class World extends Model
     {
         return $this->hasMany(NationMonsterCycleStat::class);
     }
+
+    /** @return HasMany<Ship, $this> */
+    public function ships(): HasMany
+    {
+        return $this->hasMany(Ship::class);
+    }
 }

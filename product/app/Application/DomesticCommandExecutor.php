@@ -399,6 +399,23 @@ final class DomesticCommandExecutor
             }
         } elseif ($occupancy !== null) {
             return ['reason' => CommandFailureReason::OccupiedByMonster, 'observed' => $observed];
+        } elseif ($definition->key === 'build_port') {
+            if ($cell->owner_nation_id !== null) {
+                return ['reason' => CommandFailureReason::AlreadyOwned, 'observed' => $observed];
+            }
+            if ($cell->terrain->key !== 'shallow') {
+                return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
+            }
+            if ($cell->facility_definition_id !== null) {
+                return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
+            }
+            $adjacent = $this->portAdjacentFacts($nation, $cell);
+            if (! $adjacent['owned_land']) {
+                return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
+            }
+            if (! $adjacent['sea']) {
+                return ['reason' => CommandFailureReason::NoAdjacentDeepSea, 'observed' => $observed];
+            }
         } elseif (in_array($definition->key, ['build_seabed_base', 'build_undersea_city'], true)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
@@ -441,7 +458,7 @@ final class DomesticCommandExecutor
             if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
                 return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
-        } elseif (! in_array($definition->key, ['territory_expand', 'build_seabed_base', 'build_undersea_city'], true)) {
+        } elseif (! in_array($definition->key, ['territory_expand', 'build_port', 'build_seabed_base', 'build_undersea_city'], true)) {
             if ($cell->owner_nation_id !== $nation->id
                 && ! ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true))) {
                 return [
@@ -814,6 +831,11 @@ final class DomesticCommandExecutor
 
             return true;
         }
+        if ($definition->key === 'build_port') {
+            $this->applyPortConstruction($context, $nation, $definition, $cell);
+
+            return true;
+        }
         if ($definition->key === 'reclaim') {
             $this->applyReclaim($context, $nation, $definition, $cell);
             $this->recordPublicCommandCompanion($context, $nation, $definition, $cell);
@@ -1174,6 +1196,7 @@ final class DomesticCommandExecutor
             'build_factory',
             'build_mine',
             'build_defense_facility',
+            'build_port',
             'build_monument',
         ], true)) {
             $this->events->record($context, 'command.facility_built_public', $cell, $metadata, 'public');
@@ -1758,6 +1781,44 @@ final class DomesticCommandExecutor
         ]);
     }
 
+    private function applyPortConstruction(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $cell,
+    ): void {
+        $adjacent = $this->portAdjacentFacts($nation, $cell);
+        if ($cell->owner_nation_id !== null
+            || $cell->terrain->key !== 'shallow'
+            || $cell->facility_definition_id !== null
+            || ! $adjacent['owned_land']
+            || ! $adjacent['sea']) {
+            throw new DomainException('Port construction validation changed while the World transaction was locked.');
+        }
+
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $port = FacilityDefinition::query()->where('key', 'port')->firstOrFail();
+        $this->cells->transitionTerrain($cell, $plain);
+        $this->cells->setFacility($cell, $port);
+        $this->assignNationOwnership($context, $nation, $cell);
+        $cell->population = 0;
+        $cell->version++;
+        $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+        $this->events->record($context, 'facility.constructed', $cell, [
+            'nation_id' => $nation->id,
+            'command_key' => $definition->key,
+            'facility_key' => 'port',
+            'before_scale' => null,
+            'facility_scale' => null,
+            'scale_increment' => null,
+            'x' => $cell->x,
+            'y' => $cell->y,
+            'monument_definition_key' => null,
+        ], 'nation');
+        $this->recordConstructionProjection($context, $nation, $definition, $cell, false, null);
+    }
+
     private function assignNationOwnership(TurnContext $context, Nation $nation, MapCell $cell): void
     {
         $cell->owner_nation_id = $nation->id;
@@ -2050,6 +2111,34 @@ final class DomesticCommandExecutor
                 }
             })
             ->exists();
+    }
+
+    /** @return array{owned_land: bool, sea: bool} */
+    private function portAdjacentFacts(Nation $nation, MapCell $cell): array
+    {
+        $coordinates = array_values(array_filter(
+            (new GridCoordinate($cell->x, $cell->y))->radius(1),
+            static fn (GridCoordinate $coordinate): bool => $coordinate->x !== $cell->x || $coordinate->y !== $cell->y,
+        ));
+        $neighbors = MapCell::query()
+            ->where('map_space_id', $cell->map_space_id)
+            ->where(function ($query) use ($coordinates): void {
+                foreach ($coordinates as $coordinate) {
+                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
+                }
+            })
+            ->with('terrain')
+            ->get();
+
+        return [
+            'owned_land' => $neighbors->contains(
+                static fn (MapCell $neighbor): bool => $neighbor->owner_nation_id === $nation->id
+                    && ! $neighbor->terrain->is_water,
+            ),
+            'sea' => $neighbors->contains(
+                static fn (MapCell $neighbor): bool => $neighbor->terrain->key === 'sea',
+            ),
+        ];
     }
 
     /** @return array<string, int|string|null> */

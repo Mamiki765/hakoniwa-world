@@ -1749,6 +1749,89 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(860, $nation->fresh()->money);
     }
 
+    public function test_port_construction_requires_the_exact_coastal_boundary_and_consumes_one_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '港湾建設国');
+        $space = $this->surfaceMapSpace($world);
+        $target = $this->remoteWaterTarget($space);
+        $neighbors = $this->neighborCells($target);
+        $this->assertCount(6, $neighbors);
+        $this->setCellState($target, 'shallow', null);
+        foreach ($neighbors as $neighbor) {
+            $this->setCellState($neighbor, 'shallow', null);
+        }
+
+        $queue = app(CommandQueueService::class);
+        $missingLand = $queue->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $space,
+            commandKey: 'build_port',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        )['item'];
+        $failure = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'port missing owned land')),
+        );
+        $this->assertSame([0, 1, 1], [
+            $failure['successes'], $failure['failures'], $failure['automatic_finance'],
+        ]);
+        $this->assertSame('failed', $missingLand->fresh()->status);
+        $this->assertSame('no_adjacent_owned_land', $missingLand->fresh()->failure_code);
+        $this->assertNull($target->fresh()->facility_definition_id);
+
+        $this->setCellState($neighbors[0], 'plain', $nation->id);
+        $missingSea = $queue->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'build_port',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $missingLand->queue()->value('version'),
+        )['item'];
+        $failure = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'port missing deep sea')),
+        );
+        $this->assertSame([0, 1, 1], [
+            $failure['successes'], $failure['failures'], $failure['automatic_finance'],
+        ]);
+        $this->assertSame('failed', $missingSea->fresh()->status);
+        $this->assertSame('no_adjacent_deep_sea', $missingSea->fresh()->failure_code);
+
+        $this->setCellState($neighbors[1], 'sea', null);
+        $nation->update(['money' => 1_500]);
+        $queued = $queue->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'build_port',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $missingSea->queue()->value('version'),
+        )['item'];
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'port construction')),
+        );
+        $built = $target->fresh(['terrain', 'facility']);
+        $this->assertSame([1, 0], [$result['successes'], $result['failures']]);
+        $this->assertSame('completed', $queued->fresh()->status);
+        $this->assertSame(500, (int) $nation->fresh()->money);
+        $this->assertSame('plain', $built->terrain->key);
+        $this->assertSame('port', $built->facility?->key);
+        $this->assertSame($nation->id, $built->owner_nation_id);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'facility.constructed')
+            ->where('subject_id', $target->id)->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.facility_built_public')
+            ->where('subject_id', $target->id)->count());
+    }
+
     /** @return array{User, Nation} */
     private function createNation(World $world, string $name): array
     {

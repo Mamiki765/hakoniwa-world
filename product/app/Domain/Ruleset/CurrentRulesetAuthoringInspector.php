@@ -23,6 +23,9 @@ final class CurrentRulesetAuthoringInspector
     /** @var list<string> */
     private const V19_ADDITIONAL_DOMAIN_FILES = ['underground-facilities.php'];
 
+    /** @var list<string> */
+    private const V20_ADDITIONAL_DOMAIN_FILES = ['surface-ships.php'];
+
     /** @var array<string, string> */
     private const V17_DOMAIN_OVERRIDES = [
         'world-and-map.php' => 'v17/world-and-map.php',
@@ -55,6 +58,9 @@ final class CurrentRulesetAuthoringInspector
     private const V20_DOMAIN_OVERRIDES = [
         ...self::V19_DOMAIN_OVERRIDES,
         'world-and-map.php' => 'v20/world-and-map.php',
+        'facilities.php' => 'v20/facilities.php',
+        'commands-and-production.php' => 'v20/commands-and-production.php',
+        'surface-ships.php' => 'v20/surface-ships.php',
     ];
 
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
@@ -73,9 +79,15 @@ final class CurrentRulesetAuthoringInspector
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
-        $domainFiles = in_array($rulesetKey, ['hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20'], true)
-            ? [...self::DOMAIN_FILES, ...self::V19_ADDITIONAL_DOMAIN_FILES]
-            : self::DOMAIN_FILES;
+        $domainFiles = match ($rulesetKey) {
+            'hakoniwa-2s-plus-v20' => [
+                ...self::DOMAIN_FILES,
+                ...self::V19_ADDITIONAL_DOMAIN_FILES,
+                ...self::V20_ADDITIONAL_DOMAIN_FILES,
+            ],
+            'hakoniwa-2s-plus-v19' => [...self::DOMAIN_FILES, ...self::V19_ADDITIONAL_DOMAIN_FILES],
+            default => self::DOMAIN_FILES,
+        };
         foreach ($domainFiles as $file) {
             $relativePath = match ($rulesetKey) {
                 'hakoniwa-2s-plus-v20' => self::V20_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
