@@ -154,6 +154,33 @@ final class SurfaceShipFoundationTest extends TestCase
             ->assertJsonPath('data.heading', 0)
             ->assertJsonPath('data.version', 2);
         $this->assertSame(1, $world->fresh()->current_turn);
+        $headingEvent = DB::table('audit_events')->where('event_type', 'ship.heading.updated')->sole();
+        $this->assertSame([
+            $world->id,
+            1,
+            $nation->id,
+            $cell->x,
+            $cell->y,
+            'admin',
+        ], [
+            $headingEvent->world_id,
+            $headingEvent->turn,
+            $headingEvent->nation_id,
+            $headingEvent->x,
+            $headingEvent->y,
+            $headingEvent->visibility,
+        ]);
+        $headingMetadata = json_decode($headingEvent->metadata, true, flags: JSON_THROW_ON_ERROR);
+        $expectedHeadingMetadata = [
+            'world_id' => $world->id,
+            'target_turn' => 1,
+            'nation_id' => $nation->id,
+            'before' => null,
+            'after' => 0,
+        ];
+        ksort($headingMetadata);
+        ksort($expectedHeadingMetadata);
+        $this->assertSame($expectedHeadingMetadata, $headingMetadata);
         $this->actingAs($owner)->patchJson($path, ['heading' => 1, 'expected_version' => 1])
             ->assertConflict();
 

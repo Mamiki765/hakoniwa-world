@@ -6,6 +6,7 @@ use App\Application\CommandQuantitySemantics;
 use App\Application\CommandQueueService;
 use App\Application\LegacyCommandQueueOrder;
 use App\Application\NationCommandTargetService;
+use App\Application\SurfaceVisibilityService;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
@@ -27,6 +28,7 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Services\MapCellPresenter;
 use DomainException;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -44,6 +46,7 @@ final class CommandQueueController extends Controller
         MapSpace $mapSpace,
         CommandQueueService $service,
         FacilityCapacityService $capacities,
+        SurfaceVisibilityService $visibility,
         UndergroundFacilityService $undergroundFacilities,
         UndergroundCommandCatalog $undergroundCommands,
     ): JsonResponse {
@@ -151,7 +154,18 @@ final class CommandQueueController extends Controller
                     'rulesetVersion',
                     $world->rulesetVersion,
                 ));
-            $visibleState = $cell === null ? null : MapCellPresenter::visibleState($cell, $nation->id);
+            $visibleCoordinates = $cell === null
+                ? []
+                : $visibility->visibleCoordinates(
+                    $mapSpace,
+                    new EloquentCollection([$cell]),
+                    (int) $nation->id,
+                );
+            $withinViewerVisibility = $cell !== null
+                && isset($visibleCoordinates[$cell->x.':'.$cell->y]);
+            $visibleState = $cell === null
+                ? null
+                : MapCellPresenter::visibleState($cell, $nation->id, $withinViewerVisibility);
             $projectionMemo = new SurfaceCommandProjectionMemo;
             $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
                 $cell,

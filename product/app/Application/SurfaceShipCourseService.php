@@ -69,19 +69,31 @@ final class SurfaceShipCourseService
                     $lockedShip->heading = $heading;
                     $lockedShip->version++;
                     $lockedShip->save();
+                    $occurredAt = now();
+                    $cell = $lockedShip->cell()->firstOrFail(['x', 'y']);
                     DB::table('audit_events')->insert([
                         'actor_user_id' => $user->id,
+                        'world_id' => $lockedWorld->id,
+                        'turn' => $lockedWorld->current_turn,
+                        'nation_id' => $lockedNation->id,
+                        'x' => $cell->x,
+                        'y' => $cell->y,
+                        'message' => null,
+                        'visibility' => 'admin',
                         'event_type' => 'ship.heading.updated',
+                        'severity' => 'info',
                         'subject_type' => Ship::class,
                         'subject_id' => $lockedShip->id,
                         'metadata' => json_encode([
+                            'world_id' => (int) $lockedWorld->id,
+                            'target_turn' => (int) $lockedWorld->current_turn,
                             'nation_id' => (int) $lockedNation->id,
                             'before' => $before,
                             'after' => $heading,
                         ], JSON_THROW_ON_ERROR),
-                        'occurred_at' => now(),
-                        'created_at' => now(),
-                        'updated_at' => now(),
+                        'occurred_at' => $occurredAt,
+                        'created_at' => $occurredAt,
+                        'updated_at' => $occurredAt,
                     ]);
 
                     return $lockedShip;

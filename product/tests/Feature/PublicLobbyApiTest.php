@@ -465,12 +465,32 @@ class PublicLobbyApiTest extends TestCase
             'state' => Ship::STATE_ACTIVE,
             'version' => 1,
         ]);
+        $commandSupport = collect((new GridCoordinate($seabedBase->x, $seabedBase->y))->ring(2))
+            ->map(static fn (GridCoordinate $coordinate): ?MapCell => $neutralSeaByCoordinate->get(
+                $coordinate->x.':'.$coordinate->y,
+            ))
+            ->first(static fn (?MapCell $cell): bool => $cell instanceof MapCell
+                && $cell->id !== $explorationSource->id);
+        $this->assertInstanceOf(MapCell::class, $commandSupport);
+        app(MapCellStateService::class)->transitionTerrain(
+            $commandSupport,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        $commandSupport->owner_nation_id = $outsiderNation->id;
+        $commandSupport->save();
+        $outsiderNation->update(['money' => 10_000]);
+        $definitionsUrl = "/api/v1/nations/{$outsiderNation->id}/map-spaces/{$mapSpace->id}"
+            ."/command-definitions?target_x={$seabedBase->x}&target_y={$seabedBase->y}";
+
         $ordinaryShipResponse = $this->actingAs($outsider)->getJson(
             "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}",
         )->assertOk();
         $ordinaryShipView = $this->cell($ordinaryShipResponse->json('data.cells'), $seabedBase);
         $this->assertNull($ordinaryShipView['facility']);
         $this->assertFalse($ordinaryShipView['within_viewer_visibility']);
+        $hiddenPreview = collect($this->getJson($definitionsUrl)->assertOk()->json('data.commands'))
+            ->firstWhere('key', 'build_seabed_base');
+        $this->assertSame('currently_executable', $hiddenPreview['execution_preview_status']);
 
         $ship->update([
             'ship_type_key' => 'exploration',
@@ -491,6 +511,10 @@ class PublicLobbyApiTest extends TestCase
             'facility_level',
             'launch_capacity',
         ])->all());
+        $revealedPreview = collect($this->getJson($definitionsUrl)->assertOk()->json('data.commands'))
+            ->firstWhere('key', 'build_seabed_base');
+        $this->assertSame('currently_unavailable', $revealedPreview['execution_preview_status']);
+        $this->assertContains('施設のあるcellにはこのcommandをqueueへ追加できません。', $revealedPreview['execution_warnings']);
 
         $publicAfterReveal = $this->cell($this->getJson($publicUrl)->assertOk()->json('data.cells'), $seabedBase);
         $this->assertNull($publicAfterReveal['facility']);
