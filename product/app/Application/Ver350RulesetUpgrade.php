@@ -63,9 +63,7 @@ final readonly class Ver350RulesetUpgrade
                     throw new RuntimeException('A World appeared while publishing fresh-install v20.');
                 }
                 $this->catalogInstaller->install($targetSettings);
-                $target = $this->publisher->publish($targetSettings);
-                RulesetVersion::query()->where('key', self::SOURCE_KEY)
-                    ->whereKeyNot($target->id)->delete();
+                $this->publisher->publish($targetSettings);
 
                 return 'fresh_install_current_v20';
             }, 1);
