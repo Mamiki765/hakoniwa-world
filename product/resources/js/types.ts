@@ -603,6 +603,20 @@ export interface MonsterOverlay {
     host_label: string;
 }
 
+export interface ShipOverlay {
+    id: number;
+    key: 'fishing' | 'tourist' | 'exploration';
+    name: string;
+    asset_key: string;
+    current_hp: number;
+    max_hp: number;
+    public_state: 'active';
+    owner_nation: { nation_number: number; name: string };
+    is_owner: boolean;
+    heading: number | null;
+    version: number | null;
+}
+
 export interface MapCell {
     x: number;
     y: number;
@@ -615,6 +629,7 @@ export interface MapCell {
     owner_nation_number: number | null;
     owner_name: string | null;
     details: MapCellDetail[];
+    ship?: ShipOverlay | null;
     monster: MonsterOverlay | null;
     asset: AssetDescriptor;
     overlays: AssetDescriptor[];

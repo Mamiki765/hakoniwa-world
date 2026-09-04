@@ -17,7 +17,7 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V19_CHECKSUM = 'b65752b88e9daf3c9b64e6d28b72847315d521dfe65b704f4cd8fd622e1368c9';
 
-    private const V20_CHECKSUM = '6ffc4156dda071274c3da4353e6299142e151b44afd773de54c60a3cdcf40b2b';
+    private const V20_CHECKSUM = '312190bfd45c30d7d005887132eee2dd50a92f030c43447d844ba33b27e03b26';
 
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
     private const V16_COVERAGE = [
@@ -77,10 +77,26 @@ final class CurrentRulesetContractTest extends TestCase
             $current['surface_ships']['definitions'],
             'build_cost_money',
         ));
+        $this->assertSame([1, 2, 3], array_column(
+            $current['surface_ships']['definitions'],
+            'build_selector',
+        ));
         $this->assertSame([1, 2, 2], array_column(
             $current['surface_ships']['definitions'],
             'maximum_hp',
         ));
+        $buildShip = collect($current['command_definitions'])->firstWhere('key', 'build_ship');
+        $this->assertSame('船建造', $buildShip['name']);
+        $this->assertSame('surface_ship_definitions', $buildShip['metadata']['quantity_selects_catalog']);
+        $this->assertSame(1, $buildShip['metadata']['default_selector_value']);
+        $scuttleShip = collect($current['command_definitions'])->firstWhere('key', 'scuttle_ship');
+        $this->assertSame([
+            '廃船', 'cell', ['sea'], 0, 'operations', true,
+        ], [
+            $scuttleShip['name'], $scuttleShip['target_type'], $scuttleShip['target_terrain_keys'],
+            $scuttleShip['cost_money'], $scuttleShip['execution_phase'],
+            $scuttleShip['metadata']['consumes_turn'],
+        ]);
         $underground = $current['underground_facility_development'];
         $this->assertSame([
             'underground_city',

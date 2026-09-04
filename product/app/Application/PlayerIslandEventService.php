@@ -65,6 +65,9 @@ final class PlayerIslandEventService
         'command.food_aid_transferred',
         'command.food_aid_received',
         'command.monster_dispatched',
+        'ship.built',
+        'ship.retired',
+        'ship.sunk',
         'missile.launch_failed',
         'missile.launch_detail',
         'missile.defense_intercepted',
@@ -1462,6 +1465,24 @@ final class PlayerIslandEventService
                 '%sを対象Nationへ派遣しました。',
                 $this->monsterLabel($metadata['monster_key'] ?? null),
             ),
+            'ship.built' => sprintf(
+                '%sを建造し、(%s,%s)へ進水しました。',
+                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+            ),
+            'ship.retired' => sprintf(
+                '(%s,%s)の船を廃船にしました。',
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+            ),
+            'ship.sunk' => sprintf(
+                '%sが%sにより(%s,%s)で沈没しました。',
+                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                $this->shipRemovalReasonLabel($metadata['removal_reason'] ?? null),
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+            ),
             'missile.launch_failed' => sprintf(
                 '%sは発射基地の状態または資金不足のため1発も発射できませんでした。',
                 $this->missileLabel($metadata['command_key'] ?? null),
@@ -1588,6 +1609,7 @@ final class PlayerIslandEventService
             'not_owned', 'ownership_mismatch' => '自国領ではないため実行できませんでした。',
             'already_owned' => 'すでに所有地となっているため実行できませんでした。',
             'occupied_by_monster', 'monster_occupied' => '怪獣が存在するため実行できませんでした。',
+            'occupied_by_ship' => '船が存在するため実行できませんでした。',
             'facility_exists', 'facility_not_empty' => 'すでに施設が存在するため実行できませんでした。',
             'no_target', 'target_missing' => '対象地点が存在しないため実行できませんでした。',
             'capital_protected' => '首都を変更できないため実行できませんでした。',
@@ -1595,6 +1617,9 @@ final class PlayerIslandEventService
             'same_nation_target' => '自国を対象にできないcommandのため実行できませんでした。',
             'invalid_parameter' => 'commandの指定内容が不正なため実行できませんでした。',
             'no_launch_base' => '利用可能な発射基地がないため実行できませんでした。',
+            'no_port' => '自国の港がないため実行できませんでした。',
+            'ship_capacity_reached' => '選択した船種の保有上限に達しているため実行できませんでした。',
+            'no_ship_spawn_cell' => '港から2hex以内に船を配置できる深海がないため実行できませんでした。',
             'invalid_facility', 'invalid_facility_scale' => '必要な施設の状態ではないため実行できませんでした。',
             'invalid_terrain' => match ($metadata['command_key'] ?? null) {
                 'build_farm' => '農場建設可能な平地ではありませんでした。',
@@ -2294,6 +2319,8 @@ final class PlayerIslandEventService
             'build_defense_facility' => '防衛施設建設',
             'build_seabed_base' => '海底基地建設',
             'build_undersea_city' => '海底都市建設',
+            'build_ship' => '船建造',
+            'scuttle_ship' => '廃船',
             'build_monument' => '記念碑建設',
             'build_decoy' => 'ハリボテ建築',
             'missile' => 'ミサイル発射',
@@ -2307,6 +2334,18 @@ final class PlayerIslandEventService
             'attraction' => '誘致活動',
             'relocate_capital' => '首都遷都',
             default => '開発計画',
+        };
+    }
+
+    private function shipRemovalReasonLabel(mixed $reason): string
+    {
+        return match ($reason) {
+            'monster_collision' => '水棲怪獣の侵入',
+            'meteor_shower' => '隕石群',
+            'huge_meteor' => '巨大隕石',
+            'eruption' => '火山噴火',
+            'nuclear_self_destruct_blast' => '怪獣の核自爆',
+            default => '外部作用',
         };
     }
 

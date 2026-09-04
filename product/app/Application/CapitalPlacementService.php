@@ -6,6 +6,7 @@ use App\Domain\Map\GridCoordinate;
 use App\Models\MapSpace;
 use DomainException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 final class CapitalPlacementService
 {
@@ -16,10 +17,18 @@ final class CapitalPlacementService
         $radius = (int) $rules['initial_island_reservation_radius'];
         $minimumDistance = (int) $rules['minimum_capital_distance'];
         $requiredCells = 1 + 3 * $radius * ($radius + 1);
+        $shipExclusion = Schema::hasTable('ships') ? <<<'SQL'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM ships surface_ship
+                    WHERE surface_ship.map_cell_id = surrounding.id
+                      AND surface_ship.state = 'active'
+                  )
+            SQL : '';
         // These coarse bounds are necessary for hex distance <= radius. The exact
         // GREATEST predicate remains authoritative, while the map-space x/y index
         // avoids rescanning every cell for every candidate.
-        $sql = <<<'SQL'
+        $sql = <<<SQL
             WITH candidates AS (
                 SELECT candidate.*,
                     candidate.x - FLOOR((candidate.y + 1) / 2.0) AS cube_x,
@@ -69,6 +78,7 @@ final class CapitalPlacementService
                   AND surrounding_terrain.key = 'sea'
                   AND surrounding.owner_nation_id IS NULL
                   AND surrounding.facility_definition_id IS NULL
+            {$shipExclusion}
               ) = ?
               AND NOT EXISTS (
                 SELECT 1

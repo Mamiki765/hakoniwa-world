@@ -104,6 +104,14 @@ describe('staggered square-image map', () => {
     it('renders completed and optional overlay images, fallback, selection and six-way keyboard input', async () => {
         const selected = mapCell({
             details: [{ key: 'population', label: '人口', value: 1000, unit: '人', formatted: '1,000人', visibility: 'public' }],
+            display_name: '漁船',
+            ship: {
+                id: 4, key: 'fishing', name: '漁船', asset_key: 'ship.fishing',
+                current_hp: 1, max_hp: 1, public_state: 'active',
+                owner_nation: { nation_number: 1, name: '地図国' },
+                is_owner: true, heading: null, version: 1,
+            },
+            asset: { key: 'ship.fishing', url: '/tiles/fishing.gif?v=1-1', available: true, fallback_label: '漁船', fallback_style: 'ship-fishing' },
         });
         const fallback = mapCell({
             x: 1, y: 0, terrain: 'forest', terrain_name: '森', display_name: '森', owner_nation_id: null, owner_nation_number: null, owner_name: null,
@@ -119,13 +127,14 @@ describe('staggered square-image map', () => {
         const tiles = wrapper.findAll('.map-cell');
         expect(tiles).toHaveLength(2);
         expect(tiles[0]!.classes()).toContain('selected');
-        expect(tiles[0]!.find('img:not(.tile-overlay)').attributes('src')).toContain('/tiles/plain.gif');
+        expect(tiles[0]!.find('img:not(.tile-overlay)').attributes('src')).toContain('/tiles/fishing.gif');
         expect(tiles[0]!.find('.tile-overlay').attributes('src')).toContain('/tiles/selection.png');
         expect(tiles[1]!.find('img').exists()).toBe(false);
         expect(tiles[1]!.find('.tile-label').text()).toBe('森');
         await tiles[0]!.trigger('mouseenter');
         expect(wrapper.find('.cell-tooltip').text()).toContain('座標 x=0, y=0');
         expect(wrapper.find('.cell-tooltip').text()).toContain('人口');
+        expect(wrapper.find('.cell-tooltip').text()).toContain('船HP: 1/1');
 
         await wrapper.find('.map-viewport').trigger('keydown', { key: 'PageUp' });
         expect(wrapper.emitted('move')).toEqual([[1]]);

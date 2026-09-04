@@ -9,6 +9,7 @@ use App\Application\KarmaTurnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -28,11 +29,13 @@ use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\NationUndergroundFacility;
 use App\Models\RulesetVersion;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use App\Models\World;
+use App\Services\MapCellPresenter;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -1193,6 +1196,18 @@ class DomesticCommandExecutionTest extends TestCase
         foreach (array_slice($neighbors, 0, 2) as $neighbor) {
             $this->setCellState($neighbor, 'sea', null);
         }
+        Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $neighbors[1]->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
         $this->setCellState($neighbors[2], 'shallow', null);
         $unchangedShallowVersion = $neighbors[2]->fresh()->version;
         foreach (array_slice($neighbors, 3) as $index => $neighbor) {
@@ -1206,15 +1221,17 @@ class DomesticCommandExecutionTest extends TestCase
 
         $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
         $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
-        foreach (array_slice($neighbors, 0, 3) as $neighbor) {
+        foreach ([$neighbors[0], $neighbors[2]] as $neighbor) {
             $this->assertSame('shallow', $neighbor->fresh()->terrain()->value('key'));
             $this->assertNull($neighbor->fresh()->owner_nation_id);
         }
+        $this->assertSame('sea', $neighbors[1]->fresh()->terrain()->value('key'));
+        $this->assertNotNull($neighbors[1]->fresh()->ship);
         $this->assertSame($unchangedShallowVersion, $neighbors[2]->fresh()->version);
         foreach (array_slice($neighbors, 3) as $neighbor) {
             $this->assertSame('wasteland', $neighbor->fresh()->terrain()->value('key'));
         }
-        $expectedChunks = collect([$target, ...array_slice($neighbors, 0, 2)])
+        $expectedChunks = collect([$target, $neighbors[0]])
             ->pluck('map_chunk_id')->unique()->sort()->values()->all();
         $this->assertSame($expectedChunks, $context->state->changedMapChunkIds());
         $events = DB::table('audit_events')->where('event_type', 'terrain.changed')
@@ -1224,9 +1241,9 @@ class DomesticCommandExecutionTest extends TestCase
                 512,
                 JSON_THROW_ON_ERROR,
             ))->all();
-        $this->assertCount(3, $events);
+        $this->assertCount(2, $events);
         $this->assertFalse($events[0]['adjacent_effect']);
-        $this->assertSame([true, true], array_column(array_slice($events, 1), 'adjacent_effect'));
+        $this->assertTrue($events[1]['adjacent_effect']);
     }
 
     public function test_reclaim_rejects_water_adjacent_to_foreign_territory_without_mutating_neighbors(): void
@@ -1830,6 +1847,363 @@ class DomesticCommandExecutionTest extends TestCase
             ->where('subject_id', $target->id)->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.facility_built_public')
             ->where('subject_id', $target->id)->count());
+    }
+
+    public function test_ship_build_uses_selected_ruleset_cost_and_nearest_valid_port_spawn(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '船舶建造国');
+        $space = $this->surfaceMapSpace($world);
+        $nation->update(['money' => 2_000]);
+        $port = $this->remoteWaterTarget($space);
+        $this->setCellState($port, 'plain', $nation->id);
+        $port = $port->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->setFacility(
+            $port,
+            FacilityDefinition::query()->where('key', 'port')->firstOrFail(),
+        );
+        $port->save();
+
+        $origin = new GridCoordinate($port->x, $port->y);
+        $ringOne = collect($origin->ring(1))->map(fn (GridCoordinate $coordinate): MapCell => $this->cellAt($space, $coordinate->x, $coordinate->y)
+        )->values();
+        $ringTwo = collect($origin->ring(2))->map(fn (GridCoordinate $coordinate): MapCell => $this->cellAt($space, $coordinate->x, $coordinate->y)
+        )->values();
+        foreach ($ringOne->concat($ringTwo) as $cell) {
+            $this->setCellState($cell, 'shallow', null);
+        }
+        $disguisedCandidate = $ringOne[0];
+        $this->setCellState($disguisedCandidate, 'sea', $nation->id);
+        $disguisedCandidate = $disguisedCandidate->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->setFacility(
+            $disguisedCandidate,
+            FacilityDefinition::query()->where('key', 'seabed_base')->firstOrFail(),
+        );
+        $disguisedCandidate->save();
+        $this->setOilFieldState($ringOne[1], $nation);
+        $this->setCellState($ringTwo[0], 'sea', null);
+
+        $queued = app(CommandQueueService::class)->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'build_ship',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+            quantity: 2,
+            quantityProvided: true,
+        )['item'];
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'tourist ship build')),
+        );
+
+        $ship = Ship::query()->sole();
+        $this->assertSame([1, 0, 0], [
+            $result['successes'], $result['failures'], $result['automatic_finance'],
+        ]);
+        $this->assertSame('completed', $queued->fresh()->status);
+        $this->assertSame(500, (int) $nation->fresh()->money);
+        $this->assertSame('tourist', $ship->ship_type_key);
+        $this->assertSame([2, 2, null, Ship::STATE_ACTIVE], [
+            $ship->current_hp, $ship->max_hp, $ship->heading, $ship->state,
+        ]);
+        $this->assertSame($disguisedCandidate->id, $ship->map_cell_id);
+        $this->assertSame('seabed_base', $ship->cell()->firstOrFail()->facility()->value('key'));
+        $projectedCell = $ship->cell()->firstOrFail()->load([
+            'terrain', 'facility', 'monumentDefinition', 'ownerNation',
+            'ship.nation', 'ship.rulesetVersion', 'monsterOccupancy.monster.definition',
+        ]);
+        $projection = app(MapCellPresenter::class)->present($projectedCell, $nation->id, 2);
+        $this->assertSame([
+            '観光船', 'ship.tourist', 'tourist', '観光船', 2, 2, '海底基地',
+        ], [
+            $projection['display_name'], $projection['asset']['key'], $projection['ship']['key'],
+            $projection['ship']['name'], $projection['ship']['current_hp'], $projection['ship']['max_hp'],
+            $projection['facility_name'],
+        ]);
+        $event = $this->eventMetadataForSubject('ship.built', $ship->id);
+        $this->assertSame([
+            'tourist', '観光船', 2, 1500, 1,
+        ], [
+            $event['ship_type_key'], $event['ship_name'], $event['build_selector'],
+            $event['cost_money'], $event['spawn_distance'],
+        ]);
+        $ownerPage = app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), anchorTurn: 2);
+        $ownerMessages = collect($ownerPage['groups'])->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->pluck('message')->all();
+        $this->assertContains(
+            "観光船を建造し、({$disguisedCandidate->x},{$disguisedCandidate->y})へ進水しました。",
+            $ownerMessages,
+        );
+    }
+
+    public function test_failed_ship_build_costs_no_money_or_turn_and_the_next_command_executes(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '船舶失敗国');
+        $space = $this->surfaceMapSpace($world);
+        $nation->update(['money' => 4_000]);
+        $service = app(CommandQueueService::class);
+        $failed = $service->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $space,
+            commandKey: 'build_ship',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+            quantity: 1,
+            quantityProvided: true,
+        );
+        $next = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'attraction',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $failed['queue']->version,
+        );
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'ship build without port')),
+        );
+        $this->assertSame([1, 1, 0], [
+            $result['successes'], $result['failures'], $result['automatic_finance'],
+        ]);
+        $this->assertSame('no_port', $failed['item']->fresh()->failure_code);
+        $this->assertSame('completed', $next['item']->fresh()->status);
+        $this->assertSame(3_000, (int) $nation->fresh()->money);
+        $this->assertSame(0, Ship::query()->count());
+        $messages = collect(app(PlayerIslandEventService::class)->ownerPage(
+            $nation->fresh(),
+            anchorTurn: 2,
+        )['groups'])->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
+        $this->assertTrue(collect($messages)->contains(
+            static fn (string $message): bool => str_contains($message, '船建造は、自国の港がないため実行できませんでした。'),
+        ));
+    }
+
+    public function test_ship_occupied_water_command_is_unavailable_and_fails_without_aborting_the_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '船舶占有国');
+        $space = $this->surfaceMapSpace($world);
+        $nation->update(['money' => 2_000]);
+        $ownedLand = $this->ownedTerrain($nation, 'plain');
+        $target = $this->neighborCells($ownedLand)[0];
+        $this->setCellState($target, 'sea', null);
+        $target = $target->fresh(['terrain', 'facility', 'ship']);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $target->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $target->load('ship');
+        $service = app(CommandQueueService::class);
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}";
+        $selectedCommands = collect($this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk()->json('data.commands'));
+        $this->assertTrue($selectedCommands->firstWhere('key', 'scuttle_ship')['applicable']);
+        $this->assertNull(collect($this->getJson("{$base}/command-definitions")
+            ->assertOk()->json('data.commands'))->firstWhere('key', 'scuttle_ship'));
+        $excavate = CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'excavate')
+            ->firstOrFail();
+        try {
+            $service->validateTarget($nation, $space, $excavate, $target);
+            $this->fail('Ship-occupied sea was presented as an executable excavation target.');
+        } catch (PlayerFacingCommandException $exception) {
+            $this->assertSame('船が存在するcellは現在このcommandの対象にできません。', $exception->getMessage());
+        }
+
+        $failed = $service->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $space,
+            commandKey: 'excavate',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        );
+        $scuttleRequestKey = (string) Str::uuid();
+        $scuttle = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'scuttle_ship',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: $scuttleRequestKey,
+            expectedVersion: (int) $failed['queue']->version,
+        );
+        $this->assertSame(['ship_id' => $ship->id], $scuttle['item']->parameters);
+        $duplicate = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'scuttle_ship',
+            targetX: $target->x,
+            targetY: $target->y,
+            requestKey: $scuttleRequestKey,
+            expectedVersion: 999,
+        );
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertSame($scuttle['item']->id, $duplicate['item']->id);
+        $next = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'attraction',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $scuttle['queue']->version,
+        );
+
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'ship occupied excavation')),
+        );
+        $this->assertSame([1, 1], [$result['successes'], $result['failures']]);
+        $this->assertSame('occupied_by_ship', $failed['item']->fresh()->failure_code);
+        $this->assertSame('completed', $scuttle['item']->fresh()->status);
+        $this->assertSame('queued', $next['item']->fresh()->status);
+        $this->assertSame(2_000, (int) $nation->fresh()->money);
+        $retired = $ship->fresh();
+        $this->assertSame([
+            Ship::STATE_REMOVED, 'scuttled', null, 2, 2,
+        ], [
+            $retired->state, $retired->removal_reason, $retired->map_cell_id,
+            $retired->current_hp, $retired->version,
+        ]);
+        $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
+        $retiredEvent = $this->eventMetadataForSubject('ship.retired', $ship->id);
+        $this->assertSame([
+            $nation->id, $ship->id, 'exploration', 'scuttled', $target->x, $target->y,
+        ], [
+            $retiredEvent['nation_id'], $retiredEvent['ship_id'], $retiredEvent['ship_type_key'],
+            $retiredEvent['removal_reason'], $retiredEvent['x'], $retiredEvent['y'],
+        ]);
+    }
+
+    public function test_ship_build_spawn_and_capacity_failures_are_removed_without_consuming_the_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '船舶制約国');
+        $space = $this->surfaceMapSpace($world);
+        $nation->update(['money' => 5_000]);
+        $port = $this->remoteWaterTarget($space);
+        $this->setCellState($port, 'plain', $nation->id);
+        $port = $port->fresh(['terrain', 'facility']);
+        app(MapCellStateService::class)->setFacility(
+            $port,
+            FacilityDefinition::query()->where('key', 'port')->firstOrFail(),
+        );
+        $port->save();
+        foreach ((new GridCoordinate($port->x, $port->y))->radius(2) as $coordinate) {
+            if ($coordinate->x === $port->x && $coordinate->y === $port->y) {
+                continue;
+            }
+            $this->setCellState($this->cellAt($space, $coordinate->x, $coordinate->y), 'shallow', null);
+        }
+
+        $service = app(CommandQueueService::class);
+        $failedSpawn = $service->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $space,
+            commandKey: 'build_ship',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+            quantity: 3,
+            quantityProvided: true,
+        );
+        $following = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'attraction',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $failedSpawn['queue']->version,
+        );
+        $first = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'no ship spawn'), targetTurn: 2),
+        );
+        $this->assertSame([1, 1], [$first['successes'], $first['failures']]);
+        $this->assertSame('no_ship_spawn_cell', $failedSpawn['item']->fresh()->failure_code);
+        $this->assertSame('completed', $following['item']->fresh()->status);
+        $this->assertSame(4_000, (int) $nation->fresh()->money);
+
+        $cells = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('facility_definition_id')
+            ->whereDoesntHave('ship')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->limit(3)->get();
+        $this->assertCount(3, $cells);
+        foreach ($cells as $cell) {
+            Ship::query()->create([
+                'world_id' => $world->id,
+                'ruleset_version_id' => $world->ruleset_version_id,
+                'nation_id' => $nation->id,
+                'map_cell_id' => $cell->id,
+                'ship_type_key' => 'exploration',
+                'current_hp' => 2,
+                'max_hp' => 2,
+                'heading' => null,
+                'state' => Ship::STATE_ACTIVE,
+                'version' => 1,
+            ]);
+        }
+        $queueVersion = (int) NationCommandQueue::query()->where('nation_id', $nation->id)->valueOrFail('version');
+        $failedCapacity = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'build_ship',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: $queueVersion,
+            quantity: 3,
+            quantityProvided: true,
+        );
+        $following = $service->add(
+            user: $user,
+            nation: $nation->fresh(),
+            mapSpace: $space,
+            commandKey: 'attraction',
+            targetX: null,
+            targetY: null,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: (int) $failedCapacity['queue']->version,
+        );
+        $second = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$nation->id], hash('sha256', 'ship capacity'), targetTurn: 3),
+        );
+        $this->assertSame([1, 1], [$second['successes'], $second['failures']]);
+        $this->assertSame('ship_capacity_reached', $failedCapacity['item']->fresh()->failure_code);
+        $this->assertSame('completed', $following['item']->fresh()->status);
+        $this->assertSame(3_000, (int) $nation->fresh()->money);
+        $this->assertSame(3, Ship::query()->where('state', Ship::STATE_ACTIVE)->count());
     }
 
     /** @return array{User, Nation} */

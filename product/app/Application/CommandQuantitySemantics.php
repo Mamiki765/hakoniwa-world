@@ -4,13 +4,17 @@ namespace App\Application;
 
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Models\CommandDefinition;
 use App\Models\MonumentDefinition;
 use DomainException;
 
 final class CommandQuantitySemantics
 {
-    public function __construct(private readonly MonsterDispatchOptionResolver $monsterDispatchOptions) {}
+    public function __construct(
+        private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
+        private readonly SurfaceShipCatalog $surfaceShips,
+    ) {}
 
     /** @var list<string> */
     private const QUANTITY_COMMAND_KEYS = [
@@ -42,6 +46,10 @@ final class CommandQuantitySemantics
     public function presentationDefault(CommandDefinition $definition): ?int
     {
         if ($this->for($definition) === self::SELECTOR) {
+            if (($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
+                return $this->surfaceShips->defaultSelector($definition);
+            }
+
             return $this->monsterDispatchOptions->defaultSelector($definition);
         }
 
@@ -60,6 +68,12 @@ final class CommandQuantitySemantics
             return array_map(
                 static fn ($option): array => $option->presentation(),
                 $this->monsterDispatchOptions->options($definition),
+            );
+        }
+        if (($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
+            return array_map(
+                static fn ($option): array => $option->presentation(),
+                $this->surfaceShips->options($definition),
             );
         }
         if (($definition->metadata['quantity_selects_catalog'] ?? null) !== 'monument_definitions') {
@@ -120,6 +134,15 @@ final class CommandQuantitySemantics
 
             return '存在しない選択肢';
         }
+        if (($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
+            foreach ($this->surfaceShips->options($definition) as $option) {
+                if ($option->selector === $quantity) {
+                    return $option->name;
+                }
+            }
+
+            return '存在しない選択肢';
+        }
 
         $option = MonumentDefinition::query()->find($quantity);
         if ($option !== null) {
@@ -127,5 +150,17 @@ final class CommandQuantitySemantics
         }
 
         return '存在しない選択肢';
+    }
+
+    public function effectiveCostMoney(CommandDefinition $definition, int $quantity): int
+    {
+        if (($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
+            return $this->monsterDispatchOptions->resolve($definition, $quantity)->costMoney;
+        }
+        if (($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
+            return $this->surfaceShips->resolve($definition, $quantity)->buildCostMoney;
+        }
+
+        return $definition->cost_money;
     }
 }

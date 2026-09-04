@@ -95,6 +95,11 @@ const tooltipDetails = computed(() => {
     return [
         `座標 x=${cell.x}, y=${cell.y}`,
         `所有: ${cell.owner_name ?? '中立'}${cell.owner_nation_number === null ? '' : ` (N${cell.owner_nation_number})`}`,
+        ...(cell.ship == null ? [] : [
+            `船: ${cell.ship.name}`,
+            `船HP: ${cell.ship.current_hp}/${cell.ship.max_hp}`,
+            `船舶所有: ${cell.ship.owner_nation.name} (N${cell.ship.owner_nation.nation_number})`,
+        ]),
         ...(cell.monster === null ? [] : [
             `怪獣: ${cell.monster.name}`,
             `HP: ${cell.monster.current_hp}/${cell.monster.spawned_max_hp}`,

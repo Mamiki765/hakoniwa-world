@@ -23,6 +23,7 @@ use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryProductionBonus;
 use App\Domain\Secretary\SecretaryRingFinanceBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
@@ -39,6 +40,7 @@ use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
@@ -74,6 +76,8 @@ final class DomesticCommandExecutor
         private readonly UndergroundFacilityService $undergroundFacilities,
         private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
+        private readonly SurfaceShipCatalog $surfaceShips,
+        private readonly SurfaceShipBuildService $surfaceShipBuild,
     ) {}
 
     /**
@@ -176,13 +180,16 @@ final class DomesticCommandExecutor
                     if (! $definition instanceof CommandDefinition) {
                         throw new DomainException('Surface queue item definition is invalid.');
                     }
-                    $cell = MapCell::query()
-                        ->where('map_space_id', $queue->map_space_id)
-                        ->where('x', $item->target_x)
-                        ->where('y', $item->target_y)
-                        ->lockForUpdate()
-                        ->with(['terrain', 'facility'])
-                        ->firstOrFail();
+                    $scuttleShip = $definition->key === 'scuttle_ship'
+                        ? $this->lockedScuttleShip($context, $nation, $item)
+                        : null;
+                    $cellQuery = MapCell::query()->where('map_space_id', $queue->map_space_id);
+                    if ($scuttleShip instanceof Ship && $scuttleShip->map_cell_id !== null) {
+                        $cellQuery->whereKey($scuttleShip->map_cell_id);
+                    } else {
+                        $cellQuery->where('x', $item->target_x)->where('y', $item->target_y);
+                    }
+                    $cell = $cellQuery->lockForUpdate()->with(['terrain', 'facility'])->firstOrFail();
                     $before = $this->cellSnapshot($cell);
                     $executionCost = $this->executionCost($nation, $item, $definition, $cell);
                     $this->deductCostAndResources($nation, $definition, $executionCost);
@@ -193,6 +200,7 @@ final class DomesticCommandExecutor
                         $definition,
                         $cell,
                         $executionCost,
+                        $scuttleShip,
                     );
                     $after = $this->cellSnapshot($cell->fresh(['terrain', 'facility']));
                 }
@@ -357,7 +365,7 @@ final class DomesticCommandExecutor
             ];
         }
         if ($definition->target_type === 'nation') {
-            return $this->nationCommandValidationFailure($context, $nation, $item, $definition);
+            return $this->nationCommandValidationFailure($context, $nation, $queue, $item, $definition);
         }
         $cell = MapCell::query()
             ->where('map_space_id', $queue->map_space_id)
@@ -377,6 +385,16 @@ final class DomesticCommandExecutor
             ->lockForUpdate()
             ->first(['id', 'monster_instance_id']);
         $observed = $this->observedState($cell, $occupancy?->monster_instance_id);
+        if ($definition->key === 'scuttle_ship') {
+            return $this->lockedScuttleShip($context, $nation, $item) instanceof Ship
+                ? null
+                : ['reason' => CommandFailureReason::NoTarget, 'observed' => $observed];
+        }
+        if (in_array($definition->key, ['reclaim', 'excavate'], true)
+            && Ship::query()->where('map_cell_id', $cell->id)->where('state', Ship::STATE_ACTIVE)
+                ->lockForUpdate()->first(['id']) !== null) {
+            return ['reason' => CommandFailureReason::OccupiedByShip, 'observed' => $observed];
+        }
         $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effect($definition, $nation, $cell);
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             if ($this->ceasefireBlocksHostileTarget($nation, $cell->ownerNation)) {
@@ -611,12 +629,32 @@ final class DomesticCommandExecutor
     private function nationCommandValidationFailure(
         TurnContext $context,
         Nation $nation,
+        NationCommandQueue $queue,
         NationCommandQueueItem $item,
         CommandDefinition $definition,
     ): ?array {
         $observed = $this->emptyObservedState();
         if ($definition->key === 'attraction') {
             return null;
+        }
+        if ($definition->key === 'build_ship') {
+            try {
+                $mapSpace = MapSpace::query()
+                    ->whereKey($queue->map_space_id)
+                    ->where('world_id', $context->world->id)
+                    ->firstOrFail();
+                $reason = $this->surfaceShipBuild->failureReason(
+                    $context,
+                    $nation,
+                    $mapSpace,
+                    $item,
+                    $definition,
+                );
+            } catch (DomainException) {
+                $reason = CommandFailureReason::InvalidParameter;
+            }
+
+            return $reason === null ? null : ['reason' => $reason, 'observed' => $observed];
         }
         if (! in_array($definition->key, ['money_aid', 'food_aid', 'monster_dispatch'], true)) {
             return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
@@ -736,6 +774,10 @@ final class DomesticCommandExecutor
             && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
             return $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
         }
+        if ($definition->key === 'build_ship'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
+            return $this->surfaceShips->resolve($definition, $item->quantity)->buildCostMoney;
+        }
         if (! $this->isSeabedOilSearch($definition, $cell)) {
             return $definition->cost_money;
         }
@@ -782,7 +824,32 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
         MapCell $cell,
         int $executionCost,
+        ?Ship $scuttleShip = null,
     ): bool {
+        if ($definition->key === 'scuttle_ship') {
+            if (! $scuttleShip instanceof Ship || $scuttleShip->map_cell_id !== $cell->id) {
+                throw new DomainException('Ship scuttle validation changed while the World transaction was locked.');
+            }
+            $scuttleShip->fill([
+                'map_cell_id' => null,
+                'state' => Ship::STATE_REMOVED,
+                'removal_reason' => 'scuttled',
+                'removed_at' => now(),
+                'version' => $scuttleShip->version + 1,
+            ])->save();
+            $context->state->markMapChunkChanged($cell->map_chunk_id);
+            $this->events->record($context, 'ship.retired', $scuttleShip, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+                'ship_id' => $scuttleShip->id,
+                'ship_type_key' => $scuttleShip->ship_type_key,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'removal_reason' => 'scuttled',
+            ]);
+
+            return true;
+        }
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             $context->state->registerLaunchIntent(
                 $nation->id,
@@ -809,7 +876,7 @@ final class DomesticCommandExecutor
             return false;
         }
         if ($definition->target_type === 'nation') {
-            return $this->applyNationCommand($context, $nation, $item, $definition);
+            return $this->applyNationCommand($context, $nation, $item, $definition, $cell);
         }
         if ($definition->key === 'logging') {
             $this->applyLogging($context, $nation, $definition, $cell);
@@ -985,6 +1052,26 @@ final class DomesticCommandExecutor
         $this->recordConstructionProjection($context, $nation, $definition, $cell, $expanded, $beforeScale);
 
         return true;
+    }
+
+    private function lockedScuttleShip(
+        TurnContext $context,
+        Nation $nation,
+        NationCommandQueueItem $item,
+    ): ?Ship {
+        $shipId = $item->parameters['ship_id'] ?? null;
+        if (! is_int($shipId)) {
+            return null;
+        }
+
+        return Ship::query()
+            ->whereKey($shipId)
+            ->where('world_id', $context->world->id)
+            ->where('nation_id', $nation->id)
+            ->where('state', Ship::STATE_ACTIVE)
+            ->whereNotNull('map_cell_id')
+            ->lockForUpdate()
+            ->first();
     }
 
     private function applyDefenseSelfDestruct(
@@ -1426,6 +1513,7 @@ final class DomesticCommandExecutor
         Nation $nation,
         NationCommandQueueItem $item,
         CommandDefinition $definition,
+        MapCell $anchorCell,
     ): bool {
         if ($definition->key === 'attraction') {
             $context->state->markAttraction($nation->id);
@@ -1436,6 +1524,37 @@ final class DomesticCommandExecutor
                 'nation_id' => $nation->id,
                 'nation_name' => $nation->name,
             ], 'public');
+
+            return true;
+        }
+        if ($definition->key === 'build_ship') {
+            $mapSpace = MapSpace::query()
+                ->whereKey($anchorCell->map_space_id)
+                ->where('world_id', $context->world->id)
+                ->firstOrFail();
+            $result = $this->surfaceShipBuild->build(
+                $context,
+                $nation,
+                $mapSpace,
+                $item,
+                $definition,
+            );
+            $ship = $result['ship'];
+            $shipDefinition = $result['definition'];
+            $cell = $ship->cell()->firstOrFail();
+            $this->events->record($context, 'ship.built', $ship, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+                'ship_id' => $ship->id,
+                'ship_type_key' => $shipDefinition->key,
+                'ship_name' => $shipDefinition->name,
+                'build_selector' => $shipDefinition->selector,
+                'cost_money' => $shipDefinition->buildCostMoney,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'spawn_distance' => $result['spawn_distance'],
+                'ruleset_version_id' => $context->ruleset->id,
+            ]);
 
             return true;
         }
@@ -1633,7 +1752,8 @@ final class DomesticCommandExecutor
         $spreadCandidates = array_filter(
             $water,
             static fn (MapCell $neighbor): bool => $neighbor->owner_nation_id === null
-                && $neighbor->facility_definition_id === null,
+                && $neighbor->facility_definition_id === null
+                && $neighbor->ship === null,
         );
         foreach ($spreadCandidates as $neighbor) {
             $this->changeReclaimCell($context, $nation, $neighbor, 'shallow', null, true);
@@ -1697,7 +1817,7 @@ final class DomesticCommandExecutor
                 ->where('x', $coordinate->x)
                 ->where('y', $coordinate->y)
                 ->lockForUpdate()
-                ->with(['terrain', 'facility'])
+                ->with(['terrain', 'facility', 'ship'])
                 ->first();
             if ($neighbor !== null) {
                 $neighbors[] = $neighbor;

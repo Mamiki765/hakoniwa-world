@@ -26,6 +26,8 @@ final class MapChunkService
                 'facility',
                 'monumentDefinition',
                 'ownerNation:id,nation_number,name',
+                'ship.nation:id,nation_number,name',
+                'ship.rulesetVersion:id,settings',
                 'monsterOccupancy.monster.definition',
             ])
             ->orderBy('y')

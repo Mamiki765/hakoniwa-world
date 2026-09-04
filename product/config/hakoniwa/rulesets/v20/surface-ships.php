@@ -2,6 +2,7 @@
 
 $behavior = [
     'asset_key',
+    'build_selector',
     'movement_reward_resource_key',
 ];
 
@@ -26,6 +27,7 @@ return [
                 'fishing' => [
                     'name' => '漁船',
                     'asset_key' => 'ship.fishing',
+                    'build_selector' => 1,
                     'sort_order' => 10,
                     'build_cost_money' => 500,
                     'maximum_hp' => 1,
@@ -38,6 +40,7 @@ return [
                 'tourist' => [
                     'name' => '観光船',
                     'asset_key' => 'ship.tourist',
+                    'build_selector' => 2,
                     'sort_order' => 20,
                     'build_cost_money' => 1500,
                     'maximum_hp' => 2,
@@ -50,6 +53,7 @@ return [
                 'exploration' => [
                     'name' => '探索船',
                     'asset_key' => 'ship.exploration',
+                    'build_selector' => 3,
                     'sort_order' => 30,
                     'build_cost_money' => 1000,
                     'maximum_hp' => 2,

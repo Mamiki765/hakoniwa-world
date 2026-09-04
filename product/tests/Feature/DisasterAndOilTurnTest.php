@@ -26,6 +26,7 @@ use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\RulesetVersion;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -216,6 +217,59 @@ class DisasterAndOilTurnTest extends TestCase
             $this->assertSame($center->x, $metadata['center_x']);
             $this->assertSame($center->y, $metadata['center_y']);
         }
+    }
+
+    public function test_eruption_sinks_a_dormant_nation_ship_before_mutating_its_cell(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('休眠船舶災害国');
+        $capital = new GridCoordinate(
+            (int) $nation->capital()->valueOrFail('x'),
+            (int) $nation->capital()->valueOrFail('y'),
+        );
+        $target = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->get()
+            ->first(fn (MapCell $cell): bool => (new GridCoordinate($cell->x, $cell->y))->distanceTo($capital) > 6)
+            ?? throw new RuntimeException('No remote sea cell was available for the Ship disaster test.');
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $ruleset->id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $target->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $nation->update([
+            'state' => 'dormant',
+            'state_reason' => 'idle',
+            'state_started_turn' => 1,
+            'resume_at_turn' => null,
+        ]);
+        $ruleset = $this->forceGlobal($ruleset, 'eruption');
+        $seed = $this->seedForCenter(
+            TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER,
+            $target->x,
+            $target->y,
+            $space,
+        );
+        [$context, $run] = $this->context($world, $ruleset, $seed, [$nation->id]);
+
+        app(DisasterTurnService::class)->executeGlobal($context);
+
+        $ship = $ship->fresh();
+        $this->assertSame(Ship::STATE_REMOVED, $ship->state);
+        $this->assertSame('eruption', $ship->removal_reason);
+        $this->assertSame(0, $ship->current_hp);
+        $this->assertNull($ship->map_cell_id);
+        $this->assertSame('mountain', $target->fresh()->terrain()->value('key'));
+        $event = $this->event($run, 'ship.sunk');
+        $this->assertSame('探索船', $event['ship_name']);
+        $this->assertSame('eruption', $event['removal_reason']);
     }
 
     public function test_eruption_uses_adr_directions_and_never_creates_world_outside_cells(): void

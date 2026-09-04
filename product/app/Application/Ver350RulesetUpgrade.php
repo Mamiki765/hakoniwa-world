@@ -22,7 +22,7 @@ final readonly class Ver350RulesetUpgrade
 
     public const TARGET_VERSION = 20;
 
-    public const TARGET_CHECKSUM = '6ffc4156dda071274c3da4353e6299142e151b44afd773de54c60a3cdcf40b2b';
+    public const TARGET_CHECKSUM = '312190bfd45c30d7d005887132eee2dd50a92f030c43447d844ba33b27e03b26';
 
     private const WORLD_KEY = 'shared-world';
 
@@ -303,7 +303,7 @@ SQL, [$targetId, $worldId, $sourceId]);
             $target = DB::table($table)->where('ruleset_version_id', $targetId)->orderBy('key')->pluck('key')->all();
             $expectedTarget = $source;
             if ($table === 'command_definitions') {
-                $expectedTarget[] = 'build_port';
+                array_push($expectedTarget, 'build_port', 'build_ship', 'scuttle_ship');
                 sort($expectedTarget, SORT_STRING);
             }
             if ($source === [] || $expectedTarget !== $target) {

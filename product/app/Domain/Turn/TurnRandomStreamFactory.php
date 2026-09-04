@@ -80,6 +80,8 @@ final class TurnRandomStreamFactory
 
     private const MONSTER_DISPATCH_PREFIX = 'development_commands:monster_dispatch:item:';
 
+    private const SHIP_BUILD_PREFIX = 'development_commands:build_ship:item:';
+
     private const MONSTER_WORLD_SPAWN_PREFIX = 'global_disasters:aoi_inora:';
 
     private const MISSILE_IMPACT_PREFIX = 'development_commands:missile:item:';
@@ -184,6 +186,15 @@ final class TurnRandomStreamFactory
         }
 
         return self::MONSTER_DISPATCH_PREFIX.$queueItemId.':candidate:v1';
+    }
+
+    public static function shipBuild(int $queueItemId): string
+    {
+        if ($queueItemId < 1) {
+            throw new InvalidArgumentException('Ship-build stream identity must use a positive queue item ID.');
+        }
+
+        return self::SHIP_BUILD_PREFIX.$queueItemId.':candidate:v1';
     }
 
     public static function monsterWorldSpawn(string $purpose, int $streamVersion): string
