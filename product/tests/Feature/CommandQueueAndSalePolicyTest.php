@@ -1656,7 +1656,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.quantity_contract.maximum', 99)
             ->assertJsonPath('data.quantity_contract.default', 1)
             ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99])
-            ->assertJsonCount(28, 'data.commands');
+            ->assertJsonCount(29, 'data.commands');
         foreach ($definitions->json('data.commands') as $definition) {
             $this->assertArrayNotHasKey('parameter_schema', $definition);
             $this->assertArrayHasKey('target_type', $definition);
@@ -2238,6 +2238,52 @@ class CommandQueueAndSalePolicyTest extends TestCase
             projectionMemo: $projectionMemo,
         );
         $this->assertSame([], $projectionQueries, 'Repeated port projection bypassed the request memo.');
+    }
+
+    public function test_ship_build_is_one_idempotent_selector_command_with_ruleset_pricing(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('船舶予約国');
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+        $command = collect($this->actingAs($owner)->getJson(
+            "{$base}/command-definitions",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_ship');
+
+        $this->assertSame('船建造', $command['name']);
+        $this->assertSame('nation', $command['target_type']);
+        $this->assertSame('selector', $command['quantity_semantics']);
+        $this->assertSame(1, $command['quantity_default']);
+        $this->assertSame([
+            ['value' => 1, 'key' => 'fishing', 'label' => '漁船', 'cost_money' => 500],
+            ['value' => 2, 'key' => 'tourist', 'label' => '観光船', 'cost_money' => 1500],
+            ['value' => 3, 'key' => 'exploration', 'label' => '探索船', 'cost_money' => 1000],
+        ], $command['quantity_options']);
+
+        $path = "{$base}/command-queue";
+        $this->postJson($path, [
+            'command_key' => 'build_ship',
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertUnprocessable();
+
+        $requestKey = (string) Str::uuid();
+        $created = $this->postJson($path, [
+            'command_key' => 'build_ship',
+            'quantity' => 3,
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+        ])->assertCreated()
+            ->assertJsonPath('data.queue.items.0.quantity_semantics', 'selector')
+            ->assertJsonPath('data.queue.items.0.quantity_label', '探索船')
+            ->json('data');
+        $this->postJson($path, [
+            'command_key' => 'build_ship',
+            'quantity' => 3,
+            'request_key' => $requestKey,
+            'expected_version' => 999,
+        ])->assertOk()
+            ->assertJsonPath('data.duplicate', true)
+            ->assertJsonPath('data.item_id', $created['item_id'])
+            ->assertJsonCount(1, 'data.queue.items');
     }
 
     public function test_nation_target_commands_use_capital_coordinates_and_validate_parameters_without_cell_selection(): void

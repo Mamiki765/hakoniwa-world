@@ -23,6 +23,7 @@ use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryProductionBonus;
 use App\Domain\Secretary\SecretaryRingFinanceBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
@@ -74,6 +75,8 @@ final class DomesticCommandExecutor
         private readonly UndergroundFacilityService $undergroundFacilities,
         private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
+        private readonly SurfaceShipCatalog $surfaceShips,
+        private readonly SurfaceShipBuildService $surfaceShipBuild,
     ) {}
 
     /**
@@ -357,7 +360,7 @@ final class DomesticCommandExecutor
             ];
         }
         if ($definition->target_type === 'nation') {
-            return $this->nationCommandValidationFailure($context, $nation, $item, $definition);
+            return $this->nationCommandValidationFailure($context, $nation, $queue, $item, $definition);
         }
         $cell = MapCell::query()
             ->where('map_space_id', $queue->map_space_id)
@@ -611,12 +614,32 @@ final class DomesticCommandExecutor
     private function nationCommandValidationFailure(
         TurnContext $context,
         Nation $nation,
+        NationCommandQueue $queue,
         NationCommandQueueItem $item,
         CommandDefinition $definition,
     ): ?array {
         $observed = $this->emptyObservedState();
         if ($definition->key === 'attraction') {
             return null;
+        }
+        if ($definition->key === 'build_ship') {
+            try {
+                $mapSpace = MapSpace::query()
+                    ->whereKey($queue->map_space_id)
+                    ->where('world_id', $context->world->id)
+                    ->firstOrFail();
+                $reason = $this->surfaceShipBuild->failureReason(
+                    $context,
+                    $nation,
+                    $mapSpace,
+                    $item,
+                    $definition,
+                );
+            } catch (DomainException) {
+                $reason = CommandFailureReason::InvalidParameter;
+            }
+
+            return $reason === null ? null : ['reason' => $reason, 'observed' => $observed];
         }
         if (! in_array($definition->key, ['money_aid', 'food_aid', 'monster_dispatch'], true)) {
             return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
@@ -736,6 +759,10 @@ final class DomesticCommandExecutor
             && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
             return $this->monsterDispatchOptions->resolve($definition, $item->quantity)->costMoney;
         }
+        if ($definition->key === 'build_ship'
+            && ($definition->metadata['quantity_selects_catalog'] ?? null) === SurfaceShipCatalog::CATALOG) {
+            return $this->surfaceShips->resolve($definition, $item->quantity)->buildCostMoney;
+        }
         if (! $this->isSeabedOilSearch($definition, $cell)) {
             return $definition->cost_money;
         }
@@ -809,7 +836,7 @@ final class DomesticCommandExecutor
             return false;
         }
         if ($definition->target_type === 'nation') {
-            return $this->applyNationCommand($context, $nation, $item, $definition);
+            return $this->applyNationCommand($context, $nation, $item, $definition, $cell);
         }
         if ($definition->key === 'logging') {
             $this->applyLogging($context, $nation, $definition, $cell);
@@ -1426,6 +1453,7 @@ final class DomesticCommandExecutor
         Nation $nation,
         NationCommandQueueItem $item,
         CommandDefinition $definition,
+        MapCell $anchorCell,
     ): bool {
         if ($definition->key === 'attraction') {
             $context->state->markAttraction($nation->id);
@@ -1436,6 +1464,37 @@ final class DomesticCommandExecutor
                 'nation_id' => $nation->id,
                 'nation_name' => $nation->name,
             ], 'public');
+
+            return true;
+        }
+        if ($definition->key === 'build_ship') {
+            $mapSpace = MapSpace::query()
+                ->whereKey($anchorCell->map_space_id)
+                ->where('world_id', $context->world->id)
+                ->firstOrFail();
+            $result = $this->surfaceShipBuild->build(
+                $context,
+                $nation,
+                $mapSpace,
+                $item,
+                $definition,
+            );
+            $ship = $result['ship'];
+            $shipDefinition = $result['definition'];
+            $cell = $ship->cell()->firstOrFail();
+            $this->events->record($context, 'ship.built', $ship, [
+                'nation_id' => $nation->id,
+                'nation_name' => $nation->name,
+                'ship_id' => $ship->id,
+                'ship_type_key' => $shipDefinition->key,
+                'ship_name' => $shipDefinition->name,
+                'build_selector' => $shipDefinition->selector,
+                'cost_money' => $shipDefinition->buildCostMoney,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'spawn_distance' => $result['spawn_distance'],
+                'ruleset_version_id' => $context->ruleset->id,
+            ]);
 
             return true;
         }

@@ -1595,6 +1595,9 @@ final class PlayerIslandEventService
             'same_nation_target' => '自国を対象にできないcommandのため実行できませんでした。',
             'invalid_parameter' => 'commandの指定内容が不正なため実行できませんでした。',
             'no_launch_base' => '利用可能な発射基地がないため実行できませんでした。',
+            'no_port' => '自国の港がないため実行できませんでした。',
+            'ship_capacity_reached' => '選択した船種の保有上限に達しているため実行できませんでした。',
+            'no_ship_spawn_cell' => '港から2hex以内に船を配置できる深海がないため実行できませんでした。',
             'invalid_facility', 'invalid_facility_scale' => '必要な施設の状態ではないため実行できませんでした。',
             'invalid_terrain' => match ($metadata['command_key'] ?? null) {
                 'build_farm' => '農場建設可能な平地ではありませんでした。',
