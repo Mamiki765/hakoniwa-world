@@ -33,7 +33,7 @@ final class FirstProductionReleaseTest extends TestCase
         $this->assertSame('hakoniwa-2s-plus-v20', config('hakoniwa.ruleset.key'));
         $this->assertSame(['hakoniwa-2s-plus-v20'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame(
-            ['hakoniwa-2s-plus-v20'],
+            ['hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20'],
             RulesetVersion::query()->orderBy('version')->pluck('key')->all(),
         );
         $this->assertSame($published->id, $this->lightweightWorld()->ruleset_version_id);
