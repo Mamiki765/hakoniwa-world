@@ -348,6 +348,9 @@ class PlayerIslandEventApiTest extends TestCase
         $this->audit('ship.sunk', $nation, $nation, 'nation', 25, [
             'ship_name' => '観光船', 'removal_reason' => 'forced_displacement_failed', 'x' => 16, 'y' => 17,
         ]);
+        $this->audit('ship.sunk', $nation, $nation, 'nation', 25, [
+            'ship_name' => '探索船', 'removal_reason' => 'defense_self_destruct', 'x' => 18, 'y' => 19,
+        ]);
         $finance = $this->audit('command.finance', $nation, $nation, 'nation', 25, ['applied' => 50]);
         $ownPublic = $this->publicFacility($nation, 25, 6, 7, 'farm');
         $olderOwnPublic = $this->publicFacility($nation, 13, 4, 5, 'mine');
@@ -387,6 +390,10 @@ class PlayerIslandEventApiTest extends TestCase
         );
         $this->assertContains(
             '観光船が退避不能により(16,17)で沈没しました。',
+            $this->messages($response->json('data.groups')),
+        );
+        $this->assertContains(
+            '探索船が防衛施設の自爆により(18,19)で沈没しました。',
             $this->messages($response->json('data.groups')),
         );
         $this->assertTrue(collect($response->json('data.groups.0.events'))->contains(

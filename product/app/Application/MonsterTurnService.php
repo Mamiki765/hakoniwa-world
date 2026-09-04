@@ -91,7 +91,7 @@ final class MonsterTurnService
         $behavior = $batch->behaviorForDefinition((int) $definition->id);
         if ($behavior->specialAction === MonsterBehaviorResolver::NUCLEAR_AT_HP_ONE
             && $monster->current_hp === 1) {
-            $this->nuclearSelfDestruct($context, $space, $cell, $batch, $disasterCells);
+            $this->nuclearSelfDestruct($context, $space, $cell, $batch, $disasterCells, $ships);
 
             return true;
         }
@@ -141,6 +141,7 @@ final class MonsterTurnService
                     $destination,
                     $batch,
                     $cellsByCoordinate,
+                    $ships,
                 );
 
                 return true;
@@ -242,6 +243,7 @@ final class MonsterTurnService
         MapCell $origin,
         MonsterTurnBatch $batch,
         ?DisasterMutableCellIndex $disasterCells,
+        ?SurfaceShipTurnBatch $ships,
     ): void {
         $occupancy = $batch->occupancyAt($origin->id)
             ?? throw new DomainException('Nuclear self-destruct lost the monster occupancy.');
@@ -284,6 +286,7 @@ final class MonsterTurnService
             'nuclear_self_destruct_blast',
             $metadata,
             $disasterCells,
+            $ships,
         );
     }
 
@@ -341,6 +344,7 @@ final class MonsterTurnService
         MapCell $defense,
         MonsterTurnBatch $batch,
         array $cellsByCoordinate,
+        ?SurfaceShipTurnBatch $ships,
     ): void {
         $occupancy = $batch->occupancyAt($origin->id);
         if ($occupancy === null) {
@@ -371,6 +375,7 @@ final class MonsterTurnService
             new GridCoordinate($defense->x, $defense->y),
             $settings,
             'defense_self_destruct',
+            shipBatch: $ships,
         );
         $this->events->record($context, 'disaster.triggered', $context->world, [
             'disaster_key' => 'defense_self_destruct',

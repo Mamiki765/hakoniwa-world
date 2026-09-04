@@ -2360,6 +2360,7 @@ final class PlayerIslandEventService
             'meteor_shower' => '隕石群',
             'huge_meteor' => '巨大隕石',
             'eruption' => '火山噴火',
+            'defense_self_destruct' => '防衛施設の自爆',
             'nuclear_self_destruct_blast' => '怪獣の核自爆',
             'fuel_exhaustion' => '石油不足事故',
             'forced_displacement_failed' => '退避不能',
