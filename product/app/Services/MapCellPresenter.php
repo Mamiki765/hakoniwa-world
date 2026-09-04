@@ -99,7 +99,9 @@ final class MapCellPresenter
     ): array {
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
         $isDisguised = self::isDisguised($cell, $viewerNationId, $withinViewerVisibility);
-        $impersonatedFacilityKey = ! $isOwner && is_string($cell->facility?->metadata['display_as_facility_key'] ?? null)
+        $impersonatedFacilityKey = ! $isOwner
+            && ! $withinViewerVisibility
+            && is_string($cell->facility?->metadata['display_as_facility_key'] ?? null)
             ? $cell->facility->metadata['display_as_facility_key']
             : null;
 

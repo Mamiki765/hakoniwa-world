@@ -332,7 +332,7 @@ class PublicLobbyApiTest extends TestCase
         $this->assertFalse($response->headers->has('Vary'));
     }
 
-    public function test_seabed_base_is_indistinguishable_from_neutral_sea_to_public_viewers(): void
+    public function test_visibility_reveals_seabed_base_and_decoy_without_leaking_to_public_viewers(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -495,6 +495,31 @@ class PublicLobbyApiTest extends TestCase
         $publicAfterReveal = $this->cell($this->getJson($publicUrl)->assertOk()->json('data.cells'), $seabedBase);
         $this->assertNull($publicAfterReveal['facility']);
         $this->assertFalse($publicAfterReveal['within_viewer_visibility']);
+
+        app(MapCellStateService::class)->setFacility($seabedBase, null);
+        app(MapCellStateService::class)->transitionTerrain(
+            $seabedBase,
+            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+        );
+        app(MapCellStateService::class)->setFacility(
+            $seabedBase,
+            FacilityDefinition::query()->where('key', 'decoy')->firstOrFail(),
+        );
+        $seabedBase->owner_nation_id = $nation->id;
+        $seabedBase->save();
+
+        $revealedDecoy = $this->cell($this->actingAs($outsider)->getJson(
+            "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}",
+        )->assertOk()->json('data.cells'), $seabedBase);
+        $this->assertSame('decoy', $revealedDecoy['facility']);
+        $this->assertSame('ハリボテ', $revealedDecoy['display_name']);
+        $this->assertSame($nation->id, $revealedDecoy['owner_nation_id']);
+        $this->assertTrue($revealedDecoy['within_viewer_visibility']);
+
+        $publicDecoy = $this->cell($this->getJson($publicUrl)->assertOk()->json('data.cells'), $seabedBase);
+        $this->assertSame('defense', $publicDecoy['facility']);
+        $this->assertSame('防衛施設', $publicDecoy['display_name']);
+        $this->assertFalse($publicDecoy['within_viewer_visibility']);
     }
 
     /** @param array<int, array<string, mixed>> $cells @return array<string, mixed> */

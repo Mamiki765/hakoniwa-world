@@ -687,36 +687,53 @@ final class MissileImpactResolver
         array $impact,
     ): void {
         $targetNationId = $impact['target_nation_id'] ?? null;
-        if (($impact['effect'] ?? null) !== 'ship_sunk'
-            || ! is_int($targetNationId)
+        if (! is_int($targetNationId)
             || $targetNationId === $intent->nationId
-            || ! array_key_exists($targetNationId, $context->state->karmaStartSnapshots())
-            || ! array_key_exists($intent->nationId, $context->state->karmaStartSnapshots())) {
+            || ! array_key_exists($targetNationId, $context->state->karmaStartSnapshots())) {
             return;
         }
-        $points = $this->shipMissileImpactSettings($context)['foreign_sink_karma'];
-        $context->state->addKarmaCrime($intent->nationId, $points);
+        $context->state->recordHostileImpactReceived($targetNationId);
+        if (! array_key_exists($intent->nationId, $context->state->karmaStartSnapshots())) {
+            return;
+        }
+        $targetStartKarma = $context->state->karmaStartSnapshot($targetNationId);
+        $attackerStartKarma = $context->state->karmaStartSnapshot($intent->nationId);
+        $allianceMoney = 0;
+        if ($attackerStartKarma <= 0 && $targetStartKarma > 0) {
+            $perKarma = $context->ruleset->settings['karma']['alliance_reward_money_per_karma_per_impact'] ?? null;
+            if ($perKarma !== 1) {
+                throw new DomainException('The active ruleset has an invalid KARMA alliance reward contract.');
+            }
+            $allianceMoney = $targetStartKarma * $perKarma;
+            $context->state->addAllianceMoney($intent->nationId, $allianceMoney);
+        }
+        $points = ($impact['effect'] ?? null) === 'ship_sunk'
+            ? $this->shipMissileImpactSettings($context)['foreign_sink_karma']
+            : 0;
+        if ($points > 0) {
+            $context->state->addKarmaCrime($intent->nationId, $points);
+        }
         $this->events->record($context, 'karma.missile_impact', null, [
             'nation_id' => $intent->nationId,
             'target_nation_id' => $targetNationId,
             'queue_item_id' => $intent->queueItemId,
             'missile_key' => $intent->definitionKey,
-            'effect' => 'ship_sunk',
+            'effect' => $impact['effect'],
             'ship_id' => $impact['ship_id'] ?? null,
             'impact_category_points' => $points,
             'crime_points' => $points,
             'base_crime_points' => $points,
             'collar_triggered' => false,
             'final_crime_points' => $points,
-            'attacker_start_karma' => $context->state->karmaStartSnapshot($intent->nationId),
-            'target_start_karma' => $context->state->karmaStartSnapshot($targetNationId),
+            'attacker_start_karma' => $attackerStartKarma,
+            'target_start_karma' => $targetStartKarma,
             'turn_start_monster' => $launch['turn_start_monster'],
             'missile_boundary_monster' => $launch['missile_boundary_monster'],
             'anti_monster_context' => $intent->antiMonsterContext(),
             'anti_monster_exempt' => false,
-            'alliance_money' => 0,
+            'alliance_money' => $allianceMoney,
         ], 'admin');
-        if ($firingNation->state === 'recovery') {
+        if ($points > 0 && $firingNation->state === 'recovery') {
             $this->nationLifecycle->exitRecoveryForCrime(
                 $context,
                 $firingNation,

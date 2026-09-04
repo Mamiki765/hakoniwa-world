@@ -3364,6 +3364,7 @@ class CommandAndMissileTest extends TestCase
     public function test_ordinary_missiles_hit_ship_before_seabed_base_and_follow_latest_layer(string $missileKey): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
+        $target->update(['karma' => 20]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
         $base->update(['facility_experience' => 200]);
@@ -3430,6 +3431,14 @@ class CommandAndMissileTest extends TestCase
             'removal_reason' => 'missile',
         ], $ship->fresh()->only(['state', 'current_hp', 'map_cell_id', 'removal_reason']));
         $this->assertSame(1, $context->state->karmaLedgerForNation($firing->id)['crime_points']);
+        $this->assertSame(2, $context->state->karmaLedgerForNation($target->id)['hostile_impacts_received']);
+        $this->assertSame(40, $context->state->karmaLedgerForNation($firing->id)['alliance_money']);
+        $allianceMetrics = $karma->settleAllianceMoney($context);
+        $this->assertSame(40, $allianceMetrics['requested']);
+        $this->assertSame(40, $allianceMetrics['applied']);
+        $karmaMetrics = $karma->finalize($context);
+        $this->assertSame(2, $karmaMetrics['victim_reductions']);
+        $this->assertSame(18, $target->fresh()->karma);
         $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame(
