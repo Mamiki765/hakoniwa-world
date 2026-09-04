@@ -154,7 +154,7 @@ final class CommandQueueController extends Controller
                     'rulesetVersion',
                     $world->rulesetVersion,
                 ));
-            $visibleCoordinates = $cell === null
+            $visibleCoordinates = $cell === null || $cell->owner_nation_id === $nation->id
                 ? []
                 : $visibility->visibleCoordinates(
                     $mapSpace,

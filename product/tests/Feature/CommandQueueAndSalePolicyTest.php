@@ -1553,7 +1553,17 @@ class CommandQueueAndSalePolicyTest extends TestCase
                 ]])
                 ->all();
 
-            $this->assertSame($neutralPreview, $disguisedPreview, $disguisedFacilityKey);
+            $this->assertNotSame($neutralPreview, $disguisedPreview, $disguisedFacilityKey);
+            $this->assertContains(
+                '施設のあるcellにはこのcommandをqueueへ追加できません。',
+                $disguisedPreview['reclaim']['warnings'],
+                $disguisedFacilityKey,
+            );
+            $this->assertContains(
+                '他国所有の水域は掘削できません。',
+                $disguisedPreview['excavate']['warnings'],
+                $disguisedFacilityKey,
+            );
         }
     }
 
