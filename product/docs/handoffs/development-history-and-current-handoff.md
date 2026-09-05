@@ -1,10 +1,10 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
-> 更新日: 2026-09-05 JST（PR #148 hotfix反映後、Ownerの明示依頼による更新）
+> 更新日: 2026-09-05 JST（PR #149 `5bad2cd`再レビュー後。新チャットへの引継ぎとしてOwnerが同PRへの文書commitを明示許可）
 > 対象リポジトリ: `Mamiki765/hakoniwa-world`  
 > 配置先: `product/docs/handoffs/development-history-and-current-handoff.md`  
-> 用途: 現在有効なrelease boundary、Owner決定、production境界、次の作業開始点の引継ぎ  
-> 状態: 3.5.0、migration統一 #147、Hotfix 3.5.1 #148はmainへmerge済み。設定上のapplication_versionは3.5.0のまま。次のOwner-approved scopeは3.5.2 UI / UX改善で、相談時点ではCodexへ未依頼・未実装。最新productionのexact SHA / migration ledgerは独立未確認
+> 用途: 新しいチャットのAstra / Sol / 実装Agentが、開発経緯・現在地・Owner意図・未決事項・停止条件を引き継ぐための書物  
+> 状態: #148までmain反映済み。#149 `release/3.5.2`のコードhead `5bad2cd64f77d57a94b3ed225b9d21b67856fefa`を再レビュー済み、未merge・未deploy。PR内applicationは3.5.2、mainは3.5.0表記。次は#149 close-out判断、その後に地下戦闘バランス／行動ログ形式の設計相談。最新productionのexact SHA / migration ledgerは独立未確認
 >
 > この文書はOwnerとWeb版ChatGPTが管理する。Codex / implementation agentはread-onlyで利用し、Ownerがhandoff更新そのものを明示的に依頼した場合だけ編集してよい。
 
@@ -13,6 +13,8 @@
 # 0. この文書の読み方
 
 - 作業開始時は、まずremoteの`main`、対象release branch、対象PRのexact HEADを取得する。この文書のSHA記載だけでcheckout先を決めない。
+- #149がopenなら最新handoffは`release/3.5.2`側にある。mainの古いhandoffだけで「UI未着手」と判断しない。merge済みならmainへ読み替える。
+- この文書の第2〜5章は既存のゲーム契約、第6章後半は次期設計の相談。将来候補で過去契約を上書きせず、既存作業や未完了事項を忘れない。
 - release boundaryとOwner decisionはこのhandoffを正本とする。細かな実装値はcurrent code、migration、test、architectureを正本とする。
 - 文書とcurrent code / schema / accepted ADRが矛盾した場合、都合よく統合せず、矛盾箇所と影響をOwnerへ報告する。
 - GitHubでmainへmerge済みであることと、productionへdeploy / migrate済みであることは別の事実として扱う。
@@ -26,19 +28,25 @@
 
 ## 1.1 GitHub / application / production
 
-3.5.0はSurfaceの船システム、港、航行、missile連携、visibilityを追加したrepository release boundaryである。2026-09-05の今回照合では、remote mainにmigration統一 #147とHotfix 3.5.1 #148が含まれることを確認した。
+3.5.0はSurfaceの船システム、港、航行、missile連携、visibilityを追加したrepository release boundaryである。mainはmigration統一 #147、Hotfix 3.5.1 #148、その後の文書更新まで反映済み。3.5.2のUI改善と漁獲overflow修正は#149で実装済みだが、今回確認時点ではopenであり、main / production反映済みではない。
 
 ```text
-今回確認したruntime baseline:
-  4e4d9b85524df5b31a874ec5083c9f74be5cedcd
-  Merge pull request #148: Hotfix 3.5.1
+確認したmain / PR base:
+  712836e9f32be37213ba0a7476134867f21134e6
+  runtimeは#148の4e4d9b8と同じ（その後はhandoff文書更新）
 
-application_version（実際のconfig値）: 3.5.0
-hotfix呼称: 3.5.1
+PR #149 code head（今回のレビュー対象）:
+  5bad2cd64f77d57a94b3ed225b9d21b67856fefa
+  release/3.5.2 → main、open / 未merge
+  initial implementation: 0f44c4d2ee609389a011b5444dfa179b8c35ca0d
+
+application_version: main = 3.5.0 / PR #149 = 3.5.2
+hotfix呼称: #148 = 3.5.1
 3.5.0 feature-freeze anchor: 22203ae9f7b06607bfa6a5a6821bb948e011f634
 Surface Ruleset: hakoniwa-2s-plus-v20 / version 20
 Underground combat: secretary-underground-alpha-v3
-次のOwner-approved scope: 3.5.2 UI / UX改善
+直近: #149 close-out判断（merge / deployは別Owner gate）
+次の設計相談: 地下戦闘バランス・presentation log改善（未実装）
 ```
 
 #148はControllerと既存testの修正であり、application_versionの更新を含まない。このため「hotfix実装済み」と「画面のversion表示が3.5.1」は同じ事実ではない。本handoff更新でもruntimeのversion値は変更していない。
@@ -46,7 +54,7 @@ Underground combat: secretary-underground-alpha-v3
 production情報は時点を区別する。
 
 - migration統一の承認時点: Ownerはproductionがapplication 3.4.0 / Surface Ruleset v19で、旧3.5.0 migration 4本は未適用と明示した。#147はこの確認済み前提で行われた。
-- その後: Ownerはブラウザで左右のコマンド／開発計画の復旧を確認し、今回「hotfixまで実装済み」として引継ぎ更新を依頼した。
+- その後: Ownerはブラウザで左右のコマンド／開発計画の復旧を確認した。さらに本番turn 368〜371の漁獲問題を報告した。今回の3.5.2画像は検証環境のpreviewでありproduction deployの証拠ではない。
 - 最新実環境のexact checkout SHA、application設定値、migration ledger: 今回Web側からOCIへ独立照会していない。古い「productionは3.4.0」という記録を現在も成立すると断定しない。
 
 本更新は文書作業のみ。production deploy / migration / OCI操作は行わない。以後の本番操作前には実際の状態を別Owner gateで確認し、既に適用されたmigrationを再統合・resetしない。
@@ -63,6 +71,7 @@ production情報は時点を区別する。
 | #146 | Release 3.5.0をmainへ昇格 | `c79a5dac056a20609137477e6ac0c112fab4990d` |
 | #147 | 旧3.5.0 migration 4本を1本へ統一 | `146687a5d5f3f2703f405be6532fae562da3bd58` |
 | #148 | Hotfix 3.5.1: command定義JSONのarray contractを復旧 | `4e4d9b85524df5b31a874ec5083c9f74be5cedcd` |
+| #149 | 3.5.2 UI / UX＋漁獲overflow修正、追加レビュー対応 | **未merge**。code head `5bad2cd64f77d57a94b3ed225b9d21b67856fefa` |
 
 3.5.0のSurface gameplay sliceは船システムで閉じ、NPC海賊船、Ship修理、destination pathfinding、Ship Lv / XP、generic Actor / Spawn / Ship AI frameworkは含めない。
 
@@ -70,8 +79,8 @@ production情報は時点を区別する。
 
 ```text
 application_version（config）:
-  3.5.0
-  PR #148 Hotfix 3.5.1のコードを含む
+  main: 3.5.0（PR #148 Hotfix 3.5.1のコードを含む）
+  PR #149: 3.5.2（未merge / 未deploy）
 
 Surface Ruleset:
   hakoniwa-2s-plus-v20
@@ -98,7 +107,7 @@ generated equipment:
   secretary-underground-drop-equipment-alpha-v1
 ```
 
-3.5.0はSurface gameplay semantic changeのため、当時のproduction baseline v19から1世代だけ進めたv20を全Ship sliceで共有する。v21は作成していない。#147 / #148でもfinal v20 payloadとcombat identityは変更していない。
+3.5.0はSurface gameplay semantic changeのため、当時のproduction baseline v19から1世代だけ進めたv20を全Ship sliceで共有する。v21は作成していない。#147 / #148 / #149でもfinal v20 payloadとcombat identityは変更していない。
 
 ## 1.4 Supported migration / production ledger
 
@@ -148,12 +157,35 @@ product/database/migrations/2026_09_04_000000_rebaseline_3_5_0_release.php
 |---|---|
 | 廃船の選択→保存のShip同一性 | P2指摘。UIが座標だけ送るため、船Aを選択後にそのcellへ船Bが来るとBを保存対象にし得る。登録後のID固定とは別。実DB再現後、表示したShip IDの期待値確認を最小修正候補とする |
 | forced displacementの港探索 | 現行は距離順の最寄り1港だけを調べる。別港の空きも探すかはOwner未決。UI改善で勝手に全港探索へ変更しない |
-| AI設定の既存入口 | キャラ欄にdisabledの「AI設定 / 準備中」が残る。editor本体は実装済み。3.5.2の導線改善対象 |
-| theme / CSS | 選択中の白文字＋coral等のcontrast、未定義`--surface`参照、entrypoint間の上書き整理が改善対象 |
+| AI設定の既存入口 | mainには旧入口が残るが#149で既存editorへ接続済み。新規AI engineを作る残件ではない |
+| theme / CSS | #149にcontrast / token整理、5bad2cdにゲージ幅・画像・旧ログ列の修正を含む。実装済み部分を未着手としてやり直さない |
 | 覚醒満タンの黄背景という指摘 | `app.css`の後段overrideを確認して誤検出として撤回済み。実entrypointを見ずに再度不具合と断定しない |
-| version表示 | hotfix呼称とconfig値の差を記録。次のUI releaseのfinalizationで整合を取る候補であり、本handoff更新でruntimeは変更しない |
+| version表示 | #149では3.5.2へ更新済み。mainは未mergeなので3.5.0表記。本handoff更新はruntimeを変更しない |
 
 大量の理論上の異常値testを足すより、実API応答とbrowser描画をつなぐ代表操作確認を優先する。Ship全体の作り直し、追加cache / framework、migration再整理を指示するレビューではない。
+
+## 1.8 PR #149 再レビューとclose-out境界
+
+- 初版`0f44c4d`はSolによるUI実装＋漁獲overflow修正。前回レビューの4件は、予約選択ID、409後の再確認、explicit 0Tと自動資金繰りの混同、途中round stateへのアクセス喪失だった。
+- `5bad2cd`はOwner報告ではAstra Midによる修正。初版との差分は既存6ファイルのVue / CSS / frontend testsに限定され、backend、API、保存形式、migration、Rulesetの追加変更はない。
+- 今回Web側でsourceとtestを再読し、4件とも修正済みと判断した。`selectedItemId`追従と消失時解除、409後のdraft保持→最新計画の明示確認→再登録、`slot.kind`による0T/自動の分離、各roundの`end_state`を開くdetailsを確認した。
+- MP消費を伴う隣接した同一actor・同一技名の宣言／cost／role stack／最初の効果だけを限定集約し、元行は「行動の全詳細」に残す。MP回復は小さい補助表示にした。無料行動、反撃、曖昧なログは独立行のままで、完全な行動ログv2ではない。
+- 画像なしの敵の空portrait枠、MATCHUP / PLAYER / ENCOUNTERの飾り文字を削除。画像はcontain、vitalsのCSS競合は修正。現在の画像ありpreviewは検証用PNGで、実player画像での美的評価を全部済ませた証拠ではない。
+- この再レビュー範囲で**新たなP0/P1/P2は確認しなかった**。4件を理由に#149を差し戻す必要はなく、既知の別残件を明示したうえでclose-out判断へ進める。これは全既知bugが解消した／GitHubの正式Approveを投稿した／mergeした、という意味ではない。
+- code head `5bad2cd64f77d57a94b3ed225b9d21b67856fefa`のQuality [33969905193](https://github.com/Mamiki765/hakoniwa-world/actions/runs/33969905193)はsuccess。16 PHPUnit shards、backend-static、frontend、documentationとbackend集約gateの成功を確認した。review threadsは取得時0件だが、それだけで独立review完了とみなさない。
+- 実装担当は既存78 frontend tests、typecheck / lint / build、認証付き実APIでの代表操作とPC/mobile・Light/Dark確認、一時環境撤去を報告した。報告元は[PR対応コメント](https://github.com/Mamiki765/hakoniwa-world/pull/149#issuecomment-5552282804)。Web側自身はsource / diff / screenshot照合と、関数を転記したNodeの9項目の限定ロジック確認を実施した。Vue全体のmount、認証付き実アプリ、Laravel/PostgreSQL統合testの独立再実行ではない。
+- 本文書はそのcode headへ重ねるdocs-only更新。**本文書追加後のHEADのCIを、5bad2cdのgreenと混同しない**。最新headとdiffが文書だけかを確認し、最新CI / Owner gateを満たしてからmergeする。
+- 今回Ownerが許可した書込みは#149側のhandoff更新。main merge、production deploy、OCI、補填実行は許可されていない。
+
+## 1.9 漁船incidentと未実施の補填
+
+- Ownerはナム孤島の本番turn 368〜371で「船が中立」「魚が増えない」と報告したが、後のtooltip画像で船舶所有はナム孤島と確認した。中立なのは下の海。**この報告を船籍DB破損確定として扱わない**。#149では船主とマス所有を区別する表示へ修正済み。
+- 別問題として、航行報酬の`creditFood()`が返すoverflowを換金／端数処理へ渡していないコードを確認した。#149で既存`FoodOverflowResolver`を接続済み。食料庫が満杯なら魚在庫ではなく標準の売却収入へ反映される。移動、燃料、XP、報酬額そのものは変更しない。
+- 本番DBの当該`ship.moved` audit、実際の損失期間・量・資金上限、修正deploy境界はまだ独立未確認。補填も未実施。UI修正完了を補填完了と読み替えない。
+- 補填候補は正常完了・非dry-runのturnに属する`ship.moved`の`resource_requested / applied / overflow`から選び、元event ID単位で重複を防ぐ。建造隻数×経過turnによる推計、現在残る船だけの集計、過去turnの再実行は行わない。
+- 当時のRulesetの売却lotを各eventへ適用し、元の資金上限まで復元する厳密方式か、overflow魚の売却相当額を救済する方式かをOwnerが選ぶ。既出の63億円は条件付きの例で、確定補填額ではない。燃料・XP・船代を自動的に重ねて返さない。
+- 実支払は別Owner gate。dry-run一覧→承認→既存lock / transaction / capacity / auditを使い、満額入らない分を無言で破棄しない。新しい万能補填framework、production reset、migration再統合は不要。
+
 
 ---
 
@@ -443,15 +475,15 @@ PR #136: AI編集画面・説明文書・default preset簡潔化
 
 ---
 
-# 6. 次release: 3.5.2 UI / UX改善と将来候補
+# 6. 3.5.2 UIの意図と、次の設計相談
 
 ## 6.1 Ownerの最新依頼と実装状態
 
-Ownerは3.5.2を地上・島開発・地底RPG・戦闘・関連育成画面のUI / UX改善として依頼している。2026-09-05の相談時点では、この依頼をCodexへまだ一度も送っていない。Webでの設計・相談を進めている段階であり、既にAstraがUIを変更した／未commitのUI差分があると推測しない。
+OwnerはWebで作成したUI設計ZIPと漁獲incident ZIPを実装担当へ渡し、Solが#149を作成した。初版の再レビュー後、Astra Midが`5bad2cd`で修正した。直近の状態と残件は1.8〜1.9を参照する。以下6.2〜6.4は設計の意図であり、全項目が未実装のTODOという意味ではない。
 
 実装担当はSolでも構わないというOwner指示。Astra単体性能試験への固定は不要となった。Luna Max等は必要な限定作業に任意利用してよいが、主担当がUIの統一と契約を保持する。
 
-詳細な実装設計・投入promptは、Ownerへ渡す同チャットの `3.5.2-ui-ux-design-and-sol-instructions.md` を参照する。これはチャット添付の設計書名であり、repository内に同名ファイルが存在するという意味ではない。
+詳細な実装設計は元チャット添付の`3.5.2-ui-ux-design-and-sol-instructions.md`、前回レビューは`REVIEW-PR149.md`。repository内に同名ファイルがあるとは限らず、WindowsのローカルpathへWebからアクセスできるとも限らない。新チャットでは本文書とcurrent codeを入口にし、必要な添付だけProjectのFilesから取得する。
 
 ## 6.2 地上・コマンドのOwner意図
 
@@ -473,6 +505,8 @@ Ownerは3.5.2を地上・島開発・地底RPG・戦闘・関連育成画面のU
 - CT待ちがある場合の「技名: あと2」等は表示候補。既存保存データに値がなければ推測せず保留する。
 - HP赤／MP緑、数値の上下、左右の構図は固定仕様ではない。
 - 会心・回復・敵の危険行動へ色・文字・配置で強弱をつける。味方会心gold系／敵会心danger系／回復green系は候補で、必ず色以外でも意味を伝える。
+- MP自然回復と能動的な回復技を同じ強さで表示しない。魔法のMP消費は独立した主行動ではなく、その技に付随するcostとして読ませたい。3.5.2の限定集約より先の変更は6.7を参照する。
+- 既存の英語の飾り見出しをOwnerのセンス／固定要望と誤認しない。不要な重複ラベルは削ってよいが、Awaken!等の演出まで一律禁止する意味ではない。
 - 覚醒発動は`Awaken!`や「覚醒中」等で識別できるようにする。ゲージ満タンと発動済みを分ける。満タン時のfillのみ変える既存contractは維持する。
 - 画像・vitals等を一人分の小さな表示componentへ分ける程度でPT戦や変身画像への将来拡張を考える。PT戦本体・変身画像登録schemaは今作らない。
 - 確定battleを表示するだけで、演出再生やskipにより戦闘実行・報酬を再発させない。時点がround-endだけなら行動直後と偽装しない。
@@ -501,6 +535,62 @@ PC/mobile・Light/Dark、特にDark、長い名称・画面端・数字keyboard�
 - 覚醒時の専用変身画像登録
 
 3.5.2 UI改善以外のscopeは今回一括承認していない。published v20 payloadは上書きしない。FFA / 原作箱庭のUIは参考であってcodeや画像を複製する対象ではない。原作箱庭2.3は前回Drive調査で原本未特定であり、2＋を2.3原本として代用しない。
+
+## 6.6 次の地下戦闘バランス設計：Ownerの相談内容（未実装）
+
+以下は次の相談の出発点。#149へ追加する指示、数式・release番号・移行方法の最終承認ではない。current combat v3、現行growth、既存enemy値をここで上書きしない。
+
+### 成長案
+
+Ownerは祝福の武力+1を誤記と明言し、**祝福の武力は+0**と確定した。次期baseline候補は次のとおり。
+
+| 方針 | 生命 | 武力 | 技巧 | 精神 | 敏捷 | 手動STP / Lv |
+|---|---:|---:|---:|---:|---:|---:|
+| 戦技 | +1 | +2 | +1 | +0 | +1 | 5 |
+| 護身 | +2 | +1 | +0 | +1 | +1 | 5 |
+| 祝福 | +1 | +0 | +1 | +2 | +1 | 5 |
+| 自由 | +1 | +0 | +2 | +0 | +1 | 6 |
+
+全行は自然成長＋手動STPで10。現行のLv2以降の加算とLv1 baselineを区別する。現在は敏捷の自然成長0を検証するコードがあるため、configだけ変えれば終わりではない。既存playerの自然成長再計算、手動STP、growth identity、current HP、無料回復の有無は移行設計で明示する。
+
+### 技巧・会心・会心抵抗
+
+- 攻撃者技巧と防御者技巧の関係で会心率／会心抵抗を表現したい。技巧差が大きい場合は会心damage倍率も上がる案。
+- 自然な会心率の範囲5〜80%、会心倍率の下側1.2〜1.5倍はOwnerの**イメージ値**であり採用済み定数ではない。倍率上限、同値時の率、曲線、enchant / skill / equipment加算後の最終capは未決。
+- 護身の攻撃技にも会心を出せるようにしたい。技巧自然成長0は技巧そのもの0でも、会心率enchantしか効かないという意味でもない。Lv1値・手動STP・装備・skill補正を保持して検討する。
+- 武力極は安定火力100、技巧極は80〜110程度に上下し、上振れで一度Trialを突破できる価値を狙う。これはconceptで、平均／一撃／戦闘総量／分位点のどれに80〜110を当てるかは未決。前のAI提案「平均90〜95、P10/P90」等をOwner確定値へ昇格させない。
+- 技巧魔法型は精神型より回復・障壁を捨てるため、攻撃面では精神型を上回れる余地を持たせたい。ただし回復能力が完全に0になるわけではなく、武力技巧の攻撃特化より低くても構わない。
+
+### 魔力昇華（DH相当枠）
+
+- Ownerは「魔力昇華を忘れていた」と再言及しており、不要／撤回ではない。「クリダイは気持ちいい」という上振れの楽しさは設計目的の一つ。
+- 攻撃魔法で会心と重なり得る追加強化枠を作り、技巧特化の魔法使い派生を支える案。回復・障壁へ同じ強化を乗せない方向を出発点とする。
+- 発動条件、独立抽選か、技巧への依存、倍率・上限、対象技、取得cost、実装するreleaseは未決。二重の率×倍率増幅を平均値だけで調整せず、重複時の上限と分散を確認する。単に全魔法への無料buffにしない。
+
+### 敏捷・職間目標・測定
+
+- 同量の追加STPに対し、敏捷の攻撃寄与は主攻撃能力の30〜40%、生存寄与は生命の30〜40%程度、さらに先手の価値を持たせたい。これは**能力の生値比ではなく投資効率**。生命の物理／魔法に対する差、攻撃と回復行動の比率を区別して比較する。
+- Lv1、Lv30（比較用SP60・ワイバーン）、Lv100（比較用SP100・Trial 2クリア相当）で、戦技100、護身80前半、祝福80前半だが護身未満、自由90台目安を狙う。例の100/82/80は目標イメージで全敵・全buildに固定する係数ではない。自由の比率への拘りは弱い。
+- 純攻撃機会あたりの火力と、回復／防御込みの実戦火力・突破率を分ける。代表AI、SP配分、装備、同量投資の基準を先に固定する。Lv30/SP60等はOwner指定の測定budgetで、全playerの自然な取得状況を証明するものではない。
+- 突破率はLv1雑魚、適正Lvの洞窟強敵、Lv30ワイバーンを優先する。Trial全10戦を毎回回す必要はないが、ワイバーン単戦勝率をTrial全周の突破率と呼ばない。entry HPやMP等を明示する。
+- ワイバーン・黒晶洞の難易度を変えすぎない。必要なら全体調整は可だが、敵個別数値の大量変更で式の問題を隠さない。まずcurrentとの比較を出す。許容する勝率／round差は未決。
+- Lv100のTrial 2は未実装の将来benchmarkとして扱い、実在のclear成績を作らない。Lv500も同格の仮想環境で技巧／敏捷の役割が維持されるかを見る。Lv500対Lv30の敵で同じ強さを要求しない。
+- 200〜1000 seedsから始め、差がノイズ帯なら増やす。10000 seedsを既定にしない。meanだけでなく分位点・上振れ・clear率と不確実性を見る。既存runtime / simulatorを再利用し、raw logや巨大JSONを量産しない。
+
+設計担当は数式候補と測定条件、実装主担当はidentity / migration / retry / historical boundary、補助Agentは限定した比較実行を担当する案。特定modelの性能・使用量倍率をrepoの技術的契約にしない。最終式・採用案と実装開始はOwner判断を得る。
+
+## 6.7 行動ログ形式の改善：次期設計の論点（未実装）
+
+Ownerは「ログ形式を変えて、一つの技とMP cost／効果をまとめられないか」と明示した。3.5.2の制約を永久的な禁止へ読み替えない。一方で#149内は保存形式を変更していないため、今すぐv2が実装済みと扱わない。
+
+- 行動に属するevent、round start/end、MP回復のnatural / skill / passive / status等の由来を明示し、UIの隣接行や数値からの推測を減らす。
+- `action_id`、`phase`、`source`、`action_key`、presentation log v2等は設計候補。必要最小限のfieldでよく、generic Event / Animation frameworkは不要。
+- `executeTurn`一回を必ず一技とみなさない。覚醒activation、覚醒技、通常行動が同じturnにある場合や反撃・継続効果を、誤って一つの主技へ吸収しない。行動者・対象・順序・親行動との関係を保つ。
+- 自然回復はround内の小さい補助欄へまとめ、MP costは対応する技のcostとして表示する。将来PTでも誰に何が起きたかは消さず、全生ログへ到達できるようにする。
+- 現行の保存経路ではprojected roundsを保存し、内部にあるcooldown等が全て保存されるわけではない。新規battleへ必要情報を投影する案と、既存ログにない情報を補うことを区別する。欠損は0／使用可能と解釈しない。
+- 旧battleを再戦・再計算して書き換えない。旧形式はfallback表示を維持する。log-only変更と、技巧／敏捷／会心のgameplay変更に必要なcombat identity更新を分けて判断する。schema migrationの要否も実際のJSON・validation・保存hash契約から確認する。
+- 今回の限定集約は移行用の初版として維持してよい。完全なログv2、変身画像登録、PT戦、手動戦闘を#149 close-outの必須条件として増やさない。
+
 
 ---
 
@@ -565,10 +655,10 @@ subagent成果はmain agentが確認してから採用する。
 # 8. 次に作業するagentが最初に行うこと
 
 1. remote `main`、対象branch、worktreeを確認し、#147 / #148を含む最新の意図したbaseを確定する。cleanは未commit差分がないという意味であり、正しいbranchにいる証拠ではない。staleなorigin/mainや別作業commitを調べずresetしない。
-2. 次のOwner-approved scopeは3.5.2 UI / UX改善。Ownerから実装指示書を受け取ったら、その範囲で`release/3.5.2`を作成または確認して進める。既にUI実装が始まっていると推測しない。
-3. hotfixを維持し、1.7の未修正／未決／撤回済みを区別する。Shipの再設計や未決の全港退避をUI改善へ混ぜない。
+2. #149がopenなら`release/3.5.2`の最新handoffとcode head / CIを確認する。1.8で解消済みの4件を再び未修正として扱わない。本書追加後のdocs-only差分とCIを見て、Ownerのclose-out / merge判断を待つ。
+3. hotfixを維持し、1.7〜1.9の未修正／未決／撤回済みを区別する。廃船同一性と補填は消えていない。Ship再設計や未決の全港退避をUI改善へ混ぜない。
 4. production操作は今回不要。別途許可された場合だけ、実際のcheckout SHA・version・migration ledgerを確認し、古いproduction記録で判断しない。
-5. Surface v20、combat v3、historical snapshotを維持し、UIのためのmigrationやRuleset追加を作らない。
+5. #149ではSurface v20、combat v3、historical snapshotを維持する。次の地下バランス／ログ設計は6.6〜6.7を入口にし、数式・version・移行の採用前に実装を開始しない。
 6. 最初から全docsを読み直さず、次の関連入口とtask-specific codeへ進む。handoffはread-onlyで、終了時に更新材料をOwnerへ報告する。
 
 最初に読むcurrent file:
