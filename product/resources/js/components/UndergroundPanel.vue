@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import UndergroundAiEditor from './UndergroundAiEditor.vue';
+import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
@@ -45,6 +46,10 @@ interface RoundState {
     barrier: number;
     statuses: Array<{ label: string; remaining: number; stacks: number }>;
     role_stacks: { fighting_spirit: number; grace: number };
+    taunt?: { label?: string; remaining?: number } | null;
+    awakened?: boolean;
+    awakening_technique_used?: boolean;
+    awakening_guard_rounds_remaining?: number;
 }
 
 interface CombatRound {
@@ -491,6 +496,9 @@ const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
     : state.value?.secretary_name ?? '秘書');
 const currentStructuredRounds = computed(() => currentBattle.value ? structuredRounds(currentBattle.value) : []);
+const finalBattleState = computed(() => [...currentStructuredRounds.value]
+    .reverse()
+    .find((round) => round.end_state !== null)?.end_state ?? null);
 const growthEnding = computed(() => state.value?.growth_path?.key === 'free_black'
     ? '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」'
     : '「ふふ、とってもお似合いですよ、その能力」');
@@ -1061,12 +1069,6 @@ function visibleSummary(summary: Record<string, boolean | number | string>): Rec
     return Object.fromEntries(Object.entries(summary).filter(([key]) => !hiddenSummaryKeys.has(key)));
 }
 
-function statusSummary(state: RoundState): string {
-    return state.statuses.length
-        ? state.statuses.map((status) => `${status.label} 残${status.remaining}・${status.stacks}段階`).join('、')
-        : 'なし';
-}
-
 function simpleActions(battle: Battle): SimpleAction[] {
     if (!Array.isArray(battle.actions) || (battle.actions[0] && 'actions' in battle.actions[0])) return [];
     return battle.actions as SimpleAction[];
@@ -1108,12 +1110,12 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
     if (action.type === 'barrier') return `${actor}は「${action.label}」で障壁を${amount}得た。`;
     if (action.type === 'recovery') return `${actor}は「${action.label}」でHPを${amount}回復した。`;
     if (action.type === 'role_stack_gain' || action.type === 'role_stack_spent') {
-        const role = action.label.replace(/^(増加|消費):\s*/, '');
+        const role = withoutActionPrefix(action.label, action.type === 'role_stack_gain' ? '増加:' : '消費:');
         return `${actor}の${role}が${amount}${action.type === 'role_stack_gain' ? '増加' : '消費'}した。`;
     }
-    if (action.type === 'status_applied') return `${target}に${action.label.replace(/^付与:\s*/, '')}が付与された。`;
-    if (action.type === 'status_expired') return `${actor}の${action.label.replace(/^消滅:\s*/, '')}が消滅した。`;
-    if (action.type === 'status_resisted') return `${target}は${action.label.replace(/^抵抗:\s*/, '')}を防いだ。`;
+    if (action.type === 'status_applied') return `${target}に${withoutActionPrefix(action.label, '付与:')}が付与された。`;
+    if (action.type === 'status_expired') return `${actor}の${withoutActionPrefix(action.label, '消滅:')}が消滅した。`;
+    if (action.type === 'status_resisted') return `${target}は${withoutActionPrefix(action.label, '抵抗:')}を防いだ。`;
     if (action.type === 'status_removed') return `${actor}は状態効果を${amount}個解除した。`;
     if (action.type === 'damage') {
         const qualifiers = [action.critical ? '会心' : '', action.guarded ? '防御' : '', action.parried ? '受け流し' : '']
@@ -1125,6 +1127,31 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
         return `${actor}の「${action.label}」。${qualifiers ? `${qualifiers}。` : ''}${damage}${barrier}`;
     }
     return `${actor}に「${action.label}」の効果。`;
+}
+
+function withoutActionPrefix(label: string, prefix: string): string {
+    return label.startsWith(prefix) ? label.slice(prefix.length).trimStart() : label;
+}
+
+function actionTone(action: RoundAction): string {
+    if (action.type === 'warning' || action.type === 'phase_transition') return 'is-warning';
+    if (action.type === 'awakening' || action.type === 'awakening_technique') return 'is-awakening';
+    if (action.type === 'recovery' || action.type === 'mp_recovery' || action.type === 'barrier') return 'is-recovery';
+    if (action.critical) return 'is-critical';
+    if (action.evaded || action.parried || action.complete_guarded || action.type === 'guard') return 'is-defense';
+    if (action.type === 'damage' || action.type === 'counter') return 'is-impact';
+    return 'is-neutral';
+}
+
+function actionHighlight(action: RoundAction): string | null {
+    if (action.type === 'awakening' || action.type === 'awakening_technique') return '覚醒';
+    if (action.critical) return '会心';
+    if (action.type === 'recovery' || action.type === 'mp_recovery') return '回復';
+    if (action.complete_guarded) return '完全防御';
+    if (action.evaded) return '回避';
+    if (action.parried) return '受け流し';
+    if (action.type === 'warning' || action.type === 'phase_transition') return '警戒';
+    return null;
 }
 
 function simpleActionNarrative(action: SimpleAction, battle: Battle): string {
@@ -1183,43 +1210,46 @@ onUnmounted(() => {
                     <a class="underground-log-jump" href="#underground-battle-result">末尾へ</a>
                 </header>
 
+                <section v-if="finalBattleState" class="underground-matchup" aria-labelledby="underground-matchup-title">
+                    <div class="underground-matchup-heading">
+                        <p class="eyebrow">MATCHUP</p>
+                        <h2 id="underground-matchup-title">最終ラウンド終了時</h2>
+                    </div>
+                    <div class="underground-matchup-grid">
+                        <UndergroundCombatantCard
+                            :name="currentPlayerDisplayName"
+                            side="player"
+                            :state="finalBattleState.player"
+                            :image-url="secretaryImageUrl"
+                        />
+                        <span class="underground-matchup-versus" aria-hidden="true">VS</span>
+                        <UndergroundCombatantCard
+                            :name="currentBattle.encounter_name"
+                            side="enemy"
+                            :state="finalBattleState.enemy"
+                        />
+                    </div>
+                </section>
+
                 <div class="underground-rounds">
                     <p v-if="currentBattle.detail_message" class="status">{{ currentBattle.detail_message }}</p>
                     <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
                         <h2>Round {{ round.round }}</h2>
-                        <ol class="underground-action-log">
+                        <ul class="underground-action-log">
                             <li
                                 v-for="(action, index) in round.actions"
                                 :key="index"
-                                :class="{
-                                    'underground-boss-warning': action.type === 'warning' || action.type === 'phase_transition',
-                                    'underground-awakening-event': action.type === 'awakening' || action.type === 'awakening_technique',
-                                }"
+                                :class="actionTone(action)"
+                                :data-action-type="action.type"
                             >
-                                <small v-if="action.agility_combo_hits" class="underground-agility-combo">{{ action.agility_combo_hits }}連続ヒット！</small>
-                                {{ actionNarrative(action, currentBattle) }}
+                                <span class="underground-action-marker" aria-hidden="true" />
+                                <div>
+                                    <span v-if="actionHighlight(action)" class="underground-event-badge">{{ actionHighlight(action) }}</span>
+                                    <small v-if="action.agility_combo_hits" class="underground-agility-combo">{{ action.agility_combo_hits }}連続ヒット！</small>
+                                    <p>{{ actionNarrative(action, currentBattle) }}</p>
+                                </div>
                             </li>
-                        </ol>
-                        <div v-if="round.end_state" class="underground-round-state">
-                            <section class="underground-combatant-state">
-                                <strong>{{ currentPlayerDisplayName }}</strong>
-                                <div class="underground-vitals">
-                                    <label><span>HP {{ round.end_state.player.hp }}/{{ round.end_state.player.max_hp }}</span><progress class="hp" :max="round.end_state.player.max_hp" :value="round.end_state.player.hp" /></label>
-                                    <label><span>MP {{ round.end_state.player.mp }}/10000</span><progress class="mp" max="10000" :value="round.end_state.player.mp" /></label>
-                                </div>
-                                <p>障壁 {{ round.end_state.player.barrier }}・状態 {{ statusSummary(round.end_state.player) }}・闘志 {{ round.end_state.player.role_stacks.fighting_spirit }}・恩寵 {{ round.end_state.player.role_stacks.grace }}</p>
-                            </section>
-                            <section class="underground-combatant-state">
-                                <strong>{{ currentBattle.encounter_name }}</strong>
-                                <div class="underground-vitals">
-                                    <label><span>HP {{ round.end_state.enemy.hp }}/{{ round.end_state.enemy.max_hp }}</span><progress class="hp" :max="round.end_state.enemy.max_hp" :value="round.end_state.enemy.hp" /></label>
-                                    <label><span>MP {{ round.end_state.enemy.mp }}/10000</span><progress class="mp" max="10000" :value="round.end_state.enemy.mp" /></label>
-                                </div>
-                                <p>障壁 {{ round.end_state.enemy.barrier }}・状態 {{ statusSummary(round.end_state.enemy) }}・闘志 {{ round.end_state.enemy.role_stacks.fighting_spirit }}・恩寵 {{ round.end_state.enemy.role_stacks.grace }}</p>
-                            </section>
-                            <p v-if="round.end_state.player.hp === 0" class="underground-ko">{{ currentPlayerDisplayName }}は戦闘不能になった。</p>
-                            <p v-if="round.end_state.enemy.hp === 0" class="underground-ko">{{ currentBattle.encounter_name }}は戦闘不能になった。</p>
-                        </div>
+                        </ul>
                     </article>
 
                     <article v-for="roundNumber in simpleRoundNumbers(currentBattle)" :key="`simple-${roundNumber}`" class="underground-round">
@@ -1502,7 +1532,7 @@ onUnmounted(() => {
                     <div class="underground-character-actions">
                         <button type="button" :aria-expanded="statusOpen" @click="statusOpen = !statusOpen">ステータス<small>STP配分</small></button>
                         <button type="button" :aria-expanded="skillsOpen" @click="skillsOpen = !skillsOpen">Skill Tree<small>SP・active設定</small></button>
-                        <button type="button" disabled>AI設定<small>準備中</small></button>
+                        <button type="button" :disabled="busy || !state.ai" @click="equipmentView = 'ai'">AI設定<small>作戦を編集</small></button>
                     </div>
                 </section>
 

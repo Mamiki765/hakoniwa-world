@@ -107,6 +107,7 @@ final class CommandQueueController extends Controller
                                 'quantity_default' => 1,
                                 'quantity_options' => [],
                                 'cost_money' => $definition->cost_money,
+                                'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                                 'execution_phase' => 'underground_facility',
                                 'initial_facility_capacity' => null,
                                 'applicable' => true,
@@ -284,6 +285,7 @@ final class CommandQueueController extends Controller
                         'quantity_default' => $this->quantitySemantics->presentationDefault($definition),
                         'quantity_options' => $this->quantitySemantics->options($definition),
                         'cost_money' => $definition->cost_money,
+                        'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                         'execution_phase' => $definition->execution_phase,
                         'initial_facility_capacity' => $initialCapacity === null ? null : [
                             ...$initialCapacity,
@@ -562,6 +564,7 @@ final class CommandQueueController extends Controller
                         ? null
                         : $this->quantitySemantics->label($definition, $item->quantity),
                     'effective_cost_money' => $this->effectiveCostMoney($definition, $item),
+                    'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                     'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                     'status' => $item->status,
                     'queued_at' => $item->queued_at?->toIso8601String(),
@@ -578,6 +581,7 @@ final class CommandQueueController extends Controller
                     'editable' => false,
                     'command_name' => '資金繰り',
                     'quantity' => null,
+                    'consumes_turn' => false,
                 ];
             }
 

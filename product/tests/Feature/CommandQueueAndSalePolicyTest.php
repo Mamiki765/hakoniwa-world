@@ -1601,6 +1601,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         foreach ($empty->json('data.plan') as $slot) {
             $this->assertSame('automatic_finance', $slot['kind']);
             $this->assertFalse($slot['editable']);
+            $this->assertFalse($slot['consumes_turn']);
         }
 
         $this->postJson($path, [
@@ -1613,6 +1614,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.queue.plan.29.kind', 'explicit')
             ->assertJsonPath('data.queue.plan.29.command_name', '整地')
+            ->assertJsonPath('data.queue.plan.29.consumes_turn', true)
             ->assertJsonCount(30, 'data.queue.plan');
 
         $inserted = $this->postJson($path, [
@@ -1674,9 +1676,11 @@ class CommandQueueAndSalePolicyTest extends TestCase
             $this->assertArrayHasKey('quantity_semantics', $definition);
             $this->assertArrayHasKey('quantity_default', $definition);
             $this->assertArrayHasKey('quantity_options', $definition);
+            $this->assertArrayHasKey('consumes_turn', $definition);
         }
         $commands = collect($definitions->json('data.commands'));
         $this->assertSame('unused', $commands->firstWhere('key', 'land_clear')['quantity_semantics']);
+        $this->assertTrue($commands->firstWhere('key', 'land_clear')['consumes_turn']);
         $this->assertSame('ordinary', $commands->firstWhere('key', 'excavate')['quantity_semantics']);
         $this->assertSame(99, $commands->firstWhere('key', 'missile')['quantity_default']);
         $this->assertSame('selector', $commands->firstWhere('key', 'build_monument')['quantity_semantics']);

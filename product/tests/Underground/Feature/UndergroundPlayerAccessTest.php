@@ -308,6 +308,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         )->assertOk()->json('data.commands');
         $this->assertSame(array_slice($undergroundKeys, 0, 4), array_column($emptyCommands, 'key'));
         $this->assertSame(['underground_slot'], array_values(array_unique(array_column($emptyCommands, 'target_type'))));
+        $this->assertSame([true], array_values(array_unique(array_column($emptyCommands, 'consumes_turn'))));
         $this->actingAs($user)->getJson(
             "{$base}/command-definitions?target_layer=2&target_slot_index=0&position=1",
         )->assertUnprocessable();

@@ -73,11 +73,11 @@ describe('staggered square-image map', () => {
             limit: 20,
             explicit_count: 5,
             items: [
-                { id: 5, command_key: 'excavate', command_name: '掘削', queue_position: 5, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 99, quantity_semantics: 'selector', quantity_label: '油田', parameters: {}, status: 'queued', queued_at: null },
-                { id: 1, command_key: 'landfill', command_name: '埋め立て', queue_position: 1, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 1, quantity_semantics: 'unused', quantity_label: null, parameters: {}, status: 'queued', queued_at: null },
-                { id: 3, command_key: 'plant', command_name: '植林', queue_position: 3, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 6, quantity_semantics: 'ordinary', quantity_label: '6回', parameters: {}, status: 'queued', queued_at: null },
-                { id: 2, command_key: 'level', command_name: '整地', queue_position: 2, target_context: 'surface_cell', target_x: 8, target_y: 8, target_layer: null, target_slot_index: null, quantity: 1, quantity_semantics: 'unused', quantity_label: null, parameters: {}, status: 'queued', queued_at: null },
-                { id: 7, command_key: 'dispatch', command_name: '怪獣派遣', queue_position: 7, target_context: 'surface_cell', target_x: null, target_y: null, target_layer: null, target_slot_index: null, quantity: 4, quantity_semantics: 'selector', quantity_label: 'いのら', parameters: {}, status: 'queued', queued_at: null },
+                { id: 5, command_key: 'excavate', command_name: '掘削', queue_position: 5, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 99, quantity_semantics: 'selector', quantity_label: '油田', consumes_turn: true, parameters: {}, status: 'queued', queued_at: null },
+                { id: 1, command_key: 'landfill', command_name: '埋め立て', queue_position: 1, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 1, quantity_semantics: 'unused', quantity_label: null, consumes_turn: true, parameters: {}, status: 'queued', queued_at: null },
+                { id: 3, command_key: 'plant', command_name: '植林', queue_position: 3, target_context: 'surface_cell', target_x: 4, target_y: 7, target_layer: null, target_slot_index: null, quantity: 6, quantity_semantics: 'ordinary', quantity_label: '6回', consumes_turn: true, parameters: {}, status: 'queued', queued_at: null },
+                { id: 2, command_key: 'level', command_name: '整地', queue_position: 2, target_context: 'surface_cell', target_x: 8, target_y: 8, target_layer: null, target_slot_index: null, quantity: 1, quantity_semantics: 'unused', quantity_label: null, consumes_turn: true, parameters: {}, status: 'queued', queued_at: null },
+                { id: 7, command_key: 'dispatch', command_name: '怪獣派遣', queue_position: 7, target_context: 'surface_cell', target_x: null, target_y: null, target_layer: null, target_slot_index: null, quantity: 4, quantity_semantics: 'selector', quantity_label: 'いのら', consumes_turn: true, parameters: {}, status: 'queued', queued_at: null },
             ],
             plan: [],
         };
@@ -106,14 +106,17 @@ describe('staggered square-image map', () => {
         const selected = mapCell({
             details: [{ key: 'population', label: '人口', value: 1000, unit: '人', formatted: '1,000人', visibility: 'public' }],
             within_viewer_visibility: true,
+            terrain: 'sea', terrain_name: '海',
             display_name: '漁船',
+            owner_nation_id: null, owner_nation_number: null, owner_name: null,
             ship: {
                 id: 4, key: 'fishing', name: '漁船', asset_key: 'ship.fishing',
                 current_hp: 1, max_hp: 1, public_state: 'active',
-                owner_nation: { nation_number: 1, name: '地図国' },
+                owner_nation: { nation_number: 4, name: '船主国' },
                 is_owner: true, heading: null, version: 1,
             },
             asset: { key: 'ship.fishing', url: '/tiles/fishing.gif?v=1-1', available: true, fallback_label: '漁船', fallback_style: 'ship-fishing' },
+            aria_label: 'x 0 y 0 漁船 このマスの所有者 中立 船 漁船 HP 1/1 船の所有者 船主国 N4',
         });
         const fallback = mapCell({
             x: 1, y: 0, terrain: 'forest', terrain_name: '森', display_name: '森', owner_nation_id: null, owner_nation_number: null, owner_name: null,
@@ -121,7 +124,7 @@ describe('staggered square-image map', () => {
             overlays: [], aria_label: 'x 1 y 0 森 所有 中立',
         });
         const wrapper = mount(HexMap, { props: {
-            cells: [selected, fallback], selected, capital: { x: 0, y: 0 }, bounds: worldBounds, ownNationId: 1,
+            cells: [selected, fallback], selected, capital: { x: 0, y: 0 }, bounds: worldBounds, ownNationId: 4,
             loading: false, error: null, emptyChunks: [],
         } });
         await flushPromises();
@@ -132,12 +135,20 @@ describe('staggered square-image map', () => {
         expect(tiles[0]!.classes()).not.toContain('within-viewer-visibility');
         expect(tiles[0]!.find('img:not(.tile-overlay)').attributes('src')).toContain('/tiles/fishing.gif');
         expect(tiles[0]!.find('.tile-overlay').attributes('src')).toContain('/tiles/selection.png');
+        expect(tiles[0]!.get('small').text()).toBe('N4');
         expect(tiles[1]!.find('img').exists()).toBe(false);
         expect(tiles[1]!.find('.tile-label').text()).toBe('森');
         await tiles[0]!.trigger('mouseenter');
         expect(wrapper.find('.cell-tooltip').text()).toContain('座標 x=0, y=0');
         expect(wrapper.find('.cell-tooltip').text()).toContain('人口');
-        expect(wrapper.find('.cell-tooltip').text()).toContain('船HP: 1/1');
+        expect(wrapper.findAll('.cell-tooltip span').map((line) => line.text()).slice(0, 6)).toEqual([
+            '座標 x=0, y=0',
+            '船の所有者: 船主国 (N4)',
+            'HP: 1/1',
+            '地形: 海',
+            'このマスの所有者: 中立',
+            '施設: なし',
+        ]);
 
         const visibility = wrapper.get('button.visibility-toggle');
         expect(visibility.attributes('aria-pressed')).toBe('false');

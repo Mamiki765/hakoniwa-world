@@ -14,6 +14,7 @@ use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
+use App\Services\MapCellPresenter;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,14 @@ final class SurfaceShipFoundationTest extends TestCase
         foreach (range(0, 2) as $index) {
             $fishing[] = $this->createShip($world, $nation, $cells[$index], 'fishing', 1);
         }
+        $shipView = app(MapCellPresenter::class)->present($cells[0]->fresh(), $nation->id, 1);
+        $this->assertNull($shipView['owner_nation_id']);
+        $this->assertSame($nation->nation_number, $shipView['ship']['owner_nation']['nation_number']);
+        $this->assertStringContainsString('このマスの所有者 中立', $shipView['aria_label']);
+        $this->assertStringContainsString(
+            "船の所有者 {$nation->name} N{$nation->nation_number}",
+            $shipView['aria_label'],
+        );
         $this->assertCount(3, $nation->ships()->where('state', Ship::STATE_ACTIVE)
             ->where('ship_type_key', 'fishing')->get());
         $this->assertConstraintRejects(

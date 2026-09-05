@@ -23,6 +23,7 @@ const selected: MapCell = {
 
 const definition = (overrides: Partial<CommandDefinition> = {}): CommandDefinition => ({
     key: 'land_clear', name: '整地', description: '平地にします。', cost_money: 5,
+    consumes_turn: true,
     target_type: 'cell', quantity_semantics: 'unused', quantity_default: 1, quantity_options: [], parameters: {},
     execution_phase: 'terrain', initial_facility_capacity: null,
     applicable: true, available: true, shortfall_money: 0, unavailable_reason: null,
@@ -34,6 +35,7 @@ const item = (id: number, position: number, overrides: Partial<CommandQueueItem>
     id, command_key: 'land_clear', command_name: '整地', queue_position: position,
     target_context: 'surface_cell', target_x: 8, target_y: 7, target_layer: null, target_slot_index: null,
     quantity: 1, quantity_semantics: 'unused', quantity_label: null,
+    consumes_turn: true,
     parameters: {}, status: 'queued', queued_at: null,
     ...overrides,
 });
@@ -44,7 +46,7 @@ function commandQueue(version = 1, items: CommandQueueItem[] = [], limit = 20): 
         const position = index + 1;
         const explicit = byPosition.get(position);
         return explicit === undefined
-            ? { position, kind: 'automatic_finance', editable: false, command_name: '資金繰り', quantity: null }
+            ? { position, kind: 'automatic_finance', editable: false, command_name: '資金繰り', quantity: null, consumes_turn: false }
             : { ...explicit, position, kind: 'explicit', editable: true };
     });
     return { version, limit, explicit_count: items.length, items, plan };
@@ -174,13 +176,17 @@ describe('command plan workspace', () => {
             if (init?.method === 'POST') return errorResponse('The given data was invalid.', 422, {
                 errors: { target_x: ['首都の上には建設できません'] },
             });
-            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : commandQueue());
+            return jsonResponse(String(input).includes('command-definitions')
+                ? catalog([definition({ key: 'excavate', quantity_semantics: 'ordinary' })])
+                : commandQueue());
         });
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await flushPromises();
 
         await wrapper.find('.command-grid button').trigger('click');
+        await wrapper.find('.command-entry-sheet input[type="number"]').setValue('5');
+        await wrapper.find('.command-entry-sheet form').trigger('submit');
         await flushPromises();
 
         const status = wrapper.get('.command-status');
@@ -188,6 +194,8 @@ describe('command plan workspace', () => {
         expect(status.classes()).toContain('command-status--error');
         expect(status.attributes('role')).toBe('alert');
         expect(status.attributes('aria-live')).toBe('assertive');
+        expect(wrapper.get('.command-entry-sheet [role="alert"]').text()).toBe(status.text());
+        expect(wrapper.find<HTMLInputElement>('.command-entry-sheet input[type="number"]').element.value).toBe('5');
     });
 
     it('does not expose an untyped domain exception from a 422 response', async () => {
@@ -226,7 +234,8 @@ describe('command plan workspace', () => {
             placements: [{ id: 1, position: 2 }, { id: 2, position: 1 }],
             expected_version: 3,
         });
-        expect(wrapper.find('.plan-row-actions').classes()).not.toContain('always-visible');
+        expect(wrapper.find('.plan-row-actions').exists()).toBe(false);
+        expect(wrapper.get('.plan-selection-toolbar').text()).toContain('1番を選択中');
         expect(wrapper.find('.command-panel').exists()).toBe(true);
         expect(wrapper.find('.plan-panel').exists()).toBe(true);
 
@@ -286,7 +295,7 @@ describe('command plan workspace', () => {
 
         await row.trigger('click');
         expect(row.classes()).toContain('selected');
-        expect(row.find('.plan-row-actions').text()).toContain('数量');
+        expect(wrapper.get('.plan-selection-toolbar').text()).toContain('数量を変更');
         await row.trigger('keydown', { key: 'q' });
         expect(wrapper.find('.plan-parameter-popover').exists()).toBe(true);
     });
@@ -331,7 +340,7 @@ describe('command plan workspace', () => {
         expect(button.attributes('title')).toContain('海底油田');
         await button.trigger('click');
         expect(wrapper.find('.parameter-popover input[type="number"]').exists()).toBe(true);
-        await wrapper.find('.parameter-popover').trigger('submit');
+        await wrapper.find('.command-entry-sheet form').trigger('submit');
         await flushPromises();
 
         const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
@@ -386,7 +395,7 @@ describe('command plan workspace', () => {
         for (const button of buttons.slice(0, 4)) {
             await button.trigger('click');
             expect(wrapper.find('.parameter-popover input[type="number"]').exists()).toBe(true);
-            await wrapper.find('.parameter-popover').trigger('submit');
+            await wrapper.find('.command-entry-sheet form').trigger('submit');
             await flushPromises();
         }
         expect(posted).toEqual([99, 99, 99, 1]);
@@ -395,7 +404,7 @@ describe('command plan workspace', () => {
         expect(wrapper.find('.parameter-popover button[type="submit"]').attributes('disabled')).toBeDefined();
         expect(posted).toHaveLength(4);
         await wrapper.find('.parameter-popover select').setValue('1');
-        await wrapper.find('.parameter-popover').trigger('submit');
+        await wrapper.find('.command-entry-sheet form').trigger('submit');
         await flushPromises();
         expect(posted).toEqual([99, 99, 99, 1, 1]);
     });
@@ -434,7 +443,7 @@ describe('command plan workspace', () => {
         expect(targetSelector.exists()).toBe(true);
         expect(targetSelector.text()).toContain('援助対象島 (7)');
         await targetSelector.setValue('42');
-        await wrapper.find('.parameter-popover').trigger('submit');
+        await wrapper.find('.command-entry-sheet form').trigger('submit');
         await flushPromises();
 
         const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
@@ -478,7 +487,7 @@ describe('command plan workspace', () => {
         expect(popover.findAll('select')).toHaveLength(1);
         await popover.find('.nation-target-select').setValue('42');
         await popover.find('input[type="number"]').setValue('5');
-        await popover.trigger('submit');
+        await popover.find('form').trigger('submit');
         await flushPromises();
 
         const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
@@ -519,7 +528,7 @@ describe('command plan workspace', () => {
         expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ command_key: 'land_clear' });
     });
 
-    it('opens quantity editing from a single plan-row tap through landscape touch width', async () => {
+    it('selects a mobile plan row and keeps its controls in a separate action area', async () => {
         const matchMedia = vi.fn((query: string) => ({ matches: query === '(max-width: 900px)' }));
         vi.stubGlobal('matchMedia', matchMedia);
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
@@ -531,13 +540,14 @@ describe('command plan workspace', () => {
         await flushPromises();
 
         await wrapper.find('.plan-row').trigger('click');
-        expect(wrapper.find('.plan-parameter-popover').exists()).toBe(true);
-        expect(matchMedia).toHaveBeenCalledWith('(max-width: 900px)');
-        expect(wrapper.findAll('.plan-row-actions button').map((button) => button.attributes('aria-label')))
-            .toEqual(['前へ移動', '後へ移動', undefined, undefined]);
+        expect(wrapper.find('.plan-parameter-popover').exists()).toBe(false);
+        expect(matchMedia).not.toHaveBeenCalled();
+        expect(wrapper.find('.plan-row-actions').exists()).toBe(false);
+        expect(wrapper.findAll('.plan-selection-actions button').map((button) => button.text()))
+            .toEqual(['上へ', '下へ', '数量を変更', '取消']);
     });
 
-    it('keeps pending-command and plan-editor quantities independent', async () => {
+    it('keeps the pending command context modal and blocks plan-row editing behind it', async () => {
         const excavate = definition({ key: 'excavate', quantity_semantics: 'ordinary' });
         const queued = item(9, 1, {
             command_key: 'excavate', command_name: '掘削', quantity: 2, quantity_semantics: 'ordinary',
@@ -549,15 +559,12 @@ describe('command plan workspace', () => {
         await flushPromises();
 
         await wrapper.find('.command-grid button').trigger('click');
-        const pendingInput = wrapper.find<HTMLInputElement>('.available-commands .parameter-popover input');
+        const pendingInput = wrapper.find<HTMLInputElement>('.command-entry-sheet input');
         await pendingInput.setValue('5');
         await wrapper.find('.plan-row').trigger('dblclick');
-        const editingInput = wrapper.find<HTMLInputElement>('.plan-parameter-popover input');
-        expect(editingInput.element.value).toBe('2');
-        await editingInput.setValue('9');
-
+        expect(wrapper.find('.plan-parameter-popover').exists()).toBe(false);
+        expect(wrapper.get('.command-entry-context').text()).toContain('x=8, y=7');
         expect(pendingInput.element.value).toBe('5');
-        expect(editingInput.element.value).toBe('9');
     });
 
     it('defers refresh during a committed add and finishes with the authoritative queue', async () => {
@@ -611,7 +618,7 @@ describe('command plan workspace', () => {
         await flushPromises();
 
         await wrapper.find('.command-grid button').trigger('click');
-        const pendingForm = wrapper.get('.available-commands .parameter-popover');
+        const pendingForm = wrapper.get('.command-entry-sheet form');
         await wrapper.setProps({ selected: { ...selected, x: 9 } });
         await vi.waitFor(() => expect(definitionReads).toBe(2));
         expect(pendingForm.get('button[type="submit"]').attributes('disabled')).toBeDefined();
@@ -620,9 +627,12 @@ describe('command plan workspace', () => {
 
         resolveDefinitions(jsonResponse(catalog([definition({ name: '更新後コマンド', quantity_semantics: 'ordinary' })])));
         await vi.waitFor(() => expect(wrapper.text()).toContain('更新後コマンド'));
-        expect(wrapper.find('.available-commands .parameter-popover').exists()).toBe(false);
+        expect(wrapper.find('.command-entry-sheet').exists()).toBe(true);
+        expect(wrapper.get('.command-entry-context').text()).toContain('x=8, y=7');
         await pendingForm.trigger('submit');
-        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+        await flushPromises();
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ target_x: 8, target_y: 7, expected_version: 1 });
         expect(wrapper.get('.plan-panel').attributes('aria-busy')).toBe('false');
     });
 
@@ -822,7 +832,7 @@ describe('command plan workspace', () => {
 
         await wrapper.find('.plan-row').trigger('keydown', { key: 'Escape' });
         expect(wrapper.find('.plan-row').classes()).toContain('selected');
-        const cancel = wrapper.findAll('.plan-row-actions button').find((button) => button.text() === '取消')!;
+        const cancel = wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '取消')!;
         await cancel.trigger('click');
         await flushPromises();
         expect(wrapper.findAll('.plan-row')[0]!.text()).toContain('掘削');
@@ -842,7 +852,7 @@ describe('command plan workspace', () => {
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await flushPromises();
 
-        const cancel = wrapper.findAll('.plan-row-actions button').find((button) => button.text() === '取消')!;
+        const cancel = wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '取消')!;
         await cancel.trigger('click');
         await flushPromises();
 
@@ -992,9 +1002,12 @@ describe('command plan workspace', () => {
         await wrapper.findAll('.command-grid button')[0]!.trigger('click');
         expect(wrapper.find('.command-modal').text()).toContain('自爆');
         expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+        await wrapper.setProps({ selected: { ...selected, x: 9 } });
+        await flushPromises();
         await wrapper.find('.command-modal .danger-action').trigger('click');
         await flushPromises();
-        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true);
+        const confirmedPost = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(confirmedPost?.[1]?.body))).toMatchObject({ target_x: 8, target_y: 7 });
 
         await wrapper.findAll('.command-grid button')[1]!.trigger('click');
         expect(wrapper.find('.parameter-popover').exists()).toBe(true);

@@ -2268,9 +2268,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-first-clear-story h2').text()).toBe('●封印の解放');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('ペリドットは一つ目の封印の地を制覇した。');
         expect(wrapper.get('.underground-first-clear-results').text()).toContain('SPを40入手した。');
-        expect(wrapper.findAll('.underground-boss-warning')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-boss-warning')[0]!.text()).toBe('洞窟が崩れそうだ……');
-        expect(wrapper.findAll('.underground-boss-warning')[1]!.text()).toBe('天井が崩落し、ワイバーンは宙に舞い上がる……！');
+        expect(wrapper.findAll('.underground-action-log .is-warning')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-action-log .is-warning')[0]!.text()).toContain('洞窟が崩れそうだ……');
+        expect(wrapper.findAll('.underground-action-log .is-warning')[1]!.text()).toContain('天井が崩落し、ワイバーンは宙に舞い上がる……！');
         expect(wrapper.findAll('.underground-agility-combo')).toHaveLength(1);
         expect(wrapper.get('.underground-agility-combo').text()).toBe('2連続ヒット！');
         expect(wrapper.get('.underground-agility-combo').element.parentElement?.textContent).toContain('ワイバーンに420ダメージ。');
@@ -2521,16 +2521,18 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('ラウンド数');
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('残HP');
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('最終MP');
-        expect(wrapper.findAll('.underground-vitals progress.hp')).toHaveLength(4);
-        expect(wrapper.findAll('.underground-vitals progress.mp')).toHaveLength(4);
+        expect(wrapper.findAll('.underground-matchup-card')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-vitals progress.hp')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-vitals progress.mp')).toHaveLength(2);
         expect(wrapper.findAll('.underground-round')).toHaveLength(2);
         expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('Round 1');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('Round 2');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('深層追跡者に出血が付与された。');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('過去のペリドットは鈍足を防いだ。');
-        expect(wrapper.findAll('.underground-combatant-state')[0]!.get('strong').text()).toBe('過去のペリドット');
-        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('出血 残1・1段階');
-        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('闘志 2・恩寵 1');
+        expect(wrapper.findAll('.underground-matchup-card')[0]!.get('h2').text()).toBe('過去のペリドット');
+        expect(wrapper.findAll('.underground-matchup-card')[0]!.text()).not.toContain('状態 なし');
+        expect(wrapper.findAll('.underground-matchup-card')[0]!.text()).toContain('闘志 2');
+        expect(wrapper.findAll('.underground-matchup-card')[0]!.text()).toContain('恩寵 1');
         expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0G・ドロップなし');
         wrapper.unmount();
@@ -2644,9 +2646,9 @@ describe('application lobby and island entry', () => {
 
         await wrapper.get('.underground-history li button').trigger('click');
         await flushPromises();
-        expect(wrapper.get('.underground-awakening-event').text()).toContain('<img src=x onerror=alert(1)>');
-        expect(wrapper.find('.underground-awakening-event img').exists()).toBe(false);
-        expect(wrapper.get('.underground-awakening-event').text()).toContain('生命・武力・技巧・精神・敏捷が30%上昇した！');
+        expect(wrapper.get('.underground-action-log .is-awakening').text()).toContain('<img src=x onerror=alert(1)>');
+        expect(wrapper.find('.underground-action-log .is-awakening img').exists()).toBe(false);
+        expect(wrapper.get('.underground-action-log .is-awakening').text()).toContain('生命・武力・技巧・精神・敏捷が30%上昇した！');
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('awakening_triggered');
     });
 

@@ -3,5 +3,5 @@
 /* Keep the Awakening card/frame in its normal state; only the progress fill changes when full. */
 .underground-awakening-gauge[data-full="true"] {
     border-color: #3d6fb4;
-    background: color-mix(in srgb, var(--surface) 88%, #3d6fb4 12%);
+    background: color-mix(in srgb, var(--input-surface) 88%, #3d6fb4 12%);
 }

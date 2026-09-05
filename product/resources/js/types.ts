@@ -677,6 +677,7 @@ export interface CommandDefinition {
         default?: number;
     }>;
     cost_money: number;
+    consumes_turn: boolean;
     execution_phase: string;
     initial_facility_capacity: null | {
         facility_key: string;
@@ -725,6 +726,7 @@ export interface CommandQueueItem {
     quantity_semantics: 'ordinary' | 'selector' | 'unused';
     quantity_label: string | null;
     effective_cost_money?: number;
+    consumes_turn: boolean;
     parameters: Record<string, unknown>;
     status: string;
     queued_at: string | null;
@@ -744,6 +746,7 @@ export type EffectivePlanSlot = {
     editable: false;
     command_name: '資金繰り';
     quantity: null;
+    consumes_turn: false;
 } | (CommandQueueItem & {
     position: number;
     kind: 'explicit';

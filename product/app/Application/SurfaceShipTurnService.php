@@ -34,6 +34,7 @@ final class SurfaceShipTurnService
     public function __construct(
         private readonly SurfaceShipCatalog $catalog,
         private readonly CapacityBoundedAssetService $boundedAssets,
+        private readonly FoodOverflowResolver $foodOverflow,
         private readonly SecretaryExperienceAwardService $secretaryExperience,
         private readonly SurfaceShipRemovalService $removal,
         private readonly TurnEventRecorder $events,
@@ -299,6 +300,9 @@ final class SurfaceShipTurnService
                 $definition->movementRewardResourceUnits,
                 $context->ruleset,
             );
+            if ($resource->overflow > 0) {
+                $this->foodOverflow->resolve($context, $nation, $rewardResource, $resource);
+            }
         }
         $money = $definition->movementRewardMoney > 0
             ? $this->boundedAssets->creditMoney($nation, $definition->movementRewardMoney, $context->ruleset)
