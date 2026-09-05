@@ -27,6 +27,15 @@ interface QueueContext {
     mapSpaceId: number;
 }
 
+interface FrozenCommandContext extends QueueContext {
+    targetX: number | null;
+    targetY: number | null;
+    targetLayer: number | null;
+    targetSlotIndex: number | null;
+    position: number;
+    queueVersion: number;
+}
+
 const props = defineProps<{
     nationId: number;
     mapSpaceId: number;
@@ -61,8 +70,13 @@ const commandStatus = ref<CommandStatus>({ kind: 'idle', text: '未送信' });
 const shipStatus = ref<CommandStatus>({ kind: 'idle', text: '未変更' });
 const shipHeading = ref<number | null>(null);
 const selectedPosition = ref(1);
+const selectedItemId = ref<number | null>(null);
+const pendingNeedsConfirmation = ref(false);
 const draggedItemId = ref<number | null>(null);
 const pendingDefinition = ref<CommandDefinition | null>(null);
+const pendingCommandContext = ref<FrozenCommandContext | null>(null);
+const commandDialog = ref<HTMLElement | null>(null);
+const commandTrigger = ref<HTMLElement | null>(null);
 const editingItem = ref<CommandQueueItem | null>(null);
 const pendingQuantity = ref<number | null>(1);
 const editingQuantity = ref<number | null>(1);
@@ -85,6 +99,20 @@ const pendingCostMoney = computed(() => {
         ?? definition.cost_money;
 });
 const ownShip = computed(() => props.selected?.ship?.is_owner === true ? props.selected.ship : null);
+const selectedPlanSlot = computed(() => queue.value.plan.find((slot) => slot.position === selectedPosition.value) ?? null);
+const selectedPlanItem = computed(() => {
+    const slot = queue.value.plan.find((slot) => slot.kind === 'explicit' && slot.id === selectedItemId.value);
+    return slot?.kind === 'explicit' ? slot : null;
+});
+const pendingTargetLabel = computed(() => {
+    const context = pendingCommandContext.value;
+    if (context === null) return '';
+    if (context.targetLayer !== null && context.targetSlotIndex !== null) {
+        return `地下${context.targetLayer}層・slot ${context.targetSlotIndex}`;
+    }
+    if (context.targetX !== null && context.targetY !== null) return `x=${context.targetX}, y=${context.targetY}`;
+    return '島全体';
+});
 
 watch(
     () => [ownShip.value?.id, ownShip.value?.heading],
@@ -172,7 +200,6 @@ async function refresh(): Promise<void> {
         if (generation !== refreshGeneration) return;
         definitions.value = nextDefinitions.commands;
         quantityContract.value = nextDefinitions.quantity_contract;
-        pendingDefinition.value = null;
         applyServerQueue(nextQueue);
     } catch (error) {
         if (generation !== refreshGeneration || isAbortError(error)) return;
@@ -185,34 +212,63 @@ async function refresh(): Promise<void> {
     }
 }
 
-function chooseCommand(definition: CommandDefinition): void {
+function chooseCommand(definition: CommandDefinition, event?: Event): void {
     if (!definition.available || !hasSelectedTarget(definition)) return;
+    const trigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const frozen = freezeCommandContext();
     if (definition.confirmation_message) {
         confirmation.value = {
             message: definition.confirmation_message,
             confirmLabel: '自爆を登録',
             action: () => {
                 confirmation.value = null;
-                prepareCommand(definition);
+                prepareCommand(definition, trigger, frozen);
             },
         };
         return;
     }
-    prepareCommand(definition);
+    prepareCommand(definition, trigger, frozen);
 }
 
-function prepareCommand(definition: CommandDefinition): void {
+function freezeCommandContext(): FrozenCommandContext {
+    const underground = props.selectedUnderground ?? null;
+    const selected = underground !== null || props.selected === null ? null : props.selected;
+    return {
+        nationId: props.nationId,
+        mapSpaceId: props.mapSpaceId,
+        targetX: selected?.x ?? null,
+        targetY: selected?.y ?? null,
+        targetLayer: underground?.layer ?? null,
+        targetSlotIndex: underground?.slot_index ?? null,
+        position: selectedPosition.value,
+        queueVersion: queue.value.version,
+    };
+}
+
+function prepareCommand(
+    definition: CommandDefinition,
+    trigger: HTMLElement | null = null,
+    frozen = freezeCommandContext(),
+): void {
+    pendingNeedsConfirmation.value = false;
     pendingQuantity.value = definition.quantity_default;
     commandParameters.value = Object.fromEntries(Object.entries(definition.parameters).map(([key, schema]) => [
         key,
         schema.default ?? null,
     ]));
-    if (definition.quantity_semantics !== 'unused' || Object.keys(definition.parameters).length > 0) {
+    if (definition.quantity_semantics !== 'unused' || Object.keys(definition.parameters).length > 0 || definition.execution_warnings.length > 0) {
+        commandTrigger.value = trigger;
+        pendingCommandContext.value = frozen;
         pendingDefinition.value = definition;
+        void nextTick(() => {
+            const focusTarget = commandDialog.value?.querySelector<HTMLElement>('input, select, button');
+            focusTarget?.focus();
+        });
         return;
     }
     pendingDefinition.value = null;
-    void addCommand(definition, definition.quantity_default ?? quantityContract.value.default, {});
+    pendingCommandContext.value = null;
+    void addCommand(definition, definition.quantity_default ?? quantityContract.value.default, {}, frozen);
 }
 
 async function bulkInsert(action: 'clear_all' | 'level_all' | 'reclaim_clear_all' | 'reclaim_level_all'): Promise<void> {
@@ -298,28 +354,27 @@ const parametersAreValid = computed(() => {
 });
 
 async function addPendingCommand(): Promise<void> {
+    if (pendingNeedsConfirmation.value) return;
     const definition = pendingDefinition.value;
-    if (definition === null || !pendingQuantityIsValid.value || !parametersAreValid.value || pendingQuantity.value === null) return;
+    const frozen = pendingCommandContext.value;
+    if (definition === null || frozen === null || !pendingQuantityIsValid.value || !parametersAreValid.value || pendingQuantity.value === null) return;
     const parameters: Record<string, number> = {};
     for (const [key, value] of Object.entries(commandParameters.value)) {
         if (value !== null) parameters[key] = value;
     }
-    if (await addCommand(definition, pendingQuantity.value, parameters)) pendingDefinition.value = null;
+    if (await addCommand(definition, pendingQuantity.value, parameters, frozen)) closePendingCommand();
 }
 
 async function addCommand(
     definition: CommandDefinition,
     requestedQuantity: number,
     parameters: Record<string, number>,
+    frozen = freezeCommandContext(),
 ): Promise<boolean> {
-    if (!hasSelectedTarget(definition) || !definition.available) return false;
+    if (!definition.available) return false;
     if (busy.value) return false;
-    const context = queueContext();
-    const underground = props.selectedUnderground ?? null;
-    const selected = underground !== null || props.selected === null
-        ? null
-        : { x: props.selected.x, y: props.selected.y };
-    const submittedPosition = selectedPosition.value;
+    const context: QueueContext = { nationId: frozen.nationId, mapSpaceId: frozen.mapSpaceId };
+    const submittedPosition = frozen.position;
     const path = basePath(context.nationId, context.mapSpaceId);
     beginMutation();
 
@@ -328,13 +383,13 @@ async function addCommand(
             method: 'POST',
             body: JSON.stringify({
                 command_key: definition.key,
-                target_x: definition.target_type === 'cell' ? selected?.x : null,
-                target_y: definition.target_type === 'cell' ? selected?.y : null,
-                target_layer: definition.target_type === 'underground_slot' ? underground?.layer : null,
-                target_slot_index: definition.target_type === 'underground_slot' ? underground?.slot_index : null,
+                target_x: definition.target_type === 'cell' ? frozen.targetX : null,
+                target_y: definition.target_type === 'cell' ? frozen.targetY : null,
+                target_layer: definition.target_type === 'underground_slot' ? frozen.targetLayer : null,
+                target_slot_index: definition.target_type === 'underground_slot' ? frozen.targetSlotIndex : null,
                 position: submittedPosition,
                 request_key: crypto.randomUUID(),
-                expected_version: queue.value.version,
+                expected_version: frozen.queueVersion,
                 quantity: requestedQuantity,
                 parameters,
             }),
@@ -343,6 +398,7 @@ async function addCommand(
             refreshRequestedAfterMutation = true;
             return false;
         }
+        selectedItemId.value = null;
         applyServerQueue(result.queue);
         if (selectedPosition.value === submittedPosition) {
             selectedPosition.value = clampPosition(submittedPosition + 1, result.queue.limit);
@@ -361,12 +417,35 @@ async function addCommand(
     }
 }
 
+function closePendingCommand(): void {
+    pendingNeedsConfirmation.value = false;
+    pendingDefinition.value = null;
+    pendingCommandContext.value = null;
+    const trigger = commandTrigger.value;
+    commandTrigger.value = null;
+    void nextTick(() => trigger?.focus());
+}
+
+function trapCommandDialogFocus(event: KeyboardEvent): void {
+    if (event.key !== 'Tab' || commandDialog.value === null) return;
+    const focusable = [...commandDialog.value.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )];
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+    }
+}
+
 function selectPlanSlot(slot: EffectivePlanSlot): void {
     selectedPosition.value = slot.position;
-    if (slot.kind === 'explicit' && slot.quantity_semantics === 'ordinary'
-        && window.matchMedia?.('(max-width: 900px)').matches) {
-        openQuantityEditor(slot);
-    }
+    selectedItemId.value = slot.kind === 'explicit' ? slot.id : null;
 }
 
 function beginDrag(slot: EffectivePlanSlot): void {
@@ -390,7 +469,7 @@ async function dropAt(target: EffectivePlanSlot): Promise<void> {
     await mutateQueue('PUT', `${basePath()}/command-queue/reorder`, {
         placements,
         expected_version: queue.value.version,
-    });
+    }, sourceId);
 }
 
 async function move(itemId: number, delta: number): Promise<void> {
@@ -414,7 +493,7 @@ async function cancel(itemId: number): Promise<void> {
 }
 
 function openQuantityEditor(item: CommandQueueItem): void {
-    if (item.quantity_semantics !== 'ordinary') return;
+    if (pendingDefinition.value !== null || item.quantity_semantics !== 'ordinary') return;
     editingItem.value = item;
     editingQuantity.value = item.quantity;
 }
@@ -449,7 +528,7 @@ function planKeydown(event: KeyboardEvent, slot: EffectivePlanSlot): void {
     }
 }
 
-async function mutateQueue(method: 'PUT' | 'PATCH' | 'DELETE', path: string, body: object): Promise<boolean> {
+async function mutateQueue(method: 'PUT' | 'PATCH' | 'DELETE', path: string, body: object, followItemId = selectedItemId.value): Promise<boolean> {
     if (busy.value) return false;
     const context = queueContext();
     beginMutation();
@@ -459,6 +538,7 @@ async function mutateQueue(method: 'PUT' | 'PATCH' | 'DELETE', path: string, bod
             refreshRequestedAfterMutation = true;
             return false;
         }
+        selectedItemId.value = followItemId;
         applyServerQueue(nextQueue);
         setCommandSuccess();
         return true;
@@ -483,6 +563,11 @@ function applyServerQueue(nextQueue: CommandQueue): void {
     queue.value = nextQueue;
     emit('queue', nextQueue);
     selectedPosition.value = clampPosition(selectedPosition.value, nextQueue.limit);
+    if (selectedItemId.value !== null) {
+        const selected = nextQueue.items.find((item) => item.id === selectedItemId.value);
+        if (selected) selectedPosition.value = selected.queue_position;
+        else selectedItemId.value = null;
+    }
     synchronizeEditingItem(nextQueue);
 }
 
@@ -558,12 +643,21 @@ function handleMutationError(error: unknown): void {
         return;
     }
     if (error instanceof ApiError && error.status === 409) {
+        if (pendingCommandContext.value !== null) pendingNeedsConfirmation.value = true;
         setCommandError('開発計画が更新されたため再読み込みしました');
         refreshRequestedAfterMutation = true;
         return;
     }
     setCommandError(playerFacingReason(error, '通信に失敗しました'));
     if (!(error instanceof ApiError) || error.status >= 500) refreshRequestedAfterMutation = true;
+}
+
+function confirmPendingPlan(): void {
+    const context = pendingCommandContext.value;
+    if (busy.value || context === null || !isCurrentQueueContext(context) || queue.value.version <= context.queueVersion) return;
+    pendingCommandContext.value = { ...context, queueVersion: queue.value.version };
+    pendingNeedsConfirmation.value = false;
+    commandStatus.value = { kind: 'idle', text: '最新の計画を確認しました。入力内容を確認して登録してください' };
 }
 
 function playerFacingReason(error: unknown, fallback: string): string {
@@ -585,7 +679,7 @@ onBeforeUnmount(() => {
 
 <template>
     <div class="command-workspace">
-        <aside class="command-panel" aria-label="セル情報と開発コマンド" :aria-busy="busy">
+        <aside class="command-panel" aria-label="セル情報と開発コマンド" :aria-busy="busy" :inert="pendingDefinition ? true : undefined">
             <div class="command-panel-body">
                 <section v-if="selectedUnderground" class="underground-target-summary" aria-label="選択中の地下施設枠">
                     <p class="eyebrow">UNDERGROUND SLOT</p>
@@ -624,55 +718,6 @@ onBeforeUnmount(() => {
                     >
                         {{ commandStatus.text }}
                     </p>
-                    <form v-if="pendingDefinition" class="parameter-popover" @submit.prevent="addPendingCommand">
-                        <strong>{{ pendingDefinition.name }}の設定</strong>
-                        <label v-if="pendingDefinition.quantity_semantics === 'selector'">種類
-                            <select v-model.number="pendingQuantity" required>
-                                <option :value="null" disabled>選択してください</option>
-                                <option v-for="option in pendingDefinition.quantity_options" :key="option.key" :value="option.value">
-                                    {{ option.label }}<template v-if="option.cost_money !== undefined">（{{ formatExactMoney(option.cost_money) }}）</template>
-                                </option>
-                            </select>
-                        </label>
-                        <p v-if="pendingDefinition.quantity_semantics === 'selector'" class="selector-cost">
-                            必要資金 {{ formatExactMoney(pendingCostMoney) }}
-                        </p>
-                        <template v-else-if="pendingDefinition.quantity_semantics === 'ordinary'">
-                            <div class="preset-row">
-                                <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="pendingQuantity = preset">{{ preset }}</button>
-                            </div>
-                            <label>数量
-                                <input v-model.number="pendingQuantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
-                            </label>
-                        </template>
-                        <label v-for="(schema, key) in pendingDefinition.parameters" :key="key">
-                            {{ schema.label }}
-                            <select
-                                v-if="schema.input_semantics === 'nation_selector'"
-                                v-model.number="commandParameters[key]"
-                                class="nation-target-select"
-                                :required="schema.required && !schema.nullable"
-                            >
-                                <option :value="null">対象島なし</option>
-                                <option v-for="option in schema.options" :key="option.value" :value="option.value">
-                                    {{ option.label }} ({{ option.nation_number }})
-                                </option>
-                            </select>
-                            <input
-                                v-else
-                                v-model.number="commandParameters[key]"
-                                type="number"
-                                step="1"
-                                :min="schema.minimum"
-                                :max="schema.maximum"
-                                :required="schema.required && !schema.nullable"
-                            >
-                        </label>
-                        <div class="popover-actions">
-                            <button type="button" @click="pendingDefinition = null">閉じる</button>
-                            <button type="submit" :disabled="busy || !pendingQuantityIsValid || !parametersAreValid">計画へ登録</button>
-                        </div>
-                    </form>
                     <div v-if="applicableDefinitions.length" class="command-grid">
                         <button
                             v-for="definition in applicableDefinitions"
@@ -680,7 +725,7 @@ onBeforeUnmount(() => {
                             type="button"
                             :disabled="busy || !definition.available || queue.explicit_count >= queue.limit"
                             :title="definition.unavailable_reason ?? definition.description"
-                            @click="chooseCommand(definition)"
+                            @click="chooseCommand(definition, $event)"
                         >
                             <strong>
                                 {{ definition.name }}<span
@@ -689,9 +734,10 @@ onBeforeUnmount(() => {
                                 >{{ definition.command_suffix }}</span>
                             </strong>
                             <span>{{ formatExactMoney(definition.cost_money) }}</span>
+                            <span class="turn-cost-badge">{{ definition.consumes_turn ? '1ターン' : 'ターン消費なし' }}</span>
                             <span v-if="definition.initial_facility_capacity">初期 {{ definition.initial_facility_capacity.formatted }}</span>
                             <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
-                            <span v-for="warning in definition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</span>
+                            <span v-if="definition.execution_warnings.length" class="shortfall">注意事項あり</span>
                         </button>
                     </div>
                     <p v-else class="empty-state">
@@ -701,7 +747,7 @@ onBeforeUnmount(() => {
             </div>
         </aside>
 
-        <aside class="plan-panel" aria-label="開発計画" :aria-busy="busy">
+        <aside class="plan-panel" aria-label="開発計画" :aria-busy="busy" :inert="pendingDefinition ? true : undefined">
             <div class="plan-panel-body">
                 <div class="plan-heading">
                     <div>
@@ -717,6 +763,19 @@ onBeforeUnmount(() => {
                     <button type="button" :disabled="busy" @click="bulkInsert('reclaim_level_all')">浅瀬全て埋め立て＋地ならし</button>
                     <button type="button" class="danger-action" :disabled="busy" @click="confirmCancelFrom">ここから下を削除</button>
                 </div>
+                <section v-if="selectedPlanItem" class="plan-selection-toolbar" aria-label="選択中の計画を編集">
+                    <div>
+                        <span>{{ selectedPlanItem.position }}番を選択中</span>
+                        <strong>{{ selectedPlanItem.command_name }}</strong>
+                    </div>
+                    <div class="plan-selection-actions">
+                        <button type="button" :disabled="busy || selectedPlanItem.position === 1" @click="move(selectedPlanItem.id, -1)">上へ</button>
+                        <button type="button" :disabled="busy || selectedPlanItem.position === queue.limit" @click="move(selectedPlanItem.id, 1)">下へ</button>
+                        <button v-if="selectedPlanItem.quantity_semantics === 'ordinary'" type="button" :disabled="busy" @click="openQuantityEditor(selectedPlanItem)">数量を変更</button>
+                        <button type="button" class="danger-action" :disabled="busy" @click="cancel(selectedPlanItem.id)">取消</button>
+                    </div>
+                </section>
+                <p v-else-if="selectedPlanSlot?.kind === 'automatic_finance'" class="queue-notice plan-selection-note">{{ selectedPlanSlot.position }}番は、空き枠で自動実行される資金繰りです。</p>
                 <ol class="plan-list">
                     <li
                         v-for="slot in queue.plan"
@@ -725,6 +784,7 @@ onBeforeUnmount(() => {
                         :class="{ selected: selectedPosition === slot.position, automatic: slot.kind === 'automatic_finance' }"
                         :draggable="slot.kind === 'explicit' && !busy"
                         tabindex="0"
+                        :aria-current="selectedPosition === slot.position ? 'true' : undefined"
                         @click="selectPlanSlot(slot)"
                         @dblclick="slot.kind === 'explicit' && openQuantityEditor(slot)"
                         @contextmenu.prevent="slot.kind === 'explicit' && cancel(slot.id)"
@@ -744,6 +804,7 @@ onBeforeUnmount(() => {
                                 >{{ slot.command_suffix }}</span>
                                 <template v-if="slot.kind === 'explicit' && slot.quantity_semantics === 'ordinary'"> ×{{ slot.quantity }}</template>
                                 <template v-else-if="slot.kind === 'explicit' && slot.quantity_semantics === 'selector'">（{{ slot.quantity_label }}）</template>
+                                <span class="plan-turn-marker">{{ slot.kind === 'automatic_finance' ? '自動' : slot.consumes_turn ? '1T' : '0T' }}</span>
                             </strong>
                             <small v-if="slot.kind === 'explicit' && slot.target_context === 'underground_slot'">
                                 地下{{ slot.target_layer }}層・slot {{ slot.target_slot_index }}
@@ -751,13 +812,7 @@ onBeforeUnmount(() => {
                             <small v-else-if="slot.kind === 'explicit'">
                                 x={{ slot.target_x }}, y={{ slot.target_y }}
                             </small>
-                            <small v-else>自動</small>
-                        </span>
-                        <span v-if="slot.kind === 'explicit'" class="plan-row-actions">
-                            <button type="button" aria-label="前へ移動" :disabled="busy || slot.position === 1" @click.stop="move(slot.id, -1)">↑</button>
-                            <button type="button" aria-label="後へ移動" :disabled="busy || slot.position === queue.limit" @click.stop="move(slot.id, 1)">↓</button>
-                            <button v-if="slot.quantity_semantics === 'ordinary'" type="button" :disabled="busy" @click.stop="openQuantityEditor(slot)">数量</button>
-                            <button type="button" :disabled="busy" @click.stop="cancel(slot.id)">取消</button>
+                            <small v-else>空き枠の資金繰り</small>
                         </span>
                     </li>
                 </ol>
@@ -776,6 +831,77 @@ onBeforeUnmount(() => {
                 </form>
             </div>
         </aside>
+        <div v-if="pendingDefinition && pendingCommandContext" class="command-entry-backdrop" role="presentation">
+            <section
+                ref="commandDialog"
+                class="command-entry-sheet parameter-popover"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="command-entry-title"
+                @keydown.esc.stop.prevent="closePendingCommand"
+                @keydown.tab="trapCommandDialogFocus"
+            >
+                <header class="command-entry-heading">
+                    <div>
+                        <p class="eyebrow">COMMAND INPUT</p>
+                        <h3 id="command-entry-title">{{ pendingDefinition.name }}</h3>
+                    </div>
+                    <button type="button" aria-label="入力を閉じる" @click="closePendingCommand">×</button>
+                </header>
+                <dl class="command-entry-context">
+                    <div><dt>対象</dt><dd>{{ pendingTargetLabel }}</dd></div>
+                    <div><dt>計画位置</dt><dd>{{ pendingCommandContext.position }}番</dd></div>
+                </dl>
+                <p v-if="commandStatus.kind === 'error'" class="command-status command-status--error" role="alert" aria-live="assertive">
+                    {{ commandStatus.text }}
+                </p>
+                <form @submit.prevent="addPendingCommand">
+                    <p v-for="warning in pendingDefinition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</p>
+                    <section v-if="pendingNeedsConfirmation" aria-label="最新計画の再確認">
+                        <p>入力と対象は保持しています。最新の計画を確認してください（この位置へ挿入します）。</p>
+                        <ol>
+                            <li v-for="slot in queue.plan" :key="slot.position">
+                                {{ slot.position }}番：{{ slot.command_name }}<strong v-if="slot.position === pendingCommandContext.position"> ← 挿入位置</strong>
+                                <small v-if="slot.kind === 'explicit'">
+                                    ×{{ slot.quantity }}・{{ slot.target_context === 'underground_slot' ? `地下${slot.target_layer}層 slot ${slot.target_slot_index}` : `x=${slot.target_x}, y=${slot.target_y}` }}
+                                </small>
+                            </li>
+                        </ol>
+                        <button type="button" :disabled="busy" @click="requestRefresh">最新計画を再取得</button>
+                        <button type="button" :disabled="busy || queue.version <= pendingCommandContext.queueVersion" @click="confirmPendingPlan">最新計画と挿入位置を確認した</button>
+                    </section>
+                    <label v-if="pendingDefinition.quantity_semantics === 'selector'">種類
+                        <select v-model.number="pendingQuantity" required>
+                            <option :value="null" disabled>選択してください</option>
+                            <option v-for="option in pendingDefinition.quantity_options" :key="option.key" :value="option.value">
+                                {{ option.label }}<template v-if="option.cost_money !== undefined">（{{ formatExactMoney(option.cost_money) }}）</template>
+                            </option>
+                        </select>
+                    </label>
+                    <p v-if="pendingDefinition.quantity_semantics === 'selector'" class="selector-cost">必要資金 {{ formatExactMoney(pendingCostMoney) }}</p>
+                    <template v-else-if="pendingDefinition.quantity_semantics === 'ordinary'">
+                        <div class="preset-row" aria-label="数量の候補">
+                            <button v-for="preset in quantityContract.quick_presets" :key="preset" type="button" @click="pendingQuantity = preset">{{ preset }}</button>
+                        </div>
+                        <label>数量
+                            <input v-model.number="pendingQuantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
+                        </label>
+                    </template>
+                    <label v-for="(schema, key) in pendingDefinition.parameters" :key="key">
+                        {{ schema.label }}
+                        <select v-if="schema.input_semantics === 'nation_selector'" v-model.number="commandParameters[key]" class="nation-target-select" :required="schema.required && !schema.nullable">
+                            <option :value="null">対象島なし</option>
+                            <option v-for="option in schema.options" :key="option.value" :value="option.value">{{ option.label }} ({{ option.nation_number }})</option>
+                        </select>
+                        <input v-else v-model.number="commandParameters[key]" type="number" step="1" :min="schema.minimum" :max="schema.maximum" :required="schema.required && !schema.nullable">
+                    </label>
+                    <div class="popover-actions">
+                        <button type="button" @click="closePendingCommand">キャンセル</button>
+                        <button type="submit" :disabled="busy || pendingNeedsConfirmation || !pendingQuantityIsValid || !parametersAreValid">計画へ登録</button>
+                    </div>
+                </form>
+            </section>
+        </div>
         <div v-if="confirmation" class="command-modal-backdrop" role="presentation" @click.self="confirmation = null">
             <section class="command-modal" role="alertdialog" aria-modal="true" aria-labelledby="command-confirmation-title">
                 <h3 id="command-confirmation-title">確認</h3>

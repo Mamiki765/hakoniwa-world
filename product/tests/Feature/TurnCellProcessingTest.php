@@ -10,6 +10,7 @@ use App\Application\OceanWorldGenerator;
 use App\Application\SecretaryTurnService;
 use App\Application\SurfaceShipTurnService;
 use App\Application\WorldExpansionService;
+use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -69,6 +70,12 @@ class TurnCellProcessingTest extends TestCase
         ]);
         $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
         $fish = ResourceDefinition::query()->where('key', 'fish')->firstOrFail();
+        $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
+        $foodCapacity = app(NationCapacityResolver::class)
+            ->resolve($nation, $world->rulesetVersion()->firstOrFail())->foodTons;
+        NationResource::query()->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+            ->update(['amount' => 0]);
         NationResource::query()->updateOrCreate(
             ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
             ['amount' => 5],
@@ -77,8 +84,13 @@ class TurnCellProcessingTest extends TestCase
             ['nation_id' => $nation->id, 'resource_definition_id' => $fish->id],
             ['amount' => 0],
         );
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $wheat->id],
+            ['amount' => $foodCapacity],
+        );
+        $nation->update(['money' => 0]);
 
-        [$context] = $this->context(
+        [$context, $run] = $this->context(
             $world,
             $nation,
             [$origin->id, $destination->id, $later->id],
@@ -87,12 +99,27 @@ class TurnCellProcessingTest extends TestCase
         $metrics = app(CompleteTurnEngine::class)->execute('process_cells', $context)->metrics;
         app(SecretaryTurnService::class)->flushExperience($context);
 
-        $this->assertSame([1, 1, 1, 4, 7_000], [
+        $this->assertSame([1, 1, 1, 0, 4, 0, 7], [
             $metrics['ship_events'], $metrics['ship_moves'], $metrics['ship_secretary_experience'],
+            $metrics['ship_fish_applied'],
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $fish->id)->value('amount'),
+            (int) $nation->fresh()->money,
+        ]);
+        $this->assertSame($foodCapacity, (int) NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
+            ->sum('amount'));
+        $moveEvent = $this->event($run, 'ship.moved');
+        $this->assertSame([7_000, 0, 7_000], [
+            $moveEvent['resource_requested'], $moveEvent['resource_applied'], $moveEvent['resource_overflow'],
+        ]);
+        $overflowEvent = $this->event($run, 'resource.food_overflow_resolved');
+        $this->assertSame(['fish', 7_000, 7_000, 7, 0], [
+            $overflowEvent['resource_key'], $overflowEvent['requested_overflow_tons'],
+            $overflowEvent['sold_tons'], $overflowEvent['revenue'], $overflowEvent['discarded_tons'],
         ]);
         $this->assertSame($destination->id, $ship->fresh()->map_cell_id);
         $this->assertSame(1, $user->secretary()->firstOrFail()->skills()

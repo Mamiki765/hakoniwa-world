@@ -312,6 +312,9 @@ async function save(): Promise<void> {
 
         <p v-if="mode === 'default'" class="status">初期設定を表示しています。編集するには「初期設定を複製して編集」を選んでください。</p>
         <p v-else-if="draftRules.length === 0" class="status warning">カスタムruleは0件です。戦闘ではdeterministic fallbackだけを使用します。</p>
+        <p class="status underground-ai-save-state" :class="{ warning: dirty && !busy }" role="status" aria-live="polite">
+            {{ busy ? '保存中です…' : dirty ? '未保存の変更があります。' : '保存済みです。' }}
+        </p>
         <p v-if="error" class="status error" role="alert">{{ error }}</p>
         <p v-if="notice" class="status" role="status">{{ notice }}</p>
 

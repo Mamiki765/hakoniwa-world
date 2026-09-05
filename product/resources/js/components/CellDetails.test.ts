@@ -20,9 +20,11 @@ function cell(overrides: Partial<MapCell> = {}): MapCell {
 }
 
 describe('viewer-safe cell details', () => {
-    it('shows the per-World nation number instead of the internal database id', () => {
+    it('separates a Ship owner from the neutral sea cell owner', () => {
         const wrapper = mount(CellDetails, { props: { cell: cell({
             display_name: '観光船',
+            terrain: 'sea', terrain_name: '海',
+            owner_nation_id: null, owner_nation_number: null, owner_name: null,
             ship: {
                 id: 7, key: 'tourist', name: '観光船', asset_key: 'ship.tourist',
                 current_hp: 2, max_hp: 2, public_state: 'active',
@@ -33,8 +35,12 @@ describe('viewer-safe cell details', () => {
 
         expect(wrapper.text()).toContain('N1');
         expect(wrapper.text()).not.toContain('N18');
-        expect(wrapper.text()).toContain('船HP2/2');
-        expect(wrapper.text()).toContain('船舶所有試験国（N1）');
+        expect(wrapper.text()).toContain('船の所有者試験国（N1）');
+        expect(wrapper.text()).toContain('HP2/2');
+        expect(wrapper.text()).toContain('地形海');
+        expect(wrapper.text()).toContain('このマスの所有者中立');
+        expect(wrapper.text()).not.toContain('船舶所有');
+        expect(wrapper.text().indexOf('船の所有者')).toBeLessThan(wrapper.text().indexOf('このマスの所有者'));
     });
 
     it.each([

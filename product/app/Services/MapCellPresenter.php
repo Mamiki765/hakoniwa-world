@@ -256,7 +256,7 @@ final class MapCellPresenter
         $suffix = array_map(static fn (array $detail): string => $detail['label'].' '.$detail['formatted'], $details);
         if ($ship !== null) {
             $suffix[] = sprintf(
-                '船 %s HP %d/%d 所有 %s N%d',
+                '船 %s HP %d/%d 船の所有者 %s N%d',
                 $ship['name'],
                 $ship['current_hp'],
                 $ship['max_hp'],
@@ -277,7 +277,7 @@ final class MapCellPresenter
         return trim(implode(' ', [
             "x {$cell->x} y {$cell->y}",
             $displayName,
-            '所有 '.($ownerNation === null
+            ($ship === null ? '所有 ' : 'このマスの所有者 ').($ownerNation === null
                 ? '中立'
                 : $ownerNation->name.' N'.$ownerNation->nation_number),
             ...$suffix,
