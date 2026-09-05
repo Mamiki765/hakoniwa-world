@@ -397,11 +397,21 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-matchup-vitals label > span { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem; }
 .underground-matchup-vitals label strong { font-size: .9rem; }
 .underground-matchup-vitals label small { color: var(--muted); font-size: .68rem; }
+.underground-combatant-awakening { display: grid; gap: .2rem; }
+.underground-combatant-awakening span { color: var(--muted); font-size: .68rem; font-weight: 800; }
+.underground-combatant-awakening progress { width: 100%; height: .45rem; overflow: hidden; border: 0; border-radius: 999px; appearance: none; background: var(--line); }
+.underground-combatant-awakening progress::-webkit-progress-bar { border-radius: 999px; background: var(--line); }
+.underground-combatant-awakening progress::-webkit-progress-value { border-radius: 999px; background: #3d6fb4; }
+.underground-combatant-awakening progress::-moz-progress-bar { background: #3d6fb4; }
+.underground-combatant-awakening[data-full="true"] progress::-webkit-progress-value { background: #c9a227; }
+.underground-combatant-awakening[data-full="true"] progress::-moz-progress-bar { background: #c9a227; }
 .underground-active-state { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0; padding: 0; list-style: none; }
 .underground-active-state li { padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper-deep); color: var(--ink); font-size: .62rem; font-weight: 750; }
 .underground-rounds { display: grid; gap: 0; }
 .underground-round { padding: 1.25rem 0; border-bottom: 1px solid var(--line); }
 .underground-round h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
+.underground-round-start { margin-bottom: .9rem; }
+.underground-round-action-heading { margin: 0 0 .55rem; color: var(--muted); font-size: .78rem; }
 .underground-action-log { display: grid; gap: .42rem; margin: 0; padding: 0; list-style: none; }
 .underground-action-log li { display: grid; grid-template-columns: .65rem minmax(0, 1fr); gap: .6rem; padding: .55rem .7rem; border-inline-start: 2px solid var(--line); background: color-mix(in srgb, var(--input-surface) 72%, transparent); line-height: 1.6; }
 .underground-action-log li > div { min-width: 0; }
@@ -444,6 +454,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-level-up strong { font-size: clamp(1.9rem, 8vw, 3.6rem); font-weight: 950; line-height: 1; letter-spacing: .04em; }
 .underground-level-up span { color: var(--ink); font-weight: 850; }
 .underground-battle-result .underground-combat-summary { margin: .5rem 0; }
+.underground-final-state { border-bottom: 0; padding-block: .6rem; }
+.underground-matchup-heading h3 { margin: 0; color: var(--muted); font-size: .84rem; }
+.underground-combat-details { margin-top: .35rem; }
+.underground-combat-details > summary { cursor: pointer; font-weight: 850; }
 .underground-first-clear-story { display: grid; gap: 1rem; margin-top: 1.25rem; padding: 1.4rem; border: 1px solid var(--line); background: color-mix(in srgb, var(--input-surface) 88%, #d8c88a 12%); }
 .underground-first-clear-story h2, .underground-first-clear-story p { margin: 0; }
 .underground-first-clear-body { max-width: 58rem; white-space: pre-wrap; line-height: 1.9; }

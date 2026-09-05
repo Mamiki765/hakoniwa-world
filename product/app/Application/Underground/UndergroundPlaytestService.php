@@ -172,7 +172,8 @@ final readonly class UndergroundPlaytestService
                     'player_display_name' => $secretary->name,
                     'build_display_name' => $definition['build_label'],
                     'encounter_display_name' => $definition['enemy_label'],
-                    'presentation_log_version' => 1,
+                    'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+                    'initial_state' => $projection['initial_state'],
                     'summary' => $projection['summary'],
                     'reward_policy' => 'none',
                     'penalty_policy' => 'none',
@@ -208,7 +209,8 @@ final readonly class UndergroundPlaytestService
         $enemyKey = is_string($snapshot['enemy_key'] ?? null) ? $snapshot['enemy_key'] : '';
         $summary = is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : [];
         $log = $this->loadedLog($battle);
-        $hasPresentationLog = ($snapshot['presentation_log_version'] ?? null) === 1
+        $presentationLogVersion = $snapshot['presentation_log_version'] ?? null;
+        $hasPresentationLog = in_array($presentationLogVersion, [1, UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION], true)
             && $log instanceof UndergroundBattleLog;
         $rounds = $withRounds && $hasPresentationLog ? $log->actions : null;
         $buildName = is_string($snapshot['build_display_name'] ?? null)
@@ -236,6 +238,12 @@ final readonly class UndergroundPlaytestService
             'xp_awarded' => 0,
             'shard_delta' => 0,
             'summary' => $summary,
+            'initial_state' => $withRounds
+                && $hasPresentationLog
+                && $presentationLogVersion === UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION
+                && is_array($snapshot['initial_state'] ?? null)
+                    ? $snapshot['initial_state']
+                    : null,
             'rounds' => $rounds,
             'detail_available' => $withRounds
                 ? $hasPresentationLog

@@ -1887,6 +1887,10 @@ describe('application lobby and island entry', () => {
             rounds: [
                 {
                     round: 1,
+                    start_state: {
+                        player: { hp: 660, max_hp: 660, mp: 10000, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                        enemy: { hp: 200, max_hp: 200, mp: 10000, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                    },
                     actions: [
                         { type: 'decision', side: '秘書', label: '防御', reason: 'priority_rule_0' },
                         { type: 'action', side: '秘書', actor_name: '過去のペリドット', label: '治癒祈祷' },
@@ -1903,6 +1907,10 @@ describe('application lobby and island entry', () => {
                 },
                 {
                     round: 2,
+                    start_state: {
+                        player: { hp: 650, max_hp: 660, mp: 9700, barrier: 40, statuses: [], role_stacks: { fighting_spirit: 1, grace: 0 } },
+                        enemy: { hp: 100, max_hp: 200, mp: 0, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                    },
                     actions: [
                         {
                             type: 'status_applied', side: '秘書', actor_name: '過去のペリドット',
@@ -2532,9 +2540,11 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-matchup .underground-matchup-card')).toHaveLength(2);
         expect(wrapper.findAll('.underground-matchup .underground-vitals progress.hp')).toHaveLength(2);
         expect(wrapper.findAll('.underground-matchup .underground-vitals progress.mp')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-round-state')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-round-state')[0]!.get('summary').text()).toBe('ラウンド1終了時の状態');
-        expect(wrapper.findAll('.underground-round-state')[0]!.findAll('progress.mp')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-round-state')).toHaveLength(0);
+        expect(wrapper.findAll('.underground-round-start')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-round-start')[0]!.text()).toContain('HP 660');
+        expect(wrapper.findAll('.underground-round-start')[0]!.text()).toContain('HP 200');
+        expect(wrapper.findAll('.underground-round-start')[1]!.text()).toContain('HP 100');
         const firstRoundLog = wrapper.findAll('.underground-round')[0]!;
         expect(firstRoundLog.findAll('.underground-action-log > li')).toHaveLength(4);
         expect(firstRoundLog.get('.underground-action-cost').text()).toBe('MP −1,146');
@@ -2548,14 +2558,16 @@ describe('application lobby and island entry', () => {
         expect(firstRoundLog.get('.is-support').text()).toContain('MPを3000回復');
         expect(firstRoundLog.get('.is-support').text()).not.toContain('自然');
         expect(wrapper.findAll('.underground-round')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('Round 1');
-        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('Round 2');
+        expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('第1ラウンド 開始');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('第2ラウンド 開始');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('深層追跡者に出血が付与された。');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('過去のペリドットは鈍足を防いだ。');
-        expect(wrapper.findAll('.underground-matchup-card')[0]!.get('h2').text()).toBe('過去のペリドット');
-        expect(wrapper.findAll('.underground-matchup-card')[0]!.text()).not.toContain('状態 なし');
-        expect(wrapper.findAll('.underground-matchup-card')[0]!.text()).toContain('闘志 2');
-        expect(wrapper.findAll('.underground-matchup-card')[0]!.text()).toContain('恩寵 1');
+        expect(wrapper.findAll('.underground-final-state .underground-matchup-card')[0]!.get('h2').text()).toBe('過去のペリドット');
+        expect(wrapper.findAll('.underground-final-state .underground-matchup-card')[0]!.text()).not.toContain('状態 なし');
+        expect(wrapper.findAll('.underground-final-state .underground-matchup-card')[0]!.text()).toContain('闘志 2');
+        expect(wrapper.findAll('.underground-final-state .underground-matchup-card')[0]!.text()).toContain('恩寵 1');
+        expect(wrapper.findAll('.underground-final-state .underground-matchup-card')[1]!.text()).toContain('HP 0');
+        expect(wrapper.get('.underground-combat-details').attributes('open')).toBeUndefined();
         expect(wrapper.find('.underground-round-viewer').exists()).toBe(false);
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +0・輝石の欠片 +0G・ドロップなし');
         wrapper.unmount();
@@ -2608,12 +2620,27 @@ describe('application lobby and island entry', () => {
             summary: { result: 'victory', awakening_triggered: true, awakening_technique_used: true },
             rounds: [{
                 round: 1,
+                start_state: {
+                    player: {
+                        hp: 500, max_hp: 500, mp: 10000, barrier: 0, statuses: [],
+                        role_stacks: { fighting_spirit: 0, grace: 0 }, awakened: false,
+                        awakening_unlocked: true, awakening_gauge: 1000, awakening_gauge_max: 1000,
+                    },
+                    enemy: { hp: 100, max_hp: 100, mp: 10000, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                },
                 actions: [{
                     type: 'awakening', side: '秘書', actor_name: '表示秘書', target_name: '表示秘書', label: '覚醒',
                     lines: ['<img src=x onerror=alert(1)>', '表示秘書は覚醒した！', 'HP/MPが全回復した！', '生命・武力・技巧・精神・敏捷が30%上昇した！'],
                     amount: 0,
                 }],
-                end_state: null,
+                end_state: {
+                    player: {
+                        hp: 650, max_hp: 650, mp: 10000, barrier: 0, statuses: [],
+                        role_stacks: { fighting_spirit: 0, grace: 0 }, awakened: true,
+                        awakening_unlocked: true, awakening_gauge: 0, awakening_gauge_max: 1000,
+                    },
+                    enemy: { hp: 0, max_hp: 100, mp: 10000, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
+                },
             }],
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -2673,6 +2700,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.underground-action-log .is-awakening img').exists()).toBe(false);
         expect(wrapper.get('.underground-action-log .is-awakening').text()).toContain('生命・武力・技巧・精神・敏捷が30%上昇した！');
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('awakening_triggered');
+        expect(wrapper.get('.underground-round-start .underground-combatant-awakening').attributes('data-full')).toBe('true');
+        expect(wrapper.get<HTMLProgressElement>('.underground-final-state .underground-combatant-awakening progress').element.value).toBe(0);
+        expect(wrapper.get('.underground-final-state').text()).toContain('覚醒中');
     });
 
     it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {

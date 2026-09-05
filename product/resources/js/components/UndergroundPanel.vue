@@ -50,12 +50,21 @@ interface RoundState {
     awakened?: boolean;
     awakening_technique_used?: boolean;
     awakening_guard_rounds_remaining?: number;
+    awakening_unlocked?: boolean;
+    awakening_gauge?: number;
+    awakening_gauge_max?: number;
+}
+
+interface RoundStatePair {
+    player: RoundState;
+    enemy: RoundState;
 }
 
 interface CombatRound {
     round: number;
     actions: RoundAction[];
-    end_state: { player: RoundState; enemy: RoundState } | null;
+    start_state?: RoundStatePair | null;
+    end_state: RoundStatePair | null;
 }
 
 interface Battle {
@@ -76,6 +85,7 @@ interface Battle {
     detail_available: boolean;
     actions?: SimpleAction[] | CombatRound[] | null;
     summary?: Record<string, boolean | number | string> | null;
+    initial_state?: RoundStatePair | null;
     rewards?: { xp: number; shards: number; g?: number; drops?: unknown[] };
     detail_message?: string | null;
     trial_run_key?: string | null;
@@ -1238,30 +1248,23 @@ onUnmounted(() => {
                     <a class="underground-log-jump" href="#underground-battle-result">末尾へ</a>
                 </header>
 
-                <section v-if="finalBattleState" class="underground-matchup" aria-labelledby="underground-matchup-title">
-                    <div class="underground-matchup-heading">
-                        <h2 id="underground-matchup-title">最終ラウンド終了時</h2>
-                    </div>
-                    <div class="underground-matchup-grid">
-                        <UndergroundCombatantCard
-                            :name="currentPlayerDisplayName"
-                            side="player"
-                            :state="finalBattleState.player"
-                            :image-url="secretaryImageUrl"
-                        />
-                        <span class="underground-matchup-versus" aria-hidden="true">VS</span>
-                        <UndergroundCombatantCard
-                            :name="currentBattle.encounter_name"
-                            side="enemy"
-                            :state="finalBattleState.enemy"
-                        />
-                    </div>
-                </section>
-
                 <div class="underground-rounds">
                     <p v-if="currentBattle.detail_message" class="status">{{ currentBattle.detail_message }}</p>
                     <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
-                        <h2>Round {{ round.round }}</h2>
+                        <h2>第{{ round.round }}ラウンド 開始</h2>
+                        <section v-if="round.start_state" class="underground-round-start" :aria-label="`第${round.round}ラウンド開始時の状態`">
+                            <div class="underground-matchup-grid">
+                                <UndergroundCombatantCard
+                                    :name="currentPlayerDisplayName"
+                                    side="player"
+                                    :state="round.start_state.player"
+                                    :image-url="secretaryImageUrl"
+                                />
+                                <span class="underground-matchup-versus" aria-hidden="true">VS</span>
+                                <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="round.start_state.enemy" />
+                            </div>
+                        </section>
+                        <h3 class="underground-round-action-heading">第{{ round.round }}ラウンド 行動</h3>
                         <ul class="underground-action-log">
                             <li
                                 v-for="(group, index) in actionGroups(round.actions)"
@@ -1283,7 +1286,7 @@ onUnmounted(() => {
                                 </div>
                             </li>
                         </ul>
-                        <details v-if="round.end_state" class="underground-round-state">
+                        <details v-if="!round.start_state && round.end_state" class="underground-round-state">
                             <summary>ラウンド{{ round.round }}終了時の状態</summary>
                             <div class="underground-matchup-grid">
                                 <UndergroundCombatantCard :name="currentPlayerDisplayName" side="player" :state="round.end_state.player" />
@@ -1306,6 +1309,21 @@ onUnmounted(() => {
                 <footer id="underground-battle-result" class="underground-battle-result">
                     <p class="eyebrow">戦闘終了</p>
                     <h2>{{ battleResultLabel(currentBattle.result) }}</h2>
+                    <section v-if="finalBattleState" class="underground-matchup underground-final-state" aria-labelledby="underground-final-state-title">
+                        <div class="underground-matchup-heading">
+                            <h3 id="underground-final-state-title">戦闘中の最終状態</h3>
+                        </div>
+                        <div class="underground-matchup-grid">
+                            <UndergroundCombatantCard
+                                :name="currentPlayerDisplayName"
+                                side="player"
+                                :state="finalBattleState.player"
+                                :image-url="secretaryImageUrl"
+                            />
+                            <span class="underground-matchup-versus" aria-hidden="true">VS</span>
+                            <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="finalBattleState.enemy" />
+                        </div>
+                    </section>
                     <p v-if="currentBattle.hunting_ground">狩場: {{ currentBattle.hunting_ground.name }}</p>
                     <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
                     <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
@@ -1327,9 +1345,12 @@ onUnmounted(() => {
                         <span>戦闘Lv {{ currentBattle.combat_level_before }} → {{ currentBattle.combat_level_after }}</span>
                         <span>未使用STP +{{ currentBattle.stp_awarded ?? 0 }}（合計 {{ currentBattle.unspent_stp_after ?? 0 }}）</span>
                     </div>
-                    <dl v-if="currentBattle.summary" class="underground-combat-summary">
-                        <div v-for="(value, key) in visibleSummary(currentBattle.summary)" :key="key"><dt>{{ summaryLabel(key) }}</dt><dd>{{ summaryValue(key, value) }}</dd></div>
-                    </dl>
+                    <details v-if="currentBattle.summary" class="underground-combat-details">
+                        <summary>戦闘詳細</summary>
+                        <dl class="underground-combat-summary">
+                            <div v-for="(value, key) in visibleSummary(currentBattle.summary)" :key="key"><dt>{{ summaryLabel(key) }}</dt><dd>{{ summaryValue(key, value) }}</dd></div>
+                        </dl>
+                    </details>
                     <a class="underground-log-jump" href="#underground-battle-start">先頭へ</a>
                 </footer>
                 <section v-if="currentBattle.first_clear_story" class="underground-first-clear-story" aria-labelledby="underground-first-clear-title">

@@ -1220,7 +1220,8 @@ final readonly class UndergroundIntroService
                 'ai' => $definition['ai'],
                 'encounter_display_name' => 'リカ',
                 'player_display_name' => $playerDisplayName,
-                'presentation_log_version' => 1,
+                'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+                'initial_state' => $projection['initial_state'],
                 'enemy_combat_level_equivalent' => $definition['combat_level_equivalent'],
                 'enemy_scale_bps' => $definition['enemy_scale_bps'],
                 'summary' => $projection['summary'],
@@ -1501,6 +1502,12 @@ final readonly class UndergroundIntroService
             'actions' => $withActions && $log instanceof UndergroundBattleLog
                 ? $log->actions
                 : null,
+            'initial_state' => $withActions
+                && $log instanceof UndergroundBattleLog
+                && ($snapshot['presentation_log_version'] ?? null) === UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION
+                && is_array($snapshot['initial_state'] ?? null)
+                    ? $snapshot['initial_state']
+                    : null,
             'summary' => is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : [
                 'result' => $battle->result,
                 'rounds' => $battle->rounds,

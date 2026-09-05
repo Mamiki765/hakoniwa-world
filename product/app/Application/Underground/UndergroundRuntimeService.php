@@ -449,7 +449,8 @@ STORY;
         $log = $battle->relationLoaded('log') && $battle->getRelation('log') instanceof UndergroundBattleLog
             ? $battle->getRelation('log')
             : null;
-        $hasPresentationLog = ($snapshot['presentation_log_version'] ?? null) === 1
+        $presentationLogVersion = $snapshot['presentation_log_version'] ?? null;
+        $hasPresentationLog = in_array($presentationLogVersion, [1, UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION], true)
             && $log instanceof UndergroundBattleLog;
 
         return [
@@ -477,6 +478,12 @@ STORY;
             'max_hp_after' => (int) ($snapshot['max_hp_after'] ?? 0),
             'interbattle_heal_amount' => (int) ($snapshot['interbattle_heal_amount'] ?? 0),
             'summary' => $summary,
+            'initial_state' => $withRounds
+                && $hasPresentationLog
+                && $presentationLogVersion === UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION
+                && is_array($snapshot['initial_state'] ?? null)
+                    ? $snapshot['initial_state']
+                    : null,
             'rounds' => $withRounds && $hasPresentationLog ? $log->actions : null,
             'detail_available' => $withRounds
                 ? $hasPresentationLog
@@ -714,7 +721,8 @@ STORY;
                 'ai' => $definition['ai'],
                 'player_display_name' => $secretary->name,
                 'encounter_display_name' => $encounter['label'],
-                'presentation_log_version' => 1,
+                'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+                'initial_state' => $projection['initial_state'],
                 'summary' => $projection['summary'],
                 'growth_path_key' => $profile->growth_path_key,
                 'growth_path_identity' => $profile->growth_path_identity,
@@ -984,7 +992,8 @@ STORY;
                 'ai' => $definition['ai'],
                 'player_display_name' => $secretary->name,
                 'encounter_display_name' => $encounterLabel,
-                'presentation_log_version' => 1,
+                'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+                'initial_state' => $projection['initial_state'],
                 'summary' => $projection['summary'],
                 'growth_path_key' => $profile->growth_path_key,
                 'growth_path_identity' => $profile->growth_path_identity,

@@ -4,6 +4,7 @@ namespace Tests\Underground\Feature;
 
 use App\Application\NationCreationService;
 use App\Application\SecretaryService;
+use App\Application\Underground\UndergroundAlphaV1BattleProjector;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundIntroCatalog;
 use App\Application\Underground\UndergroundProfileService;
@@ -1352,13 +1353,15 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.summary.result', 'victory')
             ->assertJsonPath('data.rewards.xp', 0)
             ->assertJsonPath('data.rewards.shards', 0)
+            ->assertJsonPath('data.initial_state.player.mp', AlphaV1CombatRules::MAX_MP)
+            ->assertJsonPath('data.rounds.0.start_state', fn (mixed $value): bool => is_array($value))
             ->assertJsonStructure(['data' => [
                 'summary' => [
                     'rounds', 'player_remaining_hp', 'enemy_remaining_hp', 'final_mp',
                     'damage_dealt', 'damage_received', 'effective_healing', 'damage_prevented',
                     'mp_spent', 'mp_natural_recovery', 'mp_skill_recovery', 'skill_unavailable_due_to_mp',
                 ],
-                'rounds' => ['*' => ['round', 'actions', 'end_state']],
+                'rounds' => ['*' => ['round', 'actions', 'start_state', 'end_state']],
             ]])
             ->assertJsonMissingPath('data.private_seed')
             ->assertJsonMissingPath('data.snapshot')
@@ -1380,6 +1383,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.build_name', '護身特化')
             ->assertJsonPath('data.encounter_name', '深層追跡者')
             ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');
+        $this->assertEquals($first->json('data.initial_state'), $detail->json('data.initial_state'));
         $projectedActions = collect($detail->json('data.rounds'))
             ->flatMap(fn (array $round): array => $round['actions']);
         $this->assertTrue($projectedActions->contains(
@@ -1416,12 +1420,26 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->sole();
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->runtime_identity);
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $playtestBattle->snapshot['combat_rules_identity']);
+        $this->assertSame(
+            UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+            $playtestBattle->snapshot['presentation_log_version'],
+        );
+        $this->assertEquals($first->json('data.initial_state'), $playtestBattle->snapshot['initial_state']);
         $this->assertEquals(
             app(UndergroundAlphaV1PlayerCatalog::class)
                 ->playtestDefinition($payload['build_key'], $payload['enemy_key'])['ai'],
             $playtestBattle->snapshot['ai'],
         );
         $this->assertTrue($playtestBattle->log?->expires_at->equalTo($playtestBattle->finished_at->addHour()) ?? false);
+        $legacySnapshot = $playtestBattle->snapshot;
+        $legacySnapshot['presentation_log_version'] = 1;
+        unset($legacySnapshot['initial_state']);
+        $playtestBattle->snapshot = $legacySnapshot;
+        $playtestBattle->save();
+        $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
+            ->assertOk()
+            ->assertJsonPath('data.initial_state', null)
+            ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');
         config([
             'underground-alpha-v1.playtest.builds' => [],
             'underground-alpha-v1.playtest.enemies' => [],

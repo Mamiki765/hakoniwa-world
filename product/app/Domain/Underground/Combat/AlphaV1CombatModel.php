@@ -159,6 +159,10 @@ final readonly class AlphaV1CombatModel
         $statusUptime = [];
         $mpHistory = [];
         $actionLog = [];
+        $initialState = [
+            'player' => $this->stateSnapshot($player),
+            'enemy' => $this->stateSnapshot($enemy),
+        ];
 
         $completedRounds = $this->orchestrator->run(
             $maxRounds,
@@ -287,6 +291,7 @@ final readonly class AlphaV1CombatModel
                     ])
                     : null,
             ],
+            $initialState,
         );
     }
 
@@ -1744,6 +1749,9 @@ final readonly class AlphaV1CombatModel
             'awakening_technique_used' => $state->awakeningTechniqueUsed,
             'awakening_guard_rounds_remaining' => $state->awakeningGuardRoundsRemaining,
             'awakening_guard_applied_round' => $state->awakeningGuardAppliedRound,
+            'awakening_unlocked' => $state->awakeningUnlocked,
+            'awakening_gauge' => $state->awakeningGauge,
+            'awakening_gauge_max' => UndergroundAwakening::GAUGE_MAX,
         ];
     }
 

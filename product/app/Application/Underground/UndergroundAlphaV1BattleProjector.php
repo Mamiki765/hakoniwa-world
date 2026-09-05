@@ -4,9 +4,12 @@ namespace App\Application\Underground;
 
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\BuildCombatResult;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 
 final class UndergroundAlphaV1BattleProjector
 {
+    public const PRESENTATION_LOG_VERSION = 2;
+
     /** @return array<string, mixed> */
     public function project(
         BuildCombatResult $result,
@@ -14,13 +17,14 @@ final class UndergroundAlphaV1BattleProjector
         string $playerDisplayName = '秘書',
         string $enemyDisplayName = '対戦相手',
     ): array {
+        $initialState = $this->statePair($result->initialState, $catalog);
         $rounds = [];
         foreach ($result->actionLog as $row) {
             $round = (int) ($row['round'] ?? 0);
             if ($round < 1) {
                 continue;
             }
-            $rounds[$round] ??= ['round' => $round, 'actions' => [], 'end_state' => null];
+            $rounds[$round] ??= ['round' => $round, 'actions' => [], 'start_state' => null, 'end_state' => null];
             $kind = $row['kind'] ?? 'effect';
             if ($kind === 'round_end') {
                 $rounds[$round]['end_state'] = [
@@ -90,6 +94,14 @@ final class UndergroundAlphaV1BattleProjector
             );
         }
         ksort($rounds);
+        $nextStartState = $initialState;
+        foreach ($rounds as &$round) {
+            $round['start_state'] = $nextStartState;
+            if (is_array($round['end_state'])) {
+                $nextStartState = $round['end_state'];
+            }
+        }
+        unset($round);
 
         return [
             'summary' => [
@@ -109,7 +121,23 @@ final class UndergroundAlphaV1BattleProjector
                 'awakening_triggered' => $result->awakening['triggered'],
                 'awakening_technique_used' => (bool) ($result->awakening['technique']['used'] ?? false),
             ],
+            'initial_state' => $initialState,
             'rounds' => array_values($rounds),
+        ];
+    }
+
+    /** @return array{player: array<string, mixed>, enemy: array<string, mixed>}|null */
+    private function statePair(mixed $value, AlphaV1BuildCatalog $catalog): ?array
+    {
+        if (! is_array($value)
+            || ! is_array($value['player'] ?? null)
+            || ! is_array($value['enemy'] ?? null)) {
+            return null;
+        }
+
+        return [
+            'player' => $this->state($value['player'], $catalog),
+            'enemy' => $this->state($value['enemy'], $catalog),
         ];
     }
 
@@ -207,6 +235,9 @@ final class UndergroundAlphaV1BattleProjector
             'awakened' => (bool) ($value['awakened'] ?? false),
             'awakening_technique_used' => (bool) ($value['awakening_technique_used'] ?? false),
             'awakening_guard_rounds_remaining' => (int) ($value['awakening_guard_rounds_remaining'] ?? 0),
+            'awakening_unlocked' => (bool) ($value['awakening_unlocked'] ?? false),
+            'awakening_gauge' => (int) ($value['awakening_gauge'] ?? 0),
+            'awakening_gauge_max' => (int) ($value['awakening_gauge_max'] ?? UndergroundAwakening::GAUGE_MAX),
         ];
     }
 

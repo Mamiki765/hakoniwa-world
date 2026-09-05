@@ -105,6 +105,15 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $first->rulesIdentity);
         $this->assertSame(AlphaV1CombatRules::GENERATOR_IDENTITY, $first->generatorIdentity);
         $this->assertSame($manifest['generator_identity'], $first->generatedEquipment[0]['generator_identity']);
+        $this->assertSame($first->initialState, $retry->initialState);
+        $this->assertSame(10_000, $first->initialState['player']['mp']);
+        $this->assertSame(0, $first->initialState['player']['awakening_gauge']);
+
+        $projection = (new UndergroundAlphaV1BattleProjector)->project($first, $catalog);
+        $this->assertSame($projection['initial_state'], $projection['rounds'][0]['start_state']);
+        foreach (array_slice($projection['rounds'], 1) as $index => $round) {
+            $this->assertSame($projection['rounds'][$index]['end_state'], $round['start_state']);
+        }
     }
 
     public function test_level_one_standard_hp_is_500_and_mp_never_scales_or_leaves_fixed_bounds(): void
